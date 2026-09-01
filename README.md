@@ -106,12 +106,15 @@ would have hand-written, not an interpreter walking a schema at runtime.
   sibling `ufixed(48, 16)` are declared like any other field, and the compiler
   owns both the storage and the wire for them.
 - **128-bit integers**, ranged like any other, in every target language.
-- **Tables for data that outlives builds** — `table` declares save/load
-  structures on an evolution-tolerant wire (C++ today): unknown fields skip,
-  absent fields default, renames survive via `was = "old_name"`, and every
-  table ships with reflection descriptors for tools that walk fields by name.
-  Packets and tables version independently — a table never moves the
-  protocol id.
+- **Two wires: types and tables.** `table` declares records on an
+  evolution-tolerant wire (C++ today): unknown fields skip, absent fields
+  default, renames survive via `was = "old_name"`, and every table ships
+  with reflection descriptors for tools that walk fields by name. Use them
+  as files, blobs, or messages — a config a tool saves, an archive a build
+  bakes, or a versioned message between peers that don't deploy in
+  lockstep: schema's take on the protobufs/flatbuffers class, beside the
+  hardcoded `type` wire rather than replacing it. The two version
+  independently — a table never moves the protocol id.
 - **Zero allocation, no runtime reflection** — straight-line code reading and
   writing your own buffers.
 - **Reads validate, always — in every language.** Out-of-range values are

@@ -616,7 +616,8 @@ saves as 2 bytes and loads back complete.
 
 A field whose type is another table nests it by value; bounded arrays of
 tables give you collections. That is the whole recipe for a config or asset
-bin — declare the root, and the file format falls out:
+bin — declare the root, and the format falls out (the same bytes work as a
+file on disk or a message on a socket):
 
 ```
 table WeaponConfig

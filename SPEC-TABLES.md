@@ -1,12 +1,19 @@
 # schema — tables
 
-Tables are schema's declarations for **data that outlives builds**: config
-files, asset archives, tool output, editor state — bytes written by one
-build of one tool and read by another build of another program, possibly
-years apart. The packet wire (`type`, SPEC.md) is hardcoded and guarded by
-the protocol id: same-or-refuse. The table wire is the opposite contract:
-**any reader reads any data**, and the differences are reported, never
-fatal.
+**Schema has two wires: types and tables.** Types are the hardcoded,
+same-build wire; tables are the evolution-tolerant one. This document
+specifies the second.
+
+Tables are schema's declarations for **data that crosses builds**: config
+files, asset archives, tool output, editor state — and just as much,
+**messages**: bytes produced by one build of one program and consumed by
+another build of another, whether the trip is a disk file read years later
+or a datagram read milliseconds later by a peer that deployed last week.
+The hardcoded wire (`type`, SPEC.md) is the same-build contract, guarded by
+the protocol id: same-or-refuse. Packets are its loudest user, not its
+definition — any data whose writer and reader share a schema build belongs
+there. The table wire is the opposite contract: **any reader reads any
+data**, and the differences are reported, never fatal.
 
 The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
@@ -105,8 +112,10 @@ schema's codebase:
   clamp on load (§4) — they never change what the bytes look like.
 
 The same bytes serve every use: a file on disk, a blob in memory, a
-payload handed from a tool to a game. Save and load are symmetric over
-caller-provided buffers; generated code allocates nothing.
+payload handed from a tool to a game, a message between services whose
+deploys never align. Save and load are symmetric over caller-provided
+buffers — message-ready by construction; generated code allocates
+nothing.
 
 ## 4. Versioning is wire tolerance
 
@@ -193,12 +202,12 @@ held by construction:
   and a reader can fan nested-table decodes out the same way. The framing
   guarantees the option; callers choose whether to take it.
 
-## 8. Independence from the packet wire
+## 8. Independence from the hardcoded wire
 
 Table declarations do not enter the unit's wire-shape projection. Adding,
-editing or deleting a table moves no `ProtocolId` and no generated packet
-byte: peers whose packets did not change are never forced into a lockstep
-redeploy by a content edit. This independence is held by test.
+editing or deleting a table moves no `ProtocolId` and no generated `type`
+byte: peers whose hardcoded wire did not change are never forced into a
+lockstep redeploy by a table edit. This independence is held by test.
 
 ## 9. Refused by name
 
