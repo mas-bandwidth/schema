@@ -35,18 +35,19 @@ follow-ons.
 ## 2. Declaration
 
 ```
+table Physics
+{
+    mass float32 | min = 0.1, max = 100000.0
+    drag float32
+}
+
 table ShipConfig
 {
     name        string(64)
     class       ShipClass
     health      int32 | min = 0, max = MaxHealth
     hardpoints  [..8]Hardpoint
-
-    physics table
-    {
-        mass    float32 | min = 0.1, max = 100000.0
-        drag    float32
-    }
+    physics     Physics
 }
 ```
 
@@ -55,10 +56,11 @@ A table body is a type body — the field grammar of SPEC §4.2, hosted by
 compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 `if` branches, and declared types as field groups. Two additions:
 
-- **Tables nest.** A field may be an inline anonymous subtable (above) or
-  a named table used as a field type. Nesting is by value; a bounded array
-  of tables is a collection. A table may not contain itself, directly or
-  through any chain — recursion is refused with the cycle named.
+- **Tables nest.** A named table is a field type (above); nesting is by
+  value, and a bounded array of tables is a collection. A table may not
+  contain itself, directly or through any chain — recursion is refused
+  with the cycle named. (Inline anonymous subtables are a spelling
+  follow-on; the named form is the feature.)
 - **`was` — the rename attribute** (§5).
 
 The exclusions, each refused by name: `fixed`/`ufixed` and the 128-bit
@@ -76,13 +78,25 @@ schema's codebase:
 
 - Little-endian, byte-oriented throughout.
 - A table value is a sequence of **fields**, each `id (u16), kind (u8),
-  payload`, terminated by an end marker. The id is the field's name hash
-  (§5); the kind is one of the closed kind set: bool, i8..i64, u8..u64,
-  f32, f64, string, array, union, table.
-- Variable-length payloads — strings, bytes, arrays, unions, nested
-  tables — are **length-prefixed** (lengths and counts as u16), so any
-  reader can skip any field without understanding it, and any parent can
-  hand each nested table to a different worker (§7).
+  payload`, terminated by a **u16 zero terminator**. The id is the
+  field's name hash — fnv1a32 over the name, xor-folded to 16 bits, with
+  0 mapping to 1 so the terminator can never collide (§5). The kind is
+  one of the closed set: bool, i8..i64, u8..u64, f32, f64, string,
+  array, union, table.
+- Scalar payloads are their kind's fixed width. Strings carry a **u16
+  byte length** then the bytes. Arrays, unions and nested tables carry a
+  **u32 byte length** then the body — so any reader can skip any field
+  without understanding it, and any parent can hand each nested table to
+  a different worker (§7). An array body opens with its **element kind
+  (u8) and count (u16)**; a union body opens with its **tag byte**
+  (variant ordinal + 1, 0 = empty) then the arm as a nested table body.
+  Fixed-extent scalar arrays are positional: absent trailing elements
+  pad to the declared bound.
+- **Writers elide what readers default**: a field holding its default, an
+  empty string or array, and an all-default nested table are not written
+  at all (fixed arrays of tables keep their elements — position is
+  identity there). Elision is why old readers and new writers meet
+  cleanly, and why measure and save agree byte for byte (§7).
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
   narrowest unsigned kind that holds it, compressed floats as f32, enums
@@ -107,8 +121,12 @@ tolerance is the versioning model:
   misdecoded, counted.
 - **Out-of-range value** (bounds tightened since the writer): clamped to
   the reader's declared bounds, counted.
-- **Framing damage**: decode stops, the partial result stands, and the
-  report says malformed.
+- **Framing damage**: decode stops the damaged nesting level, keeps what
+  it decoded there, flags malformed, and the parent continues past the
+  field's declared length — one bad subtable never takes down the rest
+  of the file. Array elements decode **inside their field's body
+  bounds**: a count the body cannot cover yields the bounded prefix and
+  the malformed flag, never values fabricated from a neighbor's bytes.
 
 Every event lands in the **read report** — unknown, kind_mismatch,
 clamped, malformed. Silence (all zero) means the data matched this
