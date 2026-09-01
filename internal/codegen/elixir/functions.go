@@ -1816,6 +1816,11 @@ func (g *gen) fastReadPlan(f *ir.Field) (int64, bool) {
 // compressed floats), or a struct of exactly those (consts and reserved bits
 // ride the windows too). Branches are excluded even when their widths agree —
 // the chain points are compile-time and a branch's layout is not.
+//
+// This exclusion carries a second load: it is what lets g.feed live without a
+// save/restore, because nothing admitted here can re-enter read emission (the
+// law at the feed field, elixir.go). Anything added to this walker that can
+// nest a read must give feed that save/restore first.
 func (g *gen) plainFastElement(f *ir.Field) bool {
 	switch f.Type.Kind {
 	case ir.TInt, ir.TBits, ir.TBool, ir.TFixed:
@@ -1926,6 +1931,13 @@ func (g *gen) fastReadBody(f *ir.Field, m, T int64, evs []string) *feedState {
 // fastReadClauses emits the aligning entry and the fast clause pair behind
 // the scalar loop `name`. The segment plan the clause head needs is learned
 // from a dry run of the same element emission it then repeats for real.
+//
+// The fast clause is BODY-recursive, so the list builds in order on unwind
+// and no reverse is paid — but that is a new memory characteristic: it holds
+// ceil(n/m) live stack frames where the scalar loop held one. ArrayBound
+// bounds it, so the depth is a declaration constant rather than input-driven,
+// and a declaration whose bound made that depth expensive would have to hold
+// the decoded list at the same scale anyway.
 func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 	eb, _ := g.staticBitsScalar(f)
 	T := m * eb

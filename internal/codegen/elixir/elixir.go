@@ -229,6 +229,15 @@ type gen struct {
 	// already matched this iteration's stream bytes into register segments,
 	// and fields cut their bits out of chained fixnum windows instead of
 	// opening rd/rdw windows (functions.go, readFeed)
+	//
+	// feed needs no save/restore the way segW needs its reset at a join,
+	// and the reason is an exclusion, not luck: plainFastElement admits
+	// only scalars and structs of scalars, so no branch, union or nested
+	// array can be emitted while a feed is live and no read helper is ever
+	// re-entered under one. Widening that gate means giving feed a
+	// save/restore at every construct that can re-enter read emission —
+	// without it a nested read would cut its bits from the outer clause's
+	// registers, which is the silent wire-corruption class.
 	feed *feedState
 
 	// compressed-float decode tables (functions.go, cfTable): one module
