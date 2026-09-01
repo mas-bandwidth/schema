@@ -641,6 +641,115 @@ schema deliberately does not prescribe one. Tables may also reference plain
 A `type` cannot reference a table (packets stay exact-match), and a table
 cannot nest itself.
 
+### Pointers: `next *Node`
+
+Types are value semantics. Tables ALLOW pointer semantics, because a generic
+system needs pointers to tables:
+
+```
+table Node
+{
+    value int32
+    next  *Node          // recursion through a pointer is legal
+}
+
+table Scene
+{
+    head     *Node
+    settings *Settings   // an optional subtable: null when absent
+}
+```
+
+A pointer targets a `table`, never a `type` — and lives in a table body,
+never a type body. Arrays of pointers, and a specified default on a pointer,
+are refused by name.
+
+**The compiler derives the mode; you never declare it.** A table with no
+pointer anywhere in its by-value closure is FIXED-SIZE — a plain struct with
+the three functions above, and it pays nothing at all for what follows. A
+table with a pointer in that closure is VARIABLE-LENGTH, and it is never held
+by value: you build it, lock it, and read it through a root pointer.
+
+```cpp
+SceneBuilder builder;                       // MUTABLE
+Scene * root = builder.Root();
+Node * first = builder.Alloc<Node>();
+first->value = 10;
+root->head = builder.Alloc<Node>();         // the slot is both node and reference
+
+builder.Lock();                             // ONE WAY, and it compacts
+const Scene * scene = builder.Const();      // CONST: one packed region
+const Node * head = NodeAt( scene->head );  // one add; NULL when null
+```
+
+`Lock()` walks the arena, measures it exactly and lays every node back to
+back into one region with the root at its base — zero slack, references
+rewritten self-relative, so the whole region relocates by plain `memcpy`.
+There is no unlock: to edit again, load the const form into a fresh builder.
+
+Building goes wide with no lock and no per-node atomic — one worker per
+thread, each allocating on its own front:
+
+```cpp
+SceneBuilder builder;
+std::thread workers[4];
+for ( int t = 0; t < 4; t++ )
+    workers[t] = std::thread( [&]{
+        TableWorker worker = builder.Worker();     // one per THREAD
+        Node * n = worker.Alloc<Node>();           // no lock, no atomic per node
+        ...
+    } );
+for ( auto & w : workers ) w.join();               // join, THEN lock
+builder.Lock();
+```
+
+Allocating on your own worker is safe concurrently. Writing fields of a node
+another worker allocated is your own synchronization. `Lock`, `Save`, `Cook`
+and `Open` are single-threaded.
+
+Reading from the wire, the caller owns the allocation as always:
+
+```cpp
+int64_t need = SceneLoadMeasure( wire, wire_size ); // exact, reads no values
+uint8_t * region = your_allocator( need );
+TableReport report;
+const Scene * scene = SceneLoad( region, need, wire, wire_size, &report );
+```
+
+On the wire a pointer rides as its pointee's table body — framing identical
+to a by-value nesting, so a field may change between the two and no byte
+moves. Null pointers are simply absent. **Wire v1 is a tree**: two pointers
+to one node write two bodies and load as two nodes.
+
+### The cooked form: point at a file instead of parsing it
+
+The wire is generic — it allocates, walks and parses, and any build reads any
+data. When you want a big file to start instantly, cook it: the locked region
+written verbatim behind a small header, laid out exactly as the runtime reads
+it.
+
+```cpp
+int64_t size = SceneCookMeasure( builder );
+SceneCook( builder, buffer, size );                  // write Scene.bin
+
+// later, in the game — mmap it or read it, then just point:
+const Scene * scene = SceneOpen( bytes, size );
+if ( scene == NULL )
+{
+    // wrong build, corrupt, or foreign byte order: fall back to the wire
+}
+```
+
+A cooked file is an ACCELERATOR, not an archive: it is build-locked by a
+layout id that mixes the schema's packed-layout facts with this build's own
+`sizeof`s, so it refuses the moment either moves, and you regenerate it. The
+tolerant wire stays the format of record.
+
+`Open` validates before it points — a bounds walk over the reference graph
+alone, never a field value: O(references), not a parse. Value-only tables get
+no `Cook`/`Open`: they are structs, and `sizeof` plus `memcpy` already is
+their region form.
+
 ### Renaming a field: `was`
 
 Wire identity is the name hash, so a rename would orphan stored data. `was`

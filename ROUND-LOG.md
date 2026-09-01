@@ -132,3 +132,24 @@ no rebase debt).
   TestPointerSurfaceEmitted (per-TABLE, not per-file: a value-only table sharing
   a pointered unit still gets no builder), TestPointerGenerationDeterministic,
   TestLayoutIdMovesWithTheSchema.
+
+- UNIT 5 — SPEC-TABLES.md, USAGE.md, README. Spec gained §2.1 (pointers, with
+  every refusal named), §2.2 (the mode derived as a least-fixed-point over
+  by-value edges, the zero-cost gate stated as a gate, and the stated
+  assumption that size and mode correlate), §3.1 (the pointer wire: tree
+  semantics loud, null elides, a non-null pointer always rides, pointer and
+  by-value nesting wire-identical, the depth cap and what it costs), a NEW §6
+  (the two lives: value surface vs Builder→Lock→region, the two reference
+  encodings, the threading contract, both load paths, the authoring-vs-reading
+  allocation split), a NEW §7 (the cooked form — accelerator not archive,
+  layout id, the bounds walk as reads-validate-always, every refusal, alignment,
+  endianness refusing in v1). §8 reflection gained the pointer kind and the
+  derived mode; §9 relocatability now covers both forms and states measure==save
+  at exact capacity as a hard invariant; §11 grew the pointer, cycle, depth-cap
+  and cooked-file refusals; §13.1 records the rulings verbatim; a NEW §14
+  weighs all four builder-storage models with lock+realloc REJECTED and the
+  moved-node hazard named; §15 grew graph/DAG identity, arrays of pointers,
+  lifting the depth cap, cross-endian Open, the fallback loader, and the generic
+  JSON walk over the descriptors. Sections 6..15 renumbered; every code citation
+  updated to match. USAGE gained the pointer, builder/threading and cooked-form
+  sections; README gained the pointers bullet.

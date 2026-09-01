@@ -76,7 +76,7 @@ func TestTableRefusals(t *testing.T) {
 		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
 
-		// ---- pointers (SPEC-TABLES.md §9) ----
+		// ---- pointers (SPEC-TABLES.md §11) ----
 		{name: "a pointer to a type is refused by name", want: "may only target a `table`",
 			src: "package t\ntype P { x int32 }\ntable Tab { p *P }\n"},
 		{name: "a pointer to an enum is refused by name", want: "may only target a `table`",

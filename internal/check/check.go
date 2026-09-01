@@ -1761,7 +1761,7 @@ func (c *checker) checkTables() {
 }
 
 // checkPointerSpelling enforces the `*T` spelling's rules, each refused by
-// name (SPEC-TABLES.md §9). The founding line: types remain VALUE semantics;
+// name (SPEC-TABLES.md §11). The founding line: types remain VALUE semantics;
 // tables ALLOW POINTER semantics — so a pointer is a table-to-table edge
 // declared inside a table body, and nowhere else.
 func (c *checker) checkPointerSpelling(f *ast.Field, inTable bool, d ast.Decl) bool {
@@ -1776,7 +1776,7 @@ func (c *checker) checkPointerSpelling(f *ast.Field, inTable bool, d ast.Decl) b
 		return false
 	}
 	if f.Array != nil {
-		c.errf(f.Type.Pos, "field %s: an array of pointers is a named follow-on — declare a bounded array of tables by value, or a pointer to a table that holds the array (SPEC-TABLES.md §12)", f.Name)
+		c.errf(f.Type.Pos, "field %s: an array of pointers is a named follow-on — declare a bounded array of tables by value, or a pointer to a table that holds the array (SPEC-TABLES.md §15)", f.Name)
 		return false
 	}
 	if f.Default != nil {

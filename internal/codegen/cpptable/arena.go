@@ -50,7 +50,7 @@ static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 // hostile wire cannot drive the C stack into the ground. A pointer chain's
 // WIRE nesting equals its length (§3), so this also caps chain length: wide
 // structures are unbounded, deep ones are not. Lifting it wants a flat,
-// indexed node encoding — a named follow-on (§12).
+// indexed node encoding — a named follow-on (§15).
 static const int32_t kTableMaxDepth = 128;
 
 // ---- TableRef: a relocatable reference (never a machine pointer) ----

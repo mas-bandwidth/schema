@@ -1,4 +1,4 @@
-// The per-table VARIABLE-LENGTH surface (SPEC-TABLES.md §2, §7): the
+// The per-table VARIABLE-LENGTH surface (SPEC-TABLES.md §2, §6, §9): the
 // allocation accessors, the pack walkers behind Lock and Cook, the wire
 // sizing pre-pass behind Load, the cooked form's bounds walk behind Open, and
 // the Builder itself.
@@ -454,7 +454,7 @@ func countedCompanions(st *ir.Struct) []companion {
 
 func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	n := st.Name
-	g.pf("// ---- %s: the variable-length life (SPEC-TABLES.md §2, §7) ----\n", n)
+	g.pf("// ---- %s: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----\n", n)
 	g.pf("//\n")
 	g.pf("// MUTABLE: %sBuilder — allocate nodes, wire them together, then Lock.\n", n)
 	g.pf("// CONST:   one packed region, root at its base. Lock produces it and Load\n")
@@ -587,7 +587,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    return %sLoadBody( r, builder.main, *root, 1 );\n}\n\n", n)
 
 	// cooked form
-	g.pf("// ---- %s cooked: the region form (SPEC-TABLES.md §6) ----\n", n)
+	g.pf("// ---- %s cooked: the region form (SPEC-TABLES.md §7) ----\n", n)
 	g.pf("//\n")
 	g.pf("// One requirement: load a big file, point at its root, without copying it\n")
 	g.pf("// and without parsing it. The cooked form is the structure laid out exactly\n")
