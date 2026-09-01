@@ -1,0 +1,9 @@
+// Nested.schema — a table referencing a table declared in another file:
+// the generated NestedTable.h includes TablesTable.h (SPEC-TABLES.md).
+package tabledemo
+
+table ArchiveConfig
+{
+    root  RootConfig
+    count int32 = 1  | min = 0, max = 100
+}

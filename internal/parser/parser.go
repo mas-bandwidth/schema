@@ -191,11 +191,20 @@ func (p *parser) parseDecl() {
 		p.file.Decls = append(p.file.Decls, d)
 
 	case scanner.KwTable:
-		// `table` is reserved and refused: tables are not part of the
-		// language. Realtime wire types are `type`; the id is exact-match
-		// and content that outlives builds is not this compiler's subject.
-		p.errf(t.Pos, "tables are not part of the language — declare a `type` (the id is exact-match: same protocol id or refuse, SPEC §3)")
-		p.skipDecl()
+		// `table` declares a data type on the evolution-tolerant TABLE wire
+		// (SPEC-TABLES.md): field identity by name hash, unknown fields
+		// skipped, absent fields defaulted. The body grammar is the type
+		// body's; a table declaration takes no qualification.
+		p.advance()
+		name := p.expect(scanner.Ident, "table name")
+		d := &ast.TableDecl{Name: name.Text, Pos: t.Pos}
+		if p.kind() == scanner.Pipe {
+			p.errf(p.tok().Pos, "a table declaration takes no qualification (SPEC-TABLES.md)")
+			p.skipToTerminator()
+		}
+		d.Body = p.parseBlock()
+		p.expectTerminator("table declaration")
+		p.file.Decls = append(p.file.Decls, d)
 
 	case scanner.KwMessage:
 		// `message` is reserved and refused: messages are not part of the

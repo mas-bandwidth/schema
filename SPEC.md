@@ -1108,8 +1108,6 @@ schema declares a pure data contract — hardcoded structs, one protocol id,
 same-or-refuse (§3) — and constructs outside that contract are refused BY
 NAME rather than falling into a generic parse error:
 
-- **`table`** — tables are not part of the language; content that outlives
-  builds is out of schema's scope entirely.
 - **`message`** — messages are not part of the language: a message set is a
   union of payload types plus your own framing (§4.8, and the pattern in
   §4.9's example).
@@ -1124,7 +1122,9 @@ The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
 each refusal was id-neutral for every unit that never declared the
 construct; changing a token is a `ProjectionVersion` bump, taken
-deliberately or not at all.
+deliberately or not at all. `table` declarations (SPEC-TABLES.md) never
+enter the projection at all — a `type` line's token is `table=false`
+forever, and packets and tables version independently.
 
 ## 5. Trust model — inherited
 

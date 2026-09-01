@@ -166,8 +166,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x ufixed(64, 0) | min = 0, max = 18446744073709551615 }\n"},
 		{name: "ufixed default below its unsigned range", want: "outside its range",
 			src: "package t\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
-		{name: "table is not part of the language", want: "tables are not part of the language",
-			src: "package t\ntable T { x int32 }\n"},
+		{name: "a table declaration takes no qualification", want: "takes no qualification",
+			src: "package t\ntable T | pinned\n{\n    x int32\n}\n"},
 		{name: "message is not part of the language", want: "messages are not part of the language",
 			src: "package t\nmessage M { x uint8 }\n"},
 		{name: "object is not part of the language", want: "objects are not part of the language",
@@ -250,6 +250,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { n int32 | min = 0, max }\n"},
 		{name: "resolution written without a value", want: "requires a value",
 			src: "package t\ntype T { x float32 | min = 0, max = 1, resolution }\n"},
+		{name: "was written without a value", want: "requires a value",
+			src: "package t\ntable T { x int32 | was }\n"},
 
 		// cycle guards: every resolver that can re-enter itself must REJECT,
 		// not recurse. Before the enum guard these crashed the compiler with

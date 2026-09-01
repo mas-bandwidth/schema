@@ -68,6 +68,7 @@ GO_SOURCES   := $(shell find cmd internal -name '*.go') go.mod
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
+SCHEMAS_TABLES := $(wildcard tables/examples/*.schema)
 
 all: bin/schema
 
@@ -193,6 +194,24 @@ build/guard-generated/.stamp: bin/schema test/guard/Alpha.schema test/guard/Beta
 build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Ibuild/guard-generated test/guard/main.cpp -o $@
+
+# The tables corpus (SPEC-TABLES.md): the tabledemo unit plus the
+# two-generation evolution pair (tblv1/tblv2), generated at build time into
+# build/ — test-only, never part of the committed generated/ tree.
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) test/tables/V1.schema test/tables/V2.schema
+	@mkdir -p build/tables-generated
+	./bin/schema generate --lang cpp --out build/tables-generated/examples tables/examples
+	./bin/schema generate --lang cpp --out build/tables-generated/v1 test/tables/V1.schema
+	./bin/schema generate --lang cpp --out build/tables-generated/v2 test/tables/V2.schema
+	@touch $@
+
+# Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
+# carry no serialize dependency, and this build proves it stays that way.
+build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
+	@mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+		test/tables/main.cpp -o $@
 
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
@@ -342,9 +361,10 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
+	./build/schema_test_tables
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c
@@ -430,6 +450,9 @@ generated-current: test
 check: bin/schema
 	./bin/schema check examples
 	./bin/schema check examples128
+	./bin/schema check tables/examples
+	./bin/schema check test/tables/V1.schema
+	./bin/schema check test/tables/V2.schema
 	./bin/schema check bench/corpus/Bench.schema
 	./bin/schema check bench/corpus/RealWorld.schema
 
@@ -442,6 +465,9 @@ id: bin/schema
 fmt: bin/schema
 	./bin/schema fmt examples
 	./bin/schema fmt examples128
+	./bin/schema fmt tables/examples
+	./bin/schema fmt test/tables/V1.schema
+	./bin/schema fmt test/tables/V2.schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
 

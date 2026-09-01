@@ -550,6 +550,171 @@ find out, once, at connect time, instead of paying for it on every packet.
 
 ---
 
+## Tables: data that outlives builds
+
+Packets are for the network: exact-match, bit-packed, same protocol id or
+refuse. **Tables are for data** — tools→game pipelines, editors that walk
+properties by name, save/load to memory or disk — where the writer and the
+reader are routinely DIFFERENT builds and both must cope. Declare one with
+`table`; the body grammar is the type body's:
+
+```
+table ShipConfig
+{
+    health      float32 = 100.0
+    speed       float32 = 500.0
+    armor_level int32 = 1 | min = 0, max = 10
+    name        string(32)
+}
+```
+
+A table lives on its own wire — evolution-tolerant TLV, C++ only today. Field
+identity is a hash of the field NAME, so any reader takes any data, both
+directions: unknown fields are skipped, absent fields take their declared
+defaults, a field whose type changed is skipped rather than misdecoded,
+out-of-range values are clamped. Every such event is counted in a report;
+only structural damage stops a load. Tables never touch the protocol id —
+add, edit or remove one and no packet byte and no id moves.
+
+### Save and load
+
+Generation produces `<Base>Table.h` beside the packet headers — plain byte
+code with **no serialize dependency**, includable from any translation unit.
+The encode surface is a measure/save split, and the caller owns every buffer
+(generated code allocates nothing):
+
+```cpp
+#include "ConfigTable.h"
+
+ShipConfig ship;
+ship.health = 250.0f;
+
+int64_t size = TableMeasureShipConfig( ship );     // exact, writes nothing
+std::vector<uint8_t> buffer( size );               // or any storage you own
+TableSaveShipConfig( ship, buffer.data(), size );  // returns size, or -1 if short
+
+TableReport report;
+ShipConfig loaded;
+if ( !TableReadShipConfig( buffer.data(), size, loaded, report ) )
+{
+    // framing damage: report.malformed is set, the good prefix is kept
+}
+if ( report.unknown || report.kind_mismatch || report.clamped )
+{
+    // the data came from a different schema generation — loaded is still
+    // fully usable; log the counts so drift is visible
+}
+```
+
+Values at their defaults stay off the wire entirely — an all-default table
+saves as 2 bytes and loads back complete.
+
+### Nesting: a root table IS a format
+
+A field whose type is another table nests it by value; bounded arrays of
+tables give you collections. That is the whole recipe for a config or asset
+bin — declare the root, and the file format falls out:
+
+```
+table WeaponConfig
+{
+    damage float32 = 21.0
+    homing bool
+}
+
+table GameConfig
+{
+    friendly_fire bool
+    weapons       [..MaxWeapons]WeaponConfig
+    level_name    string(64)
+}
+```
+
+Whatever envelope you want around it — a magic, a content hash, several roots
+in one file — is a few lines of your code on top of `TableSave`/`TableRead`.
+schema deliberately does not prescribe one. Tables may also reference plain
+`type`s, enums and flags; everything a table reaches gets table codecs too.
+A `type` cannot reference a table (packets stay exact-match), and a table
+cannot nest itself.
+
+### Renaming a field: `was`
+
+Wire identity is the name hash, so a rename would orphan stored data. `was`
+keeps the old identity through the rename:
+
+```
+table ShipConfig
+{
+    speed float32 = 500.0 | was = "velocity"
+}
+```
+
+Old files that carry `velocity` load into `speed`; new files keep writing the
+old id. The compiler refuses `was` naming the field's own current name, and
+refuses any two fields of one table whose effective ids collide.
+
+### Going wide
+
+Every nested table on the wire is length-prefixed, so building a large file
+parallelizes: measure the subtables on N workers, prefix-sum the offsets,
+and scatter-write disjoint ranges — no worker touches another's bytes.
+
+```cpp
+// one worker per profile; shown serially
+int64_t sizes[kProfiles], total = 0;
+for ( int i = 0; i < kProfiles; i++ )
+{
+    sizes[i] = TableMeasureProfileConfig( profiles[i] ); // parallel-safe: read-only
+    total += sizes[i];
+}
+uint8_t * buffer = arena_alloc( total );
+int64_t offsets[kProfiles], at = 0;
+for ( int i = 0; i < kProfiles; i++ ) { offsets[i] = at; at += sizes[i]; }
+for ( int i = 0; i < kProfiles; i++ ) // each iteration is an independent job
+{
+    TableSaveProfileConfig( profiles[i], buffer + offsets[i], sizes[i] );
+}
+```
+
+The same framing means a reader CAN fan nested decodes out to workers — each
+length-prefixed body is a self-contained decode.
+
+### Walking fields at runtime
+
+Every closure type gets a reflection descriptor — name, wire id and kind,
+storage offset, array bounds and count companions, declared ranges, enum
+name functions, branch guards — enough to write a generic editor, printer or
+differ with no RTTI and no schema files at runtime:
+
+```cpp
+const TableTypeInfo * type = TableTypeShipConfig();
+for ( int32_t i = 0; i < type->num_fields; i++ )
+{
+    const TableFieldInfo & field = type->fields[i];
+    printf( "%s %s @%u", field.name, field.type_name, field.offset );
+    if ( field.has_range )
+        printf( "  [%g, %g]", field.range_min, field.range_max );
+    if ( field.enum_name )
+        printf( "  (%s)", field.enum_name( 1 ) );
+    if ( field.table )
+        printf( "  -> %s", field.table->name );   // recurse for nested tables
+    printf( "\n" );
+}
+```
+
+Decoded tables are **relocatable**: trivially copyable, standard-layout,
+pointer-free, arrays inline with their `_count`/`_length` companions — so a
+value can be memcpy'd, mmap'd or shared across processes and still walked
+through descriptor offsets. Generated `static_assert`s enforce it.
+
+Tables are generated for `--lang cpp` only today; every other target refuses
+a unit that declares them, by name. What stays off the table wire: `fixed`,
+`int128`/`uint128` (no neutral table kind), `const`/`reserved`/`align`
+(bit-position constructs — the table wire has no bit positions), and
+string/bytes/array extents past 65535 (lengths and counts ride in uint16).
+
+---
+
 ## Embedding the compiler
 
 The compiler is a Go library as well as a binary. `cmd/schema` is a client of

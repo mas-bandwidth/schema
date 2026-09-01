@@ -40,6 +40,12 @@ type checker struct {
 	flagsD   map[string]*ir.Flags
 	structs  map[string]*ir.Struct
 	unions   map[string]*ir.Union
+	tables   map[string]*ir.Struct // `table` declarations (SPEC-TABLES.md)
+
+	// the table closure — tables plus every struct one reaches — computed by
+	// checkTables and consumed by checkClaimedNames (closure members grow
+	// generated Table* symbols)
+	tableClosure map[string]bool
 
 	// enums currently being resolved — the cycle guard for | max = E.Max
 	// chains (resolveEnum memoizes only on completion, so recursion needs
@@ -77,6 +83,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 		flagsD:   map[string]*ir.Flags{},
 		structs:  map[string]*ir.Struct{},
 		unions:   map[string]*ir.Union{},
+		tables:   map[string]*ir.Struct{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
 			Consts:   map[string]*ir.Const{},
@@ -84,6 +91,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 			Flags:    map[string]*ir.Flags{},
 			Structs:  map[string]*ir.Struct{},
 			Unions:   map[string]*ir.Union{},
+			Tables:   map[string]*ir.Struct{},
 		},
 	}
 
@@ -93,6 +101,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.resolveAllConsts()
 	c.resolveBodies()
 	c.checkCycles()
+	c.checkTables()
 	c.checkClaimedNames()
 	c.checkTargetNames()
 	c.assemble()
@@ -498,6 +507,7 @@ var valuedAttr = map[string]bool{
 	"min":        true,
 	"max":        true,
 	"resolution": true,
+	"was":        true,
 }
 
 func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
@@ -761,6 +771,11 @@ func (c *checker) resolveBodies() {
 					c.errf(d.Pos, "cpp_native and cpp_include go together: the mapped name needs the header that declares it (SPEC §4.2 Native type mapping)")
 				}
 				c.structs[d.Name] = st
+			case *ast.TableDecl:
+				// tables share the struct shape but live beside the packet
+				// decls, never among them (SPEC-TABLES.md): the packet wire,
+				// the projection and the protocol id do not know they exist
+				c.tables[d.Name] = &ir.Struct{Name: d.Name, IsTable: true}
 			case *ast.UnionDecl:
 				// the shell first, so fields can reference the union in any
 				// order; variants resolve in the second pass below. Max and
@@ -779,7 +794,9 @@ func (c *checker) resolveBodies() {
 		for _, d := range f.AST.Decls {
 			switch d := d.(type) {
 			case *ast.TypeDecl:
-				c.structs[d.Name].Fields, c.structs[d.Name].Items = c.resolveBody(d.Name, d.Body)
+				c.structs[d.Name].Fields, c.structs[d.Name].Items = c.resolveBody(d.Name, d.Body, false)
+			case *ast.TableDecl:
+				c.tables[d.Name].Fields, c.tables[d.Name].Items = c.resolveBody(d.Name, d.Body, true)
 			case *ast.UnionDecl:
 				c.resolveUnion(d)
 			}
@@ -830,6 +847,8 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		switch pd.(type) {
 		case *ast.TypeDecl:
 			un.Variants = append(un.Variants, ir.UnionVariant{Name: v.Name, Type: v.Type, Ref: c.structs[v.Type]})
+		case *ast.TableDecl:
+			c.errf(v.TypePos, "%s is a table, not a union payload — a payload is a declared `type`; tables nest in tables directly (SPEC-TABLES.md)", v.Type)
 		case *ast.EnumDecl, *ast.FlagsDecl:
 			c.errf(v.TypePos, "%s is not a union payload — a payload is a declared type; wrap the value in a type (SPEC §4.8)", v.Type)
 		case *ast.UnionDecl:
@@ -847,7 +866,7 @@ type scopeFrame struct {
 	fields map[string]*ir.Field
 }
 
-func (c *checker) resolveBody(owner string, body *ast.Block) ([]*ir.Field, []ir.Item) {
+func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*ir.Field, []ir.Item) {
 	var out []*ir.Field
 	names := map[string]ast.Pos{}
 	var walk func(b *ast.Block, guard string, scopes []*scopeFrame) []ir.Item
@@ -863,7 +882,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block) ([]*ir.Field, []ir.
 					continue
 				}
 				names[item.Name] = item.Pos
-				f := c.resolveField(owner, item)
+				f := c.resolveField(owner, item, inTable)
 				if f == nil {
 					continue
 				}
@@ -893,6 +912,10 @@ func (c *checker) resolveBody(owner string, body *ast.Block) ([]*ir.Field, []ir.
 				}
 				items = append(items, br)
 			case *ast.ConstField:
+				if inTable {
+					c.errf(item.Pos, "const(value, bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (SPEC-TABLES.md)", owner)
+					continue
+				}
 				bits, ok := c.evalWidth(item.Bits, "const width")
 				if !ok {
 					continue
@@ -907,10 +930,18 @@ func (c *checker) resolveBody(owner string, body *ast.Block) ([]*ir.Field, []ir.
 				}
 				items = append(items, &ir.ConstItem{Value: v, Bits: bits}) // wire-only: no storage
 			case *ast.ReservedItem:
+				if inTable {
+					c.errf(item.Pos, "reserved(bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (SPEC-TABLES.md)", owner)
+					continue
+				}
 				if bits, ok := c.evalWidth(item.Bits, "reserved width"); ok {
 					items = append(items, &ir.ReservedItem{Bits: bits})
 				}
 			case *ast.AlignItem:
+				if inTable {
+					c.errf(item.Pos, "align is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (SPEC-TABLES.md)", owner)
+					continue
+				}
 				items = append(items, &ir.AlignItem{})
 			}
 		}
@@ -941,7 +972,7 @@ func (c *checker) evalWidth(e ast.Expr, what string) (int64, bool) {
 	return v.Int64(), true
 }
 
-func (c *checker) resolveField(owner string, f *ast.Field) *ir.Field {
+func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Field {
 	out := &ir.Field{Name: f.Name}
 
 	// scalar type
@@ -1028,6 +1059,12 @@ func (c *checker) resolveField(owner string, f *ast.Field) *ir.Field {
 		switch d.(type) {
 		case *ast.TypeDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.structs[f.Type.Name]}
+		case *ast.TableDecl:
+			if !inTable {
+				c.errf(f.Type.Pos, "%s is a table, not a wire type — tables live on the TABLE wire and cannot ride in a `type`; declare the field's type with `type`, or move the declaring type to a `table` (SPEC-TABLES.md)", f.Type.Name)
+				return nil
+			}
+			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.tables[f.Type.Name]}
 		case *ast.EnumDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.enums[f.Type.Name]}
 		case *ast.FlagsDecl:
@@ -1081,6 +1118,11 @@ func (c *checker) resolveField(owner string, f *ast.Field) *ir.Field {
 	}
 
 	c.resolveAttrs(f, out)
+
+	if out.WasName != "" && !inTable {
+		c.errf(f.Pos, "field %s: was is a table-wire concept — it aliases a renamed field's wire id, and only table fields have wire ids; a `type`'s wire is positional, so a rename there moves no bit (SPEC-TABLES.md)", f.Name)
+		return nil
+	}
 
 	// the fixed and 128-bit families mirror serialize's own surface exactly
 	// (SPEC §4.3, runtime-first): fixed(I, F) and int128 are RANGED — the
@@ -1250,6 +1292,25 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 		switch a.Key {
 		case "min", "max", "resolution":
 			// validated below
+		case "was":
+			// rename aliasing (SPEC-TABLES.md): the field's TABLE-wire id
+			// stays the hash of the OLD name, so identity survives the
+			// rename. Table fields only — enforced by resolveField, which
+			// knows the owner's kind.
+			lit, ok := a.Value.(*ast.StringLit)
+			if !ok {
+				c.errf(a.Pos, `was takes the field's old name as a quoted string, e.g. was = "velocity" (SPEC-TABLES.md)`)
+				continue
+			}
+			if lit.Value == "" {
+				c.errf(a.Pos, "was = \"\" names nothing — was records the field's old name after a rename (SPEC-TABLES.md)")
+				continue
+			}
+			if lit.Value == f.Name {
+				c.errf(a.Pos, "field %s: was = %q names the field's own current name — was records the OLD name after a rename; drop the attribute until one happens (SPEC-TABLES.md)", f.Name, lit.Value)
+				continue
+			}
+			out.WasName = lit.Value
 		case "round":
 			// refused by name: rounding is not an attribute — it is the one
 			// fixed-point rule, half away from zero, everywhere (SPEC §4.3)
@@ -1490,6 +1551,21 @@ func (c *checker) checkCycles() {
 		}
 		color[name] = grey
 		path = append(path, name)
+		if st := c.tables[name]; st != nil {
+			// tables join the composition graph exactly as types do: nesting
+			// is by value, so a table holding itself — directly or through a
+			// chain — has infinite size (SPEC-TABLES.md, the §4.6 rule)
+			for _, f := range st.Fields {
+				if f.Type.Kind == ir.TNamed {
+					switch f.Type.Ref.(type) {
+					case *ir.Struct, *ir.Union:
+						if !visit(f.Type.Name) {
+							break
+						}
+					}
+				}
+			}
+		}
 		if st := c.structs[name]; st != nil {
 			for _, f := range st.Fields {
 				if f.Type.Kind == ir.TNamed {
@@ -1515,17 +1591,160 @@ func (c *checker) checkCycles() {
 		color[name] = black
 		return true
 	}
-	names := make([]string, 0, len(c.structs)+len(c.unions))
+	names := make([]string, 0, len(c.structs)+len(c.unions)+len(c.tables))
 	for n := range c.structs {
 		names = append(names, n)
 	}
 	for n := range c.unions {
 		names = append(names, n)
 	}
+	for n := range c.tables {
+		names = append(names, n)
+	}
 	sort.Strings(names)
 	for _, n := range names {
 		visit(n)
 	}
+}
+
+// ---- tables (SPEC-TABLES.md) ----
+
+// closureMember resolves a closure name to its resolved struct — a table or
+// a plain type.
+func (c *checker) closureMember(name string) *ir.Struct {
+	if st := c.tables[name]; st != nil {
+		return st
+	}
+	return c.structs[name]
+}
+
+// checkTables enforces the table closure's wire capability and the field-id
+// uniqueness the TABLE wire's identity scheme requires (SPEC-TABLES.md).
+//
+// Capability: a `table` and everything it references, transitively, must stay
+// on table-wire kinds — plain fixed-width scalars, length-prefixed
+// strings/bytes/tables, the neutral encoding a third party could implement
+// from a one-page description. int128/uint128 and fixed(I, F) have no
+// table-wire kind, string/bytes/array extents ride in uint16, and an array
+// of unions is a named follow-on — each is refused HERE, loudly, instead of
+// surprising a generated reader later.
+//
+// Identity: a field's wire id is fold16(fnv1a32(name)) — of the `was` alias
+// where one is declared — and two fields of one closure member whose
+// effective ids collide would be indistinguishable on the wire, so the
+// collision is a compile error.
+func (c *checker) checkTables() {
+	closure := map[string]bool{}
+	var walk func(name string)
+	walk = func(name string) {
+		if closure[name] {
+			return
+		}
+		st := c.closureMember(name)
+		if st == nil {
+			return
+		}
+		closure[name] = true
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				for _, v := range ref.Variants {
+					walk(v.Type)
+				}
+			}
+		}
+	}
+	// SORTED: map iteration order must not shuffle the diagnostics run to run
+	roots := make([]string, 0, len(c.tables))
+	for name := range c.tables {
+		roots = append(roots, name)
+	}
+	sort.Strings(roots)
+	for _, name := range roots {
+		walk(name)
+	}
+	c.tableClosure = closure
+
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		st := c.closureMember(name)
+		if st == nil {
+			continue
+		}
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		what := "type"
+		if st.IsTable {
+			what = "table"
+		}
+		seen := map[uint16]*ir.Field{}
+		for _, f := range st.Fields {
+			var bad string
+			switch {
+			case f.Type.Kind == ir.TInt && f.Type.Width == 128:
+				bad = "int128/uint128"
+			case f.Type.Kind == ir.TFixed:
+				bad = fixedSpelling(f.Type.Signed) + "(I, F)"
+			}
+			if bad != "" {
+				c.errf(pos, "%s.%s: %s has no table-wire kind, and %s %s is in a table's closure — a `table` and everything it references must stay on table-wire kinds (SPEC-TABLES.md)",
+					name, f.Name, bad, what, name)
+				continue
+			}
+			if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Type.Size > 65535 {
+				spelling := "string"
+				if f.Type.Kind == ir.TBytes {
+					spelling = "bytes"
+				}
+				c.errf(pos, "%s.%s: %s(%d) exceeds 65535, and %s %s is in a table's closure — table-wire lengths ride in uint16 (SPEC-TABLES.md)",
+					name, f.Name, spelling, f.Type.Size, what, name)
+				continue
+			}
+			if f.Array != ir.ArrayNone && f.ArrayBound > 65535 {
+				c.errf(pos, "%s.%s: array bound %d exceeds 65535, and %s %s is in a table's closure — table-wire counts ride in uint16 (SPEC-TABLES.md)",
+					name, f.Name, f.ArrayBound, what, name)
+				continue
+			}
+			if f.Type.Kind == ir.TNamed {
+				if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Array != ir.ArrayNone {
+					// a SCALAR union field rides the table wire as kUnion:
+					// u8 tag, then the selected arm length-prefixed —
+					// skippable, elidable (None), kind-mismatch-safe. An
+					// ARRAY of unions is the remaining named follow-on.
+					c.errf(pos, "%s.%s: an array of unions may not sit on a table-closure path yet — wrap the union in a type, or ask for the pass (SPEC-TABLES.md)",
+						name, f.Name)
+					continue
+				}
+			}
+			id := ir.TableFieldId(f)
+			if prev, dup := seen[id]; dup {
+				c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%04x — rename one (SPEC-TABLES.md)",
+					what, name, describeTableField(prev), describeTableField(f), id)
+				continue
+			}
+			seen[id] = f
+		}
+	}
+}
+
+// describeTableField names a field for the id-collision diagnostic, showing
+// the was alias when that is where the colliding id comes from.
+func describeTableField(f *ir.Field) string {
+	if f.WasName != "" {
+		return fmt.Sprintf("%s (was %q)", f.Name, f.WasName)
+	}
+	return f.Name
 }
 
 // ---- target-name safety (SPEC §4.6) ----
@@ -1736,6 +1955,8 @@ func (c *checker) checkTargetNames() {
 			switch d := d.(type) {
 			case *ast.TypeDecl:
 				walkBlock(d.Body, d.Name, map[string]claim{})
+			case *ast.TableDecl:
+				walkBlock(d.Body, d.Name, map[string]claim{})
 			case *ast.EnumDecl:
 				for _, v := range d.Variants {
 					checkName(v.Text, v.Pos, "enum variant")
@@ -1790,6 +2011,16 @@ func (c *checker) checkClaimedNames() {
 	add("PROTOCOL_ID", "the unit's generated PROTOCOL_ID (Rust form)", unitPos)
 	add("Error", "the unit's generated Error type (Rust form)", unitPos)
 	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
+	if len(c.tables) > 0 {
+		// the TABLE-wire runtime the generated Table headers define once per
+		// package (SPEC-TABLES.md) — claimed only when a unit declares a
+		// table, so table-free units keep their whole namespace
+		for _, gen := range []string{"TableReport", "TableWriter", "TableReader",
+			"TableTypeInfo", "TableFieldInfo", "table_bits_to_float",
+			"table_float_to_bits", "table_bits_to_double", "table_double_to_bits"} {
+			add(gen, "the generated TABLE-wire runtime (SPEC-TABLES.md)", unitPos)
+		}
+	}
 
 	declNames := make([]string, 0, len(c.astDecls))
 	for name := range c.astDecls {
@@ -1895,8 +2126,27 @@ func (c *checker) checkClaimedNames() {
 			}
 		case *ast.TypeDecl:
 			c.addStructSymbols(add, addRust, name, d.DeclPos())
+			if c.tableClosure[name] {
+				c.addTableSymbols(add, name, d.DeclPos())
+			}
+		case *ast.TableDecl:
+			// a table generates its storage struct plus the Table codec and
+			// descriptor family — no packet-wire symbols (SPEC-TABLES.md)
+			c.addTableSymbols(add, name, d.DeclPos())
 		}
 	}
+}
+
+// addTableSymbols registers the TABLE-wire generated names of one closure
+// member: the measure/write/save/read codecs and the reflection descriptor
+// (SPEC-TABLES.md). C++-only today, so only the CamelCase spellings claim.
+func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name string, pos ast.Pos) {
+	why := fmt.Sprintf("%s's generated TABLE-wire functions", name)
+	add("TableMeasure"+name, why, pos)
+	add("TableWrite"+name, why, pos)
+	add("TableSave"+name, why, pos)
+	add("TableRead"+name, why, pos)
+	add("TableType"+name, why, pos)
 }
 
 // addStructSymbols registers the per-type generated names: the split
@@ -1944,6 +2194,14 @@ func (c *checker) assemble() {
 				st := c.structs[d.Name]
 				irf.Decls = append(irf.Decls, st)
 				u.Structs[d.Name] = st
+			case *ast.TableDecl:
+				// tables assemble BESIDE the decl stream, never into it
+				// (SPEC-TABLES.md): File.Decls and Unit.Structs feed the
+				// packet backends and the wire projection, and a table must
+				// move neither a generated packet byte nor the protocol id
+				tbl := c.tables[d.Name]
+				irf.Tables = append(irf.Tables, tbl)
+				u.Tables[d.Name] = tbl
 			case *ast.UnionDecl:
 				un := c.unions[d.Name]
 				irf.Decls = append(irf.Decls, un)
