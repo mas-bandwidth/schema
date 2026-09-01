@@ -42,3 +42,13 @@ reads the round's state from this file plus the branch commits alone.
   reclaimed on the write loop -40% (167M vs 284M, deterministic) — the JIT
   keeps the Veltkamp/Dekker temporaries unboxed, so the arithmetic path
   allocates one float where construct/match allocated a binary plus a float.
+- LEVER B (single-match-context stats read), PROTOTYPE VERDICT: build. Design:
+  4 stats per 9-byte head-match (<<w1::little-40, w2::little-32, rest::binary>>,
+  constant carry c = (8 - start_phase) mod 8; lo = carry ||| w1 <<< c up to 47
+  bits, hi = lo >>> 36 ||| w2 <<< (c+4) up to 43 bits — fixnum envelope holds),
+  body-recursive so the list builds IN ORDER on unwind (no Enum.reverse for the
+  fast portion); scalar rd() path kept as entry fallback, tail (<4), and
+  truncated-buffer fallback. +bin_opt_info: "OPTIMIZED: match context reused"
+  at all three fast-loop sites. Paired vs head: read 1833.8 -> 1647.7 ns
+  (1.113x), rt 3916.1 -> 3743.9 ns (1.046x); GC words down ~7%. Tail-call acc
+  variant alone was read 1.071x/rt 1.03x; body-recursion added 1.036x/1.011x.
