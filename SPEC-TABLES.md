@@ -4,8 +4,14 @@
 Types are serialized bitpacked, versioned by the protocol id: the
 hardcoded, same-build wire that is the key feature of the library. Tables
 are for when you need things that version — more flexible structures with
-in-wire versioning; data structures, if you will. This document specifies
-the second.
+in-wire versioning; data structures, if you will. The founding line for
+the split: types remain VALUE semantics; tables ALLOW POINTER semantics —
+"we can't be a generic system if we don't have pointers to tables." The
+compiler derives two classes of table from that freedom: FIXED-SIZE
+(a by-value closure, storage a plain struct of known sizeof — every table
+today) and VARIABLE-LENGTH (a pointer anywhere in the closure — root plus
+arena). This document specifies the tables wire; the pointer/arena design
+is the named next round.
 
 Tables are schema's declarations for **data that crosses builds**: config
 files, asset archives, tool output, editor state — and just as much,
