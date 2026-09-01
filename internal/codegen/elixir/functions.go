@@ -1773,12 +1773,12 @@ type feedState struct {
 
 const (
 	// fastFeedMaxElem bounds the element width: it keeps a chain's leftover
-	// under 20 bits, so a fresh 32-bit segment always fits the fixnum bound
+	// under 20 bits, so a fresh 32-bit segment always fits the fixnum bound.
 	fastFeedMaxElem = 20
-	// fastFeedMaxBits bounds one iteration's stream bits (two segments)
+	// fastFeedMaxBits bounds one iteration's stream bits (two segments).
 	fastFeedMaxBits = 72
 	// fastFeedMaxUnroll bounds the elements one clause decodes, the same way
-	// readUnrollMax bounds the scalar clauses
+	// readUnrollMax bounds the scalar clauses.
 	fastFeedMaxUnroll = 16
 	// fastFeedMaxReg is the fixnum budget left for `leftover + segment` after
 	// the runtime carry's up-to-7 bits
@@ -1915,8 +1915,8 @@ func (g *gen) readFeed(bits int64, ind string) {
 
 // fastReadBody emits the m element bodies of a fast clause under a fresh
 // feed and returns the final feed state (segment plan, carry-out position).
-func (g *gen) fastReadBody(f *ir.Field, m, T int64, evs []string) *feedState {
-	g.feed = &feedState{streamLeft: T}
+func (g *gen) fastReadBody(f *ir.Field, m, total int64, evs []string) *feedState {
+	g.feed = &feedState{streamLeft: total}
 	for _, ev := range evs {
 		g.emitReadElem(f, ev, "    ", true)
 	}
