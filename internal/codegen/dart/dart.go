@@ -225,9 +225,28 @@ type gen struct {
 	fn        strings.Builder
 	loopDepth int
 	needV     bool // the group value temp
-	needLo    bool // the wide-lane accumulator (33..64-bit reads, 128 lanes)
+	needLo    bool // the wide-lane accumulator (58..64-bit reads, 128 lanes)
 	needHi    bool // the high 64-bit lane (129-bit-storage reads)
 	usesRead  bool // read side: the window machinery is used
+
+	// the write-side chunk accumulator: adjacent constant-width fields whose
+	// value expressions are pure (field loads, literals — never a mutable
+	// temp) pack into ONE staged word with literal relative shifts, so a
+	// chunk costs one merge where its fields used to cost one each. Dart's
+	// native 64-bit int carries the whole lane, so the cap is 64 where the
+	// js flat tier's number domain held it to 32. Relative offsets inside a
+	// chunk are static even where the absolute cursor is dynamic (loop
+	// bodies), which is what makes this reach the hot arrays.
+	chunk     []chunkPiece
+	chunkBits int64
+
+	// the read-side window ledger: bits still extractable from the loaded
+	// 64-bit window (windowAvail) and the literal shift of the next field
+	// inside it (windowRel). A load guarantees 57 valid bits (64 minus the
+	// worst-case byte-interior shift), so consecutive constant-width reads
+	// share one load instead of paying a load and a tail branch each.
+	windowAvail int64
+	windowRel   int64
 
 	// per-file helper needs
 	needFround   bool // _fround

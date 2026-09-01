@@ -108,25 +108,18 @@ int writeFixedProbe(FixedProbe value, ByteData view) {
   var v = 0;
   assert(value.angle >= -11796480);
   assert(value.angle <= 11796480);
-  v = (value.angle + 11796480) & 0x1ffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 25;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (25 - scratchBits);
-  }
   assert(value.position >= -1966080000);
   assert(value.position <= 1966080000);
-  v = (value.position + 1966080000) & 0xffffffff;
+  v =
+      ((value.angle + 11796480) & 0x1ffffff) |
+      (((value.position + 1966080000) & 0xffffffff) << 25);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 57;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (57 - scratchBits);
   }
   {
     const min = Int128(0xffffffffffffffff, 0xfffffff0bdc00000);
@@ -134,28 +127,19 @@ int writeFixedProbe(FixedProbe value, ByteData view) {
     assert(value.reach >= min);
     assert(value.reach <= max);
     final off = (value.reach - min).toUnsigned();
-    v = off.lo & 0xffffffff;
+    v = ((off.lo) & 0x1fffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 37;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off.lo >>> 32) & 0x1f;
-    scratch |= v << scratchBits;
-    scratchBits += 5;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (5 - scratchBits);
+      scratch = v >>> (37 - scratchBits);
     }
   }
   assert(value.ticks >= 0);
   assert(value.ticks <= 1000000);
-  v = (value.ticks) & 0xfffff;
+  v = ((value.ticks) & 0xfffff);
   scratch |= v << scratchBits;
   scratchBits += 20;
   if (scratchBits >= 64) {
@@ -167,7 +151,7 @@ int writeFixedProbe(FixedProbe value, ByteData view) {
   for (var i0 = 0; i0 < 2; i0++) {
     assert(value.samples[i0] >= -524288);
     assert(value.samples[i0] <= 524288);
-    v = (value.samples[i0] + 524288) & 0x1fffff;
+    v = ((value.samples[i0] + 524288) & 0x1fffff);
     scratch |= v << scratchBits;
     scratchBits += 21;
     if (scratchBits >= 64) {
@@ -204,58 +188,35 @@ bool readFixedProbe(FixedProbe value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 156 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1ffffff;
+  v = window & 0x1ffffff;
   bitsRead += 25;
   if (v > 23592960) {
     return false; // a smuggled offset is refused
   }
   value.angle = -11796480 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffffffff;
+  v = (window >>> 25) & 0xffffffff;
   bitsRead += 32;
   if (v > 3932160000) {
     return false; // a smuggled offset is refused
   }
   value.position = -1966080000 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1f;
-  bitsRead += 5;
-  lo |= v << 32;
+  lo = window & 0x1fffffffff;
+  bitsRead += 37;
   if (lo > 131072000000) {
     return false; // a smuggled offset is refused
   }
@@ -263,14 +224,7 @@ bool readFixedProbe(FixedProbe value, ByteData view, int numBits) {
     const min = UInt128(0xffffffffffffffff, 0xfffffff0bdc00000);
     value.reach = (min + UInt128(0, lo)).toSigned();
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xfffff;
+  v = (window >>> 37) & 0xfffff;
   bitsRead += 20;
   if (v > 1000000) {
     return false; // a smuggled offset is refused
@@ -278,13 +232,11 @@ bool readFixedProbe(FixedProbe value, ByteData view, int numBits) {
   value.ticks = v;
   for (var i0 = 0; i0 < 2; i0++) {
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1fffff;
+    v = window & 0x1fffff;
     bitsRead += 21;
     if (v > 1048576) {
       return false; // a smuggled offset is refused
@@ -344,7 +296,8 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
   var v = 0;
   assert(value.angle >= 0);
   assert(value.angle <= 23592960);
-  v = (value.angle) & 0x1ffffff;
+  assert(!_unsignedLessThan(0xffffffffffff0000, value.span));
+  v = ((value.angle) & 0x1ffffff);
   scratch |= v << scratchBits;
   scratchBits += 25;
   if (scratchBits >= 64) {
@@ -353,50 +306,31 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (25 - scratchBits);
   }
-  assert(!_unsignedLessThan(0xffffffffffff0000, value.span));
-  v = value.span & 0xffffffff;
+  v = (value.span);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.span >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   {
     const max = UInt128(0, 131072000000);
     assert(value.reach <= max);
-    v = value.reach.lo & 0xffffffff;
+    v = ((value.reach.lo) & 0x1fffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 37;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (value.reach.lo >>> 32) & 0x1f;
-    scratch |= v << scratchBits;
-    scratchBits += 5;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (5 - scratchBits);
+      scratch = v >>> (37 - scratchBits);
     }
   }
   assert(value.ticks >= 0);
   assert(value.ticks <= 1000000);
-  v = (value.ticks) & 0xfffff;
+  v = ((value.ticks) & 0xfffff);
   scratch |= v << scratchBits;
   scratchBits += 20;
   if (scratchBits >= 64) {
@@ -408,7 +342,7 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
   for (var i0 = 0; i0 < 2; i0++) {
     assert(value.samples[i0] >= 0);
     assert(value.samples[i0] <= 1048576);
-    v = (value.samples[i0]) & 0x1fffff;
+    v = ((value.samples[i0]) & 0x1fffff);
     scratch |= v << scratchBits;
     scratchBits += 21;
     if (scratchBits >= 64) {
@@ -419,7 +353,7 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
     }
   }
   assert(value.locked == 196608);
-  v = value.tail & 0xff;
+  v = ((value.tail) & 0xff);
   scratch |= v << scratchBits;
   scratchBits += 8;
   if (scratchBits >= 64) {
@@ -455,43 +389,31 @@ bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 196 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1ffffff;
+  v = window & 0x1ffffff;
   bitsRead += 25;
   if (v > 23592960) {
     return false; // a smuggled offset is refused
   }
   value.angle = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffffffff;
+  v = (window >>> 25) & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   if (_unsignedLessThan(0xffffffffffff0000, lo)) {
@@ -499,37 +421,17 @@ bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
   }
   value.span = lo;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1f;
-  bitsRead += 5;
-  lo |= v << 32;
+  lo = window & 0x1fffffffff;
+  bitsRead += 37;
   if (lo > 131072000000) {
     return false; // a smuggled offset is refused
   }
   value.reach = UInt128(0, lo);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xfffff;
+  v = (window >>> 37) & 0xfffff;
   bitsRead += 20;
   if (v > 1000000) {
     return false; // a smuggled offset is refused
@@ -537,13 +439,11 @@ bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
   value.ticks = v;
   for (var i0 = 0; i0 < 2; i0++) {
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1fffff;
+    v = window & 0x1fffff;
     bitsRead += 21;
     if (v > 1048576) {
       return false; // a smuggled offset is refused
@@ -552,13 +452,11 @@ bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
   }
   value.locked = 196608;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xff;
+  v = window & 0xff;
   bitsRead += 8;
   value.tail = v;
   return true;
@@ -606,41 +504,23 @@ int writeWideProbe(WideProbe value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = value.entityId.lo & 0xffffffff;
+  v = (value.entityId.lo);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
-  v = (value.entityId.lo >>> 32) & 0xffffffff;
+  v = (value.entityId.hi);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = value.entityId.hi & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.entityId.hi >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   {
     const min = Int128(0xffffffffffffffff, 0xfffffffed5fa0e00);
@@ -648,23 +528,14 @@ int writeWideProbe(WideProbe value, ByteData view) {
     assert(value.energy >= min);
     assert(value.energy <= max);
     final off = (value.energy - min).toUnsigned();
-    v = off.lo & 0xffffffff;
+    v = ((off.lo) & 0x3ffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 34;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off.lo >>> 32) & 0x3;
-    scratch |= v << scratchBits;
-    scratchBits += 2;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (2 - scratchBits);
+      scratch = v >>> (34 - scratchBits);
     }
   }
   {
@@ -673,41 +544,23 @@ int writeWideProbe(WideProbe value, ByteData view) {
     assert(value.flux >= min);
     assert(value.flux <= max);
     final off = (value.flux - min).toUnsigned();
-    v = off.lo & 0xffffffff;
+    v = (off.lo);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 64;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
+      scratch = v >>> (64 - scratchBits);
     }
-    v = (off.lo >>> 32) & 0xffffffff;
+    v = ((off.hi) & 0x3fffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 38;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = off.hi & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off.hi >>> 32) & 0x3f;
-    scratch |= v << scratchBits;
-    scratchBits += 6;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (6 - scratchBits);
+      scratch = v >>> (38 - scratchBits);
     }
   }
   {
@@ -716,7 +569,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
     assert(value.bias >= min);
     assert(value.bias <= max);
     final off = (value.bias - min).toUnsigned();
-    v = off.lo & 0x7ff;
+    v = ((off.lo) & 0x7ff);
     scratch |= v << scratchBits;
     scratchBits += 11;
     if (scratchBits >= 64) {
@@ -726,41 +579,23 @@ int writeWideProbe(WideProbe value, ByteData view) {
       scratch = v >>> (11 - scratchBits);
     }
   }
-  v = value.seed.lo & 0xffffffff;
+  v = (value.seed.lo);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
-  v = (value.seed.lo >>> 32) & 0xffffffff;
+  v = (value.seed.hi);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = value.seed.hi & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.seed.hi >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -789,7 +624,6 @@ bool readWideProbe(WideProbe value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   var hi = 0;
@@ -797,66 +631,45 @@ bool readWideProbe(WideProbe value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi |= v << 32;
   value.entityId = UInt128(hi, lo);
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
-  bitsRead += 2;
-  lo |= v << 32;
+  lo = window & 0x3ffffffff;
+  bitsRead += 34;
   if (lo > 10000000000) {
     return false; // a smuggled offset is refused
   }
@@ -865,43 +678,30 @@ bool readWideProbe(WideProbe value, ByteData view, int numBits) {
     value.energy = (min + UInt128(0, lo)).toSigned();
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3f;
+  v = (window >>> 32) & 0x3f;
   bitsRead += 6;
   hi |= v << 32;
   {
@@ -914,14 +714,7 @@ bool readWideProbe(WideProbe value, ByteData view, int numBits) {
     const min = UInt128(0xfffffff000000000, 0);
     value.flux = (min + UInt128(hi, lo)).toSigned();
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7ff;
+  v = (window >>> 38) & 0x7ff;
   bitsRead += 11;
   if (v > 2000) {
     return false; // a smuggled offset is refused
@@ -931,43 +724,35 @@ bool readWideProbe(WideProbe value, ByteData view, int numBits) {
     value.bias = (min + UInt128(0, v)).toSigned();
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi |= v << 32;
   value.seed = UInt128(hi, lo);
@@ -1021,36 +806,21 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
   var v = 0;
   assert(value.mode >= 0);
   assert(value.mode <= 3);
-  v = value.mode & 0x3;
-  scratch |= v << scratchBits;
-  scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   assert(value.probe.angle >= -11796480);
   assert(value.probe.angle <= 11796480);
-  v = (value.probe.angle + 11796480) & 0x1ffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 25;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (25 - scratchBits);
-  }
   assert(value.probe.position >= -1966080000);
   assert(value.probe.position <= 1966080000);
-  v = (value.probe.position + 1966080000) & 0xffffffff;
+  v =
+      ((value.mode) & 0x3) |
+      (((value.probe.angle + 11796480) & 0x1ffffff) << 2) |
+      (((value.probe.position + 1966080000) & 0xffffffff) << 27);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 59;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (59 - scratchBits);
   }
   {
     const min = Int128(0xffffffffffffffff, 0xfffffff0bdc00000);
@@ -1058,28 +828,19 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     assert(value.probe.reach >= min);
     assert(value.probe.reach <= max);
     final off = (value.probe.reach - min).toUnsigned();
-    v = off.lo & 0xffffffff;
+    v = ((off.lo) & 0x1fffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 37;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off.lo >>> 32) & 0x1f;
-    scratch |= v << scratchBits;
-    scratchBits += 5;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (5 - scratchBits);
+      scratch = v >>> (37 - scratchBits);
     }
   }
   assert(value.probe.ticks >= 0);
   assert(value.probe.ticks <= 1000000);
-  v = (value.probe.ticks) & 0xfffff;
+  v = ((value.probe.ticks) & 0xfffff);
   scratch |= v << scratchBits;
   scratchBits += 20;
   if (scratchBits >= 64) {
@@ -1091,7 +852,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
   for (var i0 = 0; i0 < 2; i0++) {
     assert(value.probe.samples[i0] >= -524288);
     assert(value.probe.samples[i0] <= 524288);
-    v = (value.probe.samples[i0] + 524288) & 0x1fffff;
+    v = ((value.probe.samples[i0] + 524288) & 0x1fffff);
     scratch |= v << scratchBits;
     scratchBits += 21;
     if (scratchBits >= 64) {
@@ -1101,41 +862,23 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
       scratch = v >>> (21 - scratchBits);
     }
   }
-  v = value.wide.entityId.lo & 0xffffffff;
+  v = (value.wide.entityId.lo);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
-  v = (value.wide.entityId.lo >>> 32) & 0xffffffff;
+  v = (value.wide.entityId.hi);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = value.wide.entityId.hi & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.wide.entityId.hi >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   {
     const min = Int128(0xffffffffffffffff, 0xfffffffed5fa0e00);
@@ -1143,23 +886,14 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     assert(value.wide.energy >= min);
     assert(value.wide.energy <= max);
     final off = (value.wide.energy - min).toUnsigned();
-    v = off.lo & 0xffffffff;
+    v = ((off.lo) & 0x3ffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 34;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off.lo >>> 32) & 0x3;
-    scratch |= v << scratchBits;
-    scratchBits += 2;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (2 - scratchBits);
+      scratch = v >>> (34 - scratchBits);
     }
   }
   {
@@ -1168,41 +902,23 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     assert(value.wide.flux >= min);
     assert(value.wide.flux <= max);
     final off = (value.wide.flux - min).toUnsigned();
-    v = off.lo & 0xffffffff;
+    v = (off.lo);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 64;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
+      scratch = v >>> (64 - scratchBits);
     }
-    v = (off.lo >>> 32) & 0xffffffff;
+    v = ((off.hi) & 0x3fffffffff);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 38;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = off.hi & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off.hi >>> 32) & 0x3f;
-    scratch |= v << scratchBits;
-    scratchBits += 6;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (6 - scratchBits);
+      scratch = v >>> (38 - scratchBits);
     }
   }
   {
@@ -1211,7 +927,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     assert(value.wide.bias >= min);
     assert(value.wide.bias <= max);
     final off = (value.wide.bias - min).toUnsigned();
-    v = off.lo & 0x7ff;
+    v = ((off.lo) & 0x7ff);
     scratch |= v << scratchBits;
     scratchBits += 11;
     if (scratchBits >= 64) {
@@ -1221,45 +937,27 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
       scratch = v >>> (11 - scratchBits);
     }
   }
-  v = value.wide.seed.lo & 0xffffffff;
+  v = (value.wide.seed.lo);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.wide.seed.lo >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = value.wide.seed.hi & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.wide.seed.hi >>> 32) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   assert(value.keysCount >= 0);
   assert(value.keysCount <= 4);
-  v = (value.keysCount) & 0x7;
+  v = (value.wide.seed.hi);
+  scratch |= v << scratchBits;
+  scratchBits += 64;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (64 - scratchBits);
+  }
+  v = ((value.keysCount) & 0x7);
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -1269,44 +967,26 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     scratch = v >>> (3 - scratchBits);
   }
   for (var i0 = 0; i0 < value.keysCount; i0++) {
-    v = value.keys[i0].lo & 0xffffffff;
+    v = (value.keys[i0].lo);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 64;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
+      scratch = v >>> (64 - scratchBits);
     }
-    v = (value.keys[i0].lo >>> 32) & 0xffffffff;
+    v = (value.keys[i0].hi);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 64;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = value.keys[i0].hi & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (value.keys[i0].hi >>> 32) & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
+      scratch = v >>> (64 - scratchBits);
     }
   }
-  v = value.hasTarget ? 1 : 0;
+  v = (value.hasTarget ? 1 : 0);
   scratch |= v << scratchBits;
   scratchBits += 1;
   if (scratchBits >= 64) {
@@ -1316,41 +996,23 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     scratch = v >>> (1 - scratchBits);
   }
   if (value.hasTarget) {
-    v = value.targetId.lo & 0xffffffff;
+    v = (value.targetId.lo);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 64;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
+      scratch = v >>> (64 - scratchBits);
     }
-    v = (value.targetId.lo >>> 32) & 0xffffffff;
+    v = (value.targetId.hi);
     scratch |= v << scratchBits;
-    scratchBits += 32;
+    scratchBits += 64;
     if (scratchBits >= 64) {
       view.setUint64(wordIndex * 8, scratch, Endian.little);
       wordIndex++;
       scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = value.targetId.hi & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (value.targetId.hi >>> 32) & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
+      scratch = v >>> (64 - scratchBits);
     }
   }
   if (scratchBits != 0) {
@@ -1380,7 +1042,6 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   var hi = 0;
@@ -1388,61 +1049,37 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x3;
+  v = window & 0x3;
   bitsRead += 2;
   value.mode = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1ffffff;
+  v = (window >>> 2) & 0x1ffffff;
   bitsRead += 25;
   if (v > 23592960) {
     return false; // a smuggled offset is refused
   }
   value.probe.angle = -11796480 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 3932160000) {
     return false; // a smuggled offset is refused
   }
   value.probe.position = -1966080000 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1f;
-  bitsRead += 5;
-  lo |= v << 32;
+  lo = window & 0x1fffffffff;
+  bitsRead += 37;
   if (lo > 131072000000) {
     return false; // a smuggled offset is refused
   }
@@ -1450,14 +1087,7 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
     const min = UInt128(0xffffffffffffffff, 0xfffffff0bdc00000);
     value.probe.reach = (min + UInt128(0, lo)).toSigned();
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xfffff;
+  v = (window >>> 37) & 0xfffff;
   bitsRead += 20;
   if (v > 1000000) {
     return false; // a smuggled offset is refused
@@ -1465,13 +1095,11 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
   value.probe.ticks = v;
   for (var i0 = 0; i0 < 2; i0++) {
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1fffff;
+    v = window & 0x1fffff;
     bitsRead += 21;
     if (v > 1048576) {
       return false; // a smuggled offset is refused
@@ -1479,66 +1107,45 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
     value.probe.samples[i0] = -524288 + v;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi |= v << 32;
   value.wide.entityId = UInt128(hi, lo);
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
-  bitsRead += 2;
-  lo |= v << 32;
+  lo = window & 0x3ffffffff;
+  bitsRead += 34;
   if (lo > 10000000000) {
     return false; // a smuggled offset is refused
   }
@@ -1547,43 +1154,30 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
     value.wide.energy = (min + UInt128(0, lo)).toSigned();
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3f;
+  v = (window >>> 32) & 0x3f;
   bitsRead += 6;
   hi |= v << 32;
   {
@@ -1596,14 +1190,7 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
     const min = UInt128(0xfffffff000000000, 0);
     value.wide.flux = (min + UInt128(hi, lo)).toSigned();
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7ff;
+  v = (window >>> 38) & 0x7ff;
   bitsRead += 11;
   if (v > 2000) {
     return false; // a smuggled offset is refused
@@ -1613,57 +1200,42 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
     value.wide.bias = (min + UInt128(0, v)).toSigned();
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   hi |= v << 32;
   value.wide.seed = UInt128(hi, lo);
   if (bitsRead + 3 > numBits) {
     return false;
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7;
+  v = (window >>> 32) & 0x7;
   bitsRead += 3;
   if (v > 4) {
     return false; // the count guards the loop — reject, never clamp
@@ -1674,43 +1246,35 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
   }
   for (var i0 = 0; i0 < value.keysCount; i0++) {
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     lo = v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     hi = v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     hi |= v << 32;
     value.keys[i0] = UInt128(hi, lo);
@@ -1719,13 +1283,11 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1;
+  v = window & 0x1;
   bitsRead += 1;
   value.hasTarget = v != 0;
   if (value.hasTarget) {
@@ -1733,43 +1295,35 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     lo = v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     hi = v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     hi |= v << 32;
     value.targetId = UInt128(hi, lo);
@@ -1833,7 +1387,7 @@ int writeDegenerateProbe(DegenerateProbe value, ByteData view) {
     const locked = Int128(0xffffffffffffffff, 0xfffff4c58c31d00e);
     assert(value.lockedWide == locked);
   }
-  v = value.tail & 0xff;
+  v = ((value.tail) & 0xff);
   scratch |= v << scratchBits;
   scratchBits += 8;
   if (scratchBits >= 64) {
@@ -1869,7 +1423,6 @@ bool readDegenerateProbe(DegenerateProbe value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 8 > numBits) {
     return false;
@@ -1881,13 +1434,11 @@ bool readDegenerateProbe(DegenerateProbe value, ByteData view, int numBits) {
     value.lockedWide = locked;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xff;
+  v = window & 0xff;
   bitsRead += 8;
   value.tail = v;
   return true;
@@ -1932,72 +1483,36 @@ int writeFixedVec(FixedVec value, ByteData view) {
   var v = 0;
   assert(value.x >= -6553600000);
   assert(value.x <= 6553600000);
-  {
-    final off = value.x + 6553600000;
-    v = off & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off >>> 32) & 0x3;
-    scratch |= v << scratchBits;
-    scratchBits += 2;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (2 - scratchBits);
-    }
-  }
   assert(value.y >= -6553600000);
   assert(value.y <= 6553600000);
-  {
-    final off = value.y + 6553600000;
-    v = off & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off >>> 32) & 0x3;
-    scratch |= v << scratchBits;
-    scratchBits += 2;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (2 - scratchBits);
-    }
+  v = ((value.x + 6553600000) & 0x3ffffffff);
+  scratch |= v << scratchBits;
+  scratchBits += 34;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (34 - scratchBits);
   }
   assert(value.z >= -6553600000);
   assert(value.z <= 6553600000);
-  {
-    final off = value.z + 6553600000;
-    v = off & 0xffffffff;
-    scratch |= v << scratchBits;
-    scratchBits += 32;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (32 - scratchBits);
-    }
-    v = (off >>> 32) & 0x3;
-    scratch |= v << scratchBits;
-    scratchBits += 2;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (2 - scratchBits);
-    }
+  v = ((value.y + 6553600000) & 0x3ffffffff);
+  scratch |= v << scratchBits;
+  scratchBits += 34;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (34 - scratchBits);
+  }
+  v = ((value.z + 6553600000) & 0x3ffffffff);
+  scratch |= v << scratchBits;
+  scratchBits += 34;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (34 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -2026,80 +1541,39 @@ bool readFixedVec(FixedVec value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
-  var v = 0;
   var lo = 0;
   if (bitsRead + 102 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
-  bitsRead += 2;
-  lo |= v << 32;
+  lo = window & 0x3ffffffff;
+  bitsRead += 34;
   if (lo > 13107200000) {
     return false; // a smuggled offset is refused
   }
   value.x = -6553600000 + lo;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
-  bitsRead += 2;
-  lo |= v << 32;
+  lo = window & 0x3ffffffff;
+  bitsRead += 34;
   if (lo > 13107200000) {
     return false; // a smuggled offset is refused
   }
   value.y = -6553600000 + lo;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
-  bitsRead += 2;
-  lo |= v << 32;
+  lo = window & 0x3ffffffff;
+  bitsRead += 34;
   if (lo > 13107200000) {
     return false; // a smuggled offset is refused
   }
@@ -2149,47 +1623,33 @@ int writeFixedQuat(FixedQuat value, ByteData view) {
   var v = 0;
   assert(value.x >= -1073741824);
   assert(value.x <= 1073741824);
-  v = (value.x + 1073741824) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
   assert(value.y >= -1073741824);
   assert(value.y <= 1073741824);
-  v = (value.y + 1073741824) & 0xffffffff;
-  scratch |= v << scratchBits;
-  scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
   assert(value.z >= -1073741824);
   assert(value.z <= 1073741824);
-  v = (value.z + 1073741824) & 0xffffffff;
+  v =
+      ((value.x + 1073741824) & 0xffffffff) |
+      (((value.y + 1073741824) & 0xffffffff) << 32);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   assert(value.w >= -1073741824);
   assert(value.w <= 1073741824);
-  v = (value.w + 1073741824) & 0xffffffff;
+  v =
+      ((value.z + 1073741824) & 0xffffffff) |
+      (((value.w + 1073741824) & 0xffffffff) << 32);
   scratch |= v << scratchBits;
-  scratchBits += 32;
+  scratchBits += 64;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
+    scratch = v >>> (64 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -2218,58 +1678,49 @@ bool readFixedQuat(FixedQuat value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 128 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 2147483648) {
     return false; // a smuggled offset is refused
   }
   value.x = -1073741824 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 2147483648) {
     return false; // a smuggled offset is refused
   }
   value.y = -1073741824 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 2147483648) {
     return false; // a smuggled offset is refused
   }
   value.z = -1073741824 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   if (v > 2147483648) {
     return false; // a smuggled offset is refused
