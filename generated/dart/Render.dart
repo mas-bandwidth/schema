@@ -100,71 +100,48 @@ bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 138 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.sortKey = lo;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.meshId = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.materialId = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xff;
+  v = (window >>> 32) & 0xff;
   bitsRead += 8;
   value.layer = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
+  v = (window >>> 40) & 0x3;
   bitsRead += 2;
   if (v > 2) {
     return false; // headroom above the wire range is refused
@@ -295,43 +272,31 @@ bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 64 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.workerIndex = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.spriteCountHint = v;
   if (bitsRead + 7 > numBits) {
     return false;
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7f;
+  v = (window >>> 32) & 0x7f;
   bitsRead += 7;
   if (v > 64) {
     return false; // the count guards the loop — reject, never clamp
@@ -343,64 +308,42 @@ bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
   for (var i0 = 0; i0 < value.spritesCount; i0++) {
     final e0 = value.sprites[i0];
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     lo = v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
     e0.sortKey = lo;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     e0.meshId = v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     e0.materialId = v;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0xff;
+    v = (window >>> 32) & 0xff;
     bitsRead += 8;
     e0.layer = v;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0x3;
+    v = (window >>> 40) & 0x3;
     bitsRead += 2;
     if (v > 2) {
       return false; // headroom above the wire range is refused

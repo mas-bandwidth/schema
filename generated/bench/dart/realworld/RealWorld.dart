@@ -1171,67 +1171,46 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 291 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1fffff;
+  v = window & 0x1fffff;
   bitsRead += 21;
   if (v > 1610990) {
     return false; // a smuggled offset is refused
   }
   value.f001Int = -805495 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffffffff;
+  v = (window >>> 21) & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f002F64 = _doubleFromFloat64Bits(lo);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1fffff;
+  v = (window >>> 32) & 0x1fffff;
   bitsRead += 21;
   if (v > 1671794) {
     return false; // a smuggled offset is refused
   }
   value.f003Int = -835897 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7fff;
+  v = window & 0x7fff;
   bitsRead += 15;
   if (v > 20000) {
     return false; // headroom above the quantum count is refused
@@ -1239,104 +1218,61 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f004Cf32 = _fround(
     _fround(_fround(_fround(v.toDouble()) / 20000.0) * 2000.0) + 0.0,
   );
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1fff;
+  v = (window >>> 15) & 0x1fff;
   bitsRead += 13;
   if (v > 7316) {
     return false; // a smuggled offset is refused
   }
   value.f005Uint = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xfff;
+  v = (window >>> 28) & 0xfff;
   bitsRead += 12;
   if (v > 3026) {
     return false; // a smuggled offset is refused
   }
   value.f006Int = -1513 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.f007F32 = _doubleFromFloat32Bits(v);
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f008U64 = lo;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3f;
+  v = (window >>> 32) & 0x3f;
   bitsRead += 6;
   if (v > 44) {
     return false; // a smuggled offset is refused
   }
   value.f009Int = -22 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.f010F32 = _doubleFromFloat32Bits(v);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3ff;
+  v = (window >>> 32) & 0x3ff;
   bitsRead += 10;
   value.f011Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 42) & 0x1;
   bitsRead += 1;
   value.f012Bool = v != 0;
   if (value.f012Bool) {
@@ -1344,62 +1280,37 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     value.f013F32 = _doubleFromFloat32Bits(v);
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0x3ff;
+    v = (window >>> 32) & 0x3ff;
     bitsRead += 10;
     if (v > 775) {
       return false; // a smuggled offset is refused
     }
     value.f014Uint = v;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0x3f;
+    v = (window >>> 42) & 0x3f;
     bitsRead += 6;
     if (v > 42) {
       return false; // a smuggled offset is refused
     }
     value.f015Int = -21 + v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x7ffffff;
+    v = window & 0x7ffffff;
     bitsRead += 27;
     if (v > 75497472) {
       return false; // a smuggled offset is refused
     }
     value.f016Fixed = -37748736 + v;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0x1fff;
+    v = (window >>> 27) & 0x1fff;
     bitsRead += 13;
     if (v > 4606) {
       return false; // a smuggled offset is refused
@@ -1416,123 +1327,81 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7ff;
+  v = window & 0x7ff;
   bitsRead += 11;
   if (v > 1668) {
     return false; // a smuggled offset is refused
   }
   value.f018Int = -834 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffffffff;
+  v = (window >>> 11) & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f019F64 = _doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.f020F32 = _doubleFromFloat32Bits(v);
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7ffffff;
+  v = window & 0x7ffffff;
   bitsRead += 27;
   if (v > 102977536) {
     return false; // a smuggled offset is refused
   }
   value.f021Ufixed = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.f022F32 = _doubleFromFloat32Bits(v);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1ffffff;
+  v = (window >>> 32) & 0x1ffffff;
   bitsRead += 25;
   value.f023Bits = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.f024F32 = _doubleFromFloat32Bits(v);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffff;
+  v = (window >>> 32) & 0xffff;
   bitsRead += 16;
   if (v > 60928) {
     return false; // a smuggled offset is refused
   }
   value.f025Fixed = -30464 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1ff;
+  v = (window >>> 48) & 0x1ff;
   bitsRead += 9;
   value.f026Bits = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   if (v > 16) {
     return false; // headroom above the quantum count is refused
@@ -1540,193 +1409,94 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f027Cf32 = _fround(
     _fround(_fround(_fround(v.toDouble()) / 16.0) * 4.0) + -2.0,
   );
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xf;
+  v = (window >>> 5) & 0xf;
   bitsRead += 4;
   value.f028Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffffffff;
+  v = (window >>> 9) & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f029I64 = lo;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.f030F32 = _doubleFromFloat32Bits(v);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 32) & 0x1;
   bitsRead += 1;
   value.f031Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7;
+  v = (window >>> 33) & 0x7;
   bitsRead += 3;
   if (v > 6) {
     return false; // a smuggled offset is refused
   }
   value.f032Int = -3 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3ffff;
+  v = (window >>> 36) & 0x3ffff;
   bitsRead += 18;
   if (v > 142780) {
     return false; // a smuggled offset is refused
   }
   value.f033Uint = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x3fff;
+  v = window & 0x3fff;
   bitsRead += 14;
   if (v > 14149) {
     return false; // a smuggled offset is refused
   }
   value.f034Uint = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1ff;
+  v = (window >>> 14) & 0x1ff;
   bitsRead += 9;
   value.f035Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7;
+  v = (window >>> 23) & 0x7;
   bitsRead += 3;
   if (v > 5) {
     return false; // headroom above the wire range is refused
   }
   value.f036Enum = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 26) & 0x1;
   bitsRead += 1;
   value.f037Bool = v != 0;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 27) & 0x1;
   bitsRead += 1;
   value.f038Bool = v != 0;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7ffff;
+  v = (window >>> 28) & 0x7ffff;
   bitsRead += 19;
   value.f039Bits = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffff;
+  v = window & 0xffff;
   bitsRead += 16;
   if (v > 40960) {
     return false; // a smuggled offset is refused
   }
   value.f040Fixed = -20480 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7f;
+  v = (window >>> 16) & 0x7f;
   bitsRead += 7;
   if (v > 110) {
     return false; // a smuggled offset is refused
   }
   value.f041Int = -55 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3fffffff;
+  v = (window >>> 23) & 0x3fffffff;
   bitsRead += 30;
   value.f042Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 53) & 0x1;
   bitsRead += 1;
   value.f043Bool = v != 0;
   if (value.f043Bool) {
@@ -1734,46 +1504,28 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     value.f044F32 = _doubleFromFloat32Bits(v);
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0xfff;
+    v = (window >>> 32) & 0xfff;
     bitsRead += 12;
     value.f045Bits = v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1ffff;
+    v = window & 0x1ffff;
     bitsRead += 17;
     if (v > 76063) {
       return false; // a smuggled offset is refused
     }
     value.f046Uint = v;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0xfffff;
+    v = (window >>> 17) & 0xfffff;
     bitsRead += 20;
     if (v > 861952) {
       return false; // a smuggled offset is refused
@@ -1789,47 +1541,29 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f048F64 = _doubleFromFloat64Bits(lo);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffff;
+  v = (window >>> 32) & 0xffff;
   bitsRead += 16;
   if (v > 49152) {
     return false; // a smuggled offset is refused
   }
   value.f049Ufixed = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 48) & 0x1;
   bitsRead += 1;
   value.f050Bool = v != 0;
   if (value.f050Bool) {
@@ -1837,46 +1571,23 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1;
+    v = window & 0x1;
     bitsRead += 1;
     value.f051Bool = v != 0;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0x7f;
+    v = (window >>> 1) & 0x7f;
     bitsRead += 7;
     if (v > 114) {
       return false; // a smuggled offset is refused
     }
     value.f052Int = -57 + v;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0xffffffff;
+    v = (window >>> 8) & 0xffffffff;
     bitsRead += 32;
     value.f053F32 = _doubleFromFloat32Bits(v);
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0x7f;
+    v = (window >>> 40) & 0x7f;
     bitsRead += 7;
     if (v > 70) {
       return false; // a smuggled offset is refused
@@ -1892,90 +1603,49 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1;
+  v = window & 0x1;
   bitsRead += 1;
   value.f055Bool = v != 0;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1f;
+  v = (window >>> 1) & 0x1f;
   bitsRead += 5;
   if (v > 26) {
     return false; // a smuggled offset is refused
   }
   value.f056Int = -13 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1f;
+  v = (window >>> 6) & 0x1f;
   bitsRead += 5;
   if (v > 30) {
     return false; // a smuggled offset is refused
   }
   value.f057Int = -15 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffffffff;
+  v = (window >>> 11) & 0xffffffff;
   bitsRead += 32;
   value.f058F32 = _doubleFromFloat32Bits(v);
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f059F64 = _doubleFromFloat64Bits(lo);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xff;
+  v = (window >>> 32) & 0xff;
   bitsRead += 8;
   value.f060Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1ff;
+  v = (window >>> 40) & 0x1ff;
   bitsRead += 9;
   if (v > 360) {
     return false; // headroom above the quantum count is refused
@@ -1984,60 +1654,35 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     _fround(_fround(_fround(v.toDouble()) / 360.0) * 180.0) + -90.0,
   );
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1ff;
+  v = window & 0x1ff;
   bitsRead += 9;
   if (v > 503) {
     return false; // a smuggled offset is refused
   }
   value.f062Uint = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffffffff;
+  v = (window >>> 9) & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f063I64 = lo;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1ff;
+  v = (window >>> 32) & 0x1ff;
   bitsRead += 9;
   if (v > 299) {
     return false; // a smuggled offset is refused
   }
   value.f064Uint = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3f;
+  v = (window >>> 41) & 0x3f;
   bitsRead += 6;
   if (v > 60) {
     return false; // headroom above the quantum count is refused
@@ -2046,26 +1691,17 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     _fround(_fround(_fround(v.toDouble()) / 60.0) * 30.0) + 0.0,
   );
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffff;
+  v = window & 0xffff;
   bitsRead += 16;
   if (v > 32768) {
     return false; // a smuggled offset is refused
   }
   value.f066Ufixed = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3ff;
+  v = (window >>> 16) & 0x3ff;
   bitsRead += 10;
   if (v > 800) {
     return false; // headroom above the quantum count is refused
@@ -2073,14 +1709,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f067Cf32 = _fround(
     _fround(_fround(_fround(v.toDouble()) / 800.0) * 200.0) + -100.0,
   );
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7ff;
+  v = (window >>> 26) & 0x7ff;
   bitsRead += 11;
   if (v > 2000) {
     return false; // headroom above the quantum count is refused
@@ -2088,37 +1717,21 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f068Cf32 = _fround(
     _fround(_fround(_fround(v.toDouble()) / 2000.0) * 2000.0) + 0.0,
   );
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7ff;
+  v = (window >>> 37) & 0x7ff;
   bitsRead += 11;
   value.f069Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
+  v = (window >>> 48) & 0x3;
   bitsRead += 2;
   if (v > 2) {
     return false; // a smuggled offset is refused
   }
   value.f070Uint = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1ff;
+  v = window & 0x1ff;
   bitsRead += 9;
   if (v > 500) {
     return false; // headroom above the quantum count is refused
@@ -2126,14 +1739,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f071Cf32 = _fround(
     _fround(_fround(_fround(v.toDouble()) / 500.0) * 10.0) + 0.0,
   );
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3fff;
+  v = (window >>> 9) & 0x3fff;
   bitsRead += 14;
   if (v > 10000) {
     return false; // headroom above the quantum count is refused
@@ -2141,27 +1747,13 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f072Cf32 = _fround(
     _fround(_fround(_fround(v.toDouble()) / 10000.0) * 100.0) + 0.0,
   );
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xf;
+  v = (window >>> 23) & 0xf;
   bitsRead += 4;
   if (v > 8) {
     return false; // a smuggled offset is refused
   }
   value.f073Int = -4 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 27) & 0x1;
   bitsRead += 1;
   value.f074Bool = v != 0;
   if (value.f074Bool) {
@@ -2169,70 +1761,43 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     lo = v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0xffffffff;
+    v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
     value.f075U64 = lo;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0xffff;
+    v = (window >>> 32) & 0xffff;
     bitsRead += 16;
     if (v > 52436) {
       return false; // a smuggled offset is refused
     }
     value.f076Int = -26218 + v;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0x3f;
+    v = (window >>> 48) & 0x3f;
     bitsRead += 6;
     if (v > 34) {
       return false; // a smuggled offset is refused
     }
     value.f077Int = -17 + v;
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1ff;
+    v = window & 0x1ff;
     bitsRead += 9;
     value.f078Bits = v;
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
-    } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
-    }
-    v = (window >>> shift) & 0x1f;
+    v = (window >>> 9) & 0x1f;
     bitsRead += 5;
     if (v > 17) {
       return false; // a smuggled offset is refused
@@ -2249,234 +1814,128 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1;
+  v = window & 0x1;
   bitsRead += 1;
   value.f080Bool = v != 0;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1fffffff;
+  v = (window >>> 1) & 0x1fffffff;
   bitsRead += 29;
   value.f081Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1ffffff;
+  v = (window >>> 30) & 0x1ffffff;
   bitsRead += 25;
   value.f082Bits = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7;
+  v = window & 0x7;
   bitsRead += 3;
   if (v > 5) {
     return false; // headroom above the wire range is refused
   }
   value.f083Enum = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xff;
+  v = (window >>> 3) & 0xff;
   bitsRead += 8;
   if (v > 128) {
     return false; // a smuggled offset is refused
   }
   value.f084Ufixed = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1fffff;
+  v = (window >>> 11) & 0x1fffff;
   bitsRead += 21;
   value.f085Bits = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1ff;
+  v = (window >>> 32) & 0x1ff;
   bitsRead += 9;
   if (v > 399) {
     return false; // a smuggled offset is refused
   }
   value.f086Uint = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f087F64 = _doubleFromFloat64Bits(lo);
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7ff;
+  v = (window >>> 32) & 0x7ff;
   bitsRead += 11;
   if (v > 1388) {
     return false; // a smuggled offset is refused
   }
   value.f088Int = -694 + v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffff;
-  bitsRead += 16;
-  lo |= v << 32;
+  lo = window & 0xffffffffffff;
+  bitsRead += 48;
   value.f089Bits = lo;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xff;
+  v = (window >>> 48) & 0xff;
   bitsRead += 8;
   if (v > 214) {
     return false; // a smuggled offset is refused
   }
   value.f090Uint = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.f091Flags = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 5) & 0x1;
   bitsRead += 1;
   value.f092Bool = v != 0;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xffffffff;
+  v = (window >>> 6) & 0xffffffff;
   bitsRead += 32;
   lo = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
   value.f093Bits = lo;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 32) & 0x1;
   bitsRead += 1;
   value.f094Bool = v != 0;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xfffffff;
+  v = window & 0xfffffff;
   bitsRead += 28;
   if (v > 206700544) {
     return false; // a smuggled offset is refused
   }
   value.f095Fixed = -103350272 + v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3ffff;
+  v = (window >>> 28) & 0x3ffff;
   bitsRead += 18;
   value.f096Bits = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xfff;
+  v = window & 0xfff;
   bitsRead += 12;
   value.f097Bits = v;
   return true;

@@ -134,21 +134,55 @@ func maskedPiece(expr string, bits int64) string {
 	return fmt.Sprintf("((%s) & %s)", expr, maskHex(bits))
 }
 
-// readR reads bits (in [1,32]) from the 64-bit window at bitsRead into v,
-// masked — serialize.dart BitReader.readBits inlined, with the tail window
-// pricing the loads inside the buffer (no slack contract).
+// emitWindowLoad pulls a fresh 64-bit extraction window at bitsRead, with
+// the byte-interior shift folded into the load — serialize.dart
+// BitReader.readBits' load half, with the tail window pricing the loads
+// inside the buffer (no slack contract). After the worst-case 7-bit shift
+// the window holds at least 57 valid payload bits (in the tail arm, every
+// bounds-proven remaining bit — numBits cannot exceed the buffer), so
+// consecutive constant-width reads share one load and one branch through
+// the compile-time (windowRel, windowAvail) ledger.
+func (g *gen) emitWindowLoad(ind string) {
+	g.usesRead = true
+	g.pf("%sif (bitsRead >>> 3 < tailBase) {\n", ind)
+	load := fmt.Sprintf("%s  window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);", ind)
+	if len(load) <= 80 {
+		g.pf("%s\n", load)
+	} else {
+		g.pf("%s  window =\n", ind)
+		g.pf("%s      view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);\n", ind)
+	}
+	g.pf("%s} else {\n", ind)
+	g.pf("%s  window = tailWord >>> (bitsRead - tailBase * 8);\n", ind)
+	g.pf("%s}\n", ind)
+	g.windowRel = 0
+	g.windowAvail = 57
+}
+
+// invalidateWindow forgets the extraction window ledger. Every point where
+// bitsRead moves by a dynamic amount, and every scope boundary (loop body,
+// branch arm, switch arm), must invalidate: the ledger is compile-time
+// state and the runtime paths diverge there.
+func (g *gen) invalidateWindow() {
+	g.windowRel, g.windowAvail = 0, 0
+}
+
+// readR reads bits (in [1,32]) at bitsRead into v, masked — an extraction
+// from the shared window, loading a fresh one only when the ledger runs dry.
 func (g *gen) readR(bits int64, ind string) {
 	g.needV = true
 	g.usesRead = true
-	g.pf("%sif (bitsRead >>> 3 < tailBase) {\n", ind)
-	g.pf("%s  window = view.getUint64(bitsRead >>> 3, Endian.little);\n", ind)
-	g.pf("%s  shift = bitsRead & 7;\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s  window = tailWord;\n", ind)
-	g.pf("%s  shift = bitsRead - tailBase * 8;\n", ind)
-	g.pf("%s}\n", ind)
-	g.pf("%sv = (window >>> shift) & %s;\n", ind, maskHex(bits))
+	if g.windowAvail < bits {
+		g.emitWindowLoad(ind)
+	}
+	if g.windowRel == 0 {
+		g.pf("%sv = window & %s;\n", ind, maskHex(bits))
+	} else {
+		g.pf("%sv = (window >>> %d) & %s;\n", ind, g.windowRel, maskHex(bits))
+	}
 	g.pf("%sbitsRead += %d;\n", ind, bits)
+	g.windowRel += bits
+	g.windowAvail -= bits
 }
 
 // ---- static wire-width analysis for run fusing ----
@@ -357,7 +391,6 @@ func (g *gen) emitReadFunction(name, low string, items []ir.Item) {
 		g.bpf("  }\n")
 		g.bpf("  var bitsRead = 0;\n")
 		g.bpf("  var window = 0;\n")
-		g.bpf("  var shift = 0;\n")
 	}
 	if g.needV {
 		g.bpf("  var v = 0;\n")
@@ -908,14 +941,17 @@ func (g *gen) emitReadStaticItem(item ir.Item, path, ind string) {
 		if item.Neg {
 			neg = "!"
 		}
+		g.invalidateWindow()
 		g.pf("%sif (%s%s.%s) {\n", ind, neg, path, dartName(item.Cond))
 		g.emitReadItems(item.Then, path, ind+"  ", true)
 		g.emitZeroItems(item.Else, path, ind+"  ")
+		g.invalidateWindow()
 		g.pf("%s} else {\n", ind)
 		if item.Else != nil {
 			g.emitReadItems(item.Else, path, ind+"  ", true)
 		}
 		g.emitZeroItems(item.Then, path, ind+"  ")
+		g.invalidateWindow()
 		g.pf("%s}\n", ind)
 	}
 }
@@ -931,14 +967,17 @@ func (g *gen) emitReadDynamicItem(item ir.Item, path, ind string) {
 		if item.Neg {
 			neg = "!"
 		}
+		g.invalidateWindow()
 		g.pf("%sif (%s%s.%s) {\n", ind, neg, path, dartName(item.Cond))
 		g.emitReadItems(item.Then, path, ind+"  ", false)
 		g.emitZeroItems(item.Else, path, ind+"  ")
+		g.invalidateWindow()
 		g.pf("%s} else {\n", ind)
 		if item.Else != nil {
 			g.emitReadItems(item.Else, path, ind+"  ", false)
 		}
 		g.emitZeroItems(item.Then, path, ind+"  ")
+		g.invalidateWindow()
 		g.pf("%s}\n", ind)
 	}
 }
@@ -946,6 +985,7 @@ func (g *gen) emitReadDynamicItem(item ir.Item, path, ind string) {
 // emitReadAlign verifies zero padding to the byte boundary and advances.
 func (g *gen) emitReadAlign(ind string) {
 	g.usesRead = true
+	g.invalidateWindow() // bitsRead moves by a dynamic amount
 	g.pf("%s{\n", ind)
 	g.pf("%s  final pad = bitsRead & 7;\n", ind)
 	g.pf("%s  if (pad != 0) {\n", ind)
@@ -982,10 +1022,20 @@ func (g *gen) emitReadStaticField(f *ir.Field, path, ind string) {
 		name = path
 	}
 	if f.Array == ir.ArrayFixed {
+		if isBareByte(f) && f.ArrayBound <= 8 {
+			// the bulk-bytes read twin (#165): a short byte array unrolls to
+			// window extractions instead of paying a loop of window loads
+			for k := int64(0); k < f.ArrayBound; k++ {
+				g.emitReadScalar(f, fmt.Sprintf("%s[%d]", name, k), ind, true)
+			}
+			return
+		}
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.invalidateWindow()
 		g.pf("%sfor (var %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
 		g.emitReadElem(f, name, iv, ind+"  ", true)
+		g.invalidateWindow()
 		g.pf("%s}\n", ind)
 		g.loopDepth--
 		return
@@ -1043,16 +1093,19 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		}
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.invalidateWindow()
 		if elemBits, ok := g.staticBitsScalar(f); ok {
 			if elemBits > 0 {
 				g.pf("%sif (bitsRead + %s * %d > numBits) {\n%s  return false;\n%s}\n", ind, count, elemBits, ind, ind)
 			}
 			g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 			g.emitReadElem(f, name, iv, ind+"  ", true)
+			g.invalidateWindow()
 			g.pf("%s}\n", ind)
 		} else {
 			g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 			g.emitReadElem(f, name, iv, ind+"  ", false)
+			g.invalidateWindow()
 			g.pf("%s}\n", ind)
 		}
 		g.loopDepth--
@@ -1061,8 +1114,10 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		// strings)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.invalidateWindow()
 		g.pf("%sfor (var %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
 		g.emitReadElem(f, name, iv, ind+"  ", false)
+		g.invalidateWindow()
 		g.pf("%s}\n", ind)
 		g.loopDepth--
 	default:
@@ -1100,6 +1155,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%s  }\n", ind)
 	g.pf("%s}\n", ind)
 	g.pf("%sbitsRead += %s * 8;\n", ind, length)
+	g.invalidateWindow() // bitsRead moved by a dynamic amount
 	if f.Type.Kind == ir.TString {
 		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
 		g.pf("%s  if (%s[%s] == 0) {\n", ind, name, iv)
@@ -1110,10 +1166,26 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.loopDepth--
 }
 
-// emitReadWide64 assembles a 33..64-bit group pair into lo (low dword
-// first — the serialize group order).
+// emitReadWide64 assembles a 33..64-bit value into lo. Through 57 bits the
+// field is one window extraction — its 32-bit groups are contiguous on the
+// wire, so the single masked read IS the low-dword-first pair. Past 57 the
+// two-group form stands (a window cannot guarantee more than 57 bits).
 func (g *gen) emitReadWide64(bits int64, ind string) {
 	g.needLo = true
+	if bits <= 57 {
+		if g.windowAvail < bits {
+			g.emitWindowLoad(ind)
+		}
+		if g.windowRel == 0 {
+			g.pf("%slo = window & %s;\n", ind, maskHex(bits))
+		} else {
+			g.pf("%slo = (window >>> %d) & %s;\n", ind, g.windowRel, maskHex(bits))
+		}
+		g.pf("%sbitsRead += %d;\n", ind, bits)
+		g.windowRel += bits
+		g.windowAvail -= bits
+		return
+	}
 	g.readR(32, ind)
 	g.pf("%slo = v;\n", ind)
 	g.readR(bits-32, ind)
@@ -1416,6 +1488,7 @@ func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 			g.emitZeroField(nf, arm, ind+"    ", false)
 			empty = false
 		}
+		g.invalidateWindow() // the arms' read positions diverge
 		before := g.fn.Len()
 		g.emitReadItems(vr.Ref.Items, arm, ind+"    ", false)
 		if g.fn.Len() > before {
@@ -1426,6 +1499,7 @@ func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 		}
 	}
 	g.pf("%s}\n", ind)
+	g.invalidateWindow()
 }
 
 // ---- zeroing (SPEC §5: untaken branch sides read as ZERO) ----

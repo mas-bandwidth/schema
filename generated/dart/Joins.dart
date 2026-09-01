@@ -113,64 +113,48 @@ bool readArmsAgree(ArmsAgree value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 24 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.lead = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 5) & 0x1;
   bitsRead += 1;
   value.flag = v != 0;
   if (value.flag) {
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x7ff;
+    v = window & 0x7ff;
     bitsRead += 11;
     value.a = v;
     value.b = 0;
   } else {
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x7ff;
+    v = window & 0x7ff;
     bitsRead += 11;
     value.b = v;
     value.a = 0;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7f;
+  v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
   return true;
@@ -287,29 +271,19 @@ bool readArmsDisagree(ArmsDisagree value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 6 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.lead = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 5) & 0x1;
   bitsRead += 1;
   value.flag = v != 0;
   if (value.flag) {
@@ -317,13 +291,11 @@ bool readArmsDisagree(ArmsDisagree value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x7ff;
+    v = window & 0x7ff;
     bitsRead += 11;
     value.a = v;
     value.b = 0;
@@ -332,13 +304,11 @@ bool readArmsDisagree(ArmsDisagree value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x7;
+    v = window & 0x7;
     bitsRead += 3;
     value.b = v;
     value.a = 0;
@@ -347,13 +317,11 @@ bool readArmsDisagree(ArmsDisagree value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7f;
+  v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
   return true;
@@ -465,29 +433,19 @@ bool readArmEmpty(ArmEmpty value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 6 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.lead = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 5) & 0x1;
   bitsRead += 1;
   value.flag = v != 0;
   if (value.flag) {
@@ -495,13 +453,11 @@ bool readArmEmpty(ArmEmpty value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x7ffff;
+    v = window & 0x7ffff;
     bitsRead += 19;
     value.a = v;
   } else {
@@ -511,13 +467,11 @@ bool readArmEmpty(ArmEmpty value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7f;
+  v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
   return true;
@@ -673,29 +627,19 @@ bool readArmsNested(ArmsNested value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 4 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7;
+  v = window & 0x7;
   bitsRead += 3;
   value.lead = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 3) & 0x1;
   bitsRead += 1;
   value.outer = v != 0;
   if (value.outer) {
@@ -703,13 +647,11 @@ bool readArmsNested(ArmsNested value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1;
+    v = window & 0x1;
     bitsRead += 1;
     value.inner = v != 0;
     if (value.inner) {
@@ -717,13 +659,12 @@ bool readArmsNested(ArmsNested value, ByteData view, int numBits) {
         return false;
       }
       if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
       } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
+        window = tailWord >>> (bitsRead - tailBase * 8);
       }
-      v = (window >>> shift) & 0x1fffffff;
+      v = window & 0x1fffffff;
       bitsRead += 29;
       value.x = v;
       value.y = 0;
@@ -732,13 +673,12 @@ bool readArmsNested(ArmsNested value, ByteData view, int numBits) {
         return false;
       }
       if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
       } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
+        window = tailWord >>> (bitsRead - tailBase * 8);
       }
-      v = (window >>> shift) & 0x1f;
+      v = window & 0x1f;
       bitsRead += 5;
       value.y = v;
       value.x = 0;
@@ -749,13 +689,11 @@ bool readArmsNested(ArmsNested value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1fff;
+    v = window & 0x1fff;
     bitsRead += 13;
     value.z = v;
     value.inner = false;
@@ -766,13 +704,11 @@ bool readArmsNested(ArmsNested value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x3f;
+  v = window & 0x3f;
   bitsRead += 6;
   value.tail = v;
   return true;
@@ -950,29 +886,19 @@ bool readArmAlign(ArmAlign value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 6 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.lead = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 5) & 0x1;
   bitsRead += 1;
   value.flag = v != 0;
   if (value.flag) {
@@ -980,13 +906,11 @@ bool readArmAlign(ArmAlign value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x7;
+    v = window & 0x7;
     bitsRead += 3;
     if (v > 4) {
       return false; // the length guards the slice — reject, never clamp
@@ -1025,13 +949,11 @@ bool readArmAlign(ArmAlign value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x3ff;
+    v = window & 0x3ff;
     bitsRead += 10;
     value.b = v;
     value.s.fillRange(0, value.s.length, 0);
@@ -1041,13 +963,11 @@ bool readArmAlign(ArmAlign value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7f;
+  v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
   return true;
@@ -1194,29 +1114,19 @@ bool readArmArray(ArmArray value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 6 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.lead = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1;
+  v = (window >>> 5) & 0x1;
   bitsRead += 1;
   value.flag = v != 0;
   if (value.flag) {
@@ -1224,13 +1134,11 @@ bool readArmArray(ArmArray value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x3;
+    v = window & 0x3;
     bitsRead += 2;
     value.itemsCount = v;
     if (bitsRead + value.itemsCount * 13 > numBits) {
@@ -1238,13 +1146,12 @@ bool readArmArray(ArmArray value, ByteData view, int numBits) {
     }
     for (var i0 = 0; i0 < value.itemsCount; i0++) {
       if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
       } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
+        window = tailWord >>> (bitsRead - tailBase * 8);
       }
-      v = (window >>> shift) & 0x1fff;
+      v = window & 0x1fff;
       bitsRead += 13;
       value.items[i0] = v;
     }
@@ -1254,13 +1161,11 @@ bool readArmArray(ArmArray value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1ff;
+    v = window & 0x1ff;
     bitsRead += 9;
     value.b = v;
     value.items.fillRange(0, value.items.length, 0);
@@ -1270,13 +1175,11 @@ bool readArmArray(ArmArray value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7f;
+  v = window & 0x7f;
   bitsRead += 7;
   value.tail = v;
   return true;
@@ -1359,19 +1262,16 @@ bool readNarrow(Narrow value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 3 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7;
+  v = window & 0x7;
   bitsRead += 3;
   value.n = v;
   return true;
@@ -1443,32 +1343,17 @@ bool readWide(Wide value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
-  var v = 0;
   var lo = 0;
   if (bitsRead + 37 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
-  bitsRead += 32;
-  lo = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x1f;
-  bitsRead += 5;
-  lo |= v << 32;
+  lo = window & 0x1fffffffff;
+  bitsRead += 37;
   value.w = lo;
   return true;
 }
@@ -1577,20 +1462,17 @@ bool readUneven(Uneven value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 2 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x3;
+  v = window & 0x3;
   bitsRead += 2;
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
@@ -1603,13 +1485,12 @@ bool readUneven(Uneven value, ByteData view, int numBits) {
         return false;
       }
       if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
       } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
+        window = tailWord >>> (bitsRead - tailBase * 8);
       }
-      v = (window >>> shift) & 0x7;
+      v = window & 0x7;
       bitsRead += 3;
       value.narrow.n = v;
     case 2:
@@ -1618,25 +1499,13 @@ bool readUneven(Uneven value, ByteData view, int numBits) {
         return false;
       }
       if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
       } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
+        window = tailWord >>> (bitsRead - tailBase * 8);
       }
-      v = (window >>> shift) & 0xffffffff;
-      bitsRead += 32;
-      lo = v;
-      if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
-      } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
-      }
-      v = (window >>> shift) & 0x1f;
-      bitsRead += 5;
-      lo |= v << 32;
+      lo = window & 0x1fffffffff;
+      bitsRead += 37;
       value.wide.w = lo;
   }
   return true;
@@ -1755,33 +1624,23 @@ bool readHoldsUneven(HoldsUneven value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 5 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.lead = v;
   if (bitsRead + 2 > numBits) {
     return false;
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
+  v = (window >>> 5) & 0x3;
   bitsRead += 2;
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
@@ -1794,13 +1653,12 @@ bool readHoldsUneven(HoldsUneven value, ByteData view, int numBits) {
         return false;
       }
       if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
       } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
+        window = tailWord >>> (bitsRead - tailBase * 8);
       }
-      v = (window >>> shift) & 0x7;
+      v = window & 0x7;
       bitsRead += 3;
       value.u.narrow.n = v;
     case 2:
@@ -1809,38 +1667,24 @@ bool readHoldsUneven(HoldsUneven value, ByteData view, int numBits) {
         return false;
       }
       if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
+        window =
+            view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
       } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
+        window = tailWord >>> (bitsRead - tailBase * 8);
       }
-      v = (window >>> shift) & 0xffffffff;
-      bitsRead += 32;
-      lo = v;
-      if (bitsRead >>> 3 < tailBase) {
-        window = view.getUint64(bitsRead >>> 3, Endian.little);
-        shift = bitsRead & 7;
-      } else {
-        window = tailWord;
-        shift = bitsRead - tailBase * 8;
-      }
-      v = (window >>> shift) & 0x1f;
-      bitsRead += 5;
-      lo |= v << 32;
+      lo = window & 0x1fffffffff;
+      bitsRead += 37;
       value.u.wide.w = lo;
   }
   if (bitsRead + 11 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7ff;
+  v = window & 0x7ff;
   bitsRead += 11;
   value.tail = v;
   return true;
@@ -1979,33 +1823,23 @@ bool readArrUneven(ArrUneven value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   var lo = 0;
   if (bitsRead + 5 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.lead = v;
   if (bitsRead + 2 > numBits) {
     return false;
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
+  v = (window >>> 5) & 0x3;
   bitsRead += 2;
   value.itemsCount = v;
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
@@ -2014,13 +1848,11 @@ bool readArrUneven(ArrUneven value, ByteData view, int numBits) {
       return false;
     }
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x3;
+    v = window & 0x3;
     bitsRead += 2;
     if (v > 2) {
       return false; // not a wire-legal tag (SPEC §4.8)
@@ -2033,13 +1865,12 @@ bool readArrUneven(ArrUneven value, ByteData view, int numBits) {
           return false;
         }
         if (bitsRead >>> 3 < tailBase) {
-          window = view.getUint64(bitsRead >>> 3, Endian.little);
-          shift = bitsRead & 7;
+          window =
+              view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
         } else {
-          window = tailWord;
-          shift = bitsRead - tailBase * 8;
+          window = tailWord >>> (bitsRead - tailBase * 8);
         }
-        v = (window >>> shift) & 0x7;
+        v = window & 0x7;
         bitsRead += 3;
         e0.narrow.n = v;
       case 2:
@@ -2048,25 +1879,13 @@ bool readArrUneven(ArrUneven value, ByteData view, int numBits) {
           return false;
         }
         if (bitsRead >>> 3 < tailBase) {
-          window = view.getUint64(bitsRead >>> 3, Endian.little);
-          shift = bitsRead & 7;
+          window =
+              view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
         } else {
-          window = tailWord;
-          shift = bitsRead - tailBase * 8;
+          window = tailWord >>> (bitsRead - tailBase * 8);
         }
-        v = (window >>> shift) & 0xffffffff;
-        bitsRead += 32;
-        lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-          window = view.getUint64(bitsRead >>> 3, Endian.little);
-          shift = bitsRead & 7;
-        } else {
-          window = tailWord;
-          shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1f;
-        bitsRead += 5;
-        lo |= v << 32;
+        lo = window & 0x1fffffffff;
+        bitsRead += 37;
         e0.wide.w = lo;
     }
   }
@@ -2074,13 +1893,11 @@ bool readArrUneven(ArrUneven value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7;
+  v = window & 0x7;
   bitsRead += 3;
   value.tail = v;
   return true;
@@ -2270,32 +2087,22 @@ bool readRegainAfterAlign(RegainAfterAlign value, ByteData view, int numBits) {
   }
   var bitsRead = 0;
   var window = 0;
-  var shift = 0;
   var v = 0;
   if (bitsRead + 5 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1f;
+  v = window & 0x1f;
   bitsRead += 5;
   value.lead = v;
   if (bitsRead + 2 > numBits) {
     return false;
   }
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x3;
+  v = (window >>> 5) & 0x3;
   bitsRead += 2;
   value.itemsCount = v;
   if (bitsRead + value.itemsCount * 13 > numBits) {
@@ -2303,13 +2110,11 @@ bool readRegainAfterAlign(RegainAfterAlign value, ByteData view, int numBits) {
   }
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little);
-      shift = bitsRead & 7;
+      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
     } else {
-      window = tailWord;
-      shift = bitsRead - tailBase * 8;
+      window = tailWord >>> (bitsRead - tailBase * 8);
     }
-    v = (window >>> shift) & 0x1fff;
+    v = window & 0x1fff;
     bitsRead += 13;
     value.items[i0] = v;
   }
@@ -2317,13 +2122,11 @@ bool readRegainAfterAlign(RegainAfterAlign value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x7;
+  v = window & 0x7;
   bitsRead += 3;
   if (v > 4) {
     return false; // the length guards the slice — reject, never clamp
@@ -2360,43 +2163,25 @@ bool readRegainAfterAlign(RegainAfterAlign value, ByteData view, int numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0xffffffff;
+  v = window & 0xffffffff;
   bitsRead += 32;
   value.p = v;
   if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
+    window = tailWord >>> (bitsRead - tailBase * 8);
   }
-  v = (window >>> shift) & 0x1fffffff;
+  v = window & 0x1fffffff;
   bitsRead += 29;
   value.q = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0x7ffff;
+  v = (window >>> 29) & 0x7ffff;
   bitsRead += 19;
   value.r = v;
-  if (bitsRead >>> 3 < tailBase) {
-    window = view.getUint64(bitsRead >>> 3, Endian.little);
-    shift = bitsRead & 7;
-  } else {
-    window = tailWord;
-    shift = bitsRead - tailBase * 8;
-  }
-  v = (window >>> shift) & 0xf;
+  v = (window >>> 48) & 0xf;
   bitsRead += 4;
   value.tail = v;
   return true;
