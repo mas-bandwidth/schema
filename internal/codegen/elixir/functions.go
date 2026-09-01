@@ -350,6 +350,14 @@ func (g *gen) emitWriteJoin(ind, open, close string, arms []joinArm) {
 	g.pf("%s%s", ind, close)
 	g.pf("\n")
 	g.pendW, g.scZero = 0, false
+	// segW must not survive a join: registers spilled BEFORE the join would
+	// re-emit at the next barrier (silently — the wire-corruption class),
+	// and registers spilled INSIDE an arm would fail to compile outside it.
+	// Today every arm ends in a flush so this is always nil already; the
+	// reset guards the shape a future emitter change could produce. segN
+	// stays monotonic on purpose — resetting it renumbers registers after
+	// every join, churning the generated text for no safety.
+	g.segW = nil
 	g.sbKnown, g.sbVal = agree, val
 	g.scBound = true
 	g.sbBound = entrySB || !agree
