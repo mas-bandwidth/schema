@@ -44,6 +44,10 @@ func checkGenerated(t *testing.T, backend string, out map[string][]byte) {
 			checkDupDefLines(t, backend, name, data, cFamilyDefLine)
 		case strings.HasSuffix(name, ".cs"):
 			checkDupDefLines(t, backend, name, data, csTypeDefLine)
+		case strings.HasSuffix(name, ".dart"):
+			checkDupDefLines(t, backend, name, data, dartTypeDefLine)
+		case strings.HasSuffix(name, ".js"):
+			checkDupDefLines(t, backend, name, data, jsDefLine)
 		}
 	}
 }
@@ -152,6 +156,18 @@ var cFamilyDefLine = regexp.MustCompile(`^(static |inline |constexpr |struct |cl
 // legal C# an emitter may legitimately produce, so `partial` is excluded too.
 var csTypeDefLine = regexp.MustCompile(`^(public |internal |static )*(sealed |static )*(class|struct|enum|interface) `)
 
+// dartTypeDefLine matches Dart top-level type declarations (column 0).
+// Members and methods are excluded for the same reason as C#'s.
+var dartTypeDefLine = regexp.MustCompile(`^(abstract )?(final |base |sealed )?(class|enum|extension|mixin) `)
+
+// jsDefLine matches the js emitters' EXPORTED surface only: checkDupDefLines
+// trims lines before matching, so a bare `const ` would also match the
+// function-local consts the codecs emit legitimately (e0 aliases in element
+// loops). `export` cannot appear in function scope, so it is top-level by
+// construction — the miss on unexported module-scope consts is the cheap
+// side of the harness's own trade (a false match costs a bogus report).
+var jsDefLine = regexp.MustCompile(`^export (const |class |function |function\* )`)
+
 // pure forward declarations may legally repeat.
 var forwardDecl = regexp.MustCompile(`^(struct|class|enum|union)\s+[A-Za-z_][A-Za-z0-9_]*\s*;$`)
 
@@ -168,5 +184,33 @@ func checkDupDefLines(t *testing.T, backend, name string, data []byte, def *rege
 				backend, name, prev, i+1, line, name, data)
 		}
 		seen[line] = i + 1
+	}
+}
+
+// The matchers' own discrimination, pinned: what each must catch and what it
+// must NOT (checkDupDefLines trims before matching, so a matcher that hits
+// function-local lines files bogus crash reports).
+func TestDefLineMatchers(t *testing.T) {
+	match := []struct {
+		re   *regexp.Regexp
+		line string
+		want bool
+	}{
+		{jsDefLine, "export const ProbeId = 244837814094590n;", true},
+		{jsDefLine, "export class ProbeHeader {", true},
+		{jsDefLine, "export function writeProbeHeader(value, stream) {", true},
+		{jsDefLine, "const e0 = value.Items[i0];", false}, // function-local alias, trimmed
+		{jsDefLine, "const NUMBER_SCRATCH = { value: 0 };", false},
+		{dartTypeDefLine, "final class ProbeHeader {", true},
+		{dartTypeDefLine, "abstract final class Weapon {", true},
+		{dartTypeDefLine, "enum Team {", true},
+		{dartTypeDefLine, "extension ProbeWire on ProbeHeader {", true},
+		{dartTypeDefLine, "int w = 1073741824;", false},
+		{dartTypeDefLine, "final int hi;", false},
+	}
+	for _, c := range match {
+		if got := c.re.MatchString(c.line); got != c.want {
+			t.Errorf("%v on %q: got %v, want %v", c.re, c.line, got, c.want)
+		}
 	}
 }
