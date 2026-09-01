@@ -50,11 +50,10 @@ table ShipConfig
 }
 ```
 
-A table body is a type body — the full field grammar of SPEC §4.2, hosted
-by `table`: bare and ranged integers, `bits(N)`, `bool`, floats and
-compressed floats, `fixed`/`ufixed`, enums, flags, strings, bytes, bounded
-arrays, unions, `if` branches, and declared types as field groups. Two
-additions:
+A table body is a type body — the field grammar of SPEC §4.2, hosted by
+`table`: bare and ranged integers, `bits(N)`, `bool`, floats and
+compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
+`if` branches, and declared types as field groups. Two additions:
 
 - **Tables nest.** A field may be an inline anonymous subtable (above) or
   a named table used as a field type. Nesting is by value; a bounded array
@@ -62,8 +61,11 @@ additions:
   through any chain — recursion is refused with the cycle named.
 - **`was` — the rename attribute** (§5).
 
-One exclusion, inherited from the wire kinds (§3): the 128-bit family has
-no table-wire kind and is refused in table bodies by name.
+The exclusions, each refused by name: `fixed`/`ufixed` and the 128-bit
+family have no table-wire kind; `const`/`reserved`/`align` describe bit
+positions, and the table wire has none; arrays of unions are a named
+follow-on; and string/bytes/array extents past 65535 exceed the wire's
+u16 lengths and counts (§3).
 
 ## 3. The wire
 
@@ -78,16 +80,15 @@ schema's codebase:
   (§5); the kind is one of the closed kind set: bool, i8..i64, u8..u64,
   f32, f64, string, array, union, table.
 - Variable-length payloads — strings, bytes, arrays, unions, nested
-  tables — are **length-prefixed**, so any reader can skip any field
-  without understanding it, and any parent can hand each nested table to a
-  different worker (§7).
+  tables — are **length-prefixed** (lengths and counts as u16), so any
+  reader can skip any field without understanding it, and any parent can
+  hand each nested table to a different worker (§7).
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
-  narrowest unsigned kind that holds it, compressed floats as f32/f64,
-  fixed point as its integer storage, enums and flags as their unsigned
-  storage. The bounds, resolutions and enum vocabularies stay on the
-  DECLARATION side, where they validate and clamp on load (§4) — they
-  never change what the bytes look like.
+  narrowest unsigned kind that holds it, compressed floats as f32, enums
+  and flags as their unsigned storage. The bounds, resolutions and enum
+  vocabularies stay on the DECLARATION side, where they validate and
+  clamp on load (§4) — they never change what the bytes look like.
 
 The same bytes serve every use: a file on disk, a blob in memory, a
 payload handed from a tool to a game. Save and load are symmetric over
@@ -183,7 +184,10 @@ redeploy by a content edit. This independence is held by test.
 
 ## 9. Refused by name
 
-- `table` bodies containing the 128-bit family (§2 — no wire kind).
+- `table` bodies containing `fixed`/`ufixed` or the 128-bit family (§2 —
+  no wire kind), `const`/`reserved`/`align` (§2 — no bit positions),
+  arrays of unions (§2 — named follow-on), or extents past 65535 (§2 —
+  u16 lengths).
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name (§5).
 - Id collisions, hash or `was`-induced (§5).
@@ -237,7 +241,8 @@ draft this document previously carried is dead; these replace it.
 - A generic dump/diff tool over the reflection surface.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
-- 128-bit table-wire kinds, if a need ever materializes.
+- Arrays of unions in table bodies.
+- `fixed` and 128-bit table-wire kinds, if a need ever materializes.
 - A field-level name-mapping attribute for text-format tooling (the
   JSON-authoring surface real pipelines pair with binary tables) —
   tool-side, never wire.
