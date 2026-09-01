@@ -4,12 +4,12 @@
 // AGPL-3.0, its output is not.
 // package realworld — protocol id 0x8f7228a19854fbb2
 //
-// THE FLAT TIER — the shipped JavaScript wire path: the serialize.js
-// two-lane bitpacker inlined at every field, constant widths and masks,
-// zero function calls. Same generated classes, same bytes as the runtime
-// tier (a standing CI gate); the runtime tier remains the diagnostic and
-// reference surface — re-read a failing buffer through it to learn WHICH
-// operation failed and why.
+// THE FLAT TIER — the shipped JavaScript wire path: a single-word 32-bit
+// bitpacker inlined at every field (byte-identical wire to serialize.js),
+// constant widths and masks, zero function calls. Same generated classes,
+// same bytes as the runtime tier (a standing CI gate); the runtime tier
+// remains the diagnostic and reference surface — re-read a failing buffer
+// through it to learn WHICH operation failed and why.
 //
 // Write<Name>Flat(value, view) -> bytes written, or -1 when the checked
 // writer refuses an out-of-contract value (the production writer trusts
@@ -39,131 +39,75 @@ export const FLAT_READ_SLACK = 8;
 // ---- type RealPacket: the flat codec ----
 
 function writeRealPacketFlatProduction(value, view) {
-  let v = 0, s = 0, x = 0, n = 0, t0 = 0, t1 = 0;
+  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
+  let lo = 0, sb = 0, wi = 0;
   v = ((((value.F001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 21;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 21;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (21 - sb);
   }
   SC.setFloat64(0, value.F002F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((((value.F003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 21;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 21;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (21 - sb);
   }
   x = Math.fround(value.F004Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 15;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 15;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (15 - sb);
   }
   v = ((value.F005Uint) & 0x1fff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 13;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 13;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (13 - sb);
   }
   v = ((((value.F006Int >>> 0) - 4294965783) >>> 0) & 0xfff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 12;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 12;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (12 - sb);
   }
   x = value.F007F32;
   if (x === x) {
@@ -177,73 +121,41 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.F008U64), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((((value.F009Int >>> 0) - 4294967274) >>> 0) & 0x3f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 6;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   x = value.F010F32;
   if (x === x) {
@@ -257,55 +169,31 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.F011Bits & 0x3ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 10;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 10;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
   v = value.F012Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F012Bool) {
     x = value.F013F32;
@@ -320,142 +208,78 @@ function writeRealPacketFlatProduction(value, view) {
       if (t1 === 0) { t1 = 0x400000; }
       v = (t0 | 0x7f800000 | t1) >>> 0;
     }
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = ((value.F014Uint) & 0x3ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 10;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 10;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (10 - sb);
     }
     v = ((((value.F015Int >>> 0) - 4294967275) >>> 0) & 0x3f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 6;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 6;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (6 - sb);
     }
     v = ((((value.F016Fixed >>> 0) - 4257218560) >>> 0) & 0x7ffffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 27;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 27;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (27 - sb);
     }
     v = ((value.F017Uint) & 0x1fff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 13;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 13;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
   v = ((((value.F018Int >>> 0) - 4294966462) >>> 0) & 0x7ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   SC.setFloat64(0, value.F019F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.F020F32;
   if (x === x) {
@@ -469,38 +293,22 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((value.F021Ufixed) & 0x7ffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 27;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 27;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
   x = value.F022F32;
   if (x === x) {
@@ -514,38 +322,22 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.F023Bits & 0x1ffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 25;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 25;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   x = value.F024F32;
   if (x === x) {
@@ -559,127 +351,71 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((((value.F025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   v = (value.F026Bits & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   x = Math.fround(value.F027Cf32);
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 16.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   v = (value.F028Bits & 0xf) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 4;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 4;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.F029I64), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.F030F32;
   if (x === x) {
@@ -693,242 +429,130 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.F031Bits & 0x1) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = ((((value.F032Int >>> 0) - 4294967293) >>> 0) & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   v = ((value.F033Uint) & 0x3ffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 18;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 18;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (18 - sb);
   }
   v = ((value.F034Uint) & 0x3fff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 14;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 14;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (14 - sb);
   }
   v = (value.F035Bits & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   v = (value.F036Enum & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   v = value.F037Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = value.F038Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = (value.F039Bits & 0x7ffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 19;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 19;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (19 - sb);
   }
   v = ((((value.F040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   v = ((((value.F041Int >>> 0) - 4294967241) >>> 0) & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   v = (value.F042Bits & 0x3fffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 30;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 30;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (30 - sb);
   }
   v = value.F043Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F043Bool) {
     x = value.F044F32;
@@ -943,177 +567,97 @@ function writeRealPacketFlatProduction(value, view) {
       if (t1 === 0) { t1 = 0x400000; }
       v = (t0 | 0x7f800000 | t1) >>> 0;
     }
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = (value.F045Bits & 0xfff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 12;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 12;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (12 - sb);
     }
     v = ((value.F046Uint) & 0x1ffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 17;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 17;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (17 - sb);
     }
     v = ((((value.F047Int >>> 0) - 4294536320) >>> 0) & 0xfffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 20;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 20;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (20 - sb);
     }
   }
   SC.setFloat64(0, value.F048F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((value.F049Ufixed) & 0xffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   v = value.F050Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F050Bool) {
     v = value.F051Bool ? 1 : 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 1;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 1;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
     v = ((((value.F052Int >>> 0) - 4294967239) >>> 0) & 0x7f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 7;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 7;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (7 - sb);
     }
     x = value.F053F32;
     if (x === x) {
@@ -1127,90 +671,50 @@ function writeRealPacketFlatProduction(value, view) {
       if (t1 === 0) { t1 = 0x400000; }
       v = (t0 | 0x7f800000 | t1) >>> 0;
     }
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = ((((value.F054Int >>> 0) - 4294967261) >>> 0) & 0x7f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 7;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 7;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (7 - sb);
     }
   }
   v = value.F055Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = ((((value.F056Int >>> 0) - 4294967283) >>> 0) & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   v = ((((value.F057Int >>> 0) - 4294967281) >>> 0) & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   x = value.F058F32;
   if (x === x) {
@@ -1224,898 +728,497 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   SC.setFloat64(0, value.F059F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.F060Bits & 0xff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 8;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 8;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   x = Math.fround(value.F061Cf32);
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 360.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   v = ((value.F062Uint) & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.F063I64), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((value.F064Uint) & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   x = Math.fround(value.F065Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 6;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   v = ((value.F066Ufixed) & 0xffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   x = Math.fround(value.F067Cf32);
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 10;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 10;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
   x = Math.fround(value.F068Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 2000.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   v = (value.F069Bits & 0x7ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   v = ((value.F070Uint) & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 2;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
   x = Math.fround(value.F071Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   x = Math.fround(value.F072Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 100.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 14;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 14;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (14 - sb);
   }
   v = ((((value.F073Int >>> 0) - 4294967292) >>> 0) & 0xf) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 4;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 4;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
   v = value.F074Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F074Bool) {
     SC.setBigUint64(0, BigInt.asUintN(64, value.F075U64), true);
     v = SC.getUint32(0, true);
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = SC.getUint32(4, true);
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = ((((value.F076Int >>> 0) - 4294941078) >>> 0) & 0xffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 16;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 16;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (16 - sb);
     }
     v = ((((value.F077Int >>> 0) - 4294967279) >>> 0) & 0x3f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 6;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 6;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (6 - sb);
     }
     v = (value.F078Bits & 0x1ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 9;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 9;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (9 - sb);
     }
     v = ((value.F079Uint) & 0x1f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 5;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 5;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
   }
   v = value.F080Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = (value.F081Bits & 0x1fffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 29;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 29;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
   v = (value.F082Bits & 0x1ffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 25;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 25;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   v = (value.F083Enum & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   v = ((value.F084Ufixed) & 0xff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 8;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 8;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   v = (value.F085Bits & 0x1fffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 21;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 21;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (21 - sb);
   }
   v = ((value.F086Uint) & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   SC.setFloat64(0, value.F087F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((((value.F088Int >>> 0) - 4294966602) >>> 0) & 0x7ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(48, value.F089Bits), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true) & 0xffff;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   v = ((value.F090Uint) & 0xff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 8;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 8;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   v = (Number(BigInt.asUintN(5, value.F091Flags)) & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   v = value.F092Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.F093Bits), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = value.F094Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = ((((value.F095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 28;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 28;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
   v = (value.F096Bits & 0x3ffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 18;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 18;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (18 - sb);
   }
   v = (value.F097Bits & 0xfff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 12;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 12;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (12 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeRealPacketFlatChecked(value, view) {
-  let v = 0, s = 0, x = 0, n = 0, t0 = 0, t1 = 0;
+  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
   let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
+  let lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.F001Int) || value.F001Int < -805495 || value.F001Int > 805495) {
     return -1;
   }
   v = ((((value.F001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 21;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 21;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (21 - sb);
   }
   SC.setFloat64(0, value.F002F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.F003Int) || value.F003Int < -835897 || value.F003Int > 835897) {
     return -1;
   }
   v = ((((value.F003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 21;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 21;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (21 - sb);
   }
   x = Math.fround(value.F004Cf32);
   if (!Number.isFinite(x)) {
@@ -2124,61 +1227,37 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 15;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 15;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (15 - sb);
   }
   if (!Number.isInteger(value.F005Uint) || value.F005Uint < 0 || value.F005Uint > 7316) {
     return -1;
   }
   v = ((value.F005Uint) & 0x1fff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 13;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 13;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (13 - sb);
   }
   if (!Number.isInteger(value.F006Int) || value.F006Int < -1513 || value.F006Int > 1513) {
     return -1;
   }
   v = ((((value.F006Int >>> 0) - 4294965783) >>> 0) & 0xfff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 12;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 12;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (12 - sb);
   }
   x = value.F007F32;
   if (x === x) {
@@ -2192,76 +1271,44 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.F008U64), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.F009Int) || value.F009Int < -22 || value.F009Int > 22) {
     return -1;
   }
   v = ((((value.F009Int >>> 0) - 4294967274) >>> 0) & 0x3f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 6;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   x = value.F010F32;
   if (x === x) {
@@ -2275,55 +1322,31 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.F011Bits & 0x3ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 10;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 10;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
   v = value.F012Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F012Bool) {
     x = value.F013F32;
@@ -2338,157 +1361,93 @@ function writeRealPacketFlatChecked(value, view) {
       if (t1 === 0) { t1 = 0x400000; }
       v = (t0 | 0x7f800000 | t1) >>> 0;
     }
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     if (!Number.isInteger(value.F014Uint) || value.F014Uint < 0 || value.F014Uint > 775) {
       return -1;
     }
     v = ((value.F014Uint) & 0x3ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 10;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 10;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (10 - sb);
     }
     if (!Number.isInteger(value.F015Int) || value.F015Int < -21 || value.F015Int > 21) {
       return -1;
     }
     v = ((((value.F015Int >>> 0) - 4294967275) >>> 0) & 0x3f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 6;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 6;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (6 - sb);
     }
     if (!Number.isInteger(value.F016Fixed) || value.F016Fixed < -37748736 || value.F016Fixed > 37748736) {
       return -1;
     }
     v = ((((value.F016Fixed >>> 0) - 4257218560) >>> 0) & 0x7ffffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 27;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 27;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (27 - sb);
     }
     if (!Number.isInteger(value.F017Uint) || value.F017Uint < 0 || value.F017Uint > 4606) {
       return -1;
     }
     v = ((value.F017Uint) & 0x1fff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 13;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 13;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
   if (!Number.isInteger(value.F018Int) || value.F018Int < -834 || value.F018Int > 834) {
     return -1;
   }
   v = ((((value.F018Int >>> 0) - 4294966462) >>> 0) & 0x7ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   SC.setFloat64(0, value.F019F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.F020F32;
   if (x === x) {
@@ -2502,41 +1461,25 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.F021Ufixed) || value.F021Ufixed < 0 || value.F021Ufixed > 102977536) {
     return -1;
   }
   v = ((value.F021Ufixed) & 0x7ffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 27;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 27;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
   x = value.F022F32;
   if (x === x) {
@@ -2550,38 +1493,22 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.F023Bits & 0x1ffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 25;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 25;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   x = value.F024F32;
   if (x === x) {
@@ -2595,58 +1522,34 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.F025Fixed) || value.F025Fixed < -30464 || value.F025Fixed > 30464) {
     return -1;
   }
   v = ((((value.F025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   v = (value.F026Bits & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   x = Math.fround(value.F027Cf32);
   if (!Number.isFinite(x)) {
@@ -2655,73 +1558,41 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 16.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   v = (value.F028Bits & 0xf) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 4;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 4;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.F029I64), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   x = value.F030F32;
   if (x === x) {
@@ -2735,260 +1606,148 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.F031Bits & 0x1) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (!Number.isInteger(value.F032Int) || value.F032Int < -3 || value.F032Int > 3) {
     return -1;
   }
   v = ((((value.F032Int >>> 0) - 4294967293) >>> 0) & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   if (!Number.isInteger(value.F033Uint) || value.F033Uint < 0 || value.F033Uint > 142780) {
     return -1;
   }
   v = ((value.F033Uint) & 0x3ffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 18;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 18;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (18 - sb);
   }
   if (!Number.isInteger(value.F034Uint) || value.F034Uint < 0 || value.F034Uint > 14149) {
     return -1;
   }
   v = ((value.F034Uint) & 0x3fff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 14;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 14;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (14 - sb);
   }
   v = (value.F035Bits & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   if (!Number.isInteger(value.F036Enum) || value.F036Enum < 0 || value.F036Enum > 5) { // headroom above the wire range cannot ride
     return -1;
   }
   v = (value.F036Enum & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   v = value.F037Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = value.F038Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = (value.F039Bits & 0x7ffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 19;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 19;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (19 - sb);
   }
   if (!Number.isInteger(value.F040Fixed) || value.F040Fixed < -20480 || value.F040Fixed > 20480) {
     return -1;
   }
   v = ((((value.F040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   if (!Number.isInteger(value.F041Int) || value.F041Int < -55 || value.F041Int > 55) {
     return -1;
   }
   v = ((((value.F041Int >>> 0) - 4294967241) >>> 0) & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   v = (value.F042Bits & 0x3fffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 30;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 30;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (30 - sb);
   }
   v = value.F043Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F043Bool) {
     x = value.F044F32;
@@ -3003,189 +1762,109 @@ function writeRealPacketFlatChecked(value, view) {
       if (t1 === 0) { t1 = 0x400000; }
       v = (t0 | 0x7f800000 | t1) >>> 0;
     }
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = (value.F045Bits & 0xfff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 12;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 12;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (12 - sb);
     }
     if (!Number.isInteger(value.F046Uint) || value.F046Uint < 0 || value.F046Uint > 76063) {
       return -1;
     }
     v = ((value.F046Uint) & 0x1ffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 17;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 17;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (17 - sb);
     }
     if (!Number.isInteger(value.F047Int) || value.F047Int < -430976 || value.F047Int > 430976) {
       return -1;
     }
     v = ((((value.F047Int >>> 0) - 4294536320) >>> 0) & 0xfffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 20;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 20;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (20 - sb);
     }
   }
   SC.setFloat64(0, value.F048F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.F049Ufixed) || value.F049Ufixed < 0 || value.F049Ufixed > 49152) {
     return -1;
   }
   v = ((value.F049Ufixed) & 0xffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   v = value.F050Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F050Bool) {
     v = value.F051Bool ? 1 : 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 1;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 1;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
     if (!Number.isInteger(value.F052Int) || value.F052Int < -57 || value.F052Int > 57) {
       return -1;
     }
     v = ((((value.F052Int >>> 0) - 4294967239) >>> 0) & 0x7f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 7;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 7;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (7 - sb);
     }
     x = value.F053F32;
     if (x === x) {
@@ -3199,99 +1878,59 @@ function writeRealPacketFlatChecked(value, view) {
       if (t1 === 0) { t1 = 0x400000; }
       v = (t0 | 0x7f800000 | t1) >>> 0;
     }
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     if (!Number.isInteger(value.F054Int) || value.F054Int < -35 || value.F054Int > 35) {
       return -1;
     }
     v = ((((value.F054Int >>> 0) - 4294967261) >>> 0) & 0x7f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 7;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 7;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (7 - sb);
     }
   }
   v = value.F055Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (!Number.isInteger(value.F056Int) || value.F056Int < -13 || value.F056Int > 13) {
     return -1;
   }
   v = ((((value.F056Int >>> 0) - 4294967283) >>> 0) & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   if (!Number.isInteger(value.F057Int) || value.F057Int < -15 || value.F057Int > 15) {
     return -1;
   }
   v = ((((value.F057Int >>> 0) - 4294967281) >>> 0) & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   x = value.F058F32;
   if (x === x) {
@@ -3305,73 +1944,41 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   SC.setFloat64(0, value.F059F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.F060Bits & 0xff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 8;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 8;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   x = Math.fround(value.F061Cf32);
   if (!Number.isFinite(x)) {
@@ -3380,96 +1987,56 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 360.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   if (!Number.isInteger(value.F062Uint) || value.F062Uint < 0 || value.F062Uint > 503) {
     return -1;
   }
   v = ((value.F062Uint) & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.F063I64), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.F064Uint) || value.F064Uint < 0 || value.F064Uint > 299) {
     return -1;
   }
   v = ((value.F064Uint) & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   x = Math.fround(value.F065Cf32);
   if (!Number.isFinite(x)) {
@@ -3478,41 +2045,25 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 6;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (!Number.isInteger(value.F066Ufixed) || value.F066Ufixed < 0 || value.F066Ufixed > 32768) {
     return -1;
   }
   v = ((value.F066Ufixed) & 0xffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   x = Math.fround(value.F067Cf32);
   if (!Number.isFinite(x)) {
@@ -3521,21 +2072,13 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 10;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 10;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
   x = Math.fround(value.F068Cf32);
   if (!Number.isFinite(x)) {
@@ -3544,58 +2087,34 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 2000.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   v = (value.F069Bits & 0x7ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   if (!Number.isInteger(value.F070Uint) || value.F070Uint < 0 || value.F070Uint > 2) {
     return -1;
   }
   v = ((value.F070Uint) & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 2;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
   x = Math.fround(value.F071Cf32);
   if (!Number.isFinite(x)) {
@@ -3604,21 +2123,13 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   x = Math.fround(value.F072Cf32);
   if (!Number.isFinite(x)) {
@@ -3627,557 +2138,316 @@ function writeRealPacketFlatChecked(value, view) {
   n = Math.fround(Math.fround(x - 0.0) / 100.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 14;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 14;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (14 - sb);
   }
   if (!Number.isInteger(value.F073Int) || value.F073Int < -4 || value.F073Int > 4) {
     return -1;
   }
   v = ((((value.F073Int >>> 0) - 4294967292) >>> 0) & 0xf) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 4;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 4;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
   v = value.F074Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (value.F074Bool) {
     SC.setBigUint64(0, BigInt.asUintN(64, value.F075U64), true);
     v = SC.getUint32(0, true);
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = SC.getUint32(4, true);
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     if (!Number.isInteger(value.F076Int) || value.F076Int < -26218 || value.F076Int > 26218) {
       return -1;
     }
     v = ((((value.F076Int >>> 0) - 4294941078) >>> 0) & 0xffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 16;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 16;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (16 - sb);
     }
     if (!Number.isInteger(value.F077Int) || value.F077Int < -17 || value.F077Int > 17) {
       return -1;
     }
     v = ((((value.F077Int >>> 0) - 4294967279) >>> 0) & 0x3f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 6;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 6;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (6 - sb);
     }
     v = (value.F078Bits & 0x1ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 9;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 9;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (9 - sb);
     }
     if (!Number.isInteger(value.F079Uint) || value.F079Uint < 0 || value.F079Uint > 17) {
       return -1;
     }
     v = ((value.F079Uint) & 0x1f) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 5;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 5;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
   }
   v = value.F080Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   v = (value.F081Bits & 0x1fffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 29;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 29;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
   v = (value.F082Bits & 0x1ffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 25;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 25;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   if (!Number.isInteger(value.F083Enum) || value.F083Enum < 0 || value.F083Enum > 5) { // headroom above the wire range cannot ride
     return -1;
   }
   v = (value.F083Enum & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   if (!Number.isInteger(value.F084Ufixed) || value.F084Ufixed < 0 || value.F084Ufixed > 128) {
     return -1;
   }
   v = ((value.F084Ufixed) & 0xff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 8;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 8;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   v = (value.F085Bits & 0x1fffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 21;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 21;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (21 - sb);
   }
   if (!Number.isInteger(value.F086Uint) || value.F086Uint < 0 || value.F086Uint > 399) {
     return -1;
   }
   v = ((value.F086Uint) & 0x1ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 9;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 9;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   SC.setFloat64(0, value.F087F64, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.F088Int) || value.F088Int < -694 || value.F088Int > 694) {
     return -1;
   }
   v = ((((value.F088Int >>> 0) - 4294966602) >>> 0) & 0x7ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(48, value.F089Bits), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true) & 0xffff;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 16;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 16;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   if (!Number.isInteger(value.F090Uint) || value.F090Uint < 0 || value.F090Uint > 214) {
     return -1;
   }
   v = ((value.F090Uint) & 0xff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 8;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 8;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   if (BigInt.asUintN(64, value.F091Flags) >= 32n) { // a mask bit above the wire width cannot ride
     return -1;
   }
   v = (Number(BigInt.asUintN(5, value.F091Flags)) & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   v = value.F092Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   SC.setBigUint64(0, BigInt.asUintN(64, value.F093Bits), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = value.F094Bool ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 1;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
   if (!Number.isInteger(value.F095Fixed) || value.F095Fixed < -103350272 || value.F095Fixed > 103350272) {
     return -1;
   }
   v = ((((value.F095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 28;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 28;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
   v = (value.F096Bits & 0x3ffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 18;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 18;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (18 - sb);
   }
   v = (value.F097Bits & 0xfff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 12;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 12;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (12 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }

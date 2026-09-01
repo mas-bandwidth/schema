@@ -20,232 +20,134 @@ export const FLAT_READ_SLACK = 8;
 // ---- type RenderSprite: the flat codec ----
 
 function writeRenderSpriteFlatProduction(value, view) {
-  let v = 0, s = 0;
+  let v = 0;
   let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
+  let lo = 0, sb = 0, wi = 0;
   SC.setBigUint64(0, BigInt.asUintN(64, value.SortKey), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.MeshId) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.MaterialId) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((value.Layer) & 0xff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 8;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 8;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   v = (value.Team & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 2;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeRenderSpriteFlatChecked(value, view) {
-  let v = 0, s = 0;
+  let v = 0;
   let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
+  let lo = 0, sb = 0, wi = 0;
   SC.setBigUint64(0, BigInt.asUintN(64, value.SortKey), true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.MeshId) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.MaterialId) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((value.Layer) & 0xff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 8;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 8;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   if (!Number.isInteger(value.Team) || value.Team < 0 || value.Team > 2) { // headroom above the wire range cannot ride
     return -1;
   }
   v = (value.Team & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 2;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -322,343 +224,197 @@ export function ReadRenderSpriteFlat(value, view, numBits) {
 // ---- type RenderBlock: the flat codec ----
 
 function writeRenderBlockFlatProduction(value, view) {
-  let v = 0, s = 0;
+  let v = 0;
   let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
+  let lo = 0, sb = 0, wi = 0;
   v = (value.WorkerIndex) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.SpriteCountHint) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = ((value.SpritesCount) & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   for (let i0 = 0; i0 < value.SpritesCount; i0++) {
     const e0 = value.Sprites[i0];
     SC.setBigUint64(0, BigInt.asUintN(64, e0.SortKey), true);
     v = SC.getUint32(0, true);
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = SC.getUint32(4, true);
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = (e0.MeshId) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = (e0.MaterialId) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = ((e0.Layer) & 0xff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 8;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 8;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
     v = (e0.Team & 0x3) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 2;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeRenderBlockFlatChecked(value, view) {
-  let v = 0, s = 0;
+  let v = 0;
   let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
+  let lo = 0, sb = 0, wi = 0;
   v = (value.WorkerIndex) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = (value.SpriteCountHint) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   if (!Number.isInteger(value.SpritesCount) || value.SpritesCount < 0 || value.SpritesCount > 64) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
   v = ((value.SpritesCount) & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   for (let i0 = 0; i0 < value.SpritesCount; i0++) {
     const e0 = value.Sprites[i0];
     SC.setBigUint64(0, BigInt.asUintN(64, e0.SortKey), true);
     v = SC.getUint32(0, true);
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = SC.getUint32(4, true);
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = (e0.MeshId) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = (e0.MaterialId) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 32;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 32;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     v = ((e0.Layer) & 0xff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 8;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 8;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
     if (!Number.isInteger(e0.Team) || e0.Team < 0 || e0.Team > 2) { // headroom above the wire range cannot ride
       return -1;
     }
     v = (e0.Team & 0x3) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 2;
-    if (sb >= 64) {
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }

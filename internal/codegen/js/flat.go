@@ -1,7 +1,7 @@
 // The FLAT tier: the second emission surface of the js backend — pure
-// generated JavaScript with the serialize.js two-lane bitpacker discipline
-// inlined at every field, compile-time-constant widths and masks, zero
-// function calls. THE JavaScript path under the ruling ("whichever correct
+// generated JavaScript with a single-word 32-bit bitpacker inlined at every
+// field (byte-identical wire to serialize.js's packer), compile-time-constant
+// widths and masks, zero function calls. THE JavaScript path under the ruling ("whichever correct
 // implementation is fastest is the one we use for JavaScript"): the
 // flattened-JS probe measured it 8-10x the runtime-call tier and within
 // 3.2-5.1x of native C (era flatjs-probe, M2 Air, node 26.7).
@@ -41,10 +41,10 @@
 // flat tier writes and reads every pinned corpus instance against the same
 // C++-pinned testdata/wire goldens the six languages are held to, plus a
 // standing cross-tier equivalence gate against the runtime tier (bytes,
-// fields AND verdicts). The two-lane merge and 64-bit-window read kernels
-// below transliterate the probe's gen_flat.mjs, whose output those same
-// pins held; the wide-op lane orders (low dword first; 32-bit groups least
-// significant first) are serialize.js src/streams.js's own.
+// fields AND verdicts). The write merge stages one 32-bit word (mergeW); the
+// read side keeps the probe's 64-bit-window kernels; the wide-op lane orders
+// (low dword first; 32-bit groups least significant first) are serialize.js
+// src/streams.js's own.
 package js
 
 import (
@@ -124,12 +124,12 @@ func (g *fgen) assemble() []byte {
 	fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", g.unit.Package, g.unit.ProtocolId)
 	if g.home {
 		h.WriteString("//\n")
-		h.WriteString("// THE FLAT TIER — the shipped JavaScript wire path: the serialize.js\n")
-		h.WriteString("// two-lane bitpacker inlined at every field, constant widths and masks,\n")
-		h.WriteString("// zero function calls. Same generated classes, same bytes as the runtime\n")
-		h.WriteString("// tier (a standing CI gate); the runtime tier remains the diagnostic and\n")
-		h.WriteString("// reference surface — re-read a failing buffer through it to learn WHICH\n")
-		h.WriteString("// operation failed and why.\n")
+		h.WriteString("// THE FLAT TIER — the shipped JavaScript wire path: a single-word 32-bit\n")
+		h.WriteString("// bitpacker inlined at every field (byte-identical wire to serialize.js),\n")
+		h.WriteString("// constant widths and masks, zero function calls. Same generated classes,\n")
+		h.WriteString("// same bytes as the runtime tier (a standing CI gate); the runtime tier\n")
+		h.WriteString("// remains the diagnostic and reference surface — re-read a failing buffer\n")
+		h.WriteString("// through it to learn WHICH operation failed and why.\n")
 		h.WriteString("//\n")
 		h.WriteString("// Write<Name>Flat(value, view) -> bytes written, or -1 when the checked\n")
 		h.WriteString("// writer refuses an out-of-contract value (the production writer trusts\n")
@@ -194,24 +194,24 @@ func maskHex(bits int64) string {
 	return fmt.Sprintf("0x%x", (int64(1)<<bits)-1)
 }
 
-// mergeW is the two-lane merge of v (already masked to bits) into the write
-// state — serialize.js src/bitpacker.js inlined, constant width.
+// mergeW merges v (already masked to bits) into the single 32-bit staging
+// word — same wire bytes as serialize.js's packer (LSB-first into consecutive
+// little-endian words), one data-dependent branch per field. The invariant is
+// that lo's bits at and above sb are zero: `v << sb` contributes bits
+// [sb, min(sb+bits, 32)) (a JS shift drops the rest), and the flush recovers
+// the dropped high bits as the new word's low bits, where `bits - sb` (the
+// post-flush sb) is the recovered count. The sb === 0 guard covers the one
+// case where the recovery shift would be 32 (a no-op shift in JS, not zero).
+// Measured against the previous two-lane 64-bit staging form: 1.44x on a
+// mixed-width field group (node 26, M2).
 func (g *fgen) mergeW(bits int64, ind string) {
-	g.pf("%ss = sb;\n", ind)
-	g.pf("%sif (s < 32) {\n", ind)
-	g.pf("%s  lo = (lo | (v << s)) >>> 0;\n", ind)
-	g.pf("%s  if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s  hi = (hi | (v << (s - 32))) >>> 0;\n", ind)
-	g.pf("%s}\n", ind)
-	g.pf("%ssb = s + %d;\n", ind, bits)
-	g.pf("%sif (sb >= 64) {\n", ind)
+	g.pf("%slo = (lo | (v << sb)) >>> 0;\n", ind)
+	g.pf("%ssb += %d;\n", ind, bits)
+	g.pf("%sif (sb >= 32) {\n", ind)
 	g.pf("%s  view.setUint32(wi, lo, true);\n", ind)
-	g.pf("%s  view.setUint32(wi + 4, hi, true);\n", ind)
-	g.pf("%s  wi += 8;\n", ind)
-	g.pf("%s  lo = s === 32 ? 0 : v >>> (64 - s);\n", ind)
-	g.pf("%s  hi = 0;\n", ind)
-	g.pf("%s  sb -= 64;\n", ind)
+	g.pf("%s  wi += 4;\n", ind)
+	g.pf("%s  sb -= 32;\n", ind)
+	g.pf("%s  lo = sb === 0 ? 0 : v >>> (%d - sb);\n", ind, bits)
 	g.pf("%s}\n", ind)
 }
 
@@ -350,7 +350,7 @@ func (g *fgen) resetNeeds() {
 // writeLocals renders the write-side local declarations the body needs.
 func (g *fgen) writeLocals(ind string) string {
 	var b strings.Builder
-	locals := []string{"v = 0", "s = 0"}
+	locals := []string{"v = 0"}
 	if g.needX {
 		locals = append(locals, "x = 0")
 	}
@@ -399,11 +399,10 @@ func (g *fgen) emitWriteVariant(st *ir.Struct, checked bool) {
 	g.body.WriteString(g.fn.String())
 	g.fn.Reset()
 	g.body.WriteString(g.writeLocals("  "))
-	g.body.WriteString("  let lo = 0, hi = 0, sb = 0, wi = 0;\n")
+	g.body.WriteString("  let lo = 0, sb = 0, wi = 0;\n")
 	g.body.WriteString(body)
 	g.body.WriteString("  if (sb !== 0) {\n")
 	g.body.WriteString("    view.setUint32(wi, lo, true);\n")
-	g.body.WriteString("    view.setUint32(wi + 4, hi, true);\n")
 	g.body.WriteString("  }\n")
 	g.body.WriteString("  return ((wi * 8 + sb) + 7) >> 3;\n")
 	g.body.WriteString("}\n\n")
@@ -483,17 +482,12 @@ func (g *fgen) emitWriteRaw(value *big.Int, bits int64, ind string) {
 // zeros (v contributes nothing, so only the counter moves — with the flush
 // kept, exactly as the merge would).
 func (g *fgen) emitWriteAlign(ind string) {
-	g.pf("%ss = sb & 7;\n", ind)
-	g.pf("%sif (s !== 0) {\n", ind)
-	g.pf("%s  sb += 8 - s;\n", ind)
-	g.pf("%s  if (sb >= 64) {\n", ind)
-	g.pf("%s    view.setUint32(wi, lo, true);\n", ind)
-	g.pf("%s    view.setUint32(wi + 4, hi, true);\n", ind)
-	g.pf("%s    wi += 8;\n", ind)
-	g.pf("%s    lo = 0;\n", ind)
-	g.pf("%s    hi = 0;\n", ind)
-	g.pf("%s    sb -= 64;\n", ind)
-	g.pf("%s  }\n", ind)
+	g.pf("%ssb = (sb + 7) & -8;\n", ind)
+	g.pf("%sif (sb === 32) {\n", ind)
+	g.pf("%s  view.setUint32(wi, lo, true);\n", ind)
+	g.pf("%s  wi += 4;\n", ind)
+	g.pf("%s  lo = 0;\n", ind)
+	g.pf("%s  sb = 0;\n", ind)
 	g.pf("%s}\n", ind)
 }
 
