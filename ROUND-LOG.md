@@ -120,3 +120,97 @@ The named candidate — read-side window chunking — is where the time is.
   deterministic zero across three consecutive invocations, which is what makes
   the branch's zero mean something. Verdicts and non-NaN fields stay under the
   full comparison, and that is where a read-side change lives.
+
+- **UNIT 2 — wide offset fields decoded in the number domain.** A fresh
+  profile of the post-UNIT-1 floor put the single largest line at
+  `value.Flux = -2^100n + bg` (11.1% of read ticks), with the two
+  `bg |= SC.getBigUint64(0, true) << 64n` assemblies at 7.1% and the whole
+  BigInt lane at ~21%. A 128-bit-domain BigInt operation is multi-digit and
+  allocating; the shape cost a second `getBigUint64`, a shift by 64, an or,
+  a BigInt comparison and a BigInt add.
+
+  When a wide field is more than 64 bits and its HIGH half is at most 53 bits,
+  that half is an exact Number. The range refusal then splits across the two
+  halves (numeric on the high, and the low comparison only runs on the exact
+  boundary), the offset is a numeric add, and exactly ONE signed 64-bit BigInt
+  comes out of the scratch — a shift and an add is all that is left.
+
+  Conditions, every one required for exactness and all checked in the emitter:
+  bits in (64, 117]; `min` a nonzero multiple of 2^64, so the offset touches
+  only the high half and the low 64 bits pass through with no borrow; and
+  both `min`'s high half and the adjusted high half inside 2^53. Anything else
+  keeps the general wide path untouched — extending it to a full-width high
+  half, or to an offset with low bits, is a named follow-on.
+
+  The high word is emitted as `(nw - nl) / 4294967296` with `nl = nw >>> 0`,
+  not as a rounding function of `nw / 2^32`: `nw - nl` is an exact multiple of
+  2^32, so the division is exact and there is no rounding mode in the
+  argument at all.
+
+  | path | ratio (3 invocations) | null |
+  |---|---|---|
+  | **read** | **1.0781, 1.0766, 1.0742** | ±0.9% |
+  | **round_trip** | **1.0444, 1.0430, 1.0443** | ±0.3% |
+
+  **Cumulative for the branch against `origin/main`: read 1.4199 / 1.4175 /
+  1.4185, round_trip 1.2250 / 1.2286 / 1.2305.**
+
+  **The negative control found a hole in the oracles, and closing it is part
+  of this unit.** With the high word taken as `Math.trunc(nw / 2^32)` instead
+  of the exact form — the precise bug the shape invites, wrong only when the
+  adjusted high half is negative and not a multiple of 2^32 — **`test/js`
+  stayed green and the buffer-mutation differential stayed green across
+  189,120 cases.** Neither can reach that band: `BenchMixed`'s header carries
+  a pinned magic constant, so a random or bit-flipped buffer is refused long
+  before any field is read, and the pinned corpus's own `Flux` values all sit
+  above zero.
+
+  What does reach it is SEEDED INSTANCE MUTATION (the #237 review's method):
+  decode a pinned instance, perturb ONE leaf across its own domain, re-encode
+  through the writer this round does not touch, and run both readers on the
+  bytes. One leaf at a time is the load-bearing detail — the checked writer
+  refuses a whole instance for any single out-of-contract field, so mutating
+  everything at once produces refusals and the deep domains never encode. On
+  that oracle the `trunc` control goes red immediately on `BenchMixed.Flux`,
+  and a direct probe of the band (`Flux` at -1, -2, -2^32-1, -2^64, -2^70+7,
+  -2^99-12345) shows 7 of 11 values decoding wrong. Restored: green.
+
+  Both oracles, both NODE_ENV modes, against `origin/main`'s readers:
+  **152,000 single-leaf instance mutations (129,829 / 152,000 encoded) and
+  263,360 buffer cases per mode, zero divergences.**
+
+## Refusals, with numbers
+
+Each was prototyped on the paired instrument against the same nulls, and each
+is reported because a measured refusal is a deliverable.
+
+- **Window carry** — when a window opens exactly 32 bits after the previous
+  one the cursor's byte index has advanced by exactly 4, so the previous
+  window's `whi` IS the new `wlo` and `s2` is unchanged: one move and one load
+  instead of two loads. Prototyped over the chunked tree, 20 windows carried,
+  wire gate 64/64 byte-identical. **1.0060, 1.0123, 1.0039 against a ±0.9%
+  null** — two of three inside the null. NOT TAKEN: the load it saves is
+  already an L1 hit, and after UNIT 1 the read path is not load-bound.
+
+- **Small-value BigInt table** — the elixir round's decode-table lever
+  (#240's lever C) applied to `e0.Damage = BigInt(v)`, an 8-bit wide field:
+  a frozen 256-entry array of BigInt constants, indexed instead of
+  constructed. Wire gate green. **0.9718, 0.9709, 0.9706 — measurably
+  SLOWER**, consistently. NOT TAKEN, and the reason is worth carrying: V8's
+  `BigInt(smallNumber)` beats a heap-array load of a shared BigInt, so the
+  table lever does not transfer from the BEAM to V8. (Its ceiling, with the
+  construction replaced by a literal, was 1.049–1.059 — the whole gap is the
+  table's own cost.)
+
+- **BigInt range refusals in the number domain**, on their own: ceiling
+  measured with both `bg > Rn` comparisons removed outright — **1.0083,
+  1.0060, inside the ±0.9% null**. A BigInt comparison allocates nothing;
+  it is not where the lane's cost is. Folded into UNIT 2 where it is free,
+  never pursued on its own.
+
+- **64-bit offset fields decoded in the number domain** (`WorldTime`, 41 bits,
+  raw range 2×10^12 — comfortably inside 2^53): ceiling measured with the
+  refusal AND the offset add removed outright — **0.9953, 0.9995, inside the
+  null**. A 64-bit BigInt is one or two digits and its ops are cheap; only
+  the 128-bit domain pays. This is why UNIT 2 is gated at `bits > 64` rather
+  than at "fits in 2^53".

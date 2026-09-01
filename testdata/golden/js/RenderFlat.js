@@ -150,50 +150,43 @@ export function ReadRenderSpriteFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(0, v, true);
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   value.SortKey = bg;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   value.MeshId = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   value.MaterialId = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 8;
   v = (out & 0xff) >>> 0;
   value.Layer = v;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 2;
-  v = (out & 0x3) >>> 0;
+  v = (out >>> 8) & 0x3;
   if (v > 2) { // headroom above the wire range is refused
     return false;
   }
@@ -397,17 +390,17 @@ export function ReadRenderBlockFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   value.WorkerIndex = v;
+  br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 32;
   v = out >>> 0;
   value.SpriteCountHint = v;
+  br += 32;
   if (br + 7 > numBits) {
     return false;
   }
@@ -416,12 +409,12 @@ export function ReadRenderBlockFlat(value, view, numBits) {
   whi = view.getUint32(bi + 4, true);
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  br += 7;
   v = (out & 0x7f) >>> 0;
   if (v > 64) { // the count guards the loop — reject, never clamp
     return false;
   }
   value.SpritesCount = v;
+  br += 7;
   if (br + value.SpritesCount * 138 > numBits) {
     return false;
   }
@@ -432,54 +425,48 @@ export function ReadRenderBlockFlat(value, view, numBits) {
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(0, v, true);
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
     e0.SortKey = bg;
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     e0.MeshId = v;
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 32;
     v = out >>> 0;
     e0.MaterialId = v;
+    br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 8;
     v = (out & 0xff) >>> 0;
     e0.Layer = v;
-    bi = br >>> 3;
-    wlo = view.getUint32(bi, true);
-    whi = view.getUint32(bi + 4, true);
-    s2 = br & 7;
-    out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-    br += 2;
-    v = (out & 0x3) >>> 0;
+    v = (out >>> 8) & 0x3;
     if (v > 2) { // headroom above the wire range is refused
       return false;
     }
     e0.Team = v;
+    br += 10;
   }
   return true;
 }

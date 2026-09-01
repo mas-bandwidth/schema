@@ -2613,7 +2613,7 @@ export const WriteBenchMixedFlat = PRODUCTION ? writeBenchMixedFlatProduction : 
 // ReadBenchMixedFlat(value, view, numBits) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
 export function ReadBenchMixedFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0;
   let bg = 0n;
   let br = 0;
   if (br + 353 > numBits) {
@@ -3123,7 +3123,7 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
-  SC.setUint32(0, v, true);
+  nw = v;
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3131,12 +3131,15 @@ export function ReadBenchMixedFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x3f) >>> 0;
-  SC.setUint32(4, v, true);
-  bg |= SC.getBigUint64(0, true) << 64n;
-  if (bg > 2535301200456458802993406410752n) { // a smuggled offset is refused
+  nw = v * 4294967296 + nw;
+  if (nw > 137438953472 || (nw === 137438953472 && bg > 0n)) { // a smuggled offset is refused
     return false;
   }
-  value.Flux = -1267650600228229401496703205376n + bg;
+  nw += -68719476736;
+  nl = nw >>> 0;
+  SC.setUint32(0, nl, true);
+  SC.setInt32(4, (nw - nl) / 4294967296, true);
+  value.Flux = (SC.getBigInt64(0, true) << 64n) + bg;
   v = (out >>> 6) & 0xffff;
   if (v > 64000) { // a smuggled raw offset is refused
     return false;

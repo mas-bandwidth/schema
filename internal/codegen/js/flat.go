@@ -74,6 +74,7 @@ type fgen struct {
 	needN     bool // compressed-float / narrowing temp
 	needT     bool // float32 NaN lane temps
 	needBg    bool // BigInt lane temp
+	needNw    bool // read side: the wide-offset Number temp
 	loopDepth int
 
 	// the write-side chunk accumulator: adjacent constant-width fields whose
@@ -492,6 +493,7 @@ func (g *fgen) emitStructFlat(st *ir.Struct) {
 
 func (g *fgen) resetNeeds() {
 	g.needX, g.needN, g.needT, g.needBg = false, false, false, false
+	g.needNw = false
 	g.loopDepth = 0
 	g.chunk = g.chunk[:0]
 	g.chunkBits = 0
@@ -521,6 +523,9 @@ func (g *fgen) writeLocals(ind string) string {
 func (g *fgen) readLocals(ind string) string {
 	var b strings.Builder
 	locals := []string{"v = 0", "bi = 0", "wlo = 0", "whi = 0", "s2 = 0", "out = 0"}
+	if g.needNw {
+		locals = append(locals, "nw = 0", "nl = 0")
+	}
 	if g.needX {
 		locals = append(locals, "x = 0")
 	}
@@ -1508,8 +1513,11 @@ func (g *fgen) emitReadInt(f *ir.Field, name, ind string) {
 			}
 			bits := ir.BitsRequired(f.IntMin, f.IntMax)
 			diff := new(big.Int).Sub(f.IntMax, f.IntMin)
-			g.emitReadWide(bits, ind)
 			full := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+			if g.emitReadWideOffsetNum(f, name, bits, diff, full, ind) {
+				return
+			}
+			g.emitReadWide(bits, ind)
 			if diff.Cmp(full) != 0 {
 				g.readRefuse(fmt.Sprintf("bg > %sn", diff.String()), " // a smuggled offset is refused", ind)
 			}
@@ -1619,6 +1627,9 @@ func (g *fgen) emitReadRangedBig(f *ir.Field, name string, bits int64, ind strin
 		}
 		return
 	}
+	if g.emitReadWideOffsetNum(f, name, bits, diff, full, ind) {
+		return
+	}
 	g.emitReadWide(bits, ind)
 	if diff.Cmp(full) != 0 {
 		g.readRefuse(fmt.Sprintf("bg > %sn", diff.String()), " // a smuggled offset is refused", ind)
@@ -1628,6 +1639,99 @@ func (g *fgen) emitReadRangedBig(f *ir.Field, name string, bits int64, ind strin
 	} else {
 		g.pf("%s%s = %sn + bg;\n", ind, name, f.IntMin.String())
 	}
+}
+
+// numExact is 2^53: the largest magnitude at which consecutive integers are
+// all exactly representable as JavaScript Numbers.
+var numExact = new(big.Int).Lsh(big.NewInt(1), 53)
+
+// emitReadWideOffsetNum decodes a wide OFFSET field of more than 64 bits
+// whose high half is small enough to be a Number, doing the range refusal
+// and the offset in the NUMBER domain and materialising exactly ONE BigInt
+// for the high half. It reports whether it emitted; a shape it cannot prove
+// falls through to the general wide path unchanged.
+//
+// A 128-bit-domain BigInt op is multi-digit and allocating: today's shape
+// costs a second getBigUint64, a shift by 64, an or, a BigInt comparison and
+// a BigInt add. Here the high half arrives as a Number, the comparison is
+// numeric, the offset is a numeric add, and one signed 64-bit BigInt comes
+// out of the scratch — a shift and an add is all that is left.
+//
+// Conditions, every one of them required for exactness:
+//   - bits in (64, 117]: the high half is bits-64 <= 53 bits, so its raw
+//     value and every intermediate below are exact Numbers;
+//   - min is a nonzero multiple of 2^64: the offset touches ONLY the high
+//     half, so the low 64 bits pass through with no borrow;
+//   - min's high half, and the offset-adjusted high half, stay inside 2^53.
+//
+// The wide fields this does not cover — a full-width 128-bit high half, or
+// an offset with low bits — keep the general path; extending it there is a
+// named follow-on, not this pass.
+func (g *fgen) emitReadWideOffsetNum(f *ir.Field, name string, bits int64, diff, full *big.Int, ind string) bool {
+	hw := bits - 64
+	if bits <= 64 || hw > 53 || f.IntMin.Sign() == 0 {
+		return false
+	}
+	shift64 := uint(64)
+	loMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), shift64), big.NewInt(1))
+	// min must land wholly in the high half: a low remainder would borrow
+	minAbs := new(big.Int).Abs(f.IntMin)
+	if new(big.Int).And(minAbs, loMask).Sign() != 0 {
+		return false
+	}
+	minHi := new(big.Int).Rsh(minAbs, shift64)
+	if f.IntMin.Sign() < 0 {
+		minHi.Neg(minHi)
+	}
+	// the adjusted high half spans [minHi, minHi + 2^hw); both ends exact
+	hiTop := new(big.Int).Add(minHi, new(big.Int).Lsh(big.NewInt(1), uint(hw)))
+	if new(big.Int).Abs(minHi).Cmp(numExact) >= 0 || new(big.Int).Abs(hiTop).Cmp(numExact) >= 0 {
+		return false
+	}
+
+	g.needBg = true
+	g.needNw = true
+
+	// the low 64 bits, through the scratch, exactly as the general path
+	g.readR(32, ind)
+	g.pf("%sSC.setUint32(0, v, true);\n", ind)
+	g.readR(32, ind)
+	g.pf("%sSC.setUint32(4, v, true);\n", ind)
+	g.pf("%sbg = SC.getBigUint64(0, true);\n", ind)
+
+	// the high half, in the number domain
+	if hw <= 32 {
+		g.readR(hw, ind)
+		g.pf("%snw = v;\n", ind)
+	} else {
+		g.readR(32, ind)
+		g.pf("%snw = v;\n", ind)
+		g.readR(hw-32, ind)
+		g.pf("%snw = v * 4294967296 + nw;\n", ind)
+	}
+
+	// the range refusal, split across the halves: the high comparison is
+	// numeric, and the low one only runs on the exact-high boundary
+	if diff.Cmp(full) != 0 {
+		diffHi := new(big.Int).Rsh(diff, shift64)
+		diffLo := new(big.Int).And(diff, loMask)
+		g.readRefuse(
+			fmt.Sprintf("nw > %s || (nw === %s && bg > %sn)", diffHi.String(), diffHi.String(), diffLo.String()),
+			" // a smuggled offset is refused", ind)
+	}
+
+	// the offset, then ONE signed 64-bit BigInt for the high half. `nw >>> 0`
+	// is ToUint32 — nw mod 2^32, the correct low word for a negative nw too —
+	// so `nw - nl` is an exact multiple of 2^32 and the division is exact
+	// with no rounding mode in the argument: the high word is what it is,
+	// whichever way a rounding function would have gone. It is inside int32
+	// range because |nw| < 2^53.
+	g.pf("%snw += %s;\n", ind, minHi.String())
+	g.pf("%snl = nw >>> 0;\n", ind)
+	g.pf("%sSC.setUint32(0, nl, true);\n", ind)
+	g.pf("%sSC.setInt32(4, (nw - nl) / 4294967296, true);\n", ind)
+	g.pf("%s%s = (SC.getBigInt64(0, true) << 64n) + bg;\n", ind, name)
+	return true
 }
 
 // ---- inline zeroing (SPEC §5: untaken branch sides read as ZERO) ----
