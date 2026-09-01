@@ -73,6 +73,28 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TableReport { y int32 }\n"},
 		{name: "a declaration colliding with generated table codecs", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
+		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
+			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
+
+		// ---- pointers (SPEC-TABLES.md §9) ----
+		{name: "a pointer to a type is refused by name", want: "may only target a `table`",
+			src: "package t\ntype P { x int32 }\ntable Tab { p *P }\n"},
+		{name: "a pointer to an enum is refused by name", want: "may only target a `table`",
+			src: "package t\nenum E { A }\ntable Tab { e *E }\n"},
+		{name: "a pointer inside a type body is refused by name", want: "pointers are a TABLE construct",
+			src: "package t\ntable Tab { x int32 }\ntype P { t *Tab }\n"},
+		{name: "an array of pointers is a named follow-on", want: "an array of pointers is a named follow-on",
+			src: "package t\ntable Node { x int32 }\ntable Tab { kids [..4]*Node }\n"},
+		{name: "a pointer field takes no specified default", want: "a pointer field takes no specified default",
+			src: "package t\ntable Node { x int32 }\ntable Tab { head *Node = 0 }\n"},
+		{name: "a pointer to an undeclared table", want: "undefined type",
+			src: "package t\ntable Tab { head *Ghost }\n"},
+		{name: "by-value recursion stays refused with pointers in the language",
+			want: "type composition cycle",
+			src:  "package t\ntable Node { x int32\n  self Node }\n"},
+		{name: "by-value recursion through a chain stays refused",
+			want: "type composition cycle",
+			src:  "package t\ntable A { b B }\ntable B { a A }\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -197,5 +219,88 @@ func TestTablesInvisibleToPacketIR(t *testing.T) {
 	}
 	if strings.Contains(ir.WireProjection(u), "Config") {
 		t.Fatal("a table leaked into the wire projection — the protocol id depends on it")
+	}
+}
+
+// TestTableModeDerivation: the mode is DERIVED, never declared. Fixed-size is
+// the pointer-free by-value closure — a plain struct, exactly as every table
+// was before pointers existed. Variable-length is a pointer anywhere in that
+// closure, and the mode propagates UP through by-value nesting only
+// (SPEC-TABLES.md §2).
+func TestTableModeDerivation(t *testing.T) {
+	u := buildUnit(t, `package t
+
+type Plain
+{
+    x int32
+}
+
+table Leaf
+{
+    v int32
+}
+
+table Node
+{
+    v    int32
+    next *Node
+}
+
+table HoldsPointer
+{
+    head *Leaf
+}
+
+table NestsVariable
+{
+    inner Node
+}
+
+table ArrayOfVariable
+{
+    kids [..4]Node
+}
+
+table StaysFixed
+{
+    leaf  Leaf
+    p     Plain
+    items [..4]int32
+}
+`)
+	variable := ir.VariableTables(u)
+	for _, name := range []string{"Node", "HoldsPointer", "NestsVariable", "ArrayOfVariable"} {
+		if !variable[name] {
+			t.Errorf("%s should derive VARIABLE-LENGTH (a pointer in its by-value closure)", name)
+		}
+	}
+	for _, name := range []string{"Leaf", "StaysFixed", "Plain"} {
+		if variable[name] {
+			t.Errorf("%s should stay FIXED-SIZE — no pointer in its by-value closure, so it pays for none of the machinery", name)
+		}
+	}
+
+	// pointing AT a variable table does not make the pointer's owner's
+	// NESTER variable through the pointer edge — only the declaring table
+	targets := ir.PointerTargets(u)
+	if !targets["Node"] || !targets["Leaf"] {
+		t.Errorf("pointer targets missing: %v", targets)
+	}
+	if targets["StaysFixed"] {
+		t.Error("StaysFixed is nobody's pointer target")
+	}
+}
+
+// TestPointerRecursionIsLegal: recursion through a POINTER edge is the whole
+// point of the freedom tables were given — the by-value cycle refusal must
+// exempt it (SPEC-TABLES.md §2).
+func TestPointerRecursionIsLegal(t *testing.T) {
+	u := buildUnit(t, "package t\ntable Node\n{\n    v    int32\n    next *Node\n}\n")
+	f := u.Tables["Node"].Fields[1]
+	if !f.Type.Pointer {
+		t.Fatal("the *Node field did not resolve as a pointer")
+	}
+	if f.Type.Ref == nil || f.Type.Name != "Node" {
+		t.Fatalf("the pointer's target did not resolve: %+v", f.Type)
 	}
 }

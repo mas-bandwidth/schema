@@ -128,6 +128,17 @@ func tableKindWidth(kind int) int {
 	return 0
 }
 
+// sortedKeys returns a set's members in a stable order — generated output and
+// diagnostics must never depend on map iteration.
+func sortedKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func tablePut(width int) string { return fmt.Sprintf("put%d", width*8) }
 func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
 
@@ -334,6 +345,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	if err := checkIncludeCycle(u); err != nil {
 		return nil, err
+	}
+	// the variable-length emission (arena, builder, cooked form) lands in the
+	// next unit of this round; the LANGUAGE accepts `*T` already, so refuse
+	// generation loudly rather than emitting a struct with a missing member
+	for _, name := range sortedKeys(ir.VariableTables(u)) {
+		if st := u.Tables[name]; st != nil {
+			for _, f := range st.Fields {
+				if f.Type.Pointer {
+					return nil, fmt.Errorf("table %s: pointer field %s *%s — the variable-length table backend is not emitted yet (SPEC-TABLES.md)", name, f.Name, f.Type.Name)
+				}
+			}
+		}
 	}
 	closure := ir.TableClosure(u)
 	out := map[string][]byte{}

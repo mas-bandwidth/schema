@@ -315,6 +315,12 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 	switch prev.Kind {
 	case scanner.LParen, scanner.Dot, scanner.DotDot, scanner.Not:
 		return false
+	case scanner.Star:
+		// the POINTER star binds to the type it targets — `next *Node`, never
+		// `next * Node` (SPEC-TABLES.md). A star in TYPE POSITION (directly
+		// after the field name that opens the line) is the pointer spelling;
+		// every other star is multiplication and keeps its spaces.
+		return !isPointerStar(tokens, i-1)
 	case scanner.LBrack:
 		return false
 	case scanner.Minus:
@@ -329,6 +335,13 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 		return true // one-line lists open with `{ `
 	}
 	return true
+}
+
+// isPointerStar reports whether the star at index i is the POINTER spelling
+// rather than multiplication. A field line opens with its name, so type
+// position is index 1; multiplication never appears there.
+func isPointerStar(tokens []scanner.Token, i int) bool {
+	return i == 1 && tokens[i].Kind == scanner.Star && tokens[0].Kind == scanner.Ident
 }
 
 // isUnary reports whether the minus at index i is unary.
@@ -606,6 +619,11 @@ func fpScalar(t ast.ScalarType) string {
 		}
 		return fmt.Sprintf("ufixed(%s,%s)", fpExpr(t.Arg), fpExpr(t.Arg2))
 	default:
+		if t.Pointer {
+			// `next *Node` — the pointer binds to the type, not the name, so
+			// the star sits against the target (SPEC-TABLES.md)
+			return "*" + t.Name
+		}
 		return t.Name
 	}
 }

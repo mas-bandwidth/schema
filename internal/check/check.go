@@ -1056,6 +1056,9 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			c.errf(f.Type.Pos, "undefined type %s", f.Type.Name)
 			return nil
 		}
+		if f.Type.Pointer && !c.checkPointerSpelling(f, inTable, d) {
+			return nil
+		}
 		switch d.(type) {
 		case *ast.TypeDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.structs[f.Type.Name]}
@@ -1064,7 +1067,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 				c.errf(f.Type.Pos, "%s is a table, not a wire type — tables live on the TABLE wire and cannot ride in a `type`; declare the field's type with `type`, or move the declaring type to a `table` (SPEC-TABLES.md)", f.Type.Name)
 				return nil
 			}
-			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.tables[f.Type.Name]}
+			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.tables[f.Type.Name], Pointer: f.Type.Pointer}
 		case *ast.EnumDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.enums[f.Type.Name]}
 		case *ast.FlagsDecl:
@@ -1554,8 +1557,14 @@ func (c *checker) checkCycles() {
 		if st := c.tables[name]; st != nil {
 			// tables join the composition graph exactly as types do: nesting
 			// is by value, so a table holding itself — directly or through a
-			// chain — has infinite size (SPEC-TABLES.md, the §4.6 rule)
+			// chain — has infinite size (SPEC-TABLES.md, the §4.6 rule).
+			// POINTER edges are exempt and carry no size: `next *Node` inside
+			// Node is finite, and recursion through pointers is the whole
+			// point of the freedom tables were given.
 			for _, f := range st.Fields {
+				if f.Type.Pointer {
+					continue
+				}
 				if f.Type.Kind == ir.TNamed {
 					switch f.Type.Ref.(type) {
 					case *ir.Struct, *ir.Union:
@@ -1690,6 +1699,19 @@ func (c *checker) checkTables() {
 		}
 		seen := map[uint16]*ir.Field{}
 		for _, f := range st.Fields {
+			if f.Type.Pointer {
+				// a pointer carries no extent of its own: the checks below
+				// bound STORAGE, and a pointer's storage is one relocatable
+				// u32 slot. Identity still applies — the id check runs below.
+				id := ir.TableFieldId(f)
+				if prev, dup := seen[id]; dup {
+					c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%04x — rename one (SPEC-TABLES.md)",
+						what, name, describeTableField(prev), describeTableField(f), id)
+					continue
+				}
+				seen[id] = f
+				continue
+			}
 			var bad string
 			switch {
 			case f.Type.Kind == ir.TInt && f.Type.Width == 128:
@@ -1736,6 +1758,49 @@ func (c *checker) checkTables() {
 			seen[id] = f
 		}
 	}
+}
+
+// checkPointerSpelling enforces the `*T` spelling's rules, each refused by
+// name (SPEC-TABLES.md §9). The founding line: types remain VALUE semantics;
+// tables ALLOW POINTER semantics — so a pointer is a table-to-table edge
+// declared inside a table body, and nowhere else.
+func (c *checker) checkPointerSpelling(f *ast.Field, inTable bool, d ast.Decl) bool {
+	if !inTable {
+		c.errf(f.Type.Pos, "field %s: *%s is a pointer, and pointers are a TABLE construct — types remain value semantics, tables allow pointer semantics; nest the field by value, or move the declaring type to a `table` (SPEC-TABLES.md)",
+			f.Name, f.Type.Name)
+		return false
+	}
+	if _, isTable := d.(*ast.TableDecl); !isTable {
+		c.errf(f.Type.Pos, "field %s: *%s points at a %s, and a pointer may only target a `table` — %s is value-semantics data with no independent identity to point at; nest it by value, or declare %s as a table (SPEC-TABLES.md)",
+			f.Name, f.Type.Name, declKindName(d), f.Type.Name, f.Type.Name)
+		return false
+	}
+	if f.Array != nil {
+		c.errf(f.Type.Pos, "field %s: an array of pointers is a named follow-on — declare a bounded array of tables by value, or a pointer to a table that holds the array (SPEC-TABLES.md §12)", f.Name)
+		return false
+	}
+	if f.Default != nil {
+		c.errf(f.Pos, "field %s: a pointer field takes no specified default — a fresh pointer is null, and null is the only value a default could name (SPEC-TABLES.md)", f.Name)
+		return false
+	}
+	return true
+}
+
+// declKindName names a declaration's kind for a diagnostic.
+func declKindName(d ast.Decl) string {
+	switch d.(type) {
+	case *ast.TypeDecl:
+		return "type"
+	case *ast.EnumDecl:
+		return "enum"
+	case *ast.FlagsDecl:
+		return "flags"
+	case *ast.UnionDecl:
+		return "union"
+	case *ast.TableDecl:
+		return "table"
+	}
+	return "declaration"
 }
 
 // describeTableField names a field for the id-collision diagnostic, showing
@@ -2017,7 +2082,13 @@ func (c *checker) checkClaimedNames() {
 		// table, so table-free units keep their whole namespace
 		for _, gen := range []string{"TableReport", "TableWriter", "TableReader",
 			"TableTypeInfo", "TableFieldInfo", "table_bits_to_float",
-			"table_float_to_bits", "table_bits_to_double", "table_double_to_bits"} {
+			"table_float_to_bits", "table_bits_to_double", "table_double_to_bits",
+			// the VARIABLE-LENGTH runtime (SPEC-TABLES.md): claimed whenever a
+			// unit declares a table, not only when one carries pointers, so
+			// adding a pointer to an existing table never turns a legal
+			// declaration into a collision
+			"TableRef", "TableSlot", "TableArena", "TableSlab", "TableWorker",
+			"TableBuilder", "TableRegion", "TableRegionHeader"} {
 			add(gen, "the generated TABLE-wire runtime (SPEC-TABLES.md)", unitPos)
 		}
 	}
@@ -2161,6 +2232,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
 	"LoadMeasure", "TableType", "Builder", "At", "Root",
+	"Cook", "CookMeasure", "Open", "LayoutId",
 }
 
 // addStructSymbols registers the per-type generated names: the split

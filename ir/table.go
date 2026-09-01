@@ -30,6 +30,96 @@ func TableFieldId(f *Field) uint16 {
 	return FieldId(f.Name)
 }
 
+// VariableTables derives the table MODE — the compiler works it out; nobody
+// declares it (the owner's ruling: "i wouldn't want to manually have to
+// specify this… the compiler can work it out"). A closure member is
+// VARIABLE-LENGTH when a pointer appears anywhere in its BY-VALUE closure:
+// its own `*T` fields, or those of anything it nests by value. Everything
+// else is FIXED-SIZE — a plain struct of known sizeof, exactly as every table
+// was before pointers existed, and it gets none of the arena machinery.
+//
+// The derivation is a least-fixed-point over the by-value edges: pointer
+// edges carry no size and never propagate the mode to the POINTING table's
+// nester, they only mark the table that declares them.
+func VariableTables(u *Unit) map[string]bool {
+	closure := TableClosure(u)
+	member := func(name string) *Struct {
+		if st := u.Tables[name]; st != nil {
+			return st
+		}
+		return u.Structs[name]
+	}
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	variable := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, name := range names {
+			if variable[name] {
+				continue
+			}
+			st := member(name)
+			if st == nil {
+				continue
+			}
+			for _, f := range st.Fields {
+				if f.Type.Pointer {
+					variable[name] = true
+					break
+				}
+				if f.Type.Kind != TNamed {
+					continue
+				}
+				switch ref := f.Type.Ref.(type) {
+				case *Struct:
+					if variable[ref.Name] {
+						variable[name] = true
+					}
+				case *Union:
+					for _, v := range ref.Variants {
+						if variable[v.Type] {
+							variable[name] = true
+						}
+					}
+				}
+				if variable[name] {
+					break
+				}
+			}
+			if variable[name] {
+				changed = true
+			}
+		}
+	}
+	return variable
+}
+
+// PointerTargets is the set of tables some pointer field targets — the tables
+// that need an arena allocation surface (Builder.Alloc<T>()) and a cooked
+// accessor. A table can be a pointer target and a root at once.
+func PointerTargets(u *Unit) map[string]bool {
+	targets := map[string]bool{}
+	for name := range TableClosure(u) {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Type.Pointer {
+				targets[f.Type.Name] = true
+			}
+		}
+	}
+	return targets
+}
+
 // TableClosure is the set of structs that carry table codecs and reflection
 // descriptors: every `table` declaration plus every struct reachable from one
 // through fields (nested tables and types, array elements, union payloads),

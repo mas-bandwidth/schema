@@ -141,12 +141,16 @@ const (
 
 type ScalarType struct {
 	Kind   ScalarKind
-	Signed bool   // ScalarInt; ScalarFixed (fixed = true, ufixed = false)
-	Width  int    // ScalarInt: 8/16/32/64/128
-	Arg    Expr   // ScalarBits/ScalarString/ScalarBytes: the (N); ScalarFixed: I
-	Arg2   Expr   // ScalarFixed: F
-	Name   string // ScalarNamed
-	Pos    Pos
+	Signed bool // ScalarInt; ScalarFixed (fixed = true, ufixed = false)
+	Width  int  // ScalarInt: 8/16/32/64/128
+	Arg    Expr // ScalarBits/ScalarString/ScalarBytes: the (N); ScalarFixed: I
+	Arg2   Expr // ScalarFixed: F
+	// Pointer marks the `*T` spelling (ScalarNamed only): a POINTER to a
+	// table rather than a by-value nesting (SPEC-TABLES.md). Types remain
+	// value semantics; tables allow pointer semantics.
+	Pointer bool
+	Name    string // ScalarNamed
+	Pos     Pos
 }
 
 type ConstField struct {

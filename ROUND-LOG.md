@@ -46,3 +46,21 @@ no rebase debt).
   recorded: the TYPE wire stays verb-first (`WriteX`/`ReadX`), tables are
   name-first; the verb position tells a reader which wire the call site is on.
   Nine legs + tables green after the rename.
+
+- UNIT 2 — the language: `next *Node` (rulings 1, 2, 3). Scanner already had
+  `Star`; the parser accepts it in type position and the CHECKER owns every
+  rule, so a bad pointer names the real problem instead of "expected a field
+  type". Refused by name: pointer to a `type`/enum/flags/union (the founding
+  line — types remain value semantics), a pointer outside a table body, an
+  array of pointers (§12 follow-on), a specified default on a pointer (null is
+  the only value one could name). The by-value composition-cycle refusal now
+  EXEMPTS pointer edges — `table Node { next *Node }` is legal and finite,
+  while `table Node { self Node }` still refuses. Mode derivation lives in
+  `ir.VariableTables` as a least-fixed-point over BY-VALUE edges only:
+  FIXED-SIZE = no pointer in the by-value closure; VARIABLE-LENGTH = a pointer
+  anywhere in it, propagating up through by-value nesting and bounded arrays.
+  `ir.PointerTargets` names the tables that need an allocation surface.
+  Formatter: the pointer star binds tight to its target (`next *Node`) while
+  multiplication keeps its spaces (`max = K * 2`) — type position at index 1
+  is what tells them apart. The C++ emitter REFUSES a pointer-bearing unit for
+  now, loudly, so the tree stays green until unit 3 emits the backend.
