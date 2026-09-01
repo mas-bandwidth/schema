@@ -27,10 +27,12 @@
     } while ( 0 )
 
 // Golden wire bytes (SPEC §7.2 gate 7) — same contract as test/main.cpp.
-static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes )
+static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes, int64_t bits )
 {
     char path[256];
     snprintf( path, sizeof( path ), "testdata/wire/%s.bin", name );
+    char bits_path[256];
+    snprintf( bits_path, sizeof( bits_path ), "testdata/wire/%s.bits", name );
     if ( std::getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) )
     {
         FILE * f = fopen( path, "wb" );
@@ -40,6 +42,16 @@ static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes 
             return false;
         }
         fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        // the bit-exact measure oracle (#163): the reference writer's exact
+        // bit count, pinned beside the bytes
+        f = fopen( bits_path, "wb" );
+        if ( !f )
+        {
+            printf( "cannot write %s\n", bits_path );
+            return false;
+        }
+        fprintf( f, "%lld\n", (long long) bits );
         fclose( f );
         return true;
     }
@@ -56,6 +68,22 @@ static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes 
     {
         printf( "WIRE GOLDEN MISMATCH: %s (%lld golden vs %lld actual bytes) — stop-the-line (SPEC §3.1, §7.2 gate 7)\n",
                 name, (long long) n, (long long) bytes );
+        return false;
+    }
+    f = fopen( bits_path, "rb" );
+    if ( !f )
+    {
+        printf( "missing bits golden %s (run: make update-goldens)\n", bits_path );
+        return false;
+    }
+    long long expected_bits = -1;
+    if ( fscanf( f, "%lld", &expected_bits ) != 1 )
+        expected_bits = -1;
+    fclose( f );
+    if ( expected_bits != (long long) bits )
+    {
+        printf( "BITS GOLDEN MISMATCH: %s (%lld golden vs %lld actual bits) — stop-the-line (SPEC §3.1, §7.2 gate 7)\n",
+                name, expected_bits, (long long) bits );
         return false;
     }
     return true;
@@ -195,7 +223,7 @@ int main()
         ws.Flush();
         check( ws.GetBytesProcessed() == (int) sizeof( expected_ludicrous_state ) );
         check( std::memcmp( buffer, expected_ludicrous_state, sizeof( expected_ludicrous_state ) ) == 0 );
-        check( golden_wire( "ludicrous_state", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "ludicrous_state", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         LudicrousState out;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
@@ -228,7 +256,7 @@ int main()
         ws.Flush();
         check( ws.GetBytesProcessed() == (int) sizeof( expected_ludicrous_state_untargeted ) );
         check( std::memcmp( buffer, expected_ludicrous_state_untargeted, sizeof( expected_ludicrous_state_untargeted ) ) == 0 );
-        check( golden_wire( "ludicrous_state_untargeted", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "ludicrous_state_untargeted", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         LudicrousState out;
         out.target_id = serialize::uint128_t( 0xDEAD ); // dirty — the read must zero it
@@ -287,7 +315,7 @@ int main()
         ws.Flush();
         check( ws.GetBytesProcessed() == 1 );
         check( std::memcmp( buffer, expected_probe, 1 ) == 0 );
-        check( golden_wire( "degenerate_probe", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "degenerate_probe", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         DegenerateProbe out; // members default to zero; memset is ill-formed on a non-trivial type (int128_t)
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
@@ -344,7 +372,7 @@ int main()
         ws.Flush();
         check( ws.GetBytesProcessed() == (int) sizeof( expected_unsigned ) );
         check( std::memcmp( buffer, expected_unsigned, sizeof( expected_unsigned ) ) == 0 );
-        check( golden_wire( "unsigned_probe", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "unsigned_probe", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         UnsignedProbe out;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );

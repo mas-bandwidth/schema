@@ -60,6 +60,11 @@ bool bytesEqual(Uint8List a, Uint8List b) {
 Uint8List golden(String name) =>
     File('../../testdata/wire/$name.bin').readAsBytesSync();
 
+// The bit-exact measure oracle (#163): the C++ reference writer's exact bit
+// count, pinned beside the byte golden.
+int goldenBits(String name) =>
+    int.parse(File('../../testdata/wire/$name.bits').readAsStringSync().trim());
+
 final Uint8List writeBuf = Uint8List(256);
 final ByteData writeView = ByteData.sublistView(writeBuf);
 
@@ -141,6 +146,10 @@ void main() {
     check(
       (measureLudicrousState(inp) + 7) >>> 3 == n,
       'measure vs written bytes',
+    );
+    check(
+      measureLudicrousState(inp) == goldenBits('ludicrous_state'),
+      'measure vs the C++ reference bit count (bit-exact oracle)',
     );
 
     final out = LudicrousState();

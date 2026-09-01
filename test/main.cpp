@@ -96,10 +96,12 @@ namespace oracle
 // checked byte-for-byte against testdata/wire/<name>.bin. A break here under
 // an unchanged schema is the stop-the-line event of SPEC §3.1, never a quiet
 // re-pin. SCHEMA_UPDATE_WIRE_GOLDENS=1 rewrites the goldens deliberately.
-static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes )
+static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes, int64_t bits )
 {
     char path[256];
     snprintf( path, sizeof( path ), "testdata/wire/%s.bin", name );
+    char bits_path[256];
+    snprintf( bits_path, sizeof( bits_path ), "testdata/wire/%s.bits", name );
     if ( std::getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) )
     {
         FILE * f = fopen( path, "wb" );
@@ -109,6 +111,21 @@ static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes 
             return false;
         }
         fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        // the bit-exact measure oracle (#163): the reference writer's exact
+        // bit count, pinned beside the bytes so a measure error confined to
+        // the final byte cannot hide behind byte-granularity gates. bits < 0
+        // = no oracle: a concatenated multi-instance stream has no single
+        // writer, and its chunks are byte-aligned anyway.
+        if ( bits < 0 )
+            return true;
+        f = fopen( bits_path, "wb" );
+        if ( !f )
+        {
+            printf( "cannot write %s\n", bits_path );
+            return false;
+        }
+        fprintf( f, "%lld\n", (long long) bits );
         fclose( f );
         return true;
     }
@@ -125,6 +142,24 @@ static bool golden_wire( const char * name, const uint8_t * data, int64_t bytes 
     {
         printf( "WIRE GOLDEN MISMATCH: %s (%lld golden vs %lld actual bytes) — stop-the-line (SPEC §3.1, §7.2 gate 7)\n",
                 name, (long long) n, (long long) bytes );
+        return false;
+    }
+    if ( bits < 0 )
+        return true;
+    f = fopen( bits_path, "rb" );
+    if ( !f )
+    {
+        printf( "missing bits golden %s (run: make update-goldens)\n", bits_path );
+        return false;
+    }
+    long long expected_bits = -1;
+    if ( fscanf( f, "%lld", &expected_bits ) != 1 )
+        expected_bits = -1;
+    fclose( f );
+    if ( expected_bits != (long long) bits )
+    {
+        printf( "BITS GOLDEN MISMATCH: %s (%lld golden vs %lld actual bits) — stop-the-line (SPEC §3.1, §7.2 gate 7)\n",
+                name, expected_bits, (long long) bits );
         return false;
     }
     return true;
@@ -360,7 +395,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteShipCreate( ws, in ) );
         ws.Flush();
-        check( golden_wire( "shipcreate_flags", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "shipcreate_flags", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         ShipCreate out;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
@@ -404,7 +439,7 @@ int main()
         tws.Flush();
         check( ws.GetBytesProcessed() == tws.GetBytesProcessed() );
         check( std::memcmp( buffer, twin_buffer, (size_t) ws.GetBytesProcessed() ) == 0 );
-        check( golden_wire( "rigidbody_moving", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "rigidbody_moving", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         // and the at-rest wire, which drops the branch
         in.at_rest = true;
@@ -417,7 +452,7 @@ int main()
         tws2.Flush();
         check( ws2.GetBytesProcessed() == tws2.GetBytesProcessed() );
         check( std::memcmp( buffer, twin_buffer, (size_t) ws2.GetBytesProcessed() ) == 0 );
-        check( golden_wire( "rigidbody_at_rest", buffer, ws2.GetBytesProcessed() ) );
+        check( golden_wire( "rigidbody_at_rest", buffer, ws2.GetBytesProcessed(), ws2.GetBitsProcessed() ) );
     }
 
     // ---- the string framing == classic serialize_string over buffer N + 1 ----
@@ -437,7 +472,7 @@ int main()
         tws.Flush();
         check( ws.GetBytesProcessed() == tws.GetBytesProcessed() );
         check( std::memcmp( buffer, twin_buffer, (size_t) ws.GetBytesProcessed() ) == 0 );
-        check( golden_wire( "chat", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "chat", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
     }
 
     // ---- the wire constants: const(0xAB, 8) leads, reserved holds zero,
@@ -450,7 +485,7 @@ int main()
         check( WriteProbeHeader( ws, h ) );
         ws.Flush();
         check( buffer[0] == 0xAB );
-        check( golden_wire( "probe_header", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "probe_header", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
         ProbeHeader out;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
         check( ReadProbeHeader( rs, out ) );
@@ -496,7 +531,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteTestData( ws, in ) );
         ws.Flush();
-        check( golden_wire( "testdata", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "testdata", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         TestData out;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
@@ -520,7 +555,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteCompressedProbe( ws, in ) );
         ws.Flush();
-        check( golden_wire( "compressed_probe", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "compressed_probe", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         CompressedProbe out;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
@@ -578,7 +613,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteInputPacket( ws, in ) );
         ws.Flush();
-        check( golden_wire( "inputpacket", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "inputpacket", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
     }
     {
         ProbeBits in;
@@ -591,7 +626,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteProbeBits( ws, in ) );
         ws.Flush();
-        check( golden_wire( "probebits", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "probebits", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
     }
 
     // ---- ProbeCollider: first-class one-of (SPEC §4.8) — construction is
@@ -618,7 +653,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteProbeCollider( ws, in ) );
         ws.Flush();
-        check( golden_wire( "probecollider", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "probecollider", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         ProbeCollider out;
         out.backup.type = ProbeShapeType::Ring; // dirty — the read must restore None
@@ -690,7 +725,7 @@ int main()
         serialize::WriteStream ws( buffer, sizeof( buffer ) );
         check( WriteProbeArray( ws, in ) );
         ws.Flush();
-        check( golden_wire( "probearray", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "probearray", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         ProbeArray out;
         serialize::ReadStream rs( buffer, ws.GetBytesProcessed() );
@@ -818,7 +853,7 @@ int main()
         check( ws.GetBitsProcessed() == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408 );
 
         ws.Flush();
-        check( golden_wire( "degenerate", buffer, ws.GetBytesProcessed() ) );
+        check( golden_wire( "degenerate", buffer, ws.GetBytesProcessed(), ws.GetBitsProcessed() ) );
 
         Vec2 r_vec2;
         SpanF64 r_span_f64;
@@ -1067,7 +1102,7 @@ int main()
         check( ArrElevenMaxBits == 99 && HoldsEmptyUnionMaxBits == 14 && StrsMaxBits == 158 );
         check( ArrNestedMaxBits == 55 && SoleMaxBits == 13 );
 
-        check( golden_wire( "clauses", stream, stream_len ) );
+        check( golden_wire( "clauses", stream, stream_len, -1 ) );
 
         // Read each shape back out of its own slice. A clause that decodes a
         // different number of elements than the writer encoded shows up here
@@ -1279,7 +1314,7 @@ int main()
         check( ArmsNestedMaxBits == 40 && ArmAlignMaxBits == 55 && ArmArrayMaxBits == 54 );
         check( HoldsUnevenMaxBits == 55 && ArrUnevenMaxBits == 127 && RegainAfterAlignMaxBits == 172 );
 
-        check( golden_wire( "joins", stream, stream_len ) );
+        check( golden_wire( "joins", stream, stream_len, -1 ) );
 
         for ( int f = 0; f < 2; f++ )
         {
