@@ -52,7 +52,7 @@ env:
   SERIALIZE_GO_TAG: v1.14.0
   SERIALIZE_RS_TAG: v2.2.2
   SERIALIZE_CS_TAG: v1.5.0
-  SERIALIZE_JS_TAG: v1.1.0
+  SERIALIZE_JS_TAG: v1.3.0
 
 jobs:
   # The fast gate, and the conformance half of certification. `make test`
