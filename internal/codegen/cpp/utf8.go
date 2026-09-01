@@ -1,6 +1,10 @@
 package cpp
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import (
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 // fileHasStrings reports whether any declaration in the file carries a
 // string(N) field — the trigger for emitting the UTF-8 validator the
@@ -23,10 +27,13 @@ func fileHasStrings(f *ir.File) bool {
 // emitUtf8Validator emits the well-formedness check behind the write-side
 // debug assert: string(N) payloads are well-formed UTF-8 BY CONTRACT,
 // writer-trusted (SPEC §4.7) — no release-path cost, no
-// read-path validation. Guarded against redefinition because several wire
-// headers can land in one translation unit.
+// read-path validation. Guarded per package: the validator lives inside
+// namespace <package>, so each unit in a translation unit needs its own copy
+// exactly once — several wire headers of one package can land in one
+// translation unit.
 func (g *gen) emitUtf8Validator() {
-	g.pf("#ifndef SCHEMA_UTF8_VALID_DEFINED\n#define SCHEMA_UTF8_VALID_DEFINED\n")
+	guard := "SCHEMA_" + strings.ToUpper(g.unit.Package) + "_UTF8_VALID_DEFINED"
+	g.pf("#ifndef %s\n#define %s\n", guard, guard)
 	g.pf("// string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the\n")
 	g.pf("// write path debug-asserts with this validator and the release path costs\n")
 	g.pf("// nothing. Rejects truncated sequences, bare continuations, overlongs,\n")
@@ -51,5 +58,5 @@ func (g *gen) emitUtf8Validator() {
 	g.pf("        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) )\n        {\n            return false;\n        }\n")
 	g.pf("        i += 1 + continuations;\n    }\n")
 	g.pf("    return true;\n}\n")
-	g.pf("#endif // SCHEMA_UTF8_VALID_DEFINED\n\n")
+	g.pf("#endif // %s\n\n", guard)
 }

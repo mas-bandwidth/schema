@@ -1,0 +1,11 @@
+// Two-unit guard regression, second unit (issue #189 shape): included AFTER
+// Alpha.schema's generated wire header in test/guard/main.cpp's translation
+// unit — the position where a TU-wide string-helper guard loses the helpers.
+// See Alpha.schema.
+
+package beta
+
+type BetaMessage
+{
+    note string(15)
+}

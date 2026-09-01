@@ -180,6 +180,20 @@ build/schema_test: generated/cpp/.stamp test/main.cpp test/second.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/main.cpp test/second.cpp -o $@
 
+# The two-unit guard regression (issue #189): two packages, both with
+# string(N) fields, included into ONE translation unit. Its corpus is
+# test-only — generated at build time into build/, never part of the
+# committed generated/ tree (one package per generate call, SPEC §3.2).
+build/guard-generated/.stamp: bin/schema test/guard/Alpha.schema test/guard/Beta.schema
+	@mkdir -p build/guard-generated
+	./bin/schema generate --lang cpp --out build/guard-generated test/guard/Alpha.schema
+	./bin/schema generate --lang cpp --out build/guard-generated test/guard/Beta.schema
+	@touch $@
+
+build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Ibuild/guard-generated test/guard/main.cpp -o $@
+
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/random_main.cpp -o $@
@@ -328,8 +342,9 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
+	./build/schema_test_guard
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c

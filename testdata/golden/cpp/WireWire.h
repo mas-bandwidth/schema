@@ -53,8 +53,8 @@ namespace example {
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
 
-#ifndef SCHEMA_UTF8_VALID_DEFINED
-#define SCHEMA_UTF8_VALID_DEFINED
+#ifndef SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
+#define SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
 // string(N) payloads are well-formed UTF-8 BY CONTRACT (SPEC §4.7): the
 // write path debug-asserts with this validator and the release path costs
 // nothing. Rejects truncated sequences, bare continuations, overlongs,
@@ -119,10 +119,10 @@ inline bool schema_utf8_valid( const uint8_t * bytes, int32_t length )
     }
     return true;
 }
-#endif // SCHEMA_UTF8_VALID_DEFINED
+#endif // SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
 
-#ifndef SCHEMA_INTERIOR_NULL_DEFINED
-#define SCHEMA_INTERIOR_NULL_DEFINED
+#ifndef SCHEMA_EXAMPLE_INTERIOR_NULL_DEFINED
+#define SCHEMA_EXAMPLE_INTERIOR_NULL_DEFINED
 // string(N) carries bytes excluding 0x00: an interior null is content every
 // generated reader refuses (SPEC §4.7) — generated-code validation; no
 // serialize primitive performs it. The scan is word-wise: eight bytes per
@@ -162,7 +162,7 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
     }
     return false;
 }
-#endif // SCHEMA_INTERIOR_NULL_DEFINED
+#endif // SCHEMA_EXAMPLE_INTERIOR_NULL_DEFINED
 
 SCHEMA_WRITE_INLINE bool WriteProbeHeader( serialize::WriteStream & stream, const ProbeHeader & value )
 {

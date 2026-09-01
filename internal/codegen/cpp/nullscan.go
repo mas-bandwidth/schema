@@ -1,5 +1,7 @@
 package cpp
 
+import "strings"
+
 // emitInteriorNullScan emits the read-side interior-null refusal every
 // generated reader owes (SPEC §4.7): string(N) carries bytes excluding 0x00,
 // and a payload with a null anywhere in [0, length) is content the read
@@ -12,10 +14,13 @@ package cpp
 // buffer-slack dependence, no masking, and no endianness dependence (the
 // idiom reports a zero byte wherever it sits in the word). A shorter payload
 // takes a per-byte tail bounded at seven. SCHEMA_READ_INLINE: the read
-// spine's inlining demand covers the scan too. Guarded against redefinition
-// because several wire headers can land in one translation unit.
+// spine's inlining demand covers the scan too. Guarded per package: the scan
+// lives inside namespace <package>, so each unit in a translation unit needs
+// its own copy exactly once — several wire headers of one package can land
+// in one translation unit.
 func (g *gen) emitInteriorNullScan() {
-	g.pf("#ifndef SCHEMA_INTERIOR_NULL_DEFINED\n#define SCHEMA_INTERIOR_NULL_DEFINED\n")
+	guard := "SCHEMA_" + strings.ToUpper(g.unit.Package) + "_INTERIOR_NULL_DEFINED"
+	g.pf("#ifndef %s\n#define %s\n", guard, guard)
 	g.pf("// string(N) carries bytes excluding 0x00: an interior null is content every\n")
 	g.pf("// generated reader refuses (SPEC §4.7) — generated-code validation; no\n")
 	g.pf("// serialize primitive performs it. The scan is word-wise: eight bytes per\n")
@@ -38,5 +43,5 @@ func (g *gen) emitInteriorNullScan() {
 	g.pf("    for ( ; i < length; i++ )\n    {\n")
 	g.pf("        if ( bytes[i] == 0 )\n        {\n            return true;\n        }\n    }\n")
 	g.pf("    return false;\n}\n")
-	g.pf("#endif // SCHEMA_INTERIOR_NULL_DEFINED\n\n")
+	g.pf("#endif // %s\n\n", guard)
 }
