@@ -1,0 +1,49 @@
+# schema bench results
+# date: 2026-09-01T00:47:17Z
+# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# cpu: AMD EPYC 9124 16-Core Processor
+# build: Release
+# cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# cpp flags: -O3 -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT="O3" -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/bench/cpp -I../serialize
+# c compiler: cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+# c flags: -O3 -DNDEBUG -DBENCH_OPT="O3" -std=c99 -Wall -Wextra -Werror -Igenerated/bench/c -I../serialize.c (serialize.c compiled in, no LTO)
+# go: go version go1.27.0 linux/amd64 (go run, default optimized build)
+# rust: cargo 1.98.0 (797e8a9bc 2026-08-05); rustc 1.98.0 (88d9e12ae 2026-08-18) (cargo run --release at opt-level 3, no LTO)
+# dotnet: 10.0.400 (dotnet run -c Release, workstation GC)
+# node: v26.7.0 (NODE_ENV=production — serialize.js's caller-trust release mode; the runner records the mode that ran in its checks column)
+# java: openjdk 21.0.12.1 2026-08-18 LTS (generated codecs, zero runtime dependency; default JVM flags, no -ea)
+# dart: Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "linux_x64" (generated codecs, zero runtime dependency; AOT executable)
+# elixir: 1.20.4 (generated codecs, zero runtime dependency; pinned BEAM toolchain)
+# pinning: taskset -c 15
+# noise: NOISY: server.service resident (pre-release, no players, owner-confirmed) — one pinned game worker thread per isolated core at ~18% CPU including bench core 15; soak_sim/soak confined to core 0
+# schema commit: d398ec4
+# serialize commit: cebaed2 (HEAD) [build-verified: /home/ubuntu/rowan-bench-schema/serialize]
+# serialize.c commit: 37db942 (HEAD) [build-verified: /home/ubuntu/rowan-bench-schema/serialize.c]
+# serialize.go commit: ae730d5 (HEAD) [build-verified: /home/ubuntu/rowan-bench-schema/serialize.go]
+# serialize.rs commit: 6b52aa6 (HEAD) [build-verified: /home/ubuntu/rowan-bench-schema/serialize.rs]
+# serialize.cs commit: f08327e (HEAD) [build-verified: /home/ubuntu/rowan-bench-schema/serialize.cs]
+# serialize.js commit: e391f1e (HEAD) [build-verified: /home/ubuntu/rowan-bench-schema/serialize.js]
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_mixed,write,4000000,438,3,4487822,4461541,4500026,1874.61,0.86,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
+cpp,bench_mixed,round_trip,4000000,438,3,2071369,2069646,2073985,865.23,0.21,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+c,bench_mixed,write,4000000,438,3,3781572,3762327,3789127,1579.60,0.71,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
+c,bench_mixed,round_trip,4000000,438,3,1862029,1854252,1862788,777.79,0.46,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
+go,bench_mixed,write,4000000,438,3,1874651,1873571,1875369,783.06,0.10,6b213fbfa1a03a99,gen,pkg,always,default,unknown
+go,bench_mixed,round_trip,4000000,438,3,888233,886066,889077,371.02,0.34,6b213fbfa1a03a99,gen,pkg,always,default,unknown
+rust,bench_mixed,write,4000000,438,3,3202904,3197921,3211915,1337.88,0.44,6b213fbfa1a03a99,gen,crate,always,O3,unknown
+rust,bench_mixed,round_trip,4000000,438,3,1644370,1640863,1647143,686.87,0.38,6b213fbfa1a03a99,gen,crate,always,O3,unknown
+cs,bench_mixed,write,4000000,438,3,1691805,1686145,1692835,706.68,0.40,6b213fbfa1a03a99,gen,asm,always,default,unknown
+cs,bench_mixed,round_trip,4000000,438,3,712742,709610,712824,297.72,0.45,6b213fbfa1a03a99,gen,asm,always,default,unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+js,bench_mixed,write,4000000,438,3,856478,848335,860964,357.76,1.47,6b213fbfa1a03a99,gen,esm,contract,default,unknown,flat
+js,bench_mixed,round_trip,4000000,438,3,401299,398652,401812,167.63,0.79,6b213fbfa1a03a99,gen,esm,contract,default,unknown,flat
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+java,bench_mixed,write,4000000,438,3,3871943,3870032,3873164,1617.35,0.08,6b213fbfa1a03a99,gen,class,contract,default,unknown
+java,bench_mixed,round_trip,4000000,438,3,1692438,1603139,1713729,706.95,6.53,6b213fbfa1a03a99,gen,class,contract,default,unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+dart,bench_mixed,write,4000000,438,3,1318589,1316797,1321619,550.79,0.37,6b213fbfa1a03a99,gen,aot,contract,default,unknown
+dart,bench_mixed,round_trip,4000000,438,3,614275,613513,615234,256.59,0.28,6b213fbfa1a03a99,gen,aot,contract,default,unknown
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+elixir,bench_mixed,write,400000,438,3,213192,212556,213828,89.05,0.60,6b213fbfa1a03a99,gen,beam,contract,default,unknown
+elixir,bench_mixed,round_trip,400000,438,3,127691,127324,127753,53.34,0.34,6b213fbfa1a03a99,gen,beam,contract,default,unknown
