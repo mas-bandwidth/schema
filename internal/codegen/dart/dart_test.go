@@ -57,3 +57,42 @@ func TestFixedDefaultIsRawNotDoubleScaled(t *testing.T) {
 		t.Errorf("128-bit fixed default double-scaled: 2<<32 appears in the output")
 	}
 }
+
+// TestReservedDeclarationNamesRefused pins #162: the shadow-hazard entries
+// (String, List, Object, Endian, ByteData) exist for DECLARATION names, which
+// emit verbatim as Dart class names — a `type List` would shadow dart:core.
+// The old checkNames walked consts, variants and fields but never the
+// declarations themselves, leaving those entries unreachable.
+func TestReservedDeclarationNamesRefused(t *testing.T) {
+	cases := []struct {
+		src    string
+		needle string
+	}{
+		{"package t\n\ntype List { x uint8 }\n", "List"},
+		{"package t\n\nenum Endian { Little, Big }\n\ntype P { e Endian }\n", "Endian"},
+		{"package t\n\nflags Object { A }\n\ntype P { o Object }\n", "Object"},
+		{"package t\n\ntype Blob { x uint8 }\n\nunion String { blob Blob }\n", "String"},
+		{"package t\n\ntype ByteData { x uint8 }\n", "ByteData"},
+	}
+	for _, c := range cases {
+		f, perrs := parser.Parse("Res.schema", []byte(c.src))
+		if len(perrs) > 0 {
+			t.Fatalf("parse: %v", perrs[0])
+		}
+		u, cerrs := check.Unit([]check.SourceFile{{
+			Path: "Res.schema", Name: "Res.schema", Base: "Res",
+			Bytes: []byte(c.src), AST: f,
+		}})
+		if len(cerrs) > 0 {
+			t.Fatalf("check: %v", cerrs[0])
+		}
+		_, err := Generate(u)
+		if err == nil {
+			t.Errorf("declaration %q: want a reserved-identifier refusal, got success", c.needle)
+			continue
+		}
+		if !strings.Contains(err.Error(), c.needle) || !strings.Contains(err.Error(), "rename it") {
+			t.Errorf("declaration %q: refusal does not name the identifier: %v", c.needle, err)
+		}
+	}
+}
