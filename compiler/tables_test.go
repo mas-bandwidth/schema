@@ -145,8 +145,8 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 			t.Errorf("generated table code contains %q — generated codecs must not allocate", banned)
 		}
 	}
-	for _, line := range strings.Split(table, "\n") {
-		if idx := strings.Index(line, "new "); idx >= 0 && !strings.Contains(line, "new ( &") && !strings.Contains(line, "<new>") {
+	for line := range strings.SplitSeq(table, "\n") {
+		if found := strings.Contains(line, "new "); found && !strings.Contains(line, "new ( &") && !strings.Contains(line, "<new>") {
 			t.Errorf("generated table code contains a non-placement new: %q", line)
 		}
 	}

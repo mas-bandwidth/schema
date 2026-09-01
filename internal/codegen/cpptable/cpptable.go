@@ -526,14 +526,14 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	done := make([]bool, n)
 	for len(order) < n {
 		pick := -1
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if !done[i] && indeg[i] == 0 {
 				pick = i
 				break
 			}
 		}
 		if pick == -1 {
-			for i := 0; i < n; i++ {
+			for i := range n {
 				if !done[i] {
 					pick = i
 					break
