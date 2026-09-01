@@ -68,8 +68,7 @@ Cost to serialize a representative game packet, relative to generated C++ at 100
 
 Measured by [the benchmark](bench/): the real generated code in every language, over the same
 wire corpus — a 438-byte packet exercising every construct, with integers carrying 92% of the
-bytes, because that is what game packets look like. No hand-written stand-ins. C and C++ report
-as a statistical tie. Raw sweeps are committed under [bench/results](bench/results/); reproduce
+bytes. Raw sweeps are committed under [bench/results](bench/results/); reproduce
 with `./bench/run.sh` and render any sweep's table with `./bench/run.sh --render <csv>`.
 
 ## Why it exists
@@ -78,20 +77,14 @@ Multiplayer games serialize the same data in several languages at once — an
 engine client here, a dedicated server there, tools and services around them.
 Every way of solving that costs something:
 
-- **Hand-written serializers drift.** Someone widens a field on one side; the
-  other side keeps reading the old width, and an afternoon goes to a bug that
-  is one bit wide. **Separate read and write paths drift too** — even within a
-  single language, the reader and the writer are two expressions of one format
-  that nothing forces to agree.
-- **A unified read/write function fixes the drift and costs you elsewhere.**
+- **Hand-written serializers drift.** Someone changes a field on one side,
+  other side isn't updated, and an afternoon disappears finding the desync.
+- **A unified read/write function only works for some languages.**
   Templating one function over a read stream and a write stream is a good C++
-  answer, and it is still slower than the hand-written pair — and it is not
-  available at all in Go, or in most of the languages a game actually has to
-  ship in.
+  answer, but it doesn't work in other languages that games use like Golang or C#.
 - **General-purpose formats** fix the drift by paying for it on the wire.
-  On one representative gameplay packet that is **28 bytes against Cap'n Proto's
-  52, Protobuf's 56 and FlatBuffers' 72** — every number measured by running the
-  real encoder, [reproducible from COMPARISON.md](COMPARISON.md).
+  On one representative gameplay packet schema encodes in just **28 bytes against
+  Cap'n Proto's 52, Protobuf's 56 and FlatBuffers' 72**.
 
 Generating the code takes the fourth path. One declaration produces the reader
 *and* the writer, in every language, so they cannot disagree — and because the
