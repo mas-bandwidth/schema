@@ -170,6 +170,35 @@ end
 defmodule Example.Wire do
   import Bitwise
 
+  @cf_tab_0 (fn ->
+               fr = fn value ->
+                 ax = abs(value)
+
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                   y = value * 536_870_913.0
+                   y - (y - value)
+                 else
+                   case <<value::float-32-little>> do
+                     <<rounded::float-32-little>> -> rounded
+                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+                   end
+                 end
+               end
+
+               List.to_tuple(
+                 for integer <- 0..1000 do
+                   quotient = fr.(fr.(integer * 1.0) / 1000.0)
+                   scaled = fr.(quotient * 10.0)
+
+                   case fr.(scaled + 0.0) do
+                     :pos_inf -> {:nonfinite, 0x7F800000}
+                     :neg_inf -> {:nonfinite, 0xFF800000}
+                     value -> value
+                   end
+                 end
+               )
+             end).()
+
   @compile {:inline, rd: 3}
 
   @compile {:inline, rdw: 3}
@@ -674,7 +703,7 @@ defmodule Example.Wire do
       bits_read = bits_read + 3
       n = v + 1
       if bits_read + n * 16 > num_bits, do: throw(:invalid)
-      {bits_read, v_samples} = r_probe_sample_samples(n, [], data, num_bits, bits_read)
+      {bits_read, v_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
 
@@ -2279,7 +2308,7 @@ defmodule Example.Wire do
       if v > 16, do: throw(:invalid)
       n = v
       if bits_read + n * 8 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_test_data_items(n, [], data, num_bits, bits_read)
+      {bits_read, v_items} = r_test_data_items_align(n, [], data, num_bits, bits_read)
       if bits_read + 355 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
@@ -2289,7 +2318,7 @@ defmodule Example.Wire do
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 1000, do: throw(:invalid)
-      v_compressed_float_value = cf_decode(v, 1000.0, 10.0, 0.0)
+      v_compressed_float_value = elem(@cf_tab_0, v)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
@@ -2366,7 +2395,10 @@ defmodule Example.Wire do
 
       bits_read = bits_read + pad
       if bits_read + 136 > num_bits, do: throw(:invalid)
-      {bits_read, v_fixed_bytes} = r_test_data_fixed_bytes(17, [], data, num_bits, bits_read)
+
+      {bits_read, v_fixed_bytes} =
+        r_test_data_fixed_bytes_align(17, [], data, num_bits, bits_read)
+
       if bits_read + 8 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFF
@@ -2478,7 +2510,7 @@ defmodule Example.Wire do
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 1000, do: throw(:invalid)
-      v_boundary = cf_decode(v, 1000.0, 10.0, 0.0)
+      v_boundary = elem(@cf_tab_0, v)
       v = rv >>> 10
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
@@ -2559,6 +2591,82 @@ defmodule Example.Wire do
     e = v
     r_probe_sample_samples(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
+
+  defp r_probe_sample_samples_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_probe_sample_samples_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_probe_sample_samples_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_probe_sample_samples_align(remaining, acc, data, num_bits, bits_read),
+    do: r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
+
+  defp r_probe_sample_samples_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-40, s2::little-24, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 4 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFFFF
+    e1 = v
+    v = z1 >>> 16 &&& 0xFFFF
+    e2 = v
+    z2 = z1 >>> 32 ||| s2 <<< (c + 8)
+    v = z2 &&& 0xFFFF
+    e3 = v
+    v = z2 >>> 16 &&& 0xFFFF
+    e4 = v
+
+    {bits_read, tail} =
+      r_probe_sample_samples_fast(
+        remaining - 4,
+        acc,
+        data,
+        num_bits,
+        bits_read + 64,
+        rest,
+        z2 >>> 32,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4 | tail]}
+  end
+
+  defp r_probe_sample_samples_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_probe_sample_samples(remaining, acc, data, num_bits, bits_read)
 
   defp w_probe_collider_extras([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -2872,7 +2980,7 @@ defmodule Example.Wire do
     bits_read = bits_read + 3
     n = v + 1
     if bits_read + n * 16 > num_bits, do: throw(:invalid)
-    {bits_read, e_samples} = r_probe_sample_samples(n, [], data, num_bits, bits_read)
+    {bits_read, e_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read)
 
     e = %Example.ProbeSample{
       active: e_active,
@@ -3052,6 +3160,83 @@ defmodule Example.Wire do
     r_test_data_items(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
 
+  defp r_test_data_items_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 9 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_test_data_items_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_test_data_items(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_test_data_items_fast(remaining, acc, data, num_bits, bits_read, rest, b0 >>> q, 8 - q)
+
+        _ ->
+          r_test_data_items(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_test_data_items_align(remaining, acc, data, num_bits, bits_read),
+    do: r_test_data_items(remaining, acc, data, num_bits, bits_read)
+
+  defp r_test_data_items_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-40, s2::little-32, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 9 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFF
+    e1 = v
+    v = z1 >>> 8 &&& 0xFF
+    e2 = v
+    v = z1 >>> 16 &&& 0xFF
+    e3 = v
+    v = z1 >>> 24 &&& 0xFF
+    e4 = v
+    v = z1 >>> 32 &&& 0xFF
+    e5 = v
+    z2 = z1 >>> 40 ||| s2 <<< (c + 0)
+    v = z2 &&& 0xFF
+    e6 = v
+    v = z2 >>> 8 &&& 0xFF
+    e7 = v
+    v = z2 >>> 16 &&& 0xFF
+    e8 = v
+    v = z2 >>> 24 &&& 0xFF
+    e9 = v
+
+    {bits_read, tail} =
+      r_test_data_items_fast(
+        remaining - 9,
+        acc,
+        data,
+        num_bits,
+        bits_read + 72,
+        rest,
+        z2 >>> 32,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9 | tail]}
+  end
+
+  defp r_test_data_items_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_test_data_items(remaining, acc, data, num_bits, bits_read)
+
   defp r_test_data_fixed_bytes(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
@@ -3080,6 +3265,92 @@ defmodule Example.Wire do
     e = v
     r_test_data_fixed_bytes(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
+
+  defp r_test_data_fixed_bytes_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 9 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_test_data_fixed_bytes_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_test_data_fixed_bytes_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_test_data_fixed_bytes_align(remaining, acc, data, num_bits, bits_read),
+    do: r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
+
+  defp r_test_data_fixed_bytes_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-40, s2::little-32, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 9 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFF
+    e1 = v
+    v = z1 >>> 8 &&& 0xFF
+    e2 = v
+    v = z1 >>> 16 &&& 0xFF
+    e3 = v
+    v = z1 >>> 24 &&& 0xFF
+    e4 = v
+    v = z1 >>> 32 &&& 0xFF
+    e5 = v
+    z2 = z1 >>> 40 ||| s2 <<< (c + 0)
+    v = z2 &&& 0xFF
+    e6 = v
+    v = z2 >>> 8 &&& 0xFF
+    e7 = v
+    v = z2 >>> 16 &&& 0xFF
+    e8 = v
+    v = z2 >>> 24 &&& 0xFF
+    e9 = v
+
+    {bits_read, tail} =
+      r_test_data_fixed_bytes_fast(
+        remaining - 9,
+        acc,
+        data,
+        num_bits,
+        bits_read + 72,
+        rest,
+        z2 >>> 32,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9 | tail]}
+  end
+
+  defp r_test_data_fixed_bytes_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
 
   # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
   # plus a 32-bit group, small enough that no intermediate ever boxes. The
@@ -3177,11 +3448,30 @@ defmodule Example.Wire do
   # compressed-float clamps can resolve it the way the reference's float
   # arithmetic does.
   #
-  # The refusal IS the test: a float segment does not match a non-finite
-  # pattern, so the finite path costs one construction and one match and
-  # never touches the exponent field, while the second clause reads the
-  # sign of exactly the patterns the first one refused.
+  # The fast path is arithmetic (Veltkamp/Dekker splitting, C = 2^29 + 1):
+  # for a double whose magnitude is in [2^-126, 2^128 - 2^103) — the
+  # float32 normal range, below the smallest magnitude that rounds to
+  # infinity — y = value * C; y - (y - value) IS the value rounded to 24
+  # significant bits, round-to-nearest-even, in three flops with nothing
+  # allocated beyond the result. Outside that range (the subnormal grid,
+  # overflow to the atoms, zero with its sign) fr_slow keeps the exact
+  # semantics the construct/match pair defines.
   defp fr(value) do
+    ax = abs(value)
+
+    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+      y = value * 536_870_913.0
+      y - (y - value)
+    else
+      fr_slow(value)
+    end
+  end
+
+  # The slow path's refusal IS the test: a float segment does not match a
+  # non-finite pattern, so a finite value costs one construction and one
+  # match and never touches the exponent field, while the second clause
+  # reads the sign of exactly the patterns the first one refused.
+  defp fr_slow(value) do
     case <<value::float-32-little>> do
       <<rounded::float-32-little>> -> rounded
       <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf

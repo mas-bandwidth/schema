@@ -204,6 +204,151 @@ end
 defmodule Realworld.RealWorld do
   import Bitwise
 
+  @cf_tab_0 (fn ->
+               fr = fn value ->
+                 ax = abs(value)
+
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                   y = value * 536_870_913.0
+                   y - (y - value)
+                 else
+                   case <<value::float-32-little>> do
+                     <<rounded::float-32-little>> -> rounded
+                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+                   end
+                 end
+               end
+
+               List.to_tuple(
+                 for integer <- 0..16 do
+                   quotient = fr.(fr.(integer * 1.0) / 16.0)
+                   scaled = fr.(quotient * 4.0)
+
+                   case fr.(scaled + -2.0) do
+                     :pos_inf -> {:nonfinite, 0x7F800000}
+                     :neg_inf -> {:nonfinite, 0xFF800000}
+                     value -> value
+                   end
+                 end
+               )
+             end).()
+
+  @cf_tab_1 (fn ->
+               fr = fn value ->
+                 ax = abs(value)
+
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                   y = value * 536_870_913.0
+                   y - (y - value)
+                 else
+                   case <<value::float-32-little>> do
+                     <<rounded::float-32-little>> -> rounded
+                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+                   end
+                 end
+               end
+
+               List.to_tuple(
+                 for integer <- 0..360 do
+                   quotient = fr.(fr.(integer * 1.0) / 360.0)
+                   scaled = fr.(quotient * 180.0)
+
+                   case fr.(scaled + -90.0) do
+                     :pos_inf -> {:nonfinite, 0x7F800000}
+                     :neg_inf -> {:nonfinite, 0xFF800000}
+                     value -> value
+                   end
+                 end
+               )
+             end).()
+
+  @cf_tab_2 (fn ->
+               fr = fn value ->
+                 ax = abs(value)
+
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                   y = value * 536_870_913.0
+                   y - (y - value)
+                 else
+                   case <<value::float-32-little>> do
+                     <<rounded::float-32-little>> -> rounded
+                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+                   end
+                 end
+               end
+
+               List.to_tuple(
+                 for integer <- 0..60 do
+                   quotient = fr.(fr.(integer * 1.0) / 60.0)
+                   scaled = fr.(quotient * 30.0)
+
+                   case fr.(scaled + 0.0) do
+                     :pos_inf -> {:nonfinite, 0x7F800000}
+                     :neg_inf -> {:nonfinite, 0xFF800000}
+                     value -> value
+                   end
+                 end
+               )
+             end).()
+
+  @cf_tab_3 (fn ->
+               fr = fn value ->
+                 ax = abs(value)
+
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                   y = value * 536_870_913.0
+                   y - (y - value)
+                 else
+                   case <<value::float-32-little>> do
+                     <<rounded::float-32-little>> -> rounded
+                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+                   end
+                 end
+               end
+
+               List.to_tuple(
+                 for integer <- 0..800 do
+                   quotient = fr.(fr.(integer * 1.0) / 800.0)
+                   scaled = fr.(quotient * 200.0)
+
+                   case fr.(scaled + -100.0) do
+                     :pos_inf -> {:nonfinite, 0x7F800000}
+                     :neg_inf -> {:nonfinite, 0xFF800000}
+                     value -> value
+                   end
+                 end
+               )
+             end).()
+
+  @cf_tab_4 (fn ->
+               fr = fn value ->
+                 ax = abs(value)
+
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                   y = value * 536_870_913.0
+                   y - (y - value)
+                 else
+                   case <<value::float-32-little>> do
+                     <<rounded::float-32-little>> -> rounded
+                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+                   end
+                 end
+               end
+
+               List.to_tuple(
+                 for integer <- 0..500 do
+                   quotient = fr.(fr.(integer * 1.0) / 500.0)
+                   scaled = fr.(quotient * 10.0)
+
+                   case fr.(scaled + 0.0) do
+                     :pos_inf -> {:nonfinite, 0x7F800000}
+                     :neg_inf -> {:nonfinite, 0xFF800000}
+                     value -> value
+                   end
+                 end
+               )
+             end).()
+
   @compile {:inline, rd: 3}
 
   @compile {:inline, rdw: 3}
@@ -1498,7 +1643,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 5
       # headroom above the quantum count is refused
       if v > 16, do: throw(:invalid)
-      v_f027_cf32 = cf_decode(v, 16.0, 4.0, -2.0)
+      v_f027_cf32 = elem(@cf_tab_0, v)
       v = rv >>> 14 &&& 0xF
       bits_read = bits_read + 4
       v_f028_bits = v
@@ -1682,7 +1827,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 360, do: throw(:invalid)
-      v_f061_cf32 = cf_decode(v, 360.0, 180.0, -90.0)
+      v_f061_cf32 = elem(@cf_tab_1, v)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x1FF
       bits_read = bits_read + 9
@@ -1706,7 +1851,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 6
       # headroom above the quantum count is refused
       if v > 60, do: throw(:invalid)
-      v_f065_cf32 = cf_decode(v, 60.0, 30.0, 0.0)
+      v_f065_cf32 = elem(@cf_tab_2, v)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFF
       bits_read = bits_read + 16
@@ -1717,7 +1862,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 800, do: throw(:invalid)
-      v_f067_cf32 = cf_decode(v, 800.0, 200.0, -100.0)
+      v_f067_cf32 = elem(@cf_tab_3, v)
       v = rv >>> 26 &&& 0x7FF
       bits_read = bits_read + 11
       # headroom above the quantum count is refused
@@ -1736,7 +1881,7 @@ defmodule Realworld.RealWorld do
       bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 500, do: throw(:invalid)
-      v_f071_cf32 = cf_decode(v, 500.0, 10.0, 0.0)
+      v_f071_cf32 = elem(@cf_tab_4, v)
       v = rv >>> 11 &&& 0x3FFF
       bits_read = bits_read + 14
       # headroom above the quantum count is refused
@@ -2129,11 +2274,30 @@ defmodule Realworld.RealWorld do
   # compressed-float clamps can resolve it the way the reference's float
   # arithmetic does.
   #
-  # The refusal IS the test: a float segment does not match a non-finite
-  # pattern, so the finite path costs one construction and one match and
-  # never touches the exponent field, while the second clause reads the
-  # sign of exactly the patterns the first one refused.
+  # The fast path is arithmetic (Veltkamp/Dekker splitting, C = 2^29 + 1):
+  # for a double whose magnitude is in [2^-126, 2^128 - 2^103) — the
+  # float32 normal range, below the smallest magnitude that rounds to
+  # infinity — y = value * C; y - (y - value) IS the value rounded to 24
+  # significant bits, round-to-nearest-even, in three flops with nothing
+  # allocated beyond the result. Outside that range (the subnormal grid,
+  # overflow to the atoms, zero with its sign) fr_slow keeps the exact
+  # semantics the construct/match pair defines.
   defp fr(value) do
+    ax = abs(value)
+
+    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+      y = value * 536_870_913.0
+      y - (y - value)
+    else
+      fr_slow(value)
+    end
+  end
+
+  # The slow path's refusal IS the test: a float segment does not match a
+  # non-finite pattern, so a finite value costs one construction and one
+  # match and never touches the exponent field, while the second clause
+  # reads the sign of exactly the patterns the first one refused.
+  defp fr_slow(value) do
     case <<value::float-32-little>> do
       <<rounded::float-32-little>> -> rounded
       <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf

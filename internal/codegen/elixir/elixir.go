@@ -225,17 +225,43 @@ type gen struct {
 	// the fused static run's remaining bits, or 0 when unknown
 	rdOff, rdAvail, rdRun int64
 
+	// feed, while non-nil, redirects readR: the fast array-read clause has
+	// already matched this iteration's stream bytes into register segments,
+	// and fields cut their bits out of chained fixnum windows instead of
+	// opening rd/rdw windows (functions.go, readFeed)
+	//
+	// feed needs no save/restore the way segW needs its reset at a join,
+	// and the reason is an exclusion, not luck: plainFastElement admits
+	// only scalars and structs of scalars, so no branch, union or nested
+	// array can be emitted while a feed is live and no read helper is ever
+	// re-entered under one. Widening that gate means giving feed a
+	// save/restore at every construct that can re-enter read emission —
+	// without it a nested read would cut its bits from the outer clause's
+	// registers, which is the silent wire-corruption class.
+	feed *feedState
+
+	// compressed-float decode tables (functions.go, cfTable): one module
+	// attribute per distinct small declaration, computed at Elixir compile
+	// time by the same arithmetic cf_decode runs, deduplicated by parameters
+	cfTabs   map[string]int
+	cfTabDef []string
+
 	// helperOwner names the type whose items are being inlined — array loop
 	// helpers key on (owner, field), so a nested type's loops emit once per
 	// file however many callers inline it
 	helperOwner string
 
 	// per-file helper needs
-	needRd     bool // rd/3 — the 40-bit window decode
-	needRdw    bool // rdw/3 — the 56-bit window decode, for groups past 33 bits
-	needF32    bool // f32_bits/1 + f32_value/1
-	needF64    bool // f64_bits/1 + f64_value/1
-	needCf     bool // cf_quantize/4 + cf_decode/4 (and their fr/1)
+	needRd  bool // rd/3 — the 40-bit window decode
+	needRdw bool // rdw/3 — the 56-bit window decode, for groups past 33 bits
+	needF32 bool // f32_bits/1 + f32_value/1
+	needF64 bool // f64_bits/1 + f64_value/1
+	// the compressed-float helpers are needed in halves: a write always
+	// quantizes, but a read past cfTableMax is what puts cf_decode/4 in the
+	// module — below it the decode is a table lookup and the function would
+	// be dead. fr/1 + fr_slow/1 back both halves, so either need emits them.
+	needCfQ    bool // cf_clamp01/1 + cf_quantize/5
+	needCfD    bool // cf_decode/4
 	usesImport bool // the module body uses Bitwise operators
 
 	// loop helpers the current file's wire bodies need, in first-need order,
@@ -603,6 +629,9 @@ func (g *gen) emitFileModule(order []ir.Decl) {
 	g.body = saved
 	if g.usesImport {
 		g.bpf("  import Bitwise\n\n")
+	}
+	for _, def := range g.cfTabDef {
+		g.body.WriteString(def)
 	}
 	if g.needRd {
 		// inlined by the compiler, so the literal widths at every call site

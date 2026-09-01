@@ -393,7 +393,7 @@ defmodule Example.Degenerate do
 
       bits_read = 0
       if bits_read + 64 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_chunk_values(4, [], data, num_bits, bits_read)
+      {bits_read, v_values} = r_span_chunk_values_align(4, [], data, num_bits, bits_read)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
       value = %Example.SpanChunk{values: v_values}
@@ -1110,6 +1110,82 @@ defmodule Example.Degenerate do
     e = v
     r_span_chunk_values(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
+
+  defp r_span_chunk_values_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_span_chunk_values_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_span_chunk_values_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_span_chunk_values_align(remaining, acc, data, num_bits, bits_read),
+    do: r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+
+  defp r_span_chunk_values_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-40, s2::little-24, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 4 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFFFF
+    e1 = v
+    v = z1 >>> 16 &&& 0xFFFF
+    e2 = v
+    z2 = z1 >>> 32 ||| s2 <<< (c + 8)
+    v = z2 &&& 0xFFFF
+    e3 = v
+    v = z2 >>> 16 &&& 0xFFFF
+    e4 = v
+
+    {bits_read, tail} =
+      r_span_chunk_values_fast(
+        remaining - 4,
+        acc,
+        data,
+        num_bits,
+        bits_read + 64,
+        rest,
+        z2 >>> 32,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4 | tail]}
+  end
+
+  defp r_span_chunk_values_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
 
   defp w_span_tail_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 

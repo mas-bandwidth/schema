@@ -219,6 +219,35 @@ end
 defmodule Bench.Bench do
   import Bitwise
 
+  @cf_tab_0 (fn ->
+               fr = fn value ->
+                 ax = abs(value)
+
+                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+                   y = value * 536_870_913.0
+                   y - (y - value)
+                 else
+                   case <<value::float-32-little>> do
+                     <<rounded::float-32-little>> -> rounded
+                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
+                   end
+                 end
+               end
+
+               List.to_tuple(
+                 for integer <- 0..200 do
+                   quotient = fr.(fr.(integer * 1.0) / 200.0)
+                   scaled = fr.(quotient * 2.0)
+
+                   case fr.(scaled + -1.0) do
+                     :pos_inf -> {:nonfinite, 0x7F800000}
+                     :neg_inf -> {:nonfinite, 0xFF800000}
+                     value -> value
+                   end
+                 end
+               )
+             end).()
+
   @compile {:inline, rd: 3}
 
   @compile {:inline, rdw: 3}
@@ -429,7 +458,7 @@ defmodule Bench.Bench do
 
       bits_read = bits_read + pad
       if bits_read + 136 > num_bits, do: throw(:invalid)
-      {bits_read, v_blob} = r_bench_packet_blob(17, [], data, num_bits, bits_read)
+      {bits_read, v_blob} = r_bench_packet_blob_align(17, [], data, num_bits, bits_read)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
 
@@ -2236,7 +2265,7 @@ defmodule Bench.Bench do
       if v > 80, do: throw(:invalid)
       n = v
       if bits_read + n * 18 > num_bits, do: throw(:invalid)
-      {bits_read, v_stats} = r_bench_mixed_stats(n, [], data, num_bits, bits_read)
+      {bits_read, v_stats} = r_bench_mixed_stats_align(n, [], data, num_bits, bits_read)
       if bits_read + 2 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x3
@@ -2312,7 +2341,7 @@ defmodule Bench.Bench do
         end
 
       if bits_read + 32 > num_bits, do: throw(:invalid)
-      {bits_read, v_loadout} = r_bench_mixed_loadout(4, [], data, num_bits, bits_read)
+      {bits_read, v_loadout} = r_bench_mixed_loadout_align(4, [], data, num_bits, bits_read)
       if bits_read + 4 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xF
@@ -2367,17 +2396,17 @@ defmodule Bench.Bench do
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_x = cf_decode(v, 200.0, 2.0, -1.0)
+      v_aim_x = elem(@cf_tab_0, v)
       v = rv >>> 8 &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_y = cf_decode(v, 200.0, 2.0, -1.0)
+      v_aim_y = elem(@cf_tab_0, v)
       v = rv >>> 16 &&& 0xFF
       bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
-      v_aim_z = cf_decode(v, 200.0, 2.0, -1.0)
+      v_aim_z = elem(@cf_tab_0, v)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
       bits_read = bits_read + 32
@@ -2624,6 +2653,92 @@ defmodule Bench.Bench do
     e = v
     r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
+
+  defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 9 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_bench_packet_blob_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_bench_packet_blob_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read),
+    do: r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+
+  defp r_bench_packet_blob_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-40, s2::little-32, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 9 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFF
+    e1 = v
+    v = z1 >>> 8 &&& 0xFF
+    e2 = v
+    v = z1 >>> 16 &&& 0xFF
+    e3 = v
+    v = z1 >>> 24 &&& 0xFF
+    e4 = v
+    v = z1 >>> 32 &&& 0xFF
+    e5 = v
+    z2 = z1 >>> 40 ||| s2 <<< (c + 0)
+    v = z2 &&& 0xFF
+    e6 = v
+    v = z2 >>> 8 &&& 0xFF
+    e7 = v
+    v = z2 >>> 16 &&& 0xFF
+    e8 = v
+    v = z2 >>> 24 &&& 0xFF
+    e9 = v
+
+    {bits_read, tail} =
+      r_bench_packet_blob_fast(
+        remaining - 9,
+        acc,
+        data,
+        num_bits,
+        bits_read + 72,
+        rest,
+        z2 >>> 32,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9 | tail]}
+  end
+
+  defp r_bench_packet_blob_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
 
   defp w_bench_mixed_entities([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -3031,6 +3146,94 @@ defmodule Bench.Bench do
     r_bench_mixed_stats(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
 
+  defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_bench_mixed_stats_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_bench_mixed_stats_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read),
+    do: r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+
+  defp r_bench_mixed_stats_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-40, s2::little-32, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 4 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFF
+    e1_stat_id = v
+    v = z1 >>> 8 &&& 0x3FF
+    e1_delta = v - 512
+    e1 = %Bench.MixedStat{stat_id: e1_stat_id, delta: e1_delta}
+    v = z1 >>> 18 &&& 0xFF
+    e2_stat_id = v
+    v = z1 >>> 26 &&& 0x3FF
+    e2_delta = v - 512
+    e2 = %Bench.MixedStat{stat_id: e2_stat_id, delta: e2_delta}
+    z2 = z1 >>> 36 ||| s2 <<< (c + 4)
+    v = z2 &&& 0xFF
+    e3_stat_id = v
+    v = z2 >>> 8 &&& 0x3FF
+    e3_delta = v - 512
+    e3 = %Bench.MixedStat{stat_id: e3_stat_id, delta: e3_delta}
+    v = z2 >>> 18 &&& 0xFF
+    e4_stat_id = v
+    v = z2 >>> 26 &&& 0x3FF
+    e4_delta = v - 512
+    e4 = %Bench.MixedStat{stat_id: e4_stat_id, delta: e4_delta}
+
+    {bits_read, tail} =
+      r_bench_mixed_stats_fast(
+        remaining - 4,
+        acc,
+        data,
+        num_bits,
+        bits_read + 72,
+        rest,
+        z2 >>> 36,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4 | tail]}
+  end
+
+  defp r_bench_mixed_stats_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+
   defp r_bench_mixed_loadout(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
@@ -3059,6 +3262,81 @@ defmodule Bench.Bench do
     e = v
     r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
+
+  defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_bench_mixed_loadout_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read),
+    do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+
+  defp r_bench_mixed_loadout_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-32, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 4 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFF
+    e1 = v
+    v = z1 >>> 8 &&& 0xFF
+    e2 = v
+    v = z1 >>> 16 &&& 0xFF
+    e3 = v
+    v = z1 >>> 24 &&& 0xFF
+    e4 = v
+
+    {bits_read, tail} =
+      r_bench_mixed_loadout_fast(
+        remaining - 4,
+        acc,
+        data,
+        num_bits,
+        bits_read + 32,
+        rest,
+        z1 >>> 32,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4 | tail]}
+  end
+
+  defp r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
 
   # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
   # plus a 32-bit group, small enough that no intermediate ever boxes. The
@@ -3156,11 +3434,30 @@ defmodule Bench.Bench do
   # compressed-float clamps can resolve it the way the reference's float
   # arithmetic does.
   #
-  # The refusal IS the test: a float segment does not match a non-finite
-  # pattern, so the finite path costs one construction and one match and
-  # never touches the exponent field, while the second clause reads the
-  # sign of exactly the patterns the first one refused.
+  # The fast path is arithmetic (Veltkamp/Dekker splitting, C = 2^29 + 1):
+  # for a double whose magnitude is in [2^-126, 2^128 - 2^103) — the
+  # float32 normal range, below the smallest magnitude that rounds to
+  # infinity — y = value * C; y - (y - value) IS the value rounded to 24
+  # significant bits, round-to-nearest-even, in three flops with nothing
+  # allocated beyond the result. Outside that range (the subnormal grid,
+  # overflow to the atoms, zero with its sign) fr_slow keeps the exact
+  # semantics the construct/match pair defines.
   defp fr(value) do
+    ax = abs(value)
+
+    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
+      y = value * 536_870_913.0
+      y - (y - value)
+    else
+      fr_slow(value)
+    end
+  end
+
+  # The slow path's refusal IS the test: a float segment does not match a
+  # non-finite pattern, so a finite value costs one construction and one
+  # match and never touches the exponent field, while the second clause
+  # reads the sign of exactly the patterns the first one refused.
+  defp fr_slow(value) do
     case <<value::float-32-little>> do
       <<rounded::float-32-little>> -> rounded
       <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
@@ -3202,21 +3499,5 @@ defmodule Bench.Bench do
     scaled = fr(normalized * miv32)
     integer = floor(fr(scaled + 0.5))
     min(integer, miv)
-  end
-
-  # The reader's arithmetic, pinned the same way: the quotient rounds, the
-  # product rounds BEFORE min is added, and the sum rounds — float32
-  # throughout, never fused, never widened. The final add cannot overflow
-  # for a conforming declaration; the non-finite mapping keeps the
-  # never-raise reader obligation airtight.
-  defp cf_decode(integer, miv32, delta, min32) do
-    quotient = fr(fr(integer * 1.0) / miv32)
-    scaled = fr(quotient * delta)
-
-    case fr(scaled + min32) do
-      :pos_inf -> {:nonfinite, 0x7F800000}
-      :neg_inf -> {:nonfinite, 0xFF800000}
-      value -> value
-    end
   end
 end
