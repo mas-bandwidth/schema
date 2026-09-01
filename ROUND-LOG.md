@@ -163,3 +163,81 @@ no rebase debt).
   from the generated modules. The clone needed the read-only serialize siblings
   and the pinned dist toolchains symlinked in to run the full matrix; nothing in
   ~/rowan-working was written.
+
+## Adversarial review round (verdict: MERGE-WITH-CONDITIONS)
+
+Reviewer batteries at scratchpad/adv/ (adv/det/evo/tsan). Disposition per
+finding, and the re-run matrix, below.
+
+- B1 FIXED — Open's bounds walk was exponential on a forged aliased-forward
+  DAG (reviewer measured 26 nodes = 312 ms, ~60 = never). Fix is the ruled
+  high-water mark: `at >= watermark`, then `watermark = at + aligned sizeof`.
+  The invariant it rests on — Pack is pre-order bump allocation, OpenWalk
+  visits in the SAME order — is now stated at BOTH sites with "neither may
+  change alone". It also closes mid-node overlaps the alignment check caught
+  only by luck. Regression `test_open_walk_is_linear` ports the repro at
+  n = 16/26/40/64 (n = 64 would not return unbounded) plus
+  `test_open_refuses_overlap`. NEGATIVE CONTROL: with the mark disabled the
+  forged file is ACCEPTED again at n = 16 and 24.
+- B2 FIXED — Lock/Cook memcpy'd uninitialised arena padding into regions and
+  cooked FILES; the old determinism test passed on fresh-mmap luck. Segments
+  are calloc'd now. `test_lock_deterministic_on_dirty_heap` dirties the heap
+  with 0xA5 then 0x5C between builds and asserts identical regions AND
+  identical cooked files, plus zero padding bytes. NEGATIVE CONTROL: restoring
+  malloc turns it red on both assertions. The reviewer's own det.cpp now
+  reports IDENTICAL on a dirtied heap and zero padding on disk.
+- B3 FIXED — (a) `table Root`/`table Const` emitted non-compiling headers
+  because a member function hides the type name it shares. The METHODS moved
+  (Root -> GetRoot, Const -> AsConst) since Root is the spec's own canonical
+  root-table name; every remaining builder member name is now REFUSED as a
+  table name, so the door is shut rather than narrowed. `table Root` and
+  `table Const` verified compiling and running end to end. (b) Emplace, Pack,
+  PackMeasure, LoadMeasureBody, LoadBuilder, OpenWalk — plus TableInfo and
+  TableFields from the C3 fix — added to the claimed-name registry, with a
+  refusal test each.
+- C1 FIXED — by-value nesting charged depth on measure/save/load but not on
+  pack/cook/open, so a structure could Lock and Cook but not Save. Ruled fix
+  taken: ONLY POINTER EDGES CHARGE DEPTH, one rule expressed once
+  (depthSame/depthDown) and applied in all four walks.
+  `test_depth_agrees_through_by_value_nesting` builds the 127-chain through
+  Scene::ground and round-trips it through measure, save, Lock, Cook, Open and
+  Load.
+- C2 FIXED — Open never bounded count companions of by-value nested FIXED
+  tables (meta.tag_length = 30000 survived). Every closure member now gets an
+  Open walk, unions bound their tag before the arm is walked, and
+  `test_open_bounds_nested_fixed_companions` covers both a by-value nested
+  fixed table and one reached through a pointer. The reviewer's D4.2 note
+  flipped to "ok".
+- C3 FIXED — TSAN race on the descriptors' lazy link (a plain bool RMW). A
+  magic static could not have fixed it either: a self-reference re-enters its
+  own initialisation. Descriptors in a pointered unit are now
+  CONSTANT-INITIALISED namespace data with addresses for targets — verified
+  landing in __DATA,__const with no __cxx_global_var_init, and verified
+  linking across two TUs. tsan.cpp is clean; the alloc path was already clean
+  and stays so. `test_descriptors_are_constant` reads the surface from four
+  threads.
+- C4 FIXED — the layout id digested field NAMES (a `was` rename invalidated
+  every cooked file) and carried only sizeof (blind to a member that moved
+  inside an unchanged total). It now keys fields by WIRE ID — the identity
+  `was` preserves — and mixes per-field offsetof. Matrix re-run:
+  MOVES on widen / bare rename / reorder / add / by-value-to-pointer; HOLDS on
+  a `was` rename (asserted at value level: identical digest, and terms
+  identical once the renamed field's spelling inside offsetof is normalised,
+  which is value identity because a rename moves no member).
+- MINORS all done: zero-cost gate covers P1; stale TableMeasure/TableSave
+  names in comments; the cooked header's reserved words must be zero (with a
+  regression sweeping all 20 bytes); null-root guards on Measure/Save/Cook
+  from a builder; dead walker-less arms deleted; USAGE states
+  sizeof(<Name>Builder) is ~8 KB (measured 8240, arena 8200).
+- CLAIMS corrected: the PR body's zero-cost section now states the per-TABLE
+  property exactly (no Builder, no walkers, unchanged codecs) and the
+  per-UNIT one separately; TestPointerSurfaceEmitted asserts exactly that,
+  including that a value-only table DOES get an Open walk. "O(references)"
+  replaced with the linearity argument. The pointer-to-type refusal relabelled
+  COORDINATOR-DESIGNED. The Scene.base "forced rename" note dropped.
+
+RE-RUN MATRIX: make test exit 0 (nine legs + tables, 0 warnings); tables leg
+19 cases; tables-zero-cost clean; gofmt/vet/golangci-lint(0)/modernize/
+shape-gate clean; reviewer adv battery 240126 checks, the single remaining
+"failure" being their own CHECK that garbage in the header's reserved words
+still opens — now refused, which was minor 3.

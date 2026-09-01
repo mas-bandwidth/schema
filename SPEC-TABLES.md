@@ -214,7 +214,17 @@ and the corpus asserts the tree semantics rather than hiding them.
 
 A pointer chain's nesting depth on the wire EQUALS its length: a chain of
 N nodes is N levels deep. Both sides therefore cap nesting at a declared
-depth (128 in the C++ backend):
+depth (128 in the C++ backend).
+
+**ONLY POINTER EDGES CHARGE DEPTH.** By-value nesting — a table inside a
+table, or a bounded array of them — charges nothing, because by-value
+composition is already finite: §2 refuses by-value cycles, so its nesting
+is bounded by the schema and cannot be driven by data. The rule must hold
+identically in ALL FOUR walks — measure, save, load and pack — or the
+forms disagree about which structures are legal and a structure that
+locks and cooks is refused by the wire. That agreement is held by test.
+
+The cap in force:
 
 - **Writing**, a graph deeper than the cap — including any data cycle —
   is a save ERROR. Measure and save return failure; nothing recurses
@@ -318,11 +328,11 @@ The state machine is MONOTONIC — there is no unlock:
 
 ```cpp
 SceneBuilder builder;                        // MUTABLE: an arena
-Scene * root = builder.Root();
+Scene * root = builder.GetRoot();
 Node * n = builder.Alloc<Node>();            // usable as node AND as reference
 root->head = builder.Alloc<Node>();
 builder.Lock();                              // ONE WAY, and it is the compaction
-const Scene * scene = builder.Const();       // CONST: one packed region
+const Scene * scene = builder.AsConst();       // CONST: one packed region
 ```
 
 - **Builder** — a growable arena. `Alloc<T>()` hands back a node that is
@@ -375,7 +385,9 @@ The builder is designed to go wide, lock-free by ownership:
   concurrently with any other worker's. Writing fields of a node another
   worker allocated is your own synchronization problem; this runtime does
   not arbitrate it. `Lock`, `Save`, `Cook` and `Open` are
-  single-threaded — call them after the workers have joined.
+  single-threaded — call them after the workers have joined. The
+  reflection descriptors (§8) are immutable constant data and carry no
+  first-use state, so reading them needs no synchronization at all.
 - Slack is bounded and stated: one partial slab per worker, plus one per
   arena segment. That is the price of never synchronizing per node, and
   `Lock` removes all of it.
@@ -417,16 +429,42 @@ const Scene * scene = SceneOpen( bytes, size ); // point at it, or NULL
   the format of record; a cooked file is a cache beside it. Both
   sentences are load-bearing.
 - **The header build-locks it**: a magic (which is also the byte-order
-  check), a LAYOUT ID, and the region's length. The layout id is a
-  compile-time digest of the schema's packed-layout facts mixed with this
-  build's own `sizeof` for every type in the closure, so schema drift AND
-  ABI drift both refuse. It is the region form's twin of the protocol id.
+  check), a LAYOUT ID, and the region's length. The reserved words are
+  reserved: a non-zero one means a writer used a form this build does not
+  understand, and Open refuses rather than ignoring it.
+  The layout id is a compile-time digest mixing the schema's
+  packed-layout facts with this build's own `sizeof` AND `offsetof` for
+  every type and field in the closure, so schema drift and ABI drift both
+  refuse — `sizeof` alone cannot see a member that moved inside an
+  unchanged total, and the packed form is read by offset. It is the
+  region form's twin of the protocol id.
+
+  **It keys a field by its WIRE ID, not its source name.** That is the
+  identity `was` preserves (§5), and a `was` rename moves no byte — so it
+  must not invalidate every cooked file in existence. Reordering two
+  same-shaped fields does move bytes, and it moves which id sits at which
+  offset, so it still refuses. Both directions are held by test.
 - **Reads validate, always.** Before handing out the root, `Open` walks
   the REFERENCE GRAPH: every pointer slot, and the count companions that
-  bound a traversal. It reads no field value and decodes no payload —
-  that is the distinction between validating before pointing and parsing
-  the whole thing, and it costs O(references). There is no trust-mode
-  bypass.
+  bound a traversal — including those of fixed-size tables and plain
+  types nested by value, whose counts bound a walker just as a table's
+  do. It reads no field value and decodes no payload; that is the
+  distinction between validating before pointing and parsing the whole
+  thing. There is no trust-mode bypass.
+- **The walk is LINEAR IN THE REGION, and that takes a proof.** Bounds
+  and forwardness alone do not give it: a forged file whose references
+  alias forward — every node's second pointer aimed at its first child —
+  is a legal-looking DAG that a stateless walk explores exponentially
+  (measured on an earlier revision: 26 nodes, 312 ms; ~60 nodes, never).
+  The walk therefore carries a HIGH-WATER MARK. Packing lays nodes out in
+  pre-order by bump allocation and the walk visits them in the same
+  order, so in a genuine region every reference lands at or past the end
+  of everything visited so far; requiring that, and advancing the mark
+  past each node, makes the walk consume region bytes monotonically. It
+  visits each byte at most once, it terminates, and it also rules out the
+  mid-node overlaps a range check alone admits. **The pack order and the
+  walk order are one invariant and neither may change alone** — the
+  generated code says so at both sites.
 - **Every refusal is loud and the fallback is a real wire load**: wrong
   magic or byte order, a layout id this build did not produce, a
   truncated region, an unaligned base, a reference that leaves the
@@ -459,8 +497,11 @@ member then names the TARGET table's descriptor, and whose `elem_size` is
 the reference slot's width — and a type's derived **`variable`** mode, so
 a tool can tell at runtime which of §6's two lives a table has without
 being told. A self-referential pointer resolves to its own type's
-descriptor; the link is made once, after construction, so a recursive
-graph cannot recurse through the descriptors. This is the surface
+descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
+data and a target is the ADDRESS of another descriptor, so `Node` naming
+itself through `*Node` is expressible directly: no first-use link, which
+could not have been written both race-free and recursion-safe, and no
+mutable state anywhere on the surface. This is the surface
 editors and tools build on — walk properties by name, print a value, diff
 two, bind a property grid — with no RTTI and no schema files at runtime.
 
@@ -528,6 +569,11 @@ lockstep redeploy by a table edit. This independence is held by test.
   graph that leaves the region, goes backward, misaligns, or is bounded
   by an out-of-range count. `Open` returns NULL; the caller falls back to
   a wire load.
+- **A table named after a member of its generated builder** — a member
+  function hides the type name it shares, so the header would not
+  compile. The two accessors a real schema would plausibly hit were
+  renamed instead (`GetRoot`, `AsConst`), so `table Root`, this
+  document's own canonical example, stays legal.
 - A cross-file reference CYCLE among table declarations — the generated
   headers would have to include each other. Same-file recursion through
   pointers is fine; move a declaration so the cross-file graph is
@@ -655,8 +701,16 @@ copy already happens.
 
 **Depth versus a visited set.** A depth cap, not cycle detection: it
 needs no state, it bounds the C stack against hostile data, and a packed
-region cannot contain a cycle at all (§6.3), so the cooked form's
-validation walk needs neither.
+region cannot contain a cycle at all (§6.3).
+
+**Why the cooked walk still needs order state.** Acyclicity is not
+enough. A forged region can be a legal DAG — forward, in range, aligned —
+and a walk with no memory of where it has been re-visits shared subtrees
+exponentially. The fix is not a visited SET, which would need allocation
+proportional to the graph; it is a single monotonic high-water mark,
+which works precisely because packing is pre-order and the walk follows
+it (§7). One integer buys linearity, termination and overlap rejection
+together.
 
 ## 15. Named follow-ons
 

@@ -672,13 +672,13 @@ by value: you build it, lock it, and read it through a root pointer.
 
 ```cpp
 SceneBuilder builder;                       // MUTABLE
-Scene * root = builder.Root();
+Scene * root = builder.GetRoot();
 Node * first = builder.Alloc<Node>();
 first->value = 10;
 root->head = builder.Alloc<Node>();         // the slot is both node and reference
 
 builder.Lock();                             // ONE WAY, and it compacts
-const Scene * scene = builder.Const();      // CONST: one packed region
+const Scene * scene = builder.AsConst();      // CONST: one packed region
 const Node * head = NodeAt( scene->head );  // one add; NULL when null
 ```
 
@@ -705,7 +705,12 @@ builder.Lock();
 
 Allocating on your own worker is safe concurrently. Writing fields of a node
 another worker allocated is your own synchronization. `Lock`, `Save`, `Cook`
-and `Open` are single-threaded.
+and `Open` are single-threaded. The reflection descriptors are immutable
+constant data, so reading them needs no synchronization at all.
+
+A `<Name>Builder` is about 8 KB (it carries the arena's segment table inline),
+which is fine on the stack and fine as a member; it is not something to put in
+an array of thousands.
 
 Reading from the wire, the caller owns the allocation as always:
 
@@ -745,10 +750,15 @@ layout id that mixes the schema's packed-layout facts with this build's own
 `sizeof`s, so it refuses the moment either moves, and you regenerate it. The
 tolerant wire stays the format of record.
 
-`Open` validates before it points — a bounds walk over the reference graph
-alone, never a field value: O(references), not a parse. Value-only tables get
-no `Cook`/`Open`: they are structs, and `sizeof` plus `memcpy` already is
-their region form.
+`Open` validates before it points — a bounds walk over the reference graph and
+the counts that bound a traversal of it, never a field value. It is linear in
+the region and cannot be driven exponentially by a forged file: packing lays
+nodes out in pre-order and the walk follows that order behind a high-water
+mark, so it consumes region bytes monotonically and visits each byte at most
+once. A walk, not a parse.
+
+Value-only tables get no `Cook`/`Open` of their own: they are structs, and
+`sizeof` plus `memcpy` already is their region form.
 
 ### Renaming a field: `was`
 

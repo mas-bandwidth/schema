@@ -87,6 +87,35 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Node { x int32 }\ntable Tab { kids [..4]*Node }\n"},
 		{name: "a pointer field takes no specified default", want: "a pointer field takes no specified default",
 			src: "package t\ntable Node { x int32 }\ntable Tab { head *Node = 0 }\n"},
+		// every generated name-first spelling is claimed, including the ones a
+		// value-only table never emits: adding a pointer to a table must not
+		// turn a legal declaration elsewhere into a collision
+		{name: "a declaration colliding with the pointer allocation entry", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeEmplace { y int32 }\n"},
+		{name: "a declaration colliding with the pack walker", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodePack { y int32 }\n"},
+		{name: "a declaration colliding with the pack sizer", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodePackMeasure { y int32 }\n"},
+		{name: "a declaration colliding with the wire sizing pre-pass", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeLoadMeasureBody { y int32 }\n"},
+		{name: "a declaration colliding with the builder load path", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeLoadBuilder { y int32 }\n"},
+		{name: "a declaration colliding with the Open bounds walk", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeOpenWalk { y int32 }\n"},
+		{name: "a declaration colliding with the descriptor storage", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeTableInfo { y int32 }\n"},
+		{name: "a declaration colliding with the descriptor field storage", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeTableFields { y int32 }\n"},
+
+		// a table named after a Builder member would emit a header that cannot
+		// compile — a member function hides the type name it shares
+		{name: "a table named after a builder member", want: "collides with a member of the generated",
+			src: "package t\ntable Alloc { x int32 }\n"},
+		{name: "a table named after the builder's lock", want: "collides with a member of the generated",
+			src: "package t\ntable Lock { x int32 }\n"},
+		{name: "a table named after the arena member", want: "collides with a member of the generated",
+			src: "package t\ntable arena { x int32 }\n"},
+
 		{name: "a pointer to an undeclared table", want: "undefined type",
 			src: "package t\ntable Tab { head *Ghost }\n"},
 		{name: "by-value recursion stays refused with pointers in the language",
@@ -302,5 +331,20 @@ func TestPointerRecursionIsLegal(t *testing.T) {
 	}
 	if f.Type.Ref == nil || f.Type.Name != "Node" {
 		t.Fatalf("the pointer's target did not resolve: %+v", f.Type)
+	}
+}
+
+// TestCanonicalRootTableNameIsLegal: `table Root` is this spec's own canonical
+// example, and the expressiveness gate (§12) is written around a root table.
+// The generated builder's accessors are GetRoot/AsConst precisely so that the
+// name stays available — a member function would otherwise hide the type name
+// it shares and the header would not compile.
+func TestCanonicalRootTableNameIsLegal(t *testing.T) {
+	u := buildUnit(t, "package t\ntable Node\n{\n    v    int32\n    next *Node\n}\n\ntable Root\n{\n    head *Node\n}\n")
+	if u.Tables["Root"] == nil {
+		t.Fatal("table Root did not survive checking")
+	}
+	if !ir.VariableTables(u)["Root"] {
+		t.Error("table Root did not derive VARIABLE-LENGTH")
 	}
 }
