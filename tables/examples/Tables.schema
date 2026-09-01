@@ -68,6 +68,13 @@ table ProfileConfig
     name        string(MaxProfileName)
     icon        bytes(16)
     experience  uint32 = 0
+    tilt        int8
+    heading     int16
+    timestamp   int64
+    badge       uint8
+    port        uint16
+    epoch       uint64
+    precision   float64
     ratings     [4]float32
     has_loadout bool
     if has_loadout

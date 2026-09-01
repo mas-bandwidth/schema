@@ -591,7 +591,10 @@ ship.health = 250.0f;
 
 int64_t size = TableMeasureShipConfig( ship );     // exact, writes nothing
 std::vector<uint8_t> buffer( size );               // or any storage you own
-TableSaveShipConfig( ship, buffer.data(), size );  // returns size, or -1 if short
+TableSaveShipConfig( ship, buffer.data(), size );  // returns size — a buffer
+// of exactly TableMeasure's answer always suffices; -1 means the buffer is
+// too small, or the value violates a storage bound (a _count or _length
+// outside its declared range — measure returns -1 for those too)
 
 TableReport report;
 ShipConfig loaded;

@@ -208,7 +208,10 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 // is length-prefixed, so a caller can measure subtables in parallel,
 // prefix-sum offsets, and scatter-write disjoint ranges from N workers.
 // Mirrors TableWrite's elision decisions branch for branch: for any value,
-// TableSave writes exactly this many bytes.
+// TableSave writes exactly this many bytes into a buffer of exactly this
+// size. A value violating its storage invariants (a count or length outside
+// its bound, an out-of-range union tag) measures as -1, exactly as the
+// write side refuses it.
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	g.pf("inline int64_t TableMeasure%s( const %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Fields) == 0 {
@@ -235,22 +238,30 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	width := tableKindWidth(kind)
 	switch {
 	case f.Type.Kind == ir.TString:
+		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 ) { bytes += 3 + 2 + value.%s_length; } // %s\n", f.Name, f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
+		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 ) { bytes += 3 + 4 + 3 + value.%s_length; } // %s\n", f.Name, f.Name, f.Name)
 	case f.Array == ir.ArrayCounted && kind == tkTable:
+		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
 		g.pf("        bytes += 3 + 4 + 3; // %s\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < value.%s_count; i++ )\n        {\n", f.Name)
-		g.pf("            bytes += 4 + TableMeasure%s( value.%s[i] );\n", f.Type.Name, f.Name)
+		g.pf("            int64_t elem_%s = TableMeasure%s( value.%s[i] );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
+		g.pf("            bytes += 4 + elem_%s;\n", f.Name)
 		g.pf("        }\n    }\n")
 	case f.Array == ir.ArrayCounted:
+		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
 		g.pf("    if ( value.%s_count > 0 ) { bytes += 3 + 4 + 3 + int64_t( value.%s_count ) * %d; } // %s\n", f.Name, f.Name, width, f.Name)
 	case f.Array == ir.ArrayFixed && kind == tkTable:
 		g.pf("    {\n")
 		g.pf("        bytes += 3 + 4 + 3; // %s (fixed [%d])\n", f.Name, f.ArrayBound)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n", f.ArrayBound)
-		g.pf("            bytes += 4 + TableMeasure%s( value.%s[i] );\n", f.Type.Name, f.Name)
+		g.pf("            int64_t elem_%s = TableMeasure%s( value.%s[i] );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
+		g.pf("            bytes += 4 + elem_%s;\n", f.Name)
 		g.pf("        }\n    }\n")
 	case f.Array == ir.ArrayFixed:
 		g.pf("    {\n")
@@ -264,14 +275,17 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    switch ( value.%s.type ) // %s\n    {\n", f.Name, f.Name)
 		g.pf("        case %sType::None: break; // None elides — TLV absence is the None\n", un.Name)
 		for _, v := range un.Variants {
-			g.pf("        case %sType::%s: bytes += 3 + 1 + 4 + TableMeasure%s( value.%s.%s ); break;\n",
-				un.Name, ir.GoExportName(v.Name), v.Type, f.Name, v.Name)
+			g.pf("        case %sType::%s:\n        {\n", un.Name, ir.GoExportName(v.Name))
+			g.pf("            int64_t arm_%s = TableMeasure%s( value.%s.%s );\n", f.Name, v.Type, f.Name, v.Name)
+			g.pf("            if ( arm_%s < 0 ) { return -1; }\n", f.Name)
+			g.pf("            bytes += 3 + 1 + 4 + arm_%s;\n            break;\n        }\n", f.Name)
 		}
-		g.pf("        default: break; // invalid tag: TableWrite refuses it before this measure could disagree\n")
+		g.pf("        default: return -1; // invalid tag — the write side refuses it too\n")
 		g.pf("    }\n")
 	case kind == tkTable:
 		g.pf("    {\n")
 		g.pf("        int64_t body_%s = TableMeasure%s( value.%s );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("        if ( body_%s > 2 ) { bytes += 3 + 4 + body_%s; } // %s: all-default nested elides\n", f.Name, f.Name, f.Name)
 		g.pf("    }\n")
 	default:
@@ -321,17 +335,20 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 	}
 	switch {
 	case f.Type.Kind == ir.TString:
+		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
 		g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkString, f.Name)
 		g.pf("        w.put16( uint16_t( value.%s_length ) );\n", f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
+		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
 		g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkArray, f.Name)
 		g.pf("        w.put32( uint32_t( 3 + value.%s_length ) );\n", f.Name)
 		g.pf("        w.put8( %d ); w.put16( uint16_t( value.%s_length ) );\n", tkU8, f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Array == ir.ArrayCounted:
+		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
 		g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkArray, f.Name)
 		g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
@@ -384,14 +401,18 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        }\n")
 		g.pf("        w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n    }\n", f.Name, f.Name)
 	case kind == tkTable:
+		// elision is decided BEFORE any byte is emitted: measuring first
+		// keeps an all-default nested field from touching the buffer at all,
+		// so saving into a buffer of exactly TableMeasure's size never
+		// trips overflow on transient header bytes
 		g.pf("    {\n")
-		g.pf("        int64_t field_at_%s = w.offset;\n", f.Name)
-		g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkTable, f.Name)
-		g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
-		g.pf("        if ( !TableWrite%s( w, value.%s ) ) return false;\n", f.Type.Name, f.Name)
-		g.pf("        int64_t body_%s = w.offset - len_at_%s - 4;\n", f.Name, f.Name)
-		g.pf("        if ( body_%s <= 2 ) { w.offset = field_at_%s; } // all-default nested elides\n", f.Name, f.Name)
-		g.pf("        else { w.patch32( len_at_%s, uint32_t( body_%s ) ); }\n    }\n", f.Name, f.Name)
+		g.pf("        int64_t body_%s = TableMeasure%s( value.%s );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
+		g.pf("        if ( body_%s > 2 ) // all-default nested elides\n        {\n", f.Name)
+		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkTable, f.Name)
+		g.pf("            w.put32( uint32_t( body_%s ) );\n", f.Name)
+		g.pf("            if ( !TableWrite%s( w, value.%s ) ) return false;\n", f.Type.Name, f.Name)
+		g.pf("        }\n    }\n")
 	default:
 		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
 		g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, kind, f.Name)
@@ -488,6 +509,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		if f.Type.Kind == ir.TBytes {
 			bound = f.Type.Size
 		}
+		counted := f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted
 		g.pf("%sif ( !r.has( 4 ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%suint32_t body_len = r.get32();\n", ind)
 		g.pf("%sif ( !r.has( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
@@ -498,13 +520,24 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, kind)
 		g.pf("%s    uint16_t keep = count;\n", ind)
 		g.pf("%s    if ( keep > %d ) { keep = %d; r.report->clamped++; }\n", ind, bound, bound)
+		g.pf("%s    // elements are BOUNDED by the field body: a count the length\n", ind)
+		g.pf("%s    // cannot cover keeps the decoded prefix, flags malformed, and\n", ind)
+		g.pf("%s    // the parent continues at the next field — following fields'\n", ind)
+		g.pf("%s    // bytes are never fabricated into elements\n", ind)
+		g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );\n", ind)
+		if counted {
+			g.pf("%s    uint16_t decoded = 0;\n", ind)
+		}
 		g.pf("%s    for ( uint16_t i = 0; i < keep; i++ )\n%s    {\n", ind, ind)
 		g.emitTableReadElement(f, kind, ind+"        ")
+		if counted {
+			g.pf("%s        decoded = uint16_t( i + 1 );\n", ind)
+		}
 		g.pf("%s    }\n", ind)
 		if f.Type.Kind == ir.TBytes {
-			g.pf("%s    value.%s_length = keep;\n", ind, f.Name)
+			g.pf("%s    value.%s_length = decoded;\n", ind, f.Name)
 		} else if f.Array == ir.ArrayCounted {
-			g.pf("%s    value.%s_count = keep;\n", ind, f.Name)
+			g.pf("%s    value.%s_count = decoded;\n", ind, f.Name)
 		}
 		g.pf("%s}\n", ind)
 		g.pf("%sr.offset = body_end; // excess elements and slack skip via the length\n", ind)
@@ -536,47 +569,54 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s}\n", ind)
 		g.pf("%sr.offset += body_len;\n", ind)
 	default:
-		g.emitTableReadScalarInto(f, kind, "value."+f.Name, ind)
+		g.emitTableReadScalarFrom(f, kind, "value."+f.Name, ind,
+			"r", "r.report->malformed = true; return false;")
 	}
 }
 
+// emitTableReadElement decodes one array element from the field-body
+// sub-reader; truncation keeps the decoded prefix and flags malformed
+// without stopping the parent decode.
 func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 	switch kind {
 	case tkTable:
-		g.pf("%sif ( !r.has( 4 ) ) { r.report->malformed = true; return false; }\n", ind)
-		g.pf("%suint32_t elem_len = r.get32();\n", ind)
-		g.pf("%sif ( !r.has( elem_len ) ) { r.report->malformed = true; return false; }\n", ind)
-		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, elem_len, r.report );\n", ind, ind)
-		g.pf("%s    TableRead%s( sub, value.%s[i] );\n", ind, f.Type.Name, f.Name)
+		g.pf("%sif ( !sub.has( 4 ) ) { r.report->malformed = true; break; }\n", ind)
+		g.pf("%suint32_t elem_len = sub.get32();\n", ind)
+		g.pf("%sif ( !sub.has( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
+		g.pf("%s{\n%s    TableReader elem( sub.buffer + sub.offset, elem_len, r.report );\n", ind, ind)
+		g.pf("%s    TableRead%s( elem, value.%s[i] );\n", ind, f.Type.Name, f.Name)
 		g.pf("%s}\n", ind)
-		g.pf("%sr.offset += elem_len;\n", ind)
+		g.pf("%ssub.offset += elem_len;\n", ind)
 	default:
-		g.emitTableReadScalarInto(f, kind, fmt.Sprintf("value.%s[i]", f.Name), ind)
+		g.emitTableReadScalarFrom(f, kind, fmt.Sprintf("value.%s[i]", f.Name), ind,
+			"sub", "r.report->malformed = true; break;")
 	}
 }
 
-// emitTableReadScalarInto decodes one fixed-width scalar into a storage
-// lvalue, with range clamps where the schema declares them.
-func (g *tableGen) emitTableReadScalarInto(f *ir.Field, kind int, lvalue, ind string) {
+// emitTableReadScalarFrom decodes one fixed-width scalar from the named
+// reader into a storage lvalue, with range clamps where the schema declares
+// them. onTrunc is the truncation action: a scalar FIELD stops the decode
+// (outer framing damage), an array ELEMENT keeps the prefix and breaks.
+func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, rdr, onTrunc string) {
 	width := tableKindWidth(kind)
-	g.pf("%sif ( !r.has( %d ) ) { r.report->malformed = true; return false; }\n", ind, width)
+	g.pf("%sif ( !%s.has( %d ) ) { %s }\n", ind, rdr, width, onTrunc)
 	switch kind {
 	case tkBool:
-		g.pf("%s%s = r.get8() != 0;\n", ind, lvalue)
+		g.pf("%s%s = %s.get8() != 0;\n", ind, lvalue, rdr)
 	case tkF32:
 		if f.HasFloatRange {
-			g.pf("%sfloat decoded = table_bits_to_float( r.get32() );\n", ind)
-			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
-			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
-			g.pf("%s%s = decoded;\n", ind, lvalue)
+			g.pf("%sfloat decoded_f = table_bits_to_float( %s.get32() );\n", ind, rdr)
+			g.pf("%sif ( decoded_f < %s ) { decoded_f = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
+			g.pf("%selse if ( decoded_f > %s ) { decoded_f = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			g.pf("%s%s = decoded_f;\n", ind, lvalue)
 			return
 		}
-		g.pf("%s%s = table_bits_to_float( r.get32() );\n", ind, lvalue)
+		g.pf("%s%s = table_bits_to_float( %s.get32() );\n", ind, lvalue, rdr)
 	case tkF64:
-		g.pf("%s%s = table_bits_to_double( r.get64() );\n", ind, lvalue)
+		g.pf("%s%s = table_bits_to_double( %s.get64() );\n", ind, lvalue, rdr)
 	default:
 		if enum, isEnum := f.Type.Ref.(*ir.Enum); f.Type.Kind == ir.TNamed && isEnum {
-			g.pf("%suint%d_t raw = r.%s( );\n", ind, width*8, tableGet(width))
+			g.pf("%suint%d_t raw = %s.%s( );\n", ind, width*8, rdr, tableGet(width))
 			g.pf("%sif ( raw > %d ) { raw = 0; r.report->clamped++; } // out-of-set -> None\n", ind, enum.Max)
 			g.pf("%s%s = %s( raw );\n", ind, lvalue, f.Type.Name)
 			return
@@ -586,18 +626,18 @@ func (g *tableGen) emitTableReadScalarInto(f *ir.Field, kind int, lvalue, ind st
 		if signed {
 			storage = fmt.Sprintf("int%d_t", width*8)
 		}
-		g.pf("%s%s decoded = %s( r.%s( ) );\n", ind, storage, storage, tableGet(width))
+		g.pf("%s%s decoded_v = %s( %s.%s( ) );\n", ind, storage, storage, rdr, tableGet(width))
 		if f.HasIntRange {
 			lo := tableIntLit(f.IntMin, signed, width)
 			hi := tableIntLit(f.IntMax, signed, width)
-			g.pf("%sif ( decoded < %s ) { decoded = %s; r.report->clamped++; }\n", ind, lo, lo)
-			g.pf("%selse if ( decoded > %s ) { decoded = %s; r.report->clamped++; }\n", ind, hi, hi)
+			g.pf("%sif ( decoded_v < %s ) { decoded_v = %s; r.report->clamped++; }\n", ind, lo, lo)
+			g.pf("%selse if ( decoded_v > %s ) { decoded_v = %s; r.report->clamped++; }\n", ind, hi, hi)
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 			maxv := (uint64(1) << f.Type.Width) - 1
-			g.pf("%sif ( decoded > %dull ) { decoded = %dull; r.report->clamped++; } // bits(%d) width clamp\n", ind, maxv, maxv, f.Type.Width)
+			g.pf("%sif ( decoded_v > %dull ) { decoded_v = %dull; r.report->clamped++; } // bits(%d) width clamp\n", ind, maxv, maxv, f.Type.Width)
 		}
-		g.pf("%s%s = decoded;\n", ind, lvalue)
+		g.pf("%s%s = decoded_v;\n", ind, lvalue)
 	}
 }
 

@@ -61,6 +61,30 @@ static void set_string( char * dest, int32_t & length, const char * s )
     memcpy( dest, s, length + 1 );
 }
 
+static void le16( uint8_t * p, uint16_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); }
+static void le32( uint8_t * p, uint32_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); p[2] = (uint8_t) ( v >> 16 ); p[3] = (uint8_t) ( v >> 24 ); }
+
+// check_exact_capacity is the go-wide guarantee: TableSave into a buffer of
+// EXACTLY TableMeasure's size succeeds and byte-matches a roomy save — a
+// scatter-writing worker gets exactly sizes[i] and nothing more.
+template <typename T>
+static void check_exact_capacity( const T & value,
+                                  int64_t (*measure)( const T & ),
+                                  int64_t (*save)( const T &, uint8_t *, int64_t ) )
+{
+    static uint8_t roomy[65536];
+    static uint8_t exact[65536];
+    int64_t need = measure( value );
+    CHECK( need >= 2 && need <= (int64_t) sizeof( roomy ) );
+    CHECK( save( value, roomy, sizeof( roomy ) ) == need );
+    CHECK( save( value, exact, need ) == need ); // exactly measure's answer
+    CHECK( memcmp( roomy, exact, (size_t) need ) == 0 );
+    if ( need > 2 )
+    {
+        CHECK( save( value, exact, need - 1 ) == -1 ); // one byte short refuses
+    }
+}
+
 // ---- round trip: the corpus root, every kind populated ----
 
 static void test_round_trip()
@@ -82,6 +106,13 @@ static void test_round_trip()
     set_string( p.name, p.name_length, "player one" );
     p.icon[0] = 1; p.icon[1] = 2; p.icon[2] = 250; p.icon_length = 3;
     p.experience = 777;
+    p.tilt = -12;                 // i8
+    p.heading = -30000;           // i16
+    p.timestamp = -5000000000ll;  // i64
+    p.badge = 200;                // u8
+    p.port = 40000;               // u16
+    p.epoch = 0x1122334455667788ull; // u64
+    p.precision = 2.5;            // f64
     p.ratings[2] = 0.5f;
     p.has_loadout = true;
     p.loadout.grade = tabledemo::Grade::Gold;
@@ -116,6 +147,13 @@ static void test_round_trip()
     CHECK( strcmp( out.profiles[0].name, "player one" ) == 0 );
     CHECK( out.profiles[0].icon_length == 3 && out.profiles[0].icon[2] == 250 );
     CHECK( out.profiles[0].experience == 777 );
+    CHECK( out.profiles[0].tilt == -12 );
+    CHECK( out.profiles[0].heading == -30000 );
+    CHECK( out.profiles[0].timestamp == -5000000000ll );
+    CHECK( out.profiles[0].badge == 200 );
+    CHECK( out.profiles[0].port == 40000 );
+    CHECK( out.profiles[0].epoch == 0x1122334455667788ull );
+    CHECK( out.profiles[0].precision == 2.5 );
     CHECK( out.profiles[0].ratings[2] == 0.5f && out.profiles[0].ratings[0] == 0.0f );
     CHECK( out.profiles[0].has_loadout == true );
     CHECK( out.profiles[0].loadout.grade == tabledemo::Grade::Gold );
@@ -136,6 +174,144 @@ static void test_round_trip()
     // a too-small buffer refuses instead of truncating
     uint8_t tiny[8];
     CHECK( tabledemo::TableSaveRootConfig( root, tiny, sizeof( tiny ) ) == -1 );
+
+    // the exact-capacity guarantee holds for the fully-populated root
+    check_exact_capacity( root, tabledemo::TableMeasureRootConfig, tabledemo::TableSaveRootConfig );
+}
+
+// ---- exact capacity: measure's answer IS the buffer size, corpus-wide ----
+
+static void test_exact_capacity()
+{
+    // the reviewer's repro shape: non-default fields around an ALL-DEFAULT
+    // nested table — the elided field must not touch the buffer at all, so
+    // saving into exactly measure's size succeeds
+    tblv1::Cfg cfg;
+    cfg.a = 9;
+    cfg.b = 8.5f;
+    set_string( cfg.name, cfg.name_length, "exact" );
+    // cfg.inner stays all-default: elides
+    check_exact_capacity( cfg, tblv1::TableMeasureCfg, tblv1::TableSaveCfg );
+
+    // all-default everything (2 bytes)
+    tblv1::Cfg empty;
+    check_exact_capacity( empty, tblv1::TableMeasureCfg, tblv1::TableSaveCfg );
+    tabledemo::WeaponConfig weapon;
+    check_exact_capacity( weapon, tabledemo::TableMeasureWeaponConfig, tabledemo::TableSaveWeaponConfig );
+
+    // an elided nested table inside a GUARDED group
+    tabledemo::ProfileConfig profile;
+    profile.experience = 1;
+    profile.has_loadout = true; // loadout itself stays all-default: elides
+    check_exact_capacity( profile, tabledemo::TableMeasureProfileConfig, tabledemo::TableSaveProfileConfig );
+
+    // nested tables of nested tables, some elided, some riding
+    static tabledemo::ArchiveConfig archive;
+    archive.count = 9;
+    archive.root.weapons_count = 1; // weapons[0] all-default: rides as an element, its nested union elides
+    check_exact_capacity( archive, tabledemo::TableMeasureArchiveConfig, tabledemo::TableSaveArchiveConfig );
+
+    // loadout: fixed array of tables (always rides) around all-default elements
+    tabledemo::LoadoutConfig loadout;
+    loadout.grade = tabledemo::Grade::Gold;
+    check_exact_capacity( loadout, tabledemo::TableMeasureLoadoutConfig, tabledemo::TableSaveLoadoutConfig );
+
+    // the v2 evolution shape
+    tblv2::Cfg v2;
+    v2.a = 1.0f;
+    v2.inner.gain = 2.0f;
+    check_exact_capacity( v2, tblv2::TableMeasureCfg, tblv2::TableSaveCfg );
+}
+
+// ---- storage invariants: the write side validates what it reads ----
+
+static void test_storage_invariants()
+{
+    uint8_t buffer[4096];
+
+    // a count above the bound must not read out of the array into the wire
+    tabledemo::RootConfig root;
+    root.weapons_count = 9; // bound is 8
+    CHECK( tabledemo::TableMeasureRootConfig( root ) == -1 );
+    CHECK( tabledemo::TableSaveRootConfig( root, buffer, sizeof( buffer ) ) == -1 );
+
+    // a negative length must not memcpy a huge size_t
+    tblv1::Cfg cfg;
+    cfg.name_length = -1;
+    CHECK( tblv1::TableMeasureCfg( cfg ) == -1 );
+    CHECK( tblv1::TableSaveCfg( cfg, buffer, sizeof( buffer ) ) == -1 );
+
+    // a negative count refuses too
+    tblv1::Cfg cfg2;
+    cfg2.items_count = -3;
+    CHECK( tblv1::TableMeasureCfg( cfg2 ) == -1 );
+    CHECK( tblv1::TableSaveCfg( cfg2, buffer, sizeof( buffer ) ) == -1 );
+
+    // a violation deep inside a nested, guarded table propagates up
+    tabledemo::ProfileConfig profile;
+    profile.has_loadout = true;
+    profile.loadout.attachments_count = -5;
+    CHECK( tabledemo::TableMeasureProfileConfig( profile ) == -1 );
+    CHECK( tabledemo::TableSaveProfileConfig( profile, buffer, sizeof( buffer ) ) == -1 );
+
+    // an out-of-range union tag refuses in measure exactly as in write
+    tabledemo::WeaponConfig weapon;
+    weapon.effect.type = (tabledemo::EffectType) 9;
+    CHECK( tabledemo::TableMeasureWeaponConfig( weapon ) == -1 );
+    CHECK( tabledemo::TableSaveWeaponConfig( weapon, buffer, sizeof( buffer ) ) == -1 );
+}
+
+// ---- bounded elements: a count the body length cannot cover never reads
+// ---- the following fields' bytes (SPEC-TABLES.md: skipped, NEVER misdecoded)
+
+static void test_bounded_elements()
+{
+    const tblv1::TableFieldInfo * items = v1_field( tblv1::TableTypeCfg(), "items" );
+    const tblv1::TableFieldInfo * a = v1_field( tblv1::TableTypeCfg(), "a" );
+    CHECK( items != NULL && a != NULL );
+
+    // body_len = 3 covers only elem_kind + count; count claims 2 elements —
+    // the elements would have to come from the NEXT field's bytes. They must
+    // not: prefix kept (empty), malformed flagged, and a = 42 still decodes.
+    uint8_t wire[32];
+    int n = 0;
+    le16( wire + n, items->id ); n += 2;
+    wire[n++] = 14;              // kArray
+    le32( wire + n, 3 ); n += 4; // body_len: header only, no element bytes
+    wire[n++] = 4;               // elem_kind kI32
+    le16( wire + n, 2 ); n += 2; // count 2 — a lie
+    le16( wire + n, a->id ); n += 2;
+    wire[n++] = 4;               // kI32
+    le32( wire + n, 42 ); n += 4;
+    le16( wire + n, 0 ); n += 2; // terminator
+
+    tblv1::TableReport report;
+    tblv1::Cfg out;
+    CHECK( tblv1::TableReadCfg( wire, n, out, report ) );
+    CHECK( report.malformed );        // the lie is framing damage, flagged
+    CHECK( out.items_count == 0 );    // no fabricated elements
+    CHECK( out.a == 42 );             // the parent continued at the next field
+
+    // a body covering one full element plus slack: the decoded PREFIX is kept
+    n = 0;
+    le16( wire + n, items->id ); n += 2;
+    wire[n++] = 14;
+    le32( wire + n, 3 + 4 + 2 ); n += 4; // one i32 element + 2 slack bytes
+    wire[n++] = 4;
+    le16( wire + n, 2 ); n += 2;         // count 2, body holds 1.5
+    le32( wire + n, 10 ); n += 4;        // element 0
+    wire[n++] = 0; wire[n++] = 0;        // the half element
+    le16( wire + n, a->id ); n += 2;
+    wire[n++] = 4;
+    le32( wire + n, 42 ); n += 4;
+    le16( wire + n, 0 ); n += 2;
+
+    tblv1::TableReport report2;
+    tblv1::Cfg out2;
+    CHECK( tblv1::TableReadCfg( wire, n, out2, report2 ) );
+    CHECK( report2.malformed );
+    CHECK( out2.items_count == 1 && out2.items[0] == 10 ); // bounded prefix
+    CHECK( out2.a == 42 );
 }
 
 // ---- all-default: everything elides, decode restores every default ----
@@ -234,9 +410,6 @@ static void test_evolution_new_reader_old_data()
 }
 
 // ---- clamping: hostile or stale numerics clamp and count ----
-
-static void le16( uint8_t * p, uint16_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); }
-static void le32( uint8_t * p, uint32_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); p[2] = (uint8_t) ( v >> 16 ); p[3] = (uint8_t) ( v >> 24 ); }
 
 static void test_clamping()
 {
@@ -362,6 +535,33 @@ static void test_reflection()
     const tabledemo::TableFieldInfo * loadout = demo_field( tabledemo::TableTypeProfileConfig(), "loadout" );
     CHECK( loadout != NULL && strcmp( loadout->guard, "has_loadout" ) == 0 );
 
+    // every one of the 15 wire kinds rides somewhere in the corpus battery;
+    // the scalar kinds pin here by descriptor (containers pinned above and
+    // in the round trip: 12 string, 13 table, 14 array, 15 union; 1 bool on
+    // homing, 10 f32 on damage)
+    const tabledemo::TableTypeInfo * profileType = tabledemo::TableTypeProfileConfig();
+    struct { const char * field; uint8_t kind; } scalar_kinds[] = {
+        { "tilt", 2 },       // i8
+        { "heading", 3 },    // i16
+        { "timestamp", 5 },  // i64
+        { "badge", 6 },      // u8
+        { "port", 7 },       // u16
+        { "experience", 8 }, // u32
+        { "epoch", 9 },      // u64
+        { "precision", 11 }, // f64
+    };
+    for ( const auto & sk : scalar_kinds )
+    {
+        const tabledemo::TableFieldInfo * field = demo_field( profileType, sk.field );
+        CHECK( field != NULL && field->kind == sk.kind );
+    }
+    const tabledemo::TableFieldInfo * homing = demo_field( weapon, "homing" );
+    CHECK( homing != NULL && homing->kind == 1 ); // bool
+    const tabledemo::TableFieldInfo * effect = demo_field( weapon, "effect" );
+    CHECK( effect != NULL && effect->kind == 15 ); // union
+    const tabledemo::TableFieldInfo * nameF = demo_field( profileType, "name" );
+    CHECK( nameF != NULL && nameF->kind == 12 ); // string
+
     // generic field access through offset — an editor walking properties
     tabledemo::ProfileConfig p;
     p.experience = 777;
@@ -436,6 +636,9 @@ static void test_parallel_shape()
 int main()
 {
     test_round_trip();
+    test_exact_capacity();
+    test_storage_invariants();
+    test_bounded_elements();
     test_all_default();
     test_guard();
     test_evolution_old_reader_new_data();
