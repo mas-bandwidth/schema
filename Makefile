@@ -217,7 +217,8 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 # is recorded in the round log; this is the standing gate.)
 .PHONY: tables-zero-cost
 tables-zero-cost: build/tables-generated/.stamp
-	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h build/tables-generated/v2/*Table.h; do \
+	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
+	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h; do \
 		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|LayoutId|OpenWalk|PackMeasure|LoadMeasure|Cook|Open\\(" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \

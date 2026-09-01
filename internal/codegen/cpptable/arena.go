@@ -155,7 +155,14 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
         {
             if ( arena.segments[segment].load( std::memory_order_acquire ) == NULL )
             {
-                uint8_t * memory = (uint8_t *) malloc( kTableSegmentSize );
+                // calloc, NOT malloc: Lock and Cook copy whole nodes, PADDING
+                // INCLUDED, so anything uninitialised here reaches a packed
+                // region and a cooked file on disk. Value-initialising a node
+                // with placement new zeroes its MEMBERS and not its padding, so
+                // the zeroing has to happen here or not at all. It costs nothing
+                // measurable: a fresh segment is untouched pages either way, and
+                // calloc has the kernel hand them over zeroed.
+                uint8_t * memory = (uint8_t *) calloc( 1, kTableSegmentSize );
                 if ( memory == NULL ) { return kTableAllocFailed; }
                 uint8_t * expected = NULL;
                 if ( !arena.segments[segment].compare_exchange_strong( expected, memory, std::memory_order_acq_rel ) )
@@ -278,6 +285,13 @@ inline bool TableCookedHeaderCheck( const uint8_t * bytes, int64_t size, uint32_
     if ( header.magic != kTableCookedMagic ) { return false; } // wrong form, or foreign byte order
     if ( header.layout_id != layout_id ) { return false; }     // schema or ABI drift: regenerate the cooked file
     if ( (int64_t) header.bytes > size - kTableCookedHeaderBytes ) { return false; }
+    // the reserved words are reserved: a writer that used them wrote a form
+    // this build does not understand, and silently ignoring them would make
+    // them unusable later
+    for ( size_t i = 0; i < sizeof( header.reserved ) / sizeof( header.reserved[0] ); i++ )
+    {
+        if ( header.reserved[i] != 0 ) { return false; }
+    }
     *region_bytes = (int64_t) header.bytes;
     return true;
 }

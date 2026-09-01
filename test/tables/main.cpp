@@ -70,8 +70,8 @@ static void set_string( char * dest, int32_t & length, const char * s )
 static void le16( uint8_t * p, uint16_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); }
 static void le32( uint8_t * p, uint32_t v ) { p[0] = (uint8_t) v; p[1] = (uint8_t) ( v >> 8 ); p[2] = (uint8_t) ( v >> 16 ); p[3] = (uint8_t) ( v >> 24 ); }
 
-// check_exact_capacity is the go-wide guarantee: TableSave into a buffer of
-// EXACTLY TableMeasure's size succeeds and byte-matches a roomy save — a
+// check_exact_capacity is the go-wide guarantee: <X>Save into a buffer of
+// EXACTLY <X>Measure's size succeeds and byte-matches a roomy save — a
 // scatter-writing worker gets exactly sizes[i] and nothing more.
 template <typename T>
 static void check_exact_capacity( const T & value,
@@ -658,7 +658,7 @@ static const graphdemo::TableFieldInfo * graph_field( const graphdemo::TableType
 // list nodes on the chain.
 static int build_scene( graphdemo::SceneBuilder & builder )
 {
-    graphdemo::Scene * root = builder.Root();
+    graphdemo::Scene * root = builder.GetRoot();
     set_string( root->name, root->name_length, "graph" );
     root->version = 7;
     root->meta.build = 42;
@@ -764,11 +764,11 @@ static void test_pointer_lifecycle()
     // Lock: one way, and it IS the compaction
     CHECK( builder.Lock() );
     CHECK( builder.Locked() );
-    CHECK( builder.Root() == NULL );      // the mutable life is over
+    CHECK( builder.GetRoot() == NULL );      // the mutable life is over
     CHECK( builder.Alloc<graphdemo::ListNode>().null() ); // and Alloc refuses
     CHECK( builder.Lock() );              // idempotent, never a second compaction
 
-    const graphdemo::Scene * locked = builder.Const();
+    const graphdemo::Scene * locked = builder.AsConst();
     check_scene( locked );
 
     // the packed region has zero slack and every node is 8-aligned
@@ -845,14 +845,14 @@ static void test_lock_layout_stable()
 static void test_pointer_alias()
 {
     graphdemo::SceneBuilder builder;
-    graphdemo::Scene * root = builder.Root();
+    graphdemo::Scene * root = builder.GetRoot();
     graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
     shared->value = 1234;
     root->head = shared;
     root->alias = shared; // the SAME node named twice
 
     CHECK( builder.Lock() );
-    const graphdemo::Scene * locked = builder.Const();
+    const graphdemo::Scene * locked = builder.AsConst();
     const graphdemo::ListNode * viaHead = graphdemo::ListNodeAt( locked->head );
     const graphdemo::ListNode * viaAlias = graphdemo::ListNodeAt( locked->alias );
     CHECK( viaHead != NULL && viaAlias != NULL );
@@ -880,7 +880,7 @@ static void test_pointer_alias()
 static void test_pointer_cycle_refused()
 {
     graphdemo::SceneBuilder builder;
-    graphdemo::Scene * root = builder.Root();
+    graphdemo::Scene * root = builder.GetRoot();
     graphdemo::TableSlot<graphdemo::ListNode> loop = builder.Alloc<graphdemo::ListNode>();
     loop->value = 1;
     loop->next = loop;   // a node pointing at itself
@@ -901,7 +901,7 @@ static void test_pointer_depth_cap()
     // root is level 1
     {
         graphdemo::SceneBuilder builder;
-        graphdemo::Scene * root = builder.Root();
+        graphdemo::Scene * root = builder.GetRoot();
         graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
         head->value = 0;
         root->head = head;
@@ -918,7 +918,7 @@ static void test_pointer_depth_cap()
     // one link past it refuses instead of recursing away
     {
         graphdemo::SceneBuilder builder;
-        graphdemo::Scene * root = builder.Root();
+        graphdemo::Scene * root = builder.GetRoot();
         graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
         root->head = head;
         graphdemo::ListNode * tail = head;
@@ -941,7 +941,7 @@ static void test_pointer_depth_cap()
 static void test_builder_grow()
 {
     graphdemo::SceneBuilder builder;
-    graphdemo::Scene * root = builder.Root();
+    graphdemo::Scene * root = builder.GetRoot();
 
     // enough nodes to cross many 64 KiB slabs and more than one 4 MiB segment
     const int count = 200000;
@@ -960,7 +960,7 @@ static void test_builder_grow()
     // the same node, and the root the builder handed out is still valid
     CHECK( held->value == 1 );
     CHECK( middle.ptr != NULL && middle->value == count / 2 + 1 );
-    CHECK( builder.Root() == root );
+    CHECK( builder.GetRoot() == root );
 
     root->head = first;
     CHECK( graphdemo::SceneMeasure( builder ) > 0 );
@@ -972,7 +972,7 @@ static void test_builder_workers()
 {
     // deterministic first: four workers, interleaved, single-threaded
     graphdemo::SceneBuilder builder;
-    graphdemo::Scene * root = builder.Root();
+    graphdemo::Scene * root = builder.GetRoot();
     graphdemo::TableWorker workers[4];
     for ( int i = 0; i < 4; i++ ) { workers[i] = builder.Worker(); }
 
@@ -990,7 +990,7 @@ static void test_builder_workers()
         tail = node;
     }
     CHECK( builder.Lock() );
-    const graphdemo::ListNode * walk = graphdemo::ListNodeAt( builder.Const()->head );
+    const graphdemo::ListNode * walk = graphdemo::ListNodeAt( builder.AsConst()->head );
     for ( int i = 0; i < 64; i++ )
     {
         CHECK( walk != NULL && walk->value == i );
@@ -1024,7 +1024,7 @@ static void test_builder_workers()
     }
     for ( auto & thread : threads ) { thread.join(); }
     // the join is the barrier; everything below is single-threaded
-    graphdemo::Scene * threaded_root = threaded.Root();
+    graphdemo::Scene * threaded_root = threaded.GetRoot();
     threaded_root->layers_count = 4;
     for ( int t = 0; t < 4; t++ )
     {
@@ -1127,7 +1127,7 @@ static void test_pointer_evolution_old_reader_new_data()
 {
     // P2 writes a chain of two Links through a POINTER field
     tblp2::ChainBuilder builder;
-    tblp2::Chain * root = builder.Root();
+    tblp2::Chain * root = builder.GetRoot();
     set_string( root->name, root->name_length, "chain" );
     tblp2::TableSlot<tblp2::Link> first = builder.Alloc<tblp2::Link>();
     tblp2::TableSlot<tblp2::Link> second = builder.Alloc<tblp2::Link>();
@@ -1184,13 +1184,13 @@ static void test_pointer_evolution_new_reader_old_data()
     tblp2::TableReport builder_report;
     CHECK( tblp2::ChainLoadBuilder( builder, wire, wrote, &builder_report ) );
     CHECK( !builder_report.malformed );
-    tblp2::Link * loaded = tblp2::LinkAt( builder.arena, builder.Root()->link );
+    tblp2::Link * loaded = tblp2::LinkAt( builder.arena, builder.GetRoot()->link );
     CHECK( loaded != NULL && loaded->value == 77 );
     tblp2::TableSlot<tblp2::Link> added = builder.Alloc<tblp2::Link>();
     added->value = 88;
     loaded->next = added;
     CHECK( builder.Lock() );
-    CHECK( tblp2::LinkAt( tblp2::LinkAt( builder.Const()->link )->next )->value == 88 );
+    CHECK( tblp2::LinkAt( tblp2::LinkAt( builder.AsConst()->link )->next )->value == 88 );
 }
 
 // ---- a null pointer elides; a non-null one rides even when all-default ----
@@ -1203,7 +1203,7 @@ static void test_pointer_null_and_empty()
 
     graphdemo::SceneBuilder one;
     graphdemo::TableSlot<graphdemo::ListNode> node = one.Alloc<graphdemo::ListNode>();
-    one.Root()->head = node; // an ALL-DEFAULT pointee behind a non-null pointer
+    one.GetRoot()->head = node; // an ALL-DEFAULT pointee behind a non-null pointer
     int64_t with_empty = graphdemo::SceneMeasure( one );
     CHECK( with_empty == 2 + 3 + 4 + 2 ); // id + kind + length + the empty body
 
@@ -1259,6 +1259,272 @@ static void test_pointer_reflection()
     CHECK( sizeof( graphdemo::TableRef ) == 4 );
 }
 
+
+// ============================================================================
+// REGRESSIONS from the adversarial review. Each is the reviewer's own repro,
+// reduced to an assertion that goes red if the defect returns.
+// ============================================================================
+
+// ---- B1: Open's walk is LINEAR, not exponential ----
+//
+// The repro: a legal cooked file whose TreeNode chain runs down `left`, then
+// forged so every node's `right` ALIASES its `left`. Every reference stays
+// forward, in range and aligned, so a walk with no order state explores 2^n
+// paths — 26 nodes took 312 ms and ~60 nodes never returned. The high-water
+// mark refuses the second (aliasing) reference outright, in linear time.
+static void test_open_walk_is_linear()
+{
+    for ( int n : { 16, 26, 40, 64 } )
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::TableRef * slot = &builder.GetRoot()->tree;
+        for ( int i = 0; i < n; i++ )
+        {
+            graphdemo::TableSlot<graphdemo::TreeNode> node = builder.Alloc<graphdemo::TreeNode>();
+            *slot = node.ref;
+            slot = &node.ptr->left;
+        }
+        CHECK( builder.Lock() );
+        int64_t need = graphdemo::SceneCookMeasure( builder );
+        uint8_t * file = (uint8_t *) malloc( (size_t) need );
+        CHECK( graphdemo::SceneCook( builder, file, need ) == need );
+        CHECK( graphdemo::SceneOpen( file, need ) != NULL ); // the genuine file opens
+
+        // forge: every node's right aliases its left — forward, in range, aligned
+        uint8_t * base = file + graphdemo::kTableCookedHeaderBytes;
+        int64_t region = need - graphdemo::kTableCookedHeaderBytes;
+        graphdemo::Scene * root = (graphdemo::Scene *) base;
+        int64_t at = ( (uint8_t *) &root->tree - base ) + (int64_t) root->tree.value;
+        int patched = 0;
+        while ( at + (int64_t) sizeof( graphdemo::TreeNode ) <= region )
+        {
+            graphdemo::TreeNode * node = (graphdemo::TreeNode *) ( base + at );
+            if ( node->left.value == 0 ) { break; }
+            int64_t next_at = ( (uint8_t *) &node->left - base ) + (int64_t) node->left.value;
+            node->right.value = (uint32_t) ( ( base + next_at ) - (uint8_t *) &node->right );
+            patched++;
+            at = next_at;
+        }
+        CHECK( patched == n - 1 );
+        // REFUSED, and refused in linear time: the mark makes each accepted
+        // reference consume region bytes, so the walk cannot revisit a node.
+        // At n = 64 an unbounded walk would not return in the age of the
+        // universe; this returns before the next line runs.
+        CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+        free( file );
+    }
+}
+
+// ---- B1's companion: the mark also closes mid-node overlap ----
+
+static void test_open_refuses_overlap()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::TableSlot<graphdemo::ListNode> a = builder.Alloc<graphdemo::ListNode>();
+    graphdemo::TableSlot<graphdemo::ListNode> b = builder.Alloc<graphdemo::ListNode>();
+    a->value = 1;
+    b->value = 2;
+    a->next = b;
+    builder.GetRoot()->head = a;
+    CHECK( builder.Lock() );
+    int64_t need = graphdemo::SceneCookMeasure( builder );
+    uint8_t * file = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+
+    // point head at a node-sized window that STARTS inside the first node:
+    // in range, aligned, forward — and an overlap the mark refuses
+    uint8_t * base = file + graphdemo::kTableCookedHeaderBytes;
+    graphdemo::Scene * root = (graphdemo::Scene *) base;
+    root->head.value += 8;
+    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+    free( file );
+}
+
+// ---- B2: Lock and Cook are deterministic on a DIRTIED heap ----
+//
+// Lock and Cook memcpy whole nodes, struct PADDING included. Value-initialising
+// a node zeroes its members and not its padding, so before the arena's segments
+// were zeroed this test passed only when the allocator happened to hand back
+// fresh zero pages — and a cooked FILE carried heap bytes to disk.
+
+static void dirty_the_heap( int pattern )
+{
+    void * blocks[6];
+    for ( int i = 0; i < 6; i++ )
+    {
+        blocks[i] = malloc( 4u << 20 );
+        memset( blocks[i], pattern, 4u << 20 );
+    }
+    for ( int i = 0; i < 6; i++ ) { free( blocks[i] ); }
+}
+
+static void test_lock_deterministic_on_dirty_heap()
+{
+    dirty_the_heap( 0xA5 );
+    graphdemo::SceneBuilder first;
+    build_scene( first );
+    CHECK( first.Lock() );
+    int64_t bytes = first.RegionBytes();
+    uint8_t * saved = (uint8_t *) malloc( (size_t) bytes );
+    memcpy( saved, first.Region(), (size_t) bytes );
+    int64_t cook_bytes = graphdemo::SceneCookMeasure( first );
+    uint8_t * cooked_first = (uint8_t *) malloc( (size_t) cook_bytes );
+    CHECK( graphdemo::SceneCook( first, cooked_first, cook_bytes ) == cook_bytes );
+
+    dirty_the_heap( 0x5C ); // a DIFFERENT pattern, so any leak shows as a diff
+    graphdemo::SceneBuilder second;
+    build_scene( second );
+    CHECK( second.Lock() );
+    CHECK( second.RegionBytes() == bytes );
+    CHECK( memcmp( saved, second.Region(), (size_t) bytes ) == 0 );
+
+    uint8_t * cooked_second = (uint8_t *) malloc( (size_t) cook_bytes );
+    CHECK( graphdemo::SceneCook( second, cooked_second, cook_bytes ) == cook_bytes );
+    CHECK( memcmp( cooked_first, cooked_second, (size_t) cook_bytes ) == 0 );
+
+    // and no padding byte carries heap content: the region's tail padding of
+    // the root's string is zero, whatever the allocator handed back
+    const uint8_t * region = second.Region();
+    for ( int64_t i = (int64_t) offsetof( graphdemo::Scene, name ) + 6;
+          i < (int64_t) offsetof( graphdemo::Scene, name ) + 24; i++ )
+    {
+        CHECK( region[i] == 0 );
+    }
+    free( saved );
+    free( cooked_first );
+    free( cooked_second );
+}
+
+// ---- C1: the four walks agree about what depth costs ----
+//
+// By-value nesting charges depth in NEITHER walk, so a chain that Locks and
+// Cooks is a chain the wire accepts. Before the fix, measure/save/load charged
+// a by-value nesting and pack/cook/open did not, and a structure reachable
+// through Scene::ground was lockable and cookable but unsaveable.
+
+static void test_depth_agrees_through_by_value_nesting()
+{
+    graphdemo::SceneBuilder builder;
+    // the chain hangs off `ground`, a VARIABLE table nested BY VALUE
+    graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+    head->value = 0;
+    builder.GetRoot()->ground.head = head;
+    graphdemo::ListNode * tail = head;
+    for ( int i = 1; i < graphdemo::kTableMaxDepth - 1; i++ ) // 127 nodes
+    {
+        graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+        node->value = i;
+        tail->next = node;
+        tail = node;
+    }
+
+    // every walk accepts it: measure, save, pack (Lock), cook, open, load
+    int64_t need = graphdemo::SceneMeasure( builder );
+    CHECK( need > 0 );
+    uint8_t * wire = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneSave( builder, wire, need ) == need );
+    CHECK( builder.Lock() );
+    int64_t cook_bytes = graphdemo::SceneCookMeasure( builder );
+    CHECK( cook_bytes > 0 );
+    uint8_t * cooked = (uint8_t *) malloc( (size_t) cook_bytes );
+    CHECK( graphdemo::SceneCook( builder, cooked, cook_bytes ) == cook_bytes );
+    CHECK( graphdemo::SceneOpen( cooked, cook_bytes ) != NULL );
+
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, need );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, need, &report );
+    CHECK( loaded != NULL && !report.malformed ); // the wire agrees with Lock
+    int walked = 0;
+    for ( const graphdemo::ListNode * node = graphdemo::ListNodeAt( loaded->ground.head );
+          node != NULL; node = graphdemo::ListNodeAt( node->next ) )
+    {
+        CHECK( node->value == walked );
+        walked++;
+    }
+    CHECK( walked == graphdemo::kTableMaxDepth - 1 );
+    free( wire );
+    free( cooked );
+    free( region );
+}
+
+// ---- C2: Open bounds the companions of by-value nested FIXED tables ----
+
+static void test_open_bounds_nested_fixed_companions()
+{
+    graphdemo::SceneBuilder builder;
+    build_scene( builder );
+    CHECK( builder.Lock() );
+    int64_t need = graphdemo::SceneCookMeasure( builder );
+    uint8_t * file = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+
+    // Meta is FIXED-SIZE and nested BY VALUE in Scene. Its tag_length bounds
+    // any walk of tag[8]; an unbounded one is the over-read.
+    graphdemo::Scene * root = (graphdemo::Scene *) ( file + graphdemo::kTableCookedHeaderBytes );
+    int32_t good = root->meta.tag_length;
+    root->meta.tag_length = 30000;
+    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+    root->meta.tag_length = -1;
+    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+    root->meta.tag_length = good;
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+
+    // the same for a fixed table reached through a POINTER
+    graphdemo::Settings * settings = (graphdemo::Settings *) graphdemo::SettingsAt( root->settings );
+    CHECK( settings != NULL );
+    settings->label_length = 9999;
+    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+    free( file );
+}
+
+// ---- the cooked header's reserved words are reserved ----
+
+static void test_open_refuses_dirty_reserved()
+{
+    graphdemo::SceneBuilder builder;
+    build_scene( builder );
+    CHECK( builder.Lock() );
+    int64_t need = graphdemo::SceneCookMeasure( builder );
+    uint8_t * file = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+    for ( int64_t at = 12; at < graphdemo::kTableCookedHeaderBytes; at++ )
+    {
+        file[at] = 0x7F; // a writer that used a reserved word
+        CHECK( graphdemo::SceneOpen( file, need ) == NULL );
+        file[at] = 0;
+    }
+    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
+    free( file );
+}
+
+// ---- C3: the reflection surface is immutable constant data ----
+
+static void test_descriptors_are_constant()
+{
+    // no lazy link, so a self-referential target is already resolved on the
+    // first read from any thread — the descriptors carry no mutable state
+    const graphdemo::TableTypeInfo * list = graphdemo::ListNodeTableType();
+    CHECK( graph_field( list, "next" )->table == list );
+    CHECK( graphdemo::ListNodeTableType() == list ); // one instance, always
+    // reading from several threads at once is a plain read of constant data
+    std::vector<std::thread> readers;
+    for ( int t = 0; t < 4; t++ )
+    {
+        readers.emplace_back( [list]() {
+            for ( int i = 0; i < 2000; i++ )
+            {
+                CHECK( graphdemo::ListNodeTableType() == list );
+                CHECK( graphdemo::SceneTableType()->variable );
+            }
+        } );
+    }
+    for ( auto & reader : readers ) { reader.join(); }
+}
+
 int main()
 {
     test_round_trip();
@@ -1287,6 +1553,14 @@ int main()
     test_pointer_evolution_new_reader_old_data();
     test_pointer_null_and_empty();
     test_pointer_reflection();
+
+    test_open_walk_is_linear();
+    test_open_refuses_overlap();
+    test_lock_deterministic_on_dirty_heap();
+    test_depth_agrees_through_by_value_nesting();
+    test_open_bounds_nested_fixed_companions();
+    test_open_refuses_dirty_reserved();
+    test_descriptors_are_constant();
 
     if ( failures > 0 )
     {

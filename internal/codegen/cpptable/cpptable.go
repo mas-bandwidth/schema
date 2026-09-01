@@ -388,6 +388,17 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			for _, st := range members {
 				g.pf("inline const TableTypeInfo * %sTableType();\n", st.Name)
 			}
+			if anyVariable {
+				g.pf("// The descriptors are CONSTANT-INITIALISED data, and a field's target is\n")
+				g.pf("// the ADDRESS of another descriptor. These declarations are what let a\n")
+				g.pf("// self- or mutually-referential graph — Node naming itself through *Node —\n")
+				g.pf("// be expressed as constant data instead of a lazy link, which could not\n")
+				g.pf("// have been written race-free OR recursion-safe. The whole reflection\n")
+				g.pf("// surface is therefore immutable: read it from any thread, any time.\n")
+				for _, st := range members {
+					g.pf("extern const TableTypeInfo %sTableInfo;\n", st.Name)
+				}
+			}
 			g.pf("\n")
 			for _, st := range members {
 				g.emitTableDescriptor(st)

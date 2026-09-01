@@ -1697,6 +1697,10 @@ func (c *checker) checkTables() {
 		if st.IsTable {
 			what = "table"
 		}
+		if st.IsTable && slices.Contains(tableBuilderMembers, name) {
+			c.errf(pos, "table %s: the name collides with a member of the generated %sBuilder — a member function hides the type name it shares, and the header would not compile; rename the table (SPEC-TABLES.md §6.2)",
+				name, name)
+		}
 		seen := map[uint16]*ir.Field{}
 		for _, f := range st.Fields {
 			if f.Type.Pointer {
@@ -2231,8 +2235,21 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // not become a collision tomorrow (SPEC-TABLES.md).
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
-	"LoadMeasure", "TableType", "Builder", "At", "Root",
-	"Cook", "CookMeasure", "Open", "LayoutId",
+	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
+	"At", "Root", "Emplace", "Pack", "PackMeasure", "OpenWalk",
+	"Cook", "CookMeasure", "Open", "LayoutId", "TableFields", "TableInfo",
+}
+
+// tableBuilderMembers are the member names of a generated <Name>Builder. A
+// member function hides a type name it shares, so a table whose NAME is one of
+// these produces a header that cannot compile — silently, at the user's build
+// rather than ours. The two accessors that a real schema would plausibly hit
+// were renamed instead (Root -> GetRoot, Const -> AsConst, because `table Root`
+// is this spec's own canonical example); the rest are refused here, so no
+// legal schema can reach a non-compiling header through this door.
+var tableBuilderMembers = []string{
+	"Alloc", "AsConst", "GetRoot", "Lock", "Locked", "Region", "RegionBytes",
+	"Worker", "arena", "main", "region", "region_bytes", "root_ref",
 }
 
 // addStructSymbols registers the per-type generated names: the split
