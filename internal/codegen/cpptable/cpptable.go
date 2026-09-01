@@ -1,7 +1,7 @@
 // Package cpptable emits <Base>Table.h — the TABLE-wire C++ codecs
 // (SPEC-TABLES.md). One header per unit file, emitted only when the unit
 // declares tables: storage structs for the `table` declarations, then
-// measure/write/save/read codecs and reflection descriptors for the whole
+// measure/save/load codecs and reflection descriptors for the whole
 // TABLE CLOSURE (every table plus everything one references, transitively).
 //
 // The wire is neutral, evolution-tolerant TLV: field identity is the name
@@ -352,11 +352,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 					g.emitTableStruct(st)
 				}
 			}
-			g.pf("// ---- codecs: measure/write/save/read per closure member ----\n\n")
+			g.pf("// ---- codecs: measure/save/load per closure member ----\n\n")
 			for _, st := range members {
-				g.pf("inline int64_t TableMeasure%s( const %s & value );\n", st.Name, st.Name)
-				g.pf("inline bool TableWrite%s( TableWriter & w, const %s & value );\n", st.Name, st.Name)
-				g.pf("inline bool TableRead%s( TableReader & r, %s & value );\n", st.Name, st.Name)
+				g.pf("inline int64_t %sMeasure( const %s & value );\n", st.Name, st.Name)
+				g.pf("inline bool %sSaveBody( TableWriter & w, const %s & value );\n", st.Name, st.Name)
+				g.pf("inline bool %sLoadBody( TableReader & r, %s & value );\n", st.Name, st.Name)
 			}
 			g.pf("\n")
 			for _, st := range members {
@@ -378,7 +378,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.pf("\n")
 			g.pf("// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----\n\n")
 			for _, st := range members {
-				g.pf("inline const TableTypeInfo * TableType%s();\n", st.Name)
+				g.pf("inline const TableTypeInfo * %sTableType();\n", st.Name)
 			}
 			g.pf("\n")
 			for _, st := range members {

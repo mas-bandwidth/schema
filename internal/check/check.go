@@ -2138,15 +2138,29 @@ func (c *checker) checkClaimedNames() {
 }
 
 // addTableSymbols registers the TABLE-wire generated names of one closure
-// member: the measure/write/save/read codecs and the reflection descriptor
-// (SPEC-TABLES.md). C++-only today, so only the CamelCase spellings claim.
+// member. The table surface is NAME-FIRST — <Name>Measure, <Name>Save,
+// <Name>Load, <Name>Builder — so a table's whole surface autocompletes under
+// its own name, while the TYPE wire stays verb-first (WriteX/ReadX): the verb
+// position tells a reader which wire the call site is on (SPEC-TABLES.md).
+// Tables and types share ONE symbol table, and that is exactly what makes the
+// unprefixed surface collision-free: a declaration colliding with any of
+// these spellings is refused at the source.
+// C++-only today, so only the CamelCase spellings claim.
 func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name string, pos ast.Pos) {
 	why := fmt.Sprintf("%s's generated TABLE-wire functions", name)
-	add("TableMeasure"+name, why, pos)
-	add("TableWrite"+name, why, pos)
-	add("TableSave"+name, why, pos)
-	add("TableRead"+name, why, pos)
-	add("TableType"+name, why, pos)
+	for _, verb := range tableGeneratedVerbs {
+		add(name+verb, why, pos)
+	}
+}
+
+// tableGeneratedVerbs is the full name-first suffix set a closure member
+// claims. The mutable-life suffixes (Builder, LoadMeasure, At, Root) are
+// claimed for EVERY closure member, not only pointer-bearing ones: a table
+// gains or loses pointers as an edit, and a name that was free yesterday must
+// not become a collision tomorrow (SPEC-TABLES.md).
+var tableGeneratedVerbs = []string{
+	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
+	"LoadMeasure", "TableType", "Builder", "At", "Root",
 }
 
 // addStructSymbols registers the per-type generated names: the split

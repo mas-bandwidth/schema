@@ -72,7 +72,7 @@ func TestTableRefusals(t *testing.T) {
 		{name: "a declaration colliding with the table runtime", want: "generated TABLE-wire runtime",
 			src: "package t\ntable Tab { x int32 }\ntype TableReport { y int32 }\n"},
 		{name: "a declaration colliding with generated table codecs", want: "generated TABLE-wire functions",
-			src: "package t\ntable Tab { x int32 }\ntype TableReadTab { y int32 }\n"},
+			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

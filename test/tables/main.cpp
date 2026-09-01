@@ -124,14 +124,14 @@ static void test_round_trip()
     p.loadout.attachments[0].power = 2.0f;
 
     uint8_t buffer[16384];
-    int64_t need = tabledemo::TableMeasureRootConfig( root );
-    int64_t wrote = tabledemo::TableSaveRootConfig( root, buffer, sizeof( buffer ) );
+    int64_t need = tabledemo::RootConfigMeasure( root );
+    int64_t wrote = tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) );
     CHECK( wrote > 0 );
     CHECK( need == wrote ); // measure/save split: measure is EXACT
 
     tabledemo::TableReport report;
     tabledemo::RootConfig out;
-    CHECK( tabledemo::TableReadRootConfig( buffer, wrote, out, report ) );
+    CHECK( tabledemo::RootConfigLoad( out, buffer, wrote, &report ) );
     CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
 
     CHECK( strcmp( out.version_note, "v-one" ) == 0 && out.version_note_length == 5 );
@@ -173,10 +173,10 @@ static void test_round_trip()
 
     // a too-small buffer refuses instead of truncating
     uint8_t tiny[8];
-    CHECK( tabledemo::TableSaveRootConfig( root, tiny, sizeof( tiny ) ) == -1 );
+    CHECK( tabledemo::RootConfigSave( root, tiny, sizeof( tiny ) ) == -1 );
 
     // the exact-capacity guarantee holds for the fully-populated root
-    check_exact_capacity( root, tabledemo::TableMeasureRootConfig, tabledemo::TableSaveRootConfig );
+    check_exact_capacity( root, tabledemo::RootConfigMeasure, tabledemo::RootConfigSave );
 }
 
 // ---- exact capacity: measure's answer IS the buffer size, corpus-wide ----
@@ -191,36 +191,36 @@ static void test_exact_capacity()
     cfg.b = 8.5f;
     set_string( cfg.name, cfg.name_length, "exact" );
     // cfg.inner stays all-default: elides
-    check_exact_capacity( cfg, tblv1::TableMeasureCfg, tblv1::TableSaveCfg );
+    check_exact_capacity( cfg, tblv1::CfgMeasure, tblv1::CfgSave );
 
     // all-default everything (2 bytes)
     tblv1::Cfg empty;
-    check_exact_capacity( empty, tblv1::TableMeasureCfg, tblv1::TableSaveCfg );
+    check_exact_capacity( empty, tblv1::CfgMeasure, tblv1::CfgSave );
     tabledemo::WeaponConfig weapon;
-    check_exact_capacity( weapon, tabledemo::TableMeasureWeaponConfig, tabledemo::TableSaveWeaponConfig );
+    check_exact_capacity( weapon, tabledemo::WeaponConfigMeasure, tabledemo::WeaponConfigSave );
 
     // an elided nested table inside a GUARDED group
     tabledemo::ProfileConfig profile;
     profile.experience = 1;
     profile.has_loadout = true; // loadout itself stays all-default: elides
-    check_exact_capacity( profile, tabledemo::TableMeasureProfileConfig, tabledemo::TableSaveProfileConfig );
+    check_exact_capacity( profile, tabledemo::ProfileConfigMeasure, tabledemo::ProfileConfigSave );
 
     // nested tables of nested tables, some elided, some riding
     static tabledemo::ArchiveConfig archive;
     archive.count = 9;
     archive.root.weapons_count = 1; // weapons[0] all-default: rides as an element, its nested union elides
-    check_exact_capacity( archive, tabledemo::TableMeasureArchiveConfig, tabledemo::TableSaveArchiveConfig );
+    check_exact_capacity( archive, tabledemo::ArchiveConfigMeasure, tabledemo::ArchiveConfigSave );
 
     // loadout: fixed array of tables (always rides) around all-default elements
     tabledemo::LoadoutConfig loadout;
     loadout.grade = tabledemo::Grade::Gold;
-    check_exact_capacity( loadout, tabledemo::TableMeasureLoadoutConfig, tabledemo::TableSaveLoadoutConfig );
+    check_exact_capacity( loadout, tabledemo::LoadoutConfigMeasure, tabledemo::LoadoutConfigSave );
 
     // the v2 evolution shape
     tblv2::Cfg v2;
     v2.a = 1.0f;
     v2.inner.gain = 2.0f;
-    check_exact_capacity( v2, tblv2::TableMeasureCfg, tblv2::TableSaveCfg );
+    check_exact_capacity( v2, tblv2::CfgMeasure, tblv2::CfgSave );
 }
 
 // ---- storage invariants: the write side validates what it reads ----
@@ -232,33 +232,33 @@ static void test_storage_invariants()
     // a count above the bound must not read out of the array into the wire
     tabledemo::RootConfig root;
     root.weapons_count = 9; // bound is 8
-    CHECK( tabledemo::TableMeasureRootConfig( root ) == -1 );
-    CHECK( tabledemo::TableSaveRootConfig( root, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tabledemo::RootConfigMeasure( root ) == -1 );
+    CHECK( tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) ) == -1 );
 
     // a negative length must not memcpy a huge size_t
     tblv1::Cfg cfg;
     cfg.name_length = -1;
-    CHECK( tblv1::TableMeasureCfg( cfg ) == -1 );
-    CHECK( tblv1::TableSaveCfg( cfg, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tblv1::CfgMeasure( cfg ) == -1 );
+    CHECK( tblv1::CfgSave( cfg, buffer, sizeof( buffer ) ) == -1 );
 
     // a negative count refuses too
     tblv1::Cfg cfg2;
     cfg2.items_count = -3;
-    CHECK( tblv1::TableMeasureCfg( cfg2 ) == -1 );
-    CHECK( tblv1::TableSaveCfg( cfg2, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tblv1::CfgMeasure( cfg2 ) == -1 );
+    CHECK( tblv1::CfgSave( cfg2, buffer, sizeof( buffer ) ) == -1 );
 
     // a violation deep inside a nested, guarded table propagates up
     tabledemo::ProfileConfig profile;
     profile.has_loadout = true;
     profile.loadout.attachments_count = -5;
-    CHECK( tabledemo::TableMeasureProfileConfig( profile ) == -1 );
-    CHECK( tabledemo::TableSaveProfileConfig( profile, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tabledemo::ProfileConfigMeasure( profile ) == -1 );
+    CHECK( tabledemo::ProfileConfigSave( profile, buffer, sizeof( buffer ) ) == -1 );
 
     // an out-of-range union tag refuses in measure exactly as in write
     tabledemo::WeaponConfig weapon;
     weapon.effect.type = (tabledemo::EffectType) 9;
-    CHECK( tabledemo::TableMeasureWeaponConfig( weapon ) == -1 );
-    CHECK( tabledemo::TableSaveWeaponConfig( weapon, buffer, sizeof( buffer ) ) == -1 );
+    CHECK( tabledemo::WeaponConfigMeasure( weapon ) == -1 );
+    CHECK( tabledemo::WeaponConfigSave( weapon, buffer, sizeof( buffer ) ) == -1 );
 }
 
 // ---- bounded elements: a count the body length cannot cover never reads
@@ -266,8 +266,8 @@ static void test_storage_invariants()
 
 static void test_bounded_elements()
 {
-    const tblv1::TableFieldInfo * items = v1_field( tblv1::TableTypeCfg(), "items" );
-    const tblv1::TableFieldInfo * a = v1_field( tblv1::TableTypeCfg(), "a" );
+    const tblv1::TableFieldInfo * items = v1_field( tblv1::CfgTableType(), "items" );
+    const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     CHECK( items != NULL && a != NULL );
 
     // body_len = 3 covers only elem_kind + count; count claims 2 elements —
@@ -287,7 +287,7 @@ static void test_bounded_elements()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::TableReadCfg( wire, n, out, report ) );
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
     CHECK( report.malformed );        // the lie is framing damage, flagged
     CHECK( out.items_count == 0 );    // no fabricated elements
     CHECK( out.a == 42 );             // the parent continued at the next field
@@ -308,7 +308,7 @@ static void test_bounded_elements()
 
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::TableReadCfg( wire, n, out2, report2 ) );
+    CHECK( tblv1::CfgLoad( out2, wire, n, &report2 ) );
     CHECK( report2.malformed );
     CHECK( out2.items_count == 1 && out2.items[0] == 10 ); // bounded prefix
     CHECK( out2.a == 42 );
@@ -320,14 +320,14 @@ static void test_all_default()
 {
     tabledemo::WeaponConfig weapon;
     uint8_t buffer[64];
-    int64_t wrote = tabledemo::TableSaveWeaponConfig( weapon, buffer, sizeof( buffer ) );
+    int64_t wrote = tabledemo::WeaponConfigSave( weapon, buffer, sizeof( buffer ) );
     CHECK( wrote == 2 ); // bare terminator
-    CHECK( tabledemo::TableMeasureWeaponConfig( weapon ) == 2 );
+    CHECK( tabledemo::WeaponConfigMeasure( weapon ) == 2 );
 
     tabledemo::TableReport report;
     tabledemo::WeaponConfig out;
     out.damage = -1.0f; // garbage that the prefill must erase
-    CHECK( tabledemo::TableReadWeaponConfig( buffer, wrote, out, report ) );
+    CHECK( tabledemo::WeaponConfigLoad( out, buffer, wrote, &report ) );
     CHECK( out.damage == 21.0f && out.speed == 500.0f && out.penetration == 1 );
     CHECK( !report.malformed && report.unknown == 0 );
 }
@@ -341,13 +341,13 @@ static void test_guard()
     p.loadout.grade = tabledemo::Grade::Gold; // junk behind an untaken guard
 
     uint8_t buffer[512];
-    int64_t wrote = tabledemo::TableSaveProfileConfig( p, buffer, sizeof( buffer ) );
+    int64_t wrote = tabledemo::ProfileConfigSave( p, buffer, sizeof( buffer ) );
     CHECK( wrote == 2 ); // guard false + everything else default: all elides
-    CHECK( tabledemo::TableMeasureProfileConfig( p ) == wrote );
+    CHECK( tabledemo::ProfileConfigMeasure( p ) == wrote );
 
     tabledemo::TableReport report;
     tabledemo::ProfileConfig out;
-    CHECK( tabledemo::TableReadProfileConfig( buffer, wrote, out, report ) );
+    CHECK( tabledemo::ProfileConfigLoad( out, buffer, wrote, &report ) );
     CHECK( out.loadout.grade == tabledemo::Grade::Silver ); // untaken side decodes to defaults
 }
 
@@ -366,12 +366,12 @@ static void test_evolution_old_reader_new_data()
     v2.items_count = 1;
 
     uint8_t wire[1024];
-    int64_t bytes = tblv2::TableSaveCfg( v2, wire, sizeof( wire ) );
-    CHECK( bytes > 0 && bytes == tblv2::TableMeasureCfg( v2 ) );
+    int64_t bytes = tblv2::CfgSave( v2, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv2::CfgMeasure( v2 ) );
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::TableReadCfg( wire, bytes, out, report ) );
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 2 );       // c (top level) + gain (nested)
     CHECK( report.kind_mismatch == 1 ); // a: f32 wire vs v1's i32 expectation
@@ -392,12 +392,12 @@ static void test_evolution_new_reader_old_data()
     v1.inner.factor = 1.25f;
 
     uint8_t wire[1024];
-    int64_t bytes = tblv1::TableSaveCfg( v1, wire, sizeof( wire ) );
-    CHECK( bytes > 0 && bytes == tblv1::TableMeasureCfg( v1 ) );
+    int64_t bytes = tblv1::CfgSave( v1, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( v1 ) );
 
     tblv2::TableReport report;
     tblv2::Cfg out;
-    CHECK( tblv2::TableReadCfg( wire, bytes, out, report ) );
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 1 );       // b, removed in v2
     CHECK( report.kind_mismatch == 1 ); // a: i32 wire vs v2's f32 expectation
@@ -415,7 +415,7 @@ static void test_clamping()
 {
     // a wider writer sent a = 2000; v1's a is [0, 1000] — crafted from the
     // descriptor's own id so the bytes are exactly what such a writer emits
-    const tblv1::TableFieldInfo * a = v1_field( tblv1::TableTypeCfg(), "a" );
+    const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     CHECK( a != NULL && a->kind == 4 && a->has_range && a->range_max == 1000.0 );
 
     uint8_t wire[16];
@@ -427,11 +427,11 @@ static void test_clamping()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::TableReadCfg( wire, n, out, report ) );
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
     CHECK( report.clamped == 1 && out.a == 1000 );
 
     // bits(6) width clamp: a u8 payload of 200 clamps to 63
-    const tabledemo::TableFieldInfo * ch = demo_field( tabledemo::TableTypeWeaponConfig(), "channel" );
+    const tabledemo::TableFieldInfo * ch = demo_field( tabledemo::WeaponConfigTableType(), "channel" );
     CHECK( ch != NULL && ch->kind == 6 );
     uint8_t wire2[8];
     n = 0;
@@ -442,12 +442,12 @@ static void test_clamping()
 
     tabledemo::TableReport report2;
     tabledemo::WeaponConfig weapon;
-    CHECK( tabledemo::TableReadWeaponConfig( wire2, n, weapon, report2 ) );
+    CHECK( tabledemo::WeaponConfigLoad( weapon, wire2, n, &report2 ) );
     CHECK( report2.clamped == 1 && weapon.channel == 63 );
 
     // an over-long string — a future schema widened string(32) — clamps to
     // capacity, stays NUL-terminated, and counts
-    const tblv1::TableFieldInfo * nameInfo = v1_field( tblv1::TableTypeCfg(), "name" );
+    const tblv1::TableFieldInfo * nameInfo = v1_field( tblv1::CfgTableType(), "name" );
     uint8_t wire4[64];
     n = 0;
     le16( wire4 + n, nameInfo->id ); n += 2;
@@ -458,7 +458,7 @@ static void test_clamping()
 
     tblv1::TableReport report4;
     tblv1::Cfg out4;
-    CHECK( tblv1::TableReadCfg( wire4, n, out4, report4 ) );
+    CHECK( tblv1::CfgLoad( out4, wire4, n, &report4 ) );
     CHECK( report4.clamped == 1 && out4.name_length == 32 && out4.name[32] == 0 );
 }
 
@@ -470,29 +470,29 @@ static void test_malformed()
     tblv1::Cfg out;
 
     uint8_t one_byte[1] = { 0x34 };
-    CHECK( !tblv1::TableReadCfg( one_byte, 1, out, report ) );
+    CHECK( !tblv1::CfgLoad( out, one_byte, 1, &report ) );
     CHECK( report.malformed );
 
     // a valid field id whose payload is truncated mid-scalar
-    const tblv1::TableFieldInfo * a = v1_field( tblv1::TableTypeCfg(), "a" );
+    const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     uint8_t truncated[5];
     le16( truncated, a->id );
     truncated[2] = 4;  // kI32 wants 4 payload bytes; only 2 follow
     truncated[3] = 0;
     truncated[4] = 0;
     tblv1::TableReport report2;
-    CHECK( !tblv1::TableReadCfg( truncated, 5, out, report2 ) );
+    CHECK( !tblv1::CfgLoad( out, truncated, 5, &report2 ) );
     CHECK( report2.malformed );
 
     // damage after good fields: the good prefix survives (partial result)
     tblv1::Cfg src;
     src.a = 42;
     uint8_t wire[256];
-    int64_t bytes = tblv1::TableSaveCfg( src, wire, sizeof( wire ) );
+    int64_t bytes = tblv1::CfgSave( src, wire, sizeof( wire ) );
     CHECK( bytes > 0 );
     tblv1::TableReport report3;
     tblv1::Cfg out3;
-    CHECK( !tblv1::TableReadCfg( wire, bytes - 2, out3, report3 ) ); // terminator cut off
+    CHECK( !tblv1::CfgLoad( out3, wire, bytes - 2, &report3 ) ); // terminator cut off
     CHECK( report3.malformed && out3.a == 42 );
 }
 
@@ -500,7 +500,7 @@ static void test_malformed()
 
 static void test_reflection()
 {
-    const tabledemo::TableTypeInfo * weapon = tabledemo::TableTypeWeaponConfig();
+    const tabledemo::TableTypeInfo * weapon = tabledemo::WeaponConfigTableType();
     CHECK( strcmp( weapon->name, "WeaponConfig" ) == 0 );
     CHECK( weapon->size == sizeof( tabledemo::WeaponConfig ) );
 
@@ -519,27 +519,27 @@ static void test_reflection()
     CHECK( pen != NULL && pen->has_range && pen->range_min == 0.0 && pen->range_max == 10.0 );
 
     // enum name function: value -> name, out-of-set included
-    const tabledemo::TableFieldInfo * grade = demo_field( tabledemo::TableTypeLoadoutConfig(), "grade" );
+    const tabledemo::TableFieldInfo * grade = demo_field( tabledemo::LoadoutConfigTableType(), "grade" );
     CHECK( grade != NULL && grade->enum_max == 3 && grade->enum_name != NULL );
     CHECK( strcmp( grade->enum_name( 3 ), "Gold" ) == 0 );
     CHECK( strcmp( grade->enum_name( 9 ), "???" ) == 0 );
 
     // nested-table descriptors chain, arrays carry bounds and companions
-    const tabledemo::TableTypeInfo * rootType = tabledemo::TableTypeRootConfig();
+    const tabledemo::TableTypeInfo * rootType = tabledemo::RootConfigTableType();
     const tabledemo::TableFieldInfo * profiles = demo_field( rootType, "profiles" );
     CHECK( profiles != NULL && profiles->kind == 13 && profiles->is_array && profiles->counted );
     CHECK( profiles->array_bound == 4 );
-    CHECK( profiles->table == tabledemo::TableTypeProfileConfig() );
+    CHECK( profiles->table == tabledemo::ProfileConfigTableType() );
 
     // guards surface machine-usable
-    const tabledemo::TableFieldInfo * loadout = demo_field( tabledemo::TableTypeProfileConfig(), "loadout" );
+    const tabledemo::TableFieldInfo * loadout = demo_field( tabledemo::ProfileConfigTableType(), "loadout" );
     CHECK( loadout != NULL && strcmp( loadout->guard, "has_loadout" ) == 0 );
 
     // every one of the 15 wire kinds rides somewhere in the corpus battery;
     // the scalar kinds pin here by descriptor (containers pinned above and
     // in the round trip: 12 string, 13 table, 14 array, 15 union; 1 bool on
     // homing, 10 f32 on damage)
-    const tabledemo::TableTypeInfo * profileType = tabledemo::TableTypeProfileConfig();
+    const tabledemo::TableTypeInfo * profileType = tabledemo::ProfileConfigTableType();
     struct { const char * field; uint8_t kind; } scalar_kinds[] = {
         { "tilt", 2 },       // i8
         { "heading", 3 },    // i16
@@ -565,7 +565,7 @@ static void test_reflection()
     // generic field access through offset — an editor walking properties
     tabledemo::ProfileConfig p;
     p.experience = 777;
-    const tabledemo::TableFieldInfo * exp = demo_field( tabledemo::TableTypeProfileConfig(), "experience" );
+    const tabledemo::TableFieldInfo * exp = demo_field( tabledemo::ProfileConfigTableType(), "experience" );
     CHECK( exp != NULL );
     uint32_t read_back;
     memcpy( &read_back, (const uint8_t *) &p + exp->offset, sizeof( read_back ) );
@@ -583,12 +583,12 @@ static void test_cross_file()
     archive.count = 5;
 
     static uint8_t buffer[16384];
-    int64_t wrote = tabledemo::TableSaveArchiveConfig( archive, buffer, sizeof( buffer ) );
-    CHECK( wrote > 0 && wrote == tabledemo::TableMeasureArchiveConfig( archive ) );
+    int64_t wrote = tabledemo::ArchiveConfigSave( archive, buffer, sizeof( buffer ) );
+    CHECK( wrote > 0 && wrote == tabledemo::ArchiveConfigMeasure( archive ) );
 
     tabledemo::TableReport report;
     static tabledemo::ArchiveConfig out;
-    CHECK( tabledemo::TableReadArchiveConfig( buffer, wrote, out, report ) );
+    CHECK( tabledemo::ArchiveConfigLoad( out, buffer, wrote, &report ) );
     CHECK( strcmp( out.root.version_note, "deep" ) == 0 );
     CHECK( out.root.weapons_count == 1 && out.root.weapons[0].homing );
     CHECK( out.count == 5 );
@@ -610,14 +610,14 @@ static void test_parallel_shape()
     int64_t total = 0;
     for ( int i = 0; i < 3; i++ )
     {
-        sizes[i] = tabledemo::TableMeasureProfileConfig( profiles[i] );
+        sizes[i] = tabledemo::ProfileConfigMeasure( profiles[i] );
         total += sizes[i];
     }
     static uint8_t buffer[4096];
     int64_t offset = 0;
     for ( int i = 0; i < 3; i++ ) // each iteration is independent: a worker
     {
-        int64_t wrote = tabledemo::TableSaveProfileConfig( profiles[i], buffer + offset, sizes[i] );
+        int64_t wrote = tabledemo::ProfileConfigSave( profiles[i], buffer + offset, sizes[i] );
         CHECK( wrote == sizes[i] );
         offset += wrote;
     }
@@ -627,7 +627,7 @@ static void test_parallel_shape()
     {
         tabledemo::TableReport report;
         tabledemo::ProfileConfig out;
-        CHECK( tabledemo::TableReadProfileConfig( buffer + offset, sizes[i], out, report ) );
+        CHECK( tabledemo::ProfileConfigLoad( out, buffer + offset, sizes[i], &report ) );
         CHECK( out.experience == (uint32_t) ( 100 + i ) );
         offset += sizes[i];
     }

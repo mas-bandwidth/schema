@@ -589,16 +589,16 @@ The encode surface is a measure/save split, and the caller owns every buffer
 ShipConfig ship;
 ship.health = 250.0f;
 
-int64_t size = TableMeasureShipConfig( ship );     // exact, writes nothing
+int64_t size = ShipConfigMeasure( ship );     // exact, writes nothing
 std::vector<uint8_t> buffer( size );               // or any storage you own
-TableSaveShipConfig( ship, buffer.data(), size );  // returns size — a buffer
-// of exactly TableMeasure's answer always suffices; -1 means the buffer is
+ShipConfigSave( ship, buffer.data(), size );  // returns size — a buffer
+// of exactly Measure's answer always suffices; -1 means the buffer is
 // too small, or the value violates a storage bound (a _count or _length
 // outside its declared range — measure returns -1 for those too)
 
 TableReport report;
 ShipConfig loaded;
-if ( !TableReadShipConfig( buffer.data(), size, loaded, report ) )
+if ( !ShipConfigLoad( loaded, buffer.data(), size, &report ) )
 {
     // framing damage: report.malformed is set, the good prefix is kept
 }
@@ -635,7 +635,7 @@ table GameConfig
 ```
 
 Whatever envelope you want around it — a magic, a content hash, several roots
-in one file — is a few lines of your code on top of `TableSave`/`TableRead`.
+in one file — is a few lines of your code on top of `<Name>Save`/`<Name>Load`.
 schema deliberately does not prescribe one. Tables may also reference plain
 `type`s, enums and flags; everything a table reaches gets table codecs too.
 A `type` cannot reference a table (packets stay exact-match), and a table
@@ -668,7 +668,7 @@ and scatter-write disjoint ranges — no worker touches another's bytes.
 int64_t sizes[kProfiles], total = 0;
 for ( int i = 0; i < kProfiles; i++ )
 {
-    sizes[i] = TableMeasureProfileConfig( profiles[i] ); // parallel-safe: read-only
+    sizes[i] = ProfileConfigMeasure( profiles[i] ); // parallel-safe: read-only
     total += sizes[i];
 }
 uint8_t * buffer = arena_alloc( total );
@@ -676,7 +676,7 @@ int64_t offsets[kProfiles], at = 0;
 for ( int i = 0; i < kProfiles; i++ ) { offsets[i] = at; at += sizes[i]; }
 for ( int i = 0; i < kProfiles; i++ ) // each iteration is an independent job
 {
-    TableSaveProfileConfig( profiles[i], buffer + offsets[i], sizes[i] );
+    ProfileConfigSave( profiles[i], buffer + offsets[i], sizes[i] );
 }
 ```
 
@@ -691,7 +691,7 @@ name functions, branch guards — enough to write a generic editor, printer or
 differ with no RTTI and no schema files at runtime:
 
 ```cpp
-const TableTypeInfo * type = TableTypeShipConfig();
+const TableTypeInfo * type = ShipConfigTableType();
 for ( int32_t i = 0; i < type->num_fields; i++ )
 {
     const TableFieldInfo & field = type->fields[i];

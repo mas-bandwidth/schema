@@ -152,8 +152,8 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 	}
 	// the load-bearing surfaces are present
 	for _, want := range []string{
-		"TableMeasureConfig", "TableSaveConfig", "TableReadConfig", "TableWriteConfig",
-		"TableTypeConfig", "struct TableReport",
+		"ConfigMeasure", "ConfigSave", "ConfigLoad", "ConfigSaveBody", "ConfigLoadBody",
+		"ConfigTableType", "struct TableReport",
 		"static_assert( std::is_trivially_copyable<Config>::value",
 		"static_assert( std::is_standard_layout<Config>::value",
 	} {

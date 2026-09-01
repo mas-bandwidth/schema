@@ -213,7 +213,7 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 // its bound, an out-of-range union tag) measures as -1, exactly as the
 // write side refuses it.
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
-	g.pf("inline int64_t TableMeasure%s( const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("inline int64_t %sMeasure( const %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; // empty type: presence is the payload\n")
 	}
@@ -248,7 +248,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
 		g.pf("        bytes += 3 + 4 + 3; // %s\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < value.%s_count; i++ )\n        {\n", f.Name)
-		g.pf("            int64_t elem_%s = TableMeasure%s( value.%s[i] );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("            int64_t elem_%s = %sMeasure( value.%s[i] );\n", f.Name, f.Type.Name, f.Name)
 		g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("            bytes += 4 + elem_%s;\n", f.Name)
 		g.pf("        }\n    }\n")
@@ -259,7 +259,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    {\n")
 		g.pf("        bytes += 3 + 4 + 3; // %s (fixed [%d])\n", f.Name, f.ArrayBound)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ )\n        {\n", f.ArrayBound)
-		g.pf("            int64_t elem_%s = TableMeasure%s( value.%s[i] );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("            int64_t elem_%s = %sMeasure( value.%s[i] );\n", f.Name, f.Type.Name, f.Name)
 		g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("            bytes += 4 + elem_%s;\n", f.Name)
 		g.pf("        }\n    }\n")
@@ -276,7 +276,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        case %sType::None: break; // None elides — TLV absence is the None\n", un.Name)
 		for _, v := range un.Variants {
 			g.pf("        case %sType::%s:\n        {\n", un.Name, ir.GoExportName(v.Name))
-			g.pf("            int64_t arm_%s = TableMeasure%s( value.%s.%s );\n", f.Name, v.Type, f.Name, v.Name)
+			g.pf("            int64_t arm_%s = %sMeasure( value.%s.%s );\n", f.Name, v.Type, f.Name, v.Name)
 			g.pf("            if ( arm_%s < 0 ) { return -1; }\n", f.Name)
 			g.pf("            bytes += 3 + 1 + 4 + arm_%s;\n            break;\n        }\n", f.Name)
 		}
@@ -284,7 +284,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    }\n")
 	case kind == tkTable:
 		g.pf("    {\n")
-		g.pf("        int64_t body_%s = TableMeasure%s( value.%s );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("        int64_t body_%s = %sMeasure( value.%s );\n", f.Name, f.Type.Name, f.Name)
 		g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("        if ( body_%s > 2 ) { bytes += 3 + 4 + body_%s; } // %s: all-default nested elides\n", f.Name, f.Name, f.Name)
 		g.pf("    }\n")
@@ -296,7 +296,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 // ---- write / save ----
 
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
-	g.pf("inline bool TableWrite%s( TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("inline bool %sSaveBody( TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; // empty type: presence is the payload\n")
 	}
@@ -321,10 +321,10 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 // written — exactly TableMeasure's answer — or -1 when the buffer is too
 // small. No allocation anywhere: the caller owns the buffer.
 func (g *tableGen) emitTableSave(st *ir.Struct) {
-	g.pf("inline int64_t TableSave%s( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
+	g.pf("inline int64_t %sSave( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    TableWriter w( buffer, capacity );\n")
-	g.pf("    if ( !TableWrite%s( w, value ) ) { return -1; }\n", st.Name)
-	g.pf("    return w.offset; // == TableMeasure%s( value )\n}\n\n", st.Name)
+	g.pf("    if ( !%sSaveBody( w, value ) ) { return -1; }\n", st.Name)
+	g.pf("    return w.offset; // == %sMeasure( value )\n}\n\n", st.Name)
 }
 
 func (g *tableGen) emitTableWriteField(f *ir.Field) {
@@ -394,7 +394,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
 		g.pf("        switch ( value.%s.type )\n        {\n", f.Name)
 		for _, v := range un.Variants {
-			g.pf("            case %sType::%s: if ( !TableWrite%s( w, value.%s.%s ) ) return false; break;\n",
+			g.pf("            case %sType::%s: if ( !%sSaveBody( w, value.%s.%s ) ) return false; break;\n",
 				un.Name, ir.GoExportName(v.Name), v.Type, f.Name, v.Name)
 		}
 		g.pf("            default: return false; // write validates the tag before it rides\n")
@@ -406,12 +406,12 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// so saving into a buffer of exactly TableMeasure's size never
 		// trips overflow on transient header bytes
 		g.pf("    {\n")
-		g.pf("        int64_t body_%s = TableMeasure%s( value.%s );\n", f.Name, f.Type.Name, f.Name)
+		g.pf("        int64_t body_%s = %sMeasure( value.%s );\n", f.Name, f.Type.Name, f.Name)
 		g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 		g.pf("        if ( body_%s > 2 ) // all-default nested elides\n        {\n", f.Name)
 		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkTable, f.Name)
 		g.pf("            w.put32( uint32_t( body_%s ) );\n", f.Name)
-		g.pf("            if ( !TableWrite%s( w, value.%s ) ) return false;\n", f.Type.Name, f.Name)
+		g.pf("            if ( !%sSaveBody( w, value.%s ) ) return false;\n", f.Type.Name, f.Name)
 		g.pf("        }\n    }\n")
 	default:
 		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
@@ -431,7 +431,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
 	case tkTable:
 		g.pf("%s{\n%s    int64_t elem_len_at = w.offset; w.put32( 0 );\n", ind, ind)
-		g.pf("%s    if ( !TableWrite%s( w, %s ) ) return false;\n", ind, f.Type.Name, expr)
+		g.pf("%s    if ( !%sSaveBody( w, %s ) ) return false;\n", ind, f.Type.Name, expr)
 		g.pf("%s    w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );\n%s}\n", ind, ind)
 	default:
 		width := tableKindWidth(kind)
@@ -443,7 +443,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 // ---- read ----
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
-	g.pf("inline bool TableRead%s( TableReader & r, %s & value )\n{\n", st.Name, st.Name)
+	g.pf("inline bool %sLoadBody( TableReader & r, %s & value )\n{\n", st.Name, st.Name)
 	// placement new, NOT `value = T{}`: assignment materializes a temporary,
 	// and generated types can be large — a stack bomb on worker threads.
 	// In-place value-init applies the same NSDMI defaults with no temporary.
@@ -486,9 +486,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 
 	// buffer-level convenience entry
-	g.pf("inline bool TableRead%s( const uint8_t * buffer, int64_t bytes, %s & value, TableReport & report )\n{\n", st.Name, st.Name)
-	g.pf("    TableReader r( buffer, bytes, &report );\n")
-	g.pf("    return TableRead%s( r, value );\n}\n\n", st.Name)
+	g.pf("inline bool %sLoad( %s & value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReader r( buffer, bytes, report != NULL ? report : &ignored );\n")
+	g.pf("    return %sLoadBody( r, value );\n}\n\n", st.Name)
 }
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
@@ -554,7 +555,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, body_len, r.report );\n", ind, ind)
 		g.pf("%s    switch ( value.%s.type )\n%s    {\n", ind, f.Name, ind)
 		for _, v := range un.Variants {
-			g.pf("%s        case %sType::%s: TableRead%s( sub, value.%s.%s ); break;\n",
+			g.pf("%s        case %sType::%s: %sLoadBody( sub, value.%s.%s ); break;\n",
 				ind, un.Name, ir.GoExportName(v.Name), v.Type, f.Name, v.Name)
 		}
 		g.pf("%s        default: break; // unreachable: the tag was ranged above\n", ind)
@@ -565,7 +566,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint32_t body_len = r.get32();\n", ind)
 		g.pf("%sif ( !r.has( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, body_len, r.report );\n", ind, ind)
-		g.pf("%s    TableRead%s( sub, value.%s );\n", ind, f.Type.Name, f.Name)
+		g.pf("%s    %sLoadBody( sub, value.%s );\n", ind, f.Type.Name, f.Name)
 		g.pf("%s}\n", ind)
 		g.pf("%sr.offset += body_len;\n", ind)
 	default:
@@ -584,7 +585,7 @@ func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 		g.pf("%suint32_t elem_len = sub.get32();\n", ind)
 		g.pf("%sif ( !sub.has( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
 		g.pf("%s{\n%s    TableReader elem( sub.buffer + sub.offset, elem_len, r.report );\n", ind, ind)
-		g.pf("%s    TableRead%s( elem, value.%s[i] );\n", ind, f.Type.Name, f.Name)
+		g.pf("%s    %sLoadBody( elem, value.%s[i] );\n", ind, f.Type.Name, f.Name)
 		g.pf("%s}\n", ind)
 		g.pf("%ssub.offset += elem_len;\n", ind)
 	default:
@@ -683,7 +684,7 @@ func bigToDouble(v *big.Int) string {
 // functions), built once on first use.
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
-	g.pf("inline const TableTypeInfo * TableType%s()\n{\n", st.Name)
+	g.pf("inline const TableTypeInfo * %sTableType()\n{\n", st.Name)
 	if len(st.Fields) > 0 {
 		g.pf("    static const TableFieldInfo fields[] = {\n")
 		for _, f := range st.Fields {
@@ -719,7 +720,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 
 			table := "NULL"
 			if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
-				table = fmt.Sprintf("TableType%s()", f.Type.Name)
+				table = fmt.Sprintf("%sTableType()", f.Type.Name)
 				g.noteRef(f.Type.Name)
 			}
 
