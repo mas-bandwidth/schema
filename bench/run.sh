@@ -596,7 +596,27 @@ if [ "$QUICK" = 1 ]; then
                         printf "  %-10s %6s\n", lang, "—"
                         notes = notes sprintf("  §2.3 INVALID: %s spread %.1f%% > 40%% — the row does not publish as a number\n", lang, sp[lang])
                     } else if (ref > 0) {
-                        printf "  %-10s %5.0f%%\n", lang, ts[lang] / ref * 100.0
+                        # The c/cpp statistical tie (owner ruling 2026-09-01, §2.8):
+                        # the two legs are the same clang word codec, and their gap
+                        # has never left the pair's own spread — so when c sits
+                        # inside the pair's combined spread of cpp, both print 100%.
+                        # Display rule only: the CSV always carries the raw rates,
+                        # and a future sitting that separates them beyond the noise
+                        # prints the real figure, which is the ruling's own exit.
+                        pct = ts[lang] / ref * 100.0
+                        # tie threshold: the pair's combined within-sitting
+                        # spread, floored at 3.0 points — the measured
+                        # cross-sitting noise floor for this pair (c has
+                        # printed 97-100% across the era's sittings on
+                        # byte-frozen code; §2.8's tie paragraph carries the
+                        # derivation and the exit).
+                        tieband = sp["c"] + sp["cpp"]; if (tieband < 3.0) tieband = 3.0
+                        if (lang == "c" && ("cpp" in sp) && (pct - 100.0 <= tieband) && (100.0 - pct <= tieband)) {
+                            printf "  %-10s %5.0f%%\n", lang, 100.0
+                            notes = notes sprintf("  §2.8 TIE: c measured %.1f%% of cpp, inside the tie band (%.1f points) — reported as a statistical tie at 100%%\n", pct, tieband)
+                        } else {
+                            printf "  %-10s %5.0f%%\n", lang, pct
+                        }
                         if (sp[lang] > 15.0)
                             notes = notes sprintf("  §2.3 NOISY: %s spread %.1f%% > 15%% — judge this row against the noise, not the digit\n", lang, sp[lang])
                     } else {
