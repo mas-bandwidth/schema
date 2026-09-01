@@ -65,3 +65,11 @@ reads the round's state from this file plus the branch commits alone.
   byte-identical; test/elixir + test/elixir-ludicrous OK; mix format clean;
   goldens re-pinned (text only — wire bytes untouched). Also fires for
   bench_packet blob (9x8-bit) and examples arrays (Wire/Clauses/Degenerate).
+- HYPOTHESIS A (iolist emission) REFUTED, prototype numbers: writers building
+  [data | <<segs>>] trees with one :erlang.iolist_to_binary at return, wire
+  gate 64/64 green — write 2352.6 -> 2796.9 ns/msg (1.19x SLOWER), rt 1.11x
+  slower, words reclaimed 267M -> 582M (2.2x). Mechanism: bs_append grows a
+  writable binary in place (the segment copy is paid either way), while the
+  iolist pays a fresh heap binary + cons per barrier AND the final flatten
+  traversal+copy. Zero-intermediate-append emission is a loss on the BEAM;
+  the lever-M multi-segment barrier append stands as the floor's write shape.
