@@ -41,7 +41,7 @@ export const FLAT_READ_SLACK = 8;
 function writeW13FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.ItemsCount) & 0xf) >>> 0;
+  v = (((value.ItemsCount) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -51,7 +51,7 @@ function writeW13FlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = ((value.Items[i0]) & 0x1fff) >>> 0;
+    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -73,7 +73,7 @@ function writeW13FlatChecked(value, view) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 12) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0xf) >>> 0;
+  v = (((value.ItemsCount) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -86,7 +86,7 @@ function writeW13FlatChecked(value, view) {
     if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 8191) {
       return -1;
     }
-    v = ((value.Items[i0]) & 0x1fff) >>> 0;
+    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -146,7 +146,7 @@ export function ReadW13Flat(value, view, numBits) {
 function writeW17FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.ItemsCount) & 0xf) >>> 0;
+  v = (((value.ItemsCount) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -156,7 +156,7 @@ function writeW17FlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = ((value.Items[i0]) & 0x1ffff) >>> 0;
+    v = (((value.Items[i0]) & 0x1ffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 17;
     if (sb >= 32) {
@@ -178,7 +178,7 @@ function writeW17FlatChecked(value, view) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 9) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0xf) >>> 0;
+  v = (((value.ItemsCount) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -191,7 +191,7 @@ function writeW17FlatChecked(value, view) {
     if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 131071) {
       return -1;
     }
-    v = ((value.Items[i0]) & 0x1ffff) >>> 0;
+    v = (((value.Items[i0]) & 0x1ffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 17;
     if (sb >= 32) {
@@ -251,7 +251,7 @@ export function ReadW17Flat(value, view, numBits) {
 function writeW26FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.ItemsCount) & 0x7) >>> 0;
+  v = (((value.ItemsCount) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -261,7 +261,7 @@ function writeW26FlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = ((value.Items[i0]) & 0x3ffffff) >>> 0;
+    v = (((value.Items[i0]) & 0x3ffffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 26;
     if (sb >= 32) {
@@ -283,7 +283,7 @@ function writeW26FlatChecked(value, view) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 6) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0x7) >>> 0;
+  v = (((value.ItemsCount) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -296,7 +296,7 @@ function writeW26FlatChecked(value, view) {
     if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 67108863) {
       return -1;
     }
-    v = ((value.Items[i0]) & 0x3ffffff) >>> 0;
+    v = (((value.Items[i0]) & 0x3ffffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 26;
     if (sb >= 32) {
@@ -356,7 +356,7 @@ export function ReadW26Flat(value, view, numBits) {
 function writeW1FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.ItemsCount) & 0x1f) >>> 0;
+  v = (((value.ItemsCount) & 0x1f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -366,7 +366,7 @@ function writeW1FlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = ((value.Items[i0]) & 0x1) >>> 0;
+    v = (((value.Items[i0]) & 0x1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 1;
     if (sb >= 32) {
@@ -388,7 +388,7 @@ function writeW1FlatChecked(value, view) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 20) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0x1f) >>> 0;
+  v = (((value.ItemsCount) & 0x1f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -401,7 +401,7 @@ function writeW1FlatChecked(value, view) {
     if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 1) {
       return -1;
     }
-    v = ((value.Items[i0]) & 0x1) >>> 0;
+    v = (((value.Items[i0]) & 0x1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 1;
     if (sb >= 32) {
@@ -461,7 +461,7 @@ export function ReadW1Flat(value, view, numBits) {
 function writeW52FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.ItemsCount) & 0x3) >>> 0;
+  v = (((value.ItemsCount) & 0x3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 2;
   if (sb >= 32) {
@@ -503,7 +503,7 @@ function writeW52FlatChecked(value, view) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0x3) >>> 0;
+  v = (((value.ItemsCount) & 0x3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 2;
   if (sb >= 32) {
@@ -594,7 +594,7 @@ export function ReadW52Flat(value, view, numBits) {
 function writeW50FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.ItemsCount) & 0x3) >>> 0;
+  v = (((value.ItemsCount) & 0x3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 2;
   if (sb >= 32) {
@@ -636,7 +636,7 @@ function writeW50FlatChecked(value, view) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0x3) >>> 0;
+  v = (((value.ItemsCount) & 0x3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 2;
   if (sb >= 32) {
@@ -728,7 +728,7 @@ function writeF13FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 7; i0++) {
-    v = ((value.Items[i0]) & 0x1fff) >>> 0;
+    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -751,7 +751,7 @@ function writeF13FlatChecked(value, view) {
     if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 8191) {
       return -1;
     }
-    v = ((value.Items[i0]) & 0x1fff) >>> 0;
+    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -797,23 +797,14 @@ export function ReadF13Flat(value, view, numBits) {
 function writeTri3FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.A & 0x1) >>> 0;
+  v = ((value.A & 0x1) | ((value.B & 0x3) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
+  sb += 3;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = (value.B & 0x3) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -824,23 +815,14 @@ function writeTri3FlatProduction(value, view) {
 function writeTri3FlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.A & 0x1) >>> 0;
+  v = ((value.A & 0x1) | ((value.B & 0x3) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
+  sb += 3;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = (value.B & 0x3) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -884,7 +866,7 @@ export function ReadTri3Flat(value, view, numBits) {
 function writeArrTri3FlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.ItemsCount) & 0xf) >>> 0;
+  v = (((value.ItemsCount) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -895,23 +877,14 @@ function writeArrTri3FlatProduction(value, view) {
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
     const e0 = value.Items[i0];
-    v = (e0.A & 0x1) >>> 0;
+    v = ((e0.A & 0x1) | ((e0.B & 0x3) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
+    sb += 3;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = (e0.B & 0x3) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
+      lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
   }
   if (sb !== 0) {
@@ -926,7 +899,7 @@ function writeArrTri3FlatChecked(value, view) {
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 10) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0xf) >>> 0;
+  v = (((value.ItemsCount) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -937,23 +910,14 @@ function writeArrTri3FlatChecked(value, view) {
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
     const e0 = value.Items[i0];
-    v = (e0.A & 0x1) >>> 0;
+    v = ((e0.A & 0x1) | ((e0.B & 0x3) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
+    sb += 3;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = (e0.B & 0x3) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
+      lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
   }
   if (sb !== 0) {
@@ -1015,23 +979,14 @@ export function ReadArrTri3Flat(value, view, numBits) {
 function writeElevenFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.A & 0x7) >>> 0;
+  v = ((value.A & 0x7) | ((value.B & 0xff) << 3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
+  sb += 11;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  v = (value.B & 0xff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1042,23 +997,14 @@ function writeElevenFlatProduction(value, view) {
 function writeElevenFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.A & 0x7) >>> 0;
+  v = ((value.A & 0x7) | ((value.B & 0xff) << 3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
+  sb += 11;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  v = (value.B & 0xff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1104,23 +1050,14 @@ function writeArrElevenFlatProduction(value, view) {
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 9; i0++) {
     const e0 = value.Items[i0];
-    v = (e0.A & 0x7) >>> 0;
+    v = ((e0.A & 0x7) | ((e0.B & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 3;
+    sb += 11;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (3 - sb);
-    }
-    v = (e0.B & 0xff) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
   if (sb !== 0) {
@@ -1134,23 +1071,14 @@ function writeArrElevenFlatChecked(value, view) {
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 9; i0++) {
     const e0 = value.Items[i0];
-    v = (e0.A & 0x7) >>> 0;
+    v = ((e0.A & 0x7) | ((e0.B & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 3;
+    sb += 11;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (3 - sb);
-    }
-    v = (e0.B & 0xff) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
   if (sb !== 0) {
@@ -1262,23 +1190,14 @@ export function ReadEmptyBFlat(value, view, numBits) {
 function writeHoldsEmptyUnionFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
+  v = ((value.Lead & 0x1f) | ((value.U.Type & 0x3) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
+  sb += 7;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  v = (value.U.Type & 0x3) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   switch (value.U.Type) {
     case 1: {
@@ -1288,7 +1207,7 @@ function writeHoldsEmptyUnionFlatProduction(value, view) {
       break;
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
+  v = ((value.Tail & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 7;
   if (sb >= 32) {
@@ -1306,26 +1225,17 @@ function writeHoldsEmptyUnionFlatProduction(value, view) {
 function writeHoldsEmptyUnionFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
   if (!Number.isInteger(value.U.Type) || value.U.Type < 0 || value.U.Type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
-  v = (value.U.Type & 0x3) >>> 0;
+  v = ((value.Lead & 0x1f) | ((value.U.Type & 0x3) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
+  sb += 7;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   switch (value.U.Type) {
     case 1: {
@@ -1335,7 +1245,7 @@ function writeHoldsEmptyUnionFlatChecked(value, view) {
       break;
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
+  v = ((value.Tail & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 7;
   if (sb >= 32) {
@@ -1411,23 +1321,14 @@ export function ReadHoldsEmptyUnionFlat(value, view, numBits) {
 function writeStrsFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
+  v = ((value.Lead & 0x1f) | (((value.SLength) & 0xf) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
+  sb += 9;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  v = ((value.SLength) & 0xf) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   sb = (sb + 7) & -8;
   if (sb === 32) {
@@ -1447,7 +1348,7 @@ function writeStrsFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  v = ((value.BLength) & 0xf) >>> 0;
+  v = (((value.BLength) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -1474,7 +1375,7 @@ function writeStrsFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  v = (value.Tail & 0x7) >>> 0;
+  v = ((value.Tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1492,26 +1393,17 @@ function writeStrsFlatProduction(value, view) {
 function writeStrsFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
   if (!Number.isInteger(value.SLength) || value.SLength < 0 || value.SLength > 8) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.SLength) & 0xf) >>> 0;
+  v = ((value.Lead & 0x1f) | (((value.SLength) & 0xf) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
+  sb += 9;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
+    lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
   sb = (sb + 7) & -8;
   if (sb === 32) {
@@ -1534,7 +1426,7 @@ function writeStrsFlatChecked(value, view) {
   if (!Number.isInteger(value.BLength) || value.BLength < 0 || value.BLength > 8) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.BLength) & 0xf) >>> 0;
+  v = (((value.BLength) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -1561,7 +1453,7 @@ function writeStrsFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  v = (value.Tail & 0x7) >>> 0;
+  v = ((value.Tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1684,46 +1576,28 @@ export function ReadStrsFlat(value, view, numBits) {
 function writeArrNestedFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
+  v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x7) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
+  sb += 8;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  v = ((value.ItemsCount) & 0x7) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
     const e0 = value.Items[i0];
-    v = (e0.A & 0x7) >>> 0;
+    v = ((e0.A & 0x7) | ((e0.B & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 3;
+    sb += 11;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (3 - sb);
-    }
-    v = (e0.B & 0xff) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
-  v = (value.Tail & 0x7) >>> 0;
+  v = ((value.Tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1741,49 +1615,31 @@ function writeArrNestedFlatProduction(value, view) {
 function writeArrNestedFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 4) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0x7) >>> 0;
+  v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x7) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
+  sb += 8;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
     const e0 = value.Items[i0];
-    v = (e0.A & 0x7) >>> 0;
+    v = ((e0.A & 0x7) | ((e0.B & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 3;
+    sb += 11;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (3 - sb);
-    }
-    v = (e0.B & 0xff) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
-  v = (value.Tail & 0x7) >>> 0;
+  v = ((value.Tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1873,7 +1729,7 @@ export function ReadArrNestedFlat(value, view, numBits) {
 function writeSoleFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Only & 0x1fff) >>> 0;
+  v = ((value.Only & 0x1fff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 13;
   if (sb >= 32) {
@@ -1891,7 +1747,7 @@ function writeSoleFlatProduction(value, view) {
 function writeSoleFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Only & 0x1fff) >>> 0;
+  v = ((value.Only & 0x1fff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 13;
   if (sb >= 32) {

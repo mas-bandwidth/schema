@@ -74,6 +74,61 @@ type fgen struct {
 	needT     bool // float32 NaN lane temps
 	needBg    bool // BigInt lane temp
 	loopDepth int
+
+	// the write-side chunk accumulator: adjacent constant-width fields whose
+	// value expressions are pure (field loads, literals — never a mutable
+	// temp) pack into ONE staged word with literal relative shifts, so a
+	// chunk costs one merge where its fields used to cost one each. Relative
+	// offsets inside a chunk are static even where the absolute cursor is
+	// dynamic (loop bodies), which is what makes this reach the hot arrays.
+	chunk     []chunkPiece
+	chunkBits int64
+}
+
+// chunkPiece is one field's contribution to a pending write chunk: a pure,
+// parenthesized JS number expression already masked to bits.
+type chunkPiece struct {
+	expr string
+	bits int64
+}
+
+// chunkAdd registers a pure value expression of the given width, flushing
+// first when it cannot join the pending chunk. Every caller's expression
+// must stay valid until the flush point: field paths, hoisted element refs
+// and literals qualify; v/n/x/bg-style temps never do (a temp-based merge
+// flushes around itself instead).
+func (g *fgen) chunkAdd(expr string, bits int64, ind string) {
+	if bits == 0 {
+		return
+	}
+	if g.chunkBits+bits > 32 {
+		g.chunkFlush(ind)
+	}
+	g.chunk = append(g.chunk, chunkPiece{expr: expr, bits: bits})
+	g.chunkBits += bits
+}
+
+// chunkFlush merges the pending chunk as one staged word. A scope boundary
+// (loop, branch, switch, function end) and every statement-form merge MUST
+// flush first — wire order is emission order.
+func (g *fgen) chunkFlush(ind string) {
+	if len(g.chunk) == 0 {
+		return
+	}
+	parts := make([]string, len(g.chunk))
+	shift := int64(0)
+	for i, p := range g.chunk {
+		if shift == 0 {
+			parts[i] = p.expr
+		} else {
+			parts[i] = fmt.Sprintf("(%s << %d)", p.expr, shift)
+		}
+		shift += p.bits
+	}
+	g.pf("%sv = (%s) >>> 0;\n", ind, strings.Join(parts, " | "))
+	g.mergeW(g.chunkBits, ind)
+	g.chunk = g.chunk[:0]
+	g.chunkBits = 0
 }
 
 // flatFileHasSurface reports whether a file gets a Flat module: any file
@@ -345,6 +400,8 @@ func (g *fgen) emitStructFlat(st *ir.Struct) {
 func (g *fgen) resetNeeds() {
 	g.needX, g.needN, g.needT, g.needBg = false, false, false, false
 	g.loopDepth = 0
+	g.chunk = g.chunk[:0]
+	g.chunkBits = 0
 }
 
 // writeLocals renders the write-side local declarations the body needs.
@@ -392,6 +449,7 @@ func (g *fgen) emitWriteVariant(st *ir.Struct, checked bool) {
 	g.resetNeeds()
 	g.checked = checked
 	g.emitWriteItems(st.Items, "value", "  ")
+	g.chunkFlush("  ")
 	body := g.fn.String()
 	g.fn.Reset()
 
@@ -445,11 +503,14 @@ func (g *fgen) emitWriteItems(items []ir.Item, path, ind string) {
 			if item.Neg {
 				neg = "!"
 			}
+			g.chunkFlush(ind)
 			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, ir.GoExportName(item.Cond))
 			g.emitWriteItems(item.Then, path, ind+"  ")
+			g.chunkFlush(ind + "  ")
 			if item.Else != nil {
 				g.pf("%s} else {\n", ind)
 				g.emitWriteItems(item.Else, path, ind+"  ")
+				g.chunkFlush(ind + "  ")
 			}
 			g.pf("%s}\n", ind)
 		}
@@ -464,24 +525,22 @@ func (g *fgen) emitWriteRaw(value *big.Int, bits int64, ind string) {
 		if bits == 32 {
 			lo = new(big.Int).And(value, new(big.Int).SetUint64(0xffffffff))
 		}
-		g.pf("%sv = %s;\n", ind, lo.String())
-		g.mergeW(bits, ind)
+		g.chunkAdd(lo.String(), bits, ind)
 		return
 	}
 	loMask := new(big.Int).SetUint64(0xffffffff)
 	lo := new(big.Int).And(value, loMask)
 	hi := new(big.Int).Rsh(value, 32)
 	hi.And(hi, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-32)), big.NewInt(1)))
-	g.pf("%sv = %s;\n", ind, lo.String())
-	g.mergeW(32, ind)
-	g.pf("%sv = %s;\n", ind, hi.String())
-	g.mergeW(bits-32, ind)
+	g.chunkAdd(lo.String(), 32, ind)
+	g.chunkAdd(hi.String(), bits-32, ind)
 }
 
 // emitWriteAlign pads the write position to the next byte boundary with
 // zeros (v contributes nothing, so only the counter moves — with the flush
 // kept, exactly as the merge would).
 func (g *fgen) emitWriteAlign(ind string) {
+	g.chunkFlush(ind)
 	g.pf("%ssb = (sb + 7) & -8;\n", ind)
 	g.pf("%sif (sb === 32) {\n", ind)
 	g.pf("%s  view.setUint32(wi, lo, true);\n", ind)
@@ -497,8 +556,10 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 	case ir.ArrayFixed:
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.chunkFlush(ind)
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
 		g.emitWriteElem(f, name, iv, ind+"  ")
+		g.chunkFlush(ind + "  ")
 		g.pf("%s}\n", ind)
 		g.loopDepth--
 	case ir.ArrayCounted:
@@ -508,8 +569,10 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 		g.emitWriteRangedNum(count, f.ArrayMin, f.ArrayBound, ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.chunkFlush(ind)
 		g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 		g.emitWriteElem(f, name, iv, ind+"  ")
+		g.chunkFlush(ind + "  ")
 		g.pf("%s}\n", ind)
 		g.loopDepth--
 	default:
@@ -555,11 +618,10 @@ func (g *fgen) emitWriteRangedNum(expr string, min, max int64, ind string) {
 		off = fmt.Sprintf("%s - %d", expr, min)
 	}
 	if bits == 32 {
-		g.pf("%sv = (%s) >>> 0;\n", ind, off)
+		g.chunkAdd(fmt.Sprintf("((%s) >>> 0)", off), bits, ind)
 	} else {
-		g.pf("%sv = ((%s) & %s) >>> 0;\n", ind, off, maskHex(bits))
+		g.chunkAdd(fmt.Sprintf("((%s) & %s)", off, maskHex(bits)), bits, ind)
 	}
-	g.mergeW(bits, ind)
 }
 
 // emitWriteWideOffset merges an unsigned BigInt offset expression of the
@@ -573,6 +635,7 @@ func (g *fgen) emitWriteRangedNum(expr string, min, max int64, ind string) {
 // allocates and runs an order of magnitude slower (node 26, M2: 5.6x on the
 // 128-bit split, 6.1x on a sub-32-bit truncation).
 func (g *fgen) emitWriteWideOffset(rawExpr string, bits int64, ind string) {
+	g.chunkFlush(ind)
 	switch {
 	case bits <= 32:
 		g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, rawExpr)
@@ -631,17 +694,15 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		w := int64(f.Type.Width)
 		if w <= 32 {
 			if w == 32 {
-				g.pf("%sv = %s >>> 0;\n", ind, name)
+				g.chunkAdd(fmt.Sprintf("(%s >>> 0)", name), w, ind)
 			} else {
-				g.pf("%sv = (%s & %s) >>> 0;\n", ind, name, maskHex(w))
+				g.chunkAdd(fmt.Sprintf("(%s & %s)", name, maskHex(w)), w, ind)
 			}
-			g.mergeW(w, ind)
 			return
 		}
 		g.emitWriteWideOffset(name, w, ind)
 	case ir.TBool:
-		g.pf("%sv = %s ? 1 : 0;\n", ind, name)
-		g.mergeW(1, ind)
+		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			g.emitWriteCompressedFloat(f, name, ind)
@@ -649,6 +710,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteF32(name, ind)
 	case ir.TFloat64:
+		g.chunkFlush(ind)
 		g.pf("%sSC.setFloat64(0, %s, true);\n", ind, name)
 		g.pf("%sv = SC.getUint32(0, true);\n", ind)
 		g.mergeW(32, ind)
@@ -674,6 +736,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 // conversion for non-NaN, software payload narrowing for NaN (quiet bit not
 // forced except the all-low-payload case).
 func (g *fgen) emitWriteF32(name, ind string) {
+	g.chunkFlush(ind)
 	g.needX, g.needT, g.needBg = true, true, true
 	g.pf("%sx = %s;\n", ind, name)
 	g.pf("%sif (x === x) {\n", ind)
@@ -700,6 +763,7 @@ func f32lit(v float64) string {
 // quantization with the declaration folded: value32 non-finite refused in
 // checked mode (the runtime's always-on assert), clamp, quantize.
 func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
+	g.chunkFlush(ind)
 	g.needX, g.needN = true, true
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
@@ -747,11 +811,10 @@ func (g *fgen) emitWriteFixed(f *ir.Field, name, ind string) {
 			off = fmt.Sprintf("%s - %s", name, rawMin.String())
 		}
 		if bits == 32 {
-			g.pf("%sv = (%s) >>> 0;\n", ind, off)
+			g.chunkAdd(fmt.Sprintf("((%s) >>> 0)", off), bits, ind)
 		} else {
-			g.pf("%sv = ((%s) & %s) >>> 0;\n", ind, off, maskHex(bits))
+			g.chunkAdd(fmt.Sprintf("((%s) & %s)", off, maskHex(bits)), bits, ind)
 		}
-		g.mergeW(bits, ind)
 		return
 	}
 	// wide lane: BigInt raw storage, offset in 32-bit groups
@@ -800,10 +863,13 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 				// family's domain first (the C# (int) cast's twin), then the
 				// Number-domain offset
 				g.needN = true
+				g.chunkFlush(ind)
 				g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, name)
 				g.pf("%sn = SC.getInt32(0, true);\n", ind)
 				g.guard(fmt.Sprintf("n < %s || n > %s", f.IntMin.String(), f.IntMax.String()), "", ind)
+				// n is a mutable temp: its piece merges before anything reuses it
 				g.emitWriteRangedNum("n", f.IntMin.Int64(), f.IntMax.Int64(), ind)
+				g.chunkFlush(ind)
 				return
 			}
 			g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < %s || %s > %s", name, name, f.IntMin.String(), name, f.IntMax.String()),
@@ -841,11 +907,10 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 		}
 	}
 	if w == 32 {
-		g.pf("%sv = (%s) >>> 0;\n", ind, cast)
+		g.chunkAdd(fmt.Sprintf("((%s) >>> 0)", cast), w, ind)
 	} else {
-		g.pf("%sv = ((%s) & %s) >>> 0;\n", ind, cast, maskHex(w))
+		g.chunkAdd(fmt.Sprintf("((%s) & %s)", cast, maskHex(w)), w, ind)
 	}
-	g.mergeW(w, ind)
 }
 
 // emitWriteRangedBig is the BigInt-domain ranged write (int64 family and
@@ -878,8 +943,7 @@ func (g *fgen) emitWriteEnum(ref *ir.Enum, name, ind string) {
 	if bits == 0 {
 		return
 	}
-	g.pf("%sv = (%s & %s) >>> 0;\n", ind, name, maskHex(bits))
-	g.mergeW(bits, ind)
+	g.chunkAdd(fmt.Sprintf("(%s & %s)", name, maskHex(bits)), bits, ind)
 }
 
 func (g *fgen) emitWriteFlags(ref *ir.Flags, name, ind string) {
@@ -890,6 +954,7 @@ func (g *fgen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 			" // a mask bit above the wire width cannot ride", ind)
 	}
 	if wb <= 32 {
+		g.chunkFlush(ind)
 		g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, name)
 		if wb == 32 {
 			g.pf("%sv = SC.getUint32(0, true);\n", ind)
@@ -911,7 +976,7 @@ func (g *fgen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %d", length, length, length, f.Type.Size),
 		" // the length guards the slice; out-of-contract writes are refused", ind)
 	g.emitWriteRangedNum(length, 0, f.Type.Size, ind)
-	g.emitWriteAlign(ind)
+	g.emitWriteAlign(ind) // flushes the pending chunk (the length prefix)
 	iv := fmt.Sprintf("i%d", g.loopDepth)
 	g.loopDepth++
 	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
@@ -1470,12 +1535,13 @@ func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	g.pf("%sv = (%s.Type & %s) >>> 0;\n", ind, expr, maskHex(bits))
-	g.mergeW(bits, ind)
+	g.chunkAdd(fmt.Sprintf("(%s.Type & %s)", expr, maskHex(bits)), bits, ind)
+	g.chunkFlush(ind)
 	g.pf("%sswitch (%s.Type) {\n", ind, expr)
 	for i, vr := range u.Variants {
 		g.pf("%s  case %d: {\n", ind, i+1)
 		g.emitWriteItems(vr.Ref.Items, expr+"."+ir.GoExportName(vr.Name), ind+"    ")
+		g.chunkFlush(ind + "    ")
 		g.pf("%s    break;\n%s  }\n", ind, ind)
 	}
 	g.pf("%s}\n", ind)

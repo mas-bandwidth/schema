@@ -41,7 +41,7 @@ function writeRenderSpriteFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.MeshId) >>> 0;
+  v = (((value.MeshId) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -50,7 +50,7 @@ function writeRenderSpriteFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.MaterialId) >>> 0;
+  v = (((value.MaterialId) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -59,23 +59,14 @@ function writeRenderSpriteFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.Layer) & 0xff) >>> 0;
+  v = (((value.Layer) & 0xff) | ((value.Team & 0x3) << 8)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
+  sb += 10;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  v = (value.Team & 0x3) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
+    lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -105,7 +96,7 @@ function writeRenderSpriteFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.MeshId) >>> 0;
+  v = (((value.MeshId) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -114,7 +105,7 @@ function writeRenderSpriteFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.MaterialId) >>> 0;
+  v = (((value.MaterialId) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -122,27 +113,18 @@ function writeRenderSpriteFlatChecked(value, view) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.Layer) & 0xff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   if (!Number.isInteger(value.Team) || value.Team < 0 || value.Team > 2) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = (value.Team & 0x3) >>> 0;
+  v = (((value.Layer) & 0xff) | ((value.Team & 0x3) << 8)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
+  sb += 10;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
+    lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -224,7 +206,7 @@ export function ReadRenderSpriteFlat(value, view, numBits) {
 function writeRenderBlockFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.WorkerIndex) >>> 0;
+  v = (((value.WorkerIndex) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -233,7 +215,7 @@ function writeRenderBlockFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.SpriteCountHint) >>> 0;
+  v = (((value.SpriteCountHint) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -242,7 +224,7 @@ function writeRenderBlockFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.SpritesCount) & 0x7f) >>> 0;
+  v = (((value.SpritesCount) & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 7;
   if (sb >= 32) {
@@ -272,7 +254,7 @@ function writeRenderBlockFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (e0.MeshId) >>> 0;
+    v = (((e0.MeshId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -281,7 +263,7 @@ function writeRenderBlockFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (e0.MaterialId) >>> 0;
+    v = (((e0.MaterialId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -290,23 +272,14 @@ function writeRenderBlockFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = ((e0.Layer) & 0xff) >>> 0;
+    v = (((e0.Layer) & 0xff) | ((e0.Team & 0x3) << 8)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
+    sb += 10;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-    v = (e0.Team & 0x3) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
+      lo = sb === 0 ? 0 : v >>> (10 - sb);
     }
   }
   if (sb !== 0) {
@@ -318,16 +291,7 @@ function writeRenderBlockFlatProduction(value, view) {
 function writeRenderBlockFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.WorkerIndex) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (value.SpriteCountHint) >>> 0;
+  v = (((value.WorkerIndex) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -339,7 +303,16 @@ function writeRenderBlockFlatChecked(value, view) {
   if (!Number.isInteger(value.SpritesCount) || value.SpritesCount < 0 || value.SpritesCount > 64) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.SpritesCount) & 0x7f) >>> 0;
+  v = (((value.SpriteCountHint) >>> 0)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  v = (((value.SpritesCount) & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 7;
   if (sb >= 32) {
@@ -369,7 +342,7 @@ function writeRenderBlockFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (e0.MeshId) >>> 0;
+    v = (((e0.MeshId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -378,7 +351,7 @@ function writeRenderBlockFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (e0.MaterialId) >>> 0;
+    v = (((e0.MaterialId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -386,27 +359,18 @@ function writeRenderBlockFlatChecked(value, view) {
       wi += 4;
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = ((e0.Layer) & 0xff) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
     if (!Number.isInteger(e0.Team) || e0.Team < 0 || e0.Team > 2) { // headroom above the wire range cannot ride
       return -1;
     }
-    v = (e0.Team & 0x3) >>> 0;
+    v = (((e0.Layer) & 0xff) | ((e0.Team & 0x3) << 8)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
+    sb += 10;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
+      lo = sb === 0 ? 0 : v >>> (10 - sb);
     }
   }
   if (sb !== 0) {

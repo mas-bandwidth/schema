@@ -558,7 +558,7 @@ function writeSpanChunkFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 4; i0++) {
-    v = ((value.Values[i0]) & 0xffff) >>> 0;
+    v = (((value.Values[i0]) & 0xffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -578,7 +578,7 @@ function writeSpanChunkFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 4; i0++) {
-    v = ((value.Values[i0]) & 0xffff) >>> 0;
+    v = (((value.Values[i0]) & 0xffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -645,7 +645,7 @@ function writeSpanTailFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  v = (value.Tail) >>> 0;
+  v = (((value.Tail) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -684,7 +684,7 @@ function writeSpanTailFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  v = (value.Tail) >>> 0;
+  v = (((value.Tail) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -903,7 +903,7 @@ export function ReadSpanTwiceFlat(value, view, numBits) {
 function writeTrioFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.A & 0xfffff) >>> 0;
+  v = ((value.A & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -912,7 +912,7 @@ function writeTrioFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.B & 0xfffff) >>> 0;
+  v = ((value.B & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -921,7 +921,7 @@ function writeTrioFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.C & 0xffffff) >>> 0;
+  v = ((value.C & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -939,7 +939,7 @@ function writeTrioFlatProduction(value, view) {
 function writeTrioFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.A & 0xfffff) >>> 0;
+  v = ((value.A & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -948,7 +948,7 @@ function writeTrioFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.B & 0xfffff) >>> 0;
+  v = ((value.B & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -957,7 +957,7 @@ function writeTrioFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.C & 0xffffff) >>> 0;
+  v = ((value.C & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -1016,7 +1016,7 @@ export function ReadTrioFlat(value, view, numBits) {
 function writeTrioSoleFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Inner.A & 0xfffff) >>> 0;
+  v = ((value.Inner.A & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1025,7 +1025,7 @@ function writeTrioSoleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.B & 0xfffff) >>> 0;
+  v = ((value.Inner.B & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1034,7 +1034,7 @@ function writeTrioSoleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.C & 0xffffff) >>> 0;
+  v = ((value.Inner.C & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -1052,7 +1052,7 @@ function writeTrioSoleFlatProduction(value, view) {
 function writeTrioSoleFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Inner.A & 0xfffff) >>> 0;
+  v = ((value.Inner.A & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1061,7 +1061,7 @@ function writeTrioSoleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.B & 0xfffff) >>> 0;
+  v = ((value.Inner.B & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1070,7 +1070,7 @@ function writeTrioSoleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.C & 0xffffff) >>> 0;
+  v = ((value.Inner.C & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -1129,7 +1129,7 @@ export function ReadTrioSoleFlat(value, view, numBits) {
 function writeTrioFirstFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Inner.A & 0xfffff) >>> 0;
+  v = ((value.Inner.A & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1138,7 +1138,7 @@ function writeTrioFirstFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.B & 0xfffff) >>> 0;
+  v = ((value.Inner.B & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1147,7 +1147,7 @@ function writeTrioFirstFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.C & 0xffffff) >>> 0;
+  v = ((value.Inner.C & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -1156,7 +1156,7 @@ function writeTrioFirstFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
-  v = (value.Trailer & 0xffff) >>> 0;
+  v = ((value.Trailer & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -1174,7 +1174,7 @@ function writeTrioFirstFlatProduction(value, view) {
 function writeTrioFirstFlatChecked(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Inner.A & 0xfffff) >>> 0;
+  v = ((value.Inner.A & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1183,7 +1183,7 @@ function writeTrioFirstFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.B & 0xfffff) >>> 0;
+  v = ((value.Inner.B & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1192,7 +1192,7 @@ function writeTrioFirstFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.C & 0xffffff) >>> 0;
+  v = ((value.Inner.C & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -1201,7 +1201,7 @@ function writeTrioFirstFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
-  v = (value.Trailer & 0xffff) >>> 0;
+  v = ((value.Trailer & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -1363,7 +1363,7 @@ function writeTrioStraddleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.Pad5 & 0xffffff) >>> 0;
+  v = ((value.Pad5 & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -1372,7 +1372,7 @@ function writeTrioStraddleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
-  v = (value.Inner.A & 0xfffff) >>> 0;
+  v = ((value.Inner.A & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1381,7 +1381,7 @@ function writeTrioStraddleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.B & 0xfffff) >>> 0;
+  v = ((value.Inner.B & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1390,7 +1390,7 @@ function writeTrioStraddleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.C & 0xffffff) >>> 0;
+  v = ((value.Inner.C & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -1503,7 +1503,7 @@ function writeTrioStraddleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.Pad5 & 0xffffff) >>> 0;
+  v = ((value.Pad5 & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {
@@ -1512,7 +1512,7 @@ function writeTrioStraddleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
-  v = (value.Inner.A & 0xfffff) >>> 0;
+  v = ((value.Inner.A & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1521,7 +1521,7 @@ function writeTrioStraddleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.B & 0xfffff) >>> 0;
+  v = ((value.Inner.B & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1530,7 +1530,7 @@ function writeTrioStraddleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
-  v = (value.Inner.C & 0xffffff) >>> 0;
+  v = ((value.Inner.C & 0xffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 24;
   if (sb >= 32) {

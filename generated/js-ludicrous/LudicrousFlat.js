@@ -41,7 +41,7 @@ export const FLAT_READ_SLACK = 8;
 function writeFixedProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((((value.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -79,7 +79,7 @@ function writeFixedProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  v = ((value.Ticks) & 0xfffff) >>> 0;
+  v = (((value.Ticks) & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -89,7 +89,7 @@ function writeFixedProbeFlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
   for (let i0 = 0; i0 < 2; i0++) {
-    v = ((((value.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff) >>> 0;
+    v = (((((value.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 21;
     if (sb >= 32) {
@@ -111,7 +111,10 @@ function writeFixedProbeFlatChecked(value, view) {
   if (!Number.isInteger(value.Angle) || value.Angle < -11796480 || value.Angle > 11796480) {
     return -1;
   }
-  v = ((((value.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
+  if (value.Position < -1966080000n || value.Position > 1966080000n) {
+    return -1;
+  }
+  v = (((((value.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -119,9 +122,6 @@ function writeFixedProbeFlatChecked(value, view) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (value.Position < -1966080000n || value.Position > 1966080000n) {
-    return -1;
   }
   SC.setBigUint64(0, value.Position - -1966080000n, true);
   v = SC.getUint32(0, true);
@@ -158,7 +158,7 @@ function writeFixedProbeFlatChecked(value, view) {
   if (!Number.isInteger(value.Ticks) || value.Ticks < 0 || value.Ticks > 1000000) {
     return -1;
   }
-  v = ((value.Ticks) & 0xfffff) >>> 0;
+  v = (((value.Ticks) & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -171,7 +171,7 @@ function writeFixedProbeFlatChecked(value, view) {
     if (!Number.isInteger(value.Samples[i0]) || value.Samples[i0] < -524288 || value.Samples[i0] > 524288) {
       return -1;
     }
-    v = ((((value.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff) >>> 0;
+    v = (((((value.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 21;
     if (sb >= 32) {
@@ -276,7 +276,7 @@ export function ReadFixedProbeFlat(value, view, numBits) {
 function writeUnsignedProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.Angle) & 0x1ffffff) >>> 0;
+  v = (((value.Angle) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -323,7 +323,7 @@ function writeUnsignedProbeFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  v = ((value.Ticks) & 0xfffff) >>> 0;
+  v = (((value.Ticks) & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -333,7 +333,7 @@ function writeUnsignedProbeFlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
   for (let i0 = 0; i0 < 2; i0++) {
-    v = ((value.Samples[i0]) & 0x1fffff) >>> 0;
+    v = (((value.Samples[i0]) & 0x1fffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 21;
     if (sb >= 32) {
@@ -343,7 +343,7 @@ function writeUnsignedProbeFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (21 - sb);
     }
   }
-  v = ((value.Tail) & 0xff) >>> 0;
+  v = (((value.Tail) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -364,7 +364,10 @@ function writeUnsignedProbeFlatChecked(value, view) {
   if (!Number.isInteger(value.Angle) || value.Angle < 0 || value.Angle > 23592960) {
     return -1;
   }
-  v = ((value.Angle) & 0x1ffffff) >>> 0;
+  if (value.Span < 0n || value.Span > 18446744073709486080n) {
+    return -1;
+  }
+  v = (((value.Angle) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -372,9 +375,6 @@ function writeUnsignedProbeFlatChecked(value, view) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (value.Span < 0n || value.Span > 18446744073709486080n) {
-    return -1;
   }
   SC.setBigUint64(0, value.Span, true);
   v = SC.getUint32(0, true);
@@ -420,7 +420,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
   if (!Number.isInteger(value.Ticks) || value.Ticks < 0 || value.Ticks > 1000000) {
     return -1;
   }
-  v = ((value.Ticks) & 0xfffff) >>> 0;
+  v = (((value.Ticks) & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -433,7 +433,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
     if (!Number.isInteger(value.Samples[i0]) || value.Samples[i0] < 0 || value.Samples[i0] > 1048576) {
       return -1;
     }
-    v = ((value.Samples[i0]) & 0x1fffff) >>> 0;
+    v = (((value.Samples[i0]) & 0x1fffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 21;
     if (sb >= 32) {
@@ -446,7 +446,7 @@ function writeUnsignedProbeFlatChecked(value, view) {
   if (value.Locked !== 196608) {
     return -1;
   }
-  v = ((value.Tail) & 0xff) >>> 0;
+  v = (((value.Tail) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -1049,23 +1049,14 @@ function writeLudicrousStateFlatProduction(value, view) {
   let v = 0;
   let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.Mode & 0x3) >>> 0;
+  v = ((value.Mode & 0x3) | (((((value.Probe.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) << 2)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
+  sb += 27;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  v = ((((value.Probe.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
+    lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
   SC.setBigUint64(0, value.Probe.Position - -1966080000n, true);
   v = SC.getUint32(0, true);
@@ -1096,7 +1087,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  v = ((value.Probe.Ticks) & 0xfffff) >>> 0;
+  v = (((value.Probe.Ticks) & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1106,7 +1097,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     lo = sb === 0 ? 0 : v >>> (20 - sb);
   }
   for (let i0 = 0; i0 < 2; i0++) {
-    v = ((((value.Probe.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff) >>> 0;
+    v = (((((value.Probe.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 21;
     if (sb >= 32) {
@@ -1262,7 +1253,7 @@ function writeLudicrousStateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.KeysCount) & 0x7) >>> 0;
+  v = (((value.KeysCount) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1312,7 +1303,7 @@ function writeLudicrousStateFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  v = value.HasTarget ? 1 : 0;
+  v = ((value.HasTarget ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 1;
   if (sb >= 32) {
@@ -1375,29 +1366,20 @@ function writeLudicrousStateFlatChecked(value, view) {
   if (!Number.isInteger(value.Mode) || value.Mode < 0 || value.Mode > 3) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = (value.Mode & 0x3) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
   if (!Number.isInteger(value.Probe.Angle) || value.Probe.Angle < -11796480 || value.Probe.Angle > 11796480) {
     return -1;
   }
-  v = ((((value.Probe.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) >>> 0;
+  if (value.Probe.Position < -1966080000n || value.Probe.Position > 1966080000n) {
+    return -1;
+  }
+  v = ((value.Mode & 0x3) | (((((value.Probe.Angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) << 2)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
+  sb += 27;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (value.Probe.Position < -1966080000n || value.Probe.Position > 1966080000n) {
-    return -1;
+    lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
   SC.setBigUint64(0, value.Probe.Position - -1966080000n, true);
   v = SC.getUint32(0, true);
@@ -1434,7 +1416,7 @@ function writeLudicrousStateFlatChecked(value, view) {
   if (!Number.isInteger(value.Probe.Ticks) || value.Probe.Ticks < 0 || value.Probe.Ticks > 1000000) {
     return -1;
   }
-  v = ((value.Probe.Ticks) & 0xfffff) >>> 0;
+  v = (((value.Probe.Ticks) & 0xfffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 20;
   if (sb >= 32) {
@@ -1447,7 +1429,7 @@ function writeLudicrousStateFlatChecked(value, view) {
     if (!Number.isInteger(value.Probe.Samples[i0]) || value.Probe.Samples[i0] < -524288 || value.Probe.Samples[i0] > 524288) {
       return -1;
     }
-    v = ((((value.Probe.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff) >>> 0;
+    v = (((((value.Probe.Samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 21;
     if (sb >= 32) {
@@ -1615,7 +1597,7 @@ function writeLudicrousStateFlatChecked(value, view) {
   if (!Number.isInteger(value.KeysCount) || value.KeysCount < 0 || value.KeysCount > 4) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.KeysCount) & 0x7) >>> 0;
+  v = (((value.KeysCount) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1665,7 +1647,7 @@ function writeLudicrousStateFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  v = value.HasTarget ? 1 : 0;
+  v = ((value.HasTarget ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 1;
   if (sb >= 32) {
@@ -2066,7 +2048,7 @@ export function ReadLudicrousStateFlat(value, view, numBits) {
 function writeDegenerateProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.Tail) & 0xff) >>> 0;
+  v = (((value.Tail) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -2093,7 +2075,7 @@ function writeDegenerateProbeFlatChecked(value, view) {
   if (value.LockedWide !== -12345678901234n) {
     return -1;
   }
-  v = ((value.Tail) & 0xff) >>> 0;
+  v = (((value.Tail) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -2361,7 +2343,7 @@ export function ReadFixedVecFlat(value, view, numBits) {
 function writeFixedQuatFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (((value.X >>> 0) - 3221225472) >>> 0) >>> 0;
+  v = (((((value.X >>> 0) - 3221225472) >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2370,7 +2352,7 @@ function writeFixedQuatFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.Y >>> 0) - 3221225472) >>> 0) >>> 0;
+  v = (((((value.Y >>> 0) - 3221225472) >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2379,7 +2361,7 @@ function writeFixedQuatFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.Z >>> 0) - 3221225472) >>> 0) >>> 0;
+  v = (((((value.Z >>> 0) - 3221225472) >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2388,7 +2370,7 @@ function writeFixedQuatFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.W >>> 0) - 3221225472) >>> 0) >>> 0;
+  v = (((((value.W >>> 0) - 3221225472) >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2409,19 +2391,10 @@ function writeFixedQuatFlatChecked(value, view) {
   if (!Number.isInteger(value.X) || value.X < -1073741824 || value.X > 1073741824) {
     return -1;
   }
-  v = (((value.X >>> 0) - 3221225472) >>> 0) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
   if (!Number.isInteger(value.Y) || value.Y < -1073741824 || value.Y > 1073741824) {
     return -1;
   }
-  v = (((value.Y >>> 0) - 3221225472) >>> 0) >>> 0;
+  v = (((((value.X >>> 0) - 3221225472) >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2433,7 +2406,7 @@ function writeFixedQuatFlatChecked(value, view) {
   if (!Number.isInteger(value.Z) || value.Z < -1073741824 || value.Z > 1073741824) {
     return -1;
   }
-  v = (((value.Z >>> 0) - 3221225472) >>> 0) >>> 0;
+  v = (((((value.Y >>> 0) - 3221225472) >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2445,7 +2418,16 @@ function writeFixedQuatFlatChecked(value, view) {
   if (!Number.isInteger(value.W) || value.W < -1073741824 || value.W > 1073741824) {
     return -1;
   }
-  v = (((value.W >>> 0) - 3221225472) >>> 0) >>> 0;
+  v = (((((value.Z >>> 0) - 3221225472) >>> 0) >>> 0)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  v = (((((value.W >>> 0) - 3221225472) >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {

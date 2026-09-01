@@ -477,23 +477,14 @@ export function ReadQuatFlat(value, view, numBits) {
 function writeHandleFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.ObjectId) & 0x3fff) >>> 0;
+  v = (((value.ObjectId) & 0x3fff) | (((value.ObjectSequence) & 0xff) << 14)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 14;
+  sb += 22;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (14 - sb);
-  }
-  v = ((value.ObjectSequence) & 0xff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
+    lo = sb === 0 ? 0 : v >>> (22 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -507,23 +498,14 @@ function writeHandleFlatChecked(value, view) {
   if (!Number.isInteger(value.ObjectId) || value.ObjectId < 0 || value.ObjectId > 9999) {
     return -1;
   }
-  v = ((value.ObjectId) & 0x3fff) >>> 0;
+  v = (((value.ObjectId) & 0x3fff) | (((value.ObjectSequence) & 0xff) << 14)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 14;
+  sb += 22;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (14 - sb);
-  }
-  v = ((value.ObjectSequence) & 0xff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
+    lo = sb === 0 ? 0 : v >>> (22 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -570,7 +552,7 @@ export function ReadHandleFlat(value, view, numBits) {
 function writeQuantizedPositionFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((((value.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -579,7 +561,7 @@ function writeQuantizedPositionFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  v = ((((value.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -588,7 +570,7 @@ function writeQuantizedPositionFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  v = ((((value.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -609,19 +591,10 @@ function writeQuantizedPositionFlatChecked(value, view) {
   if (!Number.isInteger(value.X) || value.X < -8388608 || value.X > 8388608) {
     return -1;
   }
-  v = ((((value.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
   if (!Number.isInteger(value.Y) || value.Y < -8388608 || value.Y > 8388608) {
     return -1;
   }
-  v = ((((value.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -633,7 +606,16 @@ function writeQuantizedPositionFlatChecked(value, view) {
   if (!Number.isInteger(value.Z) || value.Z < -8388608 || value.Z > 8388608) {
     return -1;
   }
-  v = ((((value.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 25;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (25 - sb);
+  }
+  v = (((((value.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -701,7 +683,7 @@ export function ReadQuantizedPositionFlat(value, view, numBits) {
 function writeQuantizedVelocityFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((((value.X >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.X >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -710,7 +692,7 @@ function writeQuantizedVelocityFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
-  v = ((((value.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -719,7 +701,7 @@ function writeQuantizedVelocityFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
-  v = ((((value.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -740,19 +722,10 @@ function writeQuantizedVelocityFlatChecked(value, view) {
   if (!Number.isInteger(value.X) || value.X < -2097152 || value.X > 2097152) {
     return -1;
   }
-  v = ((((value.X >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
   if (!Number.isInteger(value.Y) || value.Y < -2097152 || value.Y > 2097152) {
     return -1;
   }
-  v = ((((value.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.X >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -764,7 +737,16 @@ function writeQuantizedVelocityFlatChecked(value, view) {
   if (!Number.isInteger(value.Z) || value.Z < -2097152 || value.Z > 2097152) {
     return -1;
   }
-  v = ((((value.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 23;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (23 - sb);
+  }
+  v = (((((value.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -832,41 +814,23 @@ export function ReadQuantizedVelocityFlat(value, view, numBits) {
 function writeQuantizedRotationFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((((value.X >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
+  v = (((((value.X >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
-  v = ((((value.Y >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
+  v = (((((value.Z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.W >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
-  v = ((((value.Z >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
-  v = ((((value.W >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -880,50 +844,32 @@ function writeQuantizedRotationFlatChecked(value, view) {
   if (!Number.isInteger(value.X) || value.X < -1024 || value.X > 1024) {
     return -1;
   }
-  v = ((((value.X >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
   if (!Number.isInteger(value.Y) || value.Y < -1024 || value.Y > 1024) {
     return -1;
-  }
-  v = ((((value.Y >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
   }
   if (!Number.isInteger(value.Z) || value.Z < -1024 || value.Z > 1024) {
     return -1;
   }
-  v = ((((value.Z >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
+  v = (((((value.X >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
   if (!Number.isInteger(value.W) || value.W < -1024 || value.W > 1024) {
     return -1;
   }
-  v = ((((value.W >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
+  v = (((((value.Z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.W >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1128,7 +1074,7 @@ function writeRigidBodyFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = value.AtRest ? 1 : 0;
+  v = ((value.AtRest ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 1;
   if (sb >= 32) {
@@ -1395,7 +1341,7 @@ function writeRigidBodyFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = value.AtRest ? 1 : 0;
+  v = ((value.AtRest ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 1;
   if (sb >= 32) {
@@ -1888,77 +1834,14 @@ function writeInputFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = value.Fire ? 1 : 0;
+  v = ((value.Fire ? 1 : 0) | ((value.AltFire ? 1 : 0) << 1) | ((value.Boost ? 1 : 0) << 2) | ((value.Brake ? 1 : 0) << 3) | ((value.Aim ? 1 : 0) << 4) | ((value.LockOn ? 1 : 0) << 5) | ((value.Zoom ? 1 : 0) << 6) | ((value.Ping ? 1 : 0) << 7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
+  sb += 8;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.AltFire ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Boost ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Brake ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Aim ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.LockOn ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Zoom ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Ping ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -2070,77 +1953,14 @@ function writeInputFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = value.Fire ? 1 : 0;
+  v = ((value.Fire ? 1 : 0) | ((value.AltFire ? 1 : 0) << 1) | ((value.Boost ? 1 : 0) << 2) | ((value.Brake ? 1 : 0) << 3) | ((value.Aim ? 1 : 0) << 4) | ((value.LockOn ? 1 : 0) << 5) | ((value.Zoom ? 1 : 0) << 6) | ((value.Ping ? 1 : 0) << 7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
+  sb += 8;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.AltFire ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Boost ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Brake ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Aim ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.LockOn ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Zoom ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  v = value.Ping ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
+    lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -2303,7 +2123,7 @@ function writeInputPacketFlatProduction(value, view) {
   let v = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.SynchronizeSequence) & 0xffff) >>> 0;
+  v = (((value.SynchronizeSequence) & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -2350,7 +2170,7 @@ function writeInputPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.InputsCount) & 0x1f) >>> 0;
+  v = (((value.InputsCount) & 0x1f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -2461,77 +2281,14 @@ function writeInputPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = e0.Fire ? 1 : 0;
+    v = ((e0.Fire ? 1 : 0) | ((e0.AltFire ? 1 : 0) << 1) | ((e0.Boost ? 1 : 0) << 2) | ((e0.Brake ? 1 : 0) << 3) | ((e0.Aim ? 1 : 0) << 4) | ((e0.LockOn ? 1 : 0) << 5) | ((e0.Zoom ? 1 : 0) << 6) | ((e0.Ping ? 1 : 0) << 7)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
+    sb += 8;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.AltFire ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Boost ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Brake ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Aim ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.LockOn ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Zoom ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Ping ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
+      lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
   if (sb !== 0) {
@@ -2544,7 +2301,7 @@ function writeInputPacketFlatChecked(value, view) {
   let v = 0, x = 0, t0 = 0, t1 = 0;
   let bg = 0n;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.SynchronizeSequence) & 0xffff) >>> 0;
+  v = (((value.SynchronizeSequence) & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -2594,7 +2351,7 @@ function writeInputPacketFlatChecked(value, view) {
   if (!Number.isInteger(value.InputsCount) || value.InputsCount < 0 || value.InputsCount > 16) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.InputsCount) & 0x1f) >>> 0;
+  v = (((value.InputsCount) & 0x1f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -2705,77 +2462,14 @@ function writeInputPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = e0.Fire ? 1 : 0;
+    v = ((e0.Fire ? 1 : 0) | ((e0.AltFire ? 1 : 0) << 1) | ((e0.Boost ? 1 : 0) << 2) | ((e0.Brake ? 1 : 0) << 3) | ((e0.Aim ? 1 : 0) << 4) | ((e0.LockOn ? 1 : 0) << 5) | ((e0.Zoom ? 1 : 0) << 6) | ((e0.Ping ? 1 : 0) << 7)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
+    sb += 8;
     if (sb >= 32) {
       view.setUint32(wi, lo, true);
       wi += 4;
       sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.AltFire ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Boost ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Brake ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Aim ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.LockOn ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Zoom ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
-    }
-    v = e0.Ping ? 1 : 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 1;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (1 - sb);
+      lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
   if (sb !== 0) {
@@ -3003,16 +2697,16 @@ export function ReadInputPacketFlat(value, view, numBits) {
 function writeShipCreateFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = (value.ShipType & 0x7) >>> 0;
+  v = ((value.ShipType & 0x7) | (((((value.Position.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) << 3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
+  sb += 28;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
+    lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
-  v = ((((value.Position.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.Position.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -3021,7 +2715,7 @@ function writeShipCreateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  v = ((((value.Position.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.Position.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -3030,52 +2724,25 @@ function writeShipCreateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  v = ((((value.Position.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.Rotation.X >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Rotation.Y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
-  v = ((((value.Rotation.X >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
+  v = (((((value.Rotation.Z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Rotation.W >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
-  v = ((((value.Rotation.Y >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
-  v = ((((value.Rotation.Z >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
-  v = ((((value.Rotation.W >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
-  v = ((((value.LinearVelocity.X >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.LinearVelocity.X >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -3084,7 +2751,7 @@ function writeShipCreateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
-  v = ((((value.LinearVelocity.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.LinearVelocity.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -3093,23 +2760,14 @@ function writeShipCreateFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
-  v = ((((value.LinearVelocity.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.LinearVelocity.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) | ((value.HasFlags ? 1 : 0) << 23)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  v = value.HasFlags ? 1 : 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
   if (value.HasFlags) {
     SC.setBigUint64(0, value.Flags, true);
@@ -3123,32 +2781,14 @@ function writeShipCreateFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (4 - sb);
     }
   }
-  v = (value.Team & 0x3) >>> 0;
+  v = ((value.Team & 0x3) | (((value.Health) & 0x3ff) << 2) | (((value.Thrust) & 0x7f) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
+  sb += 19;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  v = ((value.Health) & 0x3ff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  v = ((value.Thrust) & 0x7f) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
+    lo = sb === 0 ? 0 : v >>> (19 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -3162,43 +2802,25 @@ function writeShipCreateFlatChecked(value, view) {
   if (!Number.isInteger(value.ShipType) || value.ShipType < 0 || value.ShipType > 5) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = (value.ShipType & 0x7) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
   if (!Number.isInteger(value.Position.X) || value.Position.X < -8388608 || value.Position.X > 8388608) {
     return -1;
-  }
-  v = ((((value.Position.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   if (!Number.isInteger(value.Position.Y) || value.Position.Y < -8388608 || value.Position.Y > 8388608) {
     return -1;
   }
-  v = ((((value.Position.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = ((value.ShipType & 0x7) | (((((value.Position.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) << 3)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
+  sb += 28;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
+    lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
   if (!Number.isInteger(value.Position.Z) || value.Position.Z < -8388608 || value.Position.Z > 8388608) {
     return -1;
   }
-  v = ((((value.Position.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff) >>> 0;
+  v = (((((value.Position.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -3210,67 +2832,49 @@ function writeShipCreateFlatChecked(value, view) {
   if (!Number.isInteger(value.Rotation.X) || value.Rotation.X < -1024 || value.Rotation.X > 1024) {
     return -1;
   }
-  v = ((((value.Rotation.X >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
+  v = (((((value.Position.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
+  sb += 25;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
+    lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
   if (!Number.isInteger(value.Rotation.Y) || value.Rotation.Y < -1024 || value.Rotation.Y > 1024) {
     return -1;
   }
-  v = ((((value.Rotation.Y >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
   if (!Number.isInteger(value.Rotation.Z) || value.Rotation.Z < -1024 || value.Rotation.Z > 1024) {
     return -1;
   }
-  v = ((((value.Rotation.Z >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
+  v = (((((value.Rotation.X >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Rotation.Y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
   if (!Number.isInteger(value.Rotation.W) || value.Rotation.W < -1024 || value.Rotation.W > 1024) {
     return -1;
   }
-  v = ((((value.Rotation.W >>> 0) - 4294966272) >>> 0) & 0xfff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
   if (!Number.isInteger(value.LinearVelocity.X) || value.LinearVelocity.X < -2097152 || value.LinearVelocity.X > 2097152) {
     return -1;
   }
-  v = ((((value.LinearVelocity.X >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.Rotation.Z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Rotation.W >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
   if (!Number.isInteger(value.LinearVelocity.Y) || value.LinearVelocity.Y < -2097152 || value.LinearVelocity.Y > 2097152) {
     return -1;
   }
-  v = ((((value.LinearVelocity.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.LinearVelocity.X >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -3282,7 +2886,7 @@ function writeShipCreateFlatChecked(value, view) {
   if (!Number.isInteger(value.LinearVelocity.Z) || value.LinearVelocity.Z < -2097152 || value.LinearVelocity.Z > 2097152) {
     return -1;
   }
-  v = ((((value.LinearVelocity.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) >>> 0;
+  v = (((((value.LinearVelocity.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -3291,14 +2895,14 @@ function writeShipCreateFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
-  v = value.HasFlags ? 1 : 0;
+  v = (((((value.LinearVelocity.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) | ((value.HasFlags ? 1 : 0) << 23)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
+  sb += 24;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
+    lo = sb === 0 ? 0 : v >>> (24 - sb);
   }
   if (value.HasFlags) {
     if (BigInt.asUintN(64, value.Flags) >= 16n) { // a mask bit above the wire width cannot ride
@@ -3318,41 +2922,23 @@ function writeShipCreateFlatChecked(value, view) {
   if (!Number.isInteger(value.Team) || value.Team < 0 || value.Team > 2) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = (value.Team & 0x3) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
   if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > 1000) {
     return -1;
-  }
-  v = ((value.Health) & 0x3ff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
   if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) {
     return -1;
   }
-  v = ((value.Thrust) & 0x7f) >>> 0;
+  if (!Number.isInteger(value.Pending) || value.Pending < 0 || value.Pending > 0) { // headroom above the wire range cannot ride
+    return -1;
+  }
+  v = ((value.Team & 0x3) | (((value.Health) & 0x3ff) << 2) | (((value.Thrust) & 0x7f) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
+  sb += 19;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
-  if (!Number.isInteger(value.Pending) || value.Pending < 0 || value.Pending > 0) { // headroom above the wire range cannot ride
-    return -1;
+    lo = sb === 0 ? 0 : v >>> (19 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -3561,23 +3147,14 @@ export function ReadShipCreateFlat(value, view, numBits) {
 function writeExpressionProbeFlatProduction(value, view) {
   let v = 0;
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.HardpointIndex) & 0x1f) >>> 0;
+  v = (((value.HardpointIndex) & 0x1f) | (((((value.SpinRate >>> 0) - 1024) >>> 0) & 0x7ff) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
+  sb += 16;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  v = ((((value.SpinRate >>> 0) - 1024) >>> 0) & 0x7ff) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -3591,26 +3168,17 @@ function writeExpressionProbeFlatChecked(value, view) {
   if (!Number.isInteger(value.HardpointIndex) || value.HardpointIndex < 0 || value.HardpointIndex > 31) {
     return -1;
   }
-  v = ((value.HardpointIndex) & 0x1f) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
   if (!Number.isInteger(value.SpinRate) || value.SpinRate < 1024 || value.SpinRate > 2048) {
     return -1;
   }
-  v = ((((value.SpinRate >>> 0) - 1024) >>> 0) & 0x7ff) >>> 0;
+  v = (((value.HardpointIndex) & 0x1f) | (((((value.SpinRate >>> 0) - 1024) >>> 0) & 0x7ff) << 5)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
+  sb += 16;
   if (sb >= 32) {
     view.setUint32(wi, lo, true);
     wi += 4;
     sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
+    lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
