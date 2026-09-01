@@ -3500,20 +3500,4 @@ defmodule Bench.Bench do
     integer = floor(fr(scaled + 0.5))
     min(integer, miv)
   end
-
-  # The reader's arithmetic, pinned the same way: the quotient rounds, the
-  # product rounds BEFORE min is added, and the sum rounds — float32
-  # throughout, never fused, never widened. The final add cannot overflow
-  # for a conforming declaration; the non-finite mapping keeps the
-  # never-raise reader obligation airtight.
-  defp cf_decode(integer, miv32, delta, min32) do
-    quotient = fr(fr(integer * 1.0) / miv32)
-    scaled = fr(quotient * delta)
-
-    case fr(scaled + min32) do
-      :pos_inf -> {:nonfinite, 0x7F800000}
-      :neg_inf -> {:nonfinite, 0xFF800000}
-      value -> value
-    end
-  end
 end

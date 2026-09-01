@@ -243,11 +243,16 @@ type gen struct {
 	helperOwner string
 
 	// per-file helper needs
-	needRd     bool // rd/3 — the 40-bit window decode
-	needRdw    bool // rdw/3 — the 56-bit window decode, for groups past 33 bits
-	needF32    bool // f32_bits/1 + f32_value/1
-	needF64    bool // f64_bits/1 + f64_value/1
-	needCf     bool // cf_quantize/4 + cf_decode/4 (and their fr/1)
+	needRd  bool // rd/3 — the 40-bit window decode
+	needRdw bool // rdw/3 — the 56-bit window decode, for groups past 33 bits
+	needF32 bool // f32_bits/1 + f32_value/1
+	needF64 bool // f64_bits/1 + f64_value/1
+	// the compressed-float helpers are needed in halves: a write always
+	// quantizes, but a read past cfTableMax is what puts cf_decode/4 in the
+	// module — below it the decode is a table lookup and the function would
+	// be dead. fr/1 + fr_slow/1 back both halves, so either need emits them.
+	needCfQ    bool // cf_clamp01/1 + cf_quantize/5
+	needCfD    bool // cf_decode/4
 	usesImport bool // the module body uses Bitwise operators
 
 	// loop helpers the current file's wire bodies need, in first-need order,

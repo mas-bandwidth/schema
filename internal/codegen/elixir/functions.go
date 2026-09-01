@@ -1351,7 +1351,7 @@ func f32lit(v float64) string {
 // quantizer — every step float32, overflow clamping, the normative integer
 // clamp.
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
-	g.needCf = true
+	g.needCfQ = true
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
 	deltaF := float32(f.FMax) - minF
@@ -2128,7 +2128,7 @@ func (g *gen) emitReadCompressedFloat(f *ir.Field, lv, ind string) {
 			g.cfTable(maxInt, f32lit(float64(maxInt)), f32lit(float64(deltaF)), f32lit(float64(minF))))
 		return
 	}
-	g.needCf = true
+	g.needCfD = true
 	g.pf("%s%s = cf_decode(v, %s, %s, %s)\n", ind, lv, f32lit(float64(maxInt)), f32lit(float64(deltaF)), f32lit(float64(minF)))
 }
 
@@ -2603,7 +2603,7 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("    end\n")
 		g.bpf("  end\n\n")
 	}
-	if g.needCf {
+	if g.needCfQ || g.needCfD {
 		g.bpf("  # A number rounded to its nearest float32 — one emulated float32 step\n")
 		g.bpf("  # (exact: the double result carries 2x24+2 significant bits, so the second\n")
 		g.bpf("  # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the\n")
@@ -2637,6 +2637,8 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf\n")
 		g.bpf("    end\n")
 		g.bpf("  end\n\n")
+	}
+	if g.needCfQ {
 		g.bpf("  defp cf_clamp01(:pos_inf), do: 1.0\n")
 		g.bpf("  defp cf_clamp01(:neg_inf), do: 0.0\n")
 		g.bpf("  defp cf_clamp01(n) when n < 0.0, do: 0.0\n")
@@ -2669,6 +2671,8 @@ func (g *gen) emitSupportHelpers() {
 		g.bpf("    integer = floor(fr(scaled + 0.5))\n")
 		g.bpf("    min(integer, miv)\n")
 		g.bpf("  end\n\n")
+	}
+	if g.needCfD {
 		g.bpf("  # The reader's arithmetic, pinned the same way: the quotient rounds, the\n")
 		g.bpf("  # product rounds BEFORE min is added, and the sum rounds — float32\n")
 		g.bpf("  # throughout, never fused, never widened. The final add cannot overflow\n")
