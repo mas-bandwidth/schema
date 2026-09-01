@@ -110,3 +110,5 @@ reads the round's state from this file plus the branch commits alone.
 - GATES: make test green (nine legs), shape-gate clean (19 exemptions, all
   on ledger), generated-current green (tree clean post-test), mix format
   clean, gofmt/vet/modernize clean.
+- DRAFT PR: https://github.com/mas-bandwidth/schema/pull/240 — round closed;
+  left in draft per the round brief (never marked ready, never merged).
