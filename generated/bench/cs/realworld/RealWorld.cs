@@ -10,7 +10,6 @@
 // the runtime's own sticky latch. Callers get bool always; Error tells the
 // two apart.
 
-using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Realworld
@@ -344,19 +343,7 @@ namespace Realworld
             value.F097Bits = 0;
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteRealPacket(WriteStream stream, RealPacket value)
-        {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteRealPacketBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteRealPacketBatch(ref WriteBatch batch, RealPacket value)
         {
             if (value.F001Int < -805495 || value.F001Int > 805495)
             {
@@ -364,12 +351,12 @@ namespace Realworld
             }
             {
                 uint offsetValue = (uint)(value.F001Int) - unchecked((uint)(-805495));
-                if (!batch.SerializeBits(ref offsetValue, 21))
+                if (!stream.SerializeBits(ref offsetValue, 21))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeDouble(ref value.F002F64))
+            if (!stream.SerializeDouble(ref value.F002F64))
             {
                 return false;
             }
@@ -379,14 +366,14 @@ namespace Realworld
             }
             {
                 uint offsetValue = (uint)(value.F003Int) - unchecked((uint)(-835897));
-                if (!batch.SerializeBits(ref offsetValue, 21))
+                if (!stream.SerializeBits(ref offsetValue, 21))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.F004Cf32;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 20000u, 15, 2000.0f, 0.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 20000u, 15, 2000.0f, 0.0f))
                 {
                     return false;
                 }
@@ -404,16 +391,16 @@ namespace Realworld
                 ulong f0 = ((ulong)((uint)(value.F005Uint))) & 0x1fffUL;
                 ulong f1 = ((ulong)((uint)(value.F006Int) - unchecked((uint)(-1513)))) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 13));
-                if (!batch.SerializeBits(ref w0, 25))
+                if (!stream.SerializeBits(ref w0, 25))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeFloat(ref value.F007F32))
+            if (!stream.SerializeFloat(ref value.F007F32))
             {
                 return false;
             }
-            if (!batch.SerializeBits64(ref value.F008U64, 64))
+            if (!stream.SerializeBits64(ref value.F008U64, 64))
             {
                 return false;
             }
@@ -423,12 +410,12 @@ namespace Realworld
             }
             {
                 uint offsetValue = (uint)(value.F009Int) - unchecked((uint)(-22));
-                if (!batch.SerializeBits(ref offsetValue, 6))
+                if (!stream.SerializeBits(ref offsetValue, 6))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeFloat(ref value.F010F32))
+            if (!stream.SerializeFloat(ref value.F010F32))
             {
                 return false;
             }
@@ -437,14 +424,14 @@ namespace Realworld
                 ulong f0 = ((ulong)value.F011Bits) & 0x3ffUL;
                 ulong f1 = value.F012Bool ? 1UL : 0UL;
                 uint w0 = (uint)(f0 | (f1 << 10));
-                if (!batch.SerializeBits(ref w0, 11))
+                if (!stream.SerializeBits(ref w0, 11))
                 {
                     return false;
                 }
             }
             if (value.F012Bool)
             {
-                if (!batch.SerializeFloat(ref value.F013F32))
+                if (!stream.SerializeFloat(ref value.F013F32))
                 {
                     return false;
                 }
@@ -461,12 +448,12 @@ namespace Realworld
                     ulong f0 = ((ulong)((uint)(value.F014Uint))) & 0x3ffUL;
                     ulong f1 = ((ulong)((uint)(value.F015Int) - unchecked((uint)(-21)))) & 0x3fUL;
                     uint w0 = (uint)(f0 | (f1 << 10));
-                    if (!batch.SerializeBits(ref w0, 16))
+                    if (!stream.SerializeBits(ref w0, 16))
                     {
                         return false;
                     }
                 }
-                if (!batch.SerializeFixed(ref value.F016Fixed, 12, 20, -36, 36))
+                if (!stream.SerializeFixed(ref value.F016Fixed, 12, 20, -36, 36))
                 {
                     return false;
                 }
@@ -476,7 +463,7 @@ namespace Realworld
                 }
                 {
                     uint offsetValue = (uint)(value.F017Uint);
-                    if (!batch.SerializeBits(ref offsetValue, 13))
+                    if (!stream.SerializeBits(ref offsetValue, 13))
                     {
                         return false;
                     }
@@ -488,62 +475,62 @@ namespace Realworld
             }
             {
                 uint offsetValue = (uint)(value.F018Int) - unchecked((uint)(-834));
-                if (!batch.SerializeBits(ref offsetValue, 11))
+                if (!stream.SerializeBits(ref offsetValue, 11))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeDouble(ref value.F019F64))
+            if (!stream.SerializeDouble(ref value.F019F64))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.F020F32))
+            if (!stream.SerializeFloat(ref value.F020F32))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.F021Ufixed, 20, 12, 0, 25141))
+            if (!stream.SerializeFixed(ref value.F021Ufixed, 20, 12, 0, 25141))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.F022F32))
+            if (!stream.SerializeFloat(ref value.F022F32))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F023Bits, 25))
+            if (!stream.SerializeBits(ref value.F023Bits, 25))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.F024F32))
+            if (!stream.SerializeFloat(ref value.F024F32))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.F025Fixed, 8, 8, -119, 119))
+            if (!stream.SerializeFixed(ref value.F025Fixed, 8, 8, -119, 119))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F026Bits, 9))
+            if (!stream.SerializeBits(ref value.F026Bits, 9))
             {
                 return false;
             }
             {
                 float compressedValue = value.F027Cf32;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 16u, 5, 4.0f, -2.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 16u, 5, 4.0f, -2.0f))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeBits(ref value.F028Bits, 4))
+            if (!stream.SerializeBits(ref value.F028Bits, 4))
             {
                 return false;
             }
             {
                 ulong rawValue = (ulong)value.F029I64;
-                if (!batch.SerializeBits64(ref rawValue, 64))
+                if (!stream.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeFloat(ref value.F030F32))
+            if (!stream.SerializeFloat(ref value.F030F32))
             {
                 return false;
             }
@@ -575,17 +562,17 @@ namespace Realworld
                 ulong f7 = value.F038Bool ? 1UL : 0UL;
                 ulong f8 = ((ulong)value.F039Bits) & 0x7ffffUL;
                 ulong w0 = f0 | (f1 << 1) | (f2 << 4) | (f3 << 22) | (f4 << 36) | (f5 << 45) | (f6 << 48) | (f7 << 49) | (f8 << 50);
-                if (!batch.SerializeBits64(ref w0, 64))
+                if (!stream.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
                 uint w1 = (uint)((f8 >> 14));
-                if (!batch.SerializeBits(ref w1, 5))
+                if (!stream.SerializeBits(ref w1, 5))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeFixed(ref value.F040Fixed, 4, 12, -5, 5))
+            if (!stream.SerializeFixed(ref value.F040Fixed, 4, 12, -5, 5))
             {
                 return false;
             }
@@ -599,14 +586,14 @@ namespace Realworld
                 ulong f1 = ((ulong)value.F042Bits) & 0x3fffffffUL;
                 ulong f2 = value.F043Bool ? 1UL : 0UL;
                 ulong w0 = f0 | (f1 << 7) | (f2 << 37);
-                if (!batch.SerializeBits64(ref w0, 38))
+                if (!stream.SerializeBits64(ref w0, 38))
                 {
                     return false;
                 }
             }
             if (value.F043Bool)
             {
-                if (!batch.SerializeFloat(ref value.F044F32))
+                if (!stream.SerializeFloat(ref value.F044F32))
                 {
                     return false;
                 }
@@ -624,21 +611,21 @@ namespace Realworld
                     ulong f1 = ((ulong)((uint)(value.F046Uint))) & 0x1ffffUL;
                     ulong f2 = ((ulong)((uint)(value.F047Int) - unchecked((uint)(-430976)))) & 0xfffffUL;
                     ulong w0 = f0 | (f1 << 12) | (f2 << 29);
-                    if (!batch.SerializeBits64(ref w0, 49))
+                    if (!stream.SerializeBits64(ref w0, 49))
                     {
                         return false;
                     }
                 }
             }
-            if (!batch.SerializeDouble(ref value.F048F64))
+            if (!stream.SerializeDouble(ref value.F048F64))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.F049Ufixed, 2, 14, 0, 3))
+            if (!stream.SerializeFixed(ref value.F049Ufixed, 2, 14, 0, 3))
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.F050Bool))
+            if (!stream.SerializeBool(ref value.F050Bool))
             {
                 return false;
             }
@@ -653,12 +640,12 @@ namespace Realworld
                     ulong f0 = value.F051Bool ? 1UL : 0UL;
                     ulong f1 = ((ulong)((uint)(value.F052Int) - unchecked((uint)(-57)))) & 0x7fUL;
                     uint w0 = (uint)(f0 | (f1 << 1));
-                    if (!batch.SerializeBits(ref w0, 8))
+                    if (!stream.SerializeBits(ref w0, 8))
                     {
                         return false;
                     }
                 }
-                if (!batch.SerializeFloat(ref value.F053F32))
+                if (!stream.SerializeFloat(ref value.F053F32))
                 {
                     return false;
                 }
@@ -668,7 +655,7 @@ namespace Realworld
                 }
                 {
                     uint offsetValue = (uint)(value.F054Int) - unchecked((uint)(-35));
-                    if (!batch.SerializeBits(ref offsetValue, 7))
+                    if (!stream.SerializeBits(ref offsetValue, 7))
                     {
                         return false;
                     }
@@ -688,26 +675,26 @@ namespace Realworld
                 ulong f1 = ((ulong)((uint)(value.F056Int) - unchecked((uint)(-13)))) & 0x1fUL;
                 ulong f2 = ((ulong)((uint)(value.F057Int) - unchecked((uint)(-15)))) & 0x1fUL;
                 uint w0 = (uint)(f0 | (f1 << 1) | (f2 << 6));
-                if (!batch.SerializeBits(ref w0, 11))
+                if (!stream.SerializeBits(ref w0, 11))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeFloat(ref value.F058F32))
+            if (!stream.SerializeFloat(ref value.F058F32))
             {
                 return false;
             }
-            if (!batch.SerializeDouble(ref value.F059F64))
+            if (!stream.SerializeDouble(ref value.F059F64))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F060Bits, 8))
+            if (!stream.SerializeBits(ref value.F060Bits, 8))
             {
                 return false;
             }
             {
                 float compressedValue = value.F061Cf32;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 360u, 9, 180.0f, -90.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 360u, 9, 180.0f, -90.0f))
                 {
                     return false;
                 }
@@ -726,37 +713,37 @@ namespace Realworld
                 ulong f1 = (ulong)value.F063I64;
                 ulong f2 = ((ulong)((uint)(value.F064Uint))) & 0x1ffUL;
                 ulong w0 = f0 | (f1 << 9);
-                if (!batch.SerializeBits64(ref w0, 64))
+                if (!stream.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
                 uint w1 = (uint)((f1 >> 55) | (f2 << 9));
-                if (!batch.SerializeBits(ref w1, 18))
+                if (!stream.SerializeBits(ref w1, 18))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.F065Cf32;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 60u, 6, 30.0f, 0.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 60u, 6, 30.0f, 0.0f))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeFixed(ref value.F066Ufixed, 2, 14, 0, 2))
+            if (!stream.SerializeFixed(ref value.F066Ufixed, 2, 14, 0, 2))
             {
                 return false;
             }
             {
                 float compressedValue = value.F067Cf32;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 800u, 10, 200.0f, -100.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 800u, 10, 200.0f, -100.0f))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.F068Cf32;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 2000u, 11, 2000.0f, 0.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 2000u, 11, 2000.0f, 0.0f))
                 {
                     return false;
                 }
@@ -770,21 +757,21 @@ namespace Realworld
                 ulong f0 = ((ulong)value.F069Bits) & 0x7ffUL;
                 ulong f1 = ((ulong)((uint)(value.F070Uint))) & 0x3UL;
                 uint w0 = (uint)(f0 | (f1 << 11));
-                if (!batch.SerializeBits(ref w0, 13))
+                if (!stream.SerializeBits(ref w0, 13))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.F071Cf32;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 500u, 9, 10.0f, 0.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 500u, 9, 10.0f, 0.0f))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.F072Cf32;
-                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 100.0f, 0.0f))
+                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 100.0f, 0.0f))
                 {
                     return false;
                 }
@@ -798,7 +785,7 @@ namespace Realworld
                 ulong f0 = ((ulong)((uint)(value.F073Int) - unchecked((uint)(-4)))) & 0xfUL;
                 ulong f1 = value.F074Bool ? 1UL : 0UL;
                 uint w0 = (uint)(f0 | (f1 << 4));
-                if (!batch.SerializeBits(ref w0, 5))
+                if (!stream.SerializeBits(ref w0, 5))
                 {
                     return false;
                 }
@@ -825,12 +812,12 @@ namespace Realworld
                     ulong f3 = ((ulong)value.F078Bits) & 0x1ffUL;
                     ulong f4 = ((ulong)((uint)(value.F079Uint))) & 0x1fUL;
                     ulong w0 = f0;
-                    if (!batch.SerializeBits64(ref w0, 64))
+                    if (!stream.SerializeBits64(ref w0, 64))
                     {
                         return false;
                     }
                     ulong w1 = f1 | (f2 << 16) | (f3 << 22) | (f4 << 31);
-                    if (!batch.SerializeBits64(ref w1, 36))
+                    if (!stream.SerializeBits64(ref w1, 36))
                     {
                         return false;
                     }
@@ -847,14 +834,14 @@ namespace Realworld
                 ulong f2 = ((ulong)value.F082Bits) & 0x1ffffffUL;
                 ulong f3 = ((ulong)(uint)value.F083Enum) & 0x7UL;
                 ulong w0 = f0 | (f1 << 1) | (f2 << 30) | (f3 << 55);
-                if (!batch.SerializeBits64(ref w0, 58))
+                if (!stream.SerializeBits64(ref w0, 58))
                 {
                     return false;
                 }
             }
             {
                 ushort fixedValue = value.F084Ufixed;
-                if (!batch.SerializeFixed(ref fixedValue, 1, 7, 0, 1))
+                if (!stream.SerializeFixed(ref fixedValue, 1, 7, 0, 1))
                 {
                     return false;
                 }
@@ -868,12 +855,12 @@ namespace Realworld
                 ulong f0 = ((ulong)value.F085Bits) & 0x1fffffUL;
                 ulong f1 = ((ulong)((uint)(value.F086Uint))) & 0x1ffUL;
                 uint w0 = (uint)(f0 | (f1 << 21));
-                if (!batch.SerializeBits(ref w0, 30))
+                if (!stream.SerializeBits(ref w0, 30))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeDouble(ref value.F087F64))
+            if (!stream.SerializeDouble(ref value.F087F64))
             {
                 return false;
             }
@@ -899,22 +886,22 @@ namespace Realworld
                 ulong f5 = (ulong)value.F093Bits;
                 ulong f6 = value.F094Bool ? 1UL : 0UL;
                 ulong w0 = f0 | (f1 << 11) | (f2 << 59);
-                if (!batch.SerializeBits64(ref w0, 64))
+                if (!stream.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
                 ulong w1 = (f2 >> 5) | (f3 << 3) | (f4 << 8) | (f5 << 9);
-                if (!batch.SerializeBits64(ref w1, 64))
+                if (!stream.SerializeBits64(ref w1, 64))
                 {
                     return false;
                 }
                 uint w2 = (uint)((f5 >> 55) | (f6 << 9));
-                if (!batch.SerializeBits(ref w2, 10))
+                if (!stream.SerializeBits(ref w2, 10))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeFixed(ref value.F095Fixed, 16, 16, -1577, 1577))
+            if (!stream.SerializeFixed(ref value.F095Fixed, 16, 16, -1577, 1577))
             {
                 return false;
             }
@@ -923,7 +910,7 @@ namespace Realworld
                 ulong f0 = ((ulong)value.F096Bits) & 0x3ffffUL;
                 ulong f1 = ((ulong)value.F097Bits) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 18));
-                if (!batch.SerializeBits(ref w0, 30))
+                if (!stream.SerializeBits(ref w0, 30))
                 {
                     return false;
                 }
@@ -933,35 +920,25 @@ namespace Realworld
 
         public static bool ReadRealPacket(ReadStream stream, RealPacket value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadRealPacketBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadRealPacketBatch(ref ReadBatch batch, RealPacket value)
-        {
-            if (!batch.SerializeInt(ref value.F001Int, -805495, 805495))
+            if (!stream.SerializeInt(ref value.F001Int, -805495, 805495))
             {
                 return false;
             }
-            if (!batch.SerializeDouble(ref value.F002F64))
+            if (!stream.SerializeDouble(ref value.F002F64))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.F003Int, -835897, 835897))
+            if (!stream.SerializeInt(ref value.F003Int, -835897, 835897))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F004Cf32, 20000u, 15, 2000.0f, 0.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.F004Cf32, 20000u, 15, 2000.0f, 0.0f))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, 0, 7316))
+                if (!stream.SerializeInt(ref rangeValue, 0, 7316))
                 {
                     return false;
                 }
@@ -969,29 +946,29 @@ namespace Realworld
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -1513, 1513))
+                if (!stream.SerializeInt(ref rangeValue, -1513, 1513))
                 {
                     return false;
                 }
                 value.F006Int = (short)rangeValue;
             }
-            if (!batch.SerializeFloat(ref value.F007F32))
+            if (!stream.SerializeFloat(ref value.F007F32))
             {
                 return false;
             }
-            if (!batch.SerializeBits64(ref value.F008U64, 64))
+            if (!stream.SerializeBits64(ref value.F008U64, 64))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -22, 22))
+                if (!stream.SerializeInt(ref rangeValue, -22, 22))
                 {
                     return false;
                 }
                 value.F009Int = (sbyte)rangeValue;
             }
-            if (!batch.SerializeFloat(ref value.F010F32))
+            if (!stream.SerializeFloat(ref value.F010F32))
             {
                 return false;
             }
@@ -999,8 +976,8 @@ namespace Realworld
                 // flat run: 11 bits in 1 chunk(s) — one bounds check per chunk,
                 // one sticky-error test for the whole run
                 ulong c0 = 0;
-                batch.SerializeBits64(ref c0, 11);
-                if (!batch.Ok)
+                stream.SerializeBits64(ref c0, 11);
+                if (!stream.Ok)
                 {
                     return false;
                 }
@@ -1011,13 +988,13 @@ namespace Realworld
             }
             if (value.F012Bool)
             {
-                if (!batch.SerializeFloat(ref value.F013F32))
+                if (!stream.SerializeFloat(ref value.F013F32))
                 {
                     return false;
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, 0, 775))
+                    if (!stream.SerializeInt(ref rangeValue, 0, 775))
                     {
                         return false;
                     }
@@ -1025,19 +1002,19 @@ namespace Realworld
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, -21, 21))
+                    if (!stream.SerializeInt(ref rangeValue, -21, 21))
                     {
                         return false;
                     }
                     value.F015Int = (sbyte)rangeValue;
                 }
-                if (!batch.SerializeFixed(ref value.F016Fixed, 12, 20, -36, 36))
+                if (!stream.SerializeFixed(ref value.F016Fixed, 12, 20, -36, 36))
                 {
                     return false;
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, 0, 4606))
+                    if (!stream.SerializeInt(ref rangeValue, 0, 4606))
                     {
                         return false;
                     }
@@ -1054,71 +1031,71 @@ namespace Realworld
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -834, 834))
+                if (!stream.SerializeInt(ref rangeValue, -834, 834))
                 {
                     return false;
                 }
                 value.F018Int = (short)rangeValue;
             }
-            if (!batch.SerializeDouble(ref value.F019F64))
+            if (!stream.SerializeDouble(ref value.F019F64))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.F020F32))
+            if (!stream.SerializeFloat(ref value.F020F32))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.F021Ufixed, 20, 12, 0, 25141))
+            if (!stream.SerializeFixed(ref value.F021Ufixed, 20, 12, 0, 25141))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.F022F32))
+            if (!stream.SerializeFloat(ref value.F022F32))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F023Bits, 25))
+            if (!stream.SerializeBits(ref value.F023Bits, 25))
             {
                 return false;
             }
-            if (!batch.SerializeFloat(ref value.F024F32))
+            if (!stream.SerializeFloat(ref value.F024F32))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.F025Fixed, 8, 8, -119, 119))
+            if (!stream.SerializeFixed(ref value.F025Fixed, 8, 8, -119, 119))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F026Bits, 9))
+            if (!stream.SerializeBits(ref value.F026Bits, 9))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F027Cf32, 16u, 5, 4.0f, -2.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.F027Cf32, 16u, 5, 4.0f, -2.0f))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F028Bits, 4))
+            if (!stream.SerializeBits(ref value.F028Bits, 4))
             {
                 return false;
             }
             {
                 ulong rawValue = 0;
-                if (!batch.SerializeBits64(ref rawValue, 64))
+                if (!stream.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
                 }
                 value.F029I64 = (long)rawValue;
             }
-            if (!batch.SerializeFloat(ref value.F030F32))
+            if (!stream.SerializeFloat(ref value.F030F32))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F031Bits, 1))
+            if (!stream.SerializeBits(ref value.F031Bits, 1))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -3, 3))
+                if (!stream.SerializeInt(ref rangeValue, -3, 3))
                 {
                     return false;
                 }
@@ -1126,7 +1103,7 @@ namespace Realworld
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, 0, 142780))
+                if (!stream.SerializeInt(ref rangeValue, 0, 142780))
                 {
                     return false;
                 }
@@ -1134,19 +1111,19 @@ namespace Realworld
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, 0, 14149))
+                if (!stream.SerializeInt(ref rangeValue, 0, 14149))
                 {
                     return false;
                 }
                 value.F034Uint = (ushort)rangeValue;
             }
-            if (!batch.SerializeBits(ref value.F035Bits, 9))
+            if (!stream.SerializeBits(ref value.F035Bits, 9))
             {
                 return false;
             }
             {
                 int enumValue = 0;
-                if (!batch.SerializeInt(ref enumValue, 0, 5))
+                if (!stream.SerializeInt(ref enumValue, 0, 5))
                 {
                     return false;
                 }
@@ -1156,8 +1133,8 @@ namespace Realworld
                 // flat run: 21 bits in 1 chunk(s) — one bounds check per chunk,
                 // one sticky-error test for the whole run
                 ulong c0 = 0;
-                batch.SerializeBits64(ref c0, 21);
-                if (!batch.Ok)
+                stream.SerializeBits64(ref c0, 21);
+                if (!stream.Ok)
                 {
                     return false;
                 }
@@ -1168,13 +1145,13 @@ namespace Realworld
                 ulong v2 = (c0 >> 2) & 0x7ffffUL;
                 value.F039Bits = (uint)v2;
             }
-            if (!batch.SerializeFixed(ref value.F040Fixed, 4, 12, -5, 5))
+            if (!stream.SerializeFixed(ref value.F040Fixed, 4, 12, -5, 5))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -55, 55))
+                if (!stream.SerializeInt(ref rangeValue, -55, 55))
                 {
                     return false;
                 }
@@ -1184,8 +1161,8 @@ namespace Realworld
                 // flat run: 31 bits in 1 chunk(s) — one bounds check per chunk,
                 // one sticky-error test for the whole run
                 ulong c0 = 0;
-                batch.SerializeBits64(ref c0, 31);
-                if (!batch.Ok)
+                stream.SerializeBits64(ref c0, 31);
+                if (!stream.Ok)
                 {
                     return false;
                 }
@@ -1196,23 +1173,23 @@ namespace Realworld
             }
             if (value.F043Bool)
             {
-                if (!batch.SerializeFloat(ref value.F044F32))
+                if (!stream.SerializeFloat(ref value.F044F32))
                 {
                     return false;
                 }
-                if (!batch.SerializeBits(ref value.F045Bits, 12))
+                if (!stream.SerializeBits(ref value.F045Bits, 12))
                 {
                     return false;
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, 0, 76063))
+                    if (!stream.SerializeInt(ref rangeValue, 0, 76063))
                     {
                         return false;
                     }
                     value.F046Uint = (uint)rangeValue;
                 }
-                if (!batch.SerializeInt(ref value.F047Int, -430976, 430976))
+                if (!stream.SerializeInt(ref value.F047Int, -430976, 430976))
                 {
                     return false;
                 }
@@ -1224,39 +1201,39 @@ namespace Realworld
                 value.F046Uint = 0;
                 value.F047Int = 0;
             }
-            if (!batch.SerializeDouble(ref value.F048F64))
+            if (!stream.SerializeDouble(ref value.F048F64))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.F049Ufixed, 2, 14, 0, 3))
+            if (!stream.SerializeFixed(ref value.F049Ufixed, 2, 14, 0, 3))
             {
                 return false;
             }
-            if (!batch.SerializeBool(ref value.F050Bool))
+            if (!stream.SerializeBool(ref value.F050Bool))
             {
                 return false;
             }
             if (value.F050Bool)
             {
-                if (!batch.SerializeBool(ref value.F051Bool))
+                if (!stream.SerializeBool(ref value.F051Bool))
                 {
                     return false;
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, -57, 57))
+                    if (!stream.SerializeInt(ref rangeValue, -57, 57))
                     {
                         return false;
                     }
                     value.F052Int = (sbyte)rangeValue;
                 }
-                if (!batch.SerializeFloat(ref value.F053F32))
+                if (!stream.SerializeFloat(ref value.F053F32))
                 {
                     return false;
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, -35, 35))
+                    if (!stream.SerializeInt(ref rangeValue, -35, 35))
                     {
                         return false;
                     }
@@ -1270,13 +1247,13 @@ namespace Realworld
                 value.F053F32 = 0.0f;
                 value.F054Int = 0;
             }
-            if (!batch.SerializeBool(ref value.F055Bool))
+            if (!stream.SerializeBool(ref value.F055Bool))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -13, 13))
+                if (!stream.SerializeInt(ref rangeValue, -13, 13))
                 {
                     return false;
                 }
@@ -1284,31 +1261,31 @@ namespace Realworld
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -15, 15))
+                if (!stream.SerializeInt(ref rangeValue, -15, 15))
                 {
                     return false;
                 }
                 value.F057Int = (sbyte)rangeValue;
             }
-            if (!batch.SerializeFloat(ref value.F058F32))
+            if (!stream.SerializeFloat(ref value.F058F32))
             {
                 return false;
             }
-            if (!batch.SerializeDouble(ref value.F059F64))
+            if (!stream.SerializeDouble(ref value.F059F64))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F060Bits, 8))
+            if (!stream.SerializeBits(ref value.F060Bits, 8))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F061Cf32, 360u, 9, 180.0f, -90.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.F061Cf32, 360u, 9, 180.0f, -90.0f))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, 0, 503))
+                if (!stream.SerializeInt(ref rangeValue, 0, 503))
                 {
                     return false;
                 }
@@ -1316,7 +1293,7 @@ namespace Realworld
             }
             {
                 ulong rawValue = 0;
-                if (!batch.SerializeBits64(ref rawValue, 64))
+                if (!stream.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
                 }
@@ -1324,69 +1301,69 @@ namespace Realworld
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, 0, 299))
+                if (!stream.SerializeInt(ref rangeValue, 0, 299))
                 {
                     return false;
                 }
                 value.F064Uint = (ushort)rangeValue;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F065Cf32, 60u, 6, 30.0f, 0.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.F065Cf32, 60u, 6, 30.0f, 0.0f))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.F066Ufixed, 2, 14, 0, 2))
+            if (!stream.SerializeFixed(ref value.F066Ufixed, 2, 14, 0, 2))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F067Cf32, 800u, 10, 200.0f, -100.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.F067Cf32, 800u, 10, 200.0f, -100.0f))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F068Cf32, 2000u, 11, 2000.0f, 0.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.F068Cf32, 2000u, 11, 2000.0f, 0.0f))
             {
                 return false;
             }
-            if (!batch.SerializeBits(ref value.F069Bits, 11))
+            if (!stream.SerializeBits(ref value.F069Bits, 11))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, 0, 2))
+                if (!stream.SerializeInt(ref rangeValue, 0, 2))
                 {
                     return false;
                 }
                 value.F070Uint = (byte)rangeValue;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F071Cf32, 500u, 9, 10.0f, 0.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.F071Cf32, 500u, 9, 10.0f, 0.0f))
             {
                 return false;
             }
-            if (!batch.SerializeCompressedFloatPrecomputed(ref value.F072Cf32, 10000u, 14, 100.0f, 0.0f))
+            if (!stream.SerializeCompressedFloatPrecomputed(ref value.F072Cf32, 10000u, 14, 100.0f, 0.0f))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -4, 4))
+                if (!stream.SerializeInt(ref rangeValue, -4, 4))
                 {
                     return false;
                 }
                 value.F073Int = (sbyte)rangeValue;
             }
-            if (!batch.SerializeBool(ref value.F074Bool))
+            if (!stream.SerializeBool(ref value.F074Bool))
             {
                 return false;
             }
             if (value.F074Bool)
             {
-                if (!batch.SerializeBits64(ref value.F075U64, 64))
+                if (!stream.SerializeBits64(ref value.F075U64, 64))
                 {
                     return false;
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, -26218, 26218))
+                    if (!stream.SerializeInt(ref rangeValue, -26218, 26218))
                     {
                         return false;
                     }
@@ -1394,19 +1371,19 @@ namespace Realworld
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, -17, 17))
+                    if (!stream.SerializeInt(ref rangeValue, -17, 17))
                     {
                         return false;
                     }
                     value.F077Int = (sbyte)rangeValue;
                 }
-                if (!batch.SerializeBits(ref value.F078Bits, 9))
+                if (!stream.SerializeBits(ref value.F078Bits, 9))
                 {
                     return false;
                 }
                 {
                     int rangeValue = 0;
-                    if (!batch.SerializeInt(ref rangeValue, 0, 17))
+                    if (!stream.SerializeInt(ref rangeValue, 0, 17))
                     {
                         return false;
                     }
@@ -1425,8 +1402,8 @@ namespace Realworld
                 // flat run: 55 bits in 1 chunk(s) — one bounds check per chunk,
                 // one sticky-error test for the whole run
                 ulong c0 = 0;
-                batch.SerializeBits64(ref c0, 55);
-                if (!batch.Ok)
+                stream.SerializeBits64(ref c0, 55);
+                if (!stream.Ok)
                 {
                     return false;
                 }
@@ -1439,7 +1416,7 @@ namespace Realworld
             }
             {
                 int enumValue = 0;
-                if (!batch.SerializeInt(ref enumValue, 0, 5))
+                if (!stream.SerializeInt(ref enumValue, 0, 5))
                 {
                     return false;
                 }
@@ -1447,43 +1424,43 @@ namespace Realworld
             }
             {
                 ushort fixedValue = 0;
-                if (!batch.SerializeFixed(ref fixedValue, 1, 7, 0, 1))
+                if (!stream.SerializeFixed(ref fixedValue, 1, 7, 0, 1))
                 {
                     return false;
                 }
                 value.F084Ufixed = (byte)fixedValue;
             }
-            if (!batch.SerializeBits(ref value.F085Bits, 21))
+            if (!stream.SerializeBits(ref value.F085Bits, 21))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, 0, 399))
+                if (!stream.SerializeInt(ref rangeValue, 0, 399))
                 {
                     return false;
                 }
                 value.F086Uint = (ushort)rangeValue;
             }
-            if (!batch.SerializeDouble(ref value.F087F64))
+            if (!stream.SerializeDouble(ref value.F087F64))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, -694, 694))
+                if (!stream.SerializeInt(ref rangeValue, -694, 694))
                 {
                     return false;
                 }
                 value.F088Int = (short)rangeValue;
             }
-            if (!batch.SerializeBits64(ref value.F089Bits, 48))
+            if (!stream.SerializeBits64(ref value.F089Bits, 48))
             {
                 return false;
             }
             {
                 int rangeValue = 0;
-                if (!batch.SerializeInt(ref rangeValue, 0, 214))
+                if (!stream.SerializeInt(ref rangeValue, 0, 214))
                 {
                     return false;
                 }
@@ -1493,10 +1470,10 @@ namespace Realworld
                 // flat run: 71 bits in 2 chunk(s) — one bounds check per chunk,
                 // one sticky-error test for the whole run
                 ulong c0 = 0;
-                batch.SerializeBits64(ref c0, 64);
+                stream.SerializeBits64(ref c0, 64);
                 ulong c1 = 0;
-                batch.SerializeBits64(ref c1, 7);
-                if (!batch.Ok)
+                stream.SerializeBits64(ref c1, 7);
+                if (!stream.Ok)
                 {
                     return false;
                 }
@@ -1509,7 +1486,7 @@ namespace Realworld
                 ulong v3 = (c1 >> 6) & 0x1UL;
                 value.F094Bool = v3 != 0UL;
             }
-            if (!batch.SerializeFixed(ref value.F095Fixed, 16, 16, -1577, 1577))
+            if (!stream.SerializeFixed(ref value.F095Fixed, 16, 16, -1577, 1577))
             {
                 return false;
             }
@@ -1517,8 +1494,8 @@ namespace Realworld
                 // flat run: 30 bits in 1 chunk(s) — one bounds check per chunk,
                 // one sticky-error test for the whole run
                 ulong c0 = 0;
-                batch.SerializeBits64(ref c0, 30);
-                if (!batch.Ok)
+                stream.SerializeBits64(ref c0, 30);
+                if (!stream.Ok)
                 {
                     return false;
                 }

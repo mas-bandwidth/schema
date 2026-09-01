@@ -11,7 +11,6 @@
 // two apart.
 
 using System;
-using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Ludicrous
@@ -147,39 +146,27 @@ namespace Ludicrous
             Array.Clear(value.Samples, 0, 2);
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteFixedProbe(WriteStream stream, FixedProbe value)
         {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteFixedProbeBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteFixedProbeBatch(ref WriteBatch batch, FixedProbe value)
-        {
-            if (!batch.SerializeFixed(ref value.Angle, 16, 16, -180, 180))
+            if (!stream.SerializeFixed(ref value.Angle, 16, 16, -180, 180))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Position, 48, 16, -MaxWorldUnits, MaxWorldUnits))
+            if (!stream.SerializeFixed(ref value.Position, 48, 16, -MaxWorldUnits, MaxWorldUnits))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Reach, 112, 16, -1000000, 1000000))
+            if (!stream.SerializeFixed(ref value.Reach, 112, 16, -1000000, 1000000))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Ticks, 32, 0, 0, 1000000))
+            if (!stream.SerializeFixed(ref value.Ticks, 32, 0, 0, 1000000))
             {
                 return false;
             }
             for (int i = 0; i < 2; i++)
             {
-                if (!batch.SerializeFixed(ref value.Samples[i], 16, 16, -8, 8))
+                if (!stream.SerializeFixed(ref value.Samples[i], 16, 16, -8, 8))
                 {
                     return false;
                 }
@@ -189,35 +176,25 @@ namespace Ludicrous
 
         public static bool ReadFixedProbe(ReadStream stream, FixedProbe value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadFixedProbeBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadFixedProbeBatch(ref ReadBatch batch, FixedProbe value)
-        {
-            if (!batch.SerializeFixed(ref value.Angle, 16, 16, -180, 180))
+            if (!stream.SerializeFixed(ref value.Angle, 16, 16, -180, 180))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Position, 48, 16, -MaxWorldUnits, MaxWorldUnits))
+            if (!stream.SerializeFixed(ref value.Position, 48, 16, -MaxWorldUnits, MaxWorldUnits))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Reach, 112, 16, -1000000, 1000000))
+            if (!stream.SerializeFixed(ref value.Reach, 112, 16, -1000000, 1000000))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Ticks, 32, 0, 0, 1000000))
+            if (!stream.SerializeFixed(ref value.Ticks, 32, 0, 0, 1000000))
             {
                 return false;
             }
             for (int i = 0; i < 2; i++)
             {
-                if (!batch.SerializeFixed(ref value.Samples[i], 16, 16, -8, 8))
+                if (!stream.SerializeFixed(ref value.Samples[i], 16, 16, -8, 8))
                 {
                     return false;
                 }
@@ -242,39 +219,27 @@ namespace Ludicrous
             value.Tail = 0;
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteUnsignedProbe(WriteStream stream, UnsignedProbe value)
         {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteUnsignedProbeBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteUnsignedProbeBatch(ref WriteBatch batch, UnsignedProbe value)
-        {
-            if (!batch.SerializeFixed(ref value.Angle, 16, 16, 0, 360))
+            if (!stream.SerializeFixed(ref value.Angle, 16, 16, 0, 360))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Span, 48, 16, 0, 281474976710655))
+            if (!stream.SerializeFixed(ref value.Span, 48, 16, 0, 281474976710655))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Reach, 112, 16, 0, 2000000))
+            if (!stream.SerializeFixed(ref value.Reach, 112, 16, 0, 2000000))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Ticks, 32, 0, 0, 1000000))
+            if (!stream.SerializeFixed(ref value.Ticks, 32, 0, 0, 1000000))
             {
                 return false;
             }
             for (int i = 0; i < 2; i++)
             {
-                if (!batch.SerializeFixed(ref value.Samples[i], 16, 16, 0, 16))
+                if (!stream.SerializeFixed(ref value.Samples[i], 16, 16, 0, 16))
                 {
                     return false;
                 }
@@ -285,7 +250,7 @@ namespace Ludicrous
             }
             {
                 uint rawValue = value.Tail;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                if (!stream.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
@@ -295,35 +260,25 @@ namespace Ludicrous
 
         public static bool ReadUnsignedProbe(ReadStream stream, UnsignedProbe value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadUnsignedProbeBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadUnsignedProbeBatch(ref ReadBatch batch, UnsignedProbe value)
-        {
-            if (!batch.SerializeFixed(ref value.Angle, 16, 16, 0, 360))
+            if (!stream.SerializeFixed(ref value.Angle, 16, 16, 0, 360))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Span, 48, 16, 0, 281474976710655))
+            if (!stream.SerializeFixed(ref value.Span, 48, 16, 0, 281474976710655))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Reach, 112, 16, 0, 2000000))
+            if (!stream.SerializeFixed(ref value.Reach, 112, 16, 0, 2000000))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Ticks, 32, 0, 0, 1000000))
+            if (!stream.SerializeFixed(ref value.Ticks, 32, 0, 0, 1000000))
             {
                 return false;
             }
             for (int i = 0; i < 2; i++)
             {
-                if (!batch.SerializeFixed(ref value.Samples[i], 16, 16, 0, 16))
+                if (!stream.SerializeFixed(ref value.Samples[i], 16, 16, 0, 16))
                 {
                     return false;
                 }
@@ -331,7 +286,7 @@ namespace Ludicrous
             value.Locked = unchecked((uint)(196608UL));
             {
                 uint rawValue = 0;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                if (!stream.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
@@ -355,37 +310,25 @@ namespace Ludicrous
             value.Seed = 0;
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteWideProbe(WriteStream stream, WideProbe value)
         {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteWideProbeBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteWideProbeBatch(ref WriteBatch batch, WideProbe value)
-        {
-            if (!batch.SerializeUInt128(ref value.EntityId))
+            if (!stream.SerializeUInt128(ref value.EntityId))
             {
                 return false;
             }
-            if (!batch.SerializeInt128(ref value.Energy, -5000000000L, 5000000000L))
+            if (!stream.SerializeInt128(ref value.Energy, -5000000000L, 5000000000L))
             {
                 return false;
             }
-            if (!batch.SerializeInt128(ref value.Flux, new Int128Value(0xfffffff000000000ul, 0x0ul), new Int128Value(0x1000000000ul, 0x0ul)))
+            if (!stream.SerializeInt128(ref value.Flux, new Int128Value(0xfffffff000000000ul, 0x0ul), new Int128Value(0x1000000000ul, 0x0ul)))
             {
                 return false;
             }
-            if (!batch.SerializeInt128(ref value.Bias, -1000, 1000))
+            if (!stream.SerializeInt128(ref value.Bias, -1000, 1000))
             {
                 return false;
             }
-            if (!batch.SerializeUInt128(ref value.Seed))
+            if (!stream.SerializeUInt128(ref value.Seed))
             {
                 return false;
             }
@@ -394,33 +337,23 @@ namespace Ludicrous
 
         public static bool ReadWideProbe(ReadStream stream, WideProbe value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadWideProbeBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadWideProbeBatch(ref ReadBatch batch, WideProbe value)
-        {
-            if (!batch.SerializeUInt128(ref value.EntityId))
+            if (!stream.SerializeUInt128(ref value.EntityId))
             {
                 return false;
             }
-            if (!batch.SerializeInt128(ref value.Energy, -5000000000L, 5000000000L))
+            if (!stream.SerializeInt128(ref value.Energy, -5000000000L, 5000000000L))
             {
                 return false;
             }
-            if (!batch.SerializeInt128(ref value.Flux, new Int128Value(0xfffffff000000000ul, 0x0ul), new Int128Value(0x1000000000ul, 0x0ul)))
+            if (!stream.SerializeInt128(ref value.Flux, new Int128Value(0xfffffff000000000ul, 0x0ul), new Int128Value(0x1000000000ul, 0x0ul)))
             {
                 return false;
             }
-            if (!batch.SerializeInt128(ref value.Bias, -1000, 1000))
+            if (!stream.SerializeInt128(ref value.Bias, -1000, 1000))
             {
                 return false;
             }
-            if (!batch.SerializeUInt128(ref value.Seed))
+            if (!stream.SerializeUInt128(ref value.Seed))
             {
                 return false;
             }
@@ -444,19 +377,7 @@ namespace Ludicrous
             value.TargetId = 0;
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteLudicrousState(WriteStream stream, LudicrousState value)
-        {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteLudicrousStateBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteLudicrousStateBatch(ref WriteBatch batch, LudicrousState value)
         {
             {
                 uint enumValue = (uint)value.Mode;
@@ -464,16 +385,16 @@ namespace Ludicrous
                 {
                     return false;
                 }
-                if (!batch.SerializeBits(ref enumValue, 2))
+                if (!stream.SerializeBits(ref enumValue, 2))
                 {
                     return false;
                 }
             }
-            if (!WriteFixedProbeBatch(ref batch, value.Probe))
+            if (!WriteFixedProbe(stream, value.Probe))
             {
                 return false;
             }
-            if (!WriteWideProbeBatch(ref batch, value.Wide))
+            if (!WriteWideProbe(stream, value.Wide))
             {
                 return false;
             }
@@ -483,25 +404,25 @@ namespace Ludicrous
             }
             {
                 uint offsetValue = (uint)(value.KeysCount);
-                if (!batch.SerializeBits(ref offsetValue, 3))
+                if (!stream.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
                 }
             }
             for (int i = 0; i < value.KeysCount; i++)
             {
-                if (!batch.SerializeUInt128(ref value.Keys[i]))
+                if (!stream.SerializeUInt128(ref value.Keys[i]))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeBool(ref value.HasTarget))
+            if (!stream.SerializeBool(ref value.HasTarget))
             {
                 return false;
             }
             if (value.HasTarget)
             {
-                if (!batch.SerializeUInt128(ref value.TargetId))
+                if (!stream.SerializeUInt128(ref value.TargetId))
                 {
                     return false;
                 }
@@ -511,50 +432,40 @@ namespace Ludicrous
 
         public static bool ReadLudicrousState(ReadStream stream, LudicrousState value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadLudicrousStateBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadLudicrousStateBatch(ref ReadBatch batch, LudicrousState value)
-        {
             {
                 int enumValue = 0;
-                if (!batch.SerializeInt(ref enumValue, 0, 3))
+                if (!stream.SerializeInt(ref enumValue, 0, 3))
                 {
                     return false;
                 }
                 value.Mode = (DriveMode)enumValue;
             }
-            if (!ReadFixedProbeBatch(ref batch, value.Probe))
+            if (!ReadFixedProbe(stream, value.Probe))
             {
                 return false;
             }
-            if (!ReadWideProbeBatch(ref batch, value.Wide))
+            if (!ReadWideProbe(stream, value.Wide))
             {
                 return false;
             }
-            if (!batch.SerializeInt(ref value.KeysCount, 0, 4)) // the count guards the loop (§6.3)
+            if (!stream.SerializeInt(ref value.KeysCount, 0, 4)) // the count guards the loop (§6.3)
             {
                 return false;
             }
             for (int i = 0; i < value.KeysCount; i++)
             {
-                if (!batch.SerializeUInt128(ref value.Keys[i]))
+                if (!stream.SerializeUInt128(ref value.Keys[i]))
                 {
                     return false;
                 }
             }
-            if (!batch.SerializeBool(ref value.HasTarget))
+            if (!stream.SerializeBool(ref value.HasTarget))
             {
                 return false;
             }
             if (value.HasTarget)
             {
-                if (!batch.SerializeUInt128(ref value.TargetId))
+                if (!stream.SerializeUInt128(ref value.TargetId))
                 {
                     return false;
                 }
@@ -580,19 +491,7 @@ namespace Ludicrous
             value.Tail = 0;
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteDegenerateProbe(WriteStream stream, DegenerateProbe value)
-        {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteDegenerateProbeBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteDegenerateProbeBatch(ref WriteBatch batch, DegenerateProbe value)
         {
             if ((long)value.LockedFixed != -196608L)
             {
@@ -608,7 +507,7 @@ namespace Ludicrous
             }
             {
                 uint rawValue = value.Tail;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                if (!stream.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
@@ -618,22 +517,12 @@ namespace Ludicrous
 
         public static bool ReadDegenerateProbe(ReadStream stream, DegenerateProbe value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadDegenerateProbeBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadDegenerateProbeBatch(ref ReadBatch batch, DegenerateProbe value)
-        {
             value.LockedFixed = unchecked((int)(-196608L));
             value.LockedInt = unchecked((int)(7L));
             value.LockedWide = -12345678901234L;
             {
                 uint rawValue = 0;
-                if (!batch.SerializeBits(ref rawValue, 8))
+                if (!stream.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
@@ -655,29 +544,17 @@ namespace Ludicrous
             value.Z = 0;
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteFixedVec(WriteStream stream, FixedVec value)
         {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteFixedVecBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteFixedVecBatch(ref WriteBatch batch, FixedVec value)
-        {
-            if (!batch.SerializeFixed(ref value.X, 48, 16, -100000, 100000))
+            if (!stream.SerializeFixed(ref value.X, 48, 16, -100000, 100000))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Y, 48, 16, -100000, 100000))
+            if (!stream.SerializeFixed(ref value.Y, 48, 16, -100000, 100000))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Z, 48, 16, -100000, 100000))
+            if (!stream.SerializeFixed(ref value.Z, 48, 16, -100000, 100000))
             {
                 return false;
             }
@@ -686,25 +563,15 @@ namespace Ludicrous
 
         public static bool ReadFixedVec(ReadStream stream, FixedVec value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadFixedVecBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadFixedVecBatch(ref ReadBatch batch, FixedVec value)
-        {
-            if (!batch.SerializeFixed(ref value.X, 48, 16, -100000, 100000))
+            if (!stream.SerializeFixed(ref value.X, 48, 16, -100000, 100000))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Y, 48, 16, -100000, 100000))
+            if (!stream.SerializeFixed(ref value.Y, 48, 16, -100000, 100000))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Z, 48, 16, -100000, 100000))
+            if (!stream.SerializeFixed(ref value.Z, 48, 16, -100000, 100000))
             {
                 return false;
             }
@@ -725,33 +592,21 @@ namespace Ludicrous
             value.W = 0;
         }
 
-        // batch form: stream state stays in registers across the body and End
-        // publishes it — same wire bytes, same validation, same error model.
         public static bool WriteFixedQuat(WriteStream stream, FixedQuat value)
         {
-            WriteBatch batch = stream.BeginBatch();
-            bool result = WriteFixedQuatBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteFixedQuatBatch(ref WriteBatch batch, FixedQuat value)
-        {
-            if (!batch.SerializeFixed(ref value.X, 2, 30, -1, 1))
+            if (!stream.SerializeFixed(ref value.X, 2, 30, -1, 1))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Y, 2, 30, -1, 1))
+            if (!stream.SerializeFixed(ref value.Y, 2, 30, -1, 1))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Z, 2, 30, -1, 1))
+            if (!stream.SerializeFixed(ref value.Z, 2, 30, -1, 1))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.W, 2, 30, -1, 1))
+            if (!stream.SerializeFixed(ref value.W, 2, 30, -1, 1))
             {
                 return false;
             }
@@ -760,29 +615,19 @@ namespace Ludicrous
 
         public static bool ReadFixedQuat(ReadStream stream, FixedQuat value)
         {
-            ReadBatch batch = stream.BeginBatch();
-            bool result = ReadFixedQuatBatch(ref batch, value);
-            batch.End();
-            return result;
-        }
-
-        // inline-only batch core — a real call would address-expose the batch
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadFixedQuatBatch(ref ReadBatch batch, FixedQuat value)
-        {
-            if (!batch.SerializeFixed(ref value.X, 2, 30, -1, 1))
+            if (!stream.SerializeFixed(ref value.X, 2, 30, -1, 1))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Y, 2, 30, -1, 1))
+            if (!stream.SerializeFixed(ref value.Y, 2, 30, -1, 1))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.Z, 2, 30, -1, 1))
+            if (!stream.SerializeFixed(ref value.Z, 2, 30, -1, 1))
             {
                 return false;
             }
-            if (!batch.SerializeFixed(ref value.W, 2, 30, -1, 1))
+            if (!stream.SerializeFixed(ref value.W, 2, 30, -1, 1))
             {
                 return false;
             }

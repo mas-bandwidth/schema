@@ -73,8 +73,12 @@ func densityStruct(st *ir.Struct) (int64, int64) {
 }
 
 // densityUnion is the (scalar, bulk) site weight of a union's wire body: the
-// tag site, plus the heaviest arm — a batch spans whichever arm runs, and the
-// worst case is the one that has to earn the capture/restore.
+// tag site, plus the heaviest arm's scalar weight — a batch spans whichever
+// arm runs, and the worst case is the one that has to earn the
+// capture/restore. The bulk count is the MAX over arms taken separately
+// (#214): the b==0 entry gate asks "can a delegated site run in this body",
+// and a light arm carrying a string answers yes even when a scalar-dense
+// arm is heavier overall.
 func densityUnion(u *ir.Union) (int64, int64) {
 	var s, b int64
 	for _, v := range u.Variants {
@@ -82,8 +86,11 @@ func densityUnion(u *ir.Union) (int64, int64) {
 			continue
 		}
 		as, ab := densityStruct(v.Ref)
-		if as+ab > s+b {
-			s, b = as, ab
+		if as > s {
+			s = as
+		}
+		if ab > b {
+			b = ab
 		}
 	}
 	return 1 + s, b // the tag rides on the batch like any other scalar
@@ -116,6 +123,17 @@ func densityField(f *ir.Field, isBulkByteArray bool) (s, b int64) {
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		es, eb = 1, 1 // the length site, then the delegated byte run
+	case ir.TFixed:
+		// WriteBatch.SerializeFixed (every overload) delegates — one
+		// Sync/Recapture round trip, no scalar site (#214)
+		es, eb = 0, 1
+	case ir.TInt:
+		if f.Type.Width == 128 {
+			// SerializeInt128/SerializeUInt128 delegate the same way (#214)
+			es, eb = 0, 1
+		} else {
+			es = 1
+		}
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
