@@ -157,23 +157,28 @@ defmodule Example.Types do
     v = w &&& 0xFFFFFFFF
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     w = f64_bits(value_y)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
     w = f64_bits(value_z)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc4 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
     data
   end
 
@@ -248,30 +253,36 @@ defmodule Example.Types do
     v = w &&& 0xFFFFFFFF
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     w = f64_bits(value_y)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
     w = f64_bits(value_z)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc4 = scratch
     scratch = v
     w = f64_bits(value_w)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc5 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc6 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
     data
   end
 
@@ -451,10 +462,10 @@ defmodule Example.Types do
     end
 
     v = value_z + 8_388_608
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 2
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data = <<data::binary, sc0::little-size(6)-unit(8), scratch::little-size(3)-unit(8)>>
     scratch = scratch >>> 24
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
@@ -550,10 +561,10 @@ defmodule Example.Types do
     end
 
     v = value_z + 2_097_152
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data = <<data::binary, sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
     scratch = scratch >>> 24
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
@@ -738,21 +749,21 @@ defmodule Example.Types do
     v = w &&& 0xFFFFFFFF
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     w = f64_bits(value_position_y)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
     w = f64_bits(value_position_z)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc4 = scratch
     scratch = v
 
     %{
@@ -764,35 +775,43 @@ defmodule Example.Types do
 
     w = f64_bits(value_orientation_x)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc5 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc6 = scratch
     scratch = v
     w = f64_bits(value_orientation_y)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc7 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc8 = scratch
     scratch = v
     w = f64_bits(value_orientation_z)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc9 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc10 = scratch
     scratch = v
     w = f64_bits(value_orientation_w)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc11 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc12 = scratch
     scratch = v
     v = if value_at_rest, do: 1, else: 0
     scratch = scratch ||| v <<< 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8),
+        sc8::little-size(4)-unit(8), sc9::little-size(4)-unit(8), sc10::little-size(4)-unit(8),
+        sc11::little-size(4)-unit(8), sc12::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
     scratch = scratch >>> 32
 
     {data, scratch} =
@@ -812,25 +831,25 @@ defmodule Example.Types do
         v = w &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc13 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         w = f64_bits(value_linear_velocity_y)
         v = w &&& 0xFFFFFFFF
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc14 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc15 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         w = f64_bits(value_linear_velocity_z)
         v = w &&& 0xFFFFFFFF
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc16 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc17 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
 
@@ -842,32 +861,40 @@ defmodule Example.Types do
 
         w = f64_bits(value_angular_velocity_x)
         v = w &&& 0xFFFFFFFF
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc18 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc19 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         w = f64_bits(value_angular_velocity_y)
         v = w &&& 0xFFFFFFFF
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc20 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc21 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         w = f64_bits(value_angular_velocity_z)
         v = w &&& 0xFFFFFFFF
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc22 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+        sc23 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
-        data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+        data =
+          <<data::binary, sc13::little-size(4)-unit(8), sc14::little-size(4)-unit(8),
+            sc15::little-size(4)-unit(8), sc16::little-size(4)-unit(8),
+            sc17::little-size(4)-unit(8), sc18::little-size(4)-unit(8),
+            sc19::little-size(4)-unit(8), sc20::little-size(4)-unit(8),
+            sc21::little-size(4)-unit(8), sc22::little-size(4)-unit(8),
+            sc23::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+
         scratch = scratch >>> 32
         {data, scratch}
       else
@@ -1127,16 +1154,16 @@ defmodule Example.Types do
     v = f32_bits(value_stick_x)
     scratch = v
     v = f32_bits(value_stick_y)
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     v = f32_bits(value_throttle)
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = f32_bits(value_yaw)
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
     v = f32_bits(value_pitch)
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = v
     v = if value_fire, do: 1, else: 0
     scratch = scratch ||| v <<< 32
@@ -1154,7 +1181,12 @@ defmodule Example.Types do
     scratch = scratch ||| v <<< 38
     v = if value_ping, do: 1, else: 0
     scratch = scratch ||| v <<< 39
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8),
+        scratch::little-size(5)-unit(8)>>
+
     data
   end
 
@@ -1272,13 +1304,13 @@ defmodule Example.Types do
     v = value_current_frame &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 16
     v = value_current_frame >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc0 = scratch
     scratch = v
     v = value_start_frame &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = value_start_frame >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
     n = length(value_inputs)
 
@@ -1288,7 +1320,11 @@ defmodule Example.Types do
 
     v = n
     scratch = scratch ||| v <<< 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(6)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+
     scratch = scratch >>> 32
     scratch_bits = 5
 
@@ -1437,7 +1473,7 @@ defmodule Example.Types do
     end
 
     v = value_position_y + 8_388_608
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 4
 
@@ -1468,7 +1504,7 @@ defmodule Example.Types do
     end
 
     v = value_rotation_x + 1024
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc1 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 6
 
@@ -1520,7 +1556,7 @@ defmodule Example.Types do
     end
 
     v = value_linear_velocity_x + 2_097_152
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc2 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 6
 
@@ -1544,12 +1580,17 @@ defmodule Example.Types do
     end
 
     v = value_linear_velocity_z + 2_097_152
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc3 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 4
     v = if value_has_flags, do: 1, else: 0
     scratch = scratch ||| v <<< 27
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(3)-unit(8), sc1::little-size(6)-unit(8),
+        sc2::little-size(6)-unit(8), sc3::little-size(6)-unit(8),
+        scratch::little-size(3)-unit(8)>>
+
     scratch = scratch >>> 24
 
     {data, scratch, scratch_bits} =
@@ -1903,7 +1944,7 @@ defmodule Example.Types do
     v = w &&& 0xFFFFFFFF
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
 
     if value_doubled_floor < -9_223_372_036_854_775_808 do
@@ -1916,10 +1957,10 @@ defmodule Example.Types do
 
     w = value_doubled_floor + 9_223_372_036_854_775_808
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
 
     if value_ceiling_range < 1 do
@@ -1932,24 +1973,30 @@ defmodule Example.Types do
 
     w = value_ceiling_range - 1
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc4 = scratch
     scratch = v
     v = value_floor_default &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc5 = scratch
     scratch = v
     v = value_floor_default >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc6 = scratch
     scratch = v
     v = value_ceiling_default &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc7 = scratch
     scratch = v
     v = value_ceiling_default >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc8 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8),
+        sc8::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+
     data
   end
 
@@ -2080,7 +2127,7 @@ defmodule Example.Types do
     v = w &&& 0xFFFFFFFF
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
 
     if value_clamped_ceiling < 1 do
@@ -2093,24 +2140,30 @@ defmodule Example.Types do
 
     w = value_clamped_ceiling - 1
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
     v = value_floor_def &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = v
     v = value_floor_def >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc4 = scratch
     scratch = v
     v = value_ceiling_def &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc5 = scratch
     scratch = v
     v = value_ceiling_def >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc6 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
     data
   end
 
@@ -2209,30 +2262,30 @@ defmodule Example.Types do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = f32_bits(e_stick_y)
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = f32_bits(e_throttle)
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc1 = scratch
+    fl1 = scratch_bits >>> 3
+    scratch = scratch >>> (fl1 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = f32_bits(e_yaw)
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc2 = scratch
+    fl2 = scratch_bits >>> 3
+    scratch = scratch >>> (fl2 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = f32_bits(e_pitch)
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc3 = scratch
+    fl3 = scratch_bits >>> 3
+    scratch = scratch >>> (fl3 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -2261,7 +2314,12 @@ defmodule Example.Types do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(fl0)-unit(8), sc1::little-size(fl1)-unit(8),
+        sc2::little-size(fl2)-unit(8), sc3::little-size(fl3)-unit(8),
+        scratch::little-size(flush)-unit(8)>>
+
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_input_packet_inputs(rest, data, scratch, scratch_bits)

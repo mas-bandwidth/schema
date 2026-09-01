@@ -1397,13 +1397,13 @@ defmodule Example.Joins do
     v = value_p &&& 0xFFFFFFFF
     scratch = v
     v = value_q &&& 0x1FFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     v = value_r &&& 0x7FFFF
     scratch = scratch ||| v <<< 29
     v = value_tail &&& 0xF
     scratch = scratch ||| v <<< 48
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    data = <<data::binary, sc0::little-size(4)-unit(8), scratch::little-size(6)-unit(8)>>
     scratch = scratch >>> 48
     # the residual byte, statically known to be there
     <<data::binary, scratch>>

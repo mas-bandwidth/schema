@@ -477,11 +477,11 @@ defmodule Realworld.RealWorld do
     scratch = v
     w = f64_bits(value_f002f64)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 16
     scratch = scratch ||| v <<< 5
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 5
 
@@ -494,7 +494,7 @@ defmodule Realworld.RealWorld do
     end
 
     v = value_f003_int + 835_897
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 5
     v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20000, 20000.0)
@@ -520,17 +520,17 @@ defmodule Realworld.RealWorld do
     end
 
     v = value_f006_int + 1513
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc3 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 6
     v = f32_bits(value_f007f32)
     scratch = scratch ||| v <<< 18
     v = value_f008u64 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc4 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 2
     v = value_f008u64 >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc5 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
 
@@ -545,13 +545,19 @@ defmodule Realworld.RealWorld do
     v = value_f009_int + 22
     scratch = scratch ||| v <<< 34
     v = f32_bits(value_f010f32)
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc6 = scratch
     scratch = v
     v = value_f011_bits &&& 0x3FF
     scratch = scratch ||| v <<< 32
     v = if value_f012_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 42
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(2)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(6)-unit(8), sc4::little-size(6)-unit(8),
+        sc5::little-size(4)-unit(8), sc6::little-size(5)-unit(8),
+        scratch::little-size(5)-unit(8)>>
+
     scratch = scratch >>> 40
 
     {data, scratch} =
@@ -598,7 +604,7 @@ defmodule Realworld.RealWorld do
         end
 
         v = value_f016_fixed + 37_748_736
-        data = <<data::binary, scratch::little-size(6)-unit(8)>>
+        sc7 = scratch
         scratch = scratch >>> 48
         scratch = scratch ||| v <<< 3
 
@@ -612,7 +618,7 @@ defmodule Realworld.RealWorld do
 
         v = value_f017_uint
         scratch = scratch ||| v <<< 30
-        data = <<data::binary, scratch::little-size(5)-unit(8)>>
+        data = <<data::binary, sc7::little-size(6)-unit(8), scratch::little-size(5)-unit(8)>>
         scratch = scratch >>> 40
         {data, scratch}
       else
@@ -633,11 +639,11 @@ defmodule Realworld.RealWorld do
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 14
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc7 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
     v = f32_bits(value_f020f32)
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc8 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 6
 
@@ -650,19 +656,19 @@ defmodule Realworld.RealWorld do
     end
 
     v = value_f021_ufixed
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc9 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 6
     v = f32_bits(value_f022f32)
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc10 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
     v = value_f023_bits &&& 0x1FFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc11 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
     v = f32_bits(value_f024f32)
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    sc12 = scratch
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 2
 
@@ -677,7 +683,7 @@ defmodule Realworld.RealWorld do
     v = value_f025_fixed + 30464
     scratch = scratch ||| v <<< 34
     v = value_f026_bits &&& 0x1FF
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc13 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 2
     v = cf_quantize(value_f027_cf32, -2.0, 4.0, 16, 16.0)
@@ -687,11 +693,11 @@ defmodule Realworld.RealWorld do
     v = value_f029i64 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 20
     v = value_f029i64 >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc14 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 4
     v = f32_bits(value_f030f32)
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc15 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 4
     v = value_f031_bits &&& 0x1
@@ -717,7 +723,7 @@ defmodule Realworld.RealWorld do
     end
 
     v = value_f033_uint
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc16 = scratch
     scratch = v
 
     if value_f034_uint < 0 do
@@ -748,7 +754,7 @@ defmodule Realworld.RealWorld do
     v = if value_f038_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 45
     v = value_f039_bits &&& 0x7FFFF
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc17 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
 
@@ -774,11 +780,18 @@ defmodule Realworld.RealWorld do
     v = value_f041_int + 55
     scratch = scratch ||| v <<< 41
     v = value_f042_bits &&& 0x3FFFFFFF
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc18 = scratch
     scratch = v
     v = if value_f043_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 30
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+
+    data =
+      <<data::binary, sc7::little-size(5)-unit(8), sc8::little-size(4)-unit(8),
+        sc9::little-size(4)-unit(8), sc10::little-size(4)-unit(8), sc11::little-size(4)-unit(8),
+        sc12::little-size(3)-unit(8), sc13::little-size(6)-unit(8), sc14::little-size(6)-unit(8),
+        sc15::little-size(4)-unit(8), sc16::little-size(5)-unit(8), sc17::little-size(5)-unit(8),
+        sc18::little-size(6)-unit(8), scratch::little-size(3)-unit(8)>>
+
     scratch = scratch >>> 24
 
     {data, scratch, scratch_bits} =
@@ -804,7 +817,7 @@ defmodule Realworld.RealWorld do
         end
 
         v = value_f046_uint
-        data = <<data::binary, scratch::little-size(6)-unit(8)>>
+        sc19 = scratch
         scratch = scratch >>> 48
         scratch = scratch ||| v <<< 3
 
@@ -818,7 +831,7 @@ defmodule Realworld.RealWorld do
 
         v = value_f047_int + 430_976
         scratch = scratch ||| v <<< 20
-        data = <<data::binary, scratch::little-size(5)-unit(8)>>
+        data = <<data::binary, sc19::little-size(6)-unit(8), scratch::little-size(5)-unit(8)>>
         scratch_bits = 0
         scratch = 0
         {data, scratch, scratch_bits}
@@ -832,9 +845,9 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc19 = scratch
+    fl19 = scratch_bits >>> 3
+    scratch = scratch >>> (fl19 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -854,7 +867,7 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc19::little-size(fl19)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 
@@ -938,16 +951,16 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits + 32
     w = f64_bits(value_f059f64)
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc20 = scratch
+    fl20 = scratch_bits >>> 3
+    scratch = scratch >>> (fl20 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc21 = scratch
+    fl21 = scratch_bits >>> 3
+    scratch = scratch >>> (fl21 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -967,9 +980,9 @@ defmodule Realworld.RealWorld do
     end
 
     v = value_f062_uint
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc22 = scratch
+    fl22 = scratch_bits >>> 3
+    scratch = scratch >>> (fl22 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
@@ -977,9 +990,9 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_f063i64 >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc23 = scratch
+    fl23 = scratch_bits >>> 3
+    scratch = scratch >>> (fl23 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1008,9 +1021,9 @@ defmodule Realworld.RealWorld do
     end
 
     v = value_f066_ufixed
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc24 = scratch
+    fl24 = scratch_bits >>> 3
+    scratch = scratch >>> (fl24 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -1036,9 +1049,9 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     v = cf_quantize(value_f071_cf32, 0.0, 10.0, 500, 500.0)
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc25 = scratch
+    fl25 = scratch_bits >>> 3
+    scratch = scratch >>> (fl25 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
@@ -1061,7 +1074,13 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+    data =
+      <<data::binary, sc20::little-size(fl20)-unit(8), sc21::little-size(fl21)-unit(8),
+        sc22::little-size(fl22)-unit(8), sc23::little-size(fl23)-unit(8),
+        sc24::little-size(fl24)-unit(8), sc25::little-size(fl25)-unit(8),
+        scratch::little-size(flush)-unit(8)>>
+
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 
@@ -1079,9 +1098,9 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
         v = value_f075u64 >>> 32 &&& 0xFFFFFFFF
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
+        sc26 = scratch
+        fl26 = scratch_bits >>> 3
+        scratch = scratch >>> (fl26 <<< 3)
         scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
@@ -1107,9 +1126,9 @@ defmodule Realworld.RealWorld do
         end
 
         v = value_f077_int + 17
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
+        sc27 = scratch
+        fl27 = scratch_bits >>> 3
+        scratch = scratch >>> (fl27 <<< 3)
         scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 6
@@ -1129,7 +1148,11 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 5
         flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+        data =
+          <<data::binary, sc26::little-size(fl26)-unit(8), sc27::little-size(fl27)-unit(8),
+            scratch::little-size(flush)-unit(8)>>
+
         scratch = scratch >>> (flush <<< 3)
         scratch_bits = scratch_bits &&& 7
         {data, scratch, scratch_bits}
@@ -1144,9 +1167,9 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 29
     v = value_f082_bits &&& 0x1FFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc26 = scratch
+    fl26 = scratch_bits >>> 3
+    scratch = scratch >>> (fl26 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 25
@@ -1175,9 +1198,9 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
     v = value_f085_bits &&& 0x1FFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc27 = scratch
+    fl27 = scratch_bits >>> 3
+    scratch = scratch >>> (fl27 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
@@ -1195,16 +1218,16 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits + 9
     w = f64_bits(value_f087f64)
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc28 = scratch
+    fl28 = scratch_bits >>> 3
+    scratch = scratch >>> (fl28 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc29 = scratch
+    fl29 = scratch_bits >>> 3
+    scratch = scratch >>> (fl29 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1221,9 +1244,9 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
     v = value_f089_bits &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc30 = scratch
+    fl30 = scratch_bits >>> 3
+    scratch = scratch >>> (fl30 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1240,9 +1263,9 @@ defmodule Realworld.RealWorld do
     end
 
     v = value_f090_uint
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc31 = scratch
+    fl31 = scratch_bits >>> 3
+    scratch = scratch >>> (fl31 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -1261,9 +1284,9 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_f093_bits >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc32 = scratch
+    fl32 = scratch_bits >>> 3
+    scratch = scratch >>> (fl32 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1280,9 +1303,9 @@ defmodule Realworld.RealWorld do
     end
 
     v = value_f095_fixed + 103_350_272
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc33 = scratch
+    fl33 = scratch_bits >>> 3
+    scratch = scratch >>> (fl33 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 28
@@ -1290,14 +1313,21 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
     v = value_f097_bits &&& 0xFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc34 = scratch
+    fl34 = scratch_bits >>> 3
+    scratch = scratch >>> (fl34 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+    data =
+      <<data::binary, sc26::little-size(fl26)-unit(8), sc27::little-size(fl27)-unit(8),
+        sc28::little-size(fl28)-unit(8), sc29::little-size(fl29)-unit(8),
+        sc30::little-size(fl30)-unit(8), sc31::little-size(fl31)-unit(8),
+        sc32::little-size(fl32)-unit(8), sc33::little-size(fl33)-unit(8),
+        sc34::little-size(fl34)-unit(8), scratch::little-size(flush)-unit(8)>>
+
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data

@@ -193,7 +193,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_position + 1_966_080_000
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 1
 
@@ -207,7 +207,7 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_reach + 65_536_000_000
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
     v = w >>> 32
@@ -222,7 +222,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_ticks
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 6
 
@@ -230,7 +230,10 @@ defmodule Ludicrous.Ludicrous do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
     end
 
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data =
+      <<data::binary, sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), scratch::little-size(3)-unit(8)>>
+
     scratch = scratch >>> 24
     scratch_bits = 2
 
@@ -357,11 +360,11 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_span &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 1
     v = value_span >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
 
@@ -374,7 +377,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_reach &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
     v = value_reach >>> 32
@@ -389,7 +392,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_ticks
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 6
 
@@ -397,7 +400,11 @@ defmodule Ludicrous.Ludicrous do
       raise ArgumentError, "value.samples must hold exactly 2 elements"
     end
 
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data =
+      <<data::binary, sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8),
+        scratch::little-size(3)-unit(8)>>
+
     scratch = scratch >>> 24
     scratch_bits = 2
 
@@ -520,13 +527,13 @@ defmodule Ludicrous.Ludicrous do
     v = value_entity_id &&& 0xFFFFFFFF
     scratch = v
     v = value_entity_id >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     v = value_entity_id >>> 64 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = value_entity_id >>> 96 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
 
     if value_energy < -5_000_000_000 do
@@ -539,7 +546,7 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_energy + 5_000_000_000
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = v
     v = w >>> 32
     scratch = scratch ||| v <<< 32
@@ -554,15 +561,15 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_flux + 1_267_650_600_228_229_401_496_703_205_376
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc4 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
     v = w >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc5 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
     v = w >>> 64 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc6 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
     v = w >>> 96
@@ -579,22 +586,29 @@ defmodule Ludicrous.Ludicrous do
     v = value_bias + 1000
     scratch = scratch ||| v <<< 40
     v = value_seed &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+    sc7 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 3
     v = value_seed >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc8 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 3
     v = value_seed >>> 64 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc9 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 3
     v = value_seed >>> 96 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc10 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 3
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(6)-unit(8),
+        sc8::little-size(4)-unit(8), sc9::little-size(4)-unit(8), sc10::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
     scratch = scratch >>> 32
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
@@ -771,7 +785,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_probe_position + 1_966_080_000
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 3
 
@@ -785,7 +799,7 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_probe_reach + 65_536_000_000
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 3
     v = w >>> 32
@@ -800,14 +814,17 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_probe_ticks
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc2 = scratch
     scratch = v
 
     if length(value_probe_samples) != 2 do
       raise ArgumentError, "value.probe.samples must hold exactly 2 elements"
     end
 
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    data =
+      <<data::binary, sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(5)-unit(8), scratch::little-size(2)-unit(8)>>
+
     scratch = scratch >>> 16
     scratch_bits = 4
 
@@ -826,23 +843,23 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_wide_entity_id >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc3 = scratch
+    fl3 = scratch_bits >>> 3
+    scratch = scratch >>> (fl3 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_wide_entity_id >>> 64 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc4 = scratch
+    fl4 = scratch_bits >>> 3
+    scratch = scratch >>> (fl4 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_wide_entity_id >>> 96 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc5 = scratch
+    fl5 = scratch_bits >>> 3
+    scratch = scratch >>> (fl5 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -857,9 +874,9 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_wide_energy + 5_000_000_000
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc6 = scratch
+    fl6 = scratch_bits >>> 3
+    scratch = scratch >>> (fl6 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -877,23 +894,23 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_wide_flux + 1_267_650_600_228_229_401_496_703_205_376
     v = w &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc7 = scratch
+    fl7 = scratch_bits >>> 3
+    scratch = scratch >>> (fl7 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc8 = scratch
+    fl8 = scratch_bits >>> 3
+    scratch = scratch >>> (fl8 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 64 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc9 = scratch
+    fl9 = scratch_bits >>> 3
+    scratch = scratch >>> (fl9 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -913,30 +930,30 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
     v = value_wide_seed &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc10 = scratch
+    fl10 = scratch_bits >>> 3
+    scratch = scratch >>> (fl10 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_wide_seed >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc11 = scratch
+    fl11 = scratch_bits >>> 3
+    scratch = scratch >>> (fl11 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_wide_seed >>> 64 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc12 = scratch
+    fl12 = scratch_bits >>> 3
+    scratch = scratch >>> (fl12 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = value_wide_seed >>> 96 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc13 = scratch
+    fl13 = scratch_bits >>> 3
+    scratch = scratch >>> (fl13 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -950,7 +967,15 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+    data =
+      <<data::binary, sc3::little-size(fl3)-unit(8), sc4::little-size(fl4)-unit(8),
+        sc5::little-size(fl5)-unit(8), sc6::little-size(fl6)-unit(8),
+        sc7::little-size(fl7)-unit(8), sc8::little-size(fl8)-unit(8),
+        sc9::little-size(fl9)-unit(8), sc10::little-size(fl10)-unit(8),
+        sc11::little-size(fl11)-unit(8), sc12::little-size(fl12)-unit(8),
+        sc13::little-size(fl13)-unit(8), scratch::little-size(flush)-unit(8)>>
+
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
 
@@ -971,28 +996,32 @@ defmodule Ludicrous.Ludicrous do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
         v = value.target_id >>> 32 &&& 0xFFFFFFFF
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
+        sc14 = scratch
+        fl14 = scratch_bits >>> 3
+        scratch = scratch >>> (fl14 <<< 3)
         scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
         v = value.target_id >>> 64 &&& 0xFFFFFFFF
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
+        sc15 = scratch
+        fl15 = scratch_bits >>> 3
+        scratch = scratch >>> (fl15 <<< 3)
         scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
         v = value.target_id >>> 96 &&& 0xFFFFFFFF
-        flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-        scratch = scratch >>> (flush <<< 3)
+        sc16 = scratch
+        fl16 = scratch_bits >>> 3
+        scratch = scratch >>> (fl16 <<< 3)
         scratch_bits = scratch_bits &&& 7
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
         flush = scratch_bits >>> 3
-        data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+        data =
+          <<data::binary, sc14::little-size(fl14)-unit(8), sc15::little-size(fl15)-unit(8),
+            sc16::little-size(fl16)-unit(8), scratch::little-size(flush)-unit(8)>>
+
         scratch = scratch >>> (flush <<< 3)
         scratch_bits = scratch_bits &&& 7
         {data, scratch, scratch_bits}
@@ -1330,7 +1359,7 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_y + 6_553_600_000
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
     v = w >>> 32
@@ -1346,12 +1375,16 @@ defmodule Ludicrous.Ludicrous do
 
     w = value_z + 6_553_600_000
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 4
     v = w >>> 32
     scratch = scratch ||| v <<< 36
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
+
     scratch = scratch >>> 32
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
@@ -1448,7 +1481,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_y + 1_073_741_824
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
 
     if value_z < -1_073_741_824 do
@@ -1460,7 +1493,7 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_z + 1_073_741_824
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
 
     if value_w < -1_073_741_824 do
@@ -1472,9 +1505,13 @@ defmodule Ludicrous.Ludicrous do
     end
 
     v = value_w + 1_073_741_824
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+
     data
   end
 
@@ -1529,7 +1566,7 @@ defmodule Ludicrous.Ludicrous do
 
   defp w_fixed_probe_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_fixed_probe_samples([e1, e2 | rest], data, scratch, scratch_bits) do
+  defp w_fixed_probe_samples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -1553,8 +1590,36 @@ defmodule Ludicrous.Ludicrous do
     v = e2 + 524_288
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
+
+    if e3 < -524_288 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 524_288 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e3 + 524_288
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 21
+
+    if e4 < -524_288 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 524_288 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e4 + 524_288
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 21
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_fixed_probe_samples(rest, data, scratch, scratch_bits)
@@ -1611,7 +1676,7 @@ defmodule Ludicrous.Ludicrous do
   defp w_unsigned_probe_samples([], data, scratch, scratch_bits),
     do: {data, scratch, scratch_bits}
 
-  defp w_unsigned_probe_samples([e1, e2 | rest], data, scratch, scratch_bits) do
+  defp w_unsigned_probe_samples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -1635,8 +1700,36 @@ defmodule Ludicrous.Ludicrous do
     v = e2
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
+
+    if e3 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e3 > 1_048_576 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e3
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 21
+
+    if e4 < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e4 > 1_048_576 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
+    v = e4
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 21
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_unsigned_probe_samples(rest, data, scratch, scratch_bits)
@@ -1697,28 +1790,32 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e >>> 64 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc1 = scratch
+    fl1 = scratch_bits >>> 3
+    scratch = scratch >>> (fl1 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e >>> 96 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc2 = scratch
+    fl2 = scratch_bits >>> 3
+    scratch = scratch >>> (fl2 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(fl0)-unit(8), sc1::little-size(fl1)-unit(8),
+        sc2::little-size(fl2)-unit(8), scratch::little-size(flush)-unit(8)>>
+
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_ludicrous_state_keys(rest, data, scratch, scratch_bits)

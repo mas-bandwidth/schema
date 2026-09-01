@@ -47,7 +47,7 @@ const writeGroupBits = 52
 
 // mergeW merges v (already inside bits) into the scratch. The whole bytes do
 // NOT leave on every field: the generator knows every width statically, so it
-// carries a group of up to writeGroupBits and flushes once for the group,
+// carries a group of up to writeGroupBits and spills once for the group,
 // which is one bs_append BIF call for the group instead of one per field.
 // Every statement rebinds ONE variable (an Elixir conditional cannot rebind
 // several without a tuple, and the merge must allocate none). bits in [1, 32];
@@ -55,7 +55,7 @@ const writeGroupBits = 52
 // 2^59.
 func (g *gen) mergeW(bits int64, ind string) {
 	if g.pendW+bits > writeGroupBits {
-		g.flushW(ind)
+		g.spillW(ind)
 	}
 	switch {
 	case !g.sbKnown:
@@ -76,23 +76,92 @@ func (g *gen) mergeW(bits int64, ind string) {
 	g.pendW += bits
 }
 
-// flushW sends the group's whole bytes to the output binary and leaves the
-// scratch invariant the group model rests on: scratch_bits in [0, 7] and
-// scratch below 2^scratch_bits. It is a no-op when no group is open, which is
-// what makes a barrier free where one is already closed.
+// wseg is one segment waiting to ride the barrier's binary construction: the
+// register holding the bytes, and their width — a literal byte count where the
+// offset is static, otherwise the name of the local that computed it.
+type wseg struct {
+	reg   string
+	whole int64
+	width string
+}
+
+// text renders the segment. A literal width is the form the BEAM's binary
+// construction is built for; a dynamic one costs the same (measured: twelve
+// appends of a dynamic-width segment cost 103.7 ns against 103.6 for literal
+// widths — the append is the expense, not the arithmetic around it).
+func (s wseg) text() string {
+	if s.width != "" {
+		return fmt.Sprintf("%s::little-size(%s)-unit(8)", s.reg, s.width)
+	}
+	return fmt.Sprintf("%s::little-size(%d)-unit(8)", s.reg, s.whole)
+}
+
+// spillW empties the scratch's whole bytes into a fresh register because the
+// merge group is FULL, not because anything is about to observe data. The
+// bytes are recorded as a pending segment and the append is deferred to the
+// barrier, where one binary construction carries every register that spilled
+// since the last one.
+//
+// The statement count is what it was — a bind and a shift where there was an
+// append and a shift — and the fixnum envelope is untouched: a register is
+// filled by exactly the spill that used to append it, so it holds what the
+// scratch held, below 2^59. Registers stay live to the barrier; the BEAM has
+// 1024 of them and the deepest run in the tree spends nine.
+func (g *gen) spillW(ind string) {
+	if g.pendW == 0 {
+		return
+	}
+	g.pendW = 0
+	reg := fmt.Sprintf("sc%d", g.segN)
+	if !g.sbKnown {
+		width := fmt.Sprintf("fl%d", g.segN)
+		g.segN++
+		g.pf("%s%s = scratch\n", ind, reg)
+		g.pf("%s%s = scratch_bits >>> 3\n", ind, width)
+		g.pf("%sscratch = scratch >>> (%s <<< 3)\n", ind, width)
+		g.pf("%sscratch_bits = scratch_bits &&& 7\n", ind)
+		g.segW = append(g.segW, wseg{reg: reg, width: width})
+		return
+	}
+	whole, rest := g.sbVal>>3, g.sbVal&7
+	g.sbVal = rest
+	if whole == 0 {
+		return // under a byte: the group carries, nothing leaves
+	}
+	g.segN++
+	// the segment takes the low whole bytes, so the residual bits riding
+	// above them are simply not in the segment and need no masking here
+	g.pf("%s%s = scratch\n", ind, reg)
+	g.segW = append(g.segW, wseg{reg: reg, whole: whole})
+	if rest == 0 {
+		g.scZero, g.scBound = true, false
+		return
+	}
+	g.pf("%sscratch = scratch >>> %d\n", ind, whole<<3)
+}
+
+// flushW closes the group at a barrier: every register that spilled since the
+// last barrier, plus the scratch's own whole bytes, ride ONE binary
+// construction. It leaves the scratch invariant the group model rests on —
+// scratch_bits in [0, 7] and scratch below 2^scratch_bits — and is a no-op
+// when no group is open, which is what makes a barrier free where one is
+// already closed.
 //
 // EVERY point that observes data or scratch_bits outside the merge — the
 // function tail, an align, the bytes of a string, a loop helper's call and its
 // own tail, and the joins of a branch or a union case — is a barrier and calls
 // this first.
 func (g *gen) flushW(ind string) {
-	if g.pendW == 0 {
+	if g.pendW == 0 && len(g.segW) == 0 {
 		return
 	}
 	g.pendW = 0
+	segs := g.segW
+	g.segW = nil
 	if !g.sbKnown {
 		g.pf("%sflush = scratch_bits >>> 3\n", ind)
-		g.pf("%sdata = <<data::binary, scratch::little-size(flush)-unit(8)>>\n", ind)
+		segs = append(segs, wseg{reg: "scratch", width: "flush"})
+		g.segAppend(segs, ind)
 		g.pf("%sscratch = scratch >>> (flush <<< 3)\n", ind)
 		g.pf("%sscratch_bits = scratch_bits &&& 7\n", ind)
 		return
@@ -101,11 +170,17 @@ func (g *gen) flushW(ind string) {
 	// three bookkeeping statements are not emitted at all
 	whole, rest := g.sbVal>>3, g.sbVal&7
 	g.sbVal = rest
-	if whole == 0 {
-		return // under a byte: the group carries, nothing leaves
+	if whole > 0 {
+		g.scBound = true
+		segs = append(segs, wseg{reg: "scratch", whole: whole})
 	}
-	g.scBound = true
-	g.pf("%sdata = <<data::binary, scratch::little-size(%d)-unit(8)>>\n", ind, whole)
+	if len(segs) == 0 {
+		return // under a byte and nothing spilled: the group carries
+	}
+	g.segAppend(segs, ind)
+	if whole == 0 {
+		return // the scratch kept every bit it had; only registers left
+	}
 	if rest == 0 {
 		// the scratch held exactly the bytes that left, so its value is now
 		// zero — and it is not WRITTEN here, because the next merge of an
@@ -115,6 +190,38 @@ func (g *gen) flushW(ind string) {
 		return
 	}
 	g.pf("%sscratch = scratch >>> %d\n", ind, whole<<3)
+}
+
+// segAppend prints the barrier's one binary construction. Where the one-line
+// form outgrows the formatter's width the statement breaks after the `=` and
+// the segments fill greedily, which is mix format's own shape for a long
+// bitstring: `<<` at ind+2, continuations at ind+4, and each segment measured
+// with the comma or the closing `>>` that will follow it.
+func (g *gen) segAppend(segs []wseg, ind string) {
+	parts := make([]string, 0, len(segs)+1)
+	parts = append(parts, "data::binary")
+	for _, s := range segs {
+		parts = append(parts, s.text())
+	}
+	if one := ind + "data = <<" + strings.Join(parts, ", ") + ">>"; len(one) <= formatWidth {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("\n%sdata =\n", ind)
+	line := ind + "  <<" + parts[0]
+	for i := 1; i < len(parts); i++ {
+		tail := 1 // the comma that follows this segment
+		if i == len(parts)-1 {
+			tail = 2 // the closing >> instead
+		}
+		if len(line)+1+1+len(parts[i])+tail > formatWidth {
+			g.pf("%s,\n", line)
+			line = ind + "    " + parts[i]
+			continue
+		}
+		line += ", " + parts[i]
+	}
+	g.pf("%s>>\n\n", line)
 }
 
 // syncSB materializes scratch_bits where the emitted code is about to read it
@@ -153,10 +260,12 @@ type sbState struct {
 	pend    int64
 	scBound bool
 	sbBound bool
+	segs    []wseg
+	segN    int
 }
 
 func (g *gen) sbSave() sbState {
-	return sbState{g.sbKnown, g.sbVal, g.scZero, g.pendW, g.scBound, g.sbBound}
+	return sbState{g.sbKnown, g.sbVal, g.scZero, g.pendW, g.scBound, g.sbBound, g.segW, g.segN}
 }
 
 // captureArm emits one arm of a branch or a union case into a detached
@@ -191,6 +300,7 @@ func sbAgree(arms []sbState) (int64, bool) {
 func (g *gen) sbRestore(s sbState) {
 	g.sbKnown, g.sbVal, g.scZero, g.pendW = s.known, s.val, s.zero, s.pend
 	g.scBound, g.sbBound = s.scBound, s.sbBound
+	g.segW, g.segN = s.segs, s.segN
 }
 
 // joinArm is one captured emission path of a branch or a union case: the
@@ -240,6 +350,14 @@ func (g *gen) emitWriteJoin(ind, open, close string, arms []joinArm) {
 	g.pf("%s%s", ind, close)
 	g.pf("\n")
 	g.pendW, g.scZero = 0, false
+	// segW must not survive a join: registers spilled BEFORE the join would
+	// re-emit at the next barrier (silently — the wire-corruption class),
+	// and registers spilled INSIDE an arm would fail to compile outside it.
+	// Today every arm ends in a flush so this is always nil already; the
+	// reset guards the shape a future emitter change could produce. segN
+	// stays monotonic on purpose — resetting it renumbers registers after
+	// every join, churning the generated text for no safety.
+	g.segW = nil
 	g.sbKnown, g.sbVal = agree, val
 	g.scBound = true
 	g.sbBound = entrySB || !agree
@@ -584,7 +702,7 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	g.usesImport = true
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
-	g.pendW = 0
+	g.pendW, g.segW, g.segN = 0, nil, 0
 	// the surface starts at a known empty scratch: everything up to the
 	// first length the message's own data decides packs at literal offsets
 	g.sbKnown, g.sbVal, g.scZero = true, 0, true
@@ -929,7 +1047,7 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	savedSB := g.sbSave()
 	savedBind, savedDisp, savedUsed := g.bindW, g.bindDisp, g.bindUsed
 	g.fn = strings.Builder{}
-	g.pendW = 0 // the helper is entered with the caller's group closed
+	g.pendW, g.segW, g.segN = 0, nil, 0 // entered with the caller's group closed
 	// and at an offset the caller's element count decides, so the helper's
 	// body maintains scratch_bits the way it did before the static pass
 	g.sbKnown, g.scZero = false, false
@@ -962,18 +1080,23 @@ func (g *gen) writeHelper(f *ir.Field) string {
 // share and the clause body is a bigger and bigger one.
 const writeUnrollMax = 4
 
-// writeUnroll is how many elements one clause of the loop writes. Elements
-// of a statically known width share a merge group — and so ONE append —
-// while the group's budget holds; measured, cutting appends is worth about a
-// quarter of a static run, and nothing else about the element changes. An
-// element whose width the wire decides gets one clause per element, as
-// before.
+// writeUnroll is how many elements one clause of the loop writes. What the
+// clause shares is ONE APPEND, and the append is the barrier's, not the merge
+// group's: a clause that outgrows the 52-bit group spills into a register and
+// keeps merging, and every register it spilled rides the tail's single binary
+// construction as its own segment. So the group budget no longer bounds k —
+// only the unroll cap does, and a stats clause of 18-bit elements takes four
+// (72 bits, two segments, one append) where the group alone allowed two.
+//
+// An element whose width the wire decides still gets one clause per element:
+// the clause's own tail is where it would have to be measured, and there is
+// nothing static to add up.
 func (g *gen) writeUnroll(f *ir.Field) int64 {
 	eb, ok := g.staticBitsScalar(f)
 	if !ok || eb <= 0 || eb > writeGroupBits {
 		return 1
 	}
-	return min(writeGroupBits/eb, writeUnrollMax)
+	return writeUnrollMax
 }
 
 // writeClause emits one clause of a write loop, taking k elements off the
@@ -994,7 +1117,7 @@ func (g *gen) writeClause(f *ir.Field, name string, k int64) {
 		// the raise text names the ELEMENT, never the clause's slot for it
 		g.bindDisp[ev] = "e"
 	}
-	g.pendW = 0
+	g.pendW, g.segW, g.segN = 0, nil, 0
 	g.sbKnown, g.scZero = false, false
 	g.scBound, g.sbBound = true, true
 	g.pf("  defp %s([%s | rest], data, scratch, scratch_bits) do\n", name, strings.Join(evs, ", "))

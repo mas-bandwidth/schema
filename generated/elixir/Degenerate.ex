@@ -92,16 +92,20 @@ defmodule Example.Degenerate do
     v = w &&& 0xFFFFFFFF
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     w = f64_bits(value_y)
     v = w &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = w >>> 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+
     data
   end
 
@@ -547,9 +551,9 @@ defmodule Example.Degenerate do
     v = value_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
     v = value_c &&& 0xFFFFFF
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc0 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data = <<data::binary, sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
     data
   end
 
@@ -609,9 +613,9 @@ defmodule Example.Degenerate do
     v = value_inner_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
     v = value_inner_c &&& 0xFFFFFF
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc0 = scratch
     scratch = v
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data = <<data::binary, sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
     data
   end
 
@@ -673,11 +677,11 @@ defmodule Example.Degenerate do
     v = value_inner_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
     v = value_inner_c &&& 0xFFFFFF
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc0 = scratch
     scratch = v
     v = value_trailer &&& 0xFFFF
     scratch = scratch ||| v <<< 24
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    data = <<data::binary, sc0::little-size(5)-unit(8), scratch::little-size(5)-unit(8)>>
     data
   end
 
@@ -759,45 +763,52 @@ defmodule Example.Degenerate do
     v = value_pad0 &&& 0xFFFFFFFF
     scratch = v
     v = value_pad0 >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     v = value_pad1 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = value_pad1 >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
     v = value_pad2 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc3 = scratch
     scratch = v
     v = value_pad2 >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc4 = scratch
     scratch = v
     v = value_pad3 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc5 = scratch
     scratch = v
     v = value_pad3 >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc6 = scratch
     scratch = v
     v = value_pad4 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc7 = scratch
     scratch = v
     v = value_pad4 >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc8 = scratch
     scratch = v
     v = value_pad5 &&& 0xFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc9 = scratch
     scratch = v
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
     v = value_inner_a &&& 0xFFFFF
     scratch = scratch ||| v <<< 24
     v = value_inner_b &&& 0xFFFFF
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    sc10 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 4
     v = value_inner_c &&& 0xFFFFFF
     scratch = scratch ||| v <<< 24
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8),
+        sc8::little-size(4)-unit(8), sc9::little-size(4)-unit(8), sc10::little-size(5)-unit(8),
+        scratch::little-size(6)-unit(8)>>
+
     data
   end
 
@@ -904,14 +915,14 @@ defmodule Example.Degenerate do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_span_f64_values(rest, data, scratch, scratch_bits)
@@ -939,14 +950,14 @@ defmodule Example.Degenerate do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_span_u64_values(rest, data, scratch, scratch_bits)
@@ -974,14 +985,14 @@ defmodule Example.Degenerate do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_span_i64_values(rest, data, scratch, scratch_bits)
@@ -1009,14 +1020,14 @@ defmodule Example.Degenerate do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_span_one_values(rest, data, scratch, scratch_bits)
@@ -1039,7 +1050,7 @@ defmodule Example.Degenerate do
 
   defp w_span_chunk_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_chunk_values([e1, e2, e3 | rest], data, scratch, scratch_bits) do
+  defp w_span_chunk_values([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -1049,8 +1060,15 @@ defmodule Example.Degenerate do
     v = e3 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+    v = e4 &&& 0xFFFF
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
+    scratch_bits = scratch_bits &&& 7
+    scratch = scratch ||| v <<< scratch_bits
+    scratch_bits = scratch_bits + 16
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_span_chunk_values(rest, data, scratch, scratch_bits)
@@ -1101,14 +1119,14 @@ defmodule Example.Degenerate do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_span_tail_values(rest, data, scratch, scratch_bits)
@@ -1137,14 +1155,14 @@ defmodule Example.Degenerate do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_span_twice_a(rest, data, scratch, scratch_bits)
@@ -1158,14 +1176,14 @@ defmodule Example.Degenerate do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = w >>> 32
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+    data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_span_twice_b(rest, data, scratch, scratch_bits)

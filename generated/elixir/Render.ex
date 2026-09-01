@@ -54,13 +54,13 @@ defmodule Example.Render do
     v = value_sort_key &&& 0xFFFFFFFF
     scratch = v
     v = value_sort_key >>> 32 &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     v = value_mesh_id &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc1 = scratch
     scratch = v
     v = value_material_id &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc2 = scratch
     scratch = v
     v = value_layer &&& 0xFF
     scratch = scratch ||| v <<< 32
@@ -75,7 +75,11 @@ defmodule Example.Render do
 
     v = value_team
     scratch = scratch ||| v <<< 40
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+        sc2::little-size(4)-unit(8), scratch::little-size(5)-unit(8)>>
+
     scratch = scratch >>> 40
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
@@ -165,7 +169,7 @@ defmodule Example.Render do
     v = value_worker_index &&& 0xFFFFFFFF
     scratch = v
     v = value_sprite_count_hint &&& 0xFFFFFFFF
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    sc0 = scratch
     scratch = v
     n = length(value_sprites)
 
@@ -175,7 +179,7 @@ defmodule Example.Render do
 
     v = n
     scratch = scratch ||| v <<< 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    data = <<data::binary, sc0::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
     scratch = scratch >>> 32
     scratch_bits = 7
 
@@ -253,23 +257,23 @@ defmodule Example.Render do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e_sort_key >>> 32 &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc0 = scratch
+    fl0 = scratch_bits >>> 3
+    scratch = scratch >>> (fl0 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e_mesh_id &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc1 = scratch
+    fl1 = scratch_bits >>> 3
+    scratch = scratch >>> (fl1 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
     v = e_material_id &&& 0xFFFFFFFF
-    flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
-    scratch = scratch >>> (flush <<< 3)
+    sc2 = scratch
+    fl2 = scratch_bits >>> 3
+    scratch = scratch >>> (fl2 <<< 3)
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -289,7 +293,11 @@ defmodule Example.Render do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
-    data = <<data::binary, scratch::little-size(flush)-unit(8)>>
+
+    data =
+      <<data::binary, sc0::little-size(fl0)-unit(8), sc1::little-size(fl1)-unit(8),
+        sc2::little-size(fl2)-unit(8), scratch::little-size(flush)-unit(8)>>
+
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
     w_render_block_sprites(rest, data, scratch, scratch_bits)
