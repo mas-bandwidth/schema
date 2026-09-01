@@ -657,11 +657,10 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 		return "double", "0.0"
 	case is128(t):
 		if t.Kind == ir.TFixed {
-			// fixed defaults are whole units scaled by F at generation time;
-			// fixed storage is the raw scaled integer (STANDARD.md, fixed)
+			// ir.Field.DefInt is ALREADY the raw scaled integer for fixed
+			// fields (the C++ golden pins it) — emit it verbatim
 			if f.HasDefault {
-				raw := shiftedRaw(f.DefInt, uint(t.FracBits))
-				return g.pair128Type(t), g.render128(t.Signed, raw)
+				return g.pair128Type(t), g.render128(t.Signed, f.DefInt)
 			}
 			return g.pair128Type(t), g.pair128Type(t) + ".zero"
 		}
@@ -671,8 +670,7 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 		return g.pair128Type(t), g.pair128Type(t) + ".zero"
 	case t.Kind == ir.TFixed:
 		if f.HasDefault {
-			raw := shiftedRaw(f.DefInt, uint(t.FracBits))
-			return "int", dartIntLit(raw)
+			return "int", dartIntLit(f.DefInt)
 		}
 		return "int", "0"
 	case t.Kind == ir.TNamed:
@@ -708,7 +706,9 @@ func (g *gen) pair128Type(t ir.FieldType) string {
 
 // shiftedRaw is a fixed-point whole-unit value scaled to raw storage:
 // v << F, with negative values negated around the shift so the arithmetic is
-// exact (the same derivation the wire bounds use).
+// exact (the same derivation the wire bounds use). For BOUNDS only:
+// ir.Field.IntMin/IntMax are whole units, but ir.Field.DefInt is ALREADY the
+// raw scaled integer — a default through this helper double-scales (#168).
 func shiftedRaw(v *big.Int, fracBits uint) *big.Int {
 	if v.Sign() < 0 {
 		return new(big.Int).Neg(new(big.Int).Lsh(new(big.Int).Neg(v), fracBits))
