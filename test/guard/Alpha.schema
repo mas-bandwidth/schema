@@ -1,0 +1,13 @@
+// Two-unit guard regression, first unit (issue #189 shape): this package and
+// package beta (Beta.schema) both carry string(N) fields, and test/guard/
+// main.cpp includes both generated wire headers into ONE translation unit.
+// The generated string helpers are namespace-local, so their include guards
+// must be per-package — a TU-wide guard strips the helpers from whichever
+// unit is included second and its string wire functions do not compile.
+
+package alpha
+
+type AlphaMessage
+{
+    text string(15)
+}
