@@ -214,3 +214,49 @@ is reported because a measured refusal is a deliverable.
   null**. A 64-bit BigInt is one or two digits and its ops are cheap; only
   the 128-bit domain pays. This is why UNIT 2 is gated at `bits > 64` rather
   than at "fits in 2^53".
+
+## The certification pair
+
+One sitting, `bench/run.sh --only js` (the FULL leg — 1 warmup + 7 measured
+runs per §2.1, not `--quick`), before = a clean worktree at `origin/main`,
+after = this branch head, both against the SAME pristine serialize.js
+checkout so the emitter half is isolated. CSVs in scratch, per the round's
+rules — never `bench/results/`:
+
+- before  `csv/2026-09-02-jsreads-before-arm64-macbook.csv`
+- after   `csv/2026-09-02-jsreads-after-arm64-macbook.csv`
+- paired  `csv/2026-09-02-jsreads-after-paired-arm64-macbook.csv` (this
+  branch AND the serialize.js `bitwriter-single-word` runtime)
+
+**The before leg reproduces the standing ledger row to 0.02%**: round_trip
+max 1,125,162 against `bench/results/2026-09-01-sitting3-arm64-macbook.csv`'s
+1,124,935. corpus_id `6b213fbfa1a03a99` on every leg.
+
+| row | before (max) | after (max) | ratio | + runtime | ratio |
+|---|---|---|---|---|---|
+| `bench_mixed` **round_trip** | 1,125,162 | **1,364,364** | **1.2126x** | 1,364,028 | 1.2123x |
+| `bench_mixed` write | 2,561,630 | 2,591,769 | 1.0118x | 2,566,549 | 1.0019x |
+| `bitpacker` write (family bits) | 6,055 | 6,205 | — | **7,024** | — |
+| `bitpacker` read | 5,717 | 5,725 | 1.0014x | 5,720 | 1.0005x |
+
+**Attribution, stated honestly.** The two halves do not overlap and the pair
+shows it: the generated flat tier imports nothing, so the runtime lever adds
+nothing to `round_trip` (1.2126x alone, 1.2123x paired), and the emitter
+lands nothing on family `bits` (1.0248x, inside noise). The write row moves
+1.2% on the emitter leg and 0.2% paired — this round makes no write claim,
+and both sit at the edge of the write instrument's own ±1.3% null.
+
+**§2.3 refusal on the bitpacker write row.** The before and emitter-only
+after legs printed that row at **47.69% and 49.28% spread — over §2.3's 40%
+INVALID threshold — so no ratio may be taken from them**, and the 1.16x that
+arithmetic would give is not published here. The runtime lever's number
+stands on its own paired instrument instead (1.1832 / 1.2177 / 1.1825 against
+a ±1.1% null, spreads 0.13–1.13%); the paired certification leg's own
+bitpacker write row (7,024 at 0.08% spread) is consistent with it, and the
+invalid legs are named rather than quietly ratioed.
+
+**Against generated C++** on the canonical round_trip blend, at the same
+`corpus_id`: on this sitting's own ledger denominator (`cpp bench_mixed
+round_trip` max 3,579,797 from `2026-09-01-sitting3`), **318.2% → 262.4%**;
+on the LOCKed sitting-2 certification reference (3,512,100, untouched by this
+round), 312.1% → 257.4%. Derived read moved **2.01 → 2.89 M msg/s**.
