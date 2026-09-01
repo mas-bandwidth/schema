@@ -712,6 +712,17 @@ stride clause was added 2026-08-15, with the measurement that demanded it):
 
 ### §2.8 Quick mode — PROPOSED
 
+**The c/cpp statistical tie (owner ruling, 2026-09-01).** The c and cpp legs
+compile the same word-codec shape with the same clang backend at the same
+flags, and across every sitting of the data-driven era their gap has stayed
+inside the pair's own spread (c has printed 97–100% of cpp while frozen code
+moved ±2% and TU layout alone has moved byte-identical code up to 10%). So
+the headline table reports them as a TIE: when c's percentage sits within the
+pair's combined spread of 100%, c prints 100% and a note names the measured
+figure. Display rule only — the CSV always carries the raw rates — and the
+ruling carries its own exit: a sitting that separates the pair beyond the
+combined spread prints the real figure, and that separation is a finding.
+
 `run.sh --quick` is the ITERATION instrument, never the certification
 instrument, and every leg's stderr says so. It exists so a nine-language
 comparison costs minutes, not an evening; nothing it prints publishes.
