@@ -124,7 +124,8 @@ missing from it is a review question rather than an implementation detail.
 order; field NAMES; type kind, width and signedness; declared bounds; array
 kind and bounds; string/bytes capacity; float range, resolution and step
 count; fixed `I` and `F`; specified defaults (both ends must agree on the
-value an untaken branch zeroes toward and a constructor materializes);
+value a constructor materializes — untaken branches read as ZEROS, never
+defaults, per §5);
 branch structure; `const`/`reserved`/`align` items; enum max and storage
 bits; flags wire bits; union variant order, count and payload type
 references (the tag is positional and the payload is the wire — §4.8). The
