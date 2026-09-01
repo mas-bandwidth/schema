@@ -279,7 +279,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 // graphs and layout ids included.
 func TestPointerGenerationDeterministic(t *testing.T) {
 	first := tableHeader(t, pointerSrc)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if again := tableHeader(t, pointerSrc); again != first {
 			t.Fatal("regeneration is not byte-stable across runs")
 		}

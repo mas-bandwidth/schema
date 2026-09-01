@@ -128,17 +128,6 @@ func tableKindWidth(kind int) int {
 	return 0
 }
 
-// sortedKeys returns a set's members in a stable order — generated output and
-// diagnostics must never depend on map iteration.
-func sortedKeys(set map[string]bool) []string {
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 func tablePut(width int) string { return fmt.Sprintf("put%d", width*8) }
 func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
 

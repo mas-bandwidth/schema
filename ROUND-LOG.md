@@ -153,3 +153,13 @@ no rebase debt).
   JSON walk over the descriptors. Sections 6..15 renumbered; every code citation
   updated to match. USAGE gained the pointer, builder/threading and cooked-form
   sections; README gained the pointers bullet.
+
+- UNIT 6 — gates, all local, all green. `gofmt -l` clean; `go vet ./...` clean;
+  `golangci-lint run` clean (one real finding fixed: a helper left unused after
+  the language unit's temporary refusal came out); `modernize` clean (one
+  finding fixed: range-over-int); `make shape-gate` clean (19 ledgered files,
+  no new shape knowledge); `make test` EXIT 0 across all nine backend legs plus
+  the tables leg, with the zero-cost gate running inside it, and ZERO warnings
+  from the generated modules. The clone needed the read-only serialize siblings
+  and the pinned dist toolchains symlinked in to run the full matrix; nothing in
+  ~/rowan-working was written.
