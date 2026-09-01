@@ -36,6 +36,9 @@
 #   --round K     forward --round K to every runner (BENCH-STANDARD.md §2.4:
 #                 one warmup + one measured run per benchmark, per-round rates;
 #                 the interleaved driver aggregates across rounds)
+#   --render FILE print the ruled headline table from an existing results CSV
+#                 and exit — no builds, no timed runs (the same table the
+#                 --quick tail prints, from the same bench/render.awk)
 #   --bare        rows only, no preamble — for the driver's per-round files
 #   --reuse-build reuse existing C/C++ bench binaries instead of recompiling
 #                 (the driver builds once at pass start and reuses per round)
@@ -95,10 +98,29 @@ while [ $# -gt 0 ]; do
         --reuse-build) REUSE=1 ;;
         --inline) INLINE=1 ;;
         --quick) QUICK=1 ;;
+        --render) RENDER="$2"; shift ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
     shift
 done
+# ---- --render FILE: print the ruled headline table from an EXISTING results
+# CSV and exit — no builds, no timed runs. The table logic is the same
+# bench/render.awk the --quick tail uses; the caption reads the machine from
+# the preamble of the file itself, so a rendered table always names the box
+# that produced its rows. ----
+if [ -n "${RENDER:-}" ]; then
+    [ -r "$RENDER" ] || { echo "render: cannot read $RENDER" >&2; exit 1; }
+    R_HOST="$(sed -n 's/^# host: \([^ ]*\).*/\1/p' "$RENDER" | head -1)"
+    R_CPU="$(sed -n 's/^# cpu: \(.*\)/\1/p' "$RENDER" | head -1)"
+    {
+        echo ""
+        echo "rendered from $RENDER"
+        echo "held constant: contract (BENCH-STANDARD §2.9 — bench_mixed, family gen round_trip over max rates), corpus (id per CSV row), machine (${R_HOST:-unknown}, ${R_CPU:-unknown}), one sitting"
+        awk -F, -v skips="" -f bench/render.awk "$RENDER"
+    } >&2
+    exit $?
+fi
+
 RUNNER_ARGS="--csv"
 if [ -n "$ROUND" ]; then
     RUNNER_ARGS="--csv --round $ROUND"
@@ -567,89 +589,7 @@ if [ "$QUICK" = 1 ]; then
         # constant — the profiling doctrine's apples-to-apples rule
         echo "held constant: contract (BENCH-STANDARD §2.8 quick + §2.9 — bench_mixed, family gen round_trip over max rates), corpus (id per CSV row), machine ($HOST, $CPU), one sitting; the read-side sink deviations §2.7 named are gone — the round-trip observes its own decode (#191)"
         echo "NOT equalized: checks mode — recorded per row in the CSV; a cross-language checks ruling is deferred to the owner (#175)"
-        awk -F, -v skips="$SKIP_NOTES" '
-            # js emits two gen tiers; the flat tier is THE js path (codec
-            # column, $18), so codec=runtime rows never enter the table
-            $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "round_trip" { gt[$1] = 1e9 / $9; gs[$1] = $11 }
-            # ts[] is per-language time per message in ns; cpp is the
-            # denominator, so cpp prints 100% and a faster language prints
-            # below it.
-            # §2.3 spread policy, enforced without adding a column (the owner
-            # ruled the table to exactly two): a row over the INVALID
-            # threshold prints no number at all, and every noisy row is named
-            # in a note BELOW the table. spread_pct rides in the CSV as always.
-            function render(ts, sp, absent,    i, j, n, tt, tl, langs, m, sk, parts, ref, notes) {
-                i = 0
-                for (lang in ts) { i++; langs[i] = lang }
-                n = i
-                for (i = 1; i <= n; i++)
-                    for (j = i + 1; j <= n; j++)
-                        if (ts[langs[j]] < ts[langs[i]]) {
-                            tl = langs[i]; langs[i] = langs[j]; langs[j] = tl
-                        }
-                ref = ("cpp" in ts) ? ts["cpp"] : 0
-                if (n == 0 && !absent) {
-                    print "  (no rows in this run)"
-                    return 0
-                }
-                printf "  %-10s %6s\n", "language", "%"
-                notes = ""
-                for (i = 1; i <= n; i++) {
-                    lang = langs[i]
-                    if (sp[lang] > 40.0) {
-                        printf "  %-10s %6s\n", lang, "—"
-                        notes = notes sprintf("  §2.3 INVALID: %s spread %.1f%% > 40%% — the row does not publish as a number\n", lang, sp[lang])
-                    } else if (ref > 0) {
-                        # The c/cpp statistical tie (owner ruling 2026-09-01, §2.8):
-                        # the two legs are the same clang word codec, and their gap
-                        # has never left the pair's own spread — so when c sits
-                        # inside the pair's combined spread of cpp, both print 100%.
-                        # Display rule only: the CSV always carries the raw rates,
-                        # and a future sitting that separates them beyond the noise
-                        # prints the real figure, which is the ruling's own exit.
-                        pct = ts[lang] / ref * 100.0
-                        # tie threshold: the pair's combined within-sitting
-                        # spread, floored at 3.0 points — the measured
-                        # cross-sitting noise floor for this pair (c has
-                        # printed 97-100% across the era's sittings on
-                        # byte-frozen code; §2.8's tie paragraph carries the
-                        # derivation and the exit).
-                        tieband = sp["c"] + sp["cpp"]; if (tieband < 3.0) tieband = 3.0
-                        if (lang == "c" && ("cpp" in sp) && (pct - 100.0 <= tieband) && (100.0 - pct <= tieband)) {
-                            printf "  %-10s %5.0f%%\n", lang, 100.0
-                            notes = notes sprintf("  §2.8 TIE: c measured %.1f%% of cpp, inside the tie band (%.1f points) — reported as a statistical tie at 100%%\n", pct, tieband)
-                        } else {
-                            printf "  %-10s %5.0f%%\n", lang, pct
-                        }
-                        if (sp[lang] > 15.0)
-                            notes = notes sprintf("  §2.3 NOISY: %s spread %.1f%% > 15%% — judge this row against the noise, not the digit\n", lang, sp[lang])
-                    } else {
-                        printf "  %-10s %6s\n", lang, "—"
-                    }
-                }
-                if (ref <= 0 && n > 0)
-                    print "  (no cpp row in this run: cpp is the 100% DENOMINATOR, so no percentage is defined — CSV carries the rates)"
-                if (notes != "")
-                    printf "%s", notes
-                # loud skips (#175): a missing leg is an ABSENT row with its
-                # reason, never a silently narrower table
-                if (absent) {
-                    m = split(skips, sk, ";")
-                    for (i = 1; i <= m; i++) {
-                        if (sk[i] == "") continue
-                        split(sk[i], parts, "|")
-                        printf "  %-10s %6s   ABSENT — %s\n", parts[1], "—", parts[2]
-                    }
-                }
-                return n
-            }
-            END {
-                print "subject: schema-GENERATED code (family gen) — what the compiler delivers; C++ = 100%"
-                if (render(gt, gs, 1) == 0) {
-                    print "REFUSED (#175/§2.9): the gen headline section has ZERO rows — no leg reported a bench_mixed family-gen round_trip row. Nothing was measured; printing an empty table at exit 0 is the defect this refusal exists to stop." > "/dev/stderr"
-                    exit 3
-                }
-            }' "$OUT" || QUICK_STATUS=$?
+        awk -F, -v skips="$SKIP_NOTES" -f bench/render.awk "$OUT" || QUICK_STATUS=$?
     } >&2
     if [ "${QUICK_STATUS:-0}" -ne 0 ]; then
         echo "results: $OUT (headline REFUSED)" >&2
