@@ -312,10 +312,10 @@ func (g *fgen) mergeW(bits int64, ind string) {
 
 // readR reads bits (in [1,32]) into v, from the open read window when the
 // field still fits inside its 32 valid bits and from a fresh window when it
-// does not. A field at relative offset r > 0 costs one shift and one mask
-// where it used to cost two loads, a shift-or and a mask; r > 0 implies
-// bits <= 31, so the mask is at most 0x7fffffff and the extraction stays
-// non-negative without a further `>>> 0`.
+// does not. A field at relative offset r > 0 costs one shift and one mask;
+// only a field that opens a window pays the two loads and the shift-or.
+// r > 0 implies bits <= 31, so the mask is at most 0x7fffffff and the
+// extraction stays non-negative without a further `>>> 0`.
 func (g *fgen) readR(bits int64, ind string) {
 	rel := g.readWin(bits, ind)
 	switch {
