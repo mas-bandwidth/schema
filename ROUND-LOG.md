@@ -96,3 +96,17 @@ reads the round's state from this file plus the branch commits alone.
   {:nonfinite, bits} write form makes every float segment conditional, which
   breaks the one-construction-per-barrier shape lever M bought; revisit only
   if a nonfinite-free declaration class ever exists.
+- CERTIFICATION PAIR (quick legs, one sitting, --out scratch; §2.9 statistic
+  is round_trip over MAX rates): before (clean worktree at origin/main
+  b63c22e): write 427700 max / 426651 median, rt 253090 max / 242109 median
+  (warm sitting — spreads 2.3/4.7%). after (branch head): write 449568 max /
+  449244 median, rt 275088 max / 274908 median (spreads 0.1%). In-sitting:
+  write 1.051x, rt 1.087x on max (medians 1.053x / 1.135x — the before rt
+  max is a single cool-run outlier). Against the standing sitting3 ledger
+  point (rt max 262385, cpp rt max 3579797, = 1364%): after rt max 275088
+  puts elixir at ~1301% of generated C++ — cross-sitting projection, a full
+  sitting re-certifies. CSVs: scratchpad/prof/cert-before-quick.csv,
+  cert-after-quick.csv (session scratch, never bench/results/).
+- GATES: make test green (nine legs), shape-gate clean (19 exemptions, all
+  on ledger), generated-current green (tree clean post-test), mix format
+  clean, gofmt/vet/modernize clean.
