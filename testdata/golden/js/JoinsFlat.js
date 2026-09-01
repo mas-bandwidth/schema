@@ -20,197 +20,97 @@ export const FLAT_READ_SLACK = 8;
 // ---- type ArmsAgree: the flat codec ----
 
 function writeArmsAgreeFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    v = (value.A & 0x7ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 11;
-    if (sb >= 64) {
+    v = ((value.A & 0x7ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 11;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   } else {
-    v = (value.B & 0x7ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 11;
-    if (sb >= 64) {
+    v = ((value.B & 0x7ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 11;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeArmsAgreeFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    v = (value.A & 0x7ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 11;
-    if (sb >= 64) {
+    v = ((value.A & 0x7ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 11;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   } else {
-    v = (value.B & 0x7ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 11;
-    if (sb >= 64) {
+    v = ((value.B & 0x7ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 11;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -278,197 +178,97 @@ export function ReadArmsAgreeFlat(value, view, numBits) {
 // ---- type ArmsDisagree: the flat codec ----
 
 function writeArmsDisagreeFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    v = (value.A & 0x7ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 11;
-    if (sb >= 64) {
+    v = ((value.A & 0x7ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 11;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   } else {
-    v = (value.B & 0x7) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 3;
-    if (sb >= 64) {
+    v = ((value.B & 0x7)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 3;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeArmsDisagreeFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    v = (value.A & 0x7ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 11;
-    if (sb >= 64) {
+    v = ((value.A & 0x7ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 11;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   } else {
-    v = (value.B & 0x7) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 3;
-    if (sb >= 64) {
+    v = ((value.B & 0x7)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 3;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -545,161 +345,77 @@ export function ReadArmsDisagreeFlat(value, view, numBits) {
 // ---- type ArmEmpty: the flat codec ----
 
 function writeArmEmptyFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    v = (value.A & 0x7ffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 19;
-    if (sb >= 64) {
+    v = ((value.A & 0x7ffff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 19;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (19 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeArmEmptyFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    v = (value.A & 0x7ffff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 19;
-    if (sb >= 64) {
+    v = ((value.A & 0x7ffff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 19;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (19 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -764,271 +480,139 @@ export function ReadArmEmptyFlat(value, view, numBits) {
 // ---- type ArmsNested: the flat codec ----
 
 function writeArmsNestedFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x7) | ((value.Outer ? 1 : 0) << 3)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 4;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Outer ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
   if (value.Outer) {
-    v = value.Inner ? 1 : 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 1;
-    if (sb >= 64) {
+    v = ((value.Inner ? 1 : 0)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 1;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
     if (value.Inner) {
-      v = (value.X & 0x1fffffff) >>> 0;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 29;
-      if (sb >= 64) {
+      v = ((value.X & 0x1fffffff)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 29;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (29 - sb);
       }
     } else {
-      v = (value.Y & 0x1f) >>> 0;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 5;
-      if (sb >= 64) {
+      v = ((value.Y & 0x1f)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 5;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (5 - sb);
       }
     }
   } else {
-    v = (value.Z & 0x1fff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 13;
-    if (sb >= 64) {
+    v = ((value.Z & 0x1fff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 13;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
-  v = (value.Tail & 0x3f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 6;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x3f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeArmsNestedFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x7) | ((value.Outer ? 1 : 0) << 3)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 4;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Outer ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
   if (value.Outer) {
-    v = value.Inner ? 1 : 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 1;
-    if (sb >= 64) {
+    v = ((value.Inner ? 1 : 0)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 1;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
     if (value.Inner) {
-      v = (value.X & 0x1fffffff) >>> 0;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 29;
-      if (sb >= 64) {
+      v = ((value.X & 0x1fffffff)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 29;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (29 - sb);
       }
     } else {
-      v = (value.Y & 0x1f) >>> 0;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 5;
-      if (sb >= 64) {
+      v = ((value.Y & 0x1f)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 5;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (5 - sb);
       }
     }
   } else {
-    v = (value.Z & 0x1fff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 13;
-    if (sb >= 64) {
+    v = ((value.Z & 0x1fff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 13;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
-  v = (value.Tail & 0x3f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 6;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x3f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -1134,262 +718,164 @@ export function ReadArmsNestedFlat(value, view, numBits) {
 // ---- type ArmAlign: the flat codec ----
 
 function writeArmAlignFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    v = ((value.SLength) & 0x7) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 3;
-    if (sb >= 64) {
+    v = (((value.SLength) & 0x7)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 3;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
-    s = sb & 7;
-    if (s !== 0) {
-      sb += 8 - s;
-      if (sb >= 64) {
-        view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = 0;
-        hi = 0;
-        sb -= 64;
-      }
+    sb = (sb + 7) & -8;
+    if (sb === 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      lo = 0;
+      sb = 0;
     }
-    for (let i0 = 0; i0 < value.SLength; i0++) {
-      v = value.S[i0];
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
+    {
+      let i0 = 0;
+      for (; i0 + 4 <= value.SLength; i0 += 4) {
+        v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
       }
-      sb = s + 8;
-      if (sb >= 64) {
-        view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+      for (; i0 < value.SLength; i0++) {
+        v = value.S[i0];
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 8;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (8 - sb);
+        }
       }
     }
   } else {
-    v = (value.B & 0x3ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 10;
-    if (sb >= 64) {
+    v = ((value.B & 0x3ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 10;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (10 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeArmAlignFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
     if (!Number.isInteger(value.SLength) || value.SLength < 0 || value.SLength > 4) { // the length guards the slice; out-of-contract writes are refused
       return -1;
     }
-    v = ((value.SLength) & 0x7) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 3;
-    if (sb >= 64) {
+    v = (((value.SLength) & 0x7)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 3;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
-    s = sb & 7;
-    if (s !== 0) {
-      sb += 8 - s;
-      if (sb >= 64) {
-        view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = 0;
-        hi = 0;
-        sb -= 64;
-      }
+    sb = (sb + 7) & -8;
+    if (sb === 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      lo = 0;
+      sb = 0;
     }
-    for (let i0 = 0; i0 < value.SLength; i0++) {
-      v = value.S[i0];
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
+    {
+      let i0 = 0;
+      for (; i0 + 4 <= value.SLength; i0 += 4) {
+        v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
       }
-      sb = s + 8;
-      if (sb >= 64) {
-        view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+      for (; i0 < value.SLength; i0++) {
+        v = value.S[i0];
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 8;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (8 - sb);
+        }
       }
     }
   } else {
-    v = (value.B & 0x3ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 10;
-    if (sb >= 64) {
+    v = ((value.B & 0x3ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 10;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (10 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -1493,241 +979,125 @@ export function ReadArmAlignFlat(value, view, numBits) {
 // ---- type ArmArray: the flat codec ----
 
 function writeArmArrayFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
-    v = ((value.ItemsCount) & 0x3) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 2;
-    if (sb >= 64) {
+    v = (((value.ItemsCount) & 0x3)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
     for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-      v = ((value.Items[i0]) & 0x1fff) >>> 0;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 13;
-      if (sb >= 64) {
+      v = (((value.Items[i0]) & 0x1fff)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 13;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (13 - sb);
       }
     }
   } else {
-    v = (value.B & 0x1ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 9;
-    if (sb >= 64) {
+    v = ((value.B & 0x1ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 9;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (9 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeArmArrayFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.Flag ? 1 : 0) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 6;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = value.Flag ? 1 : 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 1;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
   if (value.Flag) {
     if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
       return -1;
     }
-    v = ((value.ItemsCount) & 0x3) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 2;
-    if (sb >= 64) {
+    v = (((value.ItemsCount) & 0x3)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
     for (let i0 = 0; i0 < value.ItemsCount; i0++) {
       if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 8191) {
         return -1;
       }
-      v = ((value.Items[i0]) & 0x1fff) >>> 0;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 13;
-      if (sb >= 64) {
+      v = (((value.Items[i0]) & 0x1fff)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 13;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (13 - sb);
       }
     }
   } else {
-    v = (value.B & 0x1ff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 9;
-    if (sb >= 64) {
+    v = ((value.B & 0x1ff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 9;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (9 - sb);
     }
   }
-  v = (value.Tail & 0x7f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 7;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -1818,55 +1188,37 @@ export function ReadArmArrayFlat(value, view, numBits) {
 // ---- type Narrow: the flat codec ----
 
 function writeNarrowFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.N & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.N & 0x7)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeNarrowFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.N & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.N & 0x7)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -1897,93 +1249,57 @@ export function ReadNarrowFlat(value, view, numBits) {
 // ---- type Wide: the flat codec ----
 
 function writeWideFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(37, value.W), true);
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  SC.setBigUint64(0, value.W, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true) & 0x1f;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeWideFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, BigInt.asUintN(37, value.W), true);
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  SC.setBigUint64(0, value.W, true);
   v = SC.getUint32(0, true);
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
   v = SC.getUint32(4, true) & 0x1f;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 5;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -2025,248 +1341,130 @@ export function ReadWideFlat(value, view, numBits) {
 // ---- type HoldsUneven: the flat codec ----
 
 function writeHoldsUnevenFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | ((value.U.Type & 0x3) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = (value.U.Type & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   switch (value.U.Type) {
     case 1: {
-      v = (value.U.Narrow.N & 0x7) >>> 0;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 3;
-      if (sb >= 64) {
+      v = ((value.U.Narrow.N & 0x7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 3;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (3 - sb);
       }
       break;
     }
     case 2: {
-      SC.setBigUint64(0, BigInt.asUintN(37, value.U.Wide.W), true);
+      SC.setBigUint64(0, value.U.Wide.W, true);
       v = SC.getUint32(0, true);
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 32;
-      if (sb >= 64) {
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
       v = SC.getUint32(4, true) & 0x1f;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 5;
-      if (sb >= 64) {
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 5;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (5 - sb);
       }
       break;
     }
   }
-  v = (value.Tail & 0x7ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7ff)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeHoldsUnevenFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.U.Type) || value.U.Type < 0 || value.U.Type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
-  v = (value.U.Type & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
+  v = ((value.Lead & 0x1f) | ((value.U.Type & 0x3) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   switch (value.U.Type) {
     case 1: {
-      v = (value.U.Narrow.N & 0x7) >>> 0;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 3;
-      if (sb >= 64) {
+      v = ((value.U.Narrow.N & 0x7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 3;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (3 - sb);
       }
       break;
     }
     case 2: {
-      SC.setBigUint64(0, BigInt.asUintN(37, value.U.Wide.W), true);
+      SC.setBigUint64(0, value.U.Wide.W, true);
       v = SC.getUint32(0, true);
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 32;
-      if (sb >= 64) {
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
       v = SC.getUint32(4, true) & 0x1f;
-      s = sb;
-      if (s < 32) {
-        lo = (lo | (v << s)) >>> 0;
-        if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-      } else {
-        hi = (hi | (v << (s - 32))) >>> 0;
-      }
-      sb = s + 5;
-      if (sb >= 64) {
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 5;
+      if (sb >= 32) {
         view.setUint32(wi, lo, true);
-        view.setUint32(wi + 4, hi, true);
-        wi += 8;
-        lo = s === 32 ? 0 : v >>> (64 - s);
-        hi = 0;
-        sb -= 64;
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (5 - sb);
       }
       break;
     }
   }
-  v = (value.Tail & 0x7ff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 11;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7ff)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 11;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -2365,291 +1563,157 @@ export function ReadHoldsUnevenFlat(value, view, numBits) {
 // ---- type ArrUneven: the flat codec ----
 
 function writeArrUnevenFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x3) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = ((value.ItemsCount) & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
     const e0 = value.Items[i0];
-    v = (e0.Type & 0x3) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 2;
-    if (sb >= 64) {
+    v = ((e0.Type & 0x3)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
     switch (e0.Type) {
       case 1: {
-        v = (e0.Narrow.N & 0x7) >>> 0;
-        s = sb;
-        if (s < 32) {
-          lo = (lo | (v << s)) >>> 0;
-          if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-        } else {
-          hi = (hi | (v << (s - 32))) >>> 0;
-        }
-        sb = s + 3;
-        if (sb >= 64) {
+        v = ((e0.Narrow.N & 0x7)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 3;
+        if (sb >= 32) {
           view.setUint32(wi, lo, true);
-          view.setUint32(wi + 4, hi, true);
-          wi += 8;
-          lo = s === 32 ? 0 : v >>> (64 - s);
-          hi = 0;
-          sb -= 64;
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (3 - sb);
         }
         break;
       }
       case 2: {
-        SC.setBigUint64(0, BigInt.asUintN(37, e0.Wide.W), true);
+        SC.setBigUint64(0, e0.Wide.W, true);
         v = SC.getUint32(0, true);
-        s = sb;
-        if (s < 32) {
-          lo = (lo | (v << s)) >>> 0;
-          if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-        } else {
-          hi = (hi | (v << (s - 32))) >>> 0;
-        }
-        sb = s + 32;
-        if (sb >= 64) {
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
           view.setUint32(wi, lo, true);
-          view.setUint32(wi + 4, hi, true);
-          wi += 8;
-          lo = s === 32 ? 0 : v >>> (64 - s);
-          hi = 0;
-          sb -= 64;
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
         }
         v = SC.getUint32(4, true) & 0x1f;
-        s = sb;
-        if (s < 32) {
-          lo = (lo | (v << s)) >>> 0;
-          if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-        } else {
-          hi = (hi | (v << (s - 32))) >>> 0;
-        }
-        sb = s + 5;
-        if (sb >= 64) {
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 5;
+        if (sb >= 32) {
           view.setUint32(wi, lo, true);
-          view.setUint32(wi + 4, hi, true);
-          wi += 8;
-          lo = s === 32 ? 0 : v >>> (64 - s);
-          hi = 0;
-          sb -= 64;
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (5 - sb);
         }
         break;
       }
     }
   }
-  v = (value.Tail & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeArrUnevenFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let bg = 0n;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
+  v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x3) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
     const e0 = value.Items[i0];
     if (!Number.isInteger(e0.Type) || e0.Type < 0 || e0.Type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
       return -1;
     }
-    v = (e0.Type & 0x3) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 2;
-    if (sb >= 64) {
+    v = ((e0.Type & 0x3)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
     }
     switch (e0.Type) {
       case 1: {
-        v = (e0.Narrow.N & 0x7) >>> 0;
-        s = sb;
-        if (s < 32) {
-          lo = (lo | (v << s)) >>> 0;
-          if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-        } else {
-          hi = (hi | (v << (s - 32))) >>> 0;
-        }
-        sb = s + 3;
-        if (sb >= 64) {
+        v = ((e0.Narrow.N & 0x7)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 3;
+        if (sb >= 32) {
           view.setUint32(wi, lo, true);
-          view.setUint32(wi + 4, hi, true);
-          wi += 8;
-          lo = s === 32 ? 0 : v >>> (64 - s);
-          hi = 0;
-          sb -= 64;
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (3 - sb);
         }
         break;
       }
       case 2: {
-        SC.setBigUint64(0, BigInt.asUintN(37, e0.Wide.W), true);
+        SC.setBigUint64(0, e0.Wide.W, true);
         v = SC.getUint32(0, true);
-        s = sb;
-        if (s < 32) {
-          lo = (lo | (v << s)) >>> 0;
-          if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-        } else {
-          hi = (hi | (v << (s - 32))) >>> 0;
-        }
-        sb = s + 32;
-        if (sb >= 64) {
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
           view.setUint32(wi, lo, true);
-          view.setUint32(wi + 4, hi, true);
-          wi += 8;
-          lo = s === 32 ? 0 : v >>> (64 - s);
-          hi = 0;
-          sb -= 64;
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
         }
         v = SC.getUint32(4, true) & 0x1f;
-        s = sb;
-        if (s < 32) {
-          lo = (lo | (v << s)) >>> 0;
-          if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-        } else {
-          hi = (hi | (v << (s - 32))) >>> 0;
-        }
-        sb = s + 5;
-        if (sb >= 64) {
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 5;
+        if (sb >= 32) {
           view.setUint32(wi, lo, true);
-          view.setUint32(wi + 4, hi, true);
-          wi += 8;
-          lo = s === 32 ? 0 : v >>> (64 - s);
-          hi = 0;
-          sb -= 64;
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (5 - sb);
         }
         break;
       }
     }
   }
-  v = (value.Tail & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  v = ((value.Tail & 0x7)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
@@ -2762,368 +1826,204 @@ export function ReadArrUnevenFlat(value, view, numBits) {
 // ---- type RegainAfterAlign: the flat codec ----
 
 function writeRegainAfterAlignFlatProduction(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
+  v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x3) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = ((value.ItemsCount) & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = ((value.Items[i0]) & 0x1fff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 13;
-    if (sb >= 64) {
+    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 13;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
-  v = ((value.SLength) & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  v = (((value.SLength) & 0x7)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
-  s = sb & 7;
-  if (s !== 0) {
-    sb += 8 - s;
-    if (sb >= 64) {
-      view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = 0;
-      hi = 0;
-      sb -= 64;
+  sb = (sb + 7) & -8;
+  if (sb === 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    lo = 0;
+    sb = 0;
+  }
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.SLength; i0 += 4) {
+      v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.SLength; i0++) {
+      v = value.S[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
-  for (let i0 = 0; i0 < value.SLength; i0++) {
-    v = value.S[i0];
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 8;
-    if (sb >= 64) {
-      view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
-    }
-  }
-  v = value.P >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  v = ((value.P >>> 0)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.Q & 0x1fffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 29;
-  if (sb >= 64) {
+  v = ((value.Q & 0x1fffffff)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 29;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
-  v = (value.R & 0x7ffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 19;
-  if (sb >= 64) {
+  v = ((value.R & 0x7ffff) | ((value.Tail & 0xf) << 19)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 23;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = (value.Tail & 0xf) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 4;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
 function writeRegainAfterAlignFlatChecked(value, view) {
-  let v = 0, s = 0;
-  let lo = 0, hi = 0, sb = 0, wi = 0;
-  v = (value.Lead & 0x1f) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 5;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
+  let v = 0;
+  let lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.ItemsCount) & 0x3) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 2;
-  if (sb >= 64) {
+  v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x3) << 5)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
   for (let i0 = 0; i0 < value.ItemsCount; i0++) {
     if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 8191) {
       return -1;
     }
-    v = ((value.Items[i0]) & 0x1fff) >>> 0;
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 13;
-    if (sb >= 64) {
+    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 13;
+    if (sb >= 32) {
       view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
   if (!Number.isInteger(value.SLength) || value.SLength < 0 || value.SLength > 4) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.SLength) & 0x7) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 3;
-  if (sb >= 64) {
+  v = (((value.SLength) & 0x7)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 3;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
-  s = sb & 7;
-  if (s !== 0) {
-    sb += 8 - s;
-    if (sb >= 64) {
-      view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = 0;
-      hi = 0;
-      sb -= 64;
+  sb = (sb + 7) & -8;
+  if (sb === 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    lo = 0;
+    sb = 0;
+  }
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.SLength; i0 += 4) {
+      v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.SLength; i0++) {
+      v = value.S[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
-  for (let i0 = 0; i0 < value.SLength; i0++) {
-    v = value.S[i0];
-    s = sb;
-    if (s < 32) {
-      lo = (lo | (v << s)) >>> 0;
-      if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-    } else {
-      hi = (hi | (v << (s - 32))) >>> 0;
-    }
-    sb = s + 8;
-    if (sb >= 64) {
-      view.setUint32(wi, lo, true);
-      view.setUint32(wi + 4, hi, true);
-      wi += 8;
-      lo = s === 32 ? 0 : v >>> (64 - s);
-      hi = 0;
-      sb -= 64;
-    }
-  }
-  v = value.P >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 32;
-  if (sb >= 64) {
+  v = ((value.P >>> 0)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 32;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (value.Q & 0x1fffffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 29;
-  if (sb >= 64) {
+  v = ((value.Q & 0x1fffffff)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 29;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
-  v = (value.R & 0x7ffff) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 19;
-  if (sb >= 64) {
+  v = ((value.R & 0x7ffff) | ((value.Tail & 0xf) << 19)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 23;
+  if (sb >= 32) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
-  }
-  v = (value.Tail & 0xf) >>> 0;
-  s = sb;
-  if (s < 32) {
-    lo = (lo | (v << s)) >>> 0;
-    if (s > 0) { hi = (hi | (v >>> (32 - s))) >>> 0; }
-  } else {
-    hi = (hi | (v << (s - 32))) >>> 0;
-  }
-  sb = s + 4;
-  if (sb >= 64) {
-    view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
-    wi += 8;
-    lo = s === 32 ? 0 : v >>> (64 - s);
-    hi = 0;
-    sb -= 64;
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
-    view.setUint32(wi + 4, hi, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
