@@ -17,3 +17,28 @@ reads the round's state from this file plus the branch commits alone.
   3.7%, binary:match 1.2%. The profile names: (1) stats read clause, (2) float
   pipeline (fr/cf_quantize), (3) reverse elimination, (4) write barrier appends.
   rd/rdw are compiler-inlined (absent from traces) — their cost rides the callers.
+- HARNESS-VS-CODEC SPLIT (owner question, eprof by module): nothing was
+  filtered from the profile summaries — the only non-codec entries eprof
+  recorded inside the timed region are the driver loop frames themselves:
+  write 1.58% (Prof.write_loop, the elem/&&&/byte_size/acc frame mirroring
+  the runner's dd_write_loop), rt 1.03% (Prof.rt_loop); erlang:apply +
+  compiler shims 0.00%. Everything else, including binary:decode_unsigned
+  (rd/rdw tail fallback), binary:match (the reader's player_name NUL check,
+  Bench.ex:2339), and lists:reverse/Enum.reverse (element-loop terminals), is
+  the generated codec + emitted helpers: codec share 98.4% of write, 99.0% of
+  rt. The certification runner's golden gates run OUTSIDE its timed region and
+  its per-run sink is one Process.put per run, not per iteration. Harness is
+  immaterial (<2% both paths, well under the 5% bar) — no harness-parity
+  exclusion applies; lever math stands on codec time alone.
+- INSTRUMENT FINDING: a paired run that measures write then rt in ONE VM
+  poisons the rt comparison (heap state from the write loop; rt read 4500-4800
+  ns/msg vs 3826 clean, matching certification's 262k msg/s). Lever decisions
+  now use single-path pair runs. Between-invocation write deltas can flip sign
+  (+4.8/-3.4%) — decisions use repeated invocations + max statistic.
+- LEVER fr (2e71846, inherited from dead worker): KEEP. Micros: cf_decode
+  89.2->62.3 ns (1.43x), cf_quantize 108.9->83.4 (1.31x). Paired full bench:
+  write faster in 6/7 invocations (best-vs-best 2222 vs 2329 ns, 1.048x;
+  range 1.01-1.07x), rt 1.0002x (neutral), read-only 1.003x (neutral); GC words
+  reclaimed on the write loop -40% (167M vs 284M, deterministic) — the JIT
+  keeps the Veltkamp/Dekker temporaries unboxed, so the arithmetic path
+  allocates one float where construct/match allocated a binary plus a float.
