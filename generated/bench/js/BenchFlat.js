@@ -1859,15 +1859,29 @@ function writeBenchMixedFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.PlayerNameLength; i0++) {
-    v = value.PlayerName[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.PlayerNameLength; i0 += 4) {
+      v = (value.PlayerName[i0] | (value.PlayerName[i0 + 1] << 8) | (value.PlayerName[i0 + 2] << 16) | (value.PlayerName[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.PlayerNameLength; i0++) {
+      v = value.PlayerName[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   v = (((value.PayloadLength) & 0x1f)) >>> 0;
@@ -1886,15 +1900,29 @@ function writeBenchMixedFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.PayloadLength; i0++) {
-    v = value.Payload[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.PayloadLength; i0 += 4) {
+      v = (value.Payload[i0] | (value.Payload[i0 + 1] << 8) | (value.Payload[i0 + 2] << 16) | (value.Payload[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.PayloadLength; i0++) {
+      v = value.Payload[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   x = Math.fround(value.AimX);
@@ -2452,15 +2480,29 @@ function writeBenchMixedFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.PlayerNameLength; i0++) {
-    v = value.PlayerName[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.PlayerNameLength; i0 += 4) {
+      v = (value.PlayerName[i0] | (value.PlayerName[i0 + 1] << 8) | (value.PlayerName[i0 + 2] << 16) | (value.PlayerName[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.PlayerNameLength; i0++) {
+      v = value.PlayerName[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   if (!Number.isInteger(value.PayloadLength) || value.PayloadLength < 0 || value.PayloadLength > 16) { // the length guards the slice; out-of-contract writes are refused
@@ -2482,15 +2524,29 @@ function writeBenchMixedFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.PayloadLength; i0++) {
-    v = value.Payload[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.PayloadLength; i0 += 4) {
+      v = (value.Payload[i0] | (value.Payload[i0 + 1] << 8) | (value.Payload[i0 + 2] << 16) | (value.Payload[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.PayloadLength; i0++) {
+      v = value.Payload[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   x = Math.fround(value.AimX);

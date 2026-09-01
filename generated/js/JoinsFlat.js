@@ -746,15 +746,29 @@ function writeArmAlignFlatProduction(value, view) {
       lo = 0;
       sb = 0;
     }
-    for (let i0 = 0; i0 < value.SLength; i0++) {
-      v = value.S[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
+    {
+      let i0 = 0;
+      for (; i0 + 4 <= value.SLength; i0 += 4) {
+        v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+      }
+      for (; i0 < value.SLength; i0++) {
+        v = value.S[i0];
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 8;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (8 - sb);
+        }
       }
     }
   } else {
@@ -815,15 +829,29 @@ function writeArmAlignFlatChecked(value, view) {
       lo = 0;
       sb = 0;
     }
-    for (let i0 = 0; i0 < value.SLength; i0++) {
-      v = value.S[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
+    {
+      let i0 = 0;
+      for (; i0 + 4 <= value.SLength; i0 += 4) {
+        v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+      }
+      for (; i0 < value.SLength; i0++) {
+        v = value.S[i0];
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 8;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (8 - sb);
+        }
       }
     }
   } else {
@@ -1836,15 +1864,29 @@ function writeRegainAfterAlignFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.SLength; i0++) {
-    v = value.S[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.SLength; i0 += 4) {
+      v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.SLength; i0++) {
+      v = value.S[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   v = ((value.P >>> 0)) >>> 0;
@@ -1928,15 +1970,29 @@ function writeRegainAfterAlignFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.SLength; i0++) {
-    v = value.S[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.SLength; i0 += 4) {
+      v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.SLength; i0++) {
+      v = value.S[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   v = ((value.P >>> 0)) >>> 0;

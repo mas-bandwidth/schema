@@ -2133,15 +2133,29 @@ function writeBlockFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.DataLength; i0++) {
-    v = value.Data[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.DataLength; i0 += 4) {
+      v = (value.Data[i0] | (value.Data[i0 + 1] << 8) | (value.Data[i0 + 2] << 16) | (value.Data[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.DataLength; i0++) {
+      v = value.Data[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   if (sb !== 0) {
@@ -2172,15 +2186,29 @@ function writeBlockFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.DataLength; i0++) {
-    v = value.Data[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.DataLength; i0 += 4) {
+      v = (value.Data[i0] | (value.Data[i0 + 1] << 8) | (value.Data[i0 + 2] << 16) | (value.Data[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.DataLength; i0++) {
+      v = value.Data[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   if (sb !== 0) {
@@ -2254,15 +2282,29 @@ function writeChatFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    v = value.Text[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.TextLength; i0 += 4) {
+      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.TextLength; i0++) {
+      v = value.Text[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   if (sb !== 0) {
@@ -2293,15 +2335,29 @@ function writeChatFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    v = value.Text[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.TextLength; i0 += 4) {
+      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.TextLength; i0++) {
+      v = value.Text[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   if (sb !== 0) {
@@ -2848,15 +2904,29 @@ function writeTestDataFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    v = value.Text[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.TextLength; i0 += 4) {
+      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.TextLength; i0++) {
+      v = value.Text[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   if (sb !== 0) {
@@ -3091,15 +3161,29 @@ function writeTestDataFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    v = value.Text[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.TextLength; i0 += 4) {
+      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.TextLength; i0++) {
+      v = value.Text[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   if (sb !== 0) {

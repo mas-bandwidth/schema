@@ -979,9 +979,21 @@ func (g *fgen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	g.emitWriteAlign(ind) // flushes the pending chunk (the length prefix)
 	iv := fmt.Sprintf("i%d", g.loopDepth)
 	g.loopDepth++
-	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
-	g.pf("%s  v = %s[%s];\n", ind, name, iv)
-	g.mergeW(8, ind+"  ")
+	// four bytes per merge, then the byte-at-a-time tail — measured +3.6%
+	// on the leg's write row over the plain byte loop (node 26, M2). The
+	// brace scope keeps the loop counter local (two byte fields can share
+	// a nesting depth).
+	g.pf("%s{\n", ind)
+	g.pf("%s  let %s = 0;\n", ind, iv)
+	g.pf("%s  for (; %s + 4 <= %s; %s += 4) {\n", ind, iv, length, iv)
+	g.pf("%s    v = (%s[%s] | (%s[%s + 1] << 8) | (%s[%s + 2] << 16) | (%s[%s + 3] << 24)) >>> 0;\n",
+		ind, name, iv, name, iv, name, iv, name, iv)
+	g.mergeW(32, ind+"    ")
+	g.pf("%s  }\n", ind)
+	g.pf("%s  for (; %s < %s; %s++) {\n", ind, iv, length, iv)
+	g.pf("%s    v = %s[%s];\n", ind, name, iv)
+	g.mergeW(8, ind+"    ")
+	g.pf("%s  }\n", ind)
 	g.pf("%s}\n", ind)
 	g.loopDepth--
 }

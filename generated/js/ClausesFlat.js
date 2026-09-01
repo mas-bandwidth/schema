@@ -1337,15 +1337,29 @@ function writeStrsFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.SLength; i0++) {
-    v = value.S[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.SLength; i0 += 4) {
+      v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.SLength; i0++) {
+      v = value.S[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   v = (((value.BLength) & 0xf)) >>> 0;
@@ -1364,15 +1378,29 @@ function writeStrsFlatProduction(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.BLength; i0++) {
-    v = value.B[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.BLength; i0 += 4) {
+      v = (value.B[i0] | (value.B[i0 + 1] << 8) | (value.B[i0 + 2] << 16) | (value.B[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.BLength; i0++) {
+      v = value.B[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   v = ((value.Tail & 0x7)) >>> 0;
@@ -1412,15 +1440,29 @@ function writeStrsFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.SLength; i0++) {
-    v = value.S[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.SLength; i0 += 4) {
+      v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.SLength; i0++) {
+      v = value.S[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   if (!Number.isInteger(value.BLength) || value.BLength < 0 || value.BLength > 8) { // the length guards the slice; out-of-contract writes are refused
@@ -1442,15 +1484,29 @@ function writeStrsFlatChecked(value, view) {
     lo = 0;
     sb = 0;
   }
-  for (let i0 = 0; i0 < value.BLength; i0++) {
-    v = value.B[i0];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
+  {
+    let i0 = 0;
+    for (; i0 + 4 <= value.BLength; i0 += 4) {
+      v = (value.B[i0] | (value.B[i0 + 1] << 8) | (value.B[i0 + 2] << 16) | (value.B[i0 + 3] << 24)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+    }
+    for (; i0 < value.BLength; i0++) {
+      v = value.B[i0];
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
     }
   }
   v = ((value.Tail & 0x7)) >>> 0;
