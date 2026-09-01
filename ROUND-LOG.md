@@ -242,7 +242,12 @@ max 1,125,162 against `bench/results/2026-09-01-sitting3-arm64-macbook.csv`'s
 **Attribution, stated honestly.** The two halves do not overlap and the pair
 shows it: the generated flat tier imports nothing, so the runtime lever adds
 nothing to `round_trip` (1.2126x alone, 1.2123x paired), and the emitter
-lands nothing on family `bits` (1.0248x, inside noise). The write row moves
+lands nothing on family `bits` — no figure is quoted for that last claim,
+because the only rows that could produce one are the two this document
+declares INVALID below, and §2.3 is absolute: an invalid row does not become
+usable by being cited for a small effect rather than a large one. The claim
+rests on the mechanism (the flat tier imports nothing) and on the paired
+leg's valid bitpacker row. The write row moves
 1.2% on the emitter leg and 0.2% paired — this round makes no write claim,
 and both sit at the edge of the write instrument's own ±1.3% null.
 
