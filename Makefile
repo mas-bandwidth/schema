@@ -1,5 +1,7 @@
-# schema — build the compiler, generate the C++ headers from the corpus, and
-# prove they compile and link (prints OK). `make` runs the whole chain.
+# schema — `make` builds the compiler (bin/schema) and nothing else: no
+# serialize checkouts, no language toolchains, no generation. The full
+# nine-language conformance chain is `make test`, and it needs the sibling
+# runtime checkouts and toolchains documented below.
 
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
@@ -67,7 +69,7 @@ SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
 
-all: test
+all: bin/schema
 
 # The version the built binary reports. `git describe` gives the exact tag on a
 # release build and tag-commits-hash elsewhere; when this is not a git checkout
