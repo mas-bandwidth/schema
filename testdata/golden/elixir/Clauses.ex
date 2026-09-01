@@ -369,7 +369,7 @@ defmodule Example.Clauses do
       if v > 20, do: throw(:invalid)
       n = v
       if bits_read + n * 1 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_w1_items(n, [], data, num_bits, bits_read)
+      {bits_read, v_items} = r_w1_items_align(n, [], data, num_bits, bits_read)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
       value = %Example.W1{items: v_items}
@@ -666,7 +666,7 @@ defmodule Example.Clauses do
       if v > 10, do: throw(:invalid)
       n = v
       if bits_read + n * 3 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_arr_tri3_items(n, [], data, num_bits, bits_read)
+      {bits_read, v_items} = r_arr_tri3_items_align(n, [], data, num_bits, bits_read)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
       value = %Example.ArrTri3{items: v_items}
@@ -1800,6 +1800,87 @@ defmodule Example.Clauses do
     r_w1_items(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
 
+  defp r_w1_items_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 16 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_w1_items_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_w1_items(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_w1_items_fast(remaining, acc, data, num_bits, bits_read, rest, b0 >>> q, 8 - q)
+
+        _ ->
+          r_w1_items(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_w1_items_align(remaining, acc, data, num_bits, bits_read),
+    do: r_w1_items(remaining, acc, data, num_bits, bits_read)
+
+  defp r_w1_items_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-16, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 16 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0x1
+    e1 = v
+    v = z1 >>> 1 &&& 0x1
+    e2 = v
+    v = z1 >>> 2 &&& 0x1
+    e3 = v
+    v = z1 >>> 3 &&& 0x1
+    e4 = v
+    v = z1 >>> 4 &&& 0x1
+    e5 = v
+    v = z1 >>> 5 &&& 0x1
+    e6 = v
+    v = z1 >>> 6 &&& 0x1
+    e7 = v
+    v = z1 >>> 7 &&& 0x1
+    e8 = v
+    v = z1 >>> 8 &&& 0x1
+    e9 = v
+    v = z1 >>> 9 &&& 0x1
+    e10 = v
+    v = z1 >>> 10 &&& 0x1
+    e11 = v
+    v = z1 >>> 11 &&& 0x1
+    e12 = v
+    v = z1 >>> 12 &&& 0x1
+    e13 = v
+    v = z1 >>> 13 &&& 0x1
+    e14 = v
+    v = z1 >>> 14 &&& 0x1
+    e15 = v
+    v = z1 >>> 15 &&& 0x1
+    e16 = v
+
+    {bits_read, tail} =
+      r_w1_items_fast(remaining - 16, acc, data, num_bits, bits_read + 16, rest, z1 >>> 16, c)
+
+    {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16 | tail]}
+  end
+
+  defp r_w1_items_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_w1_items(remaining, acc, data, num_bits, bits_read)
+
   defp w_w52_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp w_w52_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
@@ -2245,6 +2326,104 @@ defmodule Example.Clauses do
     e = %Example.Tri3{a: e_a, b: e_b}
     r_arr_tri3_items(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
+
+  defp r_arr_tri3_items_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 8 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_arr_tri3_items_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_arr_tri3_items(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_arr_tri3_items_fast(remaining, acc, data, num_bits, bits_read, rest, b0 >>> q, 8 - q)
+
+        _ ->
+          r_arr_tri3_items(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_arr_tri3_items_align(remaining, acc, data, num_bits, bits_read),
+    do: r_arr_tri3_items(remaining, acc, data, num_bits, bits_read)
+
+  defp r_arr_tri3_items_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-24, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 8 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0x1
+    e1_a = v
+    v = z1 >>> 1 &&& 0x3
+    e1_b = v
+    e1 = %Example.Tri3{a: e1_a, b: e1_b}
+    v = z1 >>> 3 &&& 0x1
+    e2_a = v
+    v = z1 >>> 4 &&& 0x3
+    e2_b = v
+    e2 = %Example.Tri3{a: e2_a, b: e2_b}
+    v = z1 >>> 6 &&& 0x1
+    e3_a = v
+    v = z1 >>> 7 &&& 0x3
+    e3_b = v
+    e3 = %Example.Tri3{a: e3_a, b: e3_b}
+    v = z1 >>> 9 &&& 0x1
+    e4_a = v
+    v = z1 >>> 10 &&& 0x3
+    e4_b = v
+    e4 = %Example.Tri3{a: e4_a, b: e4_b}
+    v = z1 >>> 12 &&& 0x1
+    e5_a = v
+    v = z1 >>> 13 &&& 0x3
+    e5_b = v
+    e5 = %Example.Tri3{a: e5_a, b: e5_b}
+    v = z1 >>> 15 &&& 0x1
+    e6_a = v
+    v = z1 >>> 16 &&& 0x3
+    e6_b = v
+    e6 = %Example.Tri3{a: e6_a, b: e6_b}
+    v = z1 >>> 18 &&& 0x1
+    e7_a = v
+    v = z1 >>> 19 &&& 0x3
+    e7_b = v
+    e7 = %Example.Tri3{a: e7_a, b: e7_b}
+    v = z1 >>> 21 &&& 0x1
+    e8_a = v
+    v = z1 >>> 22 &&& 0x3
+    e8_b = v
+    e8 = %Example.Tri3{a: e8_a, b: e8_b}
+
+    {bits_read, tail} =
+      r_arr_tri3_items_fast(
+        remaining - 8,
+        acc,
+        data,
+        num_bits,
+        bits_read + 24,
+        rest,
+        z1 >>> 24,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8 | tail]}
+  end
+
+  defp r_arr_tri3_items_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_arr_tri3_items(remaining, acc, data, num_bits, bits_read)
 
   defp w_arr_eleven_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 

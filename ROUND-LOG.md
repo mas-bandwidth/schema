@@ -52,3 +52,16 @@ reads the round's state from this file plus the branch commits alone.
   at all three fast-loop sites. Paired vs head: read 1833.8 -> 1647.7 ns
   (1.113x), rt 3916.1 -> 3743.9 ns (1.046x); GC words down ~7%. Tail-call acc
   variant alone was read 1.071x/rt 1.03x; body-recursion added 1.036x/1.011x.
+- LEVER B LANDED (emitter form): fastReadClauses in internal/codegen/elixir/
+  functions.go — aligning entry + body-recursive single-match-context clause
+  behind every qualifying array read loop (static element width <= 20 bits,
+  plain fields only — no branches/unions/strings/arrays; m elements per
+  iteration with m*eb = 0 mod 8, capped 72 bits/16 elems/ArrayBound). Feeds
+  the existing element emission through readFeed (chained fixnum registers,
+  runtime carry only ever `c + literal`). Emitter-form paired vs pre-lever
+  head: read 1746.8 -> 1571.7 ns (1.111x, matching the 1.113x prototype), rt
+  4173.0 -> 3867.8 best (1.079x best-vs-best on a thermally noisy sitting;
+  prototype said 1.046x), write neutral (1.016x, noise). Wire gate 64/64
+  byte-identical; test/elixir + test/elixir-ludicrous OK; mix format clean;
+  goldens re-pinned (text only — wire bytes untouched). Also fires for
+  bench_packet blob (9x8-bit) and examples arrays (Wire/Clauses/Degenerate).

@@ -385,6 +385,10 @@ const (
 // construction: rd/rdw never raise (the tail falls back to the bytes that
 // exist), and bits past the bounds-checked run are discarded, never observed.
 func (g *gen) readR(bits int64, ind string) {
+	if g.feed != nil {
+		g.readFeed(bits, ind)
+		return
+	}
 	if g.rdAvail < bits {
 		w := int64(rdwWindowBits)
 		if g.rdRun > 0 && g.rdRun < w {
@@ -1635,7 +1639,7 @@ func (g *gen) emitReadCounted(f *ir.Field, lv, ind string) {
 func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	name := g.helperName("r", f)
 	if _, done := g.helpers[name]; done {
-		return name
+		return g.readEntry(f, name)
 	}
 	g.helpers[name] = ""
 	saved := g.fn
@@ -1656,10 +1660,23 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 		g.readClause(f, name, k, bounded)
 	}
 	g.readClause(f, name, 1, bounded)
+	if m, ok := g.fastReadPlan(f); ok {
+		g.fastReadClauses(f, name, m)
+	}
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
 	g.rdOff, g.rdAvail, g.rdRun = savedOff, savedAvail, savedRun
 	g.helperOrder = append(g.helperOrder, name)
+	return g.readEntry(f, name)
+}
+
+// readEntry is the loop entry a call site invokes: the aligning entry of the
+// single-match-context fast path when the element qualifies for one, the
+// scalar loop itself otherwise.
+func (g *gen) readEntry(f *ir.Field, name string) string {
+	if _, ok := g.fastReadPlan(f); ok {
+		return name + "_align"
+	}
 	return name
 }
 
@@ -1715,6 +1732,290 @@ func (g *gen) readClause(f *ir.Field, name string, k int64, bounded bool) {
 	g.pf("    %s(remaining - %d, [%s | acc], data, num_bits, bits_read)\n",
 		name, k, strings.Join(cons, ", "))
 	g.pf("  end\n\n")
+	g.rdBreak()
+}
+
+// ---- the single-match-context fast read path (issue #174 round two) ----
+//
+// A scalar read loop re-enters the binary through rd/rdw on every window:
+// each call is a fresh bs_start_match + skip + extract. When the element
+// width is static and small, the loop can instead CONSUME the stream through
+// one live match context — `<<s1::little-W1, s2::little-W2, rest::binary>>`
+// in the clause head, `rest` threaded to the recursion, which the BEAM
+// compiler keeps as a reused match context (verified +bin_opt_info) — and
+// cut fields out of chained fixnum registers. The clause is body-recursive,
+// so the list builds IN ORDER on the unwind and the fast portion never pays
+// Enum.reverse.
+//
+// The stream is LSB-first, so a byte-boundary phase q (0..7) rides across
+// iterations as a carry register: c = (8 - q) &&& 7 bits of the last
+// consumed byte that belong to the NEXT element. m elements per iteration
+// with m * eb ≡ 0 (mod 8) keep c CONSTANT, so the combining shifts are
+// `c + <literal>` and every register stays under the 59-bit fixnum bound:
+// segments are at most 40 bits and a chain never carries more than
+// 52 - segment bits forward (fastFeedMaxReg).
+//
+// Entry, tail (< m left), and a truncated buffer (the 9-byte match failing
+// near the end of data) all fall back to the scalar loop — same values,
+// same refusals, only slower; the wide/scalar clauses stay emitted behind
+// the fast ones.
+
+// feedState is the compile-time cursor of a fast clause's element emission:
+// which chained register holds the stream bits the next field cuts, and how
+// many static bits of it are consumed. reg 0 is the carry itself.
+type feedState struct {
+	reg        int     // current register: 0 = carry, k = zk
+	regBits    int64   // static bits the register holds beyond the carry's c
+	pos        int64   // static bits already cut from the register
+	streamLeft int64   // iteration stream bits not yet chained in
+	segs       []int64 // match segment widths chosen so far (s1..sN)
+}
+
+const (
+	// fastFeedMaxElem bounds the element width: it keeps a chain's leftover
+	// under 20 bits, so a fresh 32-bit segment always fits the fixnum bound
+	fastFeedMaxElem = 20
+	// fastFeedMaxBits bounds one iteration's stream bits (two segments)
+	fastFeedMaxBits = 72
+	// fastFeedMaxUnroll bounds the elements one clause decodes, the same way
+	// readUnrollMax bounds the scalar clauses
+	fastFeedMaxUnroll = 16
+	// fastFeedMaxReg is the fixnum budget left for `leftover + segment` after
+	// the runtime carry's up-to-7 bits
+	fastFeedMaxReg = 52
+)
+
+func gcd64(a, b int64) int64 {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
+}
+
+// fastReadPlan reports how many elements one fast clause decodes, or ok=false
+// when the element does not qualify: the width must be static and at most
+// fastFeedMaxElem bits, the element plain (fields the chained windows can
+// cut — no branches, unions, strings, arrays, raw floats), realignment must
+// fit the iteration budget, and the array must be able to fill one clause.
+func (g *gen) fastReadPlan(f *ir.Field) (int64, bool) {
+	eb, ok := g.staticBitsScalar(f)
+	if !ok || eb <= 0 || eb > fastFeedMaxElem || !g.plainFastElement(f) {
+		return 0, false
+	}
+	mMin := 8 / gcd64(eb, 8)
+	k := min(fastFeedMaxBits/(mMin*eb), fastFeedMaxUnroll/mMin, f.ArrayBound/mMin)
+	m := k * mMin
+	if m < 2 || f.ArrayBound < m {
+		return 0, false
+	}
+	return m, true
+}
+
+// plainFastElement is the fast path's element walker: scalar kinds whose read
+// is a plain window cut (ranged/bare ints, bits, bool, fixed, enum, flags,
+// compressed floats), or a struct of exactly those (consts and reserved bits
+// ride the windows too). Branches are excluded even when their widths agree —
+// the chain points are compile-time and a branch's layout is not.
+func (g *gen) plainFastElement(f *ir.Field) bool {
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits, ir.TBool, ir.TFixed:
+		return true
+	case ir.TFloat32:
+		return f.HasFloatRange
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum, *ir.Flags:
+			return true
+		case *ir.Struct:
+			for _, item := range ref.Items {
+				switch item := item.(type) {
+				case *ir.ConstItem, *ir.ReservedItem:
+					continue
+				case *ir.FieldItem:
+					if item.F.Array != ir.ArrayNone || !g.plainFastElement(item.F) {
+						return false
+					}
+				default:
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func feedReg(reg int) string {
+	if reg == 0 {
+		return "carry"
+	}
+	return fmt.Sprintf("z%d", reg)
+}
+
+// wrapCall emits `name(args...)` at ind: one line when it fits the format
+// width, mix format's one-argument-per-line break otherwise.
+func (g *gen) wrapCall(name string, args []string, ind string) {
+	one := ind + name + "(" + strings.Join(args, ", ") + ")"
+	if len(one) <= formatWidth {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s%s(\n", ind, name)
+	for i, a := range args {
+		sep := ","
+		if i == len(args)-1 {
+			sep = ""
+		}
+		g.pf("%s  %s%s\n", ind, a, sep)
+	}
+	g.pf("%s)\n", ind)
+}
+
+// readFeed is readR under a fast clause: cut `bits` out of the chained
+// registers, pulling the next match segment in when the current register
+// runs dry. Every offset is static; only the carry width c is runtime, and
+// it only ever appears as `c + <literal>` in a combining shift.
+func (g *gen) readFeed(bits int64, ind string) {
+	fs := g.feed
+	if fs.pos+bits > fs.regBits {
+		leftover := fs.regBits - fs.pos
+		w := min(int64(40), fs.streamLeft, (fastFeedMaxReg-leftover)&^7)
+		if w < bits-leftover {
+			panic("fast read feed cannot chain a segment wide enough")
+		}
+		seg := fmt.Sprintf("s%d", len(fs.segs)+1)
+		next := feedReg(fs.reg + 1)
+		switch {
+		case fs.reg == 0:
+			g.pf("%s%s = carry ||| %s <<< c\n", ind, next, seg)
+		case fs.pos == 0:
+			g.pf("%s%s = %s ||| %s <<< (c + %d)\n", ind, next, feedReg(fs.reg), seg, leftover)
+		default:
+			g.pf("%s%s = %s >>> %d ||| %s <<< (c + %d)\n",
+				ind, next, feedReg(fs.reg), fs.pos, seg, leftover)
+		}
+		fs.segs = append(fs.segs, w)
+		fs.streamLeft -= w
+		fs.reg++
+		fs.regBits = leftover + w
+		fs.pos = 0
+	}
+	if fs.pos == 0 {
+		g.pf("%sv = %s &&& %s\n", ind, feedReg(fs.reg), maskHex(bits))
+	} else {
+		g.pf("%sv = %s >>> %d &&& %s\n", ind, feedReg(fs.reg), fs.pos, maskHex(bits))
+	}
+	fs.pos += bits
+}
+
+// fastReadBody emits the m element bodies of a fast clause under a fresh
+// feed and returns the final feed state (segment plan, carry-out position).
+func (g *gen) fastReadBody(f *ir.Field, m, T int64, evs []string) *feedState {
+	g.feed = &feedState{streamLeft: T}
+	for _, ev := range evs {
+		g.emitReadElem(f, ev, "    ", true)
+	}
+	fs := g.feed
+	g.feed = nil
+	if fs.streamLeft != 0 || fs.pos != fs.regBits {
+		panic("fast read feed did not consume its iteration exactly")
+	}
+	return fs
+}
+
+// fastReadClauses emits the aligning entry and the fast clause pair behind
+// the scalar loop `name`. The segment plan the clause head needs is learned
+// from a dry run of the same element emission it then repeats for real.
+func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
+	eb, _ := g.staticBitsScalar(f)
+	T := m * eb
+	evs := make([]string, m)
+	for i := range evs {
+		evs[i] = fmt.Sprintf("e%d", i+1)
+	}
+
+	// dry pass: the element bodies decide where segments chain in
+	saved := g.fn
+	savedOff, savedAvail, savedRun := g.rdOff, g.rdAvail, g.rdRun
+	g.fn = strings.Builder{}
+	plan := g.fastReadBody(f, m, T, evs)
+	g.fn = saved
+	g.rdOff, g.rdAvail, g.rdRun = savedOff, savedAvail, savedRun
+
+	// the aligning entry: split bits_read into a byte position and a phase,
+	// hand the fast clause the stream from the byte boundary with the
+	// already-consumed low bits of the split byte dropped into the carry
+	g.rdBreak()
+	g.pf("  defp %s_align(remaining, acc, data, num_bits, bits_read)\n", name)
+	g.pf("       when remaining >= %d do\n", m)
+	g.pf("    i = bits_read >>> 3\n")
+	g.pf("    q = bits_read &&& 7\n\n")
+	g.pf("    if q == 0 do\n")
+	g.pf("      case data do\n")
+	g.pf("        <<_::binary-size(^i), rest::binary>> ->\n")
+	g.wrapCall(name+"_fast",
+		[]string{"remaining", "acc", "data", "num_bits", "bits_read", "rest", "0", "0"},
+		"          ")
+	g.pf("\n")
+	g.pf("        _ ->\n")
+	g.pf("          %s(remaining, acc, data, num_bits, bits_read)\n", name)
+	g.pf("      end\n")
+	g.pf("    else\n")
+	g.pf("      case data do\n")
+	g.pf("        <<_::binary-size(^i), b0, rest::binary>> ->\n")
+	g.wrapCall(name+"_fast",
+		[]string{"remaining", "acc", "data", "num_bits", "bits_read", "rest", "b0 >>> q", "8 - q"},
+		"          ")
+	g.pf("\n")
+	g.pf("        _ ->\n")
+	g.pf("          %s(remaining, acc, data, num_bits, bits_read)\n", name)
+	g.pf("      end\n")
+	g.pf("    end\n")
+	g.pf("  end\n\n")
+	g.pf("  defp %s_align(remaining, acc, data, num_bits, bits_read),\n", name)
+	g.pf("    do: %s(remaining, acc, data, num_bits, bits_read)\n\n", name)
+
+	// the fast clause: one head match per iteration, m elements per match
+	var pat strings.Builder
+	pat.WriteString("<<")
+	for i, w := range plan.segs {
+		fmt.Fprintf(&pat, "s%d::little-%d, ", i+1, w)
+	}
+	pat.WriteString("rest::binary>>")
+	g.pf("  defp %s_fast(\n", name)
+	g.pf("         remaining,\n")
+	g.pf("         acc,\n")
+	g.pf("         data,\n")
+	g.pf("         num_bits,\n")
+	g.pf("         bits_read,\n")
+	g.pf("         %s,\n", pat.String())
+	g.pf("         carry,\n")
+	g.pf("         c\n")
+	g.pf("       )\n")
+	g.pf("       when remaining >= %d do\n", m)
+	final := g.fastReadBody(f, m, T, evs)
+	if len(final.segs) != len(plan.segs) {
+		panic("fast read feed diverged from its dry run")
+	}
+	recArgs := []string{fmt.Sprintf("remaining - %d", m), "acc", "data", "num_bits",
+		fmt.Sprintf("bits_read + %d", T), "rest",
+		fmt.Sprintf("%s >>> %d", feedReg(final.reg), final.pos), "c"}
+	call := name + "_fast(" + strings.Join(recArgs, ", ") + ")"
+	g.pf("\n")
+	switch {
+	case len("    {bits_read, tail} = "+call) <= formatWidth:
+		g.pf("    {bits_read, tail} = %s\n", call)
+	case len("      "+call) <= formatWidth:
+		g.pf("\n    {bits_read, tail} =\n      %s\n\n", call)
+	default:
+		g.pf("\n    {bits_read, tail} =\n")
+		g.wrapCall(name+"_fast", recArgs, "      ")
+		g.pf("\n")
+	}
+	g.pf("\n    {bits_read, [%s | tail]}\n", strings.Join(evs, ", "))
+	g.pf("  end\n\n")
+	g.pf("  defp %s_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),\n", name)
+	g.pf("    do: %s(remaining, acc, data, num_bits, bits_read)\n\n", name)
 	g.rdBreak()
 }
 

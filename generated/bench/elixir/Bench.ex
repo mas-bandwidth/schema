@@ -429,7 +429,7 @@ defmodule Bench.Bench do
 
       bits_read = bits_read + pad
       if bits_read + 136 > num_bits, do: throw(:invalid)
-      {bits_read, v_blob} = r_bench_packet_blob(17, [], data, num_bits, bits_read)
+      {bits_read, v_blob} = r_bench_packet_blob_align(17, [], data, num_bits, bits_read)
       # the final position is unobserved — the verdict and value are the surface
       _ = bits_read
 
@@ -2236,7 +2236,7 @@ defmodule Bench.Bench do
       if v > 80, do: throw(:invalid)
       n = v
       if bits_read + n * 18 > num_bits, do: throw(:invalid)
-      {bits_read, v_stats} = r_bench_mixed_stats(n, [], data, num_bits, bits_read)
+      {bits_read, v_stats} = r_bench_mixed_stats_align(n, [], data, num_bits, bits_read)
       if bits_read + 2 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x3
@@ -2312,7 +2312,7 @@ defmodule Bench.Bench do
         end
 
       if bits_read + 32 > num_bits, do: throw(:invalid)
-      {bits_read, v_loadout} = r_bench_mixed_loadout(4, [], data, num_bits, bits_read)
+      {bits_read, v_loadout} = r_bench_mixed_loadout_align(4, [], data, num_bits, bits_read)
       if bits_read + 4 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xF
@@ -2624,6 +2624,92 @@ defmodule Bench.Bench do
     e = v
     r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
+
+  defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 9 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_bench_packet_blob_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_bench_packet_blob_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read),
+    do: r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
+
+  defp r_bench_packet_blob_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-40, s2::little-32, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 9 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFF
+    e1 = v
+    v = z1 >>> 8 &&& 0xFF
+    e2 = v
+    v = z1 >>> 16 &&& 0xFF
+    e3 = v
+    v = z1 >>> 24 &&& 0xFF
+    e4 = v
+    v = z1 >>> 32 &&& 0xFF
+    e5 = v
+    z2 = z1 >>> 40 ||| s2 <<< (c + 0)
+    v = z2 &&& 0xFF
+    e6 = v
+    v = z2 >>> 8 &&& 0xFF
+    e7 = v
+    v = z2 >>> 16 &&& 0xFF
+    e8 = v
+    v = z2 >>> 24 &&& 0xFF
+    e9 = v
+
+    {bits_read, tail} =
+      r_bench_packet_blob_fast(
+        remaining - 9,
+        acc,
+        data,
+        num_bits,
+        bits_read + 72,
+        rest,
+        z2 >>> 32,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4, e5, e6, e7, e8, e9 | tail]}
+  end
+
+  defp r_bench_packet_blob_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_bench_packet_blob(remaining, acc, data, num_bits, bits_read)
 
   defp w_bench_mixed_entities([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -3031,6 +3117,94 @@ defmodule Bench.Bench do
     r_bench_mixed_stats(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
 
+  defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_bench_mixed_stats_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_bench_mixed_stats_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read),
+    do: r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+
+  defp r_bench_mixed_stats_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-40, s2::little-32, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 4 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFF
+    e1_stat_id = v
+    v = z1 >>> 8 &&& 0x3FF
+    e1_delta = v - 512
+    e1 = %Bench.MixedStat{stat_id: e1_stat_id, delta: e1_delta}
+    v = z1 >>> 18 &&& 0xFF
+    e2_stat_id = v
+    v = z1 >>> 26 &&& 0x3FF
+    e2_delta = v - 512
+    e2 = %Bench.MixedStat{stat_id: e2_stat_id, delta: e2_delta}
+    z2 = z1 >>> 36 ||| s2 <<< (c + 4)
+    v = z2 &&& 0xFF
+    e3_stat_id = v
+    v = z2 >>> 8 &&& 0x3FF
+    e3_delta = v - 512
+    e3 = %Bench.MixedStat{stat_id: e3_stat_id, delta: e3_delta}
+    v = z2 >>> 18 &&& 0xFF
+    e4_stat_id = v
+    v = z2 >>> 26 &&& 0x3FF
+    e4_delta = v - 512
+    e4 = %Bench.MixedStat{stat_id: e4_stat_id, delta: e4_delta}
+
+    {bits_read, tail} =
+      r_bench_mixed_stats_fast(
+        remaining - 4,
+        acc,
+        data,
+        num_bits,
+        bits_read + 72,
+        rest,
+        z2 >>> 36,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4 | tail]}
+  end
+
+  defp r_bench_mixed_stats_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read)
+
   defp r_bench_mixed_loadout(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
@@ -3059,6 +3233,81 @@ defmodule Bench.Bench do
     e = v
     r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
+
+  defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read)
+       when remaining >= 4 do
+    i = bits_read >>> 3
+    q = bits_read &&& 7
+
+    if q == 0 do
+      case data do
+        <<_::binary-size(^i), rest::binary>> ->
+          r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+
+        _ ->
+          r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+      end
+    else
+      case data do
+        <<_::binary-size(^i), b0, rest::binary>> ->
+          r_bench_mixed_loadout_fast(
+            remaining,
+            acc,
+            data,
+            num_bits,
+            bits_read,
+            rest,
+            b0 >>> q,
+            8 - q
+          )
+
+        _ ->
+          r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+      end
+    end
+  end
+
+  defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read),
+    do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
+
+  defp r_bench_mixed_loadout_fast(
+         remaining,
+         acc,
+         data,
+         num_bits,
+         bits_read,
+         <<s1::little-32, rest::binary>>,
+         carry,
+         c
+       )
+       when remaining >= 4 do
+    z1 = carry ||| s1 <<< c
+    v = z1 &&& 0xFF
+    e1 = v
+    v = z1 >>> 8 &&& 0xFF
+    e2 = v
+    v = z1 >>> 16 &&& 0xFF
+    e3 = v
+    v = z1 >>> 24 &&& 0xFF
+    e4 = v
+
+    {bits_read, tail} =
+      r_bench_mixed_loadout_fast(
+        remaining - 4,
+        acc,
+        data,
+        num_bits,
+        bits_read + 32,
+        rest,
+        z1 >>> 32,
+        c
+      )
+
+    {bits_read, [e1, e2, e3, e4 | tail]}
+  end
+
+  defp r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
 
   # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
   # plus a 32-bit group, small enough that no intermediate ever boxes. The

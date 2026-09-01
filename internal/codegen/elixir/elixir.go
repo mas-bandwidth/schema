@@ -225,6 +225,12 @@ type gen struct {
 	// the fused static run's remaining bits, or 0 when unknown
 	rdOff, rdAvail, rdRun int64
 
+	// feed, while non-nil, redirects readR: the fast array-read clause has
+	// already matched this iteration's stream bytes into register segments,
+	// and fields cut their bits out of chained fixnum windows instead of
+	// opening rd/rdw windows (functions.go, readFeed)
+	feed *feedState
+
 	// helperOwner names the type whose items are being inlined — array loop
 	// helpers key on (owner, field), so a nested type's loops emit once per
 	// file however many callers inline it
