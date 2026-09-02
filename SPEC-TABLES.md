@@ -1603,6 +1603,13 @@ separately, so a caller may place them together or apart and may release
 the attribution once `Load` returns. `Cook` writes them as two parts for
 the same reason (§7).
 
+**Backend status for this section: spec ahead of the emitter.** The node
+directory is the landed law and no backend writes one. A C++ region carries
+its data and nothing beside it: `Lock` packs the bodies, `Load` resolves
+indices without a resident directory, and `Cook` writes one part rather than
+two (§7), so the attribution a validating tool reads has no writer yet. It
+lands with §3.1's flat node table, tracked as schema#251.
+
 **The price, stated.** Twelve bytes a node on the wire (an 8-byte type id
 and a 4-byte length per record) and sixteen a node of attribution, which
 a shipped build need not carry at all:
@@ -1702,6 +1709,34 @@ SceneCook( builder, buffer, data, attribution );   // write it
 
 const Scene * scene = SceneOpen( bytes, size );    // point at it, or NULL
 ```
+
+**Backend status for this section: spec ahead of the emitter.** This section
+is the landed law and the C++ table backend — the only one that emits a cook
+(§11) — emits wire v1's, which differs from it in four ways a reader must
+know before building on either. `Open` matches the header and then WALKS the
+region behind a monotonic high-water mark, the traversal §14 REJECTS by name
+as forgeable, so the match-and-point below is the law and not the code. The
+header carries ONE 32-bit part length, which reimposes the ceiling §3.1
+removes. There is no attribution part and no node directory (§6.3) beside the
+data, so there is nothing for a tool to check a file against. And `schema
+cook-check` is not built. Moving the emitter to this section — the header
+match, the two 64-bit lengths, the attribution beside the data and the tool
+over it — is tracked as schema#251, the same change that lands §3.1's flat
+node table; §20's status paragraph carries the emitter obligations the build
+version adds to that list.
+
+**THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
+*"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
+point."* / *"We would want this to be fast :)"*. Three consequences bind the
+emitter. `Open` is **O(1) in the file's size**: the header match, the reserved
+words, the lengths and the base's alignment, and nothing per node — which is
+what the match-and-point rule below already states and what a walk of any
+shape forfeits. The **byte order is settled at cook time** for the target
+build (below), so the reading side runs no fix-up pass at all. And a mapped
+file's **pages are touched only as they are used**, which is a property of
+touching nothing at open rather than a separate mechanism. **Not built**: the
+gate is open time flat across a 1 MB, a 100 MB and a 1 GB cook, and it rides
+with the emitter (schema#251).
 
 **The pipeline, in the owner's words**: *"the optimized path is still
 available, it is tooling does the build, then cooks to the rad binary format.
