@@ -469,7 +469,8 @@ func (g *blockGen) blockFieldAddress(f *ir.Field, projection bool) string {
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		return "probe." + name // a fixed-size buffer IS a pointer in unsafe context
 	}
-	if !(projection && ir.BlockOutOfLine(f)) && (f.KeyEnum != "" || f.Array != ir.ArrayNone) {
+	inline := !projection || !ir.BlockOutOfLine(f)
+	if inline && (f.KeyEnum != "" || f.Array != ir.ArrayNone) {
 		if csFixedBufferPrimitive(g.blittableType(f.Type)) {
 			return "probe." + name
 		}

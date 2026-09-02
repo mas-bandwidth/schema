@@ -645,7 +645,7 @@ tables-block-home-negative-control: bin/schema
 tables-block-inline-array-negative-control: bin/schema
 	@mkdir -p build
 	@sed -e 's|if projection \&\& ir.BlockOutOfLine(f) {|if ir.BlockOutOfLine(f) { // SABOTAGED: project at every depth|' \
-	     -e 's|if !(projection \&\& ir.BlockOutOfLine(f)) \&\&|if !ir.BlockOutOfLine(f) \&\&|' \
+	     -e 's|inline := !projection \|\| !ir.BlockOutOfLine(f)|inline := !ir.BlockOutOfLine(f)|' \
 		internal/codegen/cstable/block.go > build/csblock-depth.gotext
 	@cmp -s build/csblock-depth.gotext internal/codegen/cstable/block.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
