@@ -8,7 +8,7 @@
 // or the diagnostics; [Compiler.Generate] is pure — a unit in, the emitted
 // file bytes out, nothing written; writing is the caller's, so an embedder can
 // put the output in a build directory, a zip, or memory. Registration
-// ([Compiler.Register]) is the only door into Generate, and the eight built-in
+// ([Compiler.Register]) is the only door into Generate, and the nine built-in
 // backends come through it like anyone else's would.
 //
 // The whole surface is under semver from the release that first carries it.
@@ -30,7 +30,7 @@ import (
 
 // A Compiler is one driver instance: the generator registry plus the load
 // policy the CLI and an embedder differ on. Use [New] — it returns a Compiler
-// with the eight built-in generators registered.
+// with the nine built-in generators registered.
 //
 // Register and the two policy fields configure a Compiler; do that before use
 // and from one goroutine. Once configured it is read-only, and Load and
@@ -69,9 +69,9 @@ type Compiler struct {
 }
 
 // New returns a driver with the built-in generators registered — c, cpp, cs
-// (csharp), go, js (javascript) and rust — and the load policy of a library:
-// no writes to the input tree. Set [Compiler.FormatInPlace] for the CLI's
-// behavior.
+// (csharp), dart, elixir, go, java, js (javascript) and rust — and the load
+// policy of a library: no writes to the input tree. Set
+// [Compiler.FormatInPlace] for the CLI's behavior.
 func New() *Compiler {
 	c := &Compiler{}
 	for _, g := range builtins() {
