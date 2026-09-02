@@ -137,9 +137,12 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 		base, err := Parse(path, data)
 		if err != nil {
 			live.History = salvageHistory(data)
+			// the committed file carries no machine paths: the reader of this
+			// history is on another machine, years later
 			entry = []string{
 				fmt.Sprintf("### %s — %s", date, reason),
-				fmt.Sprintf("- baseline REGENERATED over an unreadable one (%v); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow", err),
+				fmt.Sprintf("- baseline REGENERATED over an unreadable one (%s); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow",
+					strings.TrimPrefix(err.Error(), path+": ")),
 			}
 			break
 		}
