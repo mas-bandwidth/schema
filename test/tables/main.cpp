@@ -4864,6 +4864,129 @@ static void test_golden_seams()
     }
 }
 
+// ---- a keyed object's keys ARE keys (SPEC-TABLES.md §16.2) ---------------
+//
+// Last-wins inside a keyed object was always true — each placement
+// re-establishes the slot — so the VALUE was right and only the ledger was
+// wrong, which is precisely why no round-trip test could see the repeat go
+// uncounted. It took the pack engine's two-sided gate to find it.
+
+static void test_json_keyed_duplicate_keys()
+{
+    // one variant named twice: last wins, and the repeat is COUNTED
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Red\": { \"spawn_count\": 9 } } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 9 );
+        CHECK( report.duplicate == 1 );
+        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    }
+
+    // every repeat past the first counts, across variants
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Red\": {}, \"Red\": {}, \"Red\": {}, \"Blue\": {}, \"Blue\": {} } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.duplicate == 3 ); // two extra Reds, one extra Blue
+    }
+
+    // DISTINCT variants are not duplicates — the whole point of the key
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Red\": {}, \"Blue\": {}, \"Green\": {} } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.duplicate == 0 );
+    }
+
+    // a repeated key that names NO slot is unknown twice, never a duplicate:
+    // it was never placed, so there is nothing for a second one to replace
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Violet\": {}, \"Violet\": {}, \"None\": {}, \"None\": {} } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.unknown == 4 && report.duplicate == 0 );
+    }
+
+    // last-wins is a WHOLE-VALUE replacement here too: the second occurrence
+    // does not overlay the first, it re-establishes the slot
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 9, \"banner\": \"first\" },"
+                            "              \"Red\": { \"spawn_count\": 2 } } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 2 );
+        CHECK( value.teams[tabledemo::Team::Red].banner_length == 0 ); // nothing of the first survives
+        CHECK( report.duplicate == 1 );
+
+        // and the instance is the one the SECOND occurrence alone describes
+        tabledemo::KeyedConfig once;
+        const char * single = "{ \"teams\": { \"Red\": { \"spawn_count\": 2 } } }";
+        CHECK( tabledemo::KeyedConfigFromJson( once, single, (int64_t) strlen( single ), &report ) );
+        uint8_t a[4096], b[4096];
+        int64_t na = tabledemo::KeyedConfigSave( value, a, sizeof( a ) );
+        int64_t nb = tabledemo::KeyedConfigSave( once, b, sizeof( b ) );
+        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
+    }
+
+    // a keyed array of SCALARS counts the same way
+    {
+        tabledemo::ScoreBoard value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"per_team\": { \"Blue\": 1, \"Blue\": 2, \"Blue\": 3 } }";
+        CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.per_team[(int) tabledemo::Team::Blue] == 3 );
+        CHECK( report.duplicate == 2 );
+    }
+
+    // a repeat NESTED one keyed object down still counts
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"hulls\": { \"Gunship\": { \"turrets\": {"
+                            "   \"Missile\": { \"damage\": 1 }, \"Missile\": { \"damage\": 2 } } } } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].damage == 2.0f );
+        CHECK( report.duplicate == 1 );
+    }
+
+    // the PINNED TEXT: a repeated key is a READ-side event only, so what the
+    // writer emits for the instance it lands on carries each variant exactly
+    // once — the repeat leaves no trace in the text, only in the ledger
+    {
+        tabledemo::ScoreBoard value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"per_team\": { \"Red\": 4, \"Green\": 7, \"Green\": 9 } }";
+        CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.duplicate == 1 );
+
+        static const char * expected =
+            "{\n"
+            "  \"per_team\": {\n"
+            "    \"Red\": 4,\n"
+            "    \"Blue\": 0,\n"
+            "    \"Green\": 9\n"
+            "  }\n"
+            "}";
+        int64_t size = tabledemo::ScoreBoardToJsonMeasure( value );
+        if ( size < 0 ) { printf( "FAIL json keyed duplicate pinned text: refused\n" ); failures++; return; }
+        std::vector<char> out( (size_t) size + 1 );
+        CHECK( tabledemo::ScoreBoardToJson( value, out.data(), size ) == size );
+        out[(size_t) size] = 0;
+        if ( strcmp( out.data(), expected ) != 0 )
+        {
+            printf( "FAIL json keyed duplicate pinned text\n--- got ---\n%s\n--- want ---\n%s\n",
+                    out.data(), expected );
+            failures++;
+        }
+    }
+}
+
 int main()
 {
     test_golden_wire();
@@ -4944,6 +5067,7 @@ int main()
     test_json_keyed_and_optional_round_trip();
     test_json_optional_presence();
     test_json_keyed_arrays();
+    test_json_keyed_duplicate_keys();
     test_json_pinned_keyed_and_optional();
     test_json_pinned_text();
     test_json_fuzz_tokenizer();

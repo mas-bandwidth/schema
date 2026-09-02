@@ -310,6 +310,22 @@ tables-cs-refuses-pointers: bin/schema
 	@grep -q "variable class is a named follow-on" build/tables-cs-refusal.log || \
 		{ echo "REFUSAL GATE FAILED: the refusal does not name the follow-on"; cat build/tables-cs-refusal.log; exit 1; }
 	@echo "tables C# refusal gate: a pointered unit is refused by name"
+# The NEGATIVE CONTROL for a KEYED object's duplicate counting
+# (SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
+# the missing count was invisible to every round-trip test — the value was
+# right and only the ledger was wrong. This sabotage removes the increment and
+# the fixture must go red; without it, nothing in the suite could see the
+# defect the pack engine's two-sided gate found.
+.PHONY: tables-json-keyed-dup-negative-control
+tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_negative_main.cpp
+	@rm -rf build/json-dup-sabotage && mkdir -p build/json-dup-sabotage
+	./bin/schema generate --lang cpp --out build/json-dup-sabotage tables/examples
+	@sed -i.bak 's|if ( ( seen\[slot >> 6\] \& bit ) != 0 ) { in.report->duplicate++; }|if ( ( seen[slot >> 6] \& bit ) != 0 ) { /* sabotaged: no count */ }|' build/json-dup-sabotage/KeyedTable.h
+	@grep -q 'sabotaged: no count' build/json-dup-sabotage/KeyedTable.h || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp -o build/schema_test_json_keyed_dup_negative
+	./build/schema_test_json_keyed_dup_negative
 
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
@@ -480,6 +496,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/t
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-refuses-pointers
 	cd test/cs-tables && dotnet run
+	$(MAKE) tables-json-keyed-dup-negative-control
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c

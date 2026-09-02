@@ -1402,6 +1402,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
         char shape = TableJsonElementShape( f );
+        // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
+        // key like any other, last-wins and counted (§16.2). Tracked the way
+        // a table's own field keys are — a bounded, allocation-free bitmask;
+        // a vocabulary wider than this still reads, its repeats simply stop
+        // being counted.
+        uint64_t seen[8] = {};
         for ( ;; )
         {
             char c = TableJsonPeek( in );
@@ -1420,6 +1426,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 // unknown key like any other name this reader cannot place
                 if ( !TableJsonKeyedSlotValid( f, v ) ) { continue; }
                 if ( strcmp( f->key_name( (uint64_t) v ), key ) == 0 ) { slot = v; break; }
+            }
+            if ( slot >= 0 && slot < 512 )
+            {
+                uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
+                if ( ( seen[slot >> 6] & bit ) != 0 ) { in.report->duplicate++; }
+                seen[slot >> 6] |= bit;
             }
             if ( slot < 0 )
             {
