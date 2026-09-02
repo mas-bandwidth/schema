@@ -295,6 +295,7 @@ tables-cs-standalone: build/tables-generated-cs/.stamp
 # its pointered tables missing.
 .PHONY: tables-cs-refuses-pointers
 tables-cs-refuses-pointers: bin/schema
+	@mkdir -p build
 	@if ./bin/schema generate --lang cs --out build/tables-cs-refusal tables/pointers > build/tables-cs-refusal.log 2>&1; then \
 		echo "REFUSAL GATE FAILED: the C# backend generated a pointered unit"; exit 1; \
 	fi
