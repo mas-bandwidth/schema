@@ -600,8 +600,20 @@ build/schema_test_cook_endian_be: build/tables-generated/.stamp test/tables/cook
 	@mkdir -p build
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/cook_endian_main.cpp -o $@
 
+# The cross-endian BLOCK driver, built both ways for the same reason the cook
+# driver is: a block is produced in the byte order of the build that wrote it,
+# and every other block test in this tree runs producer and consumer in one
+# process. This is the one part of §19.1 that needs two builds and a file.
+build/schema_test_block_endian: build/tables-generated/.stamp test/tables/block_endian_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
+
+build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/block_endian_main.cpp
+	@mkdir -p build
+	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
+
 .PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_cook_endian build/schema_test_cook_endian_be
+tables-big-endian: build/schema_test_tables_be build/schema_test_cook_endian build/schema_test_cook_endian_be build/schema_test_block_endian build/schema_test_block_endian_be
 	$(BE_RUN) ./build/schema_test_tables_be
 	./build/schema_test_cook_endian write build/cook-host.bin
 	$(BE_RUN) ./build/schema_test_cook_endian_be write build/cook-target.bin
@@ -610,6 +622,13 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_cook_endian bui
 	./build/schema_test_cook_endian accept build/cook-host.bin
 	./build/schema_test_cook_endian refuse build/cook-target.bin
 	@echo "big-endian leg: the wire crosses the byte order, the cook refuses to"
+	./build/schema_test_block_endian write build/block-host.bin
+	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
+	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
+	$(BE_RUN) ./build/schema_test_block_endian_be refuse build/block-host.bin
+	./build/schema_test_block_endian accept build/block-host.bin
+	./build/schema_test_block_endian refuse build/block-target.bin
+	@echo "big-endian leg: a block does not cross the byte order either — the magic refuses it and the prologue's word names the order that wrote it"
 
 # Its NEGATIVE CONTROL. Put ONE of the wire's byte-order-neutral stores back to
 # a host-order copy — put16, which writes every field id, every enum value and
