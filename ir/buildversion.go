@@ -143,13 +143,14 @@ func MeaningProjection(u *Unit, table string) string {
 			if f.HasDefault {
 				lines = append(lines, fmt.Sprintf("default %s.%04x %s", name, id, meaningValue(f)))
 			}
-			if f.HasIntRange {
+			switch {
+			case f.HasIntRange:
 				lines = append(lines, fmt.Sprintf("range %s.%04x %s %s", name, id, f.IntMin, f.IntMax))
-			} else if f.HasFloatRange {
+			case f.HasFloatRange:
 				lines = append(lines, fmt.Sprintf("range %s.%04x %s %s", name, id,
 					canonicalFloat(f.FMin), canonicalFloat(f.FMax)))
 				lines = append(lines, fmt.Sprintf("step %s.%04x %s", name, id, canonicalFloat(f.Resolution)))
-			} else if f.Type.Kind == TBits {
+			case f.Type.Kind == TBits:
 				// bits(N) declares [0, 2^N - 1] by its WIDTH, and §4 clamps a
 				// read to it, so the implied range is a meaning fact like any
 				// declared one (§8, §20.1).

@@ -506,10 +506,25 @@ int main( int argc, char ** argv )
         RenderShip * ships = RenderFrameShips( block );
         for ( int i = 0; i < counts.ships; i++ )
         {
-            RenderShip want;
-            memset( &want, 0, sizeof( want ) ); // the storage was zeroed once, so the padding matches
+            // FIELD BY FIELD, not memcmp: a generated table struct is an
+            // aggregate with member initialisers, so a value-initialised twin
+            // carries UNSPECIFIED padding and a whole-row compare would be
+            // comparing bytes nobody defines. What the fill wrote is the
+            // fields; what the block's padding holds is §19.1's business, and
+            // the golden pins it separately.
+            RenderShip want = {};
             fill_ship( want, i );
-            if ( memcmp( &ships[i], &want, sizeof( RenderShip ) ) != 0 ) { mismatches++; }
+            const RenderShip & got = ships[i];
+            const bool same = got.position.x == want.position.x && got.position.y == want.position.y &&
+                              got.position.z == want.position.z && got.rotation.x == want.rotation.x &&
+                              got.rotation.y == want.rotation.y && got.rotation.z == want.rotation.z &&
+                              got.rotation.w == want.rotation.w && got.flags == want.flags &&
+                              got.object_id == want.object_id && got.target_object_id == want.target_object_id &&
+                              got.thrust == want.thrust && got.object_sequence == want.object_sequence &&
+                              got.ship_type == want.ship_type && got.team == want.team &&
+                              got.has_target_lock == want.has_target_lock &&
+                              got.predicted_explode == want.predicted_explode;
+            if ( !same ) { mismatches++; }
         }
         check( mismatches == 0, "every ship row holds what the fill wrote, at the pitch the instance gives" );
 
