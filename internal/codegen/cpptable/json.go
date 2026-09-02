@@ -35,8 +35,13 @@ func tableJsonWalk(pkg string) string {
 // to call.
 func (g *tableGen) emitJsonSurface(st *ir.Struct) {
 	if g.isVar(st.Name) {
-		g.pf("// %s is VARIABLE-LENGTH: its text form reads through the builder and is\n", st.Name)
-		g.pf("// a named follow-on (SPEC-TABLES.md §16.6). No %sFromJson is emitted.\n\n", st.Name)
+		// SPEC-TABLES.md §16.1 states the builder surface for this class —
+		// <Name>FromJson( builder, ... ) — and this backend does not carry it
+		// yet. The refusal is by ABSENCE and it is loud: there is no function
+		// to call, so nothing silently reads a pointered table as an empty one.
+		g.pf("// %s is VARIABLE-LENGTH. Its text form reads through the builder\n", st.Name)
+		g.pf("// (SPEC-TABLES.md §16.1), which this backend does not emit yet:\n")
+		g.pf("// no %sFromJson and no %sToJson exist to call.\n\n", st.Name, st.Name)
 		return
 	}
 	g.pf("// %s in and out of a JSON text — one instance, one text, the generic walk\n", st.Name)
