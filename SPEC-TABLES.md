@@ -2031,12 +2031,41 @@ committed file whenever one is there, and:
 
 **A DECLARATION NAME IS NOT ON THE WIRE, and renaming one must not take its
 contents out of coverage.** Members match by name first; a baseline name
-with no live namesake is then matched to the unmatched live declaration of
-the same kind carrying the most of its identities, when that is at least
-half of them and unique. Either way the vanished name WARNS — a paired one
-naming the declaration that carries it on, an unpaired one naming the
-closest candidate and its score — so a hole in the coverage is never
-silent. A removal stays legal; it stops being invisible.
+with no live namesake is then matched against the unmatched live
+declarations of the same kind, scored on how many of its identities each
+one carries, and paired only with one that carries AT LEAST HALF of them.
+
+**Identity overlap alone cannot finish the job, so pairing asks a SECOND
+question.** Overlap is blind to a brand-new declaration that happens to
+carry the same field names — such a twin can outscore the real rename,
+which may have dropped an identity in the same edit, and pairing the wrong
+one would judge a fresh declaration against a history that is not its own.
+So when more than one candidate reaches the half mark, the tiebreak asks
+whose own FACTS UNDER THE SHARED IDS are closest: the count of judged facts
+that differ, fewer being nearer, by the same rules a field's own facts are
+judged by (§18.2 — a `pass` fact never separates candidates, because it
+never means anything). **A candidate is paired only when it wins BOTH
+questions STRICTLY**, most identities and nearest facts, with no tie in
+either. The fact question is a TABLE's to answer: an enum, a union and a
+flags declaration carry no per-variant facts to compare, so a contest among
+them is never separated this way and is reported as the contest it is.
+
+**Either way the vanished name WARNS**, and there are three unpaired
+messages because there are three ways to fail, each naming what was
+actually found:
+
+- **too little overlap** — the closest declaration and its score, said to
+  be below the half needed to call it a rename;
+- **no overlap at all** — that no declaration carries any of its
+  identities;
+- **a contest that cannot be settled** — that two or more candidates each
+  carry enough to be the rename and the evidence does not separate them, so
+  **nothing is paired**, naming them all.
+
+That last one is the point of the second question: a warning must never
+assert a rename the evidence cannot distinguish. A paired name warns too,
+naming the declaration that carries it on, so a hole in the coverage is
+never silent either way. A removal stays legal; it stops being invisible.
 
 **Two kinds of edit, and they never judge each other.** A declaration
 edited IN PLACE is judged by its own walk, where the verdicts follow what
