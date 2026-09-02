@@ -1,0 +1,76 @@
+schema-tables-baseline 1
+package tabledemo
+
+table ArchiveConfig
+    field root id=0x2eb8 kind=13 type=RootConfig
+    field count id=0xe445 kind=4 default=1
+
+table Attachment
+    field slot id=0x37e4 kind=4 default=0
+    field power id=0xd609 kind=10 default=1.0
+
+table Buff
+    field multiplier id=0x32e0 kind=10 default=1.0
+
+table Debuff
+    field amount id=0x39cc kind=4 default=0
+
+table LoadoutConfig
+    field grade id=0xd272 kind=7 type=Grade default=Silver
+    field grades id=0x301a kind=14 elem=7 type=Grade array=bounded bound=4
+    field podium id=0x088a kind=14 elem=7 type=Grade array=fixed bound=3
+    field perks id=0x2fc5 kind=9 type=Perks
+    field primary id=0x05f7 kind=13 type=WeaponConfig
+    field backups id=0x1647 kind=14 elem=13 type=WeaponConfig array=fixed bound=2
+    field attachments id=0x44d5 kind=14 elem=13 type=Attachment array=bounded bound=8
+
+table ProfileConfig
+    field name id=0x30df kind=12 size=32
+    field icon id=0xf3b0 kind=14 elem=6 size=16
+    field experience id=0x61d8 kind=8 default=0
+    field tilt id=0x023c kind=2
+    field heading id=0x885d kind=3
+    field timestamp id=0x67a0 kind=5
+    field badge id=0xb71c kind=6
+    field port id=0x6942 kind=7
+    field epoch id=0xf4bd kind=9
+    field precision id=0x96e0 kind=11
+    field ratings id=0x97dd kind=14 elem=10 array=fixed bound=4
+    field has_loadout id=0xb4db kind=1
+    field loadout id=0x9f78 kind=13 type=LoadoutConfig
+
+table RootConfig
+    field version_note id=0xe726 kind=12 size=16
+    field weapons id=0x91cd kind=14 elem=13 type=WeaponConfig array=bounded bound=8
+    field profiles id=0x73fd kind=14 elem=13 type=ProfileConfig array=bounded bound=4
+
+table WeaponConfig
+    field damage id=0x15a9 kind=10 default=21.0
+    field speed id=0x2e46 kind=10 default=500.0 was=velocity
+    field penetration id=0x6557 kind=4 default=1
+    field channel id=0x7366 kind=6
+    field homing id=0xab40 kind=1
+    field effect id=0xe33a kind=15 type=Effect
+
+table WideBlob
+    field label id=0xe16a kind=12 size=70000
+    field payload id=0x44aa kind=14 elem=6 size=70000
+    field samples id=0xaf9a kind=14 elem=7 array=bounded bound=70000
+
+enum Grade
+    variant Bronze id=0x3407
+    variant Silver id=0xa3e7
+    variant Gold id=0xda27
+
+flags Perks
+    variant Shielded bit=0
+    variant Cloaked bit=1
+    variant Turbo bit=2
+
+union Effect
+    arm buff id=0xeae6 payload=Buff
+    arm debuff id=0xb0d3 payload=Debuff
+
+## history
+### 2026-09-02 — the first baseline over the tables corpus
+- baseline created over 9 tables — data written BEFORE this point is not covered by it
