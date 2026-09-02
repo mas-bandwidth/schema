@@ -148,19 +148,22 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 //
 // Its layout IS `T slots[N]` — one non-static member, no virtuals, everything
 // public — so it stays trivially copyable and standard-layout and a table
-// holding one stays relocatable (§9).
+// holding one stays relocatable (§9). The iterator and the entry are NESTED
+// TYPES holding no storage of their own, so the iteration surface costs the
+// struct nothing and claims no unit-level name.
 const tableKeyedStorage = `
 // An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
 // own value, so ships[ShipType::Bomber] reads as itself.
 //
 // SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
 // the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR —
-// a compile error through Slot<Key>(), whose static_assert names it, and an
-// assert through operator[], which cannot see a runtime key any earlier —
-// and that assert is a DEBUG guard, compiled out by -DNDEBUG, so Slot<Key>()
-// is the form that still holds in release. The slot exists because memory is
-// cheap and the bias is not: a slot's index IS its variant's value, with
-// nothing to add or subtract anywhere.
+// an assert through operator[], which cannot see a runtime key any earlier,
+// and that assert is a DEBUG guard, compiled out by -DNDEBUG. So a shipped
+// build carries no check on a keyed index at all, and ITERATION is where the
+// safety lives: begin()/end() run 1..E.Max and never offer slot 0, so a
+// consumer of the whole array writes no bound, no cast and no None question.
+// The slot exists because memory is cheap and the bias is not: a slot's index
+// IS its variant's value, with nothing to add or subtract anywhere.
 template <typename T, typename E, int32_t N>
 struct TableKeyed
 {
@@ -168,27 +171,67 @@ struct TableKeyed
 
     T & operator[]( E key )
     {
-        assert( key != E::None ); // slot 0 is None's, and None is the null key
+        // slot 0 is None's, and None is the null key
+        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
         return slots[ (int32_t) key ];
     }
     const T & operator[]( E key ) const
     {
-        assert( key != E::None );
+        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
         return slots[ (int32_t) key ];
     }
 
-    // the compile-time form: a key known at compile time is checked at compile
-    // time, which is the only place a None index can be refused outright
-    template <E Key> T & Slot()
+    // ---- iteration over the VALID slots: 1..E.Max, key beside element ----
+    //
+    // The entry is a key and a REFERENCE, handed out BY VALUE the way any
+    // proxy is: for ( auto [ key, element ] : keyed ) binds element to the
+    // reference member, so iterating fills the array as well as reads it.
+    // auto & [ key, element ] does NOT compile, and that is by design — a
+    // non-const lvalue reference cannot bind to the proxy. Write
+    // auto [ ... ], or auto && [ ... ] if you prefer the reference form.
+    //
+    // The iterators carry the five iterator_traits typedefs, so std::distance
+    // and the algorithms that only need a forward pass work on them.
+
+    struct Entry { E key; T & element; };
+    struct ConstEntry { E key; const T & element; };
+
+    struct Iterator
     {
-        static_assert( Key != E::None, "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) Key ];
-    }
-    template <E Key> const T & Slot() const
+        typedef std::forward_iterator_tag iterator_category;
+        typedef Entry value_type;
+        typedef std::ptrdiff_t difference_type;
+        typedef void pointer;
+        typedef Entry reference;
+
+        T * slots;
+        int32_t index;
+        Entry operator*() const { return Entry{ (E) index, slots[index] }; }
+        Iterator & operator++() { index++; return *this; }
+        bool operator==( const Iterator & other ) const { return index == other.index; }
+        bool operator!=( const Iterator & other ) const { return index != other.index; }
+    };
+
+    struct ConstIterator
     {
-        static_assert( Key != E::None, "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) Key ];
-    }
+        typedef std::forward_iterator_tag iterator_category;
+        typedef ConstEntry value_type;
+        typedef std::ptrdiff_t difference_type;
+        typedef void pointer;
+        typedef ConstEntry reference;
+
+        const T * slots;
+        int32_t index;
+        ConstEntry operator*() const { return ConstEntry{ (E) index, slots[index] }; }
+        ConstIterator & operator++() { index++; return *this; }
+        bool operator==( const ConstIterator & other ) const { return index == other.index; }
+        bool operator!=( const ConstIterator & other ) const { return index != other.index; }
+    };
+
+    Iterator begin() { return Iterator{ slots, 1 }; } // 1: slot 0 is None's
+    Iterator end() { return Iterator{ slots, N }; }
+    ConstIterator begin() const { return ConstIterator{ slots, 1 }; }
+    ConstIterator end() const { return ConstIterator{ slots, N }; }
 };
 
 `
@@ -501,6 +544,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			// ENUM-KEYED arrays only: indexing one by None is an error, and an
 			// assert is where a runtime key can first be caught (SPEC-TABLES.md §2.4)
 			h.WriteString("#include <cassert> // the keyed accessor's None refusal\n")
+			h.WriteString("#include <iterator> // the keyed iterator's traits typedefs\n")
 		}
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 		names := make([]string, 0, len(g.includes))

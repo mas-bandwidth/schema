@@ -340,6 +340,42 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
+# The NEGATIVE CONTROL for a keyed array's ITERATION RANGE (SPEC-TABLES.md
+# §2.4). The iteration's whole promise is that slot 0 — None's — is not in the
+# range, and an untouched slot 0 holds the same declared defaults every other
+# untouched slot does, so a walk that visited it would look identical to a walk
+# that did not.
+#
+# It sabotages the EMITTER's begin() to slot 0 and requires THE TABLES SUITE
+# ITSELF — the same test/tables/main.cpp the leg runs, against a whole corpus
+# regenerated from the sabotaged compiler — to go red. A purpose-written
+# fixture would only prove the sabotage is observable by a fixture written for
+# it; what has to be shown is that the GUARDED test reddens.
+#
+# The sabotaged emitter reaches the compiler through `go build -overlay`, so no
+# tracked file is ever written to (the big-endian control's rule).
+.PHONY: tables-keyed-iteration-negative-control
+tables-keyed-iteration-negative-control: bin/schema
+	@mkdir -p build
+	@sed -e 's|Iterator begin() { return Iterator{ slots, 1 }; }|Iterator begin() { return Iterator{ slots, 0 }; } // SABOTAGED|' \
+	     -e 's|ConstIterator begin() const { return ConstIterator{ slots, 1 }; }|ConstIterator begin() const { return ConstIterator{ slots, 0 }; } // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-slot-zero.gotext
+	@cmp -s build/cpptable-slot-zero.gotext internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-slot-zero.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-slot-zero-overlay.json
+	@go build -overlay=build/cpptable-slot-zero-overlay.json -o build/schema-slot-zero ./cmd/schema
+	@rm -rf build/tables-slot-zero && mkdir -p build/tables-slot-zero
+	$(call tables_generate,./build/schema-slot-zero,build/tables-slot-zero)
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-slot-zero) \
+		test/tables/main.cpp $$(ls build/tables-slot-zero/*/*Table.cpp) -o build/schema_test_tables_slot_zero
+	@if ./build/schema_test_tables_slot_zero > build/tables-slot-zero.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: begin() reaching slot 0 left the tables suite GREEN"; exit 1; \
+	fi
+	@grep -q "^FAIL test/tables/main.cpp" build/tables-slot-zero.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-slot-zero.log; exit 1; }
+	@echo "negative control: begin() at slot 0 turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-slot-zero.log) failures"
+
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
 #
@@ -763,6 +799,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/p
 	$(MAKE) tables-cs-refuses-pointers
 	cd test/cs-tables && dotnet run
 	$(MAKE) tables-json-keyed-dup-negative-control
+	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative
 	$(MAKE) tables-hostile-values

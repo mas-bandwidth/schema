@@ -1183,10 +1183,10 @@ static class Program
     // ---- the SEAM instances: `?T` (§2.3) and `[E]T` (§2.4) ----
     //
     // Mirroring test/tables/main.cpp value for value. A keyed field's slots
-    // are reached through .Slots here: C# expresses neither a compile-time key
-    // nor a non-boxing generic enum-to-int, so the indexer takes the slot
-    // index (see TableKeyed in the generated runtime) and the codecs and these
-    // builders walk .Slots directly.
+    // are reached through .Slots here: C# has no non-boxing generic
+    // enum-to-int, so the indexer takes the slot index (see TableKeyed in the
+    // generated runtime) and the codecs and these builders walk .Slots
+    // directly, past the indexer's None guard.
 
     static void BuildGoldenKeyed(Demo.KeyedConfig cfg)
     {
@@ -1664,6 +1664,158 @@ static class Program
         Check(cfg.Teams[(int)Demo.Team.Blue] != null, "keyed indexer: a named slot reads");
     }
 
+    // ---- iteration over the VALID slots (§2.4) ----
+    //
+    // The C++ twin of this test is test_keyed_iteration in test/tables/main.cpp.
+    // foreach runs 1..E.Max, yields the slot index beside the element — the
+    // same currency the indexer takes — and never hands out slot 0, so no call
+    // site out here spells a bound, a lower limit or the slot rule.
+
+    static void TestKeyedIteration()
+    {
+        Demo.KeyedConfig cfg = new Demo.KeyedConfig();
+
+        // WRITING through the iteration: the element of a class-typed keyed
+        // array is the live instance, so filling one is the same walk
+        int spawn = 10;
+        int seen = 0;
+        int expect = 1; // slots arrive in ascending variant order, from 1
+        foreach (var (key, team) in cfg.Teams)
+        {
+            Check(key != 0, "keyed iteration: slot 0 is never yielded");
+            Check(key == expect, "keyed iteration: ascending from slot 1");
+            expect++;
+            seen++;
+            team.SpawnCount = spawn++;
+        }
+        Check(seen == 3, "keyed iteration: one slot per variant, never Max + 1");
+        Check(cfg.Teams[(int)Demo.Team.Red].SpawnCount == 10, "keyed iteration: Red filled");
+        Check(cfg.Teams[(int)Demo.Team.Green].SpawnCount == 12, "keyed iteration: Green filled");
+        // slot 0 was not in the range, so it still holds its declared default
+        Check(cfg.Teams.Slots[0].SpawnCount == 4, "keyed iteration: None's slot untouched");
+
+        // every keyed array in the corpus, including a nested one
+        foreach (var entry in cfg.Hulls)
+        {
+            Check(entry.Key != 0, "keyed iteration: hulls never yield slot 0");
+            int turrets = 0;
+            foreach (var turret in entry.Element.Turrets)
+            {
+                Check(turret.Key != 0, "keyed iteration: nested turrets never yield slot 0");
+                turrets++;
+            }
+            Check(turrets == 3, "keyed iteration: one turret slot per weapon");
+        }
+
+        // the space-shaped corpus: one record per ship type, one threshold per
+        // difficulty — the config bin this construct exists for. Its ships are
+        // CLASS elements, so the iteration's element is the live instance and
+        // writing through it is visible; its thresholds are int32 VALUES, so
+        // the iteration reads them and the indexer writes them.
+        Demo.PackConfig pack = new Demo.PackConfig();
+        int ships = 0;
+        foreach (var (ship_type, ship) in pack.Ships)
+        {
+            Check(ship_type != 0, "keyed iteration: ships never yield slot 0");
+            ship.Mass = 2.0f;
+            ships++;
+        }
+        Check(ships == 3, "keyed iteration: one record per ship type");
+        Check(pack.Ships.Slots[0].Mass == 1.0f, "keyed iteration: None's ship slot untouched");
+        Check(pack.Ships[(int)Demo.ShipType.Bomber].Mass == 2.0f,
+            "keyed iteration: a class element is the live instance");
+
+        pack.Thresholds[(int)Demo.Difficulty.Hard] = 700;
+        int thresholds = 0;
+        int highest = 0;
+        foreach (var (difficulty, threshold) in pack.Thresholds)
+        {
+            Check(difficulty != 0, "keyed iteration: thresholds never yield slot 0");
+            highest = threshold > highest ? threshold : highest;
+            thresholds++;
+        }
+        Check(thresholds == 3 && highest == 700,
+            "keyed iteration: a value element reads back what the indexer wrote");
+
+        // both generations of the evolution unit: tables, scalars and enums as
+        // elements, over an enum V2 inserts into and removes from — V1's Slot
+        // has four variants, V2's five, and each iteration is E.Max long in
+        // the generation that declares it. A scalar slot is a VALUE here, not
+        // a reference: the indexer is how a scalar slot is written, and
+        // iteration is how it is read.
+        V1.Cfg v1 = new V1.Cfg();
+        int v1bank = 0, v1tokens = 0, v1ranks = 0;
+        foreach (var entry in v1.Bank)
+        {
+            Check(entry.Key != 0, "keyed iteration: V1 bank never yields slot 0");
+            v1bank++;
+        }
+        foreach (var entry in v1.Tokens)
+        {
+            Check(entry.Key != 0, "keyed iteration: V1 tokens never yield slot 0");
+            v1tokens++;
+        }
+        foreach (var entry in v1.Ranks)
+        {
+            Check(entry.Key != 0, "keyed iteration: V1 ranks never yield slot 0");
+            v1ranks++;
+        }
+        Check(v1bank == 4 && v1tokens == 4 && v1ranks == 4,
+            "keyed iteration: V1's Slot has four variants");
+
+        V2.Cfg v2 = new V2.Cfg();
+        v2.Bank[(int)V2.Slot.Beta].Power = 42;
+        int bank = 0;
+        int power = 0;
+        foreach (var (slot, cell) in v2.Bank)
+        {
+            Check(slot != 0, "keyed iteration: bank never yields slot 0");
+            power += cell.Power;
+            bank++;
+        }
+        Check(bank == 5 && power == 42, "keyed iteration: a keyed array of tables");
+
+        v2.Tokens[(int)V2.Slot.Alpha] = 10;
+        int tokens = 0;
+        int total = 0;
+        foreach (var (key, value) in v2.Tokens)
+        {
+            Check(key != 0, "keyed iteration: tokens never yield slot 0");
+            total += value;
+            tokens++;
+        }
+        Check(tokens == 5 && total == 10, "keyed iteration: five slots, one written");
+
+        int ranks = 0;
+        foreach (var rank in v2.Ranks)
+        {
+            Check(rank.Key != 0, "keyed iteration: ranks never yield slot 0");
+            ranks++;
+        }
+        Check(ranks == 5, "keyed iteration: an enum-element keyed array");
+
+        int ledger = 0;
+        foreach (var slot in v2.Ledger)
+        {
+            Check(slot.Key != 0, "keyed iteration: ledger never yields slot 0");
+            ledger++;
+        }
+        Check(ledger == 3, "keyed iteration: Grade's three variants");
+
+        // a value filled by iteration rides and reads back by name
+        byte[] wire = new byte[8192];
+        long wrote = Demo.Schema.KeyedConfigSave(cfg, wire);
+        Check(wrote > 0, "keyed iteration: saved");
+        Demo.KeyedConfig back = new Demo.KeyedConfig();
+        Demo.TableReport report = new Demo.TableReport();
+        Check(Demo.Schema.KeyedConfigLoad(back, new ReadOnlySpan<byte>(wire, 0, (int)wrote), report),
+            "keyed iteration: loaded");
+        foreach (var (key, team) in back.Teams)
+        {
+            Check(team.SpawnCount == 9 + key, "keyed iteration: every slot rode by name");
+        }
+    }
+
     static int Main()
     {
         goldenDir = FindGoldenDir();
@@ -1678,6 +1830,7 @@ static class Program
         TestKeyedHostileKeys();
         TestSeamReflection();
         TestKeyedIndexerRefusesNone();
+        TestKeyedIteration();
         TestExactCapacity();
         TestStorageInvariants();
         TestBoundedElements();

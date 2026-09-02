@@ -698,13 +698,31 @@ arm — the same spelling the packet backend uses, because a table's closure
 decodes into the packet backend's own classes.
 
 An enum-keyed array is a `TableKeyed<T>` holding `E.Max + 1` slots. **C#
-expresses neither half of the C++ accessor pair**: there is no compile-time
-key (C# generics take no non-type parameter, so `Slot<Key>()` has no spelling)
-and no non-boxing generic enum-to-int conversion, so the indexer takes the
-slot index and the caller writes the cast — `fleet.Ships[(int)ShipType.Bomber]`.
-The `None` refusal survives as a runtime guard on that indexer, and unlike
-C++'s `assert` it is **not** compiled out in release. Generated code walks
-`.Slots` directly and never pays for the guard.
+indexes it by the slot index**, because the language has no non-boxing generic
+enum-to-int conversion — so the caller writes the cast,
+`fleet.Ships[(int)ShipType.Bomber]`. The `None` refusal survives as a runtime
+guard on that indexer, and unlike C++'s `assert` it is **not** compiled out in
+release. Generated code walks `.Slots` directly and never pays for the guard.
+
+`foreach` walks the valid slots, `1 .. E.Max`, and yields the slot index beside
+the element — the same currency the indexer takes, so a site that wants the key
+as its enum writes `(ShipType)ship_type` there. The enumerator is a struct, so
+the walk allocates nothing:
+
+```csharp
+foreach (var (ship_type, ship) in fleet.Ships)
+{
+    ship.Health *= 2.0f;   // slot 0 is not in the range
+}
+```
+
+**The entry's element is a value, so what the loop can WRITE depends on the
+element type.** A class element — a nested table, which is the common case — is
+the live instance, and mutating it through the iteration is visible. A scalar
+or enum element is a copy: **C# iteration reads those, and the indexer writes
+them**, `fleet.Thresholds[(int)Difficulty.Hard] = 3`. C++ yields a reference
+either way; the difference is C#'s, and a ref-yielding enumerator is a
+follow-on rather than part of this construct.
 
 `<Name>TableType()` returns the reflection descriptor: field names, wire ids
 and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
@@ -805,17 +823,40 @@ table Fleet
 
 ```cpp
 Fleet fleet;
-fleet.ships[ShipType::Bomber].health = 400.0f;   // runtime key: asserts
-fleet.ships.Slot<ShipType::Scout>().health = 90; // constant key: static_asserts
+
+for ( auto [ ship_type, ship ] : fleet.ships )   // every VALID slot, 1..Max
+{
+    ship.health = DefaultHealth( ship_type );    // the element is a reference
+}
+
+ShipType key = TypeFromConfig();                 // keys are runtime values
+fleet.ships[key].health = 400.0f;                // asserts key != None
 ```
 
 Storage is a generated keyed-array type wrapping a plain `ShipConfig[ShipType.Max
 + 1]` — no count companion, because every slot exists — so the memory is the
-array you would have written by hand, with the two accessors above on top of
-it. **Slot 0 exists and is never valid**: `None` is the enum's
+array you would have written by hand, with the accessor and the iteration on
+top of it. **Slot 0 exists and is never valid**: `None` is the enum's
 null, so it keys nothing and only `ShipType.Max` slots ever hold data. The
-slot is kept so indexing stays unbiased, and reaching it is an error —
-a compile-time refusal on a constant index, an assert otherwise.
+slot is kept so indexing stays unbiased, and reaching it is an error — an
+assert on the accessor, and **not in the iteration's range at all**.
+
+**Iterate, and the slot rule never reaches your code.** Keys in a
+data-driven program are runtime values — an enum read out of a file, a key a
+tool hands you — so `operator[]` is the accessor every call site uses, and its
+assert is a debug guard that `NDEBUG` compiles out. A shipped build carries no
+check on a keyed index, which is why iteration, not the assert, is where the
+safety lives: the range is `1 .. Max`, so a consumer of the whole array writes
+no lower bound, no cast and no `Max` of its own, and cannot reach `None`'s
+slot by accident. Iteration is const-correct, and a const keyed array yields
+const elements.
+
+The entry is a **proxy handed out by value** — a key beside a reference — so
+the spelling is `for ( auto [ key, element ] : keyed )`. `auto & [ ... ]` is a
+compile error by design: a non-const lvalue reference cannot bind to the proxy.
+Write `auto [ ... ]`, or `auto && [ ... ]` if you want the reference form; the
+element is a reference to the slot in every case. The iterators carry the
+`iterator_traits` typedefs, so `std::distance` and a forward pass work.
 
 **What changes is the wire: the slots ride by NAME.** Each
 present slot carries its variant's id, so inserting a variant in the middle,
@@ -835,14 +876,12 @@ never sent keeps its declared default. A `None` key never rides at all.
 In a `type` body the same spelling is exactly `[E.Max + 1]T` — positional and
 bitpacked, the packet wire as always, with the same protocol id either way —
 and there the storage is a **plain array**: `per_team [Team]int32` in a `type`
-is `int32_t per_team[4]`, no accessor and no `None` guard, because there is no
-key to check. Only the table wire keys the slots.
+is `int32_t per_team[4]`, no accessor, no iteration surface and no `None`
+guard, because there is no key to check. Only the table wire keys the slots.
 
-Note that the runtime assert goes away under `NDEBUG`, so `Slot<Key>()` is the
-form that still catches a `None` in a release build. And a key enum counts as
-part of the table closure: it rides by variant name, so `| max` headroom and
-colliding variant names are refused for it too, with the diagnostic naming the
-field that keys on it.
+A key enum counts as part of the table closure: it rides by variant name, so
+`| max` headroom and colliding variant names are refused for it too, with the
+diagnostic naming the field that keys on it.
 
 **On the TABLE wire the two spellings are different encodings**, and changing
 a table field from one to the other is a wire break, not a refactor: the keyed
