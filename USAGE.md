@@ -1016,45 +1016,52 @@ Two sentences that go together: **a tolerant wire load COPIES the blob** — a
 gigabyte on the wire path is a gigabyte read — and **the cooked path is the
 zero-copy one**, where a pointer into a mapped file IS the asset.
 
-### Sections: a header, strided arrays, and one block
+### The block form: `| block`, and rows another language points at
 
-*Specified, not yet implemented — no backend emits this; a unit that declares
-a section is refused by name today (SPEC-TABLES.md §2.7, §19).*
+*Specified, not yet implemented — no backend emits this; a table marked
+`| block` is refused by name today (SPEC-TABLES.md §2.7, §19).*
 
-Some data is not a file and not a message. It is a BLOCK you rebuild every
+Some data is not a file and not a message. It is a block you rebuild every
 frame and hand to something in another language, which points at it and reads
-it in place: a header, and sections it names, each a strided array of one
-record type. A `section` field declares exactly that.
+it in place. Mark the table:
 
 ```
-table RenderFrame
+table RenderFrame | block
 {
-    cameras section [..1]RenderCamera
-    ships   section [..MaxShips]RenderShip
-    lasers  section [..MaxLasers]RenderLaser | stride = 128
+    version uint64
+    cameras [..1]RenderCamera
+    ships   [..MaxShips]RenderShip
+    lasers  [..MaxLasers]RenderLaser
 }
 ```
 
-The field's storage is sixteen bytes — an offset, a count and a stride — and
-the records live out of line in the block, after the header. The point of the
-stride is speed across the language boundary: records sit at a fixed, declared
-pitch that both generated sides know, so the consumer points at one and reads
-it with no marshalling and no copy.
+**Nothing there is new.** Those are ordinary bounded arrays of ordinary fixed
+tables, and `RenderFrame` is an ordinary table — it still has `Measure`,
+`Save` and `Load` over the tolerant wire, and still cooks. The marker adds a
+third *form* of the same declaration: one in which the table's own bounded
+arrays sit out of line at a fixed pitch, and the instance at the front of the
+block carries, per array, where its rows start, how many there are, and how
+far apart they sit. The other side reads those three facts and points.
 
-**Building it goes wide, with nothing to synchronise.** Declare the counts,
-lay the block out once, then let N workers fill disjoint records:
+Which arrays move out of line is the one rule to know: **the marked table's
+own `[..N]` arrays, and nothing else** — a fixed `[N]T`, an enum-keyed
+`[E]T`, and any array inside a row all stay where they are. Elements must be
+structs: a fixed table or a plain `type`. A row's pitch is its `sizeof`.
+
+**Building it goes wide, and that is required, not merely allowed.** Declare
+the counts, lay the block out once, then let N workers fill disjoint ranges:
 
 ```cpp
 RenderFrameBlockStorage storage;              // max-sized allocation, made once
 
 RenderFrameCounts counts = {};
-counts.ships = numShips;
+counts.ships = numShips;                      // clamp to the maximum yourself
 
 RenderFrameBlock block;
-if ( !RenderFrameBlockBegin( block, storage, counts ) )   // a count is over its maximum
+if ( !RenderFrameBlockBegin( block, storage, counts ) )   // names the array, count and maximum
     return;
 
-RenderShip * ships = RenderFrameShips( block );   // the section's typed base
+RenderShip * ships = RenderFrameShips( block );   // the array's typed base
 
 // worker w handles [begin, end) — no lock, no atomic, no allocation
 for ( int i = begin; i < end; i++ )
@@ -1063,9 +1070,11 @@ for ( int i = begin; i < end; i++ )
 int64_t bytes = RenderFrameBlockBytes( block );   // the used extent, for the handoff
 ```
 
-**Reading it is one check and then pointers.** The consumer opens the block,
-which verifies the magic, the byte order, the layout id and the extent, and
-then iterates each section at the stride the header gives it:
+A block stays valid until the next `Begin` on that storage, which invalidates
+every row pointer taken from it. Double-buffering is two storages, and it is
+yours to own.
+
+**Reading it is one check and then pointers:**
 
 ```csharp
 if ( !RenderFrame.BlockOpen( out RenderFrameBlock block, pointer, bytes ) )
@@ -1075,23 +1084,26 @@ foreach ( ref readonly RenderShip ship in block.Ships )
     Draw( ship );
 ```
 
+`BlockOpen` verifies the magic, the byte order, the layout id and the extent,
+and then you index. A generic consumer does not even need the generated
+struct: the reflection descriptors carry the projection's layout, so a tool
+can walk any block's rows without a type per table.
+
 **Three things to know before you reach for one.**
 
-- **A block has no wire.** It is not tolerant, it has no read report, and a
-  section cannot be saved or loaded. Its records are ordinary fixed tables and
-  keep their own wire; only the header is wire-less. If you want data that
-  outlives the build that wrote it, you want a table (above), not a block.
-- **Both sides are generated and the compiler holds the contract.** Every
-  record's size and every field's offset is asserted by generated code in both
-  languages, against the layout the compiler computed. A field that moves is a
-  build error, not a garbled frame.
-- **Leave the stride alone unless you want headroom.** Derived, it is the
-  element's `sizeof`, and the consumer gets a contiguous span over the section.
-  Declaring a bigger one buys room to append fields later — an older consumer
-  reads its prefix at the same pitch — and costs that span. Appending a field
-  at the end of a record, appending a section, or raising a maximum are the
-  edits a block absorbs; anything that moves an existing offset is a break, and
-  the tables baseline refuses it.
+- **It is a same-build contract.** Both sides are generated from one
+  declaration and ship together. Every row size and field offset is asserted
+  by generated code in both languages, so a field that moves is a build
+  error, not a garbled frame. If you want data that outlives the build that
+  wrote it, use the wire — which this same table still has.
+- **The edits it absorbs are appends.** A field appended at the end of the
+  table, a field appended at the end of a row, or a maximum raised: all three
+  are absorbed, because the consumer reads offsets and pitches from the
+  instance rather than assuming them. Anything that moves an existing offset
+  is a break, and the tables baseline refuses it.
+- **The allocation is the maximum, once.** `BlockMaxBytes` sums every array's
+  declared maximum; the block is allocated once at that size and never grown.
+  The bytes you hand off are only the frame's.
 
 ### The cooked form: point at a file instead of parsing it
 

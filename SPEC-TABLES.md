@@ -50,11 +50,25 @@ licensed. Unexplained slowness is still a defect, in every rung.
   neutral wire allows. That is a bench obligation, not an intention: a
   fixed table sits beside its equivalent type on the ledger, and the gap
   is explained or closed. The zero-cost gate (§2.2) holds the storage
-  half of it; the bench leg holds the codec half.
+  half of it; the bench leg holds the codec half. **A fixed table and a
+  `type` are semantically the same thing — a struct.** What separates them
+  is the wire each rides and the versioning that comes with it, and nothing
+  else; the constructs below are the table wire's, not a different idea of
+  what a value is.
 - **The variable-length class pays for exactly what it buys** — pointers,
   an arena on the building side, a region on the reading side, a
   reference indirection per edge. This is where "less performant" lives,
   and it is deliberate.
+
+**Where the effort goes is decided by which SIDE is hot, and the forms
+differ.** The wire and the cooked form are **read-hot and write-cold**: they
+are written once, offline, by a tool or a build pipeline (§7's pipeline
+paragraph says where that runs and how its output is addressed), and read by
+the game. Optimise their readers; their writers are a build cost. **The
+BLOCK FORM (§19) is the one form hot on BOTH sides** — written every frame in
+one language and read every frame in another — so it is the hottest path
+tables have, and the fastest-correct mission bites hardest there. §12.1 is
+the gate that decides whether it earns its place.
 
 ## What allocates, and what never does
 
@@ -83,10 +97,10 @@ follow-on. Every other backend refuses a unit that declares tables at all, by
 name, with this document cited. The remaining per-language backends are named
 follow-ons (§15).
 
-**The SECTIONED BLOCK (§2.7, §19) is specified and unimplemented.** No backend
-emits it yet: a unit declaring a section is refused by name, with §19 cited,
+**The BLOCK FORM (§2.7, §19) is specified and unimplemented.** No backend
+emits it yet: a table marked `| block` is refused by name, with §19 cited,
 never emitted with the block surface missing. C++ and C# take it together,
-because the construct is an ABI between two languages and one language alone
+because the form is an ABI between two languages and one language alone
 cannot hold the gate it exists for (§12.1).
 
 ## 1. Purpose
@@ -127,7 +141,7 @@ table ShipConfig
 A table body is a type body — the field grammar of SPEC §4.2, hosted by
 `table`: bare and ranged integers, `bits(N)`, `bool`, floats and
 compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
-`if` branches, and declared types as field groups. Seven additions:
+`if` branches, and declared types as field groups. Six additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
@@ -146,11 +160,12 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
   buffer at exactly its used size, and `*string` is its sibling.
 - **A union arm may be a table** (§2.6), which is what makes an evolvable
   message set expressible.
-- **A field may be a SECTION** (§2.7). `ships section [..MaxShips]RenderShip`
-  declares a strided array stored out of line in one block, with an
-  `(offset, count, stride)` triple in the declaring table — the header-plus-
-  sections shape of a per-frame render block, made language (§19).
 - **`was` — the rename attribute** (§5).
+
+And one addition that is not a field spelling at all: **a fixed table may be
+marked `| block`** (§2.7), which gives it a third FORM beside its wire and its
+cook — the same declaration laid out so another language points at its rows
+(§19). It adds no field type, no wire kind and no byte on the wire.
 
 ### 2.1 Pointers
 
@@ -231,15 +246,11 @@ Pointer edges do not propagate the mode: a table that is merely POINTED
 AT stays fixed-size if it holds no pointer of its own. It gains an
 allocation and a resolution entry, and nothing else.
 
-**A SECTION is by-value storage, so a block root is FIXED-SIZE** (§2.7). A
-section field's storage is the sixteen-byte `(offset, count, stride)`
-triple, which holds no pointer and is blittable like every other by-value
-field, so a table that declares sections is a plain struct and the mode
-derivation has nothing to propagate: the ELEMENT of a section is required
-to be fixed-size in the first place (§11), and the strided records live in
-the block rather than in the header. A section edge is therefore not a
-by-value edge for the derivation above — it reaches no variable-length
-table, because it cannot name one.
+**`| block` does not enter this derivation at all** (§2.7). A block-form
+table declares nothing new: its fields are the bounded arrays of fixed
+structs it always had, which are by-value edges under the rule above, so it
+derives FIXED by that rule unchanged. The marker selects a FORM, and a form
+is not a mode.
 
 **A fixed-size table pays nothing for the VARIABLE-LENGTH machinery**, and
 that is a gate, not a hope: in a unit whose tables are all fixed-size the
@@ -256,13 +267,13 @@ emitted in every unit, whatever its mode, because a fixed-size table can
 declare it and a tool walking a fixed-size table has to find it. The gate
 asks "did the pointer world leak in?", never "did the descriptor grow?".
 
-**The BLOCK machinery takes the same gate, on the same terms** (§19): a
-unit that declares no section carries no block storage type, no `Begin`, no
-`Open`, no strided iterator and no layout constants — the build fails if
-one symbol of it appears — while the section's descriptor COLUMNS (§8) ride
-in every unit, because they describe the language and a fixed-size table
-can declare a section. Machinery is gated; columns are not, which is the
-rule the paragraph above already states.
+**The BLOCK machinery takes the same gate, on the same terms** (§19): a unit
+in which no table is marked `| block` carries no block storage type, no
+`Begin`, no `Open`, no row iterator and no layout constants — the build fails
+if one symbol of it appears. No marker, not one symbol. The descriptor
+COLUMNS (§8) the block form reads ride in every unit as every other column
+does, because they describe the language. Machinery is gated; columns are
+not, which is the rule the paragraph above already states.
 
 The assumption behind the split, stated so nobody quietly designs against
 it: size and mode correlate in practice. Value-only tables are assumed
@@ -526,78 +537,67 @@ payload could never express.
 - **A backend without a native union may allocate for the arm** (the
   ladder, above): the carve-out is the language's, not the table's.
 
-### 2.7 Sections: `ships section [..MaxShips]RenderShip`
+### 2.7 The block form: `table RenderFrame | block`
 
 ```
-table RenderFrame
+table RenderFrame | block
 {
-    cameras section [..1]RenderCamera
-    ships   section [..MaxShips]RenderShip
-    lasers  section [..MaxLasers]RenderLaser
+    version uint64
+    cameras [..1]RenderCamera
+    ships   [..MaxShips]RenderShip
+    lasers  [..MaxLasers]RenderLaser
 }
 ```
 
-A SECTION is a **strided array of a fixed-size element, stored out of line
-in one block**, with an `(offset, count, stride)` triple in the declaring
-table. A table that declares one is a **BLOCK ROOT**: its instance is the
-HEADER at the base of a block, the sections follow it in that same block,
-and §19 is the form — how the block is laid out, filled by many threads,
-and pointed at from another language.
+**`| block` declares no construct.** Every field above is an ordinary field
+of an ordinary fixed table: a scalar and three bounded arrays of structs,
+which this document has always had. The marker says that this table has a
+THIRD FORM beside its wire (§3) and its cook (§7) — one in which its own
+bounded arrays are laid out of line at a fixed pitch, so a consumer in
+another language points at their rows instead of parsing them (§19). One
+declaration, three projections of it; **it's tables all the way down.**
 
-**What the construct is FOR is speed across a language boundary.** A
-section's records sit at a DECLARED PITCH that both generated sides carry as
-a constant and the header carries as data, so a consumer written in another
-language points at a record and reads it: no marshalling, no copy, no parse,
-no per-element call. That is the whole reason the pattern exists in
-hand-written form and the whole reason it becomes a declaration; everything
-below is in service of it.
+**The rule, in full, because it is the one thing a reader has to know that
+the declaration does not spell:**
 
-- **Storage in the header is SIXTEEN BYTES**: `offset (u64)`, `count (u32)`,
-  `stride (u32)`, in that order, with no interior padding. It is by value, it
-  holds no pointer, and it is blittable, so a block root is FIXED-SIZE
-  (§2.2) and its header is one memcpy-able struct like any other table.
-- **The offset is BLOCK-RELATIVE** — the byte distance from the block's
-  BASE, not from the slot that holds it. A region reference is self-relative
-  (§6.3) because nothing there hands a walker a base; a block's consumer is
-  handed the base by construction, and a header read BY VALUE — which is how
-  a blittable consumer reads it — keeps working, where a self-relative delta
-  would not survive the copy (§14).
-- **The bound is a MAXIMUM, and the spelling is `[..N]`.** `N` is the ceiling
-  the block's STORAGE is sized from (§19.1); `count` is the runtime fact, and
-  it is the number the producer declares before the block is laid out. Every
-  other array spelling is refused in section position (§11): a
-  fixed `[N]T` would make the count a constant, and a keyed `[E]T` is
-  complete by construction and has no count at all.
-- **The STRIDE is derived, and may be declared.** Derived, it is `sizeof` of
-  the element rounded up to the element's own alignment — which for a
-  standard-layout struct (§9) is `sizeof` itself, so the common declaration
-  needs no attribute and the dogfood's own render records express with none.
-  `| stride = N` declares it instead, and `N` is refused when it is smaller
-  than `sizeof` or is not a multiple of the element's alignment (§11).
-  Declaring a larger stride buys HEADROOM — bytes past the record's end,
-  inside its pitch — and it costs the consumer's fast path, which is the
-  honest trade §19 states.
-- **The ELEMENT is a fixed-size `table` or a declared `type`**, and nothing
-  else. A pointer, a `*bytes`, a `*string`, a variable-length table and a
-  table that itself declares a section are each refused by name (§11): a
-  block is one flat pointer-free extent, and a record whose meaning depends
-  on anything outside it is not a record a consumer can point at.
-- **Sections do not nest.** A section's element declares no section, and a
-  block root is not nested by value, pointed at, made a union arm or used as
-  an array element (§11). One block, one header, one level of sections. A
-  block root's section offsets are meaningful only when it sits at a block's
-  base, and refusing every other placement is what makes that true by
-  construction rather than by care.
-- **`?` and `*` are refused on a section** (§11): a section with a count of
-  zero already IS an empty one, and a block holds no pointers.
+- **DEPTH ONE, BOUNDED ONLY.** In the block form, every **bounded** array
+  field **of the marked table itself** — `[..N]T` — is laid out of line, in
+  declaration order, each at its own pitch. Everything else stays exactly
+  where it is: a fixed `[N]T`, an enum-keyed `[E]T`, and **every array at any
+  depth inside an element**. An element is one flat record or it is not a
+  record another language can point at, and one level is what makes "which
+  arrays move" answerable by reading one declaration.
+- **THE INSTANCE IS WHAT MOVES, not the schema.** The block form generates
+  the table's struct as a PROJECTION: each out-of-line array's inline storage
+  — `T[N]` and its count companion — is replaced, AT THAT FIELD'S POSITION,
+  by `(offset_of u64, count u32, stride u32)`, sixteen bytes with no interior
+  padding. Every other field keeps its by-value storage at its natural offset.
+  That projection is what sits at the front of the block, and nothing declares
+  it: it is what the table already knows about its own rows, written down
+  where the other side can read it.
+- **THE ELEMENTS ARE STRUCTS.** A bounded array takes the out-of-line form
+  only when its element is a fixed-class `table` or a declared `type` — the
+  same thing, semantically (the ladder, above). A variable-length table, a
+  `*T`, a `string` or `bytes` element is refused by name in a block-form table
+  (§11): none of them has a fixed pitch, and striding what has no pitch means
+  nothing.
+- **THE PITCH IS `sizeof`.** A row's stride is the element's `sizeof`, rounded
+  up to its alignment — which for a standard-layout struct (§9) is `sizeof`
+  itself. It is derived, always, and no declaration adjusts it in this
+  version; declared headroom is a named follow-on (§15) with the reason it is
+  not here. The stride still RIDES in the triple, because it is the pitch the
+  consumer indexes with and it must come from the data, never from the
+  consumer's own constant (§19.2).
+- **A TABLE, NOT A NEW KIND OF TABLE.** A block-form table keeps everything
+  an ordinary fixed table has: `Measure`, `Save` and `Load` over the tolerant
+  wire (§3), its cook (§7), its reflection descriptors (§8), its place as a
+  nested field or an array element in someone else's table. `| block` adds a
+  form; it removes nothing. That is what makes "is the render data a table?"
+  answerable with one word.
 
-**A section has NO WIRE KIND, and a block root therefore has no table wire.**
-§3's set is closed, so a section's triple cannot ride, and nothing pretends
-otherwise: a block root gets no `Measure`, no `Save` and no `Load`, and the
-BLOCK is its serialized form. Its ELEMENTS are ordinary fixed-size tables and
-keep their whole table wire, so `RenderShip` saves and loads tolerantly like
-any other record — it is only the header that is wire-less. That is the
-fourth form's honest boundary and §19 states what it costs.
+**`| block` is refused on a `type`, and on a table whose closure is not all
+structs** (§11). A type has no table wire to be a third form beside, and a
+table that reaches a pointer has no fixed pitch anywhere in it.
 
 ## 3. The wire
 
@@ -689,12 +689,15 @@ schema's codebase:
   **A kind a reader does not know at all is not skippable** and is framing
   damage, which is why the set is closed and why a new kind is a wire
   change rather than an addition.
-- **A SECTION has no kind and never rides** (§2.7). The set above is closed,
-  so the `(offset, count, stride)` triple has no framing here and a block
-  root has no wire form at all — the BLOCK (§19) is its serialized form. A
-  section's ELEMENTS are ordinary fixed-size tables and their own wire is
-  untouched, so the records a block carries are savable and loadable
-  tolerantly wherever something wants that; only the header is wire-less.
+- **The BLOCK FORM moves no byte on this wire, and spends no kind** (§2.7,
+  §19). A block-form table's bounded arrays ride here exactly as every other
+  bounded array of tables does — kind `14`, element kind `13`, the LIVE
+  count — and `| block` is not a wire fact at all: it selects a second
+  projection of the same declaration, the way a cook (§7) is a third. The
+  `(offset_of, count, stride)` triple is a block-form artifact and has
+  nothing to ride here, because a wire form has no triple. So a tool can
+  `Save` and `Load` a frame, and a diff of two frames is an ordinary table
+  diff.
 - **Field ORDER within a body is not part of the contract.** This
   implementation writes fields in declaration order, and a reader must not
   rely on it: every field is found by its id, so any order decodes the same
@@ -1363,16 +1366,19 @@ The mode (§2.2) decides the shape of the API, because the two classes are
 genuinely different things at runtime and neither should be contorted to
 look like the other.
 
-**A block root has a THIRD life and it is §19's.** A table that declares a
-section (§2.7) is fixed-size, so its header is a value like any other, but
-its instance lives at the base of a block rather than on its own and it has
-no wire form at all. The surface below is the wire's; the block's is stated
-where the block is.
+The block form (§19) is not a third life: a block-form table is fixed-size
+and has exactly the life below. What changes is how one instance is laid
+out, not what kind of thing it is.
 
 ### 6.1 Fixed-size: a value
 
-A fixed-size table is a struct. Its whole surface is three free
-functions, name first:
+A fixed-size table is a struct. **A fixed table and a `type` are the same
+thing semantically — both are structs — and what differs between them is the
+wire each rides and the versioning that comes with it.** Everything below is
+that wire's surface, not a different notion of a value; and a third form of
+the same struct is §19's.
+
+Its whole surface is three free functions, name first:
 
 ```cpp
 ChatMessage msg;
@@ -1588,6 +1594,15 @@ load time does not demand the accelerator, the game just uses the generic
 table: cooking is a choice made per asset, never a requirement of the
 format.
 
+**A cooked artifact is CONTENT-ADDRESSED by a pair — the hash of its source
+asset, and the cooked-version hash, which is this build's table protocol id
+and on this page is the LAYOUT ID (below)** — and that pair is the key the
+runtime searches for, the key a distributed build cache produces under and
+serves from. It is why the cooking side is a build cost rather than a
+runtime one: the work happens offline, once per (asset, layout), and the
+game does a lookup. That is the fact the performance ladder cites when it
+calls the wire and the cook read-hot and write-cold.
+
 The example pair is the whole rule. A huge data file naming every mesh in
 the game, or every texture — that is a cook. A configuration file small
 enough that the cost of loading it does not matter is the wire, and stays
@@ -1729,11 +1744,19 @@ for it. Here the tolerant wire stays the format of record and the cooked
 form is a build-locked accelerator beside it, produced only where load
 time asks for one. The two-form split is the design.
 
+**A COOK and a BLOCK are different accelerators and must not share a layout
+id.** Both are build-locked projections of one declaration, but they lay it
+out differently — a cook writes the by-value form verbatim, a block writes
+the projection with its rows out of line (§2.7) — so one id covering both
+would let a runtime accept one where the other was written. Each carries its
+own id, computed over its own facts, and neither is checked against the
+other's.
+
 **And prior art gets one MEASURED sentence, from the case §19 exists for.**
 The render data this document's second gate is held to (§12) was built with
 flatbuffers once and the build was abandoned — in the owner's words, *"I
 used to use flatbuffers to build render data, but it was too slow because it
-was not parallizable."* That is the specific failure the sectioned block is
+was not parallizable."* That is the specific failure the block form is
 shaped against: a per-frame producer that has to go wide cannot afford a
 builder with a serialization point in it, whatever the read side costs. A
 cook does not answer it either — a cook is produced from a builder by a
@@ -1810,15 +1833,22 @@ listing.
 offset beside the reference, so a walker reads the blob's extent the way
 it reads an array's count (§2.5).
 
-**A SECTION field carries its element's descriptor and the three offsets of
-its triple** — `section` marks the field, `table` names the ELEMENT's
-descriptor, and `offset_offset`, `count_offset` and `stride_offset` name the
-three members inside the sixteen-byte triple (§2.7) — so a tool handed a
-block and its header's descriptor walks every section without knowing the
-spelling that produced it, reading the pitch from the data rather than
-assuming it. The declared MAXIMUM rides beside them in the column an array's
-bound already uses, and a table's own **`block`** flag says it is a block
-root, so a tool can tell a header from an ordinary fixed table (§2.7).
+**A BLOCK-FORM table carries a second set of positions for the same fields,
+and this is what makes the block form READABLE BY REFLECTION** (§19.2). A
+table's own **`block`** flag says it has the form; each out-of-line array
+field then carries, beside the offset its by-value storage has, the
+**projection offset** of its `(offset_of, count, stride)` triple and the
+offsets of the three members inside it, with the ELEMENT's own descriptor
+already in the column a nested table uses. Every other field carries its
+projection offset too, because the projection is a different struct from the
+by-value one (§19.3) and a walker over a block needs the positions that
+struct actually has.
+
+That is the whole mechanism behind the block form's read side: a consumer
+with the descriptors reads the triples out of an instance and points at rows,
+with no hand-written struct per table and no knowledge of the spelling that
+produced any of it. The descriptors are constant data, so this costs a
+lookup, not a parse.
 
 These columns exist in every unit, whatever its mode — they describe the
 LANGUAGE, and a fixed-size table can declare all of them. Only the two
@@ -1882,18 +1912,20 @@ held by construction:
 - **Going wide on the BUILDING side** is §6.4: allocation is thread-local
   and nothing ever moves, so N workers fill one arena with no lock and no
   per-node atomic.
-- **The BLOCK is the strongest form both properties take** (§19), and it is
-  where the requirement for them came from. A block is one flat extent whose
-  every reference is a block-relative offset, so it relocates by plain
+- **The BLOCK FORM is the strongest form both properties take** (§19), and it
+  is where the requirement for them came from. A block is one flat extent
+  whose every reference is a block-relative offset, so it relocates by plain
   `memcpy` with no fix-up at all — no `Lock`, because it is born compacted.
-  And it goes wide with nothing to synchronize: its storage is sized from the
-  declared maxima and its layout is fixed in one pass over the SECTIONS
-  before any worker runs, so every record's address is settled ahead of the
-  scatter, N workers fill disjoint records, and there is no arena, no
-  allocation, no atomic and no per-node prologue pass. The
-  builder's four models (§14) all exist because a general structure cannot
-  know its bound; a block declares one, which is why item 3 there — reserve
-  the max and never resize — is exactly what a block does.
+  **And going wide there is an OBLIGATION, not a permission**: the layout is
+  settled from the counts in one pass over the table's out-of-line arrays
+  before any worker runs, so every row's address is known ahead of the fill;
+  N workers then own disjoint index ranges and write with no per-row
+  synchronisation and no lock. A generated fill path that allocates, locks or
+  takes an atomic does not conform, and §19.1 states that as a refuser rather
+  than as an aspiration. The builder's four models (§14) all exist because a
+  general structure cannot know its bound; a block-form table declares one,
+  which is why item 3 there — reserve the max and never resize — is exactly
+  what the block form does.
 
 ## 10. Independence from the hardcoded wire
 
@@ -1950,33 +1982,33 @@ lockstep redeploy by a table edit. This independence is held by test.
   specified default on one; an array of them — a buffer takes no node
   index (§3.1), unlike an array of table pointers, which is legal; `?` on
   one, because a null reference already IS absence.
-- **Sections** (§2.7), each naming the section field and, where a second
-  declaration is at fault, that one too:
-  - **a section outside a table body** — a `type` body refuses one as it
-    refuses a pointer, and so does a `union` arm's payload;
-  - **a section whose bound is not `[..N]`** — a fixed `[N]T` makes the count
-    a constant and a keyed `[E]T` has no count at all;
-  - **a section whose element is a pointer, a `*bytes`, a `*string`, a
-    VARIABLE-LENGTH table, or a table that declares a section of its own** —
-    a block is one flat pointer-free extent, and sections do not nest;
-  - **`| stride = N` where `N` is smaller than the element's `sizeof`, or is
-    not a multiple of the element's alignment** — the first would overlap
-    records, the second would misalign every record after the first;
-  - **`?` or `*` on a section** — a count of zero is already an empty
-    section, and a block holds no pointer;
-  - **a BLOCK ROOT nested by value, pointed at, used as an array or section
-    element, or named as a union arm's payload** — its section offsets are
-    block-relative and mean nothing anywhere but a block's base;
-  - **a specified default on a section** — the triple is written by the block
-    surface (§19), never by a declaration;
-  - **`section` as a declaration name** — it is a contextual keyword in type
-    position (SPEC.md §4.2);
-  - **a field of a block root named `magic` or `layout_id`** — those two are
-    the header's generated prologue (§19.1), as `<field>_present` is an
-    optional's generated companion;
-  - **a section under a backend that carries none** — which today is every
+- **The block form** (§2.7), each refusal naming the marked table and the
+  field or declaration at fault:
+  - **`| block` on a `type`** — a type has no table wire for the form to sit
+    beside, and the marker's whole meaning is "a third projection of this
+    table";
+  - **`| block` on a VARIABLE-LENGTH table** — a pointer anywhere in the
+    closure means no fixed pitch anywhere in it;
+  - **an out-of-line array whose ELEMENT is not a struct** — a
+    variable-length table, a `*T`, a `string` or `bytes` element in a
+    `[..N]` field of a block-form table. Striding what has no fixed pitch
+    means nothing, which is the refusal in one line;
+  - **`| stride` in this version** — the pitch is `sizeof` by construction
+    (§2.7); declared headroom is a named follow-on (§15), and the attribute
+    is refused rather than accepted-and-ignored, because an inert attribute
+    is a lie about the declaration;
+  - **a field of a block-form table named `magic` or `layout_id`** — those
+    two are the projection's generated prologue (§19.1), as `<field>_present`
+    is an optional's generated companion;
+  - **`| block` under a backend that carries none** — which today is every
     backend (status, above), refused with §19 cited and never emitted with
     the block surface missing.
+
+  **What is NOT refused, and it is worth saying because the earlier shape of
+  this feature refused it**: a block-form table nested by value, pointed at,
+  used as an array element or named as a union arm's payload. Its BY-VALUE
+  form is an ordinary fixed table and behaves like one everywhere; only its
+  block form requires a base, exactly as a cooked file's does.
 - **A `table` union arm outside a table closure** (§2.6) — a union declared
   for the type wire takes `type` payloads only, because types are value
   semantics.
@@ -1989,10 +2021,11 @@ lockstep redeploy by a table edit. This independence is held by test.
   an array's ELEMENT kind changed; an array changed between the keyed and
   the positional spelling; an enum-keyed array's key enum swapped; a
   field's referent dropped, or swapped for one whose identities do not
-  ride; and, for a BLOCK (§2.7), a field inserted before the end of a
-  section element, reordered, removed or retyped, a field appended PAST its
-  stride, a stride shrunk, or a section's element swapped, removed or moved
-  earlier. Overridden only by moving the baseline with a recorded reason.
+  ride; and, for a BLOCK-FORM table (§2.7), a field inserted before the end,
+  reordered, removed or retyped in that table or in any row type it names, an
+  out-of-line array's element swapped, an array moved between the out-of-line
+  and inline classes, or an out-of-line array removed or moved earlier.
+  Overridden only by moving the baseline with a recorded reason.
 - **A save-time data cycle reached from a builder** (§3.1): measure,
   save, cook and `Lock` all return failure with the cycle named. Nothing
   recurses away. A region loaded from a wire is not re-proved, and a save
@@ -2022,7 +2055,7 @@ lockstep redeploy by a table edit. This independence is held by test.
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **27 suffixes**, and a declaration spelling one of them is
+  each of these **36 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
@@ -2039,17 +2072,18 @@ lockstep redeploy by a table edit. This independence is held by test.
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. The nine block
   spellings are claimed on the same terms, for the same reason: a table
-  gains a section as an edit.
+  gains `| block` as an edit.
 
-  **A BLOCK ROOT claims a little more, because its section accessors are
-  named after its fields.** `<Header>` followed by the PascalCase of each
-  section field's name is the accessor that hands back that section
-  (§19.2), so `RenderFrame` with a `ships` section claims
-  `RenderFrameShips`, and a declaration spelling it is refused naming both.
-  A language whose accessors are members spells the same name on the block
-  type instead, and claims nothing at file scope for it. This part of the
-  set moves with the declaration, which is why it is stated as a rule
-  rather than as a list.
+  **A BLOCK-FORM TABLE claims two more per out-of-line array, because its
+  row accessors are named after its fields.** `<Table>` followed by the
+  PascalCase of the field's name is the accessor that hands back that
+  field's rows, and the same name with `Span` appended is the contiguous
+  view (§19.2) — so `RenderFrame` with a `ships` array claims
+  `RenderFrameShips` AND `RenderFrameShipsSpan`, and a declaration spelling
+  either is refused naming both. A language whose accessors are members
+  spells the same two names on the block type instead, and claims nothing at
+  file scope for them. This part of the set moves with the declaration,
+  which is why it is stated as a rule rather than as a list.
 - **A table named after a member of its generated builder** — a member
   function hides the type name it shares, so the header would not
   compile. The two accessors a real schema would plausibly hit were
@@ -2102,68 +2136,92 @@ the per-language backends are named follow-ons (§15).
 
 **The second gate is SPEED, and it is measured.** A real game's per-frame
 render data — the block a simulation hands its host engine sixty or more
-times a second — must be expressible as declared tables with nothing left
-over, with BOTH sides generated: a C++ producer filling the block wide, and
-a C# consumer POINTING at that block and reading records in place. The bar
-is not that it works. The bar is that it is at least as fast as the
-hand-written scatter it replaces, on both sides, and that nothing about the
-declaration made it slower.
+times a second, and faster than it simulates, because rendering need not
+wait for a tick — must be expressible as declared tables with nothing left
+over, with BOTH sides generated: a C++ producer writing the block, and a C#
+consumer POINTING at it and reading rows in place. The bar is not that it
+works. The bar is that it is at least as fast as the hand-written scatter it
+replaces, on both sides, and that nothing about the declaration made it
+slower.
+
+**This is the hottest path tables have, and the page ranks it that way.**
+The other table paths — a save game, and above all an asset cooked to a
+build's own layout — are read-hot and write-cold: written once, offline, by
+tooling and a build cache (§7), and read fast by the game, so the reader is
+where the effort goes and the writer is a build cost. **The block form is
+the one form hot on both sides**: written every frame in one language, read
+every frame in another, at 60 Hz or better. The fixed class's performance
+doctrine (the ladder) bites hardest here, and this gate is what decides
+whether tables earn the render data at all.
+
+**It is PRE-COOKED AT BUILD, and that is the property that makes it fast.**
+Every layout fact — the projection's own offsets, each row's size, each
+pitch — is settled by the compiler and asserted into both generated sides
+(§19.3). Nothing is negotiated, discovered or checked at frame time: the
+producer writes at known offsets, the consumer points at known offsets, and
+the contract lives in generated asserts and a build-time digest rather than
+in a runtime check on the hot path. A cook does the same thing for an asset
+at load time; the block form does it for a frame, every frame.
 
 **Why the bar is stated that way.** The producer this gate is held to is
 multi-threaded by design, and the previous attempt at a general answer was
 abandoned for exactly this reason — flatbuffers built the render data once
 and lost, *"because it was not parallizable"* (§7). So a construct that
-serializes the build, allocates per record, or forces a copy on the read
-side has already failed the gate, however clean the declaration reads. The
-sectioned block (§2.7, §19) is the shape that answers it, and the pitch is
-the load-bearing part: **striding is what makes the interop fast** —
-blittable records at a fixed, declared pitch that both generated sides
-point at, with no marshalling and no copy anywhere in the frame.
+serializes the build, allocates per row, or forces a copy at the boundary
+has already failed the gate, however clean the declaration reads. The block
+form (§2.7, §19) is the shape that answers it, and the pitch is the
+load-bearing part: **striding is what makes the interop fast** — blittable
+rows at a fixed pitch that both generated sides index with, with no
+marshalling and no copy AT THE BOUNDARY. (What a consumer then does with a
+row is its own business: the one that exists copies rows into a pool so its
+jobs can take them, and that copy is the consumer's design, not the form's.)
 
-**The shape the gate is held to.** One block root (§2.7), fixed-size down to
-the leaves: a header of sections, each section a strided array of a
-fixed-size record, no pointer anywhere in the closure. The block's storage is
-sized from the declared maxima and its layout is fixed before any worker
-starts, so N workers fill disjoint records with no lock, no atomic and no
-per-record synchronisation (§9, §19). The consumer maps the block, checks
-the header once, and
-iterates each section at the stride the header gives it. The layout contract
-— every record's size, every field's offset, every section's stride — is
-asserted by GENERATED code on both sides (§19.4), which is the half that
-replaces a hand-kept mirror with a compiler's word.
+**The shape the gate is held to.** One fixed table marked `| block`
+(§2.7), fixed down to the leaves: bounded arrays of fixed-size records, no
+pointer anywhere in the closure. The block's storage is sized from the
+declared maxima and its layout is settled from the counts before any worker
+starts, so N workers fill disjoint row ranges with no lock, no atomic and no
+per-row synchronisation — and that is an OBLIGATION on the implementation,
+not a permission to the caller (§9, §19.1). The consumer maps the block,
+checks it once, and reads each array at the pitch the instance gives it. The
+layout contract — the projection's own offsets, every row's size, every
+field's offset, every pitch — is asserted by GENERATED code on both sides
+(§19.3), which is the half that replaces a hand-kept mirror with a
+compiler's word.
 
 **What "with nothing left over" means here, concretely.** The dogfood's
 render path today holds its layout contract by hand on both sides: a wall of
 `static_assert`s naming each record's `sizeof` on the C++ side, and a
 hand-written blittable mirror on the C# side that a person must edit in the
-same commit. Clearing the gate deletes both — the mirror because the C#
-backend generates the blittable struct (#287), and the asserts because the
-generated pair asserts the same facts from one declaration. A field added at
-the end of a record must reach both languages from one edit to one schema
-file, and the compiler must be what says so.
+same commit. Clearing the gate deletes both — the mirror because the
+descriptors carry the layout and the C# backend generates the blittable
+struct beside them (#287), and the asserts because the generated pair
+asserts the same facts from one declaration. A field added at the end of a
+record must reach both languages from one edit to one schema file, and the
+compiler must be what says so.
 
-**The measured bar, and where it is taken.** A timed parallel build of a
-representative frame, generated block against the current hand-written
-scatter, paired in one sitting under the bench rules this repo already runs
-under: gated goldens first, medians paired, contaminated runs discarded
-whole. Two numbers, both required — **the producer's per-frame build time,
-and the consumer's per-frame read** — and the generated form clears the gate
-only when neither is slower. A regression on either is a defect to explain
-or close, not a trade to license: this is the fastest-correct mission
-applied to the rung the block sits on.
+**The measured bar, and where it is taken.** Two numbers, both required:
+**the per-frame C++ WRITE and the per-frame C# READ**, generated form
+against the hand-written scatter and the hand mirror, paired in one sitting
+under the bench rules this repo already runs under — gated goldens first,
+medians paired, contaminated runs discarded whole. The generated form clears
+the gate only when neither number is slower. A regression on either is a
+defect to explain or close, not a trade to license: this is the
+fastest-correct mission applied to the rung the block form sits on, and the
+rung is the top one tables have.
 
 **Its PROVENANCE, recorded because it explains two older requirements.**
 §9's relocatability and §6.4's multi-threaded, lock-free builder were
 written FOR this case — *"this is where the relocatable and multithreaded
 builder requirement came from"* (§13.1) — not for the config and asset files
 gate 1 holds. Gate 1 proved the tolerant wire could carry a content
-pipeline; gate 2 is the original requirement made explicit, and the block is
-the form in which both properties are strongest (§9).
+pipeline; gate 2 is the original requirement made explicit, and the block
+form is where both properties are strongest (§9).
 
 **This gate is per-language too, and it takes TWO languages at once**, which
 gate 1 does not: a block whose producer and consumer are the same language
-proves nothing about the ABI the construct exists to be. C++ and C# together
-are the gate; a third language joins it as its backend lands (§15).
+proves nothing about the ABI the form exists to be. C++ and C# together are
+the gate; a third language joins it as its backend lands (§15).
 
 ## 13. Rulings, recorded
 
@@ -2368,7 +2426,7 @@ convenience:
   context (§6.4, §7), so they have no single definition to emit, and no
   number has been taken for them.
 
-### 13.6 The sectioned block, ruled
+### 13.6 The block form, ruled
 
 Owner rulings, 2026-09-02, in the order given.
 
@@ -2377,7 +2435,8 @@ Owner rulings, 2026-09-02, in the order given.
   "*including* the blittable arrays with stride."
 - **Tables, not types, and why**: "probably with tables, I would imagine.
   since render data is BIG", "so it's more table like than for example, a
-  type." A block root is a table (§2.7), and its mode derives FIXED (§2.2).
+  type." The block form is a form a fixed TABLE takes (§2.7), and §2.2's mode
+  derivation needs no edit to say so.
 - **The producer is multi-threaded by design**: "note that the hand-written
   code that walked and generated render data from C++ is multi-threaded by
   design" — which is the constraint the layout is shaped by (§19.2).
@@ -2388,8 +2447,47 @@ Owner rulings, 2026-09-02, in the order given.
   (§7) — which is what makes gate 2's bar measured rather than stylistic.
 - **The pattern, named**: "Do you see how the render data is sort of its own
   structure, a header with sections that it points to" / "each section being
-  a strided array of some type?" / "This is its own pattern." §2.7 is that
-  pattern as a declaration.
+  a strided array of some type?" / "This is its own pattern."
+- **And then dissolved into tables, which is where it landed.** "is render
+  data a table? are the render types being strided types or tables?" / "can
+  render data root be a table?" / "if it is, then we can make tables more
+  powerful." / "i would suggest that render data is a root table, with
+  strided types or fixed tables being allowed. strided making no sense for
+  non-fixed tables or types." / "in fact, fixed tables and types are
+  semantically the same (structs) they just have different wires and
+  versioning stuffs." / "why even have a 'section'?" / "feels like the
+  strided array and the section are the same thing, what you really need is a
+  new concept of header with offset_of" / "header itself could be a table or
+  type?" / "yes, i guess header is root table expressed in some way that
+  C++/C# can read header data, and get data about the strided arrays." / "so
+  in this context header just collapses into stuff that a table knows about
+  its own rows." / **"It's tables all the way down."** That sequence is why
+  §2.7 declares no construct and §19 describes a FORM: the strided array is a
+  bounded array, the header is the table's own instance laid out so the other
+  side can read it, and nothing new is declared.
+- **The builder, as a requirement rather than a capability**: "And the
+  builder must be able to be multi-threaded. Hard requirement." §9 and §19.1
+  state it as an obligation on the implementation, held by a refuser.
+- **The path's rank and its shape**: "Yes, the render struct is interesting
+  in that it is a structure that must be fast and effectively, pre-cooked on
+  build. It must be fast to both write in C++ and read in C# since it is
+  large and it is 60HZ or greater (we can render faster than we simulate)."
+  And: "It is the hottest path for tables to be sure."
+- **Why the other paths are ranked below it**: "The other paths for tables
+  like save games, or especially assets -> cooked -> binary format for
+  specific build version, these only need fast *readers*" — because "the
+  building will be done by tooling offline", "(and generally, it will be done
+  in a distributed build cache sort of way... this is how it is usually
+  done)". The ladder reads that as read-hot and write-cold, and §7 carries
+  the addressing fact it rests on.
+- **How a cooked artifact is addressed** (§7): "so the hash of the asset and
+  the cooked version is the asset the runtime searches for" — "asset hash,
+  cooked version hash." / "(as in, build version, schema table protocol id
+  effectively...)".
+- **What C++ and C# each actually need**: "The way we currently read render
+  data header in C++ and C# is just a builder issue in C++ and a reflection
+  issue in C#." §19.1 is the builder half and §19.2 the reflective half, and
+  neither is new machinery.
 - **What the stride buys, first**: "striding is necessary for fast interop
   between C++ and C#" — "so that's the real thing here." The pitch is the
   point: blittable records both generated sides point at, no marshalling and
@@ -2399,9 +2497,9 @@ Owner rulings, 2026-09-02, in the order given.
   C# exploding", "because C# just doesn't know about the new fields yet, and
   stride is bigger than struct width" — then, refining: "It may be obsolete
   now, but this was the original intent", "If we generate both render data
-  C++ and C# side now, it's less of a concern." So headroom is a real
-  property and a secondary one; the layout contract and the baseline are the
-  guard of record (§19.4, §19.5).
+  C++ and C# side now, it's less of a concern." Declared headroom is a named
+  follow-on (§15) rather than v1 language; the layout contract and the
+  baseline are the guard of record (§19.3, §19.4).
 - **The purpose, in one line**: "this is a 'nice' property to get some sort
   of more robust structure (ABI) between C++ and C# without hardcore
   versioning", "because both sides were previously manually updated."
@@ -2582,84 +2680,111 @@ weighed:
    marked traversal's hole was. `O(R + P log N)`, no allocation, and less
    machinery than the walk it replaces.
 
-**The sectioned block: the forms that already existed, and why none of them
-carried the render data** (§2.7, §19). Four were weighed before a construct
-was added at all, because adding one to a language whose whole claim is
-"nothing left over" needs the alternatives eliminated by name:
+**The block form: how a construct became a form, and what that cost.** This
+feature was first designed as a `section` construct — a new field spelling
+whose storage was an `(offset, count, stride)` triple, in a table that had no
+wire because a triple has no wire kind. That design is recorded here because
+its central argument was WRONG in an instructive way, and because the four
+alternatives weighed against it are still the reasons the form looks as it
+does.
 
-1. **A bounded array BY VALUE inside a fixed table — REJECTED, and it is the
-   near miss worth stating.** `ships [..MaxShips]RenderShip` in a fixed table
-   is already a strided array at stride `sizeof`, at a compile-time offset,
-   filled by N workers with no synchronisation — the storage half of the
-   block, for free. Two things defeat it and neither is cosmetic. **The
-   header stops being small**: the array's storage is INSIDE the struct, so
-   the consumer's header type is megabytes and cannot be read by value,
-   which is the ergonomic the whole pattern is built on. And **the layout
-   facts stay COMPILE-TIME CONSTANTS on both sides** — the consumer assumes
-   an offset, a count companion's placement and a pitch rather than reading
-   them, so every drift garbles silently and nothing on the boundary can
-   say so. The section's real content is not the storage: it is the
-   `(offset, count, stride)` triple that turns three assumptions into three
-   facts a consumer reads (§19.4).
-2. **A pointer and a region (§2.1, §6.3) — REJECTED.** That is the
-   variable-length class: an arena, a `Lock` that compacts, a node
-   directory, self-relative derefs. The producer would pay a
-   single-threaded compaction per frame and the consumer would need the
-   region surface, which C# does not have and would not want at sixty hertz.
-   The block needs no arena because it declares its bound.
-3. **The cooked form (§7) — REJECTED, and for the same reason flatbuffers
-   lost.** A cook is produced FROM A BUILDER by a single-threaded `Lock`,
-   which is precisely the serialization point §12.1's bar refuses; and a
-   cook is an optimization OF the tolerant wire, whereas a block has no wire
-   to optimize. The two are not competitors: a cook accelerates a file read
-   once at load, a block is rebuilt sixty times a second.
-4. **The tolerant table wire, per frame — REJECTED with a number implied.**
-   It is a parse and a copy on every frame on both sides; the abandoned
-   flatbuffers build is that rejection already paid for once (§7).
+- **"A section cannot have a wire, because §3's kind set is closed and a
+  triple cannot ride" — REJECTED, and it was circular.** The triple is an
+  artifact of ONE PROJECTION of the declaration. A wire form has no triple to
+  ride: it has a bounded array of fixed tables, which already rides as kind
+  `14` with element kind `13` and the live count. Nothing is spent, §3 is
+  untouched, and the table keeps `Measure`, `Save`, `Load` and its cook. Once
+  that is seen, the construct has nothing left to justify it — the storage is
+  a bounded array, the layout is a projection of the same declaration, and
+  "is the render data a table?" is answered with one word. **The construct
+  became a form, and §2.7 declares nothing.**
+- **A bounded array BY VALUE inside a fixed table — this is what the form
+  actually IS, once the projection is understood.** It was first written down
+  as the near-miss alternative: the storage is already a strided array at
+  stride `sizeof`, at a compile-time offset, fillable by N workers with no
+  synchronisation. Two objections were raised against it — that the struct
+  becomes megabytes and cannot be read by value, and that the layout facts
+  stay compile-time constants a consumer ASSUMES rather than reads. Both are
+  real, and the PROJECTION answers both without a construct: the block form's
+  struct replaces each out-of-line array's inline storage with sixteen bytes
+  at the same field position, so the instance stays small and copyable, and
+  the three facts a consumer needs become data it reads. The near miss was
+  the answer; what was missing was the second layout of one declaration.
+- **A pointer and a region (§2.1, §6.3) — REJECTED.** That is the
+  variable-length class: an arena, a `Lock` that compacts, a node directory,
+  self-relative derefs. The producer would pay a single-threaded compaction
+  per frame and the consumer would need the region surface, which C# does not
+  have and would not want at sixty hertz. The block form needs no arena
+  because the table declares its bounds.
+- **The cooked form (§7) — REJECTED, and for the same reason flatbuffers
+  lost.** A cook is produced FROM A BUILDER by a single-threaded `Lock`,
+  which is precisely the serialization point §12.1's bar refuses. The two are
+  not competitors and not the same accelerator: a cook accelerates a file
+  read once at load, a block is rebuilt every frame, and §7 says why they
+  must not share a layout id.
+- **The tolerant table wire, per frame — REJECTED with a number implied.**
+  It is a parse and a copy on every frame on both sides; the abandoned
+  flatbuffers build is that rejection already paid for once (§7).
 
-**And four decisions inside the construct.**
+**And four decisions inside the form.**
 
 - **Block-relative offsets, not self-relative — TAKEN, and it is a stated
   exception to §6.3.** A region reference is self-relative because nothing
   hands a walker a base pointer down inside a region. A block's consumer is
   handed the base — it is the thing it mapped — and, decisively, a blittable
-  consumer reads the header BY VALUE (a struct copy out of the mapped
+  consumer reads the projection BY VALUE (a struct copy out of the mapped
   bytes), which a self-relative delta does not survive: the copy's address is
   not the original's. Block-relative keeps relocation by `memcpy` intact,
   since every offset is relative to a base that moves with the block.
-- **Storage sized from the declared maxima; offsets laid out ONCE per block
-  from the counts — TAKEN.** The storage half is the allocate-max law (§14's
-  builder item 3, which a general builder could not require and a block
-  can): one fixed extent, never grown, never pooled. The layout half is a
-  single pass over the SECTIONS — nine of them, not thousands of records —
-  run before any worker starts, which is all the property needs: every
-  record's address is fixed before the scatter, so workers write disjoint
-  records with nothing to synchronise. **Compile-time offsets from the
-  maxima were considered and rejected**: they would let workers run before
-  the counts exist, which nothing in the case wants — the counts come from
-  the same gather that produces the work — and they would make every block
-  nearly its maximum extent, which a boundary handoff that copies would pay
-  for on every frame. **And the header carries the offsets either way**, so
-  a consumer reads them rather than assuming them: that is what makes a
-  raised maximum or an appended section absorbable rather than a break
-  (§19.5).
-- **A stride DERIVED by default, declarable for headroom — TAKEN.** Derived,
-  it is `sizeof`, so the pattern's own home schema needs no attribute and a
-  consumer gets the contiguous fast path (§19.3). A declared larger stride
-  buys append headroom and costs that fast path, and the trade is stated
-  where a person choosing it will read it rather than discovered later.
-  **A MANDATORY declared stride was considered and rejected**: it would make
-  every declaration carry a number whose right value is `sizeof` in every
-  case anyone has yet had, and a number a person maintains is exactly the
-  hand-kept fact this construct exists to delete.
+- **Storage sized from the declared maxima; layout settled ONCE per block
+  from the counts — TAKEN.** The storage half is the allocate-max law (the
+  builder's item 3 above, which a general builder could not require and a
+  bounded table can): one extent, never grown, never pooled. The layout half
+  is a single pass over the table's out-of-line ARRAYS — a handful, not
+  thousands of rows — run before any worker starts, which is all the property
+  needs. **Compile-time offsets from the maxima were considered and
+  rejected**: they would let workers run before the counts exist, which
+  nothing in the case wants — the counts come from the same gather that
+  produces the work — and every block would be near its maximum extent, which
+  a boundary handoff that copies would pay for on every frame. The projection
+  carries the offsets either way, so a consumer reads them rather than
+  assuming them.
+- **DEPTH ONE, BOUNDED ONLY — TAKEN, and it is what dropping the keyword
+  cost.** A `section` keyword said which arrays move out of line; without it
+  the rule has to be derivable from the declaration, and this is the rule
+  that is: the marked table's own `[..N]` arrays move, everything else stays.
+  Deeper or opt-in-per-field rules were rejected for the same reason the
+  keyword was — they put the answer somewhere other than the one line a
+  reader is already looking at. The genuine loss is that a small array
+  BESIDE the strided ones in one root can no longer stay inline; the answer
+  is to wrap it in a nested type, whose arrays are at depth two and therefore
+  inline (§2.7).
+- **The block form is selected by `| block` ALONE — TAKEN, overturning a
+  stride-triggered opt-in.** The rejected proposal was "any field carrying
+  `| stride`, or the table carrying `| block`". The stride half does not
+  work, and the dogfood is the proof: its render data has nine strided arrays
+  and **zero** declared strides — every pitch there is `sizeof`. A trigger
+  the primary case never fires is not a trigger. One table-level marker is
+  explicit, answerable by reading one line, and keeps §2.2's zero-cost gate
+  stated verbatim.
+- **No `| stride` attribute at all in this version — TAKEN, on the same
+  evidence plus the consumer's.** Beyond the zero declared strides, the one
+  consumer that exists cannot read a strided array: it reads rows by casting
+  the byte range to a row type, which requires pitch `== sizeof`, and it
+  drops any array whose pitch differs. Shipping headroom would cost that
+  consumer its fast path in exchange for a property the owner has already
+  called possibly obsolete. §15 holds it as a follow-on with the reason.
 - **An exact layout id, plus a NAMED compatible entry point — TAKEN, after
   an append-tolerant digest was found to be impossible.** A single number
   cannot be verified against a PREFIX of the facts that produced it: a
   consumer that knows fewer fields cannot recompute the producer's digest,
-  and any fold that ignored the difference would ignore a real break too.
-  So the id is exact, like a cooked file's (§7), and the append-only path is
-  a second entry point a caller asks for BY NAME — §7's `Open` /
-  `OpenValidated` shape, for the same reason: no silent bypass, ever.
+  and any fold that ignored the difference would ignore a real break too. So
+  the id is exact, like a cooked file's (§7), and the tolerant path is a
+  second entry point a caller asks for BY NAME — §7's `Open` /
+  `OpenValidated` shape, for the same reason: no silent bypass, ever. What
+  that path checks is a `<=` on the pitch and never an equality against the
+  consumer's own constant, which is the difference between absorbing a grown
+  row and refusing one (§19.4).
 
 **No decision here knowingly costs TIME.** The `u64` type id and the
 repeating node-table field cost BYTES and nothing else — the record scan
@@ -2712,23 +2837,38 @@ pre-empted here.
   means the file is not this build's, and it refuses.
 - **A hash-guarded fallback loader** — open the cooked form, else load
   the wire — as a convenience helper.
-- **NESTED SECTIONS** (§2.7) — a section whose element is itself a block
-  root, so one block can carry a header per view or per layer instead of one
-  header per block. It wants a decision about whose base a nested header's
-  offsets are relative to before it is a construct, and the flat form is
-  what the case in hand needs.
-- **A section of UNIONS**, which the general array-of-unions follow-on
-  already covers, plus a blittable answer for a union's storage in a
-  language with no native one. A section element declares no union today.
-- **A block's own TEXT FORM and packer support** (§16, §17). A block has no
-  wire (§2.7), so `pack` has nothing to write and `ToJson` has no framing to
-  walk; a block's records are ordinary tables and can be textualised one at
-  a time. Whether a whole block should have a text projection at all is the
-  open part.
-- **A TOLERANT WIRE for a block root**, by giving a section a wire kind. It
-  is not obviously wanted — a block is a same-build ABI by construction and
-  the wire is the other contract — and spending a kind is expensive once
-  readers exist (§14), so it is named here rather than reserved.
+- **DECLARED STRIDE HEADROOM in the block form** — `| stride = N` on an
+  out-of-line array, `N` greater than the element's `sizeof`, so a field
+  appended at the end of a row does not move the pitch. The owner's case for
+  it: *"the benefit of striding is that i can add new fields at the end of
+  types/tables, without C# exploding … because C# just doesn't know about the
+  new fields yet, and stride is bigger than struct width."* Three things hold
+  it out of this version. Its weight is reduced now that both sides are
+  generated from one declaration — *"It may be obsolete now … If we generate
+  both render data C++ and C# side now, it's less of a concern."* The case it
+  exists for has zero declared strides today, and the one consumer that
+  exists loses its cast path on any pitch that is not `sizeof` (§14).
+  **And §19.4's compatible path already absorbs the edit it was for**: a row
+  that grows moves its DERIVED pitch too, and a consumer checking
+  `its sizeof <= the pitch it reads` reads its own prefix at the new pitch
+  correctly. What headroom would add on top of that is a pitch that does not
+  move at all, which matters only to something outside the block that has
+  assumed one. Landing it is an attribute, its refusals, and the §18 row.
+- **A SHARED BOUND across several out-of-line arrays.** `BlockMaxBytes` sums
+  each array's declared maximum, and several arrays commonly draw from one
+  pool — so the sum is loose by construction and reserves extent that can
+  never be occupied at once. It is affordable in the case at hand and stated
+  in §19.1 rather than hidden; a way to declare "these arrays share a bound
+  of N" is what a tighter case would want, and nothing about it is decided
+  here.
+- **DEPTH past one in the block form** (§2.7) — an out-of-line array inside
+  an element, or a block-form table as another's element. It wants a decision
+  about whose base a nested projection's offsets are relative to before it is
+  anything, and depth one is what the case in hand needs.
+- **A block's own TEXT FORM** (§16). A block-form table has a wire and
+  therefore already has `ToJson`/`FromJson` over its by-value form; whether a
+  BLOCK in hand should be textualisable without first loading it by value is
+  the open part, and it is a convenience rather than a gap.
 - **Cross-endian blocks.** A block carries its byte order in its magic and
   refuses a foreign one, exactly as a cook does; swapping one would be the
   cook's cross-endian follow-on applied to a flatter shape.
@@ -3165,19 +3305,29 @@ and payloads.
 names** — a table, an `enum`, a `flags` or a `union` — because those four
 are judged by four different identity rules (§18.3).
 
-**A BLOCK ROOT and its section elements record LAYOUT FACTS, because a block
-has no wire and its contract is the layout** (§2.7, §19.4). A section's line
-carries its element, its declared MAXIMUM, and its STRIDE as the evaluated
-number, marked derived or declared; and every table a section names records,
-per field, the BYTE OFFSET and SIZE the layout rule gives it (§19.1), beside
-the element's own `sizeof` and alignment. Those are the only lines in this
-file that are not wire facts, and they are here for the same reason every
-other line is: they are what an edit can break and the compiler cannot
-remember. A table no section names records none of them, so a unit with no
-block is projected exactly as it was — but the RENDERING VERSION on the file's
-first line moves, because the projection can now carry lines an older reader
-does not know, and §18.4's repair path is what a baseline written under the
-older version takes.
+**A BLOCK-FORM table and the tables its out-of-line arrays name record LAYOUT
+FACTS BESIDE their wire facts** (§2.7, §19.3). A block-form table keeps every
+wire line it already had — it is an ordinary table (§2.7) — and gains, per
+field, the BYTE OFFSET and SIZE that field has IN THE PROJECTION, plus the
+projection's own `sizeof` and alignment; an out-of-line array's line adds its
+declared MAXIMUM and its evaluated STRIDE. Every table one of those arrays
+names records the same per-field offsets and sizes for its by-value layout,
+beside its `sizeof` and alignment.
+
+**The block-form table's OWN fields are recorded, not just its elements'**,
+and that is load-bearing rather than tidy: a scalar inserted before an
+out-of-line array moves every triple after it, and a consumer reading the
+projection by value then reads every offset, count and pitch at the wrong
+place. The table at the front of a block is a record too, and its layout is
+the other side's contract exactly as a row's is.
+
+Those are the only lines in this file that are not wire facts, and they are
+here for the same reason every other line is: they are what an edit can break
+and the compiler cannot remember. A table with no block form records none of
+them, so a unit with no block is projected exactly as it was — but the
+RENDERING VERSION on the file's first line moves, because the projection can
+now carry lines an older reader does not know, and §18.4's repair path is
+what a baseline written under the older version takes.
 
 **The values are EVALUATED**, not the source text: a constant that moves
 and flows through an expression into a default shows up as the value it now
@@ -3202,10 +3352,14 @@ table ShipConfig
     field speed id=0x2e46 kind=10 default=500.0 was=velocity
     field name id=0x30df kind=12 size=32
 
-block RenderFrame sizeof=32
-    section ships elem=RenderShip max=4096 stride=64 declared
+table RenderFrame | block
+    block sizeof=40 alignof=8
+    field version id=0x4a1c kind=9 offset=16 size=8
+    field ships id=0x2b71 kind=14 elem=13 elem_type=RenderShip bound=..4096
+        offset=24 size=16 out_of_line stride=32
 
-table RenderShip sizeof=32 alignof=8
+table RenderShip
+    row sizeof=32 alignof=8
     field position id=0x4c31 kind=13 offset=0 size=24
     field object_id id=0x6b0e kind=8 offset=24 size=4
 
@@ -3241,36 +3395,37 @@ committed file whenever one is there, and:
   grown; a bounded array made fixed or the reverse; a field moved between
   `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`.
 
-**A BLOCK's edits are judged by a different standard, because a block has no
-wire to absorb anything** (§2.7). The wire's rules above are about what a
-tolerant reader can report; a block's are about what a POINTED-AT record can
-survive, and the two do not overlap:
+**A BLOCK-FORM table's LAYOUT facts are judged by a second standard beside
+the wire's** (§2.7). Its wire lines are judged exactly as above — it is an
+ordinary table and its wire absorbs what any table's does. Its layout lines
+are judged by what a POINTED-AT row can survive, which is a stricter and
+narrower question, and the two verdicts are reported separately so an author
+can see which contract an edit broke:
 
 - **REFUSES, naming `table.field` and the edit** — a field INSERTED before
-  the end of a section element, or REORDERED, or removed, or changed to a
-  type of a different size or alignment: each moves a byte offset a consumer
-  reads at, and nothing in a block can report it. A STRIDE shrunk, whether
-  by declaring a smaller number or by an element growing under a derived
-  one. A section's ELEMENT swapped for another declaration. A section's
-  spelling changed to or from an ordinary array. A section removed, or moved
-  earlier among the header's sections.
-- **WARNS** — a section's declared maximum LOWERED (records that used to fit
-  no longer do, and the producer's own bound is what says so), and a block
-  root that vanished under its baseline name (§18.3's rule, unchanged).
-- **PASSES, in silence** — a field APPENDED at the end of a section element
-  while its offset is past every offset the baseline records and its end
-  still lies inside the stride; a section APPENDED at the end of a header; a
-  declared maximum RAISED; a stride declared larger. These are the four
-  edits the construct is shaped to absorb (§19.5), and they are silent
-  because a consumer reading its own prefix at the header's own offsets is
-  unaffected by every one of them.
+  the end, REORDERED, removed, or changed to a type of a different size or
+  alignment, in a block-form table ITSELF or in any table one of its
+  out-of-line arrays names. Each moves a byte offset the other side reads at,
+  and nothing in a block can report it. Also: an out-of-line array's ELEMENT
+  swapped for another declaration; an array moved between the out-of-line
+  class (`[..N]`) and an inline one (`[N]`, `[E]`) in a block-form table,
+  which moves it into or out of the block entirely; and an out-of-line array
+  removed or moved earlier among its siblings.
+- **WARNS** — an out-of-line array's declared maximum LOWERED (rows that used
+  to fit no longer do, and the producer's own bound is what says so), and a
+  block-form table that vanished under its baseline name (§18.3's rule,
+  unchanged).
+- **PASSES, in silence** — a field APPENDED at the end of a block-form table,
+  scalar or out-of-line array, past every offset the baseline records; a
+  field APPENDED at the end of a row; a declared maximum RAISED. These are
+  the three edits the form absorbs (§19.4), and each is silent because a
+  consumer reading its own prefix at offsets and pitches it took FROM THE
+  INSTANCE is unaffected by all three.
 
-**A field appended PAST the stride refuses**, and it is worth separating
-from the pass above: appending is only free while the record still fits its
-pitch, so the same edit passes at a stride with headroom and refuses at one
-without. The diagnostic says which, and names the stride and the two sizes,
-because "add headroom or accept the break" is the decision the author is
-actually making.
+**`| block` added or removed takes no row here**, and that is deliberate:
+both sides are generated from one declaration, so adding or removing the form
+changes what compiles on both sides at once. It is loud already, and a
+baseline row would only repeat the compiler.
 
 ### 18.3 What a name is worth, and what a referent is worth
 
@@ -3379,233 +3534,277 @@ byte-identical. The warn class warns and does not refuse. `--update`
 without `--reason` refuses, and `--update` over an unreadable baseline
 repairs it while keeping every history line.
 
-## 19. The sectioned block
 
-**A block is an ABI, and the fourth form this document describes.** A table
-that declares a section (§2.7) is a BLOCK ROOT; its instance is the HEADER at
-the base of one flat extent, and the strided records its sections name follow
-it in that same extent. The producer fills the block; the consumer — usually
-in another language — maps it and POINTS at the records. There is no parse on
-either side, no copy, and nothing between a record's bytes and the struct
-that reads them.
+## 19. The block form
 
-**Where it sits among the other three, stated precisely:**
+**A fixed table writes into its own instance what it knows about its own
+rows — for each of its bounded arrays, where the rows start, how many there
+are, and how far apart they sit — so another language reads those facts and
+points at the rows.** That is the block form, and it is the whole idea. It
+adds no declaration (§2.7): a table marked `| block` gets a THIRD projection
+of the same schema, beside its wire (§3) and its cook (§7).
 
 | form | contract | who reads it | cost |
 |---|---|---|---|
-| the type wire (SPEC.md) | same build, exact, bitpacked | a peer on the same protocol id | a codec per value |
-| the table wire (§3) | any version, tolerant, reported | anything, years apart | ids, kinds, lengths, a report |
-| the cooked form (§7) | one layout id, pointed at | a build at the cooked version | a cook, from a builder |
-| **the sectioned block (§19)** | **one layout, both sides generated, pointed at** | **a consumer generated from the same schema** | **a declared pitch** |
+| the wire (§3) | any version, tolerant, reported | anything, years apart | ids, kinds, lengths, a report |
+| the cook (§7) | one layout id, pointed at | a build at the cooked version | a cook, from a builder |
+| **the block (§19)** | **one layout, both sides generated, pointed at** | **a consumer generated from the same schema** | **rows at a fixed pitch** |
 
 **What a block does NOT carry, in full**, because a reader coming from the
-table wire will look for all of it: no field ids, no kind bytes, no lengths,
-no terminators, no elision — a record's fields are at their offsets whether
-they hold defaults or not, and a section's records are at their pitch whether
-they are set or not. No `was` tolerance, no unknown-variant handling, no
-clamping, and **no read report of any kind**: §4's counters do not exist here
-because none of the events they count can occur. No node table, no pointers,
-no arena, no region, no node directory and no attribution part. A record is
-its bytes at its offsets, and the guarantee that both sides agree on those
-offsets is §19.4's, held at compile time rather than reported at runtime.
+wire will look for all of it: no field ids, no kind bytes, no lengths, no
+terminators, no elision — a field is at its offset whether it holds a default
+or not, and a row is at its pitch whether it is set or not. No `was`
+tolerance, no unknown-variant handling, no clamping, and **no read report of
+any kind**: §4's counters do not exist here because none of the events they
+count can occur. No node table, no pointers, no arena, no region, no
+attribution. A row is its bytes at its offsets, and the guarantee that both
+sides agree on those offsets is §19.3's — held at compile time, not reported
+at runtime.
 
-**A block is a same-build contract by construction**, in the plain sense: the
-producer and the consumer are generated from one schema and ship together. It
-is the type wire's contract wearing a different shape — an ABI across a
-language boundary rather than a protocol across a network — and the
-robustness the construct adds on top of that is §19.5's, which is narrower
-than the wire's and says so.
+**It is PRE-COOKED AT BUILD.** Every layout fact is settled by the compiler
+and asserted into both generated sides, so nothing is decided, discovered or
+checked at frame time. That is what makes it the fastest thing tables have
+and why §12.1 ranks it as the hottest path.
 
-### 19.1 The layout
+**Two halves, and neither is new machinery.** Building a block is §6.4's
+builder in its block form — reserve from the counts, write the facts, let the
+workers run. Reading one is §8's descriptors doing what they already do —
+walk a declaration's fields by name and position. The C++ side is a builder
+question; the C# side is a reflection question; and the form is what falls
+out when both are asked of one table.
+
+### 19.1 The builder
 
 **One extent, 64-byte aligned at its base**, laid out in this order:
 
-- **The HEADER at offset 0.** It opens with a generated PROLOGUE of two
-  `uint64`s — `magic`, which is a constant identifying a schema block and is
-  also the byte-order check, and `layout_id`, the digest §19.4 defines — and
-  the block root's declared fields follow it. The prologue is generated, as
-  an optional's presence companion is, and a field of a block root may not be
-  named after either half (§11).
-- **Then each SECTION, in declaration order**, each starting at an offset
-  aligned to `max( 64, alignof( element ) )`. Sixty-four is a cache line, and
-  it is the number rather than the element's own alignment for one reason:
-  two workers filling adjacent sections must never share a line. The slack is
-  under 64 bytes per section, in an extent whose sections are the size of the
-  frame.
-- **A section's records sit at its STRIDE** (§2.7): record `i` begins at
-  `section.offset + i * section.stride`. Because the stride is a multiple of
-  the element's alignment and the section's start is aligned, every record
-  start is aligned for its own type — the arithmetic needs no case.
-- **The bytes between a record's end and the next record's start are
-  UNSPECIFIED** where a stride carries headroom, and a consumer never reads
-  them. A producer is not required to zero them, and a block is therefore not
-  a hash-stable artifact when its strides have headroom; that is stated so
-  nobody builds a content hash on one.
+- **The PROJECTION at offset 0** (§2.7). It opens with a generated PROLOGUE
+  of two `uint64`s — `magic`, a constant identifying a schema block and the
+  byte-order check with it, and `layout_id`, the digest §19.3 defines — and
+  the table's own fields follow, each at its natural offset, with every
+  out-of-line array's storage replaced in place by its sixteen-byte
+  `(offset_of, count, stride)`. The prologue is generated, as an optional's
+  presence companion is, and a field may not be named after either half
+  (§11). **The projection is a record like any other and follows the same C
+  ABI rule** (§19.3): its own offsets are part of the contract, not
+  scaffolding around it.
+- **Then each out-of-line ARRAY, in declaration order**, starting at an
+  offset aligned to `max( 64, alignof( element ) )`.
+- **Rows sit at the pitch**: row `i` of an array begins at
+  `offset_of + i * stride`. Because the pitch is a multiple of the element's
+  alignment and the array's start is aligned, every row start is aligned for
+  its own type — the arithmetic needs no case.
+- **The tail is UNSPECIFIED**: the bytes between the last row and the 64-byte
+  rounding of the extent are not written, and a handoff that copies the extent
+  copies them. A caller that needs a byte-stable artifact zeroes the storage
+  once; the form does not, because zeroing megabytes per frame is exactly the
+  cost it exists to avoid.
 
-**The block's STORAGE is sized from the declared maxima** — a compile-time
-constant, `<Header>BlockMaxBytes`, over the header plus every section at its
-declared `[..N]`. That is the allocate-max law: one extent, allocated once,
-never grown and never pooled.
+**Why 64, stated for what it actually buys.** Sixty-four is a cache line, and
+the guarantee is PER ARRAY: two workers filling different arrays never share
+a line. Inside one array the pitch is the element's `sizeof`, which is
+commonly not a multiple of 64, so two workers meeting at a range boundary do
+share the one line that straddles it. That is bounded at one line per
+boundary — not one per row — because ranges are contiguous runs, and it is
+stated rather than implied so nobody reads the alignment as a promise it does
+not make.
 
-**The LAYOUT is computed once per block, from the counts.** The producer
-declares each section's count, and one pass over the SECTIONS — not over the
-records — settles every offset. The pass is bounded by the number of declared
-sections, which is a property of the schema; nothing per-record happens in it,
-and every record's address is settled before any worker starts.
+**The block's STORAGE is sized from the declared maxima** —
+`<Table>BlockMaxBytes`, a compile-time constant over the projection plus every
+out-of-line array at its declared `[..N]`. That is the allocate-max law: one
+extent, allocated once, never grown, never pooled. **The sum is loose by
+construction**, and it is worth knowing why before a case is tight: arrays
+commonly draw from one shared pool, so their maxima can add to more than can
+ever be occupied at once — in the case this form comes from, the maxima sum
+to 7,879,488 bytes (7.51 MiB) against a 10 MiB budget, comfortably, with
+about a quarter of that extent unoccupiable in principle. A way to declare a
+shared bound is a follow-on (§15); today the answer is that the allocation
+happens once and is never grown.
 
-**The USED extent is what a handoff copies**: the greatest
-`offset + count * stride` over the sections, rounded up to 64, and never less
-than the header's own size. `<Header>BlockBytes( block )` returns it. Because
-the layout follows the COUNTS, that extent is proportional to the frame and
-not to the declared maxima — a frame with three ships in it is a small block
-inside a large allocation, and a consumer that copies pays for the frame it
-was given. The maxima size the ALLOCATION; the counts size the block.
-
-**Worked, from three sections and their real numbers:**
-
-```
-table RenderFrame
-{
-    cameras section [..1]RenderCamera
-    ships   section [..4096]RenderShip | stride = 128
-    lasers  section [..2048]RenderLaser
-}
-```
-
-| fact | cameras | ships | lasers |
-|---|---|---|---|
-| element `sizeof` / `alignof` | 72 / 8 | 88 / 8 | 64 / 8 |
-| stride | 72, derived | 128, declared | 64, derived |
-| headroom per record | 0 | 40 | 0 |
-| declared maximum | 1 | 4096 | 2048 |
-| triple's offset in the header | 16 | 32 | 48 |
-
-`sizeof( RenderFrame )` is 64 — the 16-byte prologue and three 16-byte
-triples — and `RenderFrameBlockMaxBytes` is 655,552, which is the layout AT
-THE MAXIMA: the header, then `cameras` at 64, `ships` at 192, `lasers` at
-524,480. A real frame's offsets are that same walk over its own counts, so
-`lasers` sits far earlier whenever fewer than 4096 ships were declared. Every
-section start is 64-aligned in either walk, every stride is a multiple of its
-element's alignment, and no section overlaps the next.
-
-### 19.2 Building: wide, with nothing to synchronise
-
-**Two types, and the difference between them is the whole of the surface.**
-`<Header>BlockStorage` is the producer's ALLOCATION — one max-sized,
-64-byte-aligned extent, owned by the caller. `<Header>Block` is a BLOCK IN
-HAND — the base of an extent beside the header that sits at it, with a
-section accessor per declared section. A producer gets one from `Begin`, a
-consumer gets one from `Open` (§19.3), and everything downstream of either
-takes the same type. The pairing is what makes a section addressable at all:
-a header read alone is a copy with block-relative offsets in it and no base
-to add them to.
+**The LAYOUT is settled once per block, from the counts**, before any worker
+starts:
 
 ```cpp
 RenderFrameBlockStorage storage;              // the allocation: max-sized, 64-aligned
 
-RenderFrameCounts counts = {};
+RenderFrameCounts counts = {};                // gathered before Begin, which is single-threaded
 counts.ships  = numShips;
 counts.lasers = numLasers;
 
 RenderFrameBlock block;                                          // destination first (§6.1)
-if ( !RenderFrameBlockBegin( block, storage, counts ) )          // a count is over its maximum
+if ( !RenderFrameBlockBegin( block, storage, counts ) )
     return;
 ```
 
-`Begin` is the whole of the layout: it refuses counts past the declared
-maxima, stamps the prologue, writes every section's offset, count and stride,
-and hands back the block. It touches no record.
+`Begin` refuses counts past the declared maxima, stamps the prologue, writes
+every array's `offset_of`, `count` and `stride`, and hands back the block. It
+touches no row, and it is `O( out-of-line arrays )` — a handful, not
+thousands.
+
+**A refusal NAMES the array, its count and its maximum**, because a producer
+at sixty hertz that silently drops a frame is worse than one that does not.
+Clamping a count to its maximum before `Begin` is the PRODUCER's job, and the
+page says so rather than leaving a caller to discover it: `Begin` is a
+contract check, not a policy. The `Counts` value is filled before `Begin` and
+`Begin` is single-threaded, so nothing about counting is concurrent.
+
+**Then the fill, and the fill is the requirement:**
 
 ```cpp
-RenderShip * ships = RenderFrameShips( block );   // the section's typed base
+RenderShip * ships = RenderFrameShips( block );   // the array's typed base
 
 // N workers, disjoint index ranges, no synchronisation of any kind:
 ships[i].position = ...;
 ```
 
-- **A section accessor is one add**, `block base + section.offset`, typed as
-  the element. A worker holds it and indexes; there is no allocation, no
-  atomic, no lock and no per-record bookkeeping anywhere in the fill.
+- **THE MULTI-THREADED FILL IS AN OBLIGATION ON THE IMPLEMENTATION, not a
+  permission to the caller.** The generated fill path — `Begin`, the array
+  accessors, and the row storage they hand back — contains **no allocation,
+  no lock and no atomic**, and the build fails if one appears, on the model
+  §2.2 already uses for the zero-cost gate. A backend may not satisfy this
+  section with a serial `Begin` that allocates, or an accessor that
+  synchronises. It is held twice over: by that refuser, and by a real
+  multi-threaded fill in the corpus (§19.5) whose result is byte-identical to
+  a serial one.
+- **An accessor is one add**, `block base + offset_of`, typed as the element.
+  A worker holds it and indexes.
 - **The contract is ownership, exactly as §6.4's is**: disjoint index ranges
-  into one section are safe concurrently, and two workers writing one record
-  is the caller's problem, not the runtime's. `Begin` and `BlockBytes` are
-  single-threaded — call `Begin` before the workers and `BlockBytes` after
-  they join.
-- **Nothing moves and nothing grows**, so a pointer taken from an accessor is
-  valid for the block's whole life. That is the reserve-max model (§14) with
-  the bound declared, which is why it needs no arena.
-- **A record a producer does not fill holds whatever the storage held.** The
-  block is not zeroed for you: `count` is the contract, and records past it
-  are not part of the block. A producer that wants zeros writes them.
+  into one array are safe concurrently, and two workers writing one row is
+  the caller's problem. `Begin` and `BlockBytes` are single-threaded — call
+  `Begin` before the workers and `BlockBytes` after they join.
+- **A row the producer does not fill holds whatever the storage held.**
+  `count` is the contract; rows past it are not part of the block.
 
-### 19.3 Reading: point at it
+**The USED extent** is the greatest `offset_of + count * stride`, rounded up
+to 64, never less than the projection's own size; `<Table>BlockBytes( block )`
+returns it. Because the layout follows the counts, it is proportional to the
+frame rather than to the maxima.
+
+**Storage lifetime, stated because a per-frame handoff lives or dies on it.**
+A block is valid until the next `Begin` on the SAME storage. `Begin`
+invalidates every block over that storage and every row pointer taken from
+one — it rewrites the facts and the rows underneath them. **Double-buffering
+is therefore two storages, and it is the caller's**, exactly as the arena's
+slack is in §6.4: a producer that refills while a consumer still reads owns N
+storages and alternates. The form allocates nothing and will not allocate a
+second buffer for you.
+
+**Worked, over nine arrays and a representative frame.** With the projection
+at 168 bytes — the 16-byte prologue, a `uint64`, and nine triples — and rows
+of 72 / 88 / 64 / 72 / 72 / 80 / 80 / 64 / 80 bytes:
+
+| array | count | pitch | start | extent |
+|---|---|---|---|---|
+| cameras | 1 | 72 | 192 | 72 |
+| ships | 300 | 88 | 320 | 26,400 |
+| turrets | 900 | 64 | 26,752 | 57,600 |
+| missiles | 120 | 72 | 84,352 | 8,640 |
+| dynamic_props | 40 | 72 | 92,992 | 2,880 |
+| static_props | 5,000 | 80 | 95,872 | 400,000 |
+| cosmetic_props | 800 | 80 | 495,872 | 64,000 |
+| lasers | 200 | 64 | 559,872 | 12,800 |
+| explosions | 60 | 80 | 572,672 | 4,800 |
+
+`BlockBytes` is **577,472**. Those starts are the same numbers the
+hand-written layout this form replaces produces, at every one of the nine,
+and the used extent matches it too — which is the check that the rule stated
+here and the code it must beat lay bytes down in the same places. The
+prologue is free in this shape: 152 and 168 both round to 192.
+
+### 19.2 The reflective read
+
+**The descriptors are the mechanism, and they are what retires a hand-kept
+mirror.** §8's reflection carries, for a block-form table, the projection
+offset of every field and of the three members inside each triple, with the
+element's own descriptor beside them. A consumer holding the descriptors
+reads the facts out of an instance and points at rows — no hand-written
+struct per table, no knowledge of the spelling that produced any of it, and
+nothing to maintain when a field is added. The mirror died because the layout
+became data, not because someone generated a replacement for it.
+
+**The typed fast path is generated beside them, and it is what a per-frame
+job uses.** For a consumer that wants named fields rather than a generic
+walk, the backend emits the blittable struct (#287) from the same projection
+the descriptors describe, with the accessors below. Both come from one
+declaration, the contract of §19.3 is asserted either way, and a consumer
+picks by what it is doing: reflection to walk anything, the struct to read
+one thing fast.
 
 ```csharp
 if ( !RenderFrame.BlockOpen( out RenderFrameBlock block, pointer, bytes ) )
     return;                                   // and the caller falls back, or reports
 
-ulong version = block.Header.version;         // the block root's own declared fields
+ulong version = block.Projection.version;     // the table's own declared fields
 
 foreach ( ref readonly RenderShip ship in block.Ships )
     Draw( ship );
 
-ReadOnlySpan<RenderShip> ships = block.ShipsSpan;   // available when stride == sizeof
+ReadOnlySpan<RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is sizeof
 ```
 
-- **`BlockOpen` checks the header once and points, and this is the WHOLE
-  check**: the magic read bytewise, the byte order it establishes, the layout
-  id against this build's own, the used extent against the `bytes` the caller
-  passed, the base's alignment, and each section's offset and extent inside
-  the block. On a match the bytes are what a build with this layout wrote, so
+- **`BlockOpen` checks once and points, and this is the WHOLE check**: the
+  magic read bytewise, the byte order it establishes, the layout id against
+  this build's own, the used extent against the `bytes` the caller passed,
+  the base's alignment, and each array's `offset_of` and extent inside the
+  block. On a match the bytes are what a build with this layout wrote, so
   there is nothing to validate and nothing to fix up. On any failure it
   returns false and points at nothing — §7's shape, for §7's reason.
-- **A section is ITERATED, not indexed by hand.** The accessor yields a
-  reference to each record where it lies, at the header's stride, for
-  `count` records — a range-for in C++, an enumerator in C#, the equivalent
-  per port. A call site never writes a loop over an integer bound with the
-  stride arithmetic spelled out in it, for the same reason a keyed array's
-  call sites should not re-derive their own slot rule: the idiom that gets
-  written at every call site is the one that gets written wrong somewhere.
-  A typed base pointer is available beside it for the producer, which needs
-  to address a record by index (§19.2).
-- **A contiguous view is offered exactly when the pitch allows it.** Where
-  `stride == sizeof( element )` the section IS a contiguous array and the
-  accessor hands back a span; where a declared stride carries headroom it
-  cannot, and the strided iterator is the only form. That is the cost of
-  headroom, stated at the place a person pays it: a job that wants a span
-  over its records wants a derived stride.
-- **The consumer reads OFFSETS and STRIDES from the header, never from its
-  own constants.** Its constants exist to be asserted against (§19.4), not to
-  index with. This is the difference between a generated pair of structs and
-  an ABI, and it is what makes §19.5's four absorbable edits absorbable.
+- **An array is ITERATED, not indexed by hand.** The accessor yields a
+  reference to each row where it lies, at the pitch the instance gives, for
+  `count` rows — a range-for in C++, an enumerator in C#, the equivalent per
+  port. A call site never spells the pitch arithmetic itself, for the same
+  reason a keyed array's call sites should not re-derive their own slot rule:
+  the idiom written at every call site is the one written wrong somewhere. A
+  typed base pointer sits beside it for the producer, which addresses rows by
+  index (§19.1).
+- **A contiguous view is available because the pitch IS `sizeof`** (§2.7), so
+  a consumer that casts a byte range to a row type — which is how the fast
+  path is actually written — is always able to. That is a property of
+  deriving the pitch; a version that let a declaration widen it would cost
+  this, and §15 records the trade.
+- **The consumer reads `offset_of`, `count` and `stride` FROM THE INSTANCE,
+  never from its own constants.** Its constants exist to be asserted against
+  (§19.3), not to index with. That is the difference between a generated pair
+  of structs and an ABI, and it is what makes §19.4's absorbed edits
+  absorbable.
 
-### 19.4 The layout contract
+### 19.3 The layout contract
 
 **The compiler computes the layout, and both backends assert it.** A record's
 layout is the C ABI's natural one: each field at its own alignment, the
 struct's alignment the greatest of its fields', the size rounded up to it.
-The compiler derives every offset and size from the declaration, and each
-backend emits code asserting that ITS OWN compiler agrees:
+**That rule covers the projection as much as a row** — the table at the front
+of the block is a record too. The compiler derives every offset and size from
+the declaration, and each backend emits code asserting that ITS OWN compiler
+agrees:
 
-- **C++**: `static_assert` on `sizeof` and `offsetof` for every record and
-  every field, plus the section stride constants, plus the standard-layout
-  and trivially-copyable asserts §9 already requires.
+- **C++**: `static_assert` on `sizeof` and `offsetof` for the projection and
+  every row type and every field of each, plus the pitch constants, plus the
+  standard-layout and trivially-copyable asserts §9 already requires.
 - **C#**: a blittable `[StructLayout(LayoutKind.Sequential, Pack = 1, Size =
   N)]` struct with GENERATED PADDING FIELDS wherever the C ABI layout has
-  interior padding, so the offsets match by construction rather than by the
-  author having ordered fields carefully; and a generated check, run once,
-  asserting each type's size and each field's offset against the same
-  constants the C++ side asserts. Explicit padding is chosen over
+  interior padding — **`Size = N` pins the TRAILING padding and the generated
+  fields pin the INTERIOR padding**, and both are needed — plus a generated
+  check, run once, asserting each type's size and each field's offset against
+  the same constants the C++ side asserts. Explicit padding is chosen over
   `LayoutKind.Explicit` because Sequential is the form every blittable path
   handles best, and over relying on a padding-free field order because that
-  is discipline, and discipline is what this construct exists to delete.
+  is discipline, and discipline is what this form exists to delete.
 
-**`Size` is the element's `sizeof`, never its stride**, and the distinction
-matters: making the C# struct as wide as the pitch would buy a contiguous
-span at every stride and would make the two sides' size asserts compare
-different numbers, so a record that had quietly grown past its declared
-width would still pass. The struct is the RECORD and the header carries the
-PITCH; the iterator is what puts them together (§19.3).
+**The C# asserts run against the MANAGED unmanaged-struct model**, and naming
+it is not pedantry — C# has two layout models and they disagree on the field
+kinds this form uses. The asserts and the accessors use the model that
+`Span` and pointer arithmetic actually index with (`Unsafe.SizeOf<T>` and its
+equivalents), **not** the interop marshalling model (`Marshal.SizeOf`,
+`Marshal.OffsetOf`). The consequence to state plainly: **a `bool` in a row is
+ONE byte** — it is one byte in C++ and one in the managed model, and four
+under default marshalling. A contract that did not say which model it
+asserted could pass on one measurement and garble on the other.
+
+**`Size` is the element's `sizeof`, never its pitch.** Making the struct as
+wide as the pitch would make the two sides' size asserts compare different
+numbers, so a row that had quietly grown past its width would still pass. The
+struct is the ROW and the instance carries the PITCH; the iterator puts them
+together (§19.2).
 
 **A disagreement is a BUILD ERROR on the side that disagrees**, naming the
 type, the field, the expected offset and the one its compiler produced.
@@ -3614,90 +3813,108 @@ the other's — both are checked against the compiler's own model, which is the
 only way a two-language contract can be held by a compiler that generates
 both halves.
 
-**The `layout_id` is a 64-bit digest** over every fact the baseline refuses to
-move (§18.2): each section's element and stride, and each field's offset,
-size and kind. It is the region form's layout id (§7) applied to a flatter
-shape, and it is sized like a digest rather than a version counter for the
-same reason. **It replaces a hand-bumped version field**: the case this
-construct comes from carries one today, incremented by a person who
-remembers, and a generated digest is what removes the remembering.
+**The `layout_id` is a 64-bit digest** over the facts §18.2 refuses to move:
+the projection's own fields and their offsets and sizes, each out-of-line
+array's element and pitch, and every row field's offset, size and kind. It is
+the cooked form's layout id (§7) applied to a flatter shape, sized like a
+digest rather than a version counter — and it is a DIFFERENT id from that
+table's cook (§7), computed over different facts.
 
-### 19.5 Evolution: append-only, inside the pitch
+**What the digest sees, and what it does not.** It sees layout: a moved
+offset, a changed size, a different pitch. It does not see MEANING — a field
+whose units, frame of reference or interpretation changed while its offset
+and width did not moves no digest, because no layout fact moved. A semantic
+version is therefore an ordinary field an author declares and owns, and the
+digest neither replaces nor covers it.
 
-**This is the secondary property, and its weight has changed.** When the two
-sides were kept by hand, the stride's headroom was the versioning model: a
-producer that knew a new field wrote it past the old consumer's struct width,
-and the old consumer, reading its own prefix at a pitch that had not moved,
-was unaffected. With both sides generated from one schema that case is much
-rarer — the guard of record is now §19.4's asserted layout contract and
-§18's baseline, which refuse the breaking edits at compile time. Headroom
-remains a real property, and it is stated as a convenience rather than as the
-model.
+### 19.4 Evolution
 
-**Four edits are absorbed**, and §18.2 passes each in silence:
+**Three edits are absorbed**, and §18.2 passes each in silence:
 
-1. **A field appended at the END of a record, inside its stride.** Every
-   earlier offset is unchanged and the pitch has not moved, so a consumer
-   built before the edit reads its own prefix correctly at the same
-   addresses.
-2. **A section appended at the END of a header.** The header grows, every
-   section offset moves — and the consumer READS those offsets, so it finds
-   its sections where the producer actually put them. Its own header struct
-   is a prefix of the producer's, and it never reads past its own size.
-3. **A declared maximum raised.** The storage grows and the offsets move;
-   the consumer reads them.
-4. **A stride declared larger.** The pitch is in the header too.
+1. **A field appended at the END of a block-form table** — a scalar, or a new
+   out-of-line array. Every earlier offset is unchanged; a consumer built
+   before the edit reads its own prefix of the projection at the same places,
+   and the arrays it knows are at the `offset_of`s the producer actually
+   wrote.
+2. **A field appended at the END of a row type.** The row grows and so does
+   its derived pitch — and because a consumer indexes at the pitch it READ,
+   its shorter row type lands correctly on every row.
+3. **A declared maximum raised.** The storage grows and the offsets move; the
+   consumer reads them.
 
 **Everything else is a break, and the baseline refuses it** (§18.2): a field
-inserted before the end, reordered, removed, or retyped; a stride shrunk,
-whether by declaration or by an element outgrowing a derived one; a section's
-element swapped, removed, or moved earlier. Each moves a byte a consumer
-reads at, and a block has nothing that could report it — which is exactly why
+inserted before the end, reordered, removed or retyped, in the table or in a
+row type; an array's element swapped; an array moved between the out-of-line
+and inline classes, or removed, or moved earlier. Each moves a byte the other
+side reads at, and a block has nothing that could report it — which is why
 the refusal is at compile time and loud.
 
 **And the runtime has ONE more entry point, taken by name.**
-`<Header>BlockOpenCompatible` checks the magic, the byte order, the extent
-and the alignment, and each section's STRIDE against this build's own
-constant with `sizeof( element ) <= stride` beside it — and does not check
-the layout id. It is the append-only path made available to a caller who
-deliberately runs a consumer older than its producer: a transitional deploy,
-a hot reload, a tool built against last week's schema. **There is no silent
-bypass**: a caller either gets the layout id's guarantee from `BlockOpen`, or
-asks for the weaker one by name, exactly as §7 splits `Open` from
-`OpenValidated`. A single number cannot be checked against a prefix of the
-facts that produced it, and pretending otherwise is what the second entry
-point exists to avoid (§14).
+`<Table>BlockOpenCompatible` checks the magic, the byte order, the extent and
+the alignment, and then, per array it knows, **this build's
+`sizeof( element ) <= the stride it read from the instance`** — and does not
+check the layout id. Never an equality, and never against its own pitch
+constant: a producer whose rows have grown writes a larger pitch, and it is
+precisely that case this entry point exists to absorb.
 
-### 19.6 Held by test
+It is the tolerant path made available to a caller who deliberately runs a
+consumer older than its producer: a transitional deploy, a hot reload, a tool
+built against last week's schema. **There is no silent bypass** — a caller
+either gets the layout id's guarantee from `BlockOpen`, or asks for the
+weaker one by name, exactly as §7 splits `Open` from `OpenValidated`. A
+single number cannot be checked against a prefix of the facts that produced
+it, and pretending otherwise is what the second entry point exists to avoid
+(§14).
 
-- **A dogfood-shaped `RenderFrame` in the corpus** — a header of several
-  sections over fixed-size records with a nested `type` apiece, one section
-  carrying a declared stride with headroom and the rest deriving theirs —
-  compiled, built and read by every backend that carries the construct.
-- **A PARALLEL-FILL test.** N workers fill disjoint index ranges of every
-  section; the resulting block is byte-identical to a serial fill of the same
-  data over the records each count covers. Run under the sanitizer leg, where
-  a data race in the fill is what the leg exists to find.
+### 19.5 Held by test
+
+- **A dogfood-shaped block-form table in the corpus** — a marked root of
+  several bounded arrays over fixed-size row types with a nested `type`
+  apiece — compiled, built and read by every backend that carries the form.
+- **A REAL multi-threaded fill.** N workers fill disjoint index ranges of
+  every array; the resulting block is byte-identical to a serial fill of the
+  same data over the rows each count covers. Run under the sanitizer leg,
+  where a race in the fill is what the leg exists to find. **Beside it, the
+  conformance refuser** (§19.1): the build fails if the generated fill path
+  contains an allocation, a lock or an atomic. The test catches a race; the
+  refuser catches a serial implementation that has no race because it never
+  went wide.
 - **A TWO-LANGUAGE layout test.** A C++ producer writes a block; a C#
-  consumer opens it and compares every field of every record against the
-  values that were written, plus every section's offset, count and stride.
-  Sizes and offsets are asserted by generated code on both sides, and the
-  test proves the two agree on the bytes and not merely on the constants.
-- **A NEGATIVE CONTROL for each half.** Perturb one record's stride constant
+  consumer opens it and compares every field of every row against what was
+  written, plus each array's `offset_of`, `count` and `stride`, and the
+  projection's own fields. Sizes and offsets are asserted by generated code
+  on both sides, so the test proves the two agree on the BYTES and not merely
+  on the constants. It runs twice on the C# side — through the descriptors
+  and through the generated struct — because §19.2 offers both and both must
+  land the same values.
+- **A NEGATIVE CONTROL for each half.** Perturb one row type's pitch constant
   on one side only and the two-language test goes red; perturb one field's
   offset in the compiler's layout model and the generated asserts go red on
   both backends. A layout test that shares its layout model with the code it
   checks proves nothing, and these two are what separate them.
-- **The refusal battery**: one fixture per §11 section refusal, each with its
+- **A `bool` row.** A row type carrying two `bool`s beside its scalars, whose
+  C# size and offsets are asserted under the managed model (§19.3) — the case
+  where the two C# layout models disagree, pinned so a port cannot pick the
+  wrong one and pass.
+- **The refusal battery**: one fixture per §11 block refusal, each with its
   negative control.
 - **The baseline battery**: one fixture per §18.2 block row — a field
-  inserted in the middle refuses, a field appended inside the stride passes,
-  a field appended PAST the stride refuses naming both sizes, a stride shrunk
-  refuses, a section appended passes, a maximum raised passes, a maximum
-  lowered warns.
-- **The zero-cost gate** (§2.2): a unit that declares no section carries not
-  one symbol of the block machinery, and the build fails if one appears.
+  inserted in the middle refuses, a field appended at the end of the table
+  passes, a field appended at the end of a row passes, an array's element
+  swapped refuses, an array moved between the inline and out-of-line classes
+  refuses, a maximum raised passes, a maximum lowered warns.
+- **The zero-cost gate** (§2.2): a unit with no `| block` carries not one
+  symbol of the block machinery, and the build fails if one appears.
+- **The wire is untouched** (§3): a block-form table saves and loads over the
+  tolerant wire exactly as the same declaration does without the marker, and
+  its wire goldens are byte-identical with and without it. That is the test
+  that keeps the form a form.
 - **The measured leg is §12.1's**, and it is the gate rather than a
-  regression test: the generated producer against the hand-written scatter,
-  and the generated consumer against the hand mirror, paired in one sitting
-  under the bench rules.
+  regression test: the per-frame C++ write and the per-frame C# read, against
+  the hand-written scatter and the hand mirror, paired in one sitting under
+  the bench rules.
+
+**And the shape of the whole thing, in one line.** A block is a fixed table,
+its rows are fixed tables, the facts about its rows are fields of the table
+that holds them, and every one of those is a struct with a wire beside it.
+Nothing here is a new kind of thing: **it's tables all the way down.**

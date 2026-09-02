@@ -280,9 +280,11 @@ VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; tr
 TypeDecl    = "type" ident ( Block
             | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
-TableDecl   = "table" ident Block NL .                  // the TABLE wire, SPEC-TABLES.md —
-                                                        // a type body, plus pointers, sections
-                                                        // and `was`
+TableDecl   = "table" ident ( Block
+            | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
+                                                        // a type body, plus pointers and `was`.
+                                                        // The one qualifier a table takes is
+                                                        // `block` (SPEC-TABLES.md §2.7)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -294,26 +296,12 @@ ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
-Type        = SectionType
-            | [ "?" ] [ "[" Bound "]" ] Scalar .                 // array bound is a PREFIX, Go's order.
+Type        = [ "?" ] [ "[" Bound "]" ] Scalar .                 // array bound is a PREFIX, Go's order.
                                                                  // "?" is the OPTIONAL prefix
                                                                  // (SPEC-TABLES.md §2.3): the value plus
                                                                  // a generated presence bool. TABLE
                                                                  // BODIES ONLY — a type body refuses one
                                                                  // by name, as it does a pointer
-SectionType = "section" "[" ".." IntExpr "]" ident .              // a SECTION (SPEC-TABLES.md §2.7):
-                                                                 // a strided array of a fixed-size
-                                                                 // element, stored out of line in one
-                                                                 // block, with an (offset, count, stride)
-                                                                 // triple here. "section" is CONTEXTUAL —
-                                                                 // a keyword in type position only, so a
-                                                                 // field may still be NAMED section.
-                                                                 // The bound is a MAXIMUM and every other
-                                                                 // array spelling is refused here. TABLE
-                                                                 // BODIES ONLY. The stride is derived
-                                                                 // (sizeof, rounded up to the element's
-                                                                 // alignment) unless `| stride = N`
-                                                                 // declares it
 Scalar      = IntType
             | "int128" | "uint128"                               // 128-bit integers (§4.3);
                                                                  // field types only, not ConstType
@@ -550,15 +538,14 @@ sequence    uint16
   compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
   §4.3); enum declarations take `max`; type declarations take a tag and the
   `cpp_native`/`cpp_include` pair (below); a field of a **table** body takes
-  `was` (below); and a **section** field takes `stride` (below).
-- **`stride = N` — the section's pitch, table bodies only**
-  (SPEC-TABLES.md §2.7). A section's records sit at a declared pitch, and the
-  attribute is how a declaration asks for one larger than the element:
-  `ships section [..MaxShips]RenderShip | stride = 128`. Omitted, the stride
-  is DERIVED — the element's `sizeof`, rounded up to its alignment — which is
-  what a record with no headroom wants. `N` is refused when it is smaller
-  than the element's `sizeof` or is not a multiple of its alignment, and the
-  attribute is refused on anything that is not a section.
+  `was` (below); and a **table declaration** takes `block` (below).
+- **`block` — the block form, table declarations only** (SPEC-TABLES.md
+  §2.7). A valueless marker on a fixed table: `table RenderFrame | block`. It
+  declares nothing and changes no field. It says the table has a third
+  projection beside its wire and its cook — one in which the table's own
+  bounded arrays are laid out of line at a fixed pitch, so another language
+  points at their rows. Refused on a `type`, and on a table that reaches a
+  pointer.
 - **`was = "old_name"` — the rename attribute, table bodies only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
