@@ -837,6 +837,8 @@ static void test_wide_extents()
     CHECK( out2.samples_count == 2 );                            // the bounded prefix, nothing fabricated
     CHECK( out2.samples[0] == 11 && out2.samples[1] == 22 );
     CHECK( out2.label_length == 2 && strcmp( out2.label, "ok" ) == 0 ); // the parent read on
+
+    free( buffer );
 }
 
 // ---- clamping: hostile or stale numerics clamp and count ----
