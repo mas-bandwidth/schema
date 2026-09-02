@@ -15,6 +15,7 @@
 package baseline_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,10 +136,7 @@ func summary(fs []baseline.Finding) string {
 // without returns the shipping policy with one row removed — the attribution
 // control's instrument.
 func without(keys ...string) map[string]baseline.TokenRule {
-	p := map[string]baseline.TokenRule{}
-	for k, v := range baseline.DefaultTokenPolicy {
-		p[k] = v
-	}
+	p := maps.Clone(baseline.DefaultTokenPolicy)
 	for _, k := range keys {
 		delete(p, k)
 	}
