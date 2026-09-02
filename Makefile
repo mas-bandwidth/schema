@@ -388,12 +388,15 @@ build/tables-pack-root.bin: bin/schema $(PACK_TREE)
 # PACK_INCLUDES is shared with the sanitized twins below, so a build and its
 # twin can never drift into covering different code (#278's rule).
 PACK_INCLUDES := -Ibuild/tables-generated/examples
+# these drivers CALL the text form, so they compile the generated translation
+# unit that holds it (SPEC-TABLES.md §16.1) — the same rule any consumer follows
+PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp)
 PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 PACK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
 build/schema_test_pack: build/tables-generated/.stamp test/tables/pack_main.cpp
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) test/tables/pack_main.cpp -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) test/tables/pack_main.cpp $(PACK_JSON_SOURCES) -o $@
 
 # The SANITIZED twins (#278, applied to this PR's drivers). Both read file
 # sizes off disk and size their own buffers from them, and both compare
@@ -402,7 +405,7 @@ build/schema_test_pack: build/tables-generated/.stamp test/tables/pack_main.cpp
 # tables leg up against. -fno-sanitize-recover=all is what makes it a GATE.
 build/schema_test_pack_asan: build/tables-generated/.stamp test/tables/pack_main.cpp
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) test/tables/pack_main.cpp -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) test/tables/pack_main.cpp $(PACK_JSON_SOURCES) -o $@
 
 # §17.1's THIRD golden needs the engine's own text of each root, so unpack
 # writes the one-file form beside the bins and the driver compares ToJson to it.
@@ -442,11 +445,11 @@ build/hostile-values/.stamp: bin/schema $(HOSTILE_TREES)
 
 build/schema_test_hostile: build/tables-generated/.stamp test/tables/hostile_main.cpp
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) test/tables/hostile_main.cpp -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) -o $@
 
 build/schema_test_hostile_asan: build/tables-generated/.stamp test/tables/hostile_main.cpp
 	@mkdir -p build
-	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) test/tables/hostile_main.cpp -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) test/tables/hostile_main.cpp $(PACK_JSON_SOURCES) -o $@
 
 .PHONY: tables-hostile-values
 tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp
