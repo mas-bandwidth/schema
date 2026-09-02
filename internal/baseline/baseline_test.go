@@ -537,12 +537,14 @@ func TestVanishedMembers(t *testing.T) {
 	}
 }
 
-// TestRenamingDoesNotRaiseTheVerdict: the same wire loss must draw the same
-// verdict whether or not the author also renamed the declaration. A paired
-// rename is the declaration under a new name, so its own walk judges it and
-// the referent rule stays out — otherwise repointing a field at "the same
-// thing, renamed" would refuse what an in-place edit only warns about.
-func TestRenamingDoesNotRaiseTheVerdict(t *testing.T) {
+// TestPairedRenameDoesNotRaiseTheVerdict: a rename the pairing RECOGNISES —
+// one that keeps at least half the declaration's identities — must draw the
+// same verdict the same wire loss draws without it. A paired rename is the
+// declaration under a new name, so its own walk judges it and the referent rule
+// stays out; otherwise repointing a field at "the same thing, renamed" would
+// refuse what an in-place edit only warns about. Below the threshold the rule
+// is deliberately different, and TestBelowThresholdRenameIsARepoint states it.
+func TestPairedRenameDoesNotRaiseTheVerdict(t *testing.T) {
 	cases := []struct{ name, alone, renamed, where, what string }{
 		{
 			name:  "an enum variant dropped",
@@ -578,6 +580,33 @@ func TestRenamingDoesNotRaiseTheVerdict(t *testing.T) {
 	}
 }
 
+// TestBelowThresholdRenameIsARepoint is the stated exception to the test above.
+// A declaration that keeps too little of its identity is not recognisable as a
+// rename — no evidence says the new name is the old declaration — so it is
+// judged as what it is indistinguishable from: a field repointed at a different
+// declaration. That refuses where the in-place edit only warns, and the warning
+// says the pairing did not happen, so the harsher verdict is never silent.
+func TestBelowThresholdRenameIsARepoint(t *testing.T) {
+	// two of three variants dropped: below the half a rename needs. The
+	// defaulted variant survives, so the ONLY edit is the loss.
+	dropped := replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Silver }")
+	if refusals, warns := baseline.Split(diff(t, dropped, baseline.DefaultTokenPolicy)); len(refusals) != 0 || len(warns) == 0 {
+		t.Fatalf("dropping variants in place warns and does not refuse, got:%s", summary(append(refusals, warns...)))
+	}
+
+	renamed := strings.NewReplacer(
+		"enum Grade { Bronze, Silver, Gold }", "enum Rank { Silver }",
+		"grade   Grade = Silver", "grade   Rank = Silver",
+		"swap_grade Grade", "swap_grade Rank").Replace(baseSrc)
+	got := diff(t, renamed, baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Refuse, "Config.swap_grade", "enum Grade -> Rank") {
+		t.Fatalf("below the threshold the change of referent is judged as a repoint, got:%s", summary(got))
+	}
+	if !find(got, baseline.Warn, "enum Grade", "below the half needed to call it a rename") {
+		t.Errorf("and the warning must say the pairing did not happen, got:%s", summary(got))
+	}
+}
+
 // TestUnpairedVanishedMemberNamesWhatItFound: on the unpaired path the warning
 // is the ONLY thing between a reader and the coverage hole, so it says what it
 // actually found rather than asserting nothing was close.
@@ -605,6 +634,126 @@ func TestUnpairedVanishedMemberNamesWhatItFound(t *testing.T) {
 	gone := strings.Replace(baseSrc, "    effect  Effect\n", "", 1)
 	if got := diff(t, gone, baseline.DefaultTokenPolicy); !find(got, baseline.Warn, "union Effect", "no declaration carries any of its identities") {
 		t.Errorf("wanted the zero-overlap wording, got:%s", summary(got))
+	}
+}
+
+// pairSrc is a standalone unit for the pairing fixtures: one root table
+// nesting A, so A is in the closure and vanishes when it is renamed.
+const pairSrc = `package pairing
+
+type A
+{
+    x int32 = 1
+    y int32 = 2
+    z int32 = 3
+    w int32 = 4
+}
+
+table Holder
+{
+    a A
+}
+`
+
+// TestPairingWillNotGuessBetweenCandidates is the reviewer's mis-pair shape.
+// `A` is renamed to `A2`, which drops one of its four fields; an UNRELATED new
+// declaration `B` reuses all four field names, so identity overlap alone scores
+// the stranger higher than the real rename. Pairing with the stranger would
+// attribute four confident refusals to edits nobody made — so when more than
+// one candidate reaches the threshold, the pairing asks a second question
+// (whose own facts are closest) and pairs only on a candidate that wins both.
+// Here it wins neither pair of answers together, so nothing is paired and the
+// warning names both.
+func TestPairingWillNotGuessBetweenCandidates(t *testing.T) {
+	edited := `package pairing
+
+type A2
+{
+    x int32 = 1
+    y int32 = 2
+    z int32 = 3
+}
+
+type B
+{
+    x int32 = 77
+    y int32 = 88
+    z int32 = 99
+    w int32 = 66
+}
+
+table Holder
+{
+    a A2
+    b B
+}
+`
+	got := baseline.Diff(committed(t, pairSrc), baseline.Render(unit(t, edited)), baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "table A", "A2 and B each carry enough of its 4 identities") {
+		t.Fatalf("an undecidable rename must name its contenders, got:%s", summary(got))
+	}
+	for _, f := range got {
+		if f.Verdict == baseline.Refuse && strings.HasPrefix(f.Where, "B.") {
+			t.Errorf("B is brand new; no edit inside it ever happened, got: %s", f)
+		}
+	}
+	// the repoint is still judged, which is what keeps the loss visible
+	if !find(got, baseline.Refuse, "Holder.a", "nested table A -> A2") {
+		t.Errorf("the field repointed at A2 must still be judged, got:%s", summary(got))
+	}
+}
+
+// TestPairingTieNamesTheTie: two candidates carrying EVERY identity cannot be
+// told apart, and the message must not blame a threshold the numbers in the
+// same sentence disprove.
+func TestPairingTieNamesTheTie(t *testing.T) {
+	edited := `package pairing
+
+type A2
+{
+    x int32 = 1
+    y int32 = 2
+    z int32 = 3
+    w int32 = 4
+}
+
+type A3
+{
+    x int32 = 1
+    y int32 = 2
+    z int32 = 3
+    w int32 = 4
+}
+
+table Holder
+{
+    a A2
+    b A3
+}
+`
+	got := baseline.Diff(committed(t, pairSrc), baseline.Render(unit(t, edited)), baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "table A", "A2 and A3 each carry enough of its 4 identities") {
+		t.Fatalf("a tie must be reported as a tie, got:%s", summary(got))
+	}
+	if find(got, baseline.Warn, "table A", "below the half needed") {
+		t.Errorf("4 of 4 is not below half — the reason must not contradict the numbers, got:%s", summary(got))
+	}
+}
+
+// TestPairingTakesTheRenameWhenItIsTheOnlyCandidate: the tiebreak must not cost
+// the ordinary case. One candidate reaching the threshold is paired, and the
+// semantic edit inside the rename is caught.
+func TestPairingTakesTheRenameWhenItIsTheOnlyCandidate(t *testing.T) {
+	edited := strings.NewReplacer(
+		"type A\n", "type A2\n",
+		"    x int32 = 1", "    x int32 = 11",
+		"    a A", "    a A2").Replace(pairSrc)
+	got := baseline.Diff(committed(t, pairSrc), baseline.Render(unit(t, edited)), baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "table A", "A2 carries 4 of its 4 identities") {
+		t.Fatalf("the only candidate must be paired, got:%s", summary(got))
+	}
+	if !find(got, baseline.Refuse, "A2.x", "specified default 1 -> 11") {
+		t.Errorf("the edit inside the rename must be judged under the new name, got:%s", summary(got))
 	}
 }
 

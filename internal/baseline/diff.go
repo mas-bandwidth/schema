@@ -22,6 +22,14 @@
 // rename (see pairMembers) is left to the walk — otherwise the same wire loss
 // would draw a harsher verdict merely because the author also renamed.
 //
+// The split is deliberately ASYMMETRIC ON FIELD REMOVAL, and the asymmetry is
+// the point rather than an oversight: dropping a field from a declaration —
+// renamed or not — is absorbed, because a reader defaults what a writer no
+// longer sends, while repointing a field at a declaration that never had that
+// field refuses, because nothing says the author knew what the old bodies
+// carried. The first is the schema evolving; the second is a substitution
+// claiming to be equivalent, and only the second makes that claim.
+//
 // ONE TABLE IS THE WHOLE POLICY. [DefaultTokenPolicy] maps a field token's key
 // to what a change of it means, and it carries a row for each of the four
 // vocabulary walks too — the ones with no token of their own. Every walk is
@@ -34,6 +42,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // A Verdict is what a difference means for data already written.
@@ -137,10 +146,14 @@ func (f Finding) String() string { return f.Where + ": " + f.What }
 func Diff(base, live *Unit, policy map[string]TokenRule) []Finding {
 	d := &differ{base: base, live: live, policy: policy, visiting: map[string]bool{}}
 	renames := policy["member"] == RuleLoss
-	d.tables = pairMembers(tableIdents(base), tableIdents(live), renames)
-	d.enums = pairMembers(enumIdents(base), enumIdents(live), renames)
-	d.unions = pairMembers(unionIdents(base), unionIdents(live), renames)
-	d.flags = pairMembers(flagsIdents(base), flagsIdents(live), renames)
+	// only tables carry per-member facts to compare; the vocabularies answer 0
+	// for every candidate, so a contest among them is never separated by facts
+	// and is reported as the contest it is.
+	none := func(string, string) int { return 0 }
+	d.tables = pairMembers(tableIdents(base), tableIdents(live), renames, d.factDistance)
+	d.enums = pairMembers(enumIdents(base), enumIdents(live), renames, none)
+	d.unions = pairMembers(unionIdents(base), unionIdents(live), renames, none)
+	d.flags = pairMembers(flagsIdents(base), flagsIdents(live), renames, none)
 
 	var out []Finding
 	out = append(out, d.diffTables()...)
@@ -177,13 +190,14 @@ type idents struct {
 // to and, when it is not a plain namesake, how much of its identity that
 // declaration actually carries.
 type match struct {
-	name      string // the live declaration, "" when nothing was close enough
-	closest   string // the best candidate considered, paired or not
-	carried   int    // identities of this member the candidate carries
-	total     int    // identities this member had
-	renamed   bool   // matched across a rename rather than by name
-	vanished  bool   // the baseline name is gone from the live projection
-	unmatched bool   // vanished, and no candidate reached the threshold
+	name       string   // the live declaration, "" when nothing was close enough
+	closest    string   // the best candidate considered, paired or not
+	carried    int      // identities of this member the candidate carries
+	total      int      // identities this member had
+	renamed    bool     // matched across a rename rather than by name
+	vanished   bool     // the baseline name is gone from the live projection
+	unmatched  bool     // vanished, and no candidate was chosen
+	contenders []string // two or more candidates the evidence could not separate
 }
 
 type pairing map[string]match
@@ -209,7 +223,14 @@ type pairing map[string]match
 // Pairing rides the `member` policy row with the warning, because they are one
 // feature: without the row there is no rename matching and no report of the
 // hole, which is the behaviour the row exists to replace.
-func pairMembers(base, live idents, allowRenames bool) pairing {
+// closeness measures how far a candidate's own facts sit from the vanished
+// member's, under the ids they share. It is the second question the pairing
+// asks — the first, identity overlap, is blind to a brand-new declaration that
+// happens to carry the same field names — and it returns 0 for the
+// vocabularies, which carry no per-variant facts to compare.
+type closeness func(baseName, candidate string) int
+
+func pairMembers(base, live idents, allowRenames bool, near closeness) pairing {
 	out := pairing{}
 	liveHas := map[string]bool{}
 	for _, n := range live.names {
@@ -241,27 +262,74 @@ func pairMembers(base, live idents, allowRenames bool) pairing {
 
 	for _, o := range orphans {
 		want := base.sets[o]
-		best, bestScore, tie := "", 0, false
+
+		// every unmatched candidate, scored on identity overlap; the best of
+		// them is what an unpaired warning reports, whether or not it reached
+		// the threshold
+		best, bestScore := "", 0
+		var reached []string
 		for _, c := range candidates {
 			if taken[c] {
 				continue
 			}
 			score := carried(want, live.sets[c])
-			switch {
-			case score > bestScore:
-				best, bestScore, tie = c, score, false
-			case score == bestScore && score > 0:
-				tie = true
+			if score > bestScore || (score == bestScore && score > 0 && c < best) {
+				best, bestScore = c, score
+			}
+			if score > 0 && score*2 >= len(want) {
+				reached = append(reached, c)
 			}
 		}
-		m := match{closest: best, carried: bestScore, total: len(want), vanished: true}
-		if allowRenames && bestScore > 0 && !tie && bestScore*2 >= len(want) {
-			m.name, m.renamed = best, true
-			taken[best] = true
-		} else {
-			m.unmatched = true
+
+		m := match{closest: best, carried: bestScore, total: len(want), vanished: true, unmatched: true}
+		if !allowRenames || len(reached) == 0 {
+			out[o] = m
+			continue
 		}
+		pick := reached[0]
+		if len(reached) > 1 {
+			// MORE THAN ONE CANDIDATE COULD BE THE RENAME. Identity overlap
+			// alone cannot separate them — an unrelated new declaration that
+			// happens to carry the same field names outscores the real rename
+			// that dropped one — so the tiebreak asks the second question:
+			// whose own FACTS under the shared ids are closest. A candidate is
+			// chosen only when it wins BOTH, strictly. Otherwise nothing is
+			// paired and the warning names the contenders, because a warning
+			// must never assert a rename the evidence cannot distinguish.
+			pick = ""
+			topScore, topFacts := -1, -1
+			var scoreTie, factTie bool
+			for _, c := range reached {
+				score, facts := carried(want, live.sets[c]), near(o, c)
+				switch {
+				case score > topScore:
+					topScore, scoreTie = score, false
+				case score == topScore:
+					scoreTie = true
+				}
+				switch {
+				case topFacts < 0 || facts < topFacts:
+					topFacts, factTie = facts, false
+				case facts == topFacts:
+					factTie = true
+				}
+			}
+			if !scoreTie && !factTie {
+				for _, c := range reached {
+					if carried(want, live.sets[c]) == topScore && near(o, c) == topFacts {
+						pick = c
+					}
+				}
+			}
+			if pick == "" {
+				m.contenders = append([]string(nil), reached...)
+				out[o] = m
+				continue
+			}
+		}
+		m.name, m.renamed, m.unmatched = pick, true, false
 		out[o] = m
+		taken[pick] = true
 	}
 	return out
 }
@@ -276,6 +344,11 @@ func vanishedFinding(what, name string, m match) Finding {
 		return Finding{Warn, where, fmt.Sprintf(
 			"no longer in the closure under that name; %s carries %d of its %d identities, so it is judged as the rename it looks like",
 			m.name, m.carried, m.total)}
+	}
+	if len(m.contenders) > 0 {
+		return Finding{Warn, where, fmt.Sprintf(
+			"no longer in the closure — %s each carry enough of its %d identities to be the rename and the evidence does not separate them, so nothing is paired and this baseline no longer covers it",
+			strings.Join(m.contenders, " and "), m.total)}
 	}
 	if m.carried > 0 {
 		return Finding{Warn, where, fmt.Sprintf(
@@ -307,6 +380,46 @@ func (d *differ) vanished(what string, p pairing, names []string) []Finding {
 		}
 	}
 	return out
+}
+
+// factDistance counts the facts that MOVED between a baseline table and a
+// candidate live one, under the ids they share. Referent tokens are skipped:
+// judging one needs the pairings this measurement is being taken to decide, and
+// a candidate's own kinds, defaults and bounds are enough to tell a renamed
+// declaration from a stranger that reuses its field names.
+func (d *differ) factDistance(baseName, candidate string) int {
+	before, after := findTable(d.base, baseName), findTable(d.live, candidate)
+	if before == nil || after == nil {
+		return 0
+	}
+	liveFields := map[uint16]Field{}
+	for _, f := range after.Fields {
+		liveFields[f.Id] = f
+	}
+	n := 0
+	for _, bf := range before.Fields {
+		lf, ok := liveFields[bf.Id]
+		if !ok {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, bt := range bf.Tokens {
+			seen[bt.Key] = true
+			rule := d.policy[bt.Key]
+			if rule == RulePass || rule == RuleRefs {
+				continue
+			}
+			if lv, present := lf.Get(bt.Key); !present || lv != bt.Value {
+				n++
+			}
+		}
+		for _, lt := range lf.Tokens {
+			if !seen[lt.Key] && d.policy[lt.Key] == RuleFixed {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // ---- the four walks ----
