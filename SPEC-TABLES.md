@@ -173,10 +173,10 @@ table Scene
 No pointer, no allocation and no change of mode. Reach for `*` when
 the structure genuinely needs it: a table that refers to ITSELF (a chain, a
 tree), a large subtree you would rather not carry by value, or one node
-several parents name (sharing is a named follow-on, §15 — v1 writes a
-tree). One pointer anywhere in a table's by-value closure flips it to
-VARIABLE-LENGTH (§2.2) and with it the whole builder lifecycle, so the
-choice is a real one.
+several parents name — sharing is preserved end to end, on the wire and
+in both runtime forms (§3.1). One pointer anywhere in a table's by-value
+closure flips it to VARIABLE-LENGTH (§2.2) and with it the whole builder
+lifecycle, so the choice is a real one.
 
 The spelling is C's, deliberately: it reads as what it is. The rules,
 each refused by name (§11):
@@ -189,10 +189,15 @@ each refused by name (§11):
 - **A pointer is declared inside a table body, and nowhere else.** A
   `type` body refuses one: types remain value semantics, and that is the
   founding line of the split.
-- **An array of pointers is a named follow-on** (§15). Declare a bounded
-  array of tables by value, or a pointer to a table that holds the array.
 - **A pointer field takes no specified default.** A fresh pointer is
   null, and null is the only value a default could name.
+
+**An array of pointers is a bounded array like any other.** `[..8]*Node`
+declares eight reference slots and rides as an array of node indices
+(§3.1); a null element is index `0`. It is the spelling for a node with a
+fixed fan-out, and it costs four bytes a slot instead of a whole table by
+value. An array of `*bytes` or `*string` stays refused (§2.5): a buffer
+takes no index, so there is nothing to put in the slots.
 
 A pointer's STORAGE is a four-byte relocatable reference — never a
 machine address — which is what keeps §9's relocatability true with
@@ -443,8 +448,9 @@ something asks for it — which keeps a very large file's resident memory
 proportional to what is touched rather than to what exists.
 
 Refused by name: `*bytes` or `*string` outside a table body; a specified
-default on one (a fresh reference is null); an array of them, as for any
-pointer (§15); `?` on one, because null already IS absence (§2.3).
+default on one (a fresh reference is null); an array of them — a buffer
+takes no node index, so there is nothing to put in the slots (§3.1); `?`
+on one, because null already IS absence (§2.3).
 
 ### 2.6 Union arms may be tables
 
@@ -507,7 +513,7 @@ schema's codebase:
 - **The kinds are a closed set**, and these are their numbers: `1` bool,
   `2` i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64,
   `10` f32, `11` f64, `12` string, `13` table, `14` array, `15` union,
-  `16` enum-keyed array.
+  `16` enum-keyed array, `17` pointer index.
 - **Payloads**, one row per kind. `L` is a u32 byte length; `N` is a u32
   element count. Nothing is aligned and nothing is padded.
 
@@ -522,6 +528,7 @@ schema's codebase:
   | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
   | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of arm body |
   | `16` enum-keyed array | `L`, then the body: `element kind (u8)`, `N` = the number of SLOTS PRESENT, then N pairs of `variant id (u16)`, `L (u32)`, `L` bytes of element (§3.2) |
+  | `17` pointer index | 4 bytes, the u32 node index (§3.1) |
 
   **An array's ELEMENT KIND is part of its identity, not only its framing.**
   For kinds `14` and `16` a reader compares the element kind it declares
@@ -539,10 +546,16 @@ schema's codebase:
   kind `13` payload carries.
 
   **Spellings that add no row, and the one way they differ.** A `?T`
-  optional field is framed exactly as the non-optional `T` (§2.3); `*T` is
-  framed exactly as a by-value `T` (§3.1); and `*bytes` and `*string` are
-  framed exactly as `bytes(N)` and `string(N)` (§2.5). Each family is ONE
-  FRAMING under several declaration spellings.
+  optional field is framed exactly as the non-optional `T` (§2.3), and
+  `*bytes` and `*string` are framed exactly as `bytes(N)` and
+  `string(N)` (§2.5). Each family is ONE FRAMING under several
+  declaration spellings. **`*T` naming a TABLE is the exception**: it
+  rides as a node index under its own kind `17` (§3.1), because a body
+  that may be named twice cannot also sit inline at one of its names.
+  The distinct kind is what makes moving a field to or from `*T` a
+  REPORTED edit rather than a quiet one, for the same reason kind `16`
+  exists (§3.2): a node index and a plain `uint32` are the same four
+  bytes, and only the kind can tell a reader which it is holding.
 
   **What differs inside a family is ELISION, and only at the empty end.**
   Content decides for the by-value spellings and presence decides for the
@@ -554,7 +567,9 @@ schema's codebase:
   the claim: a schema may move a field among them and no byte moves for
   such a value. At the empty end the bytes differ and no reader
   misdecodes — an elided field reads as absent (`?T`), null (`*T`) or the
-  declared default (`T`), which is correct in every direction.
+  declared default (`T`), which is correct in every direction. Moving a
+  field ACROSS families — between `*T` and `T` or `?T` — is not a free
+  edit: it changes kind, and §4 counts it (§3.1).
   - **Array elements.** For a scalar element kind the elements sit back to
     back at that kind's fixed width. For element kind `13` (table) each
     element is preceded by its own `L`. `bytes(N)` rides as an array of
@@ -566,9 +581,10 @@ schema's codebase:
     reader accepts it.
 - **Skipping a field you cannot name** needs the kind byte and nothing
   else, which is what makes an unknown field survivable (§4). Three rules
-  cover the set: kinds `1`–`11` skip their fixed width; kinds `12`, `13`,
-  `14` and `16` read `L` and skip `L` bytes; kind `15` reads the `u16` arm
-  id and stops there if it is 0, else reads `L` and skips `L` bytes.
+  cover the set: kinds `1`–`11` and `17` skip their fixed width; kinds
+  `12`, `13`, `14` and `16` read `L` and skip `L` bytes; kind `15` reads
+  the `u16` arm id and stops there if it is 0, else reads `L` and skips
+  `L` bytes.
   **A kind a reader does not know at all is not skippable** and is framing
   damage, which is why the set is closed and why a new kind is a wire
   change rather than an addition.
@@ -617,59 +633,287 @@ schema's codebase:
   wire's one POSITIONAL vocabulary, and the rule that follows from it is in
   §4: variants are appended at the END, never inserted or reordered.
 
-### 3.1 Pointers on the wire: a tree
+### 3.1 Pointers on the wire: a flat node table
 
-A pointer rides as its pointee's table body, framed exactly as a
-by-value nesting is: `id (u16), kind = table, u32 byte length, body`.
-Three consequences, all deliberate:
+A pointered save writes every reachable node ONCE, into a **node table**,
+and a pointer field rides as a `u32` **index** into it under kind `17`.
+The encoding is flat: no pointer edge is a nesting level, so a chain's
+length is not a depth; two references to one node are one node; and an
+array of pointers is an array of indices. It moves not one byte of a
+value-only table: a fixed-size table has no pointer, therefore no node
+table, therefore exactly the bytes §3 already describes.
 
-- **A null pointer is not written at all.** Absence decodes as null, so
-  an old reader that never knew the field is already correct, and a
-  reader whose writer had nothing to point at is correct too.
-- **A non-null pointer ALWAYS rides**, even when its pointee is entirely
-  default. Elision is decided by presence, not by content — otherwise
-  null and "points at an empty node" would be one value on the wire.
-- **A pointer field, an OPTIONAL field and a by-value nesting share one
-  framing** — three spellings of one field (§2.3). A schema may change any
-  of them into any other and, for content that is not entirely default, no
-  byte moves: old readers take the first body by value, pointer readers
-  allocate one node from it, optional readers mark it present. **At the
-  empty end they differ**, because content decides elision by value and
-  presence decides it here: an all-default `T` writes nothing, a present
-  `?T` and a non-null `*T` write a body. Every direction still reads
-  correctly; only the byte-identity claim is scoped. The corpus holds all
-  six directions, and the byte-identity of the three writers over
-  non-default content.
+**Kind `17` costs nothing and closes an edit that would otherwise be
+silent.** A node index is four bytes and so is a `uint32`, so under a
+shared kind an edit between the two would report nothing in either
+direction — a stored index reading back as a plausible number, a number
+read as an index. The kind byte already rides, so the distinct number
+costs zero bytes and one row in the fixed-width skip rule, and it makes
+that edit an ordinary kind mismatch (§4). §3's rule that an unknown kind
+is not skippable is what makes spending a kind expensive AFTER readers
+exist; the set is closed before any of them ship, and §14 records the
+trade.
 
-**Wire v1 is a TREE, and identity is not preserved.** Two pointers to one
-node write two bodies and load as two nodes. Aliasing, sharing and DAG
-identity are a named follow-on (§15); nothing in v1 pretends otherwise,
-and the corpus asserts the tree semantics rather than hiding them.
+**What a pointer edge is, and what it is not.** Only a `*T` naming a
+declared TABLE takes a node index. `*bytes` and `*string` are leaf
+buffers and are framed inline exactly as `bytes(N)` and `string(N)` are
+(§2.5) — they charge no node, take no index, and create no depth,
+because a buffer has nothing inside it to descend into. A table-typed
+UNION ARM is a by-value nesting and rides inline as §2.6 frames it; the
+pointer fields INSIDE an arm are indices like any other.
 
-A pointer chain's nesting depth on the wire EQUALS its length: a chain of
-N nodes is N levels deep. Both sides therefore cap nesting at a declared
-depth (128 in the C++ backend).
+**Node numbering.**
 
-**ONLY POINTER EDGES CHARGE DEPTH.** By-value nesting — a table inside a
-table, or a bounded array of them — charges nothing, because by-value
-composition is already finite: §2 refuses by-value cycles, so its nesting
-is bounded by the schema and cannot be driven by data. The rule must hold
-identically in ALL FOUR walks — measure, save, load and pack — or the
-forms disagree about which structures are legal and a structure that
-locks and cooks is refused by the wire. That agreement is held by test.
+- **`0` is null.**
+- **`1` is the ROOT** — the body that hosts the node table. A pointer may
+  name it, so a child pointing back at its root is expressible.
+- **`2` and up are the node table's records, in order**: record `k`
+  (1-based) is node index `k + 1`.
+- The numbering is the **first-visit order of a depth-first pre-order
+  walk from the root over POINTER EDGES ONLY**: fields in declaration
+  order, array elements in index order, and descending through every
+  by-value edge there is — a nested table, an element of a bounded or
+  enum-keyed array, a member of a true `if` group, a present optional's
+  value, a union's set arm — to reach the pointer fields inside them. A
+  node takes its index the first time it is reached and never again.
+- **A field the writer does not write is not an edge.** A pointer under a
+  false guard, or inside an absent optional, is not visited and its
+  target takes no index, so a save never writes a record that no written
+  field names.
+- **The numbering is deterministic and re-derived, never carried.**
+  Measure derives it from the graph and save derives the same one from
+  the same graph; nothing passes between them, and that is what makes
+  `measure == save` (§9) hold across a pointer graph.
+- It is the same order `Lock` lays a region out in (§6.3), because it is
+  the same walk. Neither depends on the other: nothing that checks a
+  region reads that order (§7).
 
-The cap in force:
+**The node table rides under a RESERVED field id**, framed so that a
+reader which cannot name it skips it and says so:
 
-- **Writing**, a graph deeper than the cap — including any data cycle —
-  is a save ERROR. Measure and save return failure; nothing recurses
-  away, and no cycle detection state is needed to guarantee it.
-- **Reading**, a body nested past the cap is refused: the subtree is
-  skipped, the pointer stays null, the read is flagged malformed, and the
-  parent reads on. This is the framing-damage rule of §4 applied to
-  depth.
+```
+one or more fields, in order, each:
+    id = 0xFFFF, kind = 12, L (u32), then L bytes
 
-Wide structures are unbounded; deep ones are capped. Lifting the cap
-wants a flat, indexed node encoding — a named follow-on (§15).
+the FIRST field's payload opens with the count; every field's payload
+then carries WHOLE RECORDS, and the fields concatenate in order:
+
+    node_count (u64)
+    node_count records, back to back:
+        type id (u64), length (u32), body
+```
+
+- **`0xFFFF` is a RESERVED field id.** §5's fold reaches it and ordinary
+  names land there, so the compiler refuses a field name — or a `was` —
+  whose id does (§11).
+- **Kind `12` is §3's opaque byte payload**, so a reader that cannot name
+  the id skips each field by its `L` and counts it **unknown** (§4). No
+  new skip rule, and no ceiling: **the field repeats.** That is the one
+  exception to §3's last-occurrence-wins, and it belongs to this reserved
+  id alone — every other repeated id still keeps the last.
+- **A RECORD NEVER STRADDLES A FIELD.** A writer opens the next field
+  when the record it is about to write would not fit in this one, so
+  every field holds a whole number of records and every multi-byte read a
+  reader makes lies inside one contiguous payload. A reader may therefore
+  scan the fields one at a time, in order, exactly as it would scan one
+  stream — no segmented cursor, no copy to make a body contiguous, and so
+  §6.5's "the load path allocates nothing" stays literally true and the
+  generated body decoder never learns that chunking exists. The cost is
+  under one record of slack per field plus the field's own seven bytes.
+- **The chunking is deterministic**, which is what `measure == save`
+  needs: a writer fills each field as far as whole records allow, up to
+  `0xFFFFFFFF` bytes, and opens another. A reader accepts any chunking a
+  writer chose — a short field is legal input — and byte-identical output
+  against this implementation requires matching the fill rule, as
+  matching declaration order does (§3).
+- **The node table is whole or it is nothing.** Numbering is positional
+  across the concatenation, so a field that cannot be read cannot be
+  dropped without renumbering every record after it. A node-table field
+  arriving under a kind other than `12`, a record whose length runs past
+  its field, or bytes left over inside a field make the whole table
+  **malformed**: every pointer in the save reads null and one event is
+  counted. A reader never salvages part of a numbering.
+- **A save's node bodies have NO aggregate ceiling**, and the only thing
+  record-aligned chunking cannot frame is a single record larger than a
+  field — which a node body may not be in any case (below).
+- **Only the ROOT body carries the node table.** No nested body ever does
+  — not a by-value nesting, not an array element, not a union arm, not a
+  variable-length table nested by value inside another (§2.2), and not a
+  record. A save has one numbering and every index anywhere in it names
+  that one.
+- This implementation writes the fields LAST in the root body, after the
+  root's own declared fields, so a reader that gives up partway still has
+  them. Field order is not part of the contract (§3), so a reader finds
+  them by id.
+- A root that reaches no nodes writes none of them, like every other
+  empty thing (§3).
+- **The record scan is authoritative.** `node_count` is data from the
+  wire: a reader scans records until the fields are consumed and takes
+  what it finds, and a `node_count` that disagrees with the scan is
+  **malformed**. Nothing — no directory, no region, no buffer — is sized
+  from `node_count` before the scan has confirmed it.
+- **The `unknown` count is per TRANSPORT FIELD, not per schema
+  difference.** A reader that cannot name `0xFFFF` counts one for each
+  field the node table rode in, so a large save reports several unknowns
+  where a small one reports a single unknown, and neither number is a
+  count of things the schemas disagree about. A tool reporting evolution
+  differences should read the count that way.
+
+**A node record.**
+
+- The **type id** is the target table's NAME under `fnv1a64`, with a
+  result of 0 rebounding to 1 — 64 bits because a table name is the one
+  vocabulary scoped to a WHOLE unit closure rather than to a single table
+  or enum, so its collision population is the largest on the wire and the
+  cost of ending the question is eight bytes a node. Two tables in one
+  closure whose ids collide are still a compile error naming both (§11);
+  at 64 bits, in a closure of a thousand tables, the chance is about
+  `3 × 10⁻¹⁴`.
+- The type id is what makes the node table decodable by a linear SCAN
+  instead of a traversal, and that is why it is on the wire at all.
+- The **length** is a `u32`, and **a node body that would exceed
+  `0xFFFFFFFF` bytes is a SAVE-TIME REFUSAL** naming the node: measure
+  and save return failure, and nothing truncates. The case is reachable —
+  two 2 GiB `*bytes` in one table are four gigabytes of body under §2.5 —
+  and it is refused rather than widened, because the repair is more
+  nodes, which is the shape the flat encoding wants anyway, and a `u64`
+  length would cost four bytes on every node in every save to frame a
+  structure nobody should build. The ceiling that had to go was the
+  AGGREGATE one, and the repeating field removed it.
+- The **body** is an ordinary table body — fields, then the `u16` zero
+  terminator, exactly as §3 describes. Everything inside is ordinary:
+  by-value nesting still nests, arrays are arrays, guards still guard,
+  buffers ride inline.
+
+**A pointer field, and the constructs that ride on it.**
+
+- A pointer to a table rides as `id (u16), kind = 17, index (u32)`.
+- **Null is index `0`, and null is elided.** Absence and null are one
+  value: a pointer takes no specified default (§2.1), so null is the only
+  thing an absence could mean. §3's presence rule is unchanged — a
+  non-null pointer ALWAYS rides, even when its node's body is entirely
+  default, because otherwise null and "points at an empty node" would be
+  one value on the wire.
+- **`*T` and a by-value `T` are no longer one framing.** §3's
+  three-spellings family becomes two: `T` and `?T` share kind `13`, and
+  `*T` is kind `17`. An edit between a pointer and either of the others,
+  or between a pointer and a plain `uint32`, is §4's kind mismatch —
+  counted, never misdecoded, the field taking its default. The framings
+  cannot merge while identity holds: a body that may be named twice
+  cannot also sit inline at one of its names.
+- **An array of pointers rides as an array of indices**: `kind = 14`,
+  element kind `17`, `N`, then `N` `u32` indices. `[..8]*Node` is a legal
+  declaration (§2.1) — an array of `*bytes` or `*string` is still refused
+  (§2.5), because a buffer has no index to put in a slot. An array whose
+  elements are all null elides like any other all-default array; an array
+  with any non-null element rides as §3 frames arrays, so a null inside
+  it is index `0` and every position is preserved. §3's element-kind rule
+  applies unchanged, so an array of indices and an array of `uint32` do
+  not decode each other either.
+
+**Reading: every failure is one of §4's events, and none is new.**
+
+- **An index above `node_count + 1`** — the valid indices are `0` for
+  null, `1` for the root and `2 … node_count + 1` for the records:
+  **malformed**, and the pointer stays null.
+- **An index of `1` where the field's declared target is not the reader's
+  own ROOT table**: **kind mismatch**, pointer null. The root carries no
+  record and therefore no wire type id, so the reader's own root type is
+  what the claim is checked against, and it is checked.
+- **A node whose type id this reader cannot name**: skipped by its
+  length, counted **unknown**. It KEEPS ITS INDEX — numbering is
+  positional in the table, so one unnameable node never shifts the rest —
+  and every pointer naming it reads null.
+- **A node whose type id is not the one the field's declared target
+  requires**: **kind mismatch**, pointer null.
+- **A pointer field arriving as any other kind** — `13` from a schema
+  that holds the field by value or as `?T`, `8` from one that holds a
+  plain `uint32`: **kind mismatch**, skipped by its own kind's rule,
+  counted, pointer null.
+- **A node table that cannot be read whole** — a record whose length runs
+  past its field, leftover bytes inside a field, a node-table field under
+  another kind, or a `node_count` the scan does not match: **malformed**,
+  and every pointer in the save reads null. The root body still reads on
+  past the fields, so the root's own values survive — §4's
+  framing-damage rule, applied to a numbering that has to be whole.
+
+**LOAD IS A SCAN, and that is the whole of its bound.** Reading follows
+no reference. `LoadMeasure` walks the records once — a record's type id
+gives its storage size, its length gives the next record — and sums the
+region. `Load` walks them twice: once to fill the region's node directory
+(§6.3) from the framing, so that an index resolves whichever way it
+points, and once to decode each body into its own storage. Every record
+is visited a fixed number of times, in index order, and each is consumed
+in full before the next begins, so the work is linear in the wire's bytes
+and termination needs no argument beyond the record lengths and the end
+of the stream. A pointer field's payload is a NUMBER: it is
+bounds-checked and stored, never followed. There is no traversal on the
+load path, and therefore no traversal bound — no depth cap, no visited
+set, no ordering rule on the indices. The nesting that remains is
+by-value nesting, whose depth is fixed by the SCHEMA and cannot be driven
+by data, because §2 refuses by-value cycles. §14 records the two
+traversal bounds that were weighed and rejected, and why a type id
+removes the walk instead of bounding it.
+
+**Identity is preserved: one index, one node.** The numbering is by first
+visit, so a node three parents name takes one index and writes one body,
+and a loader materializes one node and stores that index in all three
+slots. §2.1's own example — a large `*Palette` several parents share — is
+one node on the wire, in a builder and in a region alike (§6.3).
+
+**A data cycle is refused at SAVE FROM A BUILDER, and the refusal is
+free.** The numbering walk carries one entry per reachable node — that
+map IS identity; a node must know its index to be named twice — so
+colouring each entry while its descent is open costs one bit: a reference
+to an entry still open is a cycle, named, and measure, save, `Cook` and
+`Lock` all return failure. Nothing recurses away. The map is proportional
+to NODES, never to bytes, and it lives on the AUTHORING side, where §6.5
+licenses allocation.
+
+**A region is not re-proved, and the claim stops there.** A save from a
+LOCKED region needs no map — the region's node directory (§6.3) already
+is the numbering — so it reproduces the structure it was handed, cycle
+and all. A region `Lock` produced is acyclic because `Lock` refused
+otherwise; a region LOADED from a wire is exactly as acyclic as its
+writer made it. Load itself is safe on any input: it scans, it
+terminates, it fabricates nothing. What a cyclic structure costs is paid
+by whatever WALKS it, and a consumer walking untrusted table data — a
+reflection dump, a text export (§16) — carries its own visit bound, the
+way any graph walker must. §14 prices the reader-side check this version
+does not spend.
+
+**Framing, worked.** Given
+
+```
+table Palette { id int32 }
+table Node    { value int32  next *Node  owner *Scene  palette *Palette }
+table Scene   { head *Node   palette *Palette }
+```
+
+with `scene.head = A`, `A.next = B`, both nodes' `owner` naming the root,
+and `A.palette`, `B.palette` and `scene.palette` all naming one `Palette`
+P, a save writes:
+
+```
+root body (Scene)
+  head     kind 17  2
+  palette  kind 17  4
+  0xFFFF   kind 12  L    the node table, in one field here
+                    node_count = 3
+                    rec 1  type Node     len  { value=1, next=3,
+                                                owner=1, palette=4 }
+                    rec 2  type Node     len  { value=2, owner=1,
+                                                palette=4 }
+                    rec 3  type Palette  len  { id=7 }
+  0x0000                 terminator
+```
+
+The root is index 1; A is 2 (`scene.head`); B is 3 (`A.next`); P is 4 —
+reached while descending B, BEFORE `A.palette` is read, because the walk
+is depth-first. P is written once and named three times. `B.next` is
+null, so it is not written at all. `owner = 1` names an index BELOW the
+node that carries it: indices run in the walk's order, and no reference
+has to respect that order.
 
 ### 3.2 Enum-keyed arrays on the wire: slots by name
 
@@ -754,14 +998,20 @@ tolerance is the versioning model:
   keeps its declared default, exactly as an absent field does (§3.2).
 - **An OPTIONAL field the writer did not send** reads as ABSENT, with the
   value at its declared defaults; one that rode reads as PRESENT, whatever
-  the content (§2.3). A field moved between `?T`, `*T` and a plain nesting
-  is not an evolution event at all — the bytes do not move (§3.1).
+  the content (§2.3). A field moved between `?T` and a plain nesting is
+  not an evolution event at all — the bytes do not move. Moving one to or
+  from `*T` IS one: a table pointer is kind `17` (§3.1), so the edit is a
+  kind mismatch, below.
 - **Kind mismatch** (a field changed type between builds): skipped, never
   misdecoded, counted. The kinds are a coarser vocabulary than the
   declaration side, so this catches a change of KIND, not every change of
   type: an enum field and a plain `uint16` field are both kind `7`, so an
   edit between the two is not a kind mismatch — the raw value is read as a
-  variant hash, and lands on `None` unless it happens to name one. **An
+  variant hash, and lands on `None` unless it happens to name one. **A
+  table pointer and a plain `uint32` field are NOT such a pair**, though
+  both carry four bytes: a pointer index has its own kind `17` (§3.1), so
+  an edit between them is an ordinary kind mismatch, counted in both
+  directions. **An
   array changed between the keyed and the positional spelling IS a kind
   mismatch** (`16` against `14`, §3.2), which is exactly why the keyed body
   has a kind of its own — **and so is an array whose ELEMENT kind differs**,
@@ -860,14 +1110,14 @@ save game that came back wrong needs to know there is no third:
    mask is the wire's one positional vocabulary (§3), so a variant's
    identity is its bit position; moving one remaps every stored file and
    the wire carries nothing that could say so.
-
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed and reordered; array bounds may move; a field may
-change between `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes` —
-all of it either invisible to the wire or counted in the report.
+change between `T` and `?T`, or between `bytes(N)` and `*bytes` — all of
+it either invisible to the wire or counted in the report. Moving a field
+to or from `*T` is a kind change and is counted (§3.1).
 
-**Two edits that would otherwise be silent are made REPORTABLE by
+**Three edits that would otherwise be silent are made REPORTABLE by
 construction, and it is worth saying how, because the claim above depends
 on it.**
 
@@ -879,6 +1129,13 @@ on it.**
   have replaced it: two encodings under one kind would have let a reader
   decode keys as values and report nothing. The keyed body's own kind `16`
   (§3.2) turns that edit into a kind mismatch, counted like any other.
+- **Changing a table field between `*T` and a plain `uint32`** is the
+  same shape one more time: a node index and a number are the same four
+  bytes, and under a shared kind an index would read back as a plausible
+  count in every case. The pointer index's own kind `17` (§3.1) turns
+  that edit into a kind mismatch too. Each of the three cost a kind
+  number and no bytes, and each closed a class that discipline alone
+  cannot.
 
 **One edit is adjacent to this class without belonging to it, and the
 difference is worth stating rather than leaving to the reader.** Adding or
@@ -892,15 +1149,16 @@ a file — the save-game cycle §18 exists for — should be read as carrying
 it. A person whose file came back wrong needs the two above; a person whose
 tool rewrote a file needs this one.
 
-Each of the two real ones has its own answer:
+Each of the two has its own answer:
 
 - **Flags** are answered by DISCIPLINE, stated as law: **append at the end,
   never insert or reorder**, and retire a name in place rather than freeing
   its bit.
-- **Both** are answered by MACHINERY, opt-in: the committed tables baseline
-  (§18) is the history the compiler does not keep, and it refuses either
-  edit until the baseline moves with a recorded reason. It refuses the
-  spelling change above too, at compile time, ahead of the reader's report.
+- **Both** are answered by MACHINERY, opt-in: the committed tables
+  baseline (§18) is the history the compiler does not keep, and it
+  refuses either edit until the baseline moves with a recorded reason. It
+  refuses the spelling changes above too, at compile time, ahead of the
+  reader's report.
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -910,6 +1168,18 @@ fnv1a32 of the name, xored with its own high half and truncated to 16 bits,
 with a result of 0 rebounding to 1. The rebound reserves `0`: it is the
 field terminator, the enum's `None` and the union's empty arm, and no
 declared name can ever land on it.
+
+**A fourth vocabulary rides at a different width, and the reason is
+scope.** A TABLE's own name is a node's type id on the wire (§3.1), and
+it is `fnv1a64( name )` with the same 0-rebound — 64 bits, not 16,
+because a table name is the only id scoped to a WHOLE unit closure rather
+than to one table's fields or one vocabulary's variants, so its collision
+population is the largest the wire has. Two tables in one closure whose
+ids collide are refused the way two fields are (§11), and at 64 bits that
+refusal is a formality rather than a schedule risk. The field id `0xFFFF`
+is reserved as well, for the node-table field (§3.1): the 16-bit fold
+reaches it and ordinary names land there, so a field name — or a `was` —
+whose id does is refused naming the field.
 
 A field's wire id is the hash of its name. Two consequences, both handled
 at compile time:
@@ -1009,7 +1279,11 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
   allocated (§6.4).
 - **`Lock()`** — one way, and it IS the compaction: the arena is walked,
   measured exactly, and laid back to back into ONE region with zero
-  slack, the root at its base. The mutable life is released. Locking
+  slack, the root at its base. The walk is the same depth-first pre-order
+  numbering the wire uses (§3.1), carrying the same one-entry-per-node
+  map, so it terminates in one visit per node, a shared node is packed
+  ONCE, and a data cycle is refused here exactly as it is at save. The
+  mutable life is released. Locking
   twice is a no-op, and there is no unlock: re-editing means loading the
   const form into a fresh builder, which is a copy and says so.
 - **Const** — one region, one root pointer. `Load` produces the same
@@ -1033,10 +1307,56 @@ the form in hand always says which:
 Lock and Load both produce the region encoding; Lock is already
 rewriting layout, so the conversion is free.
 
-Region references are always POSITIVE: a region is packed depth-first, so
-a child always sits after the slot that names it. A packed region
-therefore cannot contain a cycle, which is what lets §7's validation walk
-be cycle-free with no visited set.
+**A region reference has no required sign.** A region is packed in the
+same depth-first pre-order the wire numbers nodes in (§3.1), so a node's
+FIRST reference points forward; every later reference to that node points
+BACK at the one body it already has, which is what makes one node one
+node in a region as well as on the wire. Sharing and a back-reference are
+the same fact, and nothing validates a reference by its sign (§7).
+
+**A region carries a NODE DIRECTORY**, and it is the wire's numbering
+made resident: a trailer of one entry per numbered node, in index order,
+each `offset (u64), type id (u64)` — position `i` describing node index
+`i + 1`, so position `0` is the root at offset `0`. A node's extent runs
+to the next entry's offset. The offsets of MATERIALIZED nodes ascend;
+`0xFFFFFFFFFFFFFFFF` is the not-materialized sentinel — a record whose
+type id the loading build could not name (§3.1) — distinct from every
+real offset including the root's `0`, so an index resolving through it
+yields NULL and can never fabricate the root.
+
+Every node starts at its own type's alignment and the directory's offsets
+are those padded starts, so "is a directory entry" and "is aligned" are
+one check rather than two. A node's own buffers (§2.5) are packed inside
+its extent, so a buffer reference is checked against the extent of the
+node whose slot names it — no search at all.
+
+**The directory is ATTRIBUTION, and attribution is separable.** Nothing
+that READS a structure touches it: a deref is one add on a self-relative
+offset, in a locked region and a loaded one alike. It exists for three
+jobs and all three are finished before the first read — `Load` resolves
+wire indices through it, `Lock` fills it from the pack it is already
+doing, and a validating reader or a tool checks a region against it (§7).
+`LoadMeasure` reports the data bytes and the attribution bytes
+separately, so a caller may place them together or apart and may release
+the attribution once `Load` returns. `Cook` writes them as two parts for
+the same reason (§7).
+
+**The price, stated.** Twelve bytes a node on the wire (an 8-byte type id
+and a 4-byte length per record) and sixteen a node of attribution, which
+a shipped build need not carry at all:
+
+| node size | nodes / GiB | wire record headers | attribution |
+|---|---|---|---|
+| 32 B | 33,554,432 | 384.0 MiB (37.5 %) | 512.0 MiB |
+| 64 B | 16,777,216 | 192.0 MiB (18.75 %) | 256.0 MiB |
+| 128 B | 8,388,608 | 96.0 MiB (9.38 %) | 128.0 MiB |
+| 256 B | 4,194,304 | 48.0 MiB (4.69 %) | 64.0 MiB |
+| 1 KiB | 1,048,576 | 12.0 MiB (1.17 %) | 16.0 MiB |
+
+The lever is node size, not encoding. A structure of a great many tiny
+nodes pays the most and the answer to that is fewer, larger nodes; the
+64-bit type id is the deliberate purchase of a question that never has to
+be asked again (§5).
 
 ### 6.4 Building on many threads
 
@@ -1066,8 +1386,21 @@ The builder is designed to go wide, lock-free by ownership:
   `Assets.bin`. `<Name>LoadMeasure( wire, size )` computes the EXACT
   region bytes from the wire's framing alone, reading no field values, so
   the caller owns the allocation; `<Name>Load( region, region_size, wire,
-  wire_size, &report )` decodes into it and returns the root. The load
-  path allocates nothing.
+  wire_size, &report )` decodes into it and returns the root. Under
+  §3.1's node table that measure is ONE SCAN — a record's type id gives
+  its storage size, its length gives the next record — and it reports the
+  DATA bytes and the ATTRIBUTION bytes separately (§6.3), because the
+  caller may place them apart and may release the attribution once `Load`
+  returns. `Load` is two passes over the same records: it fills the node
+  directory from the framing, then decodes each body into its own
+  storage, so a forward index resolves without scratch. The load path
+  allocates nothing.
+- **`LoadMeasure`'s answer is also the DEFENCE, and a caller is expected
+  to bound it.** The smallest legal record is fourteen wire bytes and it
+  commands `sizeof( T )` region bytes, so a wire can ask for far more
+  memory than it occupies. The caller owns the allocation precisely so it
+  can refuse a number it did not expect; nothing in the runtime decides
+  that for it.
 - **Into a builder** — the tool's path. The same tolerant decode into a
   fresh builder, so loaded data can be edited and locked again.
 
@@ -1088,30 +1421,62 @@ nowhere either.
 
 ## 7. The cooked form
 
-The wire (§3) is the generic form: it allocates, it walks, it parses, and
-any build reads any data. That generality is the point of it, and it is
-the format of record.
+**Cooking is fundamentally an optimization.** Every rule in this section
+is a consequence of that one sentence, and none of it is a second format
+of record.
 
-The COOKED form answers a different requirement: load a big file, point
-at its root, without copying it and without parsing it. It is the
-structure laid out exactly as the runtime reads it — `Lock`'s region,
-written verbatim behind a small header.
+**What it is for**: reducing the load time of assets, and nothing else —
+don't parse, just point at an mmap'd data structure loaded as it stands,
+and have it work.
+
+**What it is**: converting a table data structure into a SPECIFIC VERSION
+that can be memory mapped, endian-fixed and loaded quickly by a build at
+the exact version it was cooked to. That is cooking.
 
 ```cpp
-int64_t size = SceneCookMeasure( builder );
-SceneCook( builder, buffer, size );          // write it
+int64_t data, attribution;
+SceneCookMeasure( builder, &data, &attribution );
+SceneCook( builder, buffer, data, attribution );   // write it
 
-const Scene * scene = SceneOpen( bytes, size ); // point at it, or NULL
+const Scene * scene = SceneOpen( bytes, size );    // point at it, or NULL
 ```
 
-- **It is an accelerator, not an archive.** A cooked file is BUILD-LOCKED
-  and regenerated whenever the schema moves. The tolerant wire remains
-  the format of record; a cooked file is a cache beside it. Both
-  sentences are load-bearing.
+**The pipeline.** `schema pack` writes the WIRE, and the wire is the
+format of record (§17). A cook is produced beside it, next to the build
+that will read it — on the machine or on a distributed cook farm — for
+exactly the layouts that build knows. A game loads its own cooked assets
+and never a foreign one; tooling reads and writes the generic wire,
+because the generic form is the one that carries every version. And if
+load time does not demand the accelerator, the game just uses the generic
+table: cooking is a choice made per asset, never a requirement of the
+format.
+
+The example pair is the whole rule. A huge data file naming every mesh in
+the game, or every texture — that is a cook. A configuration file small
+enough that the cost of loading it does not matter is the wire, and stays
+the wire, and keeps the flexibility that comes with it.
+
 - **The header build-locks it**: a magic (which is also the byte-order
-  check), a LAYOUT ID, and the region's length. The reserved words are
-  reserved: a non-zero one means a writer used a form this build does not
-  understand, and Open refuses rather than ignoring it.
+  check), a LAYOUT ID, and the lengths of the two parts below. The
+  reserved words are reserved: a non-zero one means a writer used a form
+  this build does not understand, and `Open` refuses rather than ignoring
+  it.
+
+  A cooked file never crosses builds, so most of the header's shape is
+  the implementation's business. **Three widths are not**, because each
+  one decides something semantic:
+  - **The magic is read BYTEWISE, before anything else**, since it is
+    what establishes the byte order every other header field is written
+    in.
+  - **The LAYOUT ID is 64 bits.** Under the rule below a matching id
+    means `Open` checks nothing further, so the id is the sole guard
+    between a runtime and a foreign region; it is sized like a digest,
+    not like a version counter.
+  - **Both part lengths are 64 bits.** `CookMeasure` answers in
+    `int64_t`, and a 32-bit header field would reimpose at cook time the
+    ceiling §3.1 just removed — on exactly the huge mesh or texture
+    catalogue a cook exists for.
+
   The layout id is a compile-time digest mixing the schema's
   packed-layout facts with this build's own `sizeof` AND `offsetof` for
   every type and field in the closure, so schema drift and ABI drift both
@@ -1124,13 +1489,70 @@ const Scene * scene = SceneOpen( bytes, size ); // point at it, or NULL
   must not invalidate every cooked file in existence. Reordering two
   same-shaped fields does move bytes, and it moves which id sits at which
   offset, so it still refuses. Both directions are held by test.
-- **Reads validate, always.** Before handing out the root, `Open` walks
-  the REFERENCE GRAPH: every pointer slot, and the count companions that
-  bound a traversal — including those of fixed-size tables and plain
-  types nested by value, whose counts bound a walker just as a table's
-  do. It reads no field value and decodes no payload; that is the
-  distinction between validating before pointing and parsing the whole
-  thing. There is no trust-mode bypass.
+
+  A format that rarely changes therefore keeps its id across builds by
+  construction: the id follows wire ids and offsets, so a layout nothing
+  touched does not move, and a mesh catalogue cooked last year opens
+  against this year's build if nothing in its closure changed.
+- **A cooked file is TWO PARTS, and the header locates both.** The DATA
+  comes first, at the region's alignment: it is `Lock`'s region written
+  verbatim, the root at its base, and it is what the runtime points at.
+  The ATTRIBUTION follows it: the node directory of §6.3, which says
+  where every node starts and what type it is. Nothing that reads the
+  structure touches the attribution, so a shipped build need not carry it
+  at all — the header records its length as zero and the file is just
+  data.
+- **`Open` checks the header and points, and this is the WHOLE check**,
+  because nothing else is checked at all: the magic, the byte order it
+  establishes, the layout id, the two part lengths against the `size` the
+  caller passed — a truncated file refuses — and the alignment of the
+  base. On a match the bytes ARE what this build wrote, in this build's
+  layout and this build's byte order, so there is nothing to validate and
+  nothing to fix up: `Open` returns the root. That is the runtime path
+  and it is the default. On any failure it returns NULL and the caller
+  falls back to a wire load, which is the path that carries every
+  version.
+- **`OpenValidated` is the other entry point, and it is named rather than
+  implied.** It takes a cooked file whose provenance the caller does not
+  trust, or one a tool is diagnosing, and checks the data against the
+  attribution before returning anything. There is no SILENT bypass
+  anywhere: a caller either gets the layout-id guarantee, or asks for the
+  check by name. A file with no attribution part cannot be checked, so
+  `OpenValidated` refuses it and says which part is missing. **A cook
+  that arrived from somewhere else is where it earns its keep**: the
+  pipeline above contemplates a distributed cook farm, and a file that
+  crossed a machine boundary carries a matching layout id and nothing
+  else — a caller that wants more than the id's word takes the check by
+  name.
+- **The check is a SCAN of the attribution, not a traversal of the
+  graph.** Two passes, in order:
+  1. **The directory itself**, linearly and with no state: it lies inside
+     the file, every type id names a table this build has, the
+     materialized offsets ascend, each is aligned for its own type, and
+     each node's storage fits before the next entry. A sentinel entry
+     (§6.3) refuses here — a cooked file is an accelerator and cannot
+     carry a hole.
+  2. **Every node, in directory order.** An entry's type id says which
+     walk to run over that node; each pointer slot must resolve to an
+     offset the directory NAMES, with the type the declaration requires;
+     each buffer reference must lie inside its own node's extent; each
+     count companion must sit inside its declared bound — including the
+     companions of fixed-size tables and plain types nested by value,
+     whose counts bound a walker just as a table's do. It reads no field
+     value and decodes no payload.
+
+  Every node is checked exactly once because the scan visits each entry
+  once, and no reference is ever FOLLOWED, so no reference can cause a
+  second visit. A forged file whose references alias into a
+  legal-looking DAG costs nothing extra, and neither does a cycle. The
+  scan also checks the nodes NOTHING POINTS AT, which no traversal from
+  the root can reach. The cost is `O(R + P log N)` — linear in the
+  region, plus one search per pointer slot — with no allocation and no
+  per-node state, and it terminates on every input.
+- **Pack order and checking are INDEPENDENT.** The region is packed in
+  pre-order (§6.3) because that is the order the wire numbers nodes in
+  and one order is simpler than two, but nothing in the check reads that
+  order, so the layout can change without silently weakening it.
 - **A member's walk lives in the file that DECLARES it.** A variable table
   may nest a plain type, a fixed table or another variable table declared
   anywhere in the unit, and the walk for each is emitted once, by its
@@ -1139,37 +1561,36 @@ const Scene * scene = SceneOpen( bytes, size ); // point at it, or NULL
   up through the header it already includes. Emitting per referencing file
   would define each walk twice; emitting only where pointers are declared
   leaves the by-value members of a value-only file undefined.
-- **The walk is LINEAR IN THE REGION, and that takes a proof.** Bounds
-  and forwardness alone do not give it: a forged file whose references
-  alias forward — every node's second pointer aimed at its first child —
-  is a legal-looking DAG that a stateless walk explores exponentially
-  (measured on an earlier revision: 26 nodes, 312 ms; ~60 nodes, never).
-  The walk therefore carries a HIGH-WATER MARK. Packing lays nodes out in
-  pre-order by bump allocation and the walk visits them in the same
-  order, so in a genuine region every reference lands at or past the end
-  of everything visited so far; requiring that, and advancing the mark
-  past each node, makes the walk consume region bytes monotonically. It
-  visits each byte at most once, it terminates, and it also rules out the
-  mid-node overlaps a range check alone admits. **The pack order and the
-  walk order are one invariant and neither may change alone** — the
-  generated code says so at both sites.
+- **The cook of a FIXED root table is the same idea with nothing in it.**
+  A fixed-size table is one struct (§6.1), so its cooked form is the
+  struct's bytes behind the header: memcpy it, or point at it where it
+  lies. There is no region, no node table and no attribution, and the
+  layout id is the whole of the check.
 - **Every refusal is loud and the fallback is a real wire load**: wrong
   magic or byte order, a layout id this build did not produce, a
-  truncated region, an unaligned base, a reference that leaves the
-  region, a backward reference (impossible in a packed region), a
-  misaligned reference, a count companion outside its declared bound.
-- **Alignment.** The header pads the root to the region's alignment, so a
-  base the allocator or `mmap` gave you is already aligned; `mmap` gives
-  page alignment for free.
-- **Endianness** is recorded and a mismatch REFUSES in v1. An in-place,
-  descriptor-driven fix-up pass sharing `Open`'s traversal is a named
-  follow-on (§15).
+  truncated file, an unaligned base — and, under `OpenValidated`, an
+  attribution part that is missing, leaves the file, carries a sentinel
+  entry, names a type this build does not have, does not ascend, or
+  overlaps a node with the next; a reference that leaves the region, that
+  the directory does not name, or that it names as another type; a
+  misaligned reference; a buffer outside its node's extent; a count
+  companion outside its declared bound.
+- **Alignment.** The header pads the data part to the region's alignment,
+  so a base the allocator or `mmap` gave you is already aligned; `mmap`
+  gives page alignment for free.
+- **Endianness is part of the COOK, not of `Open`.** A cook is produced
+  in the byte order of the build it is cooked for — the cook knows its
+  target — so a matching layout id already means a matching byte order
+  and `Open` never fixes anything up. Cooking for a foreign target is
+  where a byte swap would live if one is ever wanted (§15); a cooked file
+  whose recorded order is not this build's is simply not this build's
+  file, and refuses.
 
 Prior art gets one sentence, and it is the contrast: systems that made
 pointed-at access their ONLY wire coupled access to evolution and paid
 for it. Here the tolerant wire stays the format of record and the cooked
-form is a build-locked accelerator beside it. The two-form split is the
-design.
+form is a build-locked accelerator beside it, produced only where load
+time asks for one. The two-form split is the design.
 
 ## 8. Reflection
 
@@ -1246,13 +1667,19 @@ These columns exist in every unit, whatever its mode — they describe the
 LANGUAGE, and a fixed-size table can declare all of them. Only the two
 POINTER columns below are conditional (§2.2).
 
-A unit that has pointers carries two more facts, and a unit that has none
-carries neither (§2.2): a field's **`is_pointer`** flag — whose `table`
-member then names the TARGET table's descriptor, NULL for a `*bytes` or
-`*string` because a buffer is not a declared table, and whose `elem_size`
-is the reference slot's width — and a type's derived **`variable`** mode, so
-a tool can tell at runtime which of §6's two lives a table has without
-being told. A self-referential pointer resolves to its own type's
+A unit that has pointers carries three more facts, and a unit that has
+none carries not one of them (§2.2): a field's **`is_pointer`** flag —
+whose `table` member then names the TARGET table's descriptor, NULL for a
+`*bytes` or `*string` because a buffer is not a declared table, and whose
+`elem_size` is the reference slot's width; a type's derived
+**`variable`** mode, so a tool can tell at runtime which of §6's two
+lives a table has without being told; and a table's own **node type id**
+(§3.1), so a tool can map a node table's records — or a region's node
+directory — onto descriptors with no schema files on hand. The
+compile-time refusals those ids bring (§11) apply to EVERY unit, as the
+27 generated spellings do, because a unit gains and loses pointers as an
+edit and a name that was free yesterday must not become a collision
+tomorrow. A self-referential pointer resolves to its own type's
 descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
 data and a target is the ADDRESS of another descriptor, so `Node` naming
 itself through `*Node` is expressible directly: no first-use link, which
@@ -1284,7 +1711,13 @@ held by construction:
   length-prefixed, a build can measure subtables from N workers,
   prefix-sum the offsets, and scatter-write disjoint ranges in parallel —
   and a reader can fan nested-table decodes out the same way. The framing
-  guarantees the option; callers choose whether to take it.
+  guarantees the option; callers choose whether to take it. **A pointer
+  graph pays a serial prologue first**: the node numbering (§3.1) is one
+  single-threaded depth-first pass over every reachable node, and no
+  record can be written until it has run. It is a pointer-chase over
+  nodes, not a pass over bytes, and it leaves the scatter-write itself
+  untouched — records are top-level and their sizes are independent, so
+  the prefix-sum is simpler than it was over nested bodies.
   **measure == save at exact capacity** is a hard invariant, held by a
   mandatory battery across the corpus and across pointer graphs: saving
   into a buffer of exactly measure's answer always succeeds and
@@ -1326,8 +1759,9 @@ lockstep redeploy by a table edit. This independence is held by test.
   with them missing.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
-  outside a table body; an array of pointers (§15); a specified default
-  on a pointer field.
+  outside a table body; a specified default on a pointer field. An array
+  of table pointers is legal (§3.1); an array of `*bytes` or `*string`
+  is not (§2.5).
 - **Optional fields** (§2.3): `?T` outside a table body; `?` on a pointer
   (already optional); `?` on a union (its `None` IS the absence); `?` on an
   array, a string or `bytes` (a named follow-on, §15 — the count or length
@@ -1344,8 +1778,9 @@ lockstep redeploy by a table edit. This independence is held by test.
   in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
-  specified default on one; an array of them (§15); `?` on one, because a
-  null reference already IS absence.
+  specified default on one; an array of them — a buffer takes no node
+  index (§3.1), unlike an array of table pointers, which is legal; `?` on
+  one, because a null reference already IS absence.
 - **A `table` union arm outside a table closure** (§2.6) — a union declared
   for the type wire takes `type` payloads only, because types are value
   semantics.
@@ -1359,27 +1794,43 @@ lockstep redeploy by a table edit. This independence is held by test.
   the positional spelling; an enum-keyed array's key enum swapped; a
   field's referent dropped, or swapped for one whose identities do not
   ride. Overridden only by moving the baseline with a recorded reason.
-- **A save-time data cycle or over-deep graph** (§3.1): measure, save,
-  cook and `Lock` all return failure. Nothing recurses away.
-- **A read-time nesting past the depth cap** (§3.1): the subtree is
-  refused, the pointer stays null, and the read is flagged malformed.
+- **A save-time data cycle reached from a builder** (§3.1): measure,
+  save, cook and `Lock` all return failure with the cycle named. Nothing
+  recurses away. A region loaded from a wire is not re-proved, and a save
+  from it reproduces what it was given.
+- **A node body past `0xFFFFFFFF` bytes** (§3.1): a record's length is a
+  `u32`, so measure and save return failure naming the node rather than
+  truncating it. Two 2 GiB `*bytes` in one table reach it; the repair is
+  more nodes.
+- **A field id colliding with the reserved node-table id `0xFFFF`**
+  (§3.1) — by hash accident or through `was` — naming the field. **Two
+  tables in one unit's closure whose NAME ids collide** (§5), naming
+  both: a node's type id is its table's name hash.
+- **Cooking a region that carries a not-materialized node** (§6.3): the
+  region loaded correctly and reads correctly, but a cooked file is an
+  accelerator and cannot carry a hole. `Cook` returns failure naming the
+  index.
 - **A cooked file this build cannot point at** (§7): wrong magic or byte
-  order, a foreign layout id, truncation, an unaligned base, or an offset
-  graph that leaves the region, goes backward, misaligns, or is bounded
-  by an out-of-range count. `Open` returns NULL; the caller falls back to
-  a wire load.
+  order, a foreign layout id, truncation, or an unaligned base. `Open`
+  returns NULL; the caller falls back to a wire load. Under
+  `OpenValidated` the attribution's own refusals join it: a missing or
+  out-of-file attribution part, a sentinel entry, a type this build does
+  not have, a directory that does not ascend or overlaps a node with the
+  next, a reference that leaves the region or that the directory does not
+  name or names as another type, a misaligned reference, a buffer outside
+  its node's extent, or a count companion outside its declared bound.
 - **A declaration colliding with a generated table spelling.** Tables and
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **26 suffixes**, and a declaration spelling one of them is
+  each of these **27 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
   At  Root  Emplace  Pack  PackMeasure  OpenWalk
-  Cook  CookMeasure  Open  LayoutId  TableFields  TableInfo
+  Cook  CookMeasure  Open  OpenValidated  LayoutId  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   ```
 
@@ -1549,6 +2000,45 @@ are these rulings, in the owner's words:
   intentionally break compat and that's OK" — which is why `--update`
   without `--reason` is refused.
 
+### 13.4 The cooked form, ruled
+
+- **What it is for**: "cooking is fundamentally an optimization", and
+  "the only time we need the optimization is to reduce load times for
+  assets. in short, it's the flatbuffer style optimization, don't parse,
+  just make something that points at the mmap'd data structure loaded as
+  is and *works*."
+- **What it is**: "convert the table data structure into a specific
+  version that can be memory mapped, endian fixed up and just loaded
+  quickly by a build at the specific version it is cooked to" — "that's
+  cooking."
+- **Where it runs and what it binds**: "the cook would be LOCAL to the
+  version your game needs", "or on some distributed system", "your game
+  will only ever load the locally cooked asset specific to the versions
+  that build knows", and "the generic table (tooling) needs to handle all
+  versions."
+- **When it does not run at all**: "or, the game, if cooking is not
+  required for speed, would just use the generic table."
+- **Which files earn one**: "imagine a huge data file that specifies all
+  the meshes used in the game for example, or all the texture files" —
+  "that would be a cook"; against "Config.bin and Assets.bin are small
+  enough that the overhead of loading doesn't require a cook", so the
+  dogfood's own two files stay on the generic wire.
+- **The version rule**: "cooked data at a specific version should just
+  load. It should probably only be loadable at that specific version", "or
+  a subset of versions AT MOST", "consider an asset format that rarely
+  changes over time." Exact layout-id match is what §7 states; the
+  declared compatible set is the only widening contemplated, and it is a
+  named follow-on (§15).
+- **Where the per-node bookkeeping lives**: "Can we keep the overhead and
+  tracking down for the non-cooked version only, and then when cooking,
+  split it into two parts, the cooked data, and the cooked attribution
+  data so we can separate if needed. We may not need at runtime in a
+  shipped build for example (it is read only and not mutable)."
+- **On sizing the wire's ids**: "u64 now", and "u64 now, why fuck around."
+- **On optimizing ahead of evidence**: "we can worry about optimization
+  later, unless there are specific decisions we need to make now that will
+  knowingly make things slower."
+
 ## 14. Design notes: the models weighed
 
 Recorded because the rejected options are the useful part.
@@ -1592,36 +2082,158 @@ so a deref there is one add with no base pointer — and it makes the
 region relocatable by pure `memcpy`. Two encodings, converted where a
 copy already happens.
 
-**Depth versus a visited set.** A depth cap, not cycle detection: it
-needs no state, it bounds the C stack against hostile data, and a packed
-region cannot contain a cycle at all (§6.3).
+**The node table's shape** (§3.1). The whole design turns on one
+decision — a TYPE ID on every record — and the rest follows from it:
 
-**Why the cooked walk still needs order state.** Acyclicity is not
-enough. A forged region can be a legal DAG — forward, in range, aligned —
-and a walk with no memory of where it has been re-visits shared subtrees
-exponentially. The fix is not a visited SET, which would need allocation
-proportional to the graph; it is a single monotonic high-water mark,
-which works precisely because packing is pre-order and the walk follows
-it (§7). One integer buys linearity, termination and overlap rejection
-together.
+1. **A type id per record — KEPT.** It is what makes a load a SCAN rather
+   than a traversal: the reader learns a node's type from the record, not
+   from the pointer field that names it, so it never follows a reference
+   to know what it is looking at. It also keeps §6.5's promise literally
+   true — `LoadMeasure` reads framing and no field value, and a type id
+   is framing — and it lets a tool decode a node table with descriptors
+   alone (§8).
+2. **A visited-index guard on load — REJECTED.** It is what an untyped
+   node table would force: type the nodes by traversing, and bound the
+   traversal with a set. That is state proportional to the graph on the
+   READING path, which §6.5 forbids. A type id removes the walk instead
+   of bounding it.
+3. **An index-monotonic rule — REJECTED.** Requiring every reference to
+   name a larger index would bound a traversal with no state at all, but
+   it holds only under a TOPOLOGICAL numbering, and pre-order numbering
+   is not topological: `Scene { a *X, b *Y }` with `X.p` and `Y.p` naming
+   one `P` numbers `X = 2, P = 3, Y = 4`, and `Y`'s reference names 3
+   from 4. Topological order also cannot be assigned in one descent — a
+   node's position is known only once its whole subtree is — and it would
+   give the node table a different order from the one the region is
+   packed in, for no property either form needs.
+4. **A hybrid — inline the singly-referenced pointee, table only the
+   shared ones — REJECTED.** It would have kept a pointer field and a
+   by-value nesting under one framing for the common case. It also
+   reintroduces the exact problem the flat table removes: a 200-node
+   chain is singly referenced at every link, so it would still nest 200
+   deep.
+5. **A NEW KIND for the node table — REJECTED.** Skipping is defined only
+   over §3's closed set, so a reader that does not have a new kind cannot
+   skip past it. That objection has a scope worth stating exactly,
+   because the pointer index below spends a kind on the same page: it
+   bites for a kind added AFTER readers exist, and the node table's kind
+   would have to be skippable by a reader that has never heard of it,
+   which is the whole reason it rides under an existing one. **Kind `14`,
+   an array of tables — also rejected**: an array element's framing has
+   room for a length and nothing else, so the type id would have to ride
+   inside each body as a reserved FIELD, and every node body would carry
+   a field no schema declared. Kind `12` is §3's opaque byte payload,
+   which is exactly what the node table is to a reader that cannot name
+   it.
+6. **A DISTINCT KIND for the pointer index — TAKEN, kind `17`.** The
+   opposite case, and the difference is who has to skip it. A node index
+   is four bytes and so is a `uint32`; under a shared kind an edit
+   between them reports nothing in either direction, and the direction
+   that matters — an index read back as a number — is silent always,
+   not merely often. A kind costs zero bytes, since the kind byte
+   already rides, and one row in the fixed-width skip rule. The set is
+   closed before any reader ships, so nothing has to skip a kind it does
+   not have; a kind spent now is simply part of the set every reader will
+   ever have, and spending one later would not be available. That last
+   clause is the reason this is decided here rather than deferred as an
+   optimization: the window closes at ship. It puts §4.1's silent class
+   back at two, beside `[E]T`'s kind `16`, which closed the previous one
+   the same way.
+
+   **The cost that is not zero, stated**: §3's rule cuts both ways, so a
+   reader built before this kind existed meets kind `17` as framing
+   damage and stops that body rather than skipping the field and reading
+   on. That is the price of the number, it is why item 5 refuses one for
+   the node table — which must stay skippable by a reader that never
+   heard of it — and it is bounded by the same fact that makes the kind
+   affordable: no such reader ships. A pointered save was already not
+   readable by a build of the tree encoding, since the node table carries
+   what the bodies used to.
+7. **A `u64` LENGTH on the reserved field, to lift the aggregate ceiling
+   — REJECTED, because it breaks the very reader it exists for.** A
+   skipper reads kind `12` as `L (u32)` then `L` bytes; given a `u64` it
+   takes the low half, skips that far, and lands four bytes short of the
+   payload's end, where it reads two payload bytes as the next field id.
+   The whole point of riding under an existing kind is that an old reader
+   frames the body and counts `unknown`, and a wider length forfeits it.
+   **The repeating field was taken instead**: same `u32`, same skip rule,
+   one narrow exception to last-occurrence-wins for one reserved id, and
+   no ceiling at all. **Its chunks close at RECORD boundaries**, and that
+   is the load-bearing half. A straddling record has no contiguous view,
+   so a reader would need a segmented cursor for every multi-byte read
+   AND a copy to hand a body to the generated decoder — an allocation on
+   the reading path, which §6.5 forbids, propagating into code that has
+   nothing to do with chunking. Record alignment costs under one record
+   of slack per field, keeps the chunking deterministic, and makes the
+   naive reader the correct reader. The one thing it cannot frame is a
+   record larger than a field, which the `u32` record length already
+   refuses (§11).
+8. **A reader-side acyclicity check — PRICED, NOT TAKEN.** Pre-order
+   numbering gives every node a contiguous index interval `[i, extent]`,
+   so with a `max index in subtree` on each record, a reference to a
+   LOWER index is an ancestor edge — a cycle — exactly when the
+   referrer's index is inside the target's interval: an `O(1)` test per
+   reference. It costs bytes a node plus a pass to prove the intervals
+   are genuinely nested, for a property the writer already guarantees
+   (§3.1) and no schema-generated walk depends on. It is the shape the
+   check would take if untrusted-input hardening ever demands one.
+
+**Region references stay OFFSETS, not indices.** The node directory
+(§6.3) could have replaced the self-relative delta in every slot, making
+the region and the wire one encoding. It was rejected on the hot path: a
+deref would become a directory load plus a base pointer where today it is
+one add. The directory is kept for what only it can do — resolving wire
+indices on load, and checking a file whose provenance is in doubt — and
+the runtime's read path never touches it, which is what makes it
+separable at cook time (§7).
+
+**Why the cooked check is a SCAN and not a walk.** Three models were
+weighed:
+
+1. **A stateless traversal from the root — REJECTED.** Bounds and
+   forwardness are not enough: a forged region can be a legal-looking
+   DAG, forward and in range and aligned, and a walk with no memory
+   re-visits shared subtrees exponentially (26 nodes, 312 ms; ~60 nodes,
+   never).
+2. **A traversal with a monotonic high-water mark — REJECTED, and it is
+   worth saying why it FAILS rather than merely costing.** The mark
+   advances over region BYTES, not over entered NODES, so a forward
+   reference may jump past a node the walk never enters. That node is
+   then below the mark with its slots unchecked, and a later reference to
+   it passes an "already visited" test that was never true of it. A
+   48-byte forgery is enough: the root names the third node, the third
+   names the second, and the second's slot — never checked — points far
+   outside the region. Any repair keeps the traversal and adds state to
+   make "below the mark" and "already entered" the same statement.
+3. **A linear scan over the node directory — THE DESIGN OF RECORD.** The
+   directory already names every node start and its type. Spending that
+   the way §3.1 spends the wire's type id — removing the walk instead of
+   bounding it — makes each node checked exactly once, follows no
+   reference at all, and needs no order invariant, so the pack order and
+   the check are independent. It also checks the nodes NOTHING points at,
+   which no traversal from the root can, and that is precisely where the
+   marked traversal's hole was. `O(R + P log N)`, no allocation, and less
+   machinery than the walk it replaces.
+
+**No decision here knowingly costs TIME.** The `u64` type id and the
+repeating node-table field cost BYTES and nothing else — the record scan
+is linear either way, and a wider id compares no slower than a narrow
+one. The directory scan replaced a traversal with a scan of the same
+asymptotic class and a smaller constant, and it moved off the runtime
+path entirely (§7): a matching layout id points, and checks nothing.
+Where a cost is real it is stated with its number (§6.3) rather than
+deferred, and the optimization work that follows real profiles is not
+pre-empted here.
 
 ## 15. Named follow-ons
 
-- **TABLE WIRE V2 — the flat indexed node encoding.** One design answers
-  three of the entries that follow it: a pointered root writes every
-  reachable node ONCE into a node table and a pointer field rides as an
-  index into it, which lifts the depth cap, preserves DAG identity, and
-  makes an array of pointers an array of indices. It reaches past §3.1 into
-  the region and the cooked form, and it is drafted spec-first, ahead of
-  any emitter, because it changes what the bytes mean wherever a pointer
-  appears. **The pointer-free classes are untouched by it**, byte for byte,
-  so nothing in the fixed class waits on it.
-  - **Graph and DAG identity**: preserving aliasing and sharing across the
-    wire, so two references to one node stay one node. Wire v1 is a tree
-    (§3.1) and says so.
-  - **Lifting the depth cap**, so a pointer chain's length stops being a
-    nesting depth (§3.1).
-  - **Arrays of pointers** (§2.1).
+- **A DECLARED COMPATIBLE SET of layout ids for the cooked form.** §7
+  loads a cooked file at exactly one layout id. The owner's "or a subset
+  of versions AT MOST" is the only widening ever contemplated: a build
+  declaring the ids it will accept, so an asset format that rarely
+  changes need not be re-cooked for a build whose layout did not move.
+  Everything about it is a decision — who declares the set, what proves
+  two layouts interchangeable — and none of that is decided here.
 - **Per-language backends beyond C++ and C#** (the refusal in §11 names this).
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12), and the FIXED class is what that
@@ -1646,10 +2258,12 @@ together.
   it becomes wire. Wrap the field in a table and make that optional today.
 - **An array of `?T`** — the same question one level down: an element's
   presence bit beside the array's own count.
-- **Cross-endian `Open`**: an in-place, descriptor-driven byte-swap pass
-  sharing `Open`'s existing traversal — the same nodes and fields are
-  already visited, and kinds and offsets are already in the descriptors.
-  v1 refuses a foreign byte order instead (§7).
+- **Cross-endian COOKING**: producing a cook for a target whose byte order
+  is not the cooking machine's, by swapping as the region is written. The
+  swap belongs at cook time because a cook is made for a known target
+  (§7), and the descriptors already carry the kinds and offsets it would
+  need. `Open` never swaps: a recorded order that is not this build's
+  means the file is not this build's, and it refuses.
 - **A hash-guarded fallback loader** — open the cooked form, else load
   the wire — as a convenience helper.
 - A generic dump/diff tool over the reflection surface.
@@ -1761,6 +2375,15 @@ lands with its own (schema#258). They are stated here rather than added
 later because a text mapping is a property of the KIND — each one lands as
 its declaration lands, not as a second decision about text. The `*T`
 pointer row is the variable class's, covered by the status in §16.1.
+
+**The text form is a TREE, and a pointer graph is not.** A pointee is
+written in place, so a node several parents name is written once per
+parent and reads back as that many nodes: the identity §3.1 preserves on
+the wire does not survive a round trip through text. And a walker over a
+structure whose provenance it does not trust carries its own visit bound,
+because a cyclic structure is expressible (§3.1) and writing one in place
+does not terminate. Both are properties of writing a graph as a tree, not
+of this mapping; the binary wire is where identity lives.
 
 **Numbers.** JSON has ONE number type, so an integer field accepts any
 token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
