@@ -65,18 +65,16 @@ CI runs on Linux and macOS, and both must be green:
 
 Run both locally before opening a pull request.
 
-Two gates are **not** in the pull request leg, and both run on push to main,
-nightly, and on `gh workflow run ci.yml --ref <branch>`:
+A third rides every pull request on Windows: **`msvc`** — cl
+`/W4 /WX /std:c++17 /permissive-` over the generated C++ corpus, one
+translation unit at a time, on a pinned `windows-2025` image, with a negative
+control that must go red on a GNU extension. Visual C++ is a hard requirement
+here, so what the compiler emits is compiled with cl before a change lands.
 
-- the **inline-budget gates**, which fire on compiler-version changes by
-  design and cost most of the wall clock;
-- **`msvc`** — cl `/W4 /WX /std:c++17 /permissive-` over the generated C++
-  corpus, one translation unit at a time, on a pinned `windows-2025` image,
-  with a negative control that must go red on a GNU extension. It is out of
-  the pull request leg because cl costs 2:27–5:14 over this corpus — 90% of
-  that in the four translation units that see `RenderFrame`, a 7.9 MB
-  aggregate, at ~20 s each where clang takes 0.15 s — and two runs of
-  identical input swung 3.1x (#286).
+One gate is **not** in the pull request leg, and runs on push to main,
+nightly, and on `gh workflow run ci.yml --ref <branch>`: the
+**inline-budget gates**, which fire on compiler-version changes by design and
+cost most of the wall clock.
 
 So a change to the C++ emitters wants a dispatch run on its branch before
 merging, not just a green pull request.

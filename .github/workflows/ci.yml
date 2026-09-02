@@ -16,16 +16,13 @@ name: CI
 # A cross-compiler inline regression a PR cannot see still fails loudly on
 # main minutes after merge, and nightly re-certifies a quiet main.
 #
-# The `msvc` leg sits on the certification side for the same reason and by the
-# same measurement (#286, #317): the job cost 2:27, 2:28 and 2:26 across three
-# runs and 5:14 on a fourth, with byte-identical input — the longest job in the
-# PR gate at its slow end, and a flake at any end. Its job comment carries the
-# per-translation-unit numbers and where they come from.
+# The `msvc` leg RIDES EVERY PULL REQUEST, and that is a measurement too: the
+# job costs about a minute and a quarter, well inside the one-to-two minute
+# rule (#320). Its job comment carries the per-translation-unit numbers.
 #
 # For a full run on a branch before merging (e.g. a change near the hot
 # paths, or anything that moves the C++ emitters): gh workflow run ci.yml
-# --ref <branch>. That is also the only way to exercise the msvc leg from a
-# pull request, since it does not run on the pull_request event.
+# --ref <branch>.
 
 on:
   push:
@@ -430,30 +427,27 @@ jobs:
   # line of what the compiler EMITS with cl. The `windows` job above proves the
   # COMPILER runs on Windows; this one proves its OUTPUT builds there.
   #
-  # A CERTIFICATION INSTRUMENT, NOT AN ITERATION ONE — same condition and same
-  # reasoning as the inline-budget gates above, and it is a measurement rather
-  # than a preference. Whole job, four runs: 2:27, 2:28, 2:26 — and one at
-  # 5:14, on input BYTE-IDENTICAL to a 2:27. One run in four at 2.1x the
-  # median is a flake in the PR gate, which is worse than a slow job, and at
-  # 5:14 it was also the longest job in that gate. On push-to-main it costs
-  # nothing anybody waits for, and a Windows regression fails loudly minutes
-  # after merge.
+  # AN ITERATION GATE: it runs on every pull request, and the one-to-two
+  # minute rule is what says it may. Whole job, three runs on identical input:
+  # RUNS-PLACEHOLDER. The corpus step itself is RUNS-CORPUS-PLACEHOLDER of
+  # that; the rest is checkout, Go, and vcvars.
   #
-  # WHERE THE TIME GOES, per translation unit (runs 33640076155 / 33641197840,
-  # and the reason this job compiles one TU at a time): the `block` unit is
-  # 80.7 s of an 89.7 s corpus, spread almost evenly across its FOUR
-  # translation units — 23.0 / 19.1 / 19.2 / 19.2 s, and 22.0 / 19.4 / 19.4 /
-  # 19.3 s on the second run. It is not one pathological function, and the
-  # per-TU cost reproduces to within a second: the 5:14 outlier was the whole
-  # runner being slow, not this. Every one of those four includes
-  # RenderTable.h — PaddedTable.h and RenderBlock.h include it directly,
-  # PaddedBlock.h through PaddedTable.h — and that header defines
-  # blockdemo::RenderFrame, a 7 879 320-byte aggregate. cl charges ~20 s per
-  # translation unit for having that type in scope; clang compiles the same
-  # four in 0.18, 0.14, 0.13 and 0.15 s. Roughly 130x, uniform.
+  # WHERE THE TIME GOES, per translation unit (and the reason this job compiles
+  # one TU at a time): nothing dominates. The whole 44-TU corpus is about
+  # twenty seconds, the first cl invocation of the job carries several of them
+  # on its own — toolchain and STL headers cold — and no unit past it costs
+  # more than half a second.
   #
-  # So moving this leg back into the PR gate is a question about what cl does
-  # with a multi-megabyte aggregate, not about this file.
+  # It did not start here. Until #320 this job cost 2:26–5:14 and sat on the
+  # certification side, because four translation units cost ~20 s each: all
+  # four include RenderTable.h, which defines blockdemo::RenderFrame, a
+  # 7 879 320-byte aggregate, and cl expands a value-initialisation of an
+  # aggregate that large element by element in its FRONT END (c1xx 19.85 s, c2
+  # 0.03 s, zero functions generated). The emitter wrote three such
+  # value-inits per fixed table; it now prefills member by member and fills
+  # each array from its own first element, and those four units cost 0.4 s.
+  # The instrument below is what found that, and it is what any future
+  # argument about this job's cost will be settled with.
   #
   # THE PIN. The image is NAMED rather than `-latest`, the argument the
   # big-endian leg makes: which extensions cl accepts is exactly a
@@ -471,14 +465,12 @@ jobs:
   # THE TIMING IS PART OF THE OUTPUT. One cl invocation per translation unit,
   # each preceded by a clock line, so the log shows where the cost is and how
   # far it swings between runs. That is what turned #316's "the corpus does not
-  # compile" into two named emitter defects, and it is what any future argument
-  # about this job's cost will be settled with. It is also why /MP is absent:
-  # parallel TUs are faster and unmeasurable, and here the measurement is worth
-  # more than the minute.
+  # compile" into two named emitter defects and #320's ~20 s per TU into one
+  # named one. It is also why /MP is absent: parallel TUs are faster and
+  # unmeasurable, and here the measurement is worth more than the seconds.
   msvc:
-    if: github.event_name != 'pull_request'
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -586,42 +578,6 @@ jobs:
           cl 2>&1 | findstr /C:"Version"
           echo ---- the corpus, one cl per translation unit ----
           call build\msvc\compile.cmd || exit /b 1
-
-      # ---- TEMPORARY (#320): what a CONSUMER of the fixed table pays ----
-      - name: probe — build the consumer variants
-        shell: bash
-        run: |
-          set -e
-          rm -rf build/probe
-          mk() {
-            mkdir -p "build/probe/$1"
-            cp build/msvc/block/Render.h build/msvc/block/RenderTable.h "build/probe/$1/"
-            { printf '#include "RenderTable.h"\n'; printf '%s\n' "$2"; } > "build/probe/$1/Probe.cpp"
-          }
-          mk k_include   'int probe_include = 0;'
-          mk k_decl      'int probe_decl() { blockdemo::RenderFrame f; return (int) f.version; }'
-          mk k_valueinit 'int probe_valueinit() { blockdemo::RenderFrame f{}; return (int) f.version; }'
-          mk k_reset     'void probe_reset( void * p ) { blockdemo::RenderFrameReset( *(blockdemo::RenderFrame *) p ); }'
-          {
-            echo "@echo off"
-            echo "mkdir build\\probe-obj"
-            for d in build/probe/*/; do
-              n=$(basename "$d")
-              echo "echo [%TIME%] probe $n"
-              echo "cl /nologo /c /W4 /std:c++17 /permissive- /EHsc /Ibuild\\probe\\$n /Fobuild\\probe-obj\\$n.obj build\\probe\\$n\\Probe.cpp || exit /b 1"
-            done
-            echo "echo [%TIME%] probes done"
-          } > build/probe/probe.cmd
-
-      - name: probe — cl over the consumer variants, one at a time
-        shell: cmd
-        run: |
-          call build\msvc\vc.cmd || exit /b 1
-          call build\probe\probe.cmd || exit /b 1
-          echo ---- /Bt+ front end vs back end, the bare include ----
-          cl /nologo /c /W4 /std:c++17 /permissive- /EHsc /Bt+ /Ibuild\probe\k_include /Fobuild\probe-obj\bt0.obj build\probe\k_include\Probe.cpp
-          echo ---- /Bt+ front end vs back end, a declared RenderFrame ----
-          cl /nologo /c /W4 /std:c++17 /permissive- /EHsc /Bt+ /Ibuild\probe\k_decl /Fobuild\probe-obj\bt1.obj build\probe\k_decl\Probe.cpp
 
       # Its own step, and it ASSERTS the failure: a control that is merely run
       # proves nothing. The planted extension must make cl refuse, and if cl
