@@ -1190,7 +1190,10 @@ person's decision, made once, not a flag on a load in the hot path.
 A FIXED table cooks too, and its cook is the same idea with nothing in it:
 one struct behind the header, so you memcpy it or point at it where it lies —
 no region, no node table, no attribution, and the build version is the whole
-of the check.
+of the check. *That one is law and not yet code: the emitter gives `Cook`,
+`CookMeasure` and `Open` to VARIABLE-LENGTH tables only, and only in a unit
+that declares one, so a fixed table has no cook surface today — it lands with
+the same emitter (SPEC-TABLES.md §7, schema#251).*
 
 ### The build version: what a cooked asset is stored under
 
@@ -1262,9 +1265,12 @@ refuses any two fields of one table whose effective ids collide.
 Think of a save game. A player's file was written two years ago by a build
 nobody has any more, and today's build has to read it. Almost every schema
 edit since is safe by construction — fields came and went, an enum grew,
-bounds moved — and the wire reports whatever it cannot use. **Exactly two
+bounds moved — and the wire reports whatever it cannot use. **Exactly three
 edits are different**: they change what an OLD file MEANS, and nothing on the
-wire can tell you.
+wire can tell you. Two are below; the third is a field's REFERENT dropped or
+swapped for one that cannot stand in for it — an enum-typed field respelled
+as its raw `uint16`, say, which rides under the same kind either way — and it
+is the one this file's whole job is (SPEC-TABLES.md §4.1).
 
 ```
 table ShipConfig

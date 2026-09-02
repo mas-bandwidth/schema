@@ -1378,7 +1378,8 @@ only.
 | a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
-| a declaration or field RENAMED with no `was`, on a `type` | not this wire's — it moves the PROTOCOL id (SPEC.md §3.1) | not covered | **moves**, through the protocol id |
+| a DECLARATION renamed — a `type` or a table | silent: a declaration name is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
+| a `type`'s FIELD renamed, where `was` is refused (SPEC.md §4.2) | `unknown` on the table wire, whose field id is the name's hash | passes in silence | **moves**, and through the protocol id as well (SPEC.md §3.1) |
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -1691,13 +1692,16 @@ const Scene * scene = SceneOpen( bytes, size );    // point at it, or NULL
 
 **Backend status for this section: spec ahead of the emitter.** This section
 is the landed law and the C++ table backend — the only one that emits a cook
-(§11) — emits wire v1's, which differs from it in four ways a reader must
+(§11) — emits wire v1's, which differs from it in five ways a reader must
 know before building on either. `Open` matches the header and then WALKS the
 region behind a monotonic high-water mark, the traversal §14 REJECTS by name
 as forgeable, so the match-and-point below is the law and not the code. The
 header carries ONE 32-bit part length, which reimposes the ceiling §3.1
 removes. There is no attribution part and no node directory (§6.3) beside the
-data, so there is nothing for a tool to check a file against. And `schema
+data, so there is nothing for a tool to check a file against. A FIXED table
+has no cook at all: `Cook`, `CookMeasure` and `Open` are emitted for
+VARIABLE-LENGTH tables, and only in a unit that declares one, so the
+fixed-root cook stated below has no code behind it. And `schema
 cook-check` is not built. Moving the emitter to this section — the header
 match, the two 64-bit lengths, the attribution beside the data and the tool
 over it — is tracked as schema#251, the same change that lands §3.1's flat
@@ -2540,11 +2544,14 @@ in build version (§20.5).
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there
   is one refusal, of a DECLARATION that collides with what the form
-  generates: **a field of a FIXED table named `magic` or `build_version`**,
-  the projection's generated prologue (§19.1), as `<field>_present` is an
-  optional's generated companion. Claimed on every fixed table, for the
-  reason the generated spellings below are: the form is not opted into, so a
-  name free today must not become a collision tomorrow.
+  generates: **a field of a FIXED table named `magic`, `build_version` or
+  `byte_order`** — those three are the projection's generated prologue
+  (§19.1), as `<field>_present` is an optional's generated companion.
+  Claimed on every fixed table, for the reason the generated spellings
+  below are: the form is not opted into, so a name free today must not
+  become a collision tomorrow. **The checker claims none of the three
+  today**, so this refusal lands with the form and its emitters, on the
+  same terms as the block spellings below (schema#287).
   **`| stride` is refused as an UNKNOWN ATTRIBUTE**, like any other spelling
   the closed vocabulary does not carry (SPEC.md §4.2), and not by name: the
   pitch is derived and there is no declared stride to reserve a word for
@@ -2626,9 +2633,10 @@ in build version (§20.5).
 
   **Two of the twenty-six outlive what they guard, and both are stated rather
   than quietly carried.** `LayoutId` is the id constant wire v1's cook emits
-  (§7's status), and it retires into the unit-wide build version with the
-  emitter (schema#251); the claim goes in that same change and never before
-  it, since dropping it first frees a name the generated code still spells.
+  (§20's status, obligation 3 — a 32-bit id where the build version is 64),
+  and it retires into the unit-wide build version with the emitter
+  (schema#251); the claim goes in that same change and never before it, since
+  dropping it first frees a name the generated code still spells.
   `Root` is claimed and NO emitter spells `<X>Root` — the builder's accessor
   is the member `GetRoot`, renamed for the reason below — so the claim guards
   nothing and is tracked for removal as schema#310, page and checker moving
@@ -2687,7 +2695,9 @@ in build version (§20.5).
   introduces a generated name that is not derived from a schema file's own.
 
   **A FIXED TABLE claims two more per out-of-line array, because its
-  row accessors are named after its fields.** `<Table>` followed by the
+  row accessors are named after its fields — and this claim is owed with the
+  block form too, on the same terms as the seven above** (schema#287): the
+  checker makes it today for neither. `<Table>` followed by the
   PascalCase of the field's name is the accessor that hands back that
   field's rows, and the same name with `Span` appended is the contiguous
   view (§19.2) — so `RenderFrame` with a `ships` array claims
@@ -4458,15 +4468,35 @@ out when both are asked of one table.
 **One extent, 64-byte aligned at its base**, laid out in this order:
 
 - **The PROJECTION at offset 0** (above). It opens with a generated PROLOGUE
-  of two `uint64`s — `magic`, a constant identifying a schema block and the
-  byte-order check with it, and `build_version`, the unit's id (§20) — and
-  the table's own fields follow, each at its natural offset, with every
-  out-of-line array's storage replaced in place by its sixteen-byte
-  `(offset_of, count, stride)`. The prologue is generated, as an optional's
-  presence companion is, and a field may not be named after either half
-  (§11). **The projection is a record like any other and follows the same C
-  ABI rule** (§19.3): its own offsets are part of the contract, not
-  scaffolding around it.
+  of three `uint64`s — `magic`, a constant identifying a schema block;
+  `build_version`, the unit's id (§20); and `byte_order`, `1` little and `2`
+  big, which the producer stamps with its own — and the table's own fields
+  follow, each at its natural offset, with every out-of-line array's storage
+  replaced in place by its sixteen-byte `(offset_of, count, stride)`. The
+  prologue is generated, as an optional's presence companion is, and a field
+  may not be named after any of the three (§11).
+
+  **What each of the three does, stated because two of them look like one.**
+  The MAGIC is what REFUSES a foreign byte order: read bytewise it either is
+  this build's constant, or is that constant byte-reversed — which identifies
+  a block of the other order — or is not a block at all. The `byte_order`
+  word is what RECORDS which order wrote it, so the refusal can name the
+  order rather than infer it and a tool dumping a block can read the fact
+  instead of deducing it from a constant. `BlockOpen` checks both: a block
+  whose magic matched and whose order word did not is a corrupt or
+  hand-edited artifact, and there is no reading that recovers it. The
+  BUILD VERSION cannot do either job — §20 digests `byteorder` as a
+  GENERATION input (§20.1), `little` for every target schema generates for
+  today, so two builds of one schema for two byte orders emit the SAME id.
+
+  **The prologue is free in this shape either way.** With the render
+  frame's nine triples the projection is 176 bytes, against 168 for two
+  words, and both round to the 192 the first array starts at — so the
+  worked layout below is unchanged to the digit.
+
+  **The projection is a record like any other and follows the same C ABI
+  rule** (§19.3): its own offsets are part of the contract, not scaffolding
+  around it.
 - **Then each out-of-line ARRAY, in declaration order**, starting at an
   offset aligned to `max( 64, alignof( element ) )`.
 - **Rows sit at the pitch**: row `i` of an array begins at
@@ -4569,7 +4599,7 @@ storages and alternates. The form allocates nothing and will not allocate a
 second buffer for you.
 
 **Worked, over nine arrays and a representative frame.** With the projection
-at 168 bytes — the 16-byte prologue, a `uint64`, and nine triples — and rows
+at 176 bytes — the 24-byte prologue, a `uint64`, and nine triples — and rows
 of 72 / 88 / 64 / 72 / 72 / 80 / 80 / 64 / 80 bytes:
 
 | array | count | pitch | start | extent |
@@ -4589,7 +4619,7 @@ one frame**: the rule stated here and the hand-written layout this form
 replaces are the same walk over the same pitches, so they land every array at
 the same offset for ANY counts — the table above is one instance of that,
 chosen to be legible rather than measured. The prologue is free in this
-shape: 152 and 168 both round to 192.
+shape: 152, 168 and 176 all round to 192.
 
 ### 19.2 The reflective read
 
