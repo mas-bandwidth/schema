@@ -418,10 +418,20 @@ tables-block: build/schema_test_block build/schema_test_block_asan build/schema_
 # because they are what actually cover the boundaries and they cost nothing.
 # ---------------------------------------------------------------------------
 
-# chosen by measurement (arm64 clang, this tree): at N=200000 the plain leg
-# runs 2.2 s, the sanitized twin 9.5 s and the C# leg 3.1 s, ~15 s together,
-# against a 60 s budget — room for a CI box three times slower
-N ?= 200000
+# N is chosen against the measurement that matters, which is CI's and not this
+# bench's: ubuntu-latest runs the sanitized twin about 3.4x slower than arm64
+# clang here, and the sanitized twin is the whole cost. At N=200000 the target
+# measured 41.6 s there against a 60 s budget, which meets the bar with too
+# little left for a busy runner; at N=100000 it is about 25 s, half the budget.
+#
+#   leg (at N=100000)                    here (arm64)   ubuntu-latest
+#   schema_test_block_fuzz                     1.4 s        ~ 1.8 s
+#   schema_test_block_fuzz_asan                6.0 s        ~ 16 s
+#   test/cs-block -- --fuzz                    2.2 s        ~ 3 s
+#
+# The ENUMERATED passes are what cover the boundaries and they run whatever N
+# is; N buys random mutants on top, and a long run is what the override is for.
+N ?= 100000
 SEED ?= 24845619678
 
 BLOCK_FUZZ_INCLUDES := -Ibuild/tables-generated/block -Ibuild/tables-generated/blockhome
