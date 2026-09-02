@@ -934,7 +934,7 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
 - **The record scan is authoritative.** `node_count` is data from the
   wire: a reader scans records until the fields are consumed and takes
   what it finds, and a `node_count` that disagrees with the scan is
-  **malformed**. Nothing — no directory, no region, no buffer — is sized
+  **malformed**. Nothing — no directory, no region, no allocation — is sized
   from `node_count` before the scan has confirmed it.
 - **The `unknown` count is per TRANSPORT FIELD, not per schema
   difference.** A reader that cannot name `0xFFFF` counts one for each
@@ -966,8 +966,8 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   AGGREGATE one, and the repeating field removed it.
 - The **body** is an ordinary table body — fields, then the `u16` zero
   terminator, exactly as §3 describes. Everything inside is ordinary:
-  by-value nesting still nests, arrays are arrays, guards still guard,
-  buffers ride inline.
+  by-value nesting still nests, arrays are arrays, guards still guard, and
+  `string(N)` and `bytes(N)` ride inline.
 
 **A pointer field, and the constructs that ride on it.**
 
@@ -1849,8 +1849,7 @@ the wire, and keeps the flexibility that comes with it.
   2. **Every node, in directory order.** An entry's type id says which
      walk to run over that node; each pointer slot must resolve to an
      offset the directory NAMES, with the type the declaration requires;
-     each buffer reference must lie inside its own node's extent; each
-     count companion must sit inside its declared bound — including the
+     each count companion must sit inside its declared bound — including the
      companions of fixed-size tables and plain types nested by value,
      whose counts bound a walker just as a table's do. It reads no field
      value and decodes no payload.
@@ -1888,8 +1887,8 @@ the wire, and keeps the flexibility that comes with it.
   leaves the file, carries a sentinel entry, names a type the unit does not
   have, does not ascend, or overlaps a node with the next; a reference that
   leaves the region, that the directory does not name, or that it names as
-  another type; a misaligned reference; a buffer outside its node's extent;
-  a count companion outside its declared bound.
+  another type; a misaligned reference; or a count companion outside its
+  declared bound.
 
 - **Alignment.** The header pads the data part to the region's alignment,
   so a base the allocator or `mmap` gave you is already aligned; `mmap`
@@ -2599,8 +2598,8 @@ in build version (§20.5).
   TOOL's: a missing or out-of-file attribution part, a sentinel entry, a type
   the unit does not have, a directory that does not ascend or overlaps a node
   with the next, a reference that leaves the region or that the directory does
-  not name or names as another type, a misaligned reference, a buffer outside
-  its node's extent, or a count companion outside its declared bound.
+  not name or names as another type, a misaligned reference, or a count
+  companion outside its declared bound.
 
 - **A declaration colliding with a generated table spelling.** Tables and
   types share one symbol table (§13.1), which is what makes the generated
