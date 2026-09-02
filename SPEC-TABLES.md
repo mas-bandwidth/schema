@@ -282,6 +282,26 @@ struct and loaded directly, and no large-flat-struct machinery is
 warranted for them without a real case forcing it. Pointer-bearing tables
 are where size lives, and the arena and the region are the size answer.
 
+**`| block` IS a case forcing it, and it declares that it is** (§2.7). A
+block-form table's bounded arrays are storage like any other — `T[N]` inline
+beside an `int32` count — so its BY-VALUE struct is the sum of its declared
+maxima, and for the case this form comes from that is about 7.5 MiB. The
+marker is the author saying so out loud: a table marked `| block` is not
+covered by the assumption above, and everything about its by-value form
+follows from that rather than from a surprise. §19.1 prices the block form's
+own storage; the by-value form's price is here, where the assumption it
+breaks is stated.
+
+**Three consequences, so a reader meets them here rather than in a profile.**
+A `Load` of such a table needs a destination struct of that size, and the
+load path allocates nothing, so the CALLER owns it. Its cook (§7) is the
+struct's bytes behind a header, which means mostly-unused array tails on
+disk. And the WIRE is small where the struct is not — elision writes only the
+live rows (§3) — so "the file is a few hundred kilobytes and the struct is
+seven megabytes" is the normal state of affairs, not a defect. The block form
+exists precisely so a game never materialises that struct: it reads the
+projection (§19.2). The by-value form is for tooling and for the wire.
+
 The exclusions, each refused by name: `fixed`/`ufixed` and the 128-bit
 family have no table-wire kind; `const`/`reserved`/`align` describe bit
 positions, and the table wire has none; and arrays of unions are a named
@@ -555,7 +575,7 @@ which this document has always had. The marker says that this table has a
 THIRD FORM beside its wire (§3) and its cook (§7) — one in which its own
 bounded arrays are laid out of line at a fixed pitch, so a consumer in
 another language points at their rows instead of parsing them (§19). One
-declaration, three projections of it; **it's tables all the way down.**
+declaration, three projections of it.
 
 **The rule, in full, because it is the one thing a reader has to know that
 the declaration does not spell:**
@@ -2439,7 +2459,7 @@ Owner rulings, 2026-09-02, in the order given.
   derivation needs no edit to say so.
 - **The producer is multi-threaded by design**: "note that the hand-written
   code that walked and generated render data from C++ is multi-threaded by
-  design" — which is the constraint the layout is shaped by (§19.2).
+  design" — which is the constraint the layout and the fill are shaped by (§19.1).
 - **Where two older requirements came from**: "this is where the
   relocatable and multithreaded builder requirement came from" (§13.1).
 - **The prior attempt, and why it lost**: "I used to use flatbuffers to
@@ -2680,36 +2700,33 @@ weighed:
    marked traversal's hole was. `O(R + P log N)`, no allocation, and less
    machinery than the walk it replaces.
 
-**The block form: how a construct became a form, and what that cost.** This
-feature was first designed as a `section` construct — a new field spelling
-whose storage was an `(offset, count, stride)` triple, in a table that had no
-wire because a triple has no wire kind. That design is recorded here because
-its central argument was WRONG in an instructive way, and because the four
-alternatives weighed against it are still the reasons the form looks as it
-does.
+**The block form: the shapes it is not, and why.** The form adds no
+declaration (§2.7), which is a strong claim, so the alternatives that would
+have added one are priced here.
 
-- **"A section cannot have a wire, because §3's kind set is closed and a
-  triple cannot ride" — REJECTED, and it was circular.** The triple is an
-  artifact of ONE PROJECTION of the declaration. A wire form has no triple to
-  ride: it has a bounded array of fixed tables, which already rides as kind
-  `14` with element kind `13` and the live count. Nothing is spent, §3 is
-  untouched, and the table keeps `Measure`, `Save`, `Load` and its cook. Once
-  that is seen, the construct has nothing left to justify it — the storage is
-  a bounded array, the layout is a projection of the same declaration, and
-  "is the render data a table?" is answered with one word. **The construct
-  became a form, and §2.7 declares nothing.**
-- **A bounded array BY VALUE inside a fixed table — this is what the form
-  actually IS, once the projection is understood.** It was first written down
-  as the near-miss alternative: the storage is already a strided array at
-  stride `sizeof`, at a compile-time offset, fillable by N workers with no
-  synchronisation. Two objections were raised against it — that the struct
-  becomes megabytes and cannot be read by value, and that the layout facts
-  stay compile-time constants a consumer ASSUMES rather than reads. Both are
-  real, and the PROJECTION answers both without a construct: the block form's
-  struct replaces each out-of-line array's inline storage with sixteen bytes
-  at the same field position, so the instance stays small and copyable, and
-  the three facts a consumer needs become data it reads. The near miss was
-  the answer; what was missing was the second layout of one declaration.
+- **A `section` CONSTRUCT — a field spelling whose storage is an
+  `(offset, count, stride)` triple, in a table with no wire because a triple
+  has no wire kind — REJECTED, and the argument for it is circular.** The
+  triple is an artifact of ONE PROJECTION of a declaration. A wire form has
+  no triple to ride: it has a bounded array of fixed tables, which already
+  rides as kind `14` with element kind `13` and the live count. Nothing is
+  spent, §3 is untouched, and the table keeps `Measure`, `Save`, `Load` and
+  its cook. With the wire objection gone the construct has nothing left to
+  justify it — the storage is a bounded array, the layout is a second
+  projection of the same declaration, and "is the render data a table?" is
+  answered with one word.
+- **A bounded array BY VALUE, with the layout left to compile-time constants
+  — REJECTED, and it is the near miss.** The storage is already a strided
+  array at pitch `sizeof`, at a fixed offset, fillable by N workers with no
+  synchronisation, so the storage half needs nothing added. Two things defeat
+  the plain form. **The struct is the size of its maxima** (§2.2) and cannot
+  be read by value across a boundary. And **the layout facts stay constants a
+  consumer ASSUMES** rather than reads, so every drift garbles silently and
+  nothing on the boundary can say so. The PROJECTION answers both without a
+  construct: it replaces each out-of-line array's inline storage with sixteen
+  bytes at the same field position, so the instance is small and copyable and
+  the three facts a consumer needs become data. What the form adds over the
+  plain array is not storage — it is a second layout of one declaration.
 - **A pointer and a region (§2.1, §6.3) — REJECTED.** That is the
   variable-length class: an arena, a `Lock` that compacts, a node directory,
   self-relative derefs. The producer would pay a single-threaded compaction
@@ -2742,40 +2759,39 @@ does.
   bounded table can): one extent, never grown, never pooled. The layout half
   is a single pass over the table's out-of-line ARRAYS — a handful, not
   thousands of rows — run before any worker starts, which is all the property
-  needs. **Compile-time offsets from the maxima were considered and
-  rejected**: they would let workers run before the counts exist, which
+  needs. **Compile-time offsets from the maxima are the alternative, and they
+  are REJECTED**: they would let workers run before the counts exist, which
   nothing in the case wants — the counts come from the same gather that
   produces the work — and every block would be near its maximum extent, which
-  a boundary handoff that copies would pay for on every frame. The projection
+  a boundary handoff that copies pays for on every frame. The projection
   carries the offsets either way, so a consumer reads them rather than
   assuming them.
-- **DEPTH ONE, BOUNDED ONLY — TAKEN, and it is what dropping the keyword
-  cost.** A `section` keyword said which arrays move out of line; without it
-  the rule has to be derivable from the declaration, and this is the rule
-  that is: the marked table's own `[..N]` arrays move, everything else stays.
-  Deeper or opt-in-per-field rules were rejected for the same reason the
-  keyword was — they put the answer somewhere other than the one line a
-  reader is already looking at. The genuine loss is that a small array
-  BESIDE the strided ones in one root can no longer stay inline; the answer
-  is to wrap it in a nested type, whose arrays are at depth two and therefore
+- **DEPTH ONE, BOUNDED ONLY — TAKEN, and it is what carries the rule a
+  keyword would otherwise state.** With no keyword saying which arrays move
+  out of line, the rule must be derivable from the declaration, and this is
+  the rule that is: the marked table's own `[..N]` arrays move, everything
+  else stays. **Deeper rules and per-field opt-ins are REJECTED** for the
+  reason a keyword is — they put the answer somewhere other than the one line
+  a reader is already looking at. The genuine cost is that a small array
+  BESIDE the strided ones in one root cannot stay inline; the answer is to
+  wrap it in a nested type, whose arrays are at depth two and therefore
   inline (§2.7).
-- **The block form is selected by `| block` ALONE — TAKEN, overturning a
-  stride-triggered opt-in.** The rejected proposal was "any field carrying
-  `| stride`, or the table carrying `| block`". The stride half does not
-  work, and the dogfood is the proof: its render data has nine strided arrays
-  and **zero** declared strides — every pitch there is `sizeof`. A trigger
-  the primary case never fires is not a trigger. One table-level marker is
-  explicit, answerable by reading one line, and keeps §2.2's zero-cost gate
-  stated verbatim.
+- **The block form is selected by `| block` ALONE — TAKEN.** The alternative
+  is a per-field trigger, "any field carrying `| stride`, or the table
+  carrying `| block`", and its stride half is REJECTED on the evidence: the
+  case this form comes from has nine strided arrays and **zero** declared
+  strides — every pitch there is `sizeof`. A trigger the primary case never
+  fires is not a trigger. One table-level marker is explicit, answerable by
+  reading one line, and keeps §2.2's zero-cost gate stated verbatim.
 - **No `| stride` attribute at all in this version — TAKEN, on the same
   evidence plus the consumer's.** Beyond the zero declared strides, the one
   consumer that exists cannot read a strided array: it reads rows by casting
   the byte range to a row type, which requires pitch `== sizeof`, and it
-  drops any array whose pitch differs. Shipping headroom would cost that
-  consumer its fast path in exchange for a property the owner has already
-  called possibly obsolete. §15 holds it as a follow-on with the reason.
-- **An exact layout id, plus a NAMED compatible entry point — TAKEN, after
-  an append-tolerant digest was found to be impossible.** A single number
+  drops any array whose pitch differs. Shipping headroom costs that consumer
+  its fast path in exchange for a property the owner has already called
+  possibly obsolete. §15 holds it as a follow-on with the reason.
+- **An exact layout id, plus a NAMED compatible entry point — TAKEN, because
+  an append-tolerant digest is impossible.** A single number
   cannot be verified against a PREFIX of the facts that produced it: a
   consumer that knows fewer fields cannot recompute the producer's digest,
   and any fold that ignored the difference would ignore a real break too. So
@@ -2861,10 +2877,21 @@ pre-empted here.
   in §19.1 rather than hidden; a way to declare "these arrays share a bound
   of N" is what a tighter case would want, and nothing about it is decided
   here.
-- **DEPTH past one in the block form** (§2.7) — an out-of-line array inside
-  an element, or a block-form table as another's element. It wants a decision
-  about whose base a nested projection's offsets are relative to before it is
-  anything, and depth one is what the case in hand needs.
+- **DEPTH past one in the block form** (§2.7) — an out-of-line array inside a
+  row type. It wants a decision about whose base a nested projection's
+  offsets are relative to before it is anything, and depth one is what the
+  case in hand needs. **A block-form table used as another table's row type
+  is not part of this question: it is permitted today** (§11), and depth one
+  already answers it — its own arrays stay INLINE there, so such a row is a
+  by-value struct the size of its maxima (§2.2) and is unremarkable except
+  for that size. Making those arrays out-of-line is what this follow-on
+  would decide.
+- **A WIRE LOAD STRAIGHT INTO THE PROJECTION.** Today `Load` fills the
+  by-value struct (§2.2's price), and a consumer that wants a block must then
+  build one. A load path that decodes a wire directly into a block's storage
+  would let a tool read a file and hand a block across the boundary without
+  materialising the large struct at all. It is a second decoder, and nothing
+  about it is decided here.
 - **A block's own TEXT FORM** (§16). A block-form table has a wire and
   therefore already has `ToJson`/`FromJson` over its by-value form; whether a
   BLOCK in hand should be textualisable without first loading it by value is
@@ -3354,14 +3381,14 @@ table ShipConfig
 
 table RenderFrame | block
     block sizeof=40 alignof=8
-    field version id=0x4a1c kind=9 offset=16 size=8
-    field ships id=0x2b71 kind=14 elem=13 elem_type=RenderShip bound=..4096
+    field version id=0xe8e6 kind=9 offset=16 size=8
+    field ships id=0x2d39 kind=14 elem=13 elem_type=RenderShip bound=..4096
         offset=24 size=16 out_of_line stride=32
 
 table RenderShip
     row sizeof=32 alignof=8
-    field position id=0x4c31 kind=13 offset=0 size=24
-    field object_id id=0x6b0e kind=8 offset=24 size=4
+    field position id=0xdd45 kind=13 offset=0 size=24
+    field object_id id=0xdc71 kind=8 offset=24 size=4
 
 ## history
 ### 2026-09-02 — first baseline before 1.0 ships
@@ -3704,11 +3731,12 @@ of 72 / 88 / 64 / 72 / 72 / 80 / 80 / 64 / 80 bytes:
 | lasers | 200 | 64 | 559,872 | 12,800 |
 | explosions | 60 | 80 | 572,672 | 4,800 |
 
-`BlockBytes` is **577,472**. Those starts are the same numbers the
-hand-written layout this form replaces produces, at every one of the nine,
-and the used extent matches it too — which is the check that the rule stated
-here and the code it must beat lay bytes down in the same places. The
-prologue is free in this shape: 152 and 168 both round to 192.
+`BlockBytes` is **577,472**. **The agreement is with the ARITHMETIC, not with
+one frame**: the rule stated here and the hand-written layout this form
+replaces are the same walk over the same pitches, so they land every array at
+the same offset for ANY counts — the table above is one instance of that,
+chosen to be legible rather than measured. The prologue is free in this
+shape: 152 and 168 both round to 192.
 
 ### 19.2 The reflective read
 
@@ -3796,9 +3824,17 @@ kinds this form uses. The asserts and the accessors use the model that
 `Span` and pointer arithmetic actually index with (`Unsafe.SizeOf<T>` and its
 equivalents), **not** the interop marshalling model (`Marshal.SizeOf`,
 `Marshal.OffsetOf`). The consequence to state plainly: **a `bool` in a row is
-ONE byte** — it is one byte in C++ and one in the managed model, and four
-under default marshalling. A contract that did not say which model it
-asserted could pass on one measurement and garble on the other.
+ONE byte** — one byte in C++ and one in the managed model, four under default
+marshalling. A contract that did not say which model it asserted could pass
+on one measurement and garble on the other. **`Pack` and `Size` set the
+MANAGED layout too**, despite reading as interop attributes, which is exactly
+why they are the mechanism here and not a contradiction of the sentence
+above.
+
+**And C++'s `sizeof( bool ) == 1` is ASSERTED, not assumed.** The standard
+leaves it implementation-defined, so the generated `static_assert`s carry it
+like every other layout fact: a platform where it differs fails the build
+loudly instead of writing rows the other side cannot read.
 
 **`Size` is the element's `sizeof`, never its pitch.** Making the struct as
 wide as the pitch would make the two sides' size asserts compare different
@@ -3820,6 +3856,15 @@ the cooked form's layout id (§7) applied to a flatter shape, sized like a
 digest rather than a version counter — and it is a DIFFERENT id from that
 table's cook (§7), computed over different facts.
 
+**A declared MAXIMUM is deliberately NOT a digest fact**, and it is excluded
+rather than merely absent. A maximum sizes the storage and moves the
+`offset_of`s written into the instance; it moves no offset a consumer reads
+AT, because a consumer takes every `offset_of` from the instance (§19.2). So
+raising one is absorbed on the DEFAULT entry point (§19.4), and a port that
+folded the maximum into the digest would break that absorption with nothing
+to catch it. The rule for what belongs: a fact both sides must AGREE on is in
+the digest; a fact a consumer READS is not.
+
 **What the digest sees, and what it does not.** It sees layout: a moved
 offset, a changed size, a different pitch. It does not see MEANING — a field
 whose units, frame of reference or interpretation changed while its offset
@@ -3829,18 +3874,30 @@ digest neither replaces nor covers it.
 
 ### 19.4 Evolution
 
-**Three edits are absorbed**, and §18.2 passes each in silence:
+**Three edits are absorbed**, and §18.2 passes each in silence — but they are
+not absorbed by the same entry point, and which one matters:
 
 1. **A field appended at the END of a block-form table** — a scalar, or a new
    out-of-line array. Every earlier offset is unchanged; a consumer built
    before the edit reads its own prefix of the projection at the same places,
    and the arrays it knows are at the `offset_of`s the producer actually
-   wrote.
+   wrote. **The digest moves** (a new offset and size), so `BlockOpen`
+   REFUSES and this is absorbed only by `BlockOpenCompatible`.
 2. **A field appended at the END of a row type.** The row grows and so does
    its derived pitch — and because a consumer indexes at the pitch it READ,
-   its shorter row type lands correctly on every row.
-3. **A declared maximum raised.** The storage grows and the offsets move; the
-   consumer reads them.
+   its shorter row type lands correctly on every row. **The digest moves**
+   (a changed row size and pitch), so again `BlockOpen` refuses and the
+   compatible path is what absorbs it.
+3. **A declared maximum raised.** The storage grows and the `offset_of`s
+   move; the consumer reads them. **The digest does NOT move** — a maximum is
+   excluded from it by design (§19.3) — so this one is absorbed by
+   `BlockOpen` ITSELF, on the default path, with no waiver.
+
+**So the default path absorbs exactly one of the three**, and that is not an
+oversight: edits 1 and 2 change what a row or a projection IS, and §14's "no
+silent bypass" says a consumer meets that by asking for the weaker check by
+name. Edit 3 changes only numbers the consumer was already reading out of the
+instance, and nothing about it needs a waiver.
 
 **Everything else is a break, and the baseline refuses it** (§18.2): a field
 inserted before the end, reordered, removed or retyped, in the table or in a
@@ -3850,12 +3907,20 @@ side reads at, and a block has nothing that could report it — which is why
 the refusal is at compile time and loud.
 
 **And the runtime has ONE more entry point, taken by name.**
-`<Table>BlockOpenCompatible` checks the magic, the byte order, the extent and
-the alignment, and then, per array it knows, **this build's
-`sizeof( element ) <= the stride it read from the instance`** — and does not
-check the layout id. Never an equality, and never against its own pitch
-constant: a producer whose rows have grown writes a larger pitch, and it is
-precisely that case this entry point exists to absorb.
+`<Table>BlockOpenCompatible` checks **everything `BlockOpen` checks except
+the layout id** — the magic, the byte order, the extent, the alignment, and
+each array's `offset_of` and extent inside the block — and then, per array it
+knows, **this build's `sizeof( element ) <= the stride it read from the
+instance`**. Never an equality, and never against its own pitch constant: a
+producer whose rows have grown writes a larger pitch, and it is precisely
+that case this entry point exists to absorb.
+
+**It drops the id check and NOTHING ELSE**, which is the only defensible
+shape: the bounds checks read the instance's own numbers against the extent
+the caller passed and need no layout agreement at all, so there is no reason
+to do fewer of them on the path that by definition takes bytes from a build
+this one does not match. A tolerant entry point that also trusted more would
+be the wrong trade in both directions.
 
 It is the tolerant path made available to a caller who deliberately runs a
 consumer older than its producer: a transitional deploy, a hot reload, a tool
@@ -3876,9 +3941,12 @@ it, and pretending otherwise is what the second entry point exists to avoid
   same data over the rows each count covers. Run under the sanitizer leg,
   where a race in the fill is what the leg exists to find. **Beside it, the
   conformance refuser** (§19.1): the build fails if the generated fill path
-  contains an allocation, a lock or an atomic. The test catches a race; the
-  refuser catches a serial implementation that has no race because it never
-  went wide.
+  contains an allocation, a lock or an atomic. That is the whole of what the
+  refuser claims — the generated surface is `Begin` plus accessors, and
+  keeping it free of those three is the property that MAKES a caller's wide
+  fill possible. The parallelism itself lives in the caller's loop, so no
+  gate here could assert it; the obligation stands on this refuser, the fill
+  test above, and §12.1's measured leg together.
 - **A TWO-LANGUAGE layout test.** A C++ producer writes a block; a C#
   consumer opens it and compares every field of every row against what was
   written, plus each array's `offset_of`, `count` and `stride`, and the
