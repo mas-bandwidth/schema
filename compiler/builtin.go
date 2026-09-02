@@ -37,7 +37,7 @@ func refuseTables(u *ir.Unit, target string) error {
 }
 
 // builtins is the set [New] registers. The per-language emitters stay
-// internal — they are implementations, not API, and freezing eight emitter
+// internal — they are implementations, not API, and freezing nine emitter
 // packages under semver would buy nothing — but they reach the driver through
 // [Generator] and nothing else, which is what makes that interface a door
 // rather than a decoration: if a built-in target can be expressed as a

@@ -462,7 +462,9 @@ FloatExpr   = float expression over float literals, int literals and const names
     constant per variant (`1 << bit`),
     because mask tests are how flag state is consumed, **plus the `Count`
     constant** — the declared variant count, spelled per target beside the
-    enum extents (`CapsCount` in C++/C#/Go/JS, `CAPS_COUNT` in C and Rust).
+    enum extents — the spelling is each target's own, and all nine emit it:
+    `CapsCount` in C++, C#, Go and JS; `CAPS_COUNT` in C and Rust;
+    `capsCount` in Dart and Java; `caps_count/0` in Elixir.
     **`flags` is a
     contextual keyword, not reserved** — it introduces a declaration at file
     scope only, so a *field* named `flags` stays fully legal; declarations at
@@ -913,9 +915,10 @@ exists for exactly one reason — it sizes the length prefix's bits.
 unchanged and identical to `bytes(N)`; what the `string` spelling adds is a
 CONTRACT: the payload is well-formed UTF-8 — the writer's obligation, never
 the reader's check. Writing malformed UTF-8 is a writer contract violation,
-surfaced by debug-only asserts where the language supports them (C and C++
-assert through a generated validator, Rust through `debug_assert!`; Go and C#
-assert nothing). There is no mandatory read-path validation and no
+surfaced by debug-only asserts where the language supports them. The list is
+exhaustive: C, C++ and Rust assert — C and C++ through a generated validator,
+Rust through `debug_assert!` — and the other six (C#, Dart, Elixir, Go, Java,
+JavaScript) assert nothing. There is no mandatory read-path validation and no
 release-path cost anywhere, and the conformance vectors carry only valid
 UTF-8. An application with genuinely arbitrary payloads uses `bytes(N)`,
 which remains exactly that.
@@ -939,13 +942,15 @@ a buffer of N + 1.
 
 **Generated-code consequence, stated so no backend discovers it late:** the
 runtimes' `serialize_string` is the **wire oracle** for `string(N)`, not
-necessarily the emitted call. The §6.1 storage rules make the runtime string
-methods unusable in two targets — C# stores a byte buffer but
-`SerializeString` takes `ref string`; Rust stores a byte buffer but
-`serialize_string` takes `&mut String` and rejects non-UTF-8 bytes, which are
-legal here — so the C# and Rust backends compose the wire from primitives:
-length over [0, N], then align, then raw bytes. C++ and Go may use their
-runtime string call for the framing. **The interior-null check is
+necessarily the emitted call. **All nine backends compose the framing from
+primitives** — length over [0, N], then align, then raw bytes — and none
+emits a runtime string call. C# and Rust have no alternative: the §6.1
+storage rules make the runtime string method unusable there — C# stores a
+byte buffer but `SerializeString` takes `ref string`; Rust stores a byte
+buffer but `serialize_string` takes `&mut String` and rejects non-UTF-8
+bytes, which are legal here. Dart, Java and Elixir have no runtime to call.
+C++, C, Go and JavaScript may use their runtime string call for the framing
+and do not. **The interior-null check is
 generated-code validation in every target** — no runtime primitive performs
 it (classic C++ read appends `'\0'` and would silently truncate).
 
@@ -1044,9 +1049,9 @@ union ColliderShape
   the `<Union>Type type;` tag over an anonymous union of the arms (member
   names = variant names), constructed as None, trivially copyable
   (asserted); a variant named `type` is refused at check time — the tag
-  field's own name. C mirrors it with its named `as` union. Go, C# and JS
-  lay the tag beside one pre-allocated arm per variant — nothing
-  heap-allocates per value. Rust holds the value as a real
+  field's own name. C mirrors it with its named `as` union. Go, C#, JS, Dart,
+  Java and Elixir lay the tag beside one pre-allocated arm per variant —
+  nothing heap-allocates per value. Rust holds the value as a real
   `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
   STILL emits the `<Union>Type` tag newtype beside it: the tag surface
   (constants, `Max`) is uniform across targets whatever the value
@@ -1198,10 +1203,14 @@ defined behaviors: the spec owes a conforming writer exact bytes and owes a
 misbehaving writer nothing. The read side is untouched by this doctrine —
 readers face untrusted data and keep every mandated check above.
 
-Within that doctrine, misuse surfaces by each runtime's own convention: C and
-C++ debug-assert (unchecked in release); Go and Rust panic and C# throws on
-misuse in all build modes. The generated write code's job is to make misuse
-impossible by construction — bounds come from the schema. Costlier contracts
+Within that doctrine, misuse surfaces by each target's own convention, and the
+list is exhaustive at all nine: C, C++, Dart and Java debug-assert (unchecked
+in release — C and C++ through `serialize_assert`, Dart and Java through the
+language's own `assert`, live under `--enable-asserts` and `-ea`); Go and Rust
+panic, C# throws and Elixir raises `ArgumentError`, on misuse in all build
+modes; generated JavaScript carries no write-side check of its own, so misuse
+reaches the runtime's stream methods. The generated write code's job is to
+make misuse impossible by construction — bounds come from the schema. Costlier contracts
 assert in DEBUG ONLY everywhere (§4.7's UTF-8 well-formedness contract is the
 type case: an O(n) check no release path should carry). Ranges are trusted
 inputs everywhere: generated code never feeds attacker-influenced values as
@@ -1268,13 +1277,14 @@ Per `type`, per target:
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in
    wire order.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full
-   validation, in each runtime's native error idiom (`bool` in C and C++,
-   `bool` + latched `Error` in C#, `error` in Go, `Result` in Rust, `bool` +
-   the stream's latched `error` in JS — generated validation refusals return
-   `false` latching nothing, so callers tell the two channels apart exactly
-   as in C#). The consumed size (§5) surfaces per target idiom — a success
-   value that carries bits consumed where the idiom allows, an out-parameter
-   where it does not.
+   validation, in each target's native error idiom — the list is exhaustive
+   at all nine: `int` 1/0 in C, `bool` in C++, Dart and Java, `bool` +
+   latched `Error` in C#, `error` in Go, `Result` in Rust, `{:ok, value}` or
+   `:error` in Elixir, and `bool` + the stream's latched `error` in JS
+   (generated validation refusals return `false` latching nothing, so callers
+   tell the two channels apart exactly as in C#). The consumed size (§5)
+   surfaces per target idiom — a success value that carries bits consumed
+   where the idiom allows, an out-parameter where it does not.
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the
    schema, with worst-case (7-bit) padding assumed at each alignment point.
    Size write buffers from `MaxBytes`; conservative is correct for a buffer
@@ -1431,11 +1441,23 @@ closing.
 
 ### 6.3 Per-target notes
 
+All nine targets are covered, in the two groups §1 draws. The six that read
+and write through a serialize-family runtime:
+
 | | C | C++ | C# | Go | JavaScript | Rust |
 |---|---|---|---|---|---|---|
 | emits against | `serialize_write_stream_t`/`serialize_read_stream_t` free functions | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | methods on the stream parameter — generated JS never imports the runtime | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
 | error idiom | `int` 1/0 early-out; the stream latches the error | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
 | buffer contract | write buffers multiple of 8; read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | caller-owned DataViews; the flat tier requires ≥8 bytes read slack past the payload | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
+
+The three self-contained targets — no runtime library, so there is no stream
+object to emit against; the bit reader and writer live in the generated code:
+
+| | Dart | Java | Elixir |
+|---|---|---|---|
+| emits against | free functions over a caller-owned `ByteData` view | `static` methods on the file's class over a caller-owned `byte[]` | module functions over a binary; read and write thread the output, scratch and bit position as rebound accumulators — no stream struct |
+| error idiom | `bool` early-out | `boolean` early-out | `{:ok, value}` or `:error`; the body throws `:invalid` to a catch at the surface |
+| buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | the writer returns the binary; read buffers need NO slack past the payload |
 
 ## 7. The compiler
 
@@ -1443,7 +1465,7 @@ Go, zero third-party dependencies, one static binary: `schema`.
 
 ```
 schema check      [--verbose] [dir|files...]   // parse + typecheck; exit code for CI
-schema generate   [--lang c|cpp|cs|go|js|rust]
+schema generate   [--lang c|cpp|cs|dart|elixir|go|java|js|rust]
                   [--out <dir>] [--verbose] [dir|files...]
 schema id | dir|files... // print the protocol id
 schema projection | dir|files... // print the wire shape projection (§3.1)
@@ -1467,7 +1489,8 @@ meaning — and it verifies its own idempotence on every run.
 ### 7.1 Pipeline
 
 ```
-*.schema → scanner → parser → AST → resolver/checker → IR → {c, cpp, csharp, golang, js, rust} backends
+*.schema → scanner → parser → AST → resolver/checker → IR →
+         {c, cpp, csharp, dart, elixir, golang, java, js, rust} backends
 ```
 
 - **Scanner/parser: hand-written, recursive descent**, in the style of the Go
@@ -1495,7 +1518,7 @@ meaning — and it verifies its own idempotence on every run.
   the golden-wire gate (§7.2) holds still across compiler versions.
 - **Backends: dumb printers.** Hand-written emitters (a small indent-aware
   writer helper), not `text/template` — codegen wants precision. Each backend
-  is a single file a reviewer can hold.
+  is a small package a reviewer can hold (two to seven files).
 
 ### 7.2 Testing
 
@@ -1617,8 +1640,11 @@ internal/ast/
 internal/check/        resolver, constant folding, shape checks, dominance rule,
                        the protocol id
 internal/format/       schemafmt
-internal/codegen/      c/  cpp/  csharp/  golang/  js/  rust/ — registered on
-                       the driver through the public generator interface
+internal/codegen/      c/  cpp/  csharp/  dart/  elixir/  golang/  java/  js/
+                       rust/ — registered on the driver through the public
+                       generator interface; cpptable/ and cstable/ are the
+                       table emitters two of those backends carry
+                       (SPEC-TABLES.md)
 internal/fuzz/         compiler fuzzing (gate 6)
 internal/publicapi/    the acceptance gate: an external module, public API only
 examples/              the corpus — always compiles under this spec as written
@@ -1639,7 +1665,7 @@ Rows keep their numbers permanently — code and corpus cite them as `§9 qN`.
 Every row to date is settled, deferred with its design banked, or discarded.
 
 1. ~~Strings as byte strings~~ — settled: §4.7. One shape for
-   `string`/`bytes`; C# and Rust compose the wire from primitives; the
+   `string`/`bytes`; every backend composes the wire from primitives; the
    interior-null check is generated-code validation in every target.
 2. ~~Storage-type overrides~~ — settled by the integer family: storage is
    declared by the type name (`thrust int8 | min = 0, max = 100`); no

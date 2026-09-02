@@ -5,8 +5,9 @@ name: CI
 #
 # What the split moves is WHEN the inline-budget gates run, not whether —
 # nothing checks less. Measured basis (2026-08-25, runs 32826150095 /
-# 32827197339): the full six-language conformance (`make test`) costs 31-45s;
-# the inline-budget gates cost ~9 of the ~10:30 wall minutes (go 2:44,
+# 32827197339): the full conformance run (`make test`) cost 31-45s — six
+# languages when that was measured, nine today; the inline-budget gates
+# cost ~9 of the ~10:30 wall minutes (go 2:44,
 # cs 3:47, rust 1:16, cpp 0:36, c 0:32 on macOS; go 2:23 on ubuntu). So the
 # PR leg KEEPS the entire conformance corpus — every construct class, every
 # target, both OSes, the goldens, the fuzz seeds, the staleness check — and
@@ -401,8 +402,9 @@ jobs:
 
   # The compiler that generates C++ for a Windows-targeting game engine was
   # never itself run on Windows. `make test` needs the six sibling runtime
-  # clones and a POSIX toolchain, so vet + build is the cheap first step the
-  # issue prescribes; growing this into a real test leg is a follow-up.
+  # clones, the three self-contained targets' toolchains and a POSIX
+  # toolchain, so vet + build is the cheap first step the issue prescribes;
+  # growing this into a real test leg is a follow-up.
   windows:
     runs-on: windows-latest
     timeout-minutes: 15

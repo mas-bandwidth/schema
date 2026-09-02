@@ -122,18 +122,20 @@ add variants later without moving the field width.
 
 The `Max` member is the enum's **extent** — the same number `E.Max` names in
 schema expressions: the highest wire-legal value, and (headroom aside) the
-count of real variants under the sentinel-zero convention. Every target
-spells it its own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
+count of real variants under the sentinel-zero convention. All nine targets
+spell it their own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
 `ShipTypeMax` (Go), `ShipType::MAX` (Rust), `ShipType.Max` (JS),
-`SHIP_TYPE_MAX` (C) — and a union's generated `<Union>Type` tag enum
+`SHIP_TYPE_MAX` (C), `ShipType.max` (Dart and Java), `ShipType.max/0`
+(Elixir) — and a union's generated `<Union>Type` tag enum
 carries it too, so ranges and asserts reference the enum directly instead of
 a hand-declared count constant. `Max` is consequently reserved as a variant
 name, like `None`.
 
-Every target also generates a **debug/log name function** — `EnumName(value)`
-in C++ (overloaded per enum), `EnumNameShipType` in C#/Go/JS,
-`enum_name_ship_type` in Rust/C — returning the variant's declared spelling
-for any wire value, out-of-set values included (`"???"`).
+Every target also generates a **debug/log name function**, and the spelling is
+each target's own: `EnumName(value)` in C++ (overloaded per enum),
+`EnumNameShipType` in C#/Go/JS, `enumNameShipType` in Dart/Java, and
+`enum_name_ship_type` in C/Rust/Elixir — returning the variant's declared
+spelling for any wire value, out-of-set values included (`"???"`).
 
 ### flags
 
@@ -159,9 +161,10 @@ independent bits, not a range with a top; the compiler refuses `.Max` on a
 flags type and names `.Count` instead.
 
 Flags get the same **debug/log name surface** as enums, in two forms: a
-per-bit name — `FlagNameCapabilities(bit)` (`flag_name_capabilities` in
-Rust/C), out-of-range bits naming as `"???"` — and a set renderer,
-`FlagNamesCapabilities(value)`, which formats the set bits the way a log line
+per-bit name — `FlagNameCapabilities(bit)` in C++/C#/Go/JS
+(`flagNameCapabilities` in Dart/Java, `flag_name_capabilities` in
+C/Rust/Elixir), out-of-range bits naming as `"???"` — and a set renderer,
+`FlagNamesCapabilities(value)` under the same per-target spelling, which formats the set bits the way a log line
 wants them: `"Cloak|Warp"`, `"0"` for the empty set, and any bits past the
 declared variants rendered honestly as hex. In C and C++ the renderer writes
 into a caller-provided buffer (`CapabilitiesNamesMax` /
@@ -230,8 +233,9 @@ That replaces the bool-guard idiom — `has_box bool` / `if has_box { box
 BoxCollider }` repeated per shape — which spends a bit per absent arm and
 lets illegal states (two shapes at once) exist for every consumer to police.
 A read **rejects a tag above the count**, and a write validates the tag
-before it rides. C++ generates the tagged union above; Go, C# and JS lay
-the tag beside one pre-allocated arm per variant; Rust gets a real
+before it rides. The representation is per target, all nine covered: C++ and
+C generate the tagged union above; Go, C#, JS, Dart, Java and Elixir lay the
+tag beside one pre-allocated arm per variant; Rust gets a real
 `enum ColliderShape { None, Box(BoxCollider), ... }`.
 
 Payloads are declared types — wrap a scalar or enum in a type. Unions ride
@@ -1254,8 +1258,15 @@ cooked from.
 It is settled by the **compiler**, not by your C++ compiler, which is what
 lets tooling cook before any game binary exists. The layout half comes from
 the compiler's own C ABI model, and the generated code asserts it on every
-side: if your compiler lays a record out differently, the build fails and
-names the field.
+side — but WHEN it tells you differs by language, and only C++ tells you at
+build time. C++ `static_assert`s every `sizeof`, `alignof` and `offsetof`,
+so a compiler that lays a record out differently fails the BUILD, naming the
+type and the field. C# has no `static_assert`: the generated
+`TableBlockLayout.Verify()` runs once at first use and THROWS, naming the
+type, the field, the offset it found and the offset the C++ side asserts —
+loud and early, but at run time. Both cover the records the block form
+reaches, not yet every record in the unit's table closure. SPEC-TABLES.md
+§20's status list carries both gaps as items 2 and 3.
 
 Two things it does not do:
 
