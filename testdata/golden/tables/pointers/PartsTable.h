@@ -143,7 +143,11 @@ struct TableWriter
     int64_t offset = 0;
     bool overflow = false;
 
-    TableWriter( uint8_t * buffer, int64_t capacity ) : buffer( buffer ), capacity( capacity ) {}
+    // the parameters do not repeat the member names: a parameter that hides a
+    // member is a warning the estate's compilers disagree about (gcc's
+    // -Wshadow and cl's C4458 refuse it, clang's -Wshadow does not), and this
+    // is a header a consumer compiles under its OWN flags
+    TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
     void raw( const void * data, int64_t bytes )
     {
@@ -170,8 +174,8 @@ struct TableReader
     int64_t offset = 0;
     TableReport * report;
 
-    TableReader( const uint8_t * buffer, int64_t size, TableReport * report )
-        : buffer( buffer ), size( size ), report( report ) {}
+    TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
+        : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
     bool has( int64_t bytes ) const { return offset + bytes <= size; }
     uint8_t get8()   { return buffer[offset++]; }
@@ -763,16 +767,16 @@ extern const TableTypeInfo StampTableInfo;
 extern const TableTypeInfo ColourTableInfo;
 
 inline const TableFieldInfo StampTableFields[] = {
-    { "tag", "tag", "string", 0xbc64, 12, false, false, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp{}.tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "seq", "seq", "int32", 0xc29b, 4, false, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp{}.seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "tag", "tag", "string", 0xbc64, 12, false, false, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "seq", "seq", "int32", 0xc29b, 4, false, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { new ( p ) Stamp{}; }, false };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
 inline const TableFieldInfo ColourTableFields[] = {
-    { "r", "r", "uint8", 0xb019, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour{}.r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "g", "g", "uint8", 0xc40a, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour{}.g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "b", "b", "uint8", 0xcae9, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour{}.b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "r", "r", "uint8", 0xb019, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "g", "g", "uint8", 0xc40a, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "b", "b", "uint8", 0xcae9, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { new ( p ) Colour{}; }, false };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }

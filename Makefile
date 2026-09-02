@@ -339,7 +339,20 @@ tables-cs-refuses-pointers: bin/schema
 # a consumer compiles those only if it uses the form.
 # ---------------------------------------------------------------------------
 
-BLOCK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread
+# -Wshadow, on all three tables legs (BLOCK here, TABLES and PACK below): the
+# POSIX gate for a class the POSIX legs were blind to. A shadowed name in an
+# emitted function is a warning nobody sees under -Wall -Wextra — neither gcc
+# nor clang says a word without this flag — and cl refuses it outright at
+# /W4 /WX, so the estate's Visual C++ requirement turned a silent POSIX green
+# into a Windows red (#286).
+#
+# The two POSIX compilers cover DIFFERENT halves of what cl refuses, and the
+# matrix runs both, so the pair is the gate rather than either one:
+#   clang -Wshadow  -> a local hiding a local          (cl C4456)
+#   gcc   -Wshadow  -> the same, PLUS a constructor parameter hiding a member
+#                      (cl C4458), which clang files under -Wshadow-all
+# macOS runs clang and ubuntu runs gcc; the big-endian leg is a second gcc.
+BLOCK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
 BLOCK_INCLUDES := -Ibuild/tables-generated/block
 BLOCK_SOURCES = $$(ls build/tables-generated/block/*Block.cpp)
 
@@ -743,7 +756,7 @@ tables-keyed-iteration-negative-control: bin/schema
 # TABLES_INCLUDES is shared with the sanitized twin below, so the two builds
 # can never drift into covering different code.
 TABLES_INCLUDES := $(call tables_includes,build/tables-generated)
-TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread
+TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
 
 # The text form's runtime is a generated TRANSLATION UNIT now, not header
 # content (SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
@@ -883,7 +896,7 @@ PACK_INCLUDES := -Ibuild/tables-generated/examples
 # these drivers CALL the text form, so they compile the generated translation
 # unit that holds it (SPEC-TABLES.md §16.1) — the same rule any consumer follows
 PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp)
-PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
+PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off
 PACK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
 build/schema_test_pack: build/tables-generated/.stamp test/tables/pack_main.cpp

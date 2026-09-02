@@ -1490,13 +1490,13 @@ static void test_builder_workers()
             graphdemo::TableWorker worker = threaded.Worker();
             graphdemo::TableSlot<graphdemo::ListNode> first = worker.Alloc<graphdemo::ListNode>();
             first->value = t;
-            graphdemo::ListNode * tail = first;
+            graphdemo::ListNode * last = first;
             for ( int i = 1; i < per_thread; i++ )
             {
                 graphdemo::TableSlot<graphdemo::ListNode> node = worker.Alloc<graphdemo::ListNode>();
                 node->value = t * 1000000 + i;
-                tail->next = node;
-                tail = node;
+                last->next = node;
+                last = node;
             }
             heads[t] = first.ref;
         } );
@@ -3293,15 +3293,15 @@ static void test_json_dialect()
     // it reads as U+FFFD rather than manufacturing CESU-8 out of it
     {
         tabledemo::ProfileConfig lone;
-        tabledemo::TableReport report;
+        tabledemo::TableReport lone_report;
         const char * text = "{ \"name\": \"\\udc00x\\ud800\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( lone, text, (int64_t) strlen( text ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJson( lone, text, (int64_t) strlen( text ), &lone_report ) );
         CHECK( lone.name_length == 7 );
         CHECK( strcmp( lone.name, "\xef\xbf\xbd" "x" "\xef\xbf\xbd" ) == 0 );
         // ... and a well-formed pair still decodes to the character it names
         tabledemo::ProfileConfig pair;
         const char * emoji = "{ \"name\": \"\\ud83d\\ude00\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( pair, emoji, (int64_t) strlen( emoji ), &report ) );
+        CHECK( tabledemo::ProfileConfigFromJson( pair, emoji, (int64_t) strlen( emoji ), &lone_report ) );
         CHECK( pair.name_length == 4 && strcmp( pair.name, "\xf0\x9f\x98\x80" ) == 0 );
     }
 
@@ -3971,8 +3971,8 @@ static void test_json_pinned_text()
     {
         tabledemo::ProfileConfig profile;
         tabledemo::TableReport report;
-        const char * text = "{ \"icon\": \"AQI\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( profile, text, (int64_t) strlen( text ), &report ) );
+        const char * unpadded = "{ \"icon\": \"AQI\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
         CHECK( profile.icon_length == 2 && profile.icon[0] == 1 && profile.icon[1] == 2 );
         CHECK( !report.malformed );
     }

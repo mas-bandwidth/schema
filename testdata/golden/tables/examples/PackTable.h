@@ -135,7 +135,11 @@ struct TableWriter
     int64_t offset = 0;
     bool overflow = false;
 
-    TableWriter( uint8_t * buffer, int64_t capacity ) : buffer( buffer ), capacity( capacity ) {}
+    // the parameters do not repeat the member names: a parameter that hides a
+    // member is a warning the estate's compilers disagree about (gcc's
+    // -Wshadow and cl's C4458 refuse it, clang's -Wshadow does not), and this
+    // is a header a consumer compiles under its OWN flags
+    TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
     void raw( const void * data, int64_t bytes )
     {
@@ -162,8 +166,8 @@ struct TableReader
     int64_t offset = 0;
     TableReport * report;
 
-    TableReader( const uint8_t * buffer, int64_t size, TableReport * report )
-        : buffer( buffer ), size( size ), report( report ) {}
+    TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
+        : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
     bool has( int64_t bytes ) const { return offset + bytes <= size; }
     uint8_t get8()   { return buffer[offset++]; }
@@ -1303,9 +1307,9 @@ inline const TableTypeInfo * PackConfigTableType();
 inline const TableTypeInfo * GunnerSettingsTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "reaction", "reaction", "float32", 0x900f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, reaction ), (uint32_t) sizeof( GunnerSettings{}.reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "tracking", "tracking", "bool", 0x53d5, 1, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, tracking ), (uint32_t) sizeof( GunnerSettings{}.tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "callsign", "callsign", "string", 0x74dc, 12, false, true, false, 24, (uint32_t) offsetof( GunnerSettings, callsign ), (uint32_t) sizeof( GunnerSettings{}.callsign ), (uint32_t) offsetof( GunnerSettings, callsign_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "reaction", "reaction", "float32", 0x900f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, reaction ), (uint32_t) sizeof( GunnerSettings::reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "tracking", "tracking", "bool", 0x53d5, 1, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, tracking ), (uint32_t) sizeof( GunnerSettings::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "callsign", "callsign", "string", 0x74dc, 12, false, true, false, 24, (uint32_t) offsetof( GunnerSettings, callsign ), (uint32_t) sizeof( GunnerSettings::callsign ), (uint32_t) offsetof( GunnerSettings, callsign_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, fields, +[]( void * p ) { new ( p ) GunnerSettings{}; } };
     return &info;
@@ -1314,11 +1318,11 @@ inline const TableTypeInfo * GunnerSettingsTableType()
 inline const TableTypeInfo * ShipEntryTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "display_name", "name", "string", 0xcb8b, 12, false, true, false, 32, (uint32_t) offsetof( ShipEntry, display_name ), (uint32_t) sizeof( ShipEntry{}.display_name ), (uint32_t) offsetof( ShipEntry, display_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "health", "health", "float32", 0x8617, 10, false, false, false, 0, (uint32_t) offsetof( ShipEntry, health ), (uint32_t) sizeof( ShipEntry{}.health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "mass", "mass", "float32", 0xe7a6, 10, false, false, false, 0, (uint32_t) offsetof( ShipEntry, mass ), (uint32_t) sizeof( ShipEntry{}.mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "hardpoints", "hardpoints", "int32", 0xc4b2, 4, true, true, false, 4, (uint32_t) offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( ShipEntry{}.hardpoints[0] ), (uint32_t) offsetof( ShipEntry, hardpoints_count ), 0xffffffffu, NULL, true, 0.0, 8.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "gunner", "gunner", "GunnerSettings", 0x2bc9, 13, false, false, true, 0, (uint32_t) offsetof( ShipEntry, gunner ), (uint32_t) sizeof( ShipEntry{}.gunner ), 0xffffffffu, (uint32_t) offsetof( ShipEntry, gunner_present ), GunnerSettingsTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "display_name", "name", "string", 0xcb8b, 12, false, true, false, 32, (uint32_t) offsetof( ShipEntry, display_name ), (uint32_t) sizeof( ShipEntry::display_name ), (uint32_t) offsetof( ShipEntry, display_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "health", "health", "float32", 0x8617, 10, false, false, false, 0, (uint32_t) offsetof( ShipEntry, health ), (uint32_t) sizeof( ShipEntry::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "mass", "mass", "float32", 0xe7a6, 10, false, false, false, 0, (uint32_t) offsetof( ShipEntry, mass ), (uint32_t) sizeof( ShipEntry::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "hardpoints", "hardpoints", "int32", 0xc4b2, 4, true, true, false, 4, (uint32_t) offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( ShipEntry::hardpoints[0] ), (uint32_t) offsetof( ShipEntry, hardpoints_count ), 0xffffffffu, NULL, true, 0.0, 8.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "gunner", "gunner", "GunnerSettings", 0x2bc9, 13, false, false, true, 0, (uint32_t) offsetof( ShipEntry, gunner ), (uint32_t) sizeof( ShipEntry::gunner ), 0xffffffffu, (uint32_t) offsetof( ShipEntry, gunner_present ), GunnerSettingsTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, fields, +[]( void * p ) { new ( p ) ShipEntry{}; } };
     return &info;
@@ -1327,10 +1331,10 @@ inline const TableTypeInfo * ShipEntryTableType()
 inline const TableTypeInfo * GlobalSettingsTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "tick_rate", "tick_rate", "uint32", 0x1953, 8, false, false, false, 0, (uint32_t) offsetof( GlobalSettings, tick_rate ), (uint32_t) sizeof( GlobalSettings{}.tick_rate ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 240.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "difficulty", "difficulty", "Difficulty", 0xd53f, 7, false, false, false, 0, (uint32_t) offsetof( GlobalSettings, difficulty ), (uint32_t) sizeof( GlobalSettings{}.difficulty ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 3, +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
-        { "build_note", "build_note", "string", 0xb2d4, 12, false, true, false, 48, (uint32_t) offsetof( GlobalSettings, build_note ), (uint32_t) sizeof( GlobalSettings{}.build_note ), (uint32_t) offsetof( GlobalSettings, build_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "spawn_delays", "spawn_delays", "float32", 0x7c01, 10, true, false, false, 3, (uint32_t) offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( GlobalSettings{}.spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "tick_rate", "tick_rate", "uint32", 0x1953, 8, false, false, false, 0, (uint32_t) offsetof( GlobalSettings, tick_rate ), (uint32_t) sizeof( GlobalSettings::tick_rate ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 240.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "difficulty", "difficulty", "Difficulty", 0xd53f, 7, false, false, false, 0, (uint32_t) offsetof( GlobalSettings, difficulty ), (uint32_t) sizeof( GlobalSettings::difficulty ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 3, +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
+        { "build_note", "build_note", "string", 0xb2d4, 12, false, true, false, 48, (uint32_t) offsetof( GlobalSettings, build_note ), (uint32_t) sizeof( GlobalSettings::build_note ), (uint32_t) offsetof( GlobalSettings, build_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "spawn_delays", "spawn_delays", "float32", 0x7c01, 10, true, false, false, 3, (uint32_t) offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( GlobalSettings::spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, fields, +[]( void * p ) { new ( p ) GlobalSettings{}; } };
     return &info;
@@ -1339,11 +1343,11 @@ inline const TableTypeInfo * GlobalSettingsTableType()
 inline const TableTypeInfo * PackConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "version", "version", "uint32", 0xe8e6, 8, false, false, false, 0, (uint32_t) offsetof( PackConfig, version ), (uint32_t) sizeof( PackConfig{}.version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "global", "global", "GlobalSettings", 0x1b51, 13, false, false, false, 0, (uint32_t) offsetof( PackConfig, global ), (uint32_t) sizeof( PackConfig{}.global ), 0xffffffffu, 0xffffffffu, GlobalSettingsTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "ships", "ships", "ShipEntry", 0x2d39, 13, true, false, false, 4, (uint32_t) offsetof( PackConfig, ships ), (uint32_t) sizeof( PackConfig{}.ships.slots[0] ), 0xffffffffu, 0xffffffffu, ShipEntryTableType(), false, 0.0, 0.0, -1, NULL, NULL, "ShipType", +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, "" },
-        { "thresholds", "thresholds", "int32", 0xb2eb, 4, true, false, false, 4, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( PackConfig{}.thresholds.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, "Difficulty", +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, "" },
-        { "reserves", "reserves", "ShipEntry", 0x049d, 13, true, true, false, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( PackConfig{}.reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, ShipEntryTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "version", "version", "uint32", 0xe8e6, 8, false, false, false, 0, (uint32_t) offsetof( PackConfig, version ), (uint32_t) sizeof( PackConfig::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "global", "global", "GlobalSettings", 0x1b51, 13, false, false, false, 0, (uint32_t) offsetof( PackConfig, global ), (uint32_t) sizeof( PackConfig::global ), 0xffffffffu, 0xffffffffu, GlobalSettingsTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "ships", "ships", "ShipEntry", 0x2d39, 13, true, false, false, 4, (uint32_t) offsetof( PackConfig, ships ), (uint32_t) sizeof( PackConfig::ships.slots[0] ), 0xffffffffu, 0xffffffffu, ShipEntryTableType(), false, 0.0, 0.0, -1, NULL, NULL, "ShipType", +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, "" },
+        { "thresholds", "thresholds", "int32", 0xb2eb, 4, true, false, false, 4, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( PackConfig::thresholds.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, "Difficulty", +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, "" },
+        { "reserves", "reserves", "ShipEntry", 0x049d, 13, true, true, false, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( PackConfig::reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, ShipEntryTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, fields, +[]( void * p ) { new ( p ) PackConfig{}; } };
     return &info;

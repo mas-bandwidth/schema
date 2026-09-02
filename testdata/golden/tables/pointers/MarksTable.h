@@ -143,7 +143,11 @@ struct TableWriter
     int64_t offset = 0;
     bool overflow = false;
 
-    TableWriter( uint8_t * buffer, int64_t capacity ) : buffer( buffer ), capacity( capacity ) {}
+    // the parameters do not repeat the member names: a parameter that hides a
+    // member is a warning the estate's compilers disagree about (gcc's
+    // -Wshadow and cl's C4458 refuse it, clang's -Wshadow does not), and this
+    // is a header a consumer compiles under its OWN flags
+    TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
     void raw( const void * data, int64_t bytes )
     {
@@ -170,8 +174,8 @@ struct TableReader
     int64_t offset = 0;
     TableReport * report;
 
-    TableReader( const uint8_t * buffer, int64_t size, TableReport * report )
-        : buffer( buffer ), size( size ), report( report ) {}
+    TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
+        : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
     bool has( int64_t bytes ) const { return offset + bytes <= size; }
     uint8_t get8()   { return buffer[offset++]; }
@@ -1136,13 +1140,13 @@ extern const TableTypeInfo TallyTableInfo;
 extern const TableTypeInfo MarkerTableInfo;
 
 inline const TableFieldInfo TallyTableFields[] = {
-    { "hits", "hits", "int32", 0xb723, 4, false, false, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally{}.hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "hits", "hits", "int32", 0xb723, 4, false, false, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo TallyTableInfo = { "Tally", (uint32_t) sizeof( Tally ), 1, TallyTableFields, +[]( void * p ) { new ( p ) Tally{}; }, false };
 inline const TableTypeInfo * TallyTableType() { return &TallyTableInfo; }
 
 inline const TableFieldInfo MarkerTableFields[] = {
-    { "label", "label", "string", 0xe16a, 12, false, false, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker{}.label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "label", "label", "string", 0xe16a, 12, false, false, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "note", "note", "Tally", 0x9da7, 13, false, true, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo MarkerTableInfo = { "Marker", (uint32_t) sizeof( Marker ), 2, MarkerTableFields, +[]( void * p ) { new ( p ) Marker{}; }, true };

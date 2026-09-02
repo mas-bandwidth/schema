@@ -135,7 +135,11 @@ struct TableWriter
     int64_t offset = 0;
     bool overflow = false;
 
-    TableWriter( uint8_t * buffer, int64_t capacity ) : buffer( buffer ), capacity( capacity ) {}
+    // the parameters do not repeat the member names: a parameter that hides a
+    // member is a warning the estate's compilers disagree about (gcc's
+    // -Wshadow and cl's C4458 refuse it, clang's -Wshadow does not), and this
+    // is a header a consumer compiles under its OWN flags
+    TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
     void raw( const void * data, int64_t bytes )
     {
@@ -162,8 +166,8 @@ struct TableReader
     int64_t offset = 0;
     TableReport * report;
 
-    TableReader( const uint8_t * buffer, int64_t size, TableReport * report )
-        : buffer( buffer ), size( size ), report( report ) {}
+    TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
+        : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
     bool has( int64_t bytes ) const { return offset + bytes <= size; }
     uint8_t get8()   { return buffer[offset++]; }
@@ -1389,8 +1393,8 @@ inline const TableTypeInfo * ScoreBoardTableType();
 inline const TableTypeInfo * TeamConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "spawn_count", "spawn_count", "int32", 0x3668, 4, false, false, false, 0, (uint32_t) offsetof( TeamConfig, spawn_count ), (uint32_t) sizeof( TeamConfig{}.spawn_count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "banner", "banner", "string", 0x80e4, 12, false, true, false, 16, (uint32_t) offsetof( TeamConfig, banner ), (uint32_t) sizeof( TeamConfig{}.banner ), (uint32_t) offsetof( TeamConfig, banner_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "spawn_count", "spawn_count", "int32", 0x3668, 4, false, false, false, 0, (uint32_t) offsetof( TeamConfig, spawn_count ), (uint32_t) sizeof( TeamConfig::spawn_count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "banner", "banner", "string", 0x80e4, 12, false, true, false, 16, (uint32_t) offsetof( TeamConfig, banner ), (uint32_t) sizeof( TeamConfig::banner ), (uint32_t) offsetof( TeamConfig, banner_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TeamConfig", (uint32_t) sizeof( TeamConfig ), 2, fields, +[]( void * p ) { new ( p ) TeamConfig{}; } };
     return &info;
@@ -1399,8 +1403,8 @@ inline const TableTypeInfo * TeamConfigTableType()
 inline const TableTypeInfo * GunnerConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "reaction", "reaction", "float32", 0x900f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, reaction ), (uint32_t) sizeof( GunnerConfig{}.reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "tracking", "tracking", "bool", 0x53d5, 1, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, tracking ), (uint32_t) sizeof( GunnerConfig{}.tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "reaction", "reaction", "float32", 0x900f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, reaction ), (uint32_t) sizeof( GunnerConfig::reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "tracking", "tracking", "bool", 0x53d5, 1, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, tracking ), (uint32_t) sizeof( GunnerConfig::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "GunnerConfig", (uint32_t) sizeof( GunnerConfig ), 2, fields, +[]( void * p ) { new ( p ) GunnerConfig{}; } };
     return &info;
@@ -1409,9 +1413,9 @@ inline const TableTypeInfo * GunnerConfigTableType()
 inline const TableTypeInfo * TurretConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "damage", "damage", "float32", 0x15a9, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, damage ), (uint32_t) sizeof( TurretConfig{}.damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "cooldown", "cooldown", "float32", 0x2230, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, cooldown ), (uint32_t) sizeof( TurretConfig{}.cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "gunner", "gunner", "GunnerConfig", 0x2bc9, 13, false, false, true, 0, (uint32_t) offsetof( TurretConfig, gunner ), (uint32_t) sizeof( TurretConfig{}.gunner ), 0xffffffffu, (uint32_t) offsetof( TurretConfig, gunner_present ), GunnerConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "damage", "damage", "float32", 0x15a9, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, damage ), (uint32_t) sizeof( TurretConfig::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "cooldown", "cooldown", "float32", 0x2230, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, cooldown ), (uint32_t) sizeof( TurretConfig::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "gunner", "gunner", "GunnerConfig", 0x2bc9, 13, false, false, true, 0, (uint32_t) offsetof( TurretConfig, gunner ), (uint32_t) sizeof( TurretConfig::gunner ), 0xffffffffu, (uint32_t) offsetof( TurretConfig, gunner_present ), GunnerConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TurretConfig", (uint32_t) sizeof( TurretConfig ), 3, fields, +[]( void * p ) { new ( p ) TurretConfig{}; } };
     return &info;
@@ -1420,9 +1424,9 @@ inline const TableTypeInfo * TurretConfigTableType()
 inline const TableTypeInfo * HullConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "health", "health", "float32", 0x8617, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, health ), (uint32_t) sizeof( HullConfig{}.health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "mass", "mass", "float32", 0xe7a6, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, mass ), (uint32_t) sizeof( HullConfig{}.mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "turrets", "turrets", "TurretConfig", 0x48ad, 13, true, false, false, 4, (uint32_t) offsetof( HullConfig, turrets ), (uint32_t) sizeof( HullConfig{}.turrets.slots[0] ), 0xffffffffu, 0xffffffffu, TurretConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Weapon", +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Weapon( v ), id ); return id; }, NULL, "" },
+        { "health", "health", "float32", 0x8617, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, health ), (uint32_t) sizeof( HullConfig::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "mass", "mass", "float32", 0xe7a6, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, mass ), (uint32_t) sizeof( HullConfig::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "turrets", "turrets", "TurretConfig", 0x48ad, 13, true, false, false, 4, (uint32_t) offsetof( HullConfig, turrets ), (uint32_t) sizeof( HullConfig::turrets.slots[0] ), 0xffffffffu, 0xffffffffu, TurretConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Weapon", +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Weapon( v ), id ); return id; }, NULL, "" },
     };
     static const TableTypeInfo info = { "HullConfig", (uint32_t) sizeof( HullConfig ), 3, fields, +[]( void * p ) { new ( p ) HullConfig{}; } };
     return &info;
@@ -1431,9 +1435,9 @@ inline const TableTypeInfo * HullConfigTableType()
 inline const TableTypeInfo * KeyedConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "teams", "teams", "TeamConfig", 0x9ae1, 13, true, false, false, 4, (uint32_t) offsetof( KeyedConfig, teams ), (uint32_t) sizeof( KeyedConfig{}.teams.slots[0] ), 0xffffffffu, 0xffffffffu, TeamConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
-        { "hulls", "hulls", "HullConfig", 0xeff5, 13, true, false, false, 4, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( KeyedConfig{}.hulls.slots[0] ), 0xffffffffu, 0xffffffffu, HullConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Hull", +[]( uint64_t v ) { return EnumName( Hull( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Hull( v ), id ); return id; }, NULL, "" },
-        { "scores", "scores", "ScoreBoard", 0xdcf3, 13, false, false, false, 0, (uint32_t) offsetof( KeyedConfig, scores ), (uint32_t) sizeof( KeyedConfig{}.scores ), 0xffffffffu, 0xffffffffu, ScoreBoardTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "teams", "teams", "TeamConfig", 0x9ae1, 13, true, false, false, 4, (uint32_t) offsetof( KeyedConfig, teams ), (uint32_t) sizeof( KeyedConfig::teams.slots[0] ), 0xffffffffu, 0xffffffffu, TeamConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
+        { "hulls", "hulls", "HullConfig", 0xeff5, 13, true, false, false, 4, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( KeyedConfig::hulls.slots[0] ), 0xffffffffu, 0xffffffffu, HullConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Hull", +[]( uint64_t v ) { return EnumName( Hull( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Hull( v ), id ); return id; }, NULL, "" },
+        { "scores", "scores", "ScoreBoard", 0xdcf3, 13, false, false, false, 0, (uint32_t) offsetof( KeyedConfig, scores ), (uint32_t) sizeof( KeyedConfig::scores ), 0xffffffffu, 0xffffffffu, ScoreBoardTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 3, fields, +[]( void * p ) { new ( p ) KeyedConfig{}; } };
     return &info;
@@ -1442,7 +1446,7 @@ inline const TableTypeInfo * KeyedConfigTableType()
 inline const TableTypeInfo * ScoreBoardTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "per_team", "per_team", "int32", 0x443f, 4, true, false, false, 4, (uint32_t) offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( ScoreBoard{}.per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100000.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
+        { "per_team", "per_team", "int32", 0x443f, 4, true, false, false, 4, (uint32_t) offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( ScoreBoard::per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100000.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
     };
     static const TableTypeInfo info = { "ScoreBoard", (uint32_t) sizeof( ScoreBoard ), 1, fields, +[]( void * p ) { new ( p ) ScoreBoard{}; } };
     return &info;

@@ -478,7 +478,10 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 // identity is refused rather than silently renamed, the enum rule applied to
 // slots — and leaves `key_id` holding the slot's wire id. For a table element
 // `elem_bytes` holds the measured body, so measure and save decide elision on
-// the same number.
+// the same number; for an enum element `element_id` holds the resolved id, and
+// the save path writes THAT rather than resolving the same value twice — a
+// second `element_id` in the loop would shadow this one, which cl refuses
+// under /W4 (C4456) and the POSIX legs' -Wshadow now refuses too.
 func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) {
 	expr := g.keyedSlots("value.", f) + "[i]"
 	switch {
@@ -607,9 +610,14 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.emitKeyedSlotRides(f, kind, "                ", "return false;")
 		g.pf("                w.put16( key_id ); // the slot's VARIANT id, not its position\n")
 		g.pf("                int64_t elem_len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
-		if kind == tkTable {
+		switch {
+		case kind == tkTable:
 			g.pf("                if ( !%s ) return false;\n", g.saveCall(f.Type.Name, g.keyedSlots("value.", f)+"[i]", depthSame))
-		} else {
+		case enumRef(f) != nil:
+			// the slot's id is already resolved above, like key_id: writing it
+			// here rather than resolving the same value a second time
+			g.pf("                w.put16( element_id );\n")
+		default:
 			g.emitTableWriteElement(f, kind, g.keyedSlots("value.", f)+"[i]", "                ")
 		}
 		g.pf("                w.patch32( elem_len_at_%s, uint32_t( w.offset - elem_len_at_%s - 4 ) );\n", f.Name, f.Name)
@@ -1121,7 +1129,7 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 		}
 		fmt.Fprintf(&b, " { (uint32_t) offsetof( %s, %s ), %s },", un.Name, v.Name, table)
 	}
-	fmt.Fprintf(&b, " }; static const TableUnionInfo info = { (uint32_t) offsetof( %s, type ), (uint32_t) sizeof( %s{}.type ), arms }; return &info; }",
+	fmt.Fprintf(&b, " }; static const TableUnionInfo info = { (uint32_t) offsetof( %s, type ), (uint32_t) sizeof( %s::type ), arms }; return &info; }",
 		un.Name, un.Name)
 	return b.String()
 }
@@ -1185,14 +1193,20 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 				bound = f.Type.Size
 			}
 
-			elemSize := fmt.Sprintf("(uint32_t) sizeof( %s{}.%s )", st.Name, f.Name)
+			// `T::field`, never `T{}.field`: a member id-expression in an
+			// unevaluated operand names the type without an object, where the
+			// braced form makes the compiler materialise a whole value of T to
+			// take the size of one member of it. cl runs out of heap space
+			// doing that for a multi-megabyte aggregate (C1060 on the block
+			// corpus, whose RenderFrame is 7.9 MB across ten fields).
+			elemSize := fmt.Sprintf("(uint32_t) sizeof( %s::%s )", st.Name, f.Name)
 			if isArray {
-				elemSize = fmt.Sprintf("(uint32_t) sizeof( %s{}.%s[0] )", st.Name, f.Name)
+				elemSize = fmt.Sprintf("(uint32_t) sizeof( %s::%s[0] )", st.Name, f.Name)
 			}
 			if f.KeyEnum != "" {
 				// a keyed field's storage is the keyed type; its SLOTS are what
 				// a walker steps through, and offset already names slot 0
-				elemSize = fmt.Sprintf("(uint32_t) sizeof( %s )", g.keyedSlots(st.Name+"{}.", f)+"[0]")
+				elemSize = fmt.Sprintf("(uint32_t) sizeof( %s )", g.keyedSlots(st.Name+"::", f)+"[0]")
 			}
 
 			countOffset := "0xffffffffu"
