@@ -118,6 +118,8 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Node { x int32 }\ntype NodeTableInfo { y int32 }\n"},
 		{name: "a declaration colliding with the descriptor field storage", want: "generated TABLE-wire functions",
 			src: "package t\ntable Node { x int32 }\ntype NodeTableFields { y int32 }\n"},
+		{name: "a declaration colliding with the prefill", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeReset { y int32 }\n"},
 
 		// a table named after a Builder member would emit a header that cannot
 		// compile — a member function hides the type name it shares

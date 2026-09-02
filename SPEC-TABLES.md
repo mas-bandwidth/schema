@@ -2013,7 +2013,19 @@ returns that table's descriptor.
 its declared defaults, in place. A generic walker that FILLS a value has to
 be able to establish the defaults an absent field takes, and it holds no
 type to spell; this is the one thing the columns cannot express without a
-function. It does what the wire's read path does, with no temporary.
+function. It calls `<Name>Reset`, the same named prefill the wire's read
+path calls, and neither materialises a temporary.
+
+**`<Name>Reset` establishes the defaults ONE MEMBER AT A TIME**, and fills
+an array from its own first element rather than initialising the array as a
+whole. A table is a bounded record whose declared maximum can be
+megabytes, and the cost of establishing its defaults has to grow with the
+number of DECLARATIONS, not with the number of bytes — some compilers
+expand a whole-object initialisation of a large aggregate element by
+element, and charge tens of seconds for it per translation unit. For the
+same reason an array of a self-initialising element type carries no
+redundant `= {}`: the element type's own member initializers already say
+what an element starts as.
 
 **A field carries its TEXT KEY** beside its name — the `json = "..."`
 attribute's value, else the field's own name (§16.4) — so a walker over the
@@ -2098,7 +2110,7 @@ lives a table has without being told; and a table's own **node type id**
 (§3.1), so a tool can map a node table's records — or a region's node
 directory — onto descriptors with no schema files on hand. The
 compile-time refusals those ids bring (§11) apply to EVERY unit, as the
-24 generated spellings do, because a unit gains and loses pointers as an
+25 generated spellings do, because a unit gains and loses pointers as an
 edit and a name that was free yesterday must not become a collision
 tomorrow. A self-referential pointer resolves to its own type's
 descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
@@ -2645,11 +2657,11 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **24 suffixes**, and a declaration spelling one of them is
+  each of these **25 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
-  Measure  MeasureBody  Save  SaveBody  Load  LoadBody
+  Measure  MeasureBody  Save  SaveBody  Load  LoadBody  Reset
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
   At  Emplace  Pack  PackMeasure  OpenWalk
   Cook  CookMeasure  Open  TableFields  TableInfo
@@ -2663,7 +2675,7 @@ in build version (§20.5).
   here equal `tableGeneratedVerbs` exactly, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **Four of the twenty-four are claimed AHEAD of their emitter.** `Cook`,
+  **Four of the twenty-five are claimed AHEAD of their emitter.** `Cook`,
   `CookMeasure`, `Open` and `OpenWalk` are the cook's spellings and no backend
   emits one: the cook is wire v2's (§7) and is not built (schema#251). The
   claim is held while the emitter is absent, on this list's own rule — a name
@@ -2706,7 +2718,7 @@ in build version (§20.5).
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
-    for every declaration in every unit. All three are in the 24 above and
+    for every declaration in every unit. All three are in the 25 above and
     are claimed today only for closure members; the descriptor emission
     spells all three per declaration, so widening one of them would leave
     two open.

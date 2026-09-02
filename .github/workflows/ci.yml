@@ -429,8 +429,8 @@ jobs:
   #
   # AN ITERATION GATE: it runs on every pull request, and the one-to-two
   # minute rule is what says it may. Whole job, three runs on identical input:
-  # RUNS-PLACEHOLDER. The corpus step itself is RUNS-CORPUS-PLACEHOLDER of
-  # that; the rest is checkout, Go, and vcvars.
+  # 1:18, 1:08, 1:09. The corpus step itself is 19, 16 and 17 s of that; the
+  # rest is checkout, Go, the serialize clone and vcvars.
   #
   # WHERE THE TIME GOES, per translation unit (and the reason this job compiles
   # one TU at a time): nothing dominates. The whole 44-TU corpus is about
@@ -438,16 +438,13 @@ jobs:
   # on its own — toolchain and STL headers cold — and no unit past it costs
   # more than half a second.
   #
-  # It did not start here. Until #320 this job cost 2:26–5:14 and sat on the
-  # certification side, because four translation units cost ~20 s each: all
-  # four include RenderTable.h, which defines blockdemo::RenderFrame, a
-  # 7 879 320-byte aggregate, and cl expands a value-initialisation of an
-  # aggregate that large element by element in its FRONT END (c1xx 19.85 s, c2
-  # 0.03 s, zero functions generated). The emitter wrote three such
-  # value-inits per fixed table; it now prefills member by member and fills
-  # each array from its own first element, and those four units cost 0.4 s.
-  # The instrument below is what found that, and it is what any future
-  # argument about this job's cost will be settled with.
+  # WHAT IT GUARDS BEYOND COMPILING. cl's front end expands a
+  # value-initialisation of a large aggregate element by element, at O(bytes)
+  # — which is why the emitted header never writes `T{}` over a table and
+  # prefills member by member instead (#320). One such `T{}` over
+  # blockdemo::RenderFrame, a 7 879 320-byte aggregate, costs cl about six
+  # seconds in a translation unit clang compiles whole in 0.15 s, and this job
+  # is the only place in the tree where that is visible at all.
   #
   # THE PIN. The image is NAMED rather than `-latest`, the argument the
   # big-endian leg makes: which extensions cl accepts is exactly a
