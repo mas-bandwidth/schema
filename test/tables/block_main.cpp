@@ -584,12 +584,14 @@ int main( int argc, char ** argv )
 
     // ---- gate: THE FORGERY BATTERY (§19.2's WHOLE check) ----
     //
-    // Ten forgeries, one per fact BlockOpen checks, each a single word of an
-    // otherwise valid block. A reader who wrote this battery independently
-    // found that nine of ten refused and the tenth — a count past the DECLARED
-    // MAXIMUM — opened, on both backends: Begin refuses it on the producer
-    // side and Open did not refuse it here, so a consumer sizing anything by
-    // the maximum would have overflowed. It is the tenth row below now.
+    // Eleven forgeries, each a single word of an otherwise valid block. A
+    // reader who wrote this battery independently found that nine of ten
+    // refused and the tenth — a count past the DECLARED MAXIMUM — opened, on
+    // both backends: Begin refuses it on the producer side and Open did not
+    // refuse it here, so a consumer sizing anything by the maximum would have
+    // overflowed. It is the tenth row below now. The eleventh came from the
+    // FORGERY FUZZER beside this battery (test/tables/block_fuzz_main.cpp) and
+    // is the minimized case of the defect it found.
     //
     // The battery runs under the sanitized twin as well, where a forgery that
     // got past the check would read outside the block and the leg would say so.
@@ -597,7 +599,7 @@ int main( int argc, char ** argv )
         const int64_t bytes = RenderFrameBlockBytes( block );
         RenderFrameBlock forged;
         int refused = 0;
-        const int forgeries = 10;
+        const int forgeries = 11;
 
         // 1. a foreign magic
         {
@@ -672,6 +674,21 @@ int main( int argc, char ** argv )
             block.projection->ships.count = (uint32_t) ( RenderFrameBlock::ShipsMax + 904 );
             refused += !RenderFrameBlockOpen( forged, storage.base, RenderFrameBlockMaxBytes );
             block.projection->ships.count = saved;
+        }
+
+        // 11. an offset_of that is 64-ALIGNED and just under 2^63 — the one the
+        //     FORGERY FUZZER found (test/tables/block_fuzz_main.cpp). It is
+        //     positive as a signed 64-bit integer and aligned for its element,
+        //     so it passed both start checks, and the extent arithmetic then
+        //     added one row's pitch to it in int64_t: the addition the check
+        //     after it was supposed to catch WAS the overflow, which is
+        //     undefined behaviour rather than a refusal. Every term of that
+        //     arithmetic is unsigned and bounded before it is added now.
+        {
+            const uint64_t saved = block.projection->cameras.offset_of;
+            block.projection->cameras.offset_of = 0x7fffffffffffffc0ull;
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->cameras.offset_of = saved;
         }
 
         if ( refused != forgeries )

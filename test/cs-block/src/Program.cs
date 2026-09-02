@@ -169,7 +169,7 @@ static class Program
 
             // ---- THE FORGERY BATTERY, this side (§19.2's WHOLE check) ----
             //
-            // The C++ leg's ten, run against the same bytes by the consumer,
+            // The C++ leg's eleven, run against the same bytes by the consumer,
             // because a check the producer's language holds and the consumer's
             // does not is not a check on the boundary. The tenth — a count past
             // the DECLARED MAXIMUM — is the one a cold reader found OPEN on
@@ -229,7 +229,20 @@ static class Program
             forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, long.MaxValue / 2) ? 0 : 1;
             *count = savedCount;
 
-            Check(forgeries == 10, "the battery is the C++ leg's ten");
+            // an offset_of that is 64-ALIGNED and just under 2^63 — the one the
+            // FORGERY FUZZER found (test/cs-block/src/Fuzz.cs and its C++ twin).
+            // It is positive as a signed 64-bit integer and aligned for its
+            // element, so it passed both start checks, and the extent
+            // arithmetic then added one row's pitch to it: the addition the
+            // check after it was supposed to catch WAS the wrap. Every term of
+            // that arithmetic is unsigned and bounded before it is added now.
+            ulong* camerasOffsetOf = (ulong*) (at + (int) RenderFrameBlock.CamerasProjectionOffset);
+            ulong savedCameras = *camerasOffsetOf;
+            *camerasOffsetOf = 0x7fffffffffffffc0UL;
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
+            *camerasOffsetOf = savedCameras;
+
+            Check(forgeries == 11, "the battery is the C++ leg's eleven");
             Check(refusals == forgeries, "every forgery is refused: " + refusals + " of " + forgeries + " (SPEC-TABLES.md §19.2)");
 
             Check(RenderFrameBlock.Open(out refused, pointer, bytes.Length), "and the restored block opens again");
@@ -256,6 +269,19 @@ static class Program
                 // tree would buy the gate nothing the pinned small one does
                 // not already prove about the bytes
                 if (!Gate2.Run(Path.Combine("..", "..", "build", "block_gate2.bin")))
+                {
+                    failed = true;
+                }
+            }
+
+            // THE FORGERY FUZZER's C# half (SPEC-TABLES.md §19.2, §19.5), run
+            // only when asked, because it is a STANDING GATE with a budget of
+            // its own and the correctness leg above must stay quick enough to
+            // run on every change. Its seed blocks are written by the C++ leg,
+            // which owns the builder.
+            if (arg == "--fuzz")
+            {
+                if (!Fuzz.Run(Path.Combine("..", "..", "build", "block-fuzz")))
                 {
                     failed = true;
                 }

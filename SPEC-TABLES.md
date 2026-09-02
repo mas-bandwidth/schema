@@ -4914,6 +4914,18 @@ difference between a form and a convention.
   C# size and offsets are asserted under the managed model (§19.3) — the case
   where the two C# layout models disagree, pinned so a port cannot pick the
   wrong one and pass.
+- **A FORGERY FUZZER over `BlockOpen`, on both backends, as a standing gate**:
+  valid blocks from the generated builder over several count vectors — zero,
+  mixed and every array at its declared maximum — mutated by seeded byte flips,
+  field overwrites at every boundary value, swapped and overlapped triples,
+  truncated and extended lengths and unaligned bases, and the bar is REFUSE, OR
+  OPEN AND BE WHOLE: a refusal reads no byte outside the extent the caller
+  passed, and an opened block has every row of every array addressable inside
+  it, at this build's pitch, inside its declared maximum, with a full walk that
+  reads every byte of every row. Its own negative controls remove the extent
+  check and the declared-maximum check from the emitters and require it to go
+  red on both backends.
+
 - **The refusal battery**: one fixture per §11 block refusal, each with its
   negative control.
 - **The evolution battery** (§19.4), against the generated asserts and the one
