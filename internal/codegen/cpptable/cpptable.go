@@ -243,14 +243,10 @@ struct TableKeyed
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyBlock bool) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 	keyedStorage := ""
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
-	}
-	blockSurface := ""
-	if anyBlock {
-		blockSurface = blockRuntime()
 	}
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	// the two pointer-era descriptor members exist only in a unit that HAS
@@ -358,17 +354,6 @@ struct TableFieldInfo
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
-    // the BLOCK FORM's positions for the SAME field (SPEC-TABLES.md §8,
-    // §19.2). The projection is a different struct from the by-value one
-    // (§19.3), so a walker over a block needs the positions that struct
-    // actually has — every field carries one. An out-of-line array carries the
-    // offsets of the three members inside its triple beside it; every other
-    // field leaves those three 0xffffffff. The ELEMENT's own descriptor is
-    // already in the column a nested table uses.
-    uint32_t block_offset;        // the field's offset in the PROJECTION, or 0xffffffff
-    uint32_t block_offset_of;     // an out-of-line array's offset_of member, or 0xffffffff
-    uint32_t block_count_offset;  // its count member, or 0xffffffff
-    uint32_t block_stride_offset; // its stride member, or 0xffffffff
 };
 
 struct TableTypeInfo
@@ -382,12 +367,7 @@ struct TableTypeInfo
     // absent field takes, and it holds no type to spell — this is the one
     // thing the descriptors could not express without it. Placement-new
     // value-init, exactly what the wire's read path does, and no temporary.
-    void (*reset)( void * storage );
-    // the BLOCK FORM's columns (SPEC-TABLES.md §8, §19.2). They ride in EVERY
-    // unit as every other column does, because they describe the LANGUAGE — a
-    // table gains the marker as an edit. Machinery is gated; columns are not.
-    bool block;          // this table has the block form (SPEC-TABLES.md §2.7)
-    uint32_t block_size; // sizeof the block PROJECTION, so a walker can bound it; 0 when not block-form` + pointerTypeMember + `
+    void (*reset)( void * storage );` + pointerTypeMember + `
 };
 
 struct TableWriter
@@ -461,8 +441,7 @@ struct TableReader
     }
 };
 
-` + keyedStorage + blockSurface + `
-inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
+` + keyedStorage + `inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
@@ -486,8 +465,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	anyVariable := len(variable) > 0
 	anyKeyed := unitHasKeyedArray(u, closure)
 	blocks := ir.Blocks(u)
-	anyBlock := unitHasBlock(blocks)
-	out := map[string][]byte{}
+
+	// The BLOCK FORM (SPEC-TABLES.md §19) is emitted ON THE SIDE, into
+	// <Base>Block.h and <Base>Block.cpp: nothing declares it, every fixed
+	// table has one, and a consumer includes and compiles it only if it uses
+	// the form. The Table header below carries not one symbol of it.
+	out := generateBlockFiles(u, blocks, variable, targets)
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
@@ -522,14 +505,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.pf("static_assert( std::is_standard_layout<%s>::value, \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
 			}
 			g.pf("\n")
-			// the BLOCK FORM (SPEC-TABLES.md §19), emitted only for the tables
-			// THIS file marks — and into no unit that marks none (§2.2)
-			for _, st := range members {
-				if bl := blocks.Block(st.Name); bl != nil && st.IsTable {
-					g.owner = st
-					g.emitBlockSurface(bl)
-				}
-			}
 			g.pf("// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----\n\n")
 			for _, st := range members {
 				g.pf("inline const TableTypeInfo * %sTableType();\n", st.Name)
@@ -599,7 +574,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyBlock))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package))

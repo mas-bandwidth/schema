@@ -112,6 +112,28 @@ var registry = []Name{
 	{Name: "TableBuilder", By: Cpp, What: "the mutable life's base"},
 	{Name: "TableRegion", By: Cpp, What: "the locked, packed region"},
 	{Name: "TableRegionHeader", By: Cpp, What: "the cooked form's build-locking header"},
+
+	// the BLOCK FORM's runtime (SPEC-TABLES.md §19), emitted into
+	// <Base>Block.h / <Base>Block.cs and into no Table source at all. Claimed
+	// whenever a unit declares a table, on the same terms as everything above:
+	// nothing declares the block form, every fixed table has one, and a table
+	// gains and loses it as its closure gains and loses a pointer.
+	{Name: "TableBlockTriple", By: Cpp | Cs, What: "one array's (offset_of, count, stride)"},
+	{Name: "TableBlockRefusal", By: Cpp, What: "why Begin refused: the array, its count and its maximum"},
+	{Name: "TableBlockRows", By: Cpp | Cs, What: "one array's rows, iterated at the pitch the instance gives"},
+	{Name: "TableBlockSpan", By: Cpp, What: "one array's rows as a contiguous view (C# uses ReadOnlySpan)"},
+	{Name: "TableBlockFieldInfo", By: Cpp | Cs, What: "a block field's reflection descriptor"},
+	{Name: "TableBlockInfo", By: Cpp | Cs, What: "a block's reflection descriptor"},
+	{Name: "TableBlockMagic", By: Cpp | Cs, What: "the block prologue's magic, and the byte-order check with it"},
+	{Name: "table_block_byteswap64", By: Cpp, What: "the byte-order check's swap"},
+	{Name: "table_block_read64", By: Cpp, What: "the prologue read BYTEWISE"},
+	{Name: "table_block_align", By: Cpp, What: "round an offset up to an alignment"},
+
+	// the unit's BUILD VERSION (SPEC-TABLES.md §20): the one digest a block
+	// carries and BlockOpen compares. It is not a Table* spelling, and it is
+	// claimed here because it is a unit-level name the generated block sources
+	// define.
+	{Name: "BuildVersion", By: Cpp | Cs, What: "the unit's build version (SPEC-TABLES.md §20)"},
 }
 
 // All returns the whole registry, sorted by name.

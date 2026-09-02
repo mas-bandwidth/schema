@@ -101,16 +101,15 @@ func TestBlockLayoutMatchesTheWorkedTable(t *testing.T) {
 	}
 }
 
-// A declared MAXIMUM is deliberately NOT a digest fact (§19.3): it moves the
-// offset_ofs written into an instance, and a consumer takes every offset_of
-// FROM the instance, so raising one is absorbed on the DEFAULT entry point.
-// A port that folded the maximum in would break that absorption with nothing
-// to catch it — so the exclusion is pinned here rather than trusted.
-func TestBlockDigestExcludesTheMaximum(t *testing.T) {
+// A raised MAXIMUM grows the storage. What it does to the number a block
+// carries is the BUILD VERSION's question now, not a per-table digest's
+// (SPEC-TABLES.md §20): a bound is a layout fact of the by-value struct, so it
+// moves the build version and BlockOpen refuses until both sides are
+// regenerated. What is pinned here is the STORAGE half, which is what the
+// allocate-max law rests on.
+func TestRaisingAMaximumGrowsTheStorage(t *testing.T) {
 	u := loadRender(t)
-	before := ir.Blocks(u).Block("RenderFrame")
-	baseline := before.LayoutId
-	baselineMax := before.MaxBytes
+	baselineMax := ir.Blocks(u).Block("RenderFrame").MaxBytes
 
 	for _, f := range u.Tables["RenderFrame"].Fields {
 		if f.Name == "ships" {
@@ -118,27 +117,60 @@ func TestBlockDigestExcludesTheMaximum(t *testing.T) {
 		}
 	}
 	after := ir.Blocks(u).Block("RenderFrame")
-	if after.LayoutId != baseline {
-		t.Errorf("raising a maximum moved the layout id (0x%016x -> 0x%016x) — §19.4's edit 3 is absorbed on the DEFAULT path and a moved id refuses it",
-			baseline, after.LayoutId)
-	}
 	if after.MaxBytes <= baselineMax {
 		t.Errorf("raising a maximum did not grow the storage: %d -> %d", baselineMax, after.MaxBytes)
 	}
+	if got := after.ArrayByName("ships").Max; got != 8192 {
+		t.Errorf("ships max = %d, want 8192", got)
+	}
 }
 
-// The digest SEES layout: a moved offset, a changed size, a different pitch
-// (§19.3). Its negative control is the sabotage in the Makefile's
-// block-digest-negative-control target; this is the positive half.
-func TestBlockDigestMovesOnALayoutEdit(t *testing.T) {
+// THE BUILD VERSION SEES LAYOUT (SPEC-TABLES.md §20.1 group 2): a moved
+// offset, a changed size, a different pitch. Its negative control is the
+// sabotage in the Makefile's block-digest-negative-control target; this is the
+// positive half.
+func TestBuildVersionMovesOnALayoutEdit(t *testing.T) {
 	u := loadRender(t)
-	baseline := ir.Blocks(u).Block("RenderFrame").LayoutId
+	baseline := ir.BuildVersion(u)
 
 	// append a field at the end of a ROW: the row grows and so does its
-	// derived pitch, which is exactly what §19.4's edit 2 says moves the id
+	// derived pitch, so every consumer that indexes at the old pitch is wrong
 	ship := u.Tables["RenderShip"]
 	ship.Fields = append(ship.Fields, &ir.Field{Name: "extra", Type: ir.FieldType{Kind: ir.TInt, Signed: false, Width: 32}})
-	if got := ir.Blocks(u).Block("RenderFrame").LayoutId; got == baseline {
-		t.Error("appending a field to a row did not move the layout id — §19.4's edit 2 must refuse under BlockOpen")
+	if got := ir.BuildVersion(u); got == baseline {
+		t.Error("appending a field to a row did not move the build version — BlockOpen would accept a block whose rows moved")
+	}
+}
+
+// THE BUILD VERSION SEES MEANING (SPEC-TABLES.md §20.1 group 3): a fact that
+// changes what a load PUTS in a slot while moving no offset at all. Nothing in
+// the layout half could see this one.
+func TestBuildVersionMovesOnAMeaningEdit(t *testing.T) {
+	u := loadRender(t)
+	baseline := ir.BuildVersion(u)
+	for _, f := range u.Structs["RenderQuaternion"].Fields {
+		if f.Name == "w" {
+			f.DefFloat = 2.0
+		}
+	}
+	if got := ir.BuildVersion(u); got == baseline {
+		t.Error("changing a specified default did not move the build version — group 3 is exactly the class that moves no offset")
+	}
+}
+
+// AND IT DOES NOT SEE what no byte depends on (SPEC-TABLES.md §20.4): a `was`
+// rename moves no wire id, so it moves no line of either projection.
+func TestBuildVersionSurvivesAWasRename(t *testing.T) {
+	u := loadRender(t)
+	baseline := ir.BuildVersion(u)
+	for _, f := range u.Tables["RenderShip"].Fields {
+		if f.Name == "thrust" {
+			f.WasName = "thrust"
+			f.Name = "throttle"
+		}
+	}
+	if got := ir.BuildVersion(u); got != baseline {
+		t.Errorf("a `was` rename moved the build version (0x%016x -> 0x%016x) — the projections key on the WIRE ID for exactly this reason",
+			baseline, got)
 	}
 }

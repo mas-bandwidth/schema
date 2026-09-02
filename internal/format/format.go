@@ -544,7 +544,7 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 		fmt.Fprintf(b, "type %s %s\n", d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
 	case *ast.TableDecl:
-		fmt.Fprintf(b, "table %s %s\n", d.Name, fpAttrs(d.Attrs))
+		fmt.Fprintf(b, "table %s\n", d.Name)
 		fpBlock(b, d.Body)
 	case *ast.UnionDecl:
 		fmt.Fprintf(b, "union %s\n{\n", d.Name)

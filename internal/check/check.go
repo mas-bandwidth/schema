@@ -103,7 +103,6 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.resolveBodies()
 	c.checkCycles()
 	c.checkTables()
-	c.checkBlockForm()
 	c.checkTableFileDag()
 	c.checkClaimedNames()
 	c.checkTargetNames()
@@ -763,14 +762,12 @@ func (c *checker) resolveBodies() {
 							continue
 						}
 						st.CppInclude = lit.Value
-					case "block":
-						// the block form is a form a fixed TABLE takes: a
-						// type has no table wire for it to sit beside, and
-						// the marker's whole meaning is "a third projection
-						// of this table" (SPEC-TABLES.md §2.7, §11)
-						c.errf(a.Pos, "type %s | block: the block form is a form a `table` takes — a type has no table wire for a third projection to sit beside; declare %s as a table (SPEC-TABLES.md §2.7, §11)", d.Name, d.Name)
 					case "stride":
-						c.errf(a.Pos, "stride is not declarable in this version: a block-form row's pitch is its `sizeof` by construction, and declared headroom is a named follow-on (SPEC-TABLES.md §2.7, §11, §15)")
+						// refused by name rather than accepted-and-ignored:
+						// a block row's pitch is its `sizeof` by
+						// construction, and an inert attribute is a lie about
+						// the declaration (SPEC-TABLES.md §11)
+						c.errf(a.Pos, "stride is not declarable in this version: a block row's pitch is its `sizeof` by construction, and declared headroom is a named follow-on (SPEC-TABLES.md §19, §11, §15)")
 					default:
 						if a.Value != nil {
 							c.errf(a.Pos, "a type tag is a bare identifier (SPEC §4.2 Type tags)")
@@ -787,28 +784,7 @@ func (c *checker) resolveBodies() {
 				// tables share the struct shape but live beside the packet
 				// decls, never among them (SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
-				tbl := &ir.Struct{Name: d.Name, IsTable: true}
-				for _, a := range d.Attrs {
-					switch a.Key {
-					case "block":
-						// the BLOCK FORM's marker (SPEC-TABLES.md §2.7): a
-						// valueless qualifier selecting a third projection of
-						// the same declaration. It declares nothing.
-						if a.Value != nil {
-							c.errf(a.Pos, "block is a valueless marker: write `table %s | block` (SPEC-TABLES.md §2.7)", d.Name)
-							continue
-						}
-						tbl.Block = true
-					case "stride":
-						// refused by name rather than accepted-and-ignored,
-						// because an inert attribute is a lie about the
-						// declaration (SPEC-TABLES.md §11)
-						c.errf(a.Pos, "stride is not declarable in this version: a block-form row's pitch is its `sizeof` by construction, and declared headroom is a named follow-on (SPEC-TABLES.md §2.7, §11, §15)")
-					default:
-						c.errf(a.Pos, "unknown qualifier %q on a table — a table declaration takes `block` only (SPEC-TABLES.md §2.7)", a.Key)
-					}
-				}
-				c.tables[d.Name] = tbl
+				c.tables[d.Name] = &ir.Struct{Name: d.Name, IsTable: true}
 			case *ast.UnionDecl:
 				// the shell first, so fields can reference the union in any
 				// order; variants resolve in the second pass below. Max and
@@ -1787,6 +1763,23 @@ func (c *checker) checkTables() {
 		// object, exactly as colliding ids are on the wire — refused once,
 		// naming both, whether the collision comes from a `json` attribute
 		// or from an attribute meeting a plain field name.
+		// The BLOCK FORM's generated PROLOGUE (SPEC-TABLES.md §19.1): every
+		// fixed table's block projection opens with `magic` and
+		// `build_version`, generated exactly as an optional's `_present`
+		// companion is — so a field may not be named after either half. The
+		// claim is on EVERY table, not only the ones that have the form
+		// today: a table gains and loses the form as its closure gains and
+		// loses a pointer, and a name that was free yesterday must not become
+		// a collision tomorrow (§11).
+		if st.IsTable {
+			for _, f := range st.Fields {
+				if f.Name == "magic" || f.Name == "build_version" {
+					c.errf(pos, "table %s: field %s collides with the block form's generated prologue — `magic` and `build_version` open every block projection, as `<field>_present` is generated beside an optional's value; rename the field (SPEC-TABLES.md §19.1, §11)",
+						name, f.Name)
+				}
+			}
+		}
+
 		seenKey := map[string]*ir.Field{}
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
@@ -2671,7 +2664,7 @@ func (c *checker) checkClaimedNames() {
 			// field's rows, and the same name with `Span` appended is the
 			// contiguous view (§11, §19.2). This part of the set moves with
 			// the declaration, which is why §11 states it as a rule.
-			if st := c.tables[name]; st != nil && st.Block {
+			if st := c.tables[name]; st != nil {
 				why := fmt.Sprintf("%s's generated block row accessors (SPEC-TABLES.md §11, §19.2)", name)
 				for _, f := range st.Fields {
 					if !ir.BlockOutOfLine(f) {
@@ -2710,17 +2703,17 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // claimed for EVERY closure member, not only pointer-bearing ones: a table
 // gains or loses pointers as an edit, and a name that was free yesterday must
 // not become a collision tomorrow (SPEC-TABLES.md).
-// The BLOCK spellings are claimed on the same terms and for the same reason:
-// a table gains `| block` as an edit, so a name that was free yesterday must
-// not become a collision tomorrow (§11).
+// The BLOCK spellings are claimed on the same terms: nothing declares the
+// block form, every fixed table has one, and a table gains and loses the form
+// as its closure gains and loses a pointer — so a name that was free yesterday
+// must not become a collision tomorrow (§11).
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
 	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
 	"At", "Root", "Emplace", "Pack", "PackMeasure", "OpenWalk",
 	"Cook", "CookMeasure", "Open", "OpenValidated", "LayoutId", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
-	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen",
-	"BlockOpenCompatible", "BlockLayoutId", "Counts",
+	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 }
 
 // tableBuilderMembers are the member names of a generated <Name>Builder. A

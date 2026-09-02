@@ -1,28 +1,59 @@
-// The BLOCK FORM in C++ (SPEC-TABLES.md §2.7, §19): the builder half.
+// The BLOCK FORM in C++ (SPEC-TABLES.md §19): the builder half, emitted ON
+// THE SIDE.
 //
-// A table marked `| block` gains a third projection of the same declaration
-// beside its wire (§3) and its cook (§7). Everything here is PRE-COOKED AT
-// BUILD: every layout fact is settled by the compiler (ir.Blocks) and asserted
-// into this side by generated static_asserts, so nothing is decided,
-// discovered or checked at frame time.
+// NOTHING DECLARES IT. Every FIXED table has a block form — one projection of
+// the same declaration beside its wire (§3) and its cook (§7), in which the
+// table's own bounded arrays of structs are laid out of line at a fixed pitch
+// so a consumer in another language points at their rows. It is emitted into
+// <Base>Block.h and <Base>Block.cpp, which a consumer includes and compiles
+// only if it uses the form; <Base>Table.h carries not one symbol of it, which
+// is what the zero-cost gate (§2.2) asks.
+//
+// A table with NO block form says so in the header rather than going missing:
+// a variable-length table has no fixed pitch anywhere in it, and a table whose
+// closure carries a union has no blittable C# spelling (§19.3 pins that side
+// to Sequential with generated padding, which cannot overlay arms).
+//
+// Everything is PRE-COOKED AT BUILD: every layout fact is settled by the
+// compiler (ir.Blocks) and asserted into this side by generated static_asserts,
+// so nothing is decided, discovered or checked at frame time.
 //
 // The fill path — Begin, the array accessors and the row storage they hand
 // back — contains NO ALLOCATION, NO LOCK AND NO ATOMIC. That is an obligation
 // on this backend rather than a permission to the caller (§19.1), and the
-// Makefile's block-fill-refuser gate greps the marked region below for one.
+// Makefile's block-fill-refuser gate greps the marked region for one.
 package cpptable
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// blockRuntime is the shared block runtime, emitted into the per-package
-// primitives guard of a unit that marks a table and into NO OTHER (the
-// zero-cost gate, §2.2).
-func blockRuntime() string {
-	return `
+// blockRuntime is the shared block runtime: emitted into every <Base>Block.h
+// behind a per-package guard, so one definition survives per translation unit
+// whatever the include order and a lone Block.h works standalone.
+func blockRuntime(pkg string, buildVersion uint64) string {
+	guard := strings.ToUpper(pkg) + "_SCHEMA_BLOCK_PRIMITIVES"
+	return `#ifndef ` + guard + `
+#define ` + guard + `
+
+namespace ` + pkg + ` {
+
+// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// this build produces depend on — the type wire's protocol id, every table's
+// layout keyed by wire id, every table's meaning (defaults, ranges, enum and
+// union vocabularies, keyed the same way), and the build's byte order. It is
+// the number a block carries and the number BlockOpen compares.
+//
+// There are TWO ids in the design and they are not interchangeable: the
+// PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
+// what everything cooked or blocked is keyed by. A table edit moves this and
+// never the protocol id; a type edit moves both.
+inline constexpr uint64_t BuildVersion = ` + fmt.Sprintf("0x%016xull", buildVersion) + `;
+
 // ---- the block form's runtime (SPEC-TABLES.md §19) ----
 
 // What a table knows about ONE of its out-of-line arrays: where the rows
@@ -65,7 +96,7 @@ struct TableBlockRows
     {
         uint8_t * p;
         int32_t stride;
-        T & operator*() const { return *(T*) p; }
+        T & operator*() const { return *(T *) p; }
         iterator & operator++() { p += stride; return *this; }
         bool operator!=( const iterator & other ) const { return p != other.p; }
     };
@@ -90,6 +121,39 @@ struct TableBlockSpan
     T & operator[]( int32_t i ) const { return rows[i]; }
 };
 
+// ---- reflection over a block (SPEC-TABLES.md §8, §19.2) ----
+//
+// The descriptors are the mechanism, and they are what retires a hand-kept
+// mirror: a consumer holding them reads the triples out of an instance and
+// points at rows, with no hand-written struct per table and no knowledge of
+// the spelling that produced any of it. They are constant data, so this costs
+// a lookup, not a parse — and they are immutable, so any thread may read them.
+struct TableBlockFieldInfo
+{
+    const char * name;
+    uint32_t offset; // the field's offset IN THE PROJECTION, which is a different struct from the by-value one
+    uint32_t size;   // its size there
+    uint8_t kind;    // the table-wire kind, as TableFieldInfo carries it
+    bool out_of_line; // an out-of-line array: the three members below are live
+    uint32_t offset_of_offset; // the triple's offset_of member, or 0xffffffff
+    uint32_t count_offset;     // its count member, or 0xffffffff
+    uint32_t stride_offset;    // its stride member, or 0xffffffff
+    uint32_t stride;           // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    // the ELEMENT's own descriptor, behind a function so the whole table stays
+    // constant-initialised. NULL for every field that is not an out-of-line array.
+    const TableTypeInfo * (*element)();
+};
+
+struct TableBlockInfo
+{
+    const char * name;
+    uint64_t build_version; // the unit's, not a per-table digest (SPEC-TABLES.md §20)
+    uint32_t projection_size;
+    uint32_t projection_align;
+    int32_t num_fields;
+    const TableBlockFieldInfo * fields;
+};
+
 // The block's magic, and the byte-order check with it (§19.1). It is stored in
 // the producer's NATIVE order; a consumer that reads back the byte-swapped
 // value has found a foreign byte order, and one that reads back anything else
@@ -103,8 +167,8 @@ inline uint64_t table_block_byteswap64( uint64_t v )
          | ( v << 56 );
 }
 
-// the prologue read BYTEWISE: the magic is the one field read without
-// assuming the order the rest of the block is in
+// the prologue read BYTEWISE: the magic is the one field read without assuming
+// the order the rest of the block is in
 inline uint64_t table_block_read64( const uint8_t * p )
 {
     uint64_t v = 0;
@@ -116,19 +180,123 @@ inline int64_t table_block_align( int64_t offset, int64_t alignment )
 {
     return ( offset + alignment - 1 ) / alignment * alignment;
 }
+
+} // namespace ` + pkg + `
+
+#endif // ` + guard + `
 `
 }
 
-// unitHasBlock reports whether the unit marks any table `| block` — the one
-// question the zero-cost gate asks (SPEC-TABLES.md §2.2).
-func unitHasBlock(b *ir.BlockUnit) bool { return b != nil && len(b.Tables) > 0 }
+// generateBlockFiles emits <Base>Block.h and <Base>Block.cpp for every file of
+// a unit that declares a table. A file whose tables all lack a block form
+// still gets a header, saying which table and why — a form that goes missing
+// without a word is the thing this avoids.
+func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit, variable, targets map[string]bool) map[string][]byte {
+	out := map[string][]byte{}
+	if blocks == nil {
+		return out
+	}
+	for _, f := range u.Files {
+		if len(f.Tables) == 0 {
+			continue
+		}
+		g := &tableGen{unit: u, file: f, blocks: blocks, variable: variable, targets: targets,
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+		c := &tableGen{unit: u, file: f, blocks: blocks, variable: variable, targets: targets,
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
 
-// blockMember renders a projection field's storage spelling. Every field keeps
-// its by-value storage at its natural offset; an out-of-line array's storage —
-// `T[N]` and its count companion — is replaced AT THAT FIELD'S POSITION by its
+		var formed []*ir.BlockLayout
+		for _, st := range f.Tables {
+			if bl := blocks.Block(st.Name); bl != nil {
+				formed = append(formed, bl)
+				continue
+			}
+			g.pf("// table %s has NO block form: %s (SPEC-TABLES.md §19).\n", st.Name, blocks.SkippedReason(st.Name))
+			g.pf("// Its wire (§3) and its cook (§7) are unaffected — only this projection\n")
+			g.pf("// is absent, and it is absent by construction rather than by refusal.\n\n")
+		}
+		for _, bl := range formed {
+			g.owner = bl.Table
+			g.emitBlockSurface(bl)
+			c.owner = bl.Table
+			c.emitBlockDefinitions(bl)
+		}
+		out[f.Base+"Block.h"] = blockHeader(u, f, g, len(formed))
+		if len(formed) > 0 {
+			out[f.Base+"Block.cpp"] = blockSource(u, f, c)
+		}
+	}
+	return out
+}
+
+func blockBanner(u *ir.Unit, f *ir.File) string {
+	var h strings.Builder
+	fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", f.Base)
+	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
+	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
+	h.WriteString("// AGPL-3.0, its output is not.\n")
+	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (SPEC-TABLES.md §19).\n", u.Package)
+	return h.String()
+}
+
+func blockHeader(u *ir.Unit, f *ir.File, g *tableGen, formed int) []byte {
+	var h strings.Builder
+	h.WriteString(blockBanner(u, f))
+	h.WriteString("//\n")
+	h.WriteString("// NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on\n")
+	h.WriteString("// the side: include this header and compile the .cpp beside it only if you use\n")
+	h.WriteString("// the block form. The unit's <Base>Table.h carries not one symbol of it.\n")
+	h.WriteString("//\n")
+	h.WriteString("// A block is one flat extent: the table's own instance at the front — the\n")
+	h.WriteString("// PROJECTION, carrying per bounded array of structs where its rows start, how\n")
+	h.WriteString("// many there are and how far apart they sit — and then those rows, each array\n")
+	h.WriteString("// at a fixed pitch. The other side reads those three facts and points.\n\n")
+	h.WriteString("#pragma once\n\n")
+	h.WriteString("#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the layout contract\n#include <type_traits> // the layout contract's standard-layout asserts\n")
+	fmt.Fprintf(&h, "\n#include \"%sTable.h\"\n", f.Base)
+	names := make([]string, 0, len(g.includes))
+	for n := range g.includes {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if n == f.Base {
+			continue
+		}
+		fmt.Fprintf(&h, "#include \"%sTable.h\"\n", n)
+	}
+	h.WriteString("\n")
+	if formed > 0 {
+		h.WriteString(blockRuntime(u.Package, ir.BuildVersion(u)))
+	}
+	fmt.Fprintf(&h, "\nnamespace %s {\n\n", u.Package)
+	h.WriteString(g.body.String())
+	fmt.Fprintf(&h, "} // namespace %s\n", u.Package)
+	return []byte(h.String())
+}
+
+func blockSource(u *ir.Unit, f *ir.File, c *tableGen) []byte {
+	var s strings.Builder
+	s.WriteString(blockBanner(u, f))
+	s.WriteString("//\n")
+	s.WriteString("// The block form's COLD half, in its own translation unit: the open path, run\n")
+	s.WriteString("// once per handoff, and the reflection descriptors, which are constant data.\n")
+	s.WriteString("// The per-frame FILL path stays inline in the header, because a call per row\n")
+	s.WriteString("// accessor is exactly the cost this form exists to avoid.\n\n")
+	fmt.Fprintf(&s, "#include \"%sBlock.h\"\n\n", f.Base)
+	fmt.Fprintf(&s, "namespace %s {\n\n", u.Package)
+	s.WriteString(c.body.String())
+	fmt.Fprintf(&s, "} // namespace %s\n", u.Package)
+	return []byte(s.String())
+}
+
+// emitBlockProjectionField renders one projection field. Every field keeps its
+// by-value storage at its natural offset; a bounded array of structs — `T[N]`
+// and its count companion — is replaced AT THAT FIELD'S POSITION by its
 // sixteen-byte triple (SPEC-TABLES.md §2.7).
 func (g *tableGen) emitBlockProjectionField(f *ir.Field) {
 	if ir.BlockOutOfLine(f) {
+		g.noteRef(f.Type.Name)
 		g.pf("        TableBlockTriple %s = {}; // [..%d]%s laid out of line: (offset_of, count, stride)\n",
 			f.Name, f.ArrayBound, f.Type.Name)
 		return
@@ -139,23 +307,12 @@ func (g *tableGen) emitBlockProjectionField(f *ir.Field) {
 	g.indent = saved
 }
 
-// emitBlockSurface emits one marked table's whole block form.
+// emitBlockSurface emits one table's whole block form into the header.
 func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	name := bl.Table.Name
 
 	g.pf("// ---- the block form of table %s (SPEC-TABLES.md §19): begin ----\n\n", name)
 
-	// the layout digest, keyed as §19.3 states: the projection's own fields
-	// and their offsets and sizes, each out-of-line array's element and pitch,
-	// and every row field's offset, size and kind. A declared MAXIMUM is
-	// deliberately excluded — a consumer takes every offset_of from the
-	// instance, so raising one is absorbed on the default entry point (§19.4).
-	g.pf("// The LAYOUT ID: a 64-bit digest over the facts §18.2 refuses to move.\n")
-	g.pf("// A declared MAXIMUM is deliberately NOT one of them (§19.3), which is what\n")
-	g.pf("// makes a raised maximum absorbable on the default entry point (§19.4).\n")
-	g.pf("inline constexpr uint64_t %sBlockLayoutId = 0x%016xull;\n\n", name, bl.LayoutId)
-
-	// the counts, gathered before Begin, which is single-threaded
 	g.pf("// The counts, gathered before Begin — nothing about counting is concurrent\n")
 	g.pf("// (SPEC-TABLES.md §19.1). Clamping a count to its maximum is the PRODUCER's job.\n")
 	g.pf("struct %sCounts\n{\n", name)
@@ -167,7 +324,6 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	}
 	g.pf("};\n\n")
 
-	// the storage: the allocate-max law
 	g.pf("// The block's STORAGE, sized from the declared maxima: one extent, allocated\n")
 	g.pf("// once, never grown, never pooled (SPEC-TABLES.md §19.1). The sum is loose by\n")
 	g.pf("// construction — arrays commonly draw from one shared pool, so their maxima\n")
@@ -177,39 +333,61 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("    uint8_t bytes[%sBlockMaxBytes];\n", name)
 	g.pf("};\n\n")
 
-	// the block handle and its projection
 	g.pf("// The block: one extent, 64-byte aligned at its base, the PROJECTION at\n")
 	g.pf("// offset 0 and then each out-of-line array in declaration order\n")
-	g.pf("// (SPEC-TABLES.md §19.1). A block is valid until the next Begin on the SAME\n")
-	g.pf("// storage, which invalidates every block over it and every row pointer taken\n")
-	g.pf("// from one — double-buffering is therefore two storages, and it is yours.\n")
+	g.pf("// (SPEC-TABLES.md §19.1). Sixty-four is a cache line, and the guarantee is PER\n")
+	g.pf("// ARRAY: two workers filling different arrays never share one. Inside one\n")
+	g.pf("// array the pitch is the element's sizeof, so two workers meeting at a range\n")
+	g.pf("// boundary share the one line that straddles it — bounded at one line per\n")
+	g.pf("// boundary, not one per row.\n")
+	g.pf("//\n")
+	g.pf("// A block is valid until the next Begin on the SAME storage, which invalidates\n")
+	g.pf("// every block over it and every row pointer taken from one. Double-buffering\n")
+	g.pf("// is therefore two storages, and it is the caller's.\n")
 	g.pf("struct %sBlock\n{\n", name)
 	g.pf("    // The PROJECTION: a record like any other, following the same C ABI rule\n")
 	g.pf("    // (§19.3) — its own offsets are part of the contract, not scaffolding\n")
 	g.pf("    // around it. It opens with the generated PROLOGUE of two uint64s.\n")
 	g.pf("    struct Projection\n    {\n")
-	g.pf("        uint64_t magic = 0;     // generated: identifies a schema block, and the byte order with it\n")
-	g.pf("        uint64_t layout_id = 0; // generated: the digest §19.3 defines\n")
+	g.pf("        uint64_t magic = 0;         // generated: identifies a schema block, and the byte order with it\n")
+	g.pf("        uint64_t build_version = 0; // generated: the unit's build version (SPEC-TABLES.md §20)\n")
 	for _, f := range bl.Table.Fields {
 		g.emitBlockProjectionField(f)
 	}
 	g.pf("    };\n\n")
 	g.pf("    uint8_t * base = NULL;          // the extent's base, 64-byte aligned\n")
 	g.pf("    Projection * projection = NULL; // the projection, at offset 0\n")
-	g.pf("    int64_t bytes = 0;              // the extent the caller owns\n")
+	g.pf("    int64_t bytes = 0;              // the extent in use\n")
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
-		g.pf("\n    // %s: the constants this build asserts against — a consumer INDEXES with\n", a.Field.Name)
+		g.pf("\n    // %s: the constants this build asserts against. A consumer INDEXES with\n", a.Field.Name)
 		g.pf("    // what it read from the instance, never with these (§19.2).\n")
 		g.pf("    static constexpr int64_t %sStride = %d;\n", field, a.Stride)
 		g.pf("    static constexpr int64_t %sMax = %d;\n", field, a.Max)
 		g.pf("    static constexpr int64_t %sProjectionOffset = %d;\n", field, a.TripleOffset)
 	}
+	g.pf("\n    // this table's block descriptors (SPEC-TABLES.md §8, §19.2): constant\n")
+	g.pf("    // data, defined in the .cpp beside this header.\n")
+	g.pf("    static const TableBlockInfo * Type();\n")
 	g.pf("};\n\n")
 
 	g.emitBlockLayoutAsserts(bl)
 	g.emitBlockFillPath(bl)
-	g.emitBlockOpen(bl)
+
+	g.pf("// BlockOpen checks once and points, and this is the WHOLE check (§19.2): the\n")
+	g.pf("// magic read bytewise, the byte order it establishes, the BUILD VERSION against\n")
+	g.pf("// this build's own, each array's offset_of and extent inside the block, the\n")
+	g.pf("// used extent against the bytes the caller passed, and the base's alignment.\n")
+	g.pf("// On a match the bytes are what a build with this layout wrote, so there is\n")
+	g.pf("// nothing to validate and nothing to fix up. On any failure it returns false\n")
+	g.pf("// and points at nothing.\n")
+	g.pf("//\n")
+	g.pf("// There is ONE entry point, and no tolerant twin: the block form is same-build\n")
+	g.pf("// by construction — both sides are generated from one declaration at one build\n")
+	g.pf("// and ship together — so a consumer older than its producer is not a case. A\n")
+	g.pf("// mismatch is a refusal; regenerate both sides. Data that must outlive the\n")
+	g.pf("// build that wrote it takes the wire (§3), which this same table still has.\n")
+	g.pf("bool %sBlockOpen( %sBlock & block, void * base, int64_t bytes );\n\n", name, name)
 
 	g.pf("// ---- the block form of table %s: end ----\n\n", name)
 }
@@ -222,8 +400,12 @@ func (g *tableGen) emitBlockLayoutAsserts(bl *ir.BlockLayout) {
 	name := bl.Table.Name
 	g.pf("// The LAYOUT CONTRACT (SPEC-TABLES.md §19.3). The compiler derived every\n")
 	g.pf("// number below from the declaration; these asserts are this compiler saying\n")
-	g.pf("// whether it agrees. Neither side's layout is inferred from the other's.\n")
-	g.pf("static_assert( sizeof( bool ) == 1, \"a bool in a block row is ONE byte: the standard leaves sizeof(bool) implementation-defined, and the block form's two-language layout contract does not (SPEC-TABLES.md §19.3)\" );\n")
+	g.pf("// whether it agrees. Neither side's layout is inferred from the other's —\n")
+	g.pf("// both are checked against their own compiler's model, which is the only way\n")
+	g.pf("// a two-language contract can be held by a compiler that generates both.\n")
+	g.pf("static_assert( sizeof( bool ) == 1, \"a bool in a block row is ONE byte: the standard leaves sizeof(bool) implementation-defined, and this two-language layout contract does not (SPEC-TABLES.md §19.3)\" );\n")
+	g.pf("static_assert( sizeof( TableBlockTriple ) == 16, \"a triple is sixteen bytes with no interior padding (SPEC-TABLES.md §2.7)\" );\n")
+	g.pf("static_assert( offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, \"a triple's members sit at 0/8/12 (SPEC-TABLES.md §2.7)\" );\n")
 	g.pf("static_assert( std::is_standard_layout<%sBlock::Projection>::value, \"%s's block projection must stay standard-layout for offsetof\" );\n", name, name)
 	g.pf("static_assert( std::is_trivially_copyable<%sBlock::Projection>::value, \"%s's block projection must stay relocatable\" );\n", name, name)
 	g.pf("static_assert( sizeof( %sBlock::Projection ) == %d, \"%s's block projection sizeof moved: the C# side asserts %d for the same declaration (SPEC-TABLES.md §19.3)\" );\n",
@@ -231,15 +413,11 @@ func (g *tableGen) emitBlockLayoutAsserts(bl *ir.BlockLayout) {
 	g.pf("static_assert( alignof( %sBlock::Projection ) == %d, \"%s's block projection alignof moved (SPEC-TABLES.md §19.3)\" );\n",
 		name, bl.Projection.Align, name)
 	g.pf("static_assert( offsetof( %sBlock::Projection, magic ) == 0, \"the block prologue's magic sits at offset 0 (SPEC-TABLES.md §19.1)\" );\n", name)
-	g.pf("static_assert( offsetof( %sBlock::Projection, layout_id ) == 8, \"the block prologue's layout_id sits at offset 8 (SPEC-TABLES.md §19.1)\" );\n", name)
+	g.pf("static_assert( offsetof( %sBlock::Projection, build_version ) == 8, \"the block prologue's build_version sits at offset 8 (SPEC-TABLES.md §19.1, §20)\" );\n", name)
 	for _, fl := range bl.Projection.Fields {
 		g.pf("static_assert( offsetof( %sBlock::Projection, %s ) == %d, \"%s's projection field %s moved: the C# side asserts %d (SPEC-TABLES.md §19.3)\" );\n",
 			name, fl.Field.Name, fl.Offset, name, fl.Field.Name, fl.Offset)
 	}
-	g.pf("static_assert( sizeof( TableBlockTriple ) == 16, \"a triple is sixteen bytes with no interior padding (SPEC-TABLES.md §2.7)\" );\n")
-	g.pf("static_assert( offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, \"a triple's members sit at 0/8/12 (SPEC-TABLES.md §2.7)\" );\n")
-
-	// every row type, and every field of each
 	seen := map[string]bool{}
 	for _, a := range bl.Arrays {
 		g.emitBlockRowAsserts(a.ElemName, seen)
@@ -269,7 +447,6 @@ func (g *tableGen) emitBlockRowAsserts(name string, seen map[string]bool) {
 		g.pf("static_assert( offsetof( %s, %s ) == %d, \"block row %s's field %s moved: the C# side asserts %d (SPEC-TABLES.md §19.3)\" );\n",
 			name, fl.Field.Name, fl.Offset, name, fl.Field.Name, fl.Offset)
 	}
-	// everything a row nests by value is a record the other side asserts too
 	for _, fl := range ml.Fields {
 		if fl.Field.Type.Kind == ir.TNamed {
 			if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
@@ -283,7 +460,8 @@ func (g *tableGen) emitBlockRowAsserts(name string, seen map[string]bool) {
 // PATH, and the whole of what the conformance refuser (SPEC-TABLES.md §19.1,
 // §19.5) claims. Between the markers below there is no allocation, no lock and
 // no atomic, and the Makefile's block-fill-refuser gate fails the build if one
-// appears.
+// appears. It stays INLINE in the header: a call per row accessor is exactly
+// the cost this form exists to avoid.
 func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	name := bl.Table.Name
 	g.pf("// ---- block fill path: begin ----\n")
@@ -295,12 +473,13 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("// kind — and keeping this surface free of those three is what MAKES it\n")
 	g.pf("// possible.\n\n")
 
-	// Begin
 	g.pf("// The LAYOUT is settled once per block, from the counts, before any worker\n")
 	g.pf("// starts. Begin refuses counts past the declared maxima NAMING the array, its\n")
 	g.pf("// count and its maximum; stamps the prologue; writes every array's offset_of,\n")
 	g.pf("// count and stride; and hands back the block. It touches no row, and it is\n")
-	g.pf("// O( out-of-line arrays ) — a handful, not thousands.\n")
+	g.pf("// O( out-of-line arrays ) — a handful, not thousands. The projection's own\n")
+	g.pf("// fields are the producer's to write, exactly as the rows are: a caller that\n")
+	g.pf("// needs a byte-stable artifact zeroes the storage once (§19.1).\n")
 	g.pf("//\n")
 	g.pf("// Begin and BlockBytes are SINGLE-THREADED: call Begin before the workers and\n")
 	g.pf("// BlockBytes after they join (§19.1).\n")
@@ -312,17 +491,16 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 			a.Field.Name, a.Field.Name, a.Max)
 		g.pf("        return false;\n    }\n")
 	}
+	if len(bl.Arrays) == 0 {
+		g.pf("    (void) counts; (void) refusal; // no out-of-line array: no count to refuse\n")
+	}
 	g.pf("    block.base = storage.bytes;\n")
 	g.pf("    block.projection = (%sBlock::Projection *) storage.bytes;\n", name)
 	g.pf("    block.projection->magic = TableBlockMagic;\n")
-	g.pf("    block.projection->layout_id = %sBlockLayoutId;\n", name)
+	g.pf("    block.projection->build_version = BuildVersion;\n")
 	g.pf("    int64_t offset = %d; // sizeof the projection\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
-		start := ir.BlockAlign
-		if a.ElemAlign() > int64(start) {
-			start = int(a.ElemAlign())
-		}
-		g.pf("    offset = table_block_align( offset, %d ); // max( 64, alignof( %s ) )\n", start, a.ElemName)
+		g.pf("    offset = table_block_align( offset, %d ); // max( 64, alignof( %s ) )\n", blockStartAlign(a), a.ElemName)
 		g.pf("    block.projection->%s.offset_of = (uint64_t) offset;\n", a.Field.Name)
 		g.pf("    block.projection->%s.count = (uint32_t) counts.%s;\n", a.Field.Name, a.Field.Name)
 		g.pf("    block.projection->%s.stride = (uint32_t) sizeof( %s );\n", a.Field.Name, a.ElemName)
@@ -331,26 +509,26 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("    block.bytes = table_block_align( offset, %d );\n", ir.BlockAlign)
 	g.pf("    return true;\n}\n\n")
 
-	// BlockBytes
 	g.pf("// The USED extent: the greatest offset_of + count * stride, rounded up to 64,\n")
 	g.pf("// never less than the projection's own size (SPEC-TABLES.md §19.1). Because\n")
 	g.pf("// the layout follows the counts it is proportional to the frame rather than\n")
 	g.pf("// to the maxima. The tail — the bytes between the last row and the rounding —\n")
-	g.pf("// is UNSPECIFIED: a caller that needs a byte-stable artifact zeroes the\n")
-	g.pf("// storage once, because zeroing megabytes per frame is the cost this form\n")
+	g.pf("// is UNSPECIFIED, because zeroing megabytes per frame is the cost this form\n")
 	g.pf("// exists to avoid.\n")
 	g.pf("inline int64_t %sBlockBytes( const %sBlock & block )\n{\n", name, name)
+	if len(bl.Arrays) == 0 {
+		g.pf("    (void) block; // no out-of-line array: the extent is the projection's own\n")
+	}
 	g.pf("    int64_t used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		g.pf("    {\n")
-		g.pf("        int64_t end = (int64_t) block.projection->%s.offset_of + (int64_t) block.projection->%s.count * (int64_t) block.projection->%s.stride;\n",
+		g.pf("        const int64_t end = (int64_t) block.projection->%s.offset_of + (int64_t) block.projection->%s.count * (int64_t) block.projection->%s.stride;\n",
 			a.Field.Name, a.Field.Name, a.Field.Name)
 		g.pf("        if ( end > used ) used = end;\n")
 		g.pf("    }\n")
 	}
 	g.pf("    return table_block_align( used, %d );\n}\n\n", ir.BlockAlign)
 
-	// the accessors
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.pf("// %s: an accessor is ONE ADD — block base + offset_of — typed as the element.\n", a.Field.Name)
@@ -364,15 +542,10 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 		g.pf("    rows.stride = (int32_t) block.projection->%s.stride;\n", a.Field.Name)
 		g.pf("    return rows;\n}\n\n")
 
-		g.pf("// %s, as a CONTIGUOUS view — available because the pitch IS sizeof (§2.7).\n", a.Field.Name)
-		g.pf("// A block opened through BlockOpenCompatible may carry a LARGER pitch than\n")
-		g.pf("// this build's row, and a cast would then garble every row after the first,\n")
-		g.pf("// so the span is empty in that case and the rows accessor above is what a\n")
-		g.pf("// tolerant consumer iterates.\n")
+		g.pf("// %s, as a CONTIGUOUS view — available because the pitch IS sizeof (§2.7),\n", a.Field.Name)
+		g.pf("// which is how the fast path is actually written.\n")
 		g.pf("inline TableBlockSpan<%s> %s%sSpan( const %sBlock & block )\n{\n", a.ElemName, name, field, name)
 		g.pf("    TableBlockSpan<%s> span;\n", a.ElemName)
-		g.pf("    if ( block.projection->%s.stride != (uint32_t) sizeof( %s ) )\n", a.Field.Name, a.ElemName)
-		g.pf("        return span;\n")
 		g.pf("    span.rows = (%s *) ( block.base + block.projection->%s.offset_of );\n", a.ElemName, a.Field.Name)
 		g.pf("    span.count = (int32_t) block.projection->%s.count;\n", a.Field.Name)
 		g.pf("    return span;\n}\n\n")
@@ -380,65 +553,52 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("// ---- block fill path: end ----\n\n")
 }
 
-// emitBlockOpen emits the two entry points a consumer takes by name
-// (SPEC-TABLES.md §19.2, §19.4).
-func (g *tableGen) emitBlockOpen(bl *ir.BlockLayout) {
-	g.pf("// BlockOpen checks once and points, and this is the WHOLE check (§19.2): the\n")
-	g.pf("// magic read bytewise, the byte order it establishes, the layout id against\n")
-	g.pf("// this build's own, the used extent against the bytes the caller passed, the\n")
-	g.pf("// base's alignment, and each array's offset_of and extent inside the block. On\n")
-	g.pf("// a match the bytes are what a build with this layout wrote, so there is\n")
-	g.pf("// nothing to validate and nothing to fix up. On any failure it returns false\n")
-	g.pf("// and points at nothing.\n")
-	g.emitBlockOpenBody(bl, false)
-	g.pf("// BlockOpenCompatible checks everything BlockOpen checks EXCEPT the layout id\n")
-	g.pf("// (SPEC-TABLES.md §19.4), and then, per array it knows, this build's\n")
-	g.pf("// sizeof( element ) <= the stride it READ from the instance. Never an\n")
-	g.pf("// equality, and never against its own pitch constant: a producer whose rows\n")
-	g.pf("// have grown writes a larger pitch, and it is precisely that case this entry\n")
-	g.pf("// point exists to absorb. It drops the id check and NOTHING ELSE — there is\n")
-	g.pf("// no silent bypass, and a caller either gets the layout id's guarantee from\n")
-	g.pf("// BlockOpen or asks for the weaker one by name.\n")
-	g.emitBlockOpenBody(bl, true)
+// blockStartAlign is where one out-of-line array begins: aligned to
+// max( 64, alignof( element ) ) (SPEC-TABLES.md §19.1).
+func blockStartAlign(a ir.BlockArray) int64 {
+	if a.ElemAlign() > int64(ir.BlockAlign) {
+		return a.ElemAlign()
+	}
+	return int64(ir.BlockAlign)
 }
 
-func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout, compatible bool) {
+// emitBlockDefinitions emits the COLD half into <Base>Block.cpp: the open path
+// and the reflection descriptors.
+func (g *tableGen) emitBlockDefinitions(bl *ir.BlockLayout) {
 	name := bl.Table.Name
-	fn := name + "BlockOpen"
-	if compatible {
-		fn = name + "BlockOpenCompatible"
-	}
-	g.pf("inline bool %s( %sBlock & block, void * base, int64_t bytes )\n{\n", fn, name)
+	g.pf("// ---- the block form of table %s: the open path and the descriptors ----\n\n", name)
+	g.emitBlockOpenBody(bl)
+	g.emitBlockDescriptors(bl)
+}
+
+func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
+	name := bl.Table.Name
+	g.pf("bool %sBlockOpen( %sBlock & block, void * base, int64_t bytes )\n{\n", name, name)
 	g.pf("    block.base = NULL;\n    block.projection = NULL;\n    block.bytes = 0;\n")
 	g.pf("    if ( base == NULL || bytes < %d )\n        return false;\n", bl.Projection.Size)
 	g.pf("    if ( ( (uintptr_t) base %% %d ) != 0 )\n        return false; // the base's alignment\n", ir.BlockAlign)
-	g.pf("    const uint8_t * bytes_in = (const uint8_t *) base;\n")
-	g.pf("    const uint64_t magic = table_block_read64( bytes_in );\n")
+	g.pf("    const uint8_t * raw = (const uint8_t *) base;\n")
+	g.pf("    const uint64_t magic = table_block_read64( raw );\n")
 	g.pf("    if ( magic != TableBlockMagic )\n")
-	g.pf("        return false; // not a block, or a foreign byte order (%s)\n", "table_block_byteswap64( magic ) == TableBlockMagic")
-	if !compatible {
-		g.pf("    const uint64_t layout_id = table_block_read64( bytes_in + 8 );\n")
-		g.pf("    if ( layout_id != %sBlockLayoutId )\n        return false;\n", name)
-	}
+	g.pf("    {\n")
+	g.pf("        // a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is\n")
+	g.pf("        // not a block at all. Both refuse; the distinction is here so a\n")
+	g.pf("        // reader of this code knows the check covers the order too.\n")
+	g.pf("        (void) table_block_byteswap64( magic );\n")
+	g.pf("        return false;\n")
+	g.pf("    }\n")
+	g.pf("    if ( table_block_read64( raw + 8 ) != BuildVersion )\n        return false;\n")
 	g.pf("    %sBlock::Projection * projection = (%sBlock::Projection *) base;\n", name, name)
 	g.pf("    int64_t used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
-		alignment := ir.BlockAlign
-		if a.ElemAlign() > int64(alignment) {
-			alignment = int(a.ElemAlign())
-		}
 		g.pf("    {\n")
 		g.pf("        const int64_t offset_of = (int64_t) projection->%s.offset_of;\n", a.Field.Name)
 		g.pf("        const int64_t count = (int64_t) projection->%s.count;\n", a.Field.Name)
 		g.pf("        const int64_t stride = (int64_t) projection->%s.stride;\n", a.Field.Name)
-		if compatible {
-			g.pf("        if ( (int64_t) sizeof( %s ) > stride )\n            return false; // this build's row is wider than the pitch the producer wrote\n", a.ElemName)
-		} else {
-			g.pf("        if ( stride != (int64_t) sizeof( %s ) )\n            return false;\n", a.ElemName)
-		}
-		g.pf("        if ( offset_of < %d || ( offset_of %% %d ) != 0 )\n            return false;\n", bl.Projection.Size, alignment)
+		g.pf("        if ( stride != (int64_t) sizeof( %s ) )\n            return false;\n", a.ElemName)
+		g.pf("        if ( offset_of < %d || ( offset_of %% %d ) != 0 )\n            return false;\n", bl.Projection.Size, blockStartAlign(a))
 		g.pf("        const int64_t end = offset_of + count * stride;\n")
-		g.pf("        if ( count < 0 || end < offset_of || end > bytes )\n            return false;\n")
+		g.pf("        if ( end < offset_of || end > bytes )\n            return false;\n")
 		g.pf("        if ( end > used ) used = end;\n")
 		g.pf("    }\n")
 	}
@@ -450,34 +610,36 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout, compatible bool) {
 	g.pf("    return true;\n}\n\n")
 }
 
-// blockColumns renders one closure member's BLOCK descriptor columns
-// (SPEC-TABLES.md §8): the table's own `block` flag, and the projection's size
-// beside it so a walker over a block can bound the record it is reading. The
-// columns exist in every unit, whatever its mode — they describe the LANGUAGE.
-func (g *tableGen) blockColumns(st *ir.Struct) string {
-	if bl := g.blocks.Block(st.Name); bl != nil {
-		return fmt.Sprintf(", true, %d", bl.Projection.Size)
+// emitBlockDescriptors emits one table's block reflection: the projection
+// offset of every field, the offsets of the three members inside each triple,
+// and the ELEMENT's own descriptor beside them (SPEC-TABLES.md §8, §19.2).
+// A consumer holding these reads the facts out of an instance and points at
+// rows, with no hand-written struct per table.
+//
+// The data sits in an ANONYMOUS NAMESPACE and is reached through the block
+// type's own static member, so the block form claims no file-scope name beyond
+// §11's set.
+func (g *tableGen) emitBlockDescriptors(bl *ir.BlockLayout) {
+	name := bl.Table.Name
+	g.pf("namespace {\n\n")
+	g.pf("const TableBlockFieldInfo %s_block_fields[] = {\n", strings.ToLower(name))
+	for _, fl := range bl.Projection.Fields {
+		f := fl.Field
+		kind := tableScalarKind(f)
+		if f.Type.Kind == ir.TBytes {
+			kind = tkU8
+		}
+		if a := bl.ArrayByName(f.Name); a != nil {
+			g.pf("    { \"%s\", %du, %du, %d, true, %du, %du, %du, %du, +[]() { return %sTableType(); } },\n",
+				f.Name, fl.Offset, fl.Size, kind, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride, a.ElemName)
+			continue
+		}
+		g.pf("    { \"%s\", %du, %du, %d, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },\n",
+			f.Name, fl.Offset, fl.Size, kind)
 	}
-	return ", false, 0"
-}
-
-// blockFieldColumns renders one field's BLOCK descriptor columns: its
-// PROJECTION offset, and — for an out-of-line array — the offsets of the three
-// members inside its triple (SPEC-TABLES.md §8). Every field of a block-form
-// table carries a projection offset, because the projection is a different
-// struct from the by-value one and a walker over a block needs the positions
-// that struct actually has.
-func (g *tableGen) blockFieldColumns(st *ir.Struct, f *ir.Field) string {
-	bl := g.blocks.Block(st.Name)
-	if bl == nil {
-		return ", 0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu"
-	}
-	fl := bl.Projection.FieldByName(f.Name)
-	if fl == nil {
-		return ", 0xffffffffu, 0xffffffffu, 0xffffffffu, 0xffffffffu"
-	}
-	if a := bl.ArrayByName(f.Name); a != nil {
-		return fmt.Sprintf(", %du, %du, %du, %du", fl.Offset, a.OffsetOfOffset, a.CountOffset, a.StrideOffset)
-	}
-	return fmt.Sprintf(", %du, 0xffffffffu, 0xffffffffu, 0xffffffffu", fl.Offset)
+	g.pf("};\n\n")
+	g.pf("const TableBlockInfo %s_block_info = { \"%s\", BuildVersion, %du, %du, %d, %s_block_fields };\n\n",
+		strings.ToLower(name), name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields), strings.ToLower(name))
+	g.pf("} // namespace\n\n")
+	g.pf("const TableBlockInfo * %sBlock::Type() { return &%s_block_info; }\n\n", name, strings.ToLower(name))
 }

@@ -13,11 +13,7 @@
 // block is a record too.
 package ir
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-)
+import "sort"
 
 // BlockPrologueBytes is the projection's generated prologue: two uint64s,
 // `magic` and `layout_id` (SPEC-TABLES.md §19.1). It is generated exactly as
@@ -95,9 +91,7 @@ type BlockLayout struct {
 	Table      *Struct
 	Projection MemberLayout // the projection record, prologue included
 	Arrays     []BlockArray
-	MaxBytes   int64  // <Table>BlockMaxBytes: the projection plus every array at its maximum
-	LayoutId   uint64 // the digest (SPEC-TABLES.md §19.3)
-	Digest     string // the digest's canonical text, for `schema` output and for review
+	MaxBytes   int64 // <Table>BlockMaxBytes: the projection plus every array at its maximum
 }
 
 // ArrayByName returns one out-of-line array by field name.
@@ -110,15 +104,22 @@ func (b *BlockLayout) ArrayByName(name string) *BlockArray {
 	return nil
 }
 
-// BlockUnit is a unit's whole block-form surface: the marked tables in
-// declaration order, the layout of every record the form touches, and the
-// closure a backend emits block machinery for. A unit with no `| block` marker
-// produces a nil BlockUnit, which is what makes the zero-cost gate (§2.2)
-// answerable by asking one question.
+// BlockUnit is a unit's whole block-form surface: every FIXED table that has
+// one, the layout of every record the form touches, and — for the tables that
+// do not have one — the reason, so the generated file can say it rather than
+// leave a reader to guess.
+//
+// NOTHING DECLARES THE BLOCK FORM. Every fixed table has one and it is emitted
+// ON THE SIDE, in <Base>Block.h / <Base>Block.cpp / <Base>Block.cs, which a
+// consumer includes and links only if it uses the form. The ordinary
+// <Base>Table.h carries not one symbol of it, which is what the zero-cost gate
+// (§2.2) asks.
 type BlockUnit struct {
-	Tables  []*BlockLayout           // the marked tables, sorted by name
+	Tables  []*BlockLayout           // every table with a block form, sorted by name
 	Members map[string]*MemberLayout // every record in the block closure, by name
 	Order   []string                 // the closure's member names, sorted
+	// Skipped names each table that has NO block form, and why in one clause.
+	Skipped map[string]string
 }
 
 // Layout returns one closure member's computed layout, or nil.
@@ -155,27 +156,89 @@ func (b *BlockUnit) InClosure(name string) bool {
 	return ok
 }
 
-// BlockTables is the unit's `| block` tables, sorted by name.
-func BlockTables(u *Unit) []*Struct {
-	var out []*Struct
-	for _, st := range u.Tables {
-		if st.Block {
-			out = append(out, st)
-		}
+// SkippedReason is why one table has no block form, or "" when it has one.
+func (b *BlockUnit) SkippedReason(name string) string {
+	if b == nil {
+		return ""
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	return b.Skipped[name]
+}
+
+// blockFormable answers whether one table has a block form, and why not when
+// it does not. Two answers, and both are properties of the DECLARATION rather
+// than of anything an author writes to ask for the form:
+//
+//   - a VARIABLE-LENGTH table has none: a pointer anywhere in its by-value
+//     closure means no fixed pitch anywhere in it (SPEC-TABLES.md §19).
+//   - a table whose closure carries a UNION has none: §19.3 pins the C# side
+//     to Sequential with generated padding, and Sequential cannot overlay
+//     arms. Emitting the form on one side only would break the two-language
+//     contract the form exists to be, so neither side emits it and both say
+//     so. A union in a block closure is a named follow-on (§15).
+func blockFormable(u *Unit, st *Struct, variable map[string]bool) (bool, string) {
+	if variable[st.Name] {
+		return false, "it is VARIABLE-LENGTH: a pointer in its by-value closure means no fixed pitch anywhere in it"
+	}
+	seen := map[string]bool{}
+	var walk func(name string) string
+	walk = func(name string) string {
+		if seen[name] {
+			return ""
+		}
+		seen[name] = true
+		member := memberStruct(u, name)
+		if member == nil {
+			return ""
+		}
+		for _, f := range member.Fields {
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *Union:
+				return name + "." + f.Name + " is a union, and a block's blittable C# form is Sequential with generated padding, which cannot overlay arms"
+			case *Struct:
+				if why := walk(ref.Name); why != "" {
+					return why
+				}
+			}
+		}
+		return ""
+	}
+	if why := walk(st.Name); why != "" {
+		return false, why
+	}
+	return true, ""
 }
 
 // Blocks computes the whole block surface of a unit, or nil when the unit
-// marks no table. The checker refuses every declaration this cannot lay out
-// (§11), so a unit that reaches here lays out completely.
+// declares no table at all. Every FIXED table gets one; a table that cannot
+// carry the form is recorded in Skipped with the reason, never silently
+// dropped.
 func Blocks(u *Unit) *BlockUnit {
-	marked := BlockTables(u)
-	if len(marked) == 0 {
+	if len(u.Tables) == 0 {
 		return nil
 	}
-	b := &BlockUnit{Members: map[string]*MemberLayout{}}
+	variable := VariableTables(u)
+	names := make([]string, 0, len(u.Tables))
+	for name := range u.Tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	b := &BlockUnit{Members: map[string]*MemberLayout{}, Skipped: map[string]string{}}
+	var marked []*Struct
+	for _, name := range names {
+		st := u.Tables[name]
+		ok, why := blockFormable(u, st, variable)
+		if !ok {
+			b.Skipped[name] = why
+			continue
+		}
+		marked = append(marked, st)
+	}
+	if len(marked) == 0 {
+		return b
+	}
 	// every record the form touches: each marked table's BY-VALUE layout is
 	// not needed (the projection replaces it), but the ROW types are, and so
 	// is everything they nest by value.
@@ -234,8 +297,6 @@ func Blocks(u *Unit) *BlockUnit {
 			}
 		}
 		bl.MaxBytes = blockMaxBytes(bl)
-		bl.Digest = blockDigestText(bl, b)
-		bl.LayoutId = fnv1a64(bl.Digest)
 		b.Tables = append(b.Tables, bl)
 	}
 	for name := range b.Members {
@@ -425,10 +486,38 @@ func elementPiece(u *Unit, f *Field) storagePiece {
 		case *Struct:
 			ml := layoutRecord(u, ref)
 			return storagePiece{size: ml.Size, align: ml.Align}
+		case *Union:
+			// the generated C++ union is a TAG beside an anonymous union of
+			// the arms: the tag at offset 0 at its own alignment, the arms
+			// overlaid at the greatest arm alignment, the whole rounded up.
+			// A union has no blittable C# spelling under §19.3's Sequential
+			// rule, so it keeps a table out of the BLOCK form — but its
+			// layout is still a fact the build version folds in.
+			tag := int64(StorageBitsFor(ref.Max)) / 8
+			size, align := tag, tag
+			var armAlign, armSize int64 = 1, 0
+			for _, v := range ref.Variants {
+				arm := memberStruct(u, v.Type)
+				if arm == nil {
+					continue
+				}
+				ml := layoutRecord(u, arm)
+				if ml.Align > armAlign {
+					armAlign = ml.Align
+				}
+				if ml.Size > armSize {
+					armSize = ml.Size
+				}
+			}
+			if armAlign > align {
+				align = armAlign
+			}
+			size = alignUp(size, armAlign) + armSize
+			return storagePiece{size: alignUp(size, align), align: align}
 		}
 	}
-	// TString/TBytes are handled by the caller; TFixed and unions never reach
-	// a block closure (refused by name, §11)
+	// TString/TBytes are handled by the caller; TFixed has no table-wire kind
+	// and never reaches a table closure (refused by name, §11)
 	return storagePiece{size: 1, align: 1}
 }
 
@@ -491,82 +580,3 @@ func elemAlignOf(a BlockArray) int64 {
 
 // ElemAlign is elemAlignOf, exported for the backends and the tests.
 func (a BlockArray) ElemAlign() int64 { return elemAlignOf(a) }
-
-// ---- the digest (SPEC-TABLES.md §19.3) ----
-
-// blockDigestText is the canonical text the layout id digests: the
-// projection's own fields with their offsets and sizes, each out-of-line
-// array's element and pitch, and every row field's offset, size and kind.
-//
-// A declared MAXIMUM is deliberately EXCLUDED — it moves the offset_ofs
-// written into an instance, and a consumer takes every offset_of FROM the
-// instance, so raising one is absorbed on the default entry point (§19.4). A
-// port that folded the maximum in would break that absorption with nothing to
-// catch it.
-//
-// The text is a reviewable artifact for the same reason the wire-shape
-// projection is: what an id depends on should be printable.
-func blockDigestText(bl *BlockLayout, b *BlockUnit) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "block %s sizeof=%d alignof=%d\n", bl.Table.Name, bl.Projection.Size, bl.Projection.Align)
-	for _, fl := range bl.Projection.Fields {
-		f := fl.Field
-		if BlockOutOfLine(f) {
-			fmt.Fprintf(&sb, "  field %s offset=%d size=%d kind=%d elem=%s stride=%d\n",
-				f.Name, fl.Offset, fl.Size, TableScalarKind(f), f.Type.Name, strideOf(bl, f.Name))
-			continue
-		}
-		fmt.Fprintf(&sb, "  field %s offset=%d size=%d kind=%d\n", f.Name, fl.Offset, fl.Size, TableScalarKind(f))
-	}
-	// every row type, in the order its array is declared, and everything a row
-	// nests by value beneath it — deduplicated, so one element named twice
-	// digests once
-	seen := map[string]bool{}
-	var emit func(name string)
-	emit = func(name string) {
-		if seen[name] {
-			return
-		}
-		seen[name] = true
-		ml := b.Members[name]
-		if ml == nil {
-			return
-		}
-		fmt.Fprintf(&sb, "row %s sizeof=%d alignof=%d\n", name, ml.Size, ml.Align)
-		for _, fl := range ml.Fields {
-			fmt.Fprintf(&sb, "  field %s offset=%d size=%d kind=%d\n", fl.Field.Name, fl.Offset, fl.Size, TableScalarKind(fl.Field))
-		}
-		for _, fl := range ml.Fields {
-			if fl.Field.Type.Kind == TNamed {
-				if ref, ok := fl.Field.Type.Ref.(*Struct); ok {
-					emit(ref.Name)
-				}
-			}
-		}
-	}
-	for _, a := range bl.Arrays {
-		emit(a.ElemName)
-	}
-	return sb.String()
-}
-
-func strideOf(bl *BlockLayout, field string) int64 {
-	for _, a := range bl.Arrays {
-		if a.Field.Name == field {
-			return a.Stride
-		}
-	}
-	return 0
-}
-
-// fnv1a64 is the digest function: 64-bit FNV-1a over the canonical text. A
-// digest, not a version counter (§19.3) — and a function both generated sides
-// receive as a LITERAL, so neither computes it at runtime.
-func fnv1a64(s string) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= 0x100000001b3
-	}
-	return h
-}

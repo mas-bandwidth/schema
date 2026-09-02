@@ -1,7 +1,7 @@
-// Render.schema — the BLOCK FORM's dogfood corpus (SPEC-TABLES.md §2.7, §19).
+// Render.schema — the BLOCK FORM's dogfood corpus (SPEC-TABLES.md §19).
 //
 // This is the per-frame render data a simulation hands its host engine sixty
-// or more times a second: one marked root of nine bounded arrays over
+// or more times a second: one root of nine bounded arrays over
 // fixed-size row types, each row a flat record of scalars and two nested
 // `type`s. It is the shape §12.1's gate is held to, and its numbers are the
 // ones §19.1 works: with the counts in that table the arrays start at
@@ -61,10 +61,11 @@ type RenderQuaternion
     w float64 = 1.0
 }
 
-// The marked root. Nothing here is new: a scalar and nine ordinary bounded
-// arrays of ordinary fixed tables. `| block` says the same declaration has a
-// THIRD projection beside its wire (§3) and its cook (§7).
-table RenderFrame | block
+// The root. Nothing here is new, and nothing declares the block form: a scalar
+// and nine ordinary bounded arrays of ordinary fixed tables. Every fixed table
+// has a block form — a THIRD projection beside its wire (§3) and its cook (§7)
+// — emitted on the side in RenderBlock.h / RenderBlock.cs.
+table RenderFrame
 {
     version        uint64
     cameras        [..MaxCameras]RenderCamera

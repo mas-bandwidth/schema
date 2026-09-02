@@ -194,12 +194,16 @@ func (p *parser) parseDecl() {
 		// `table` declares a data type on the evolution-tolerant TABLE wire
 		// (SPEC-TABLES.md): field identity by name hash, unknown fields
 		// skipped, absent fields defaulted. The body grammar is the type
-		// body's; the qualification section takes `block` alone
-		// (SPEC §4.2, SPEC-TABLES.md §2.7) — the checker names anything else.
+		// body's; a table declaration takes no qualification. The BLOCK FORM
+		// (SPEC-TABLES.md §19) declares nothing at all: every fixed table has
+		// one, emitted on the side, so there is no marker to parse.
 		p.advance()
 		name := p.expect(scanner.Ident, "table name")
 		d := &ast.TableDecl{Name: name.Text, Pos: t.Pos}
-		d.Attrs = p.declQualifiers("table")
+		if p.kind() == scanner.Pipe {
+			p.errf(p.tok().Pos, "a table declaration takes no qualification (SPEC-TABLES.md)")
+			p.skipToTerminator()
+		}
 		d.Body = p.parseBlock()
 		p.expectTerminator("table declaration")
 		p.file.Decls = append(p.file.Decls, d)
