@@ -400,11 +400,30 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   # The compiler that generates C++ for a Windows-targeting game engine was
-  # never itself run on Windows. `make test` needs the six sibling runtime
-  # clones and a POSIX toolchain, so vet + build is the cheap first step the
-  # issue prescribes; growing this into a real test leg is a follow-up.
+  # never itself run on Windows, and until the MSVC leg below nothing in this
+  # file compiled a single line of what it EMITS with cl (issue #286). vet +
+  # build prove the COMPILER runs there; the MSVC leg proves its OUTPUT
+  # builds there, which is what the estate's standing rule actually asks for:
+  # Visual C++ is a hard requirement, emulate extensions, never require them.
+  #
+  # The leg is the TABLES corpus plus every packet header it emits beside it,
+  # not `make test` — `make test` needs the six sibling runtime clones, the
+  # three self-contained targets' toolchains and a POSIX toolchain, and none
+  # of that is what this job is for. It needs one sibling (serialize, header
+  # only, and only the packet headers include it) and cl.
+  #
+  # THE PIN. The runner image is NAMED rather than `-latest`, the argument
+  # the big-endian leg above makes: which extensions cl accepts is exactly a
+  # toolchain-version fact, so the image it comes from has to be a decision
+  # rather than whatever `-latest` moved to overnight. The step after the
+  # compile records what the pin resolved to.
+  #
+  # Its NEGATIVE CONTROL is the point of the leg, not decoration: a GNU
+  # statement expression is planted in one generated header, and the leg must
+  # go RED on it. Every POSIX leg in this file compiles that construct
+  # silently, which is precisely the class this job exists to catch.
   windows:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -414,6 +433,86 @@ jobs:
           cache: false
       - run: go vet ./...
       - run: go build ./...
+
+      # The one sibling this leg needs, at the same pin every other job uses.
+      # Header-only, and only the PACKET headers (<Base>.h / <Base>Wire.h)
+      # reach for it — a table header includes nothing of it.
+      - name: Check out the serialize runtime (pinned release)
+        shell: bash
+        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+
+      # Generation and script emission happen in bash because they are
+      # readable there; the cl step stays three lines. The corpus list mirrors
+      # the Makefile's tables_generate macro and cannot reuse it — the runner
+      # image carries no make, and installing one to share ten lines would
+      # cost more than the ten lines.
+      #
+      # Every unit gets an _AllHeaders.cpp: the packet headers have no .cpp of
+      # their own, and a unit whose tables are ALL variable-length emits no
+      # .cpp at all (test/tables/P2.schema is that unit), so compiling only
+      # the emitted .cpp files would leave both classes unbuilt.
+      - name: Generate the corpus and the cl scripts
+        shell: bash
+        run: |
+          set -e
+          go build -o bin/schema.exe ./cmd/schema
+          rm -rf build/msvc build/msvc-negative build/msvc-obj
+          mkdir -p build/msvc
+          while read -r out src; do
+            ./bin/schema.exe generate --lang cpp --out "build/msvc/$out" "$src"
+          done <<'UNITS'
+          examples tables/examples
+          pointers tables/pointers
+          block tables/block
+          blockhome tables/blockhome
+          v1 test/tables/V1.schema
+          v2 test/tables/V2.schema
+          p1 test/tables/P1.schema
+          p2 test/tables/P2.schema
+          p3 test/tables/P3.schema
+          jsonkeys test/tables/JsonKeys.schema
+          UNITS
+
+          for d in build/msvc/*/; do
+            u=$(basename "$d")
+            for h in "$d"*.h; do echo "#include \"$(basename "$h")\""; done > "$d/_AllHeaders.cpp"
+            echo "int schema_msvc_all_$u = 0;" >> "$d/_AllHeaders.cpp"
+          done
+
+          {
+            echo "@echo off"
+            for d in build/msvc/*/; do
+              u=$(basename "$d")
+              echo "mkdir build\\msvc-obj\\$u"
+              echo "cl /nologo /c /MP /W4 /WX /std:c++17 /permissive- /EHsc /Ibuild\\msvc\\$u /I..\\serialize /Fobuild\\msvc-obj\\$u\\ build\\msvc\\$u\\*.cpp || exit /b 1"
+            done
+          } > build/msvc/compile.cmd
+
+          # THE NEGATIVE CONTROL. A GNU statement expression — gcc and clang
+          # take it under -Wall -Wextra -Werror without a word, cl cannot
+          # parse it — planted in one generated header of a copied tree. The
+          # leg must go red on it, or the green above proves nothing.
+          cp -r build/msvc/examples build/msvc-negative
+          rm -f build/msvc-negative/_AllHeaders.cpp
+          printf '\nnamespace tabledemo { inline int schema_msvc_negative_control() { return ({ 1; }); } }\n' >> build/msvc-negative/GuardedTable.h
+          {
+            echo "@echo off"
+            echo "mkdir build\\msvc-obj\\negative"
+            echo "cl /nologo /c /W4 /WX /std:c++17 /permissive- /EHsc /Ibuild\\msvc-negative /Fobuild\\msvc-obj\\negative\\ build\\msvc-negative\\GuardedTable.cpp"
+          } > build/msvc/negative.cmd
+
+      - name: MSVC compiles the generated corpus, and the control proves it can fail
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          echo ---- what the pin resolved to ----
+          cl 2>&1 | findstr /C:"Version"
+          echo ---- the corpus ----
+          call build\msvc\compile.cmd || exit /b 1
+          echo ---- the negative control: this MUST fail ----
+          call build\msvc\negative.cmd && (echo ::error::NEGATIVE CONTROL FAILED: cl accepted a GNU statement expression in a generated header, so this leg cannot catch the class it exists for & exit /b 1)
+          echo negative control red as required: cl refused the planted extension
 
   # The one-benchmark rule, made mechanical. The estate has exactly one
   # sanctioned benchmark — this repo's data-driven bench — and shape knowledge
