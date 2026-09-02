@@ -77,7 +77,9 @@ func Check(u *ir.Unit, paths []string) (warnings []string, errs []error) {
 	}
 	base, err := Parse(path, data)
 	if err != nil {
-		return nil, []error{err}
+		// EVERY parse refusal names the remedy, in one place, and the remedy
+		// works: Update parses leniently and salvages the history section.
+		return nil, []error{fmt.Errorf("%w — regenerate it with: schema tables-baseline --update --reason \"...\", which preserves the %s section (SPEC-TABLES.md §16)", err, HistoryHeading)}
 	}
 	if base.Package != u.Package {
 		return nil, []error{fmt.Errorf("%s: baseline is for package %s, this unit is package %s — the baseline belongs to the unit it sits beside", path, base.Package, u.Package)}
@@ -125,9 +127,21 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 	var entry []string
 	switch {
 	case readErr == nil:
+		// UPDATE PARSES LENIENTLY, and it has to: every parse refusal names
+		// this command as the remedy, so a baseline the parser rejects — a
+		// corrupt file, another tool's file, or one written by a compiler
+		// whose rendering version has since moved — must be repairable
+		// WITHOUT deleting the one artifact that cannot be regenerated. The
+		// projection is regenerated from the unit either way; the history is
+		// salvaged verbatim.
 		base, err := Parse(path, data)
 		if err != nil {
-			return "", false, err
+			live.History = salvageHistory(data)
+			entry = []string{
+				fmt.Sprintf("### %s — %s", date, reason),
+				fmt.Sprintf("- baseline REGENERATED over an unreadable one (%v); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow", err),
+			}
+			break
 		}
 		live.History = base.History
 		if live.Text() == string(data) {
@@ -155,6 +169,28 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 		return "", false, err
 	}
 	return path, true, nil
+}
+
+// salvageHistory lifts the `## history` lines out of a baseline the parser
+// cannot read. It looks for the heading and nothing else, which is exactly why
+// it works on a file whose projection is unreadable: the history is prose the
+// compiler never interprets.
+func salvageHistory(data []byte) []string {
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		if line != HistoryHeading {
+			continue
+		}
+		history := lines[i+1:]
+		for len(history) > 0 && strings.TrimSpace(history[0]) == "" {
+			history = history[1:]
+		}
+		for len(history) > 0 && strings.TrimSpace(history[len(history)-1]) == "" {
+			history = history[:len(history)-1]
+		}
+		return history
+	}
+	return nil
 }
 
 // historyEntry is the intentional-break log's one entry: the date, the reason,

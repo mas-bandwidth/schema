@@ -221,8 +221,22 @@ func renderField(f *ir.Field) Field {
 	if elem := ir.TableElemKind(f); elem != 0 {
 		add("elem", strconv.Itoa(elem))
 	}
+	// the referent rides under a key that says WHAT it names, because the two
+	// are judged differently: a table's fields ride by id inside their own
+	// body, and a vocabulary's do not ride at all (SPEC-TABLES.md §4 — an
+	// enum field and a plain uint16 field are both kind 7, so the runtime
+	// cannot report an edit between them). See DefaultTokenPolicy.
 	if f.Type.Kind == ir.TNamed {
-		add("type", f.Type.Name)
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
+			add("enum", f.Type.Name)
+		case *ir.Flags:
+			add("flags", f.Type.Name)
+		case *ir.Union:
+			add("union", f.Type.Name)
+		default:
+			add("type", f.Type.Name)
+		}
 	}
 	switch f.Array {
 	case ir.ArrayFixed:
@@ -231,10 +245,6 @@ func renderField(f *ir.Field) Field {
 	case ir.ArrayCounted:
 		add("array", "bounded")
 		add("bound", strconv.FormatInt(f.ArrayBound, 10))
-		// ENUM-KEYED ARRAYS, when the construct lands: one line here —
-		//     add("key", f.ArrayKeyEnum)
-		// — and the `key` row already sitting in DefaultTokenPolicy makes
-		// swapping the key enum a refusal.
 	}
 	if f.Type.Size != 0 {
 		add("size", strconv.FormatInt(f.Type.Size, 10))
@@ -331,14 +341,14 @@ func Parse(path string, data []byte) (*Unit, error) {
 
 	head := strings.Fields(lines[0])
 	if len(head) != 2 || head[0] != magic {
-		return nil, fmt.Errorf("%s: not a schema tables baseline (its first line must read %q) — regenerate it with: schema tables-baseline --update --reason \"...\"", path, magic+" "+strconv.Itoa(Version))
+		return nil, fmt.Errorf("%s: not a schema tables baseline (its first line must read %q)", path, magic+" "+strconv.Itoa(Version))
 	}
 	v, err := strconv.Atoi(head[1])
 	if err != nil {
 		return nil, fmt.Errorf("%s: unreadable baseline version %q", path, head[1])
 	}
 	if v != Version {
-		return nil, fmt.Errorf("%s: baseline version %d, this compiler writes %d — regenerate it with: schema tables-baseline --update --reason \"...\"", path, v, Version)
+		return nil, fmt.Errorf("%s: baseline version %d, this compiler writes %d", path, v, Version)
 	}
 	u.Version = v
 
@@ -396,6 +406,7 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 			return bad()
 		}
 		f := Field{Name: fields[1]}
+		var haveId bool
 		for _, tok := range fields[2:] {
 			k, val, ok := strings.Cut(tok, "=")
 			if !ok {
@@ -406,10 +417,16 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 				if err != nil {
 					return bad()
 				}
-				f.Id = uint16(id)
+				f.Id, haveId = uint16(id), true
 				continue
 			}
 			f.Tokens = append(f.Tokens, Token{Key: k, Value: val})
+		}
+		// the wire id is the field's IDENTITY here — a line without one names
+		// nothing the diff can match, and a file that carries such a line is
+		// reported rather than half-read
+		if !haveId {
+			return fmt.Errorf("%s:%d: field %s carries no id= — the wire id is a field's identity in this file", path, lineno, fields[1])
 		}
 		t := &u.Tables[len(u.Tables)-1]
 		t.Fields = append(t.Fields, f)
@@ -438,10 +455,24 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 		un := &u.Unions[len(u.Unions)-1]
 		un.Arms = append(un.Arms, v)
 	case "flags":
-		if fields[0] != "variant" || len(u.Flags) == 0 {
+		if fields[0] != "variant" || len(u.Flags) == 0 || len(fields) != 3 {
 			return bad()
 		}
 		fl := &u.Flags[len(u.Flags)-1]
+		// LINE ORDER IS THE FACT, and `bit=` states it in the file so a human
+		// reading a diff does not have to count. The parser holds the two to
+		// each other: a hand-edit that moves a line without moving its bit is
+		// a file this parser cannot read, and it says so rather than guessing
+		// which half the author meant.
+		k, val, ok := strings.Cut(fields[2], "=")
+		if !ok || k != "bit" {
+			return bad()
+		}
+		bit, err := strconv.Atoi(val)
+		if err != nil || bit != len(fl.Variants) {
+			return fmt.Errorf("%s:%d: flags variant %s is written at bit=%s but stands at position %d — bit position is line order here, and the two disagree",
+				path, lineno, fields[1], val, len(fl.Variants))
+		}
 		fl.Variants = append(fl.Variants, fields[1])
 	default:
 		return bad()

@@ -16,10 +16,10 @@ table Debuff
     field amount id=0x39cc kind=4 default=0
 
 table LoadoutConfig
-    field grade id=0xd272 kind=7 type=Grade default=Silver
-    field grades id=0x301a kind=14 elem=7 type=Grade array=bounded bound=4
-    field podium id=0x088a kind=14 elem=7 type=Grade array=fixed bound=3
-    field perks id=0x2fc5 kind=9 type=Perks
+    field grade id=0xd272 kind=7 enum=Grade default=Silver
+    field grades id=0x301a kind=14 elem=7 enum=Grade array=bounded bound=4
+    field podium id=0x088a kind=14 elem=7 enum=Grade array=fixed bound=3
+    field perks id=0x2fc5 kind=9 flags=Perks
     field primary id=0x05f7 kind=13 type=WeaponConfig
     field backups id=0x1647 kind=14 elem=13 type=WeaponConfig array=fixed bound=2
     field attachments id=0x44d5 kind=14 elem=13 type=Attachment array=bounded bound=8
@@ -50,7 +50,7 @@ table WeaponConfig
     field penetration id=0x6557 kind=4 default=1
     field channel id=0x7366 kind=6
     field homing id=0xab40 kind=1
-    field effect id=0xe33a kind=15 type=Effect
+    field effect id=0xe33a kind=15 union=Effect
 
 table WideBlob
     field label id=0xe16a kind=12 size=70000

@@ -15,6 +15,7 @@
 package baseline_test
 
 import (
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -48,6 +49,13 @@ type Debuff
     amount int32 = 0
 }
 
+// same field ids as Buff, plus one: the referent rule's "the ids ride" side
+type BuffPlus
+{
+    multiplier float32 = 1.0
+    stacks     int32 = 1
+}
+
 union Effect
 {
     buff   Buff
@@ -64,6 +72,7 @@ table Config
     perks   Perks
     name    string(32)
     slots   [..Slots]int32
+    boost   Buff
     effect  Effect
 }
 `
@@ -205,10 +214,63 @@ func TestRefusals(t *testing.T) {
 			control: replace(t, "slots   [..Slots]int32", "slots   [Slots]int32"), // fixed vs bounded frames identically
 		},
 		{
+			name: "a field's flags TYPE swapped for a differently-ordered flags declaration",
+			edited: replace(t, "    perks   Perks",
+				"    perks   Traits") + "\nflags Traits { Turbo, Shielded, Cloaked }\n",
+			where:   "Config.perks",
+			what:    "flags Perks -> Traits",
+			token:   "flags",
+			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
+		},
+		{
+			name:    "a field's enum TYPE swapped for another vocabulary",
+			edited:  replace(t, "    grade   Grade = Silver", "    grade   Tier = Copper") + "\nenum Tier { Copper, Brass }\n",
+			where:   "Config.grade",
+			what:    "enum Grade -> Tier",
+			token:   "enum",
+			control: replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Argent, Silver, Gold }"),
+		},
+		{
+			// SPEC-TABLES.md §4 states outright that this edit is NOT a kind
+			// mismatch — both ride as kind 7 — so the runtime cannot report
+			// it, which is the definition of this baseline's job
+			name:    "an enum-typed field replaced by its raw storage integer",
+			edited:  replace(t, "    grade   Grade = Silver", "    grade   uint16"),
+			where:   "Config.grade",
+			what:    "enum Grade removed",
+			token:   "enum",
+			control: replace(t, "    grade   Grade = Silver", "    grade   Grade = Silver\n    tier    uint16"),
+		},
+		{
+			name:    "a raw integer field given an enum type",
+			edited:  replace(t, "heading int16", "heading Grade"),
+			where:   "Config.heading",
+			what:    "enum Grade added",
+			token:   "enum",
+			control: replace(t, "heading int16", "heading int16\n    tier    Grade"),
+		},
+		{
+			name:    "a nested table swapped for one whose ids do not ride",
+			edited:  replace(t, "    boost   Buff", "    boost   Debuff"),
+			where:   "Config.boost",
+			what:    "nested table Buff -> Debuff",
+			token:   "type",
+			control: replace(t, "    boost   Buff", "    boost   BuffPlus"), // every id rides
+		},
+		{
+			name:    "a union arm's payload swapped for one whose ids do not ride",
+			edited:  replace(t, "    buff   Buff\n", "    buff   Debuff\n"),
+			where:   "union Effect.buff",
+			what:    "arm payload Buff -> Debuff",
+			token:   "payload",
+			control: replace(t, "    buff   Buff\n", "    buff   BuffPlus\n"), // every id rides
+		},
+		{
 			name:    "a flags variant inserted",
 			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Hardened, Cloaked, Turbo }"),
 			where:   "flags Perks",
 			what:    "variant Cloaked moved from bit 1 to bit 2",
+			token:   "flags-position",
 			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
 		},
 		{
@@ -216,6 +278,7 @@ func TestRefusals(t *testing.T) {
 			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Cloaked, Shielded, Turbo }"),
 			where:   "flags Perks",
 			what:    "variant Shielded moved from bit 0 to bit 1",
+			token:   "flags-position",
 			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
 		},
 		{
@@ -223,6 +286,7 @@ func TestRefusals(t *testing.T) {
 			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Stealth, Turbo }"),
 			where:   "flags Perks",
 			what:    "bit 1 was Cloaked and is now Stealth",
+			token:   "flags-position",
 			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
 		},
 		{
@@ -230,6 +294,7 @@ func TestRefusals(t *testing.T) {
 			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Turbo }"),
 			where:   "flags Perks",
 			what:    "variant Turbo moved from bit 2 to bit 1",
+			token:   "flags-position",
 			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
 		},
 		{
@@ -237,6 +302,7 @@ func TestRefusals(t *testing.T) {
 			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked }"),
 			where:   "flags Perks",
 			what:    "variant Turbo removed from bit 2",
+			token:   "flags-position",
 			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
 		},
 	}
@@ -251,13 +317,16 @@ func TestRefusals(t *testing.T) {
 			if ctrl := diff(t, tc.control, baseline.DefaultTokenPolicy); len(ctrl) != 0 {
 				t.Errorf("the control edit should be absorbed by the wire, got:%s", summary(ctrl))
 			}
-			// the ATTRIBUTION control: with that policy row gone, the same
-			// edit passes — the refusal came from this check and no other
+			// the ATTRIBUTION control: with that policy row gone, this
+			// finding is gone — it came from THAT check and no other. (An
+			// edit can trip more than one row at once: replacing an
+			// enum-typed field with its raw storage integer also drops the
+			// default, and both refusals are correct.)
 			if tc.token == "" {
 				return
 			}
-			if got := diff(t, tc.edited, without(tc.token)); len(got) != 0 {
-				t.Errorf("with the %q rule removed the edit should pass, got:%s", tc.token, summary(got))
+			if got := diff(t, tc.edited, without(tc.token)); find(got, baseline.Refuse, tc.where, tc.what) {
+				t.Errorf("with the %q rule removed the refusal should be gone, got:%s", tc.token, summary(got))
 			}
 		})
 	}
@@ -298,6 +367,7 @@ func TestWarnings(t *testing.T) {
 			edited:  replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver }"),
 			where:   "enum Grade",
 			what:    "variant Gold removed",
+			token:   "enum-variant",
 			control: replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Argent, Silver, Gold }"),
 		},
 		{
@@ -305,6 +375,7 @@ func TestWarnings(t *testing.T) {
 			edited:  replace(t, "    buff   Buff\n    debuff Debuff\n", "    buff   Buff\n"),
 			where:   "union Effect",
 			what:    "arm debuff removed",
+			token:   "union-arm",
 			control: replace(t, "    buff   Buff\n    debuff Debuff\n", "    buff   Buff\n    debuff Debuff\n    curse  Buff\n"),
 		},
 	}
@@ -324,10 +395,108 @@ func TestWarnings(t *testing.T) {
 			if tc.token == "" {
 				return
 			}
-			if got := diff(t, tc.edited, without(tc.token)); len(got) != 0 {
-				t.Errorf("with the %q rule removed the edit should pass, got:%s", tc.token, summary(got))
+			if got := diff(t, tc.edited, without(tc.token)); find(got, baseline.Warn, tc.where, tc.what) {
+				t.Errorf("with the %q rule removed the warning should be gone, got:%s", tc.token, summary(got))
 			}
 		})
+	}
+}
+
+// TestVanishedMembers is finding 1 of the review, made a gate: a DECLARATION
+// rename moves no byte, so the wire absorbs it — but it must not take
+// everything inside the declaration out of coverage with it. A vanished
+// baseline name warns, and where a same-shaped declaration appears the
+// contents are judged under its new name, so a rename plus a semantic edit in
+// one commit is still caught.
+func TestVanishedMembers(t *testing.T) {
+	cases := []struct {
+		name     string
+		edited   string
+		warnAt   string
+		warnWhat string
+		verdict  baseline.Verdict
+		where    string // the edit that must still be judged through the rename
+		what     string
+	}{
+		{
+			name: "a table renamed, and a specified default changed with it",
+			edited: strings.NewReplacer("table Config", "table Ship",
+				"damage  float32 = 21.0", "damage  float32 = 25.0").Replace(baseSrc),
+			warnAt:   "table Config",
+			warnWhat: "Ship carries 10 of its 10 identities",
+			verdict:  baseline.Refuse,
+			where:    "Ship.damage",
+			what:     "specified default 21.0 -> 25.0",
+		},
+		{
+			name: "a flags declaration renamed, and its bits reordered with it",
+			edited: strings.NewReplacer(
+				"flags Perks { Shielded, Cloaked, Turbo }", "flags Traits { Cloaked, Shielded, Turbo }",
+				"perks   Perks", "perks   Traits").Replace(baseSrc),
+			warnAt:   "flags Perks",
+			warnWhat: "Traits carries 3 of its 3 identities",
+			verdict:  baseline.Refuse,
+			where:    "flags Traits",
+			what:     "variant Shielded moved from bit 0 to bit 1",
+		},
+		{
+			name: "an enum renamed, and a variant dropped with it",
+			edited: strings.NewReplacer(
+				"enum Grade { Bronze, Silver, Gold }", "enum Rank { Bronze, Silver }",
+				"grade   Grade = Silver", "grade   Rank = Silver").Replace(baseSrc),
+			warnAt:   "enum Grade",
+			warnWhat: "Rank carries 2 of its 3 identities",
+			verdict:  baseline.Warn,
+			where:    "enum Rank",
+			what:     "variant Gold removed",
+		},
+		{
+			name: "a union renamed, and an arm dropped with it",
+			edited: strings.NewReplacer(
+				"union Effect\n{\n    buff   Buff\n    debuff Debuff\n}", "union Outcome\n{\n    buff   Buff\n}",
+				"effect  Effect", "effect  Outcome").Replace(baseSrc),
+			warnAt:   "union Effect",
+			warnWhat: "Outcome carries 1 of its 2 identities",
+			verdict:  baseline.Warn,
+			where:    "union Outcome",
+			what:     "arm debuff removed",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := diff(t, tc.edited, baseline.DefaultTokenPolicy)
+			if !find(got, baseline.Warn, tc.warnAt, tc.warnWhat) {
+				t.Errorf("a vanished member must warn, naming where it went; wanted %s: %s, got:%s", tc.warnAt, tc.warnWhat, summary(got))
+			}
+			if !find(got, tc.verdict, tc.where, tc.what) {
+				t.Fatalf("the edit inside the renamed declaration must still be judged; wanted %s: %s, got:%s", tc.where, tc.what, summary(got))
+			}
+			// the ATTRIBUTION control: without the member row there is no
+			// pairing, and the edit inside the rename goes unseen — which is
+			// exactly the hole this test closes
+			if got := diff(t, tc.edited, without("member")); find(got, tc.verdict, tc.where, tc.what) {
+				t.Errorf("with the %q rule removed the finding should be gone, got:%s", "member", summary(got))
+			}
+		})
+	}
+}
+
+// TestVanishedMemberWithNoSuccessor: a member that really is gone warns too —
+// removals stay legal, and a coverage hole is never invisible.
+func TestVanishedMemberWithNoSuccessor(t *testing.T) {
+	edited := strings.Replace(baseSrc, "    effect  Effect\n", "", 1)
+	got := diff(t, edited, baseline.DefaultTokenPolicy)
+	for _, want := range []string{"union Effect", "table Debuff"} {
+		if !find(got, baseline.Warn, want, "no longer in the closure") {
+			t.Errorf("wanted a coverage warning for %s, got:%s", want, summary(got))
+		}
+	}
+	if refusals, _ := baseline.Split(got); len(refusals) != 0 {
+		t.Errorf("removing a member is legal — it warns, it does not refuse, got:%s", summary(refusals))
+	}
+	if got := diff(t, edited, without("member")); len(got) != 0 {
+		t.Errorf("with the \"member\" rule removed the removal should be silent, got:%s", summary(got))
 	}
 }
 
@@ -347,7 +516,6 @@ func TestAbsorbedEdits(t *testing.T) {
 		{"a bounded array made fixed", replace(t, "slots   [..Slots]int32", "slots   [Slots]int32")},
 		{"a field moved under a guard", replace(t, "    hits    int32", "    guard   bool\n    if guard\n    {\n        hits int32\n    }")},
 		{"a table added", baseSrc + "\ntable Extra\n{\n    x int32 = 1\n}\n"},
-		{"a whole table removed from the closure", strings.Replace(baseSrc, "    effect  Effect\n", "", 1)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -541,6 +709,80 @@ func TestCheckReportsWarningsWithoutRefusing(t *testing.T) {
 	}
 	if len(warns) != 1 || !strings.Contains(warns[0], "array bound 8 -> 4") {
 		t.Fatalf("wanted one bound warning, got %v", warns)
+	}
+}
+
+// TestUpdateSalvagesHistoryFromAnUnreadableBaseline is the review's finding 3
+// made a gate: every parse refusal names `--update --reason` as the remedy, so
+// that command has to WORK on a baseline the parser rejects — and it must not
+// cost the one artifact in the file that cannot be regenerated. The
+// version-bump case is the one that matters, because a Version bump puts every
+// committed baseline in the estate on exactly this path.
+func TestUpdateSalvagesHistoryFromAnUnreadableBaseline(t *testing.T) {
+	history := []string{
+		"### 2024-01-01 — the break we are never allowed to forget",
+		"- Config.damage: specified default 10.0 -> 21.0 [refuse]",
+	}
+	cases := []struct{ name, head string }{
+		{"a rendering version this compiler does not write", fmt.Sprintf("schema-tables-baseline %d\npackage fixture\n", baseline.Version+1)},
+		{"a file that is not a baseline at all", "hello world\n"},
+		{"a member line this parser cannot read", "schema-tables-baseline 1\npackage fixture\n\ntable Config\n    field ???\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, paths := writeUnit(t, baseSrc)
+			path := filepath.Join(dir, baseline.FileName)
+			stale := tc.head + "\n" + baseline.HistoryHeading + "\n" + strings.Join(history, "\n") + "\n"
+			if err := os.WriteFile(path, []byte(stale), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			// the check refuses and names the remedy
+			_, errs := baseline.Check(unit(t, baseSrc), paths)
+			if len(errs) != 1 || !strings.Contains(errs[0].Error(), "--update --reason") {
+				t.Fatalf("wanted one refusal naming the remedy, got %v", errs)
+			}
+			// and the remedy runs
+			if _, rewrote, err := baseline.Update(unit(t, baseSrc), paths, "regenerating as instructed"); err != nil || !rewrote {
+				t.Fatalf("the advertised remedy must work: %v (rewrote=%v)", err, rewrote)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range append(history,
+				"regenerating as instructed",
+				"baseline REGENERATED over an unreadable one",
+				"table Config") {
+				if !strings.Contains(string(data), want) {
+					t.Errorf("the regenerated baseline must carry %q:\n%s", want, data)
+				}
+			}
+			// and the file it produced is one the check accepts
+			if warns, errs := baseline.Check(unit(t, baseSrc), paths); len(warns) != 0 || len(errs) != 0 {
+				t.Errorf("after the regeneration the check must pass: %v %v", warns, errs)
+			}
+		})
+	}
+}
+
+// TestParseHoldsBitPositionToLineOrder: `bit=` states in the file what line
+// order already decides, and the parser holds the two to each other rather
+// than guessing which half a hand-edit meant.
+func TestParseHoldsBitPositionToLineOrder(t *testing.T) {
+	text := baseline.Render(unit(t, baseSrc)).Text()
+	scrambled := strings.Replace(text,
+		"    variant Shielded bit=0\n    variant Cloaked bit=1\n",
+		"    variant Cloaked bit=1\n    variant Shielded bit=0\n", 1)
+	if scrambled == text {
+		t.Fatal("the fixture edit did not apply")
+	}
+	_, err := baseline.Parse("tables.baseline", []byte(scrambled))
+	if err == nil {
+		t.Fatal("two variant lines swapped without their bit= values is a file this parser must refuse")
+	}
+	if !strings.Contains(err.Error(), "bit position is line order here") {
+		t.Errorf("the refusal must say why, got: %v", err)
 	}
 }
 
