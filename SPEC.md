@@ -547,7 +547,18 @@ sequence    uint16
   **table** body takes `was` (below); and a **table declaration** takes
   none.
 - **`view` — reflection over a type, type declarations only**
-  (SPEC-TABLES.md §8.2). A valueless marker: `type ShipState | view`. It
+  (SPEC-TABLES.md §8.2). A valueless marker, and **`view` is reserved out of
+  the type-tag namespace to make it one**: a type declaration's qualification
+  section takes bare identifiers as TAGS (below), so without the reservation
+  `| view` would parse as a tag named `view` and be carried into the IR as
+  one — accepted and inert, which is the outcome an attribute may never
+  have. `view` is therefore an ATTRIBUTE everywhere it appears, and a type
+  tagged `view` is refused by name (§4.11). That is a **language change**:
+  a declaration reading `type Camera | view` meant "tagged view" and now
+  means "reflected", and one that meant the tag has no spelling for it any
+  more. It moves no id — tags never enter the wire-shape projection (§3.1),
+  so no unit's `ProtocolId` moves either way. The marker itself:
+  `type ShipState | view`. It
   declares nothing and changes no field, no storage and no wire byte — it
   says the type gets the reflection descriptors a table carries built in, so
   a tool walks its properties by name at runtime with no schema files on
@@ -599,6 +610,13 @@ type Quat | quat4
   and checked. **In v1 a tag is inert**: parsed, carried through the IR,
   emitted as an annotation on the generated type, and it changes zero
   generated code.
+- **The namespace has ONE hole in it, and every valueless attribute a type
+  declaration takes must cut the same one: `view` is not a tag** (§4.11). A
+  bare identifier in a type's qualification section is a tag unless the
+  attribute vocabulary claims it, and a claimed spelling cannot also be a
+  tag — the same identifier cannot be both a marker the compiler acts on and
+  a string it carries through inertly. So the vocabulary's valueless markers
+  are refused as tags by name, `view` being the one that exists.
 - **Meaning arrives by claiming.** A future pass — the delta pass first —
   claims a tag and assigns its semantics and generated actions
   (interpolation, prediction, normalization, render mapping). Claiming is an
@@ -1172,6 +1190,13 @@ NAME rather than falling into a generic parse error:
   of the language; every field of a type is identical on every peer.
 - **`round`** (the attribute) — rounding is not an attribute: it is the one
   fixed-point rule, half away from zero, everywhere (§4.3).
+- **`view` as a TYPE TAG** — `view` is an attribute (§4.2, SPEC-TABLES.md
+  §8.2), so a type tagged `view` is refused naming the declaration rather
+  than carried through the IR as an inert string. A tag and a marker cannot
+  share a spelling: one is acted on and the other is not, and a reader of the
+  line could not tell which they wrote. Tags are excluded from the wire-shape
+  projection (§3.1), so the refusal moves no unit's `ProtocolId` — it costs a
+  rename in a schema that spelled the tag, and nothing on any wire.
 
 The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
@@ -1336,9 +1361,16 @@ reflection descriptors, and a unit that marks nothing emits no view file),
 debug build asks for), or `--views none` (no view file, whatever the
 declarations say — what a game build asks for). The request is carried as a
 generate option, never in the schema, so the same declarations serve both
-builds and a marker costs a build that did not ask for it nothing. A target
-with no view emitter refuses the request by name rather than ignoring it.
-The surface it emits, and the gates it is held to, are SPEC-TABLES.md §8.
+builds and a marker costs a build that did not ask for it nothing.
+
+**`views` is a key EVERY target knows.** A generator ignores option keys it
+does not know — that is the option contract, and it is exactly why the key
+cannot be left unknown to the seven backends that emit no view: ignoring it
+is silent, and a build that asked for a registry would get none without
+being told. So every target either HONORS `views` or REFUSES it by name,
+and refusing is what a target with no view emitter does for any value but
+`none` and an unmarked `declared`. The surface a target that honors it
+emits, and the gates it is held to, are SPEC-TABLES.md §8.
 
 **Output layout.** Each target emits one generated file per schema file —
 `examples/Constants.schema` → `generated/cpp/Constants.h` — so the generated

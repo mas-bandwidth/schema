@@ -1340,12 +1340,12 @@ generate time:
 schema generate --lang cpp --views all --out generated tables/examples
 ```
 
-That adds one file to the unit — `TabledemoView.h` and `TabledemoView.cpp`,
-named for the unit's package, one pair for the whole unit — holding a
-registry of everything the schema declared. An
-editor or a debug build compiles it; a game build generates with the default
-(or `--views none`) and never sees it. Marking one type instead of the whole
-unit is `| view` on the declaration:
+That adds one pair of files to the unit — `TabledemoView.h` and
+`TabledemoView.cpp`, named for the unit's package, one pair for the whole
+unit however many schema files it has — holding a registry of everything the
+schema declared. An editor or a debug build compiles it; a game build
+generates with the default (or `--views none`) and never sees it. Marking one
+type instead of the whole unit is `| view` on the declaration:
 
 ```
 type ShipState | view
@@ -1355,7 +1355,10 @@ type ShipState | view
 }
 ```
 
-A type a TABLE reaches needs no marker — it has had descriptors all along.
+Marking `ShipState` views `Vec3` too: a marker takes the type's whole
+by-value closure, so the recursion below never dead-ends inside a type you
+marked. A type a TABLE reaches needs no marker — it has had descriptors all
+along.
 
 ```cpp
 #include "TabledemoView.h"
@@ -1405,9 +1408,16 @@ section above walks, so one printer serves both. C# is the same registry
 through `Schema.UnitView()`.
 
 Constants, enums, flags and unions are listed whenever the view exists — they
-cost names and values, so nothing marks them. What the view does not carry:
-descriptions, UI hints, semantics for a type tag (the tags are listed; their
-meaning is yours), and the packet wire's bit layout.
+cost names and values, so nothing marks them. Each set is ordered by
+declaration name, so a listing does not churn when a file is renamed or a
+declaration moves between files.
+
+What the view does not carry: descriptions, UI hints, semantics for a type
+tag (the tags are listed; their meaning is yours), and the packet wire's bit
+layout. And one field kind is listed but not decodable: `fixed`, `ufixed`,
+`int128` and `uint128` have no table-wire kind, so they arrive with
+`kind == 0` — name, declared spelling, offset and size, enough to show the
+field and not enough to read or write its value generically.
 
 ### The text form: JSON in and out of one table
 
