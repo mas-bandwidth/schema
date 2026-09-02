@@ -2431,24 +2431,31 @@ static void test_keyed_none_key_is_malformed()
     int64_t saved = tblv1::CfgSave( src, wire, sizeof( wire ) );
     CHECK( saved > 2 );
 
-    // a second occurrence carrying ONE pair whose key is 0
+    // a second occurrence carrying TWO pairs: the null key, then a perfectly
+    // good one behind it. Damage STOPS the body (§3.2, §4), so the good pair
+    // behind the damage must NOT land — the reader keeps what it decoded and
+    // reads on past the field's length, it does not step over the bad pair.
     int n = (int) ( saved - 2 );
     le16( wire + n, tokens->id ); n += 2;
-    wire[n++] = 16;                          // the keyed kind
-    le32( wire + n, 5 + 2 + 4 + 4 ); n += 4; // element kind, count, one pair
-    wire[n++] = 4;                           // element kind kI32
-    le32( wire + n, 1 ); n += 4;
-    le16( wire + n, 0 ); n += 2;             // THE NULL KEY
+    wire[n++] = 16;                              // the keyed kind
+    le32( wire + n, 5 + 2 * ( 2 + 4 + 4 ) ); n += 4; // element kind, count, two pairs
+    wire[n++] = 4;                               // element kind kI32
+    le32( wire + n, 2 ); n += 4;
+    le16( wire + n, 0 ); n += 2;                 // THE NULL KEY
     le32( wire + n, 4 ); n += 4;
     le32( wire + n, 99 ); n += 4;
-    le16( wire + n, 0 ); n += 2;             // the table terminator
+    le16( wire + n, field_id( "Delta" ) ); n += 2; // a good key, behind the damage
+    le32( wire + n, 4 ); n += 4;
+    le32( wire + n, 42 ); n += 4;
+    le16( wire + n, 0 ); n += 2;                 // the table terminator
 
     tblv1::TableReport report;
     tblv1::Cfg out;
     CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
-    CHECK( report.malformed );               // damage, not an unknown name
+    CHECK( report.malformed );                   // damage, not an unknown name
     CHECK( report.unknown == 0 );
-    CHECK( out.tokens.slots[0] == 0 );       // and slot 0 was never written
+    CHECK( out.tokens.slots[0] == 0 );           // slot 0 was never written
+    CHECK( out.tokens[tblv1::Slot::Delta] == 0 ); // and the body stopped at the damage
 }
 
 // ---- #261: a repeated enum-ARRAY id whose second occurrence carries an
