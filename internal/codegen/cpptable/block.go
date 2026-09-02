@@ -145,7 +145,9 @@ struct TableBlockRows
 };
 
 // A CONTIGUOUS view of one array, available because the pitch IS sizeof
-// (§2.7). A version that let a declaration widen the pitch would cost this.
+// rounded to the element's alignment — derived, always, with no declaration
+// that adjusts it (§2.7). The stride still RIDES in the triple, because it is
+// the pitch the consumer indexes with and it must come from the data.
 template <typename T>
 struct TableBlockSpan
 {

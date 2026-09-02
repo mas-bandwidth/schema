@@ -762,12 +762,6 @@ func (c *checker) resolveBodies() {
 							continue
 						}
 						st.CppInclude = lit.Value
-					case "stride":
-						// refused by name rather than accepted-and-ignored:
-						// a block row's pitch is its `sizeof` by
-						// construction, and an inert attribute is a lie about
-						// the declaration (SPEC-TABLES.md §11)
-						c.errf(a.Pos, "stride is not declarable in this version: a block row's pitch is its `sizeof` by construction, and declared headroom is a named follow-on (SPEC-TABLES.md §19, §11, §15)")
 					default:
 						if a.Value != nil {
 							c.errf(a.Pos, "a type tag is a bare identifier (SPEC §4.2 Type tags)")
@@ -1370,11 +1364,6 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 			// refused by name: rounding is not an attribute — it is the one
 			// fixed-point rule, half away from zero, everywhere (SPEC §4.3)
 			c.errf(a.Pos, "round is not part of the language — rounding is the one fixed-point rule: half away from zero, everywhere (SPEC §4.3)")
-		case "stride":
-			// refused by name rather than accepted-and-ignored: a block-form
-			// row's pitch is its `sizeof` by construction, and an inert
-			// attribute is a lie about the declaration (SPEC-TABLES.md §11)
-			c.errf(a.Pos, "field %s | stride: a block-form row's pitch is its `sizeof` by construction and no declaration adjusts it in this version; declared headroom is a named follow-on (SPEC-TABLES.md §2.7, §11, §15)", f.Name)
 		default:
 			c.errf(a.Pos, "unknown attribute %q — the vocabulary is typed and closed per compiler version (SPEC §4.2)", a.Key)
 		}
