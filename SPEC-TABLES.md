@@ -2084,7 +2084,7 @@ lives a table has without being told; and a table's own **node type id**
 (§3.1), so a tool can map a node table's records — or a region's node
 directory — onto descriptors with no schema files on hand. The
 compile-time refusals those ids bring (§11) apply to EVERY unit, as the
-27 generated spellings do, because a unit gains and loses pointers as an
+26 generated spellings do, because a unit gains and loses pointers as an
 edit and a name that was free yesterday must not become a collision
 tomorrow. A self-referential pointer resolves to its own type's
 descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
@@ -2646,24 +2646,43 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **32 suffixes**, and a declaration spelling one of them is
+  each of these **26 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
   At  Root  Emplace  Pack  PackMeasure  OpenWalk
-  Cook  CookMeasure  Open  TableFields  TableInfo
+  Cook  CookMeasure  Open  LayoutId  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
-  Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
-  Counts
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
-  free yesterday must not become a collision tomorrow. The seven block
-  spellings are claimed on the same terms and for a stronger reason: every
-  fixed table has a block form (§2.7), so every fixed table claims them.
+  free yesterday must not become a collision tomorrow. That list is the
+  checker's own, and this section is held to it: the count and the spellings
+  here equal `tableGeneratedVerbs` exactly, because a claim the page states
+  and the checker does not make is a name a user may take.
+
+  **`LayoutId` is in the set and is on its way out**: it is the id constant
+  wire v1's cook emits (§7's status), and it retires into the unit-wide build
+  version with the emitter (schema#251). The claim goes in that same change
+  and never before it, since dropping it first frees a name the generated
+  code still spells.
+
+  **The BLOCK FORM claims seven more, and the checker does not claim them
+  yet** (§19's status: no backend emits the form). They are law on the same
+  terms and for a stronger reason — every fixed table has a block form
+  (§2.7), so every fixed table claims them:
+
+  ```
+  Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
+  Counts
+  ```
+
+  Claiming them is owed with the form (schema#287) and belongs BEFORE its
+  emitters, for exactly the reason the set exists: a name free today must not
+  become a collision the day the form lands.
 
   **THE DESCRIPTOR SURFACE'S CLAIMS ARE UNCONDITIONAL — every declaration,
   every unit, tables or not.** Every unit emits a view file and that file
@@ -2675,7 +2694,7 @@ in build version (§20.5).
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
-    for every declaration in every unit. All three are in the 36 above and
+    for every declaration in every unit. All three are in the 26 above and
     are claimed today only for closure members; the descriptor emission
     spells all three per declaration, so widening one of them would leave
     two open.
