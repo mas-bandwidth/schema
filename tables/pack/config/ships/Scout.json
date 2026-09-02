@@ -1,0 +1,6 @@
+{
+  "name": "Scout",
+  "health": 80.0,
+  "mass": 0.5,
+  "gunner": { "tracking": false },
+}

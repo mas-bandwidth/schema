@@ -1,0 +1,5 @@
+{
+  "damage": 21.0,
+  "channel": 63,
+  "effect": { "debuff": { "amount": 15 } }
+}

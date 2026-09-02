@@ -1,0 +1,88 @@
+[
+  {
+    "name": "Ace",
+    "icon": "AAECAwQFBgcICQoLDA0ODw==",
+    "experience": 4000000000,
+    "tilt": -7,
+    "heading": -1200,
+    "timestamp": -9007199254740993,
+    "badge": 200,
+    "port": 40000,
+    "epoch": 18446744073709551615,
+    "precision": 0.1,
+    "ratings": [
+      1.5,
+      2.5,
+      3.5,
+      4.5
+    ],
+    "has_loadout": true,
+    "loadout": {
+      "grade": "Gold",
+      "grades": [
+        "Bronze",
+        "Gold"
+      ],
+      "podium": [
+        "Gold",
+        "Silver",
+        "Bronze"
+      ],
+      "perks": [
+        "Shielded",
+        "Turbo"
+      ],
+      "primary": {
+        "damage": 9.5,
+        "speed": 500,
+        "penetration": 1,
+        "channel": 12,
+        "homing": false,
+        "effect": {}
+      },
+      "backups": [
+        {
+          "damage": 1,
+          "speed": 500,
+          "penetration": 1,
+          "channel": 0,
+          "homing": false,
+          "effect": {}
+        },
+        {
+          "damage": 21,
+          "speed": 2,
+          "penetration": 1,
+          "channel": 0,
+          "homing": false,
+          "effect": {}
+        }
+      ],
+      "attachments": [
+        {
+          "slot": 3,
+          "power": 2.5
+        }
+      ]
+    }
+  },
+  {
+    "name": "Rookie",
+    "icon": "",
+    "experience": 0,
+    "tilt": 0,
+    "heading": 0,
+    "timestamp": 0,
+    "badge": 0,
+    "port": 0,
+    "epoch": 0,
+    "precision": 0,
+    "ratings": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "has_loadout": false
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "damage": 42.5,
+    "speed": 750,
+    "penetration": 7,
+    "channel": 33,
+    "homing": true,
+    "effect": {
+      "buff": {
+        "multiplier": 2.5
+      }
+    }
+  },
+  {
+    "damage": 21,
+    "speed": 500,
+    "penetration": 1,
+    "channel": 63,
+    "homing": false,
+    "effect": {
+      "debuff": {
+        "amount": 15
+      }
+    }
+  }
+]

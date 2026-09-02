@@ -1,0 +1,45 @@
+// Pack.schema — the packed corpus's root (SPEC-TABLES.md §17): a game's
+// Config.bin as declared tables and nothing else. An enum-keyed COLLECTION of
+// records, an optional section inside a record, a global block nested by
+// value, a bounded array of records, and a keyed array of scalars. FIXED-SIZE
+// down to the leaves — no pointer anywhere in the closure — which is §12's
+// strong form of the expressiveness gate, and what `schema pack` assembles
+// from a directory tree that mirrors it.
+package tabledemo
+
+enum ShipType { Fighter, Bomber, Scout }
+
+enum Difficulty { Easy, Normal, Hard }
+
+table GunnerSettings
+{
+    reaction float32 = 0.2
+    tracking bool
+    callsign string(24)
+}
+
+table ShipEntry
+{
+    display_name string(32)                                                            | json = "name"
+    health       float32 = 100.0
+    mass         float32 = 1.0
+    hardpoints   [..4]int32                                                            | min = 0, max = 8
+    gunner       ?GunnerSettings // an optional section: present or absent, no pointer
+}
+
+table GlobalSettings
+{
+    tick_rate    uint32 = 60         | min = 1, max = 240
+    difficulty   Difficulty = Normal
+    build_note   string(48)
+    spawn_delays [3]float32
+}
+
+table PackConfig
+{
+    version    uint32 = 1
+    global     GlobalSettings
+    ships      [ShipType]ShipEntry // one record per ship type, riding by NAME
+    thresholds [Difficulty]int32                                               | min = 0, max = 1000
+    reserves   [..3]ShipEntry
+}

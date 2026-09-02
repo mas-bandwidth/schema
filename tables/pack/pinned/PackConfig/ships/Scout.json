@@ -1,0 +1,11 @@
+{
+  "name": "Scout",
+  "health": 80,
+  "mass": 0.5,
+  "hardpoints": [],
+  "gunner": {
+    "reaction": 0.2,
+    "tracking": false,
+    "callsign": ""
+  }
+}

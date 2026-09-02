@@ -1,0 +1,15 @@
+{
+  "name": "Fighter",
+  "health": 120,
+  "mass": 0.75,
+  "hardpoints": [
+    1,
+    2,
+    3
+  ],
+  "gunner": {
+    "reaction": 0.35,
+    "tracking": true,
+    "callsign": "Vixen"
+  }
+}

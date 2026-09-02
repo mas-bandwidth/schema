@@ -2557,7 +2557,10 @@ are what make them one:
 - `schema pack` → a backend's `Load` → that backend's `ToJson` →
   `schema unpack` is byte-stable;
 - every text `schema unpack` writes is byte-identical to the one the
-  backend's `ToJson` writes for the same instance.
+  backend's `ToJson` writes for the same instance. `unpack --one-file` is what
+  makes that a comparison of two whole texts rather than of a tree against an
+  object: it writes §17.2's last shape, one `<Root>.json`, from the same
+  instance through the same writer.
 
 Every backend that implements the text form inherits that obligation
 against the same corpus, which is what keeps one wire and one text form as
@@ -2590,7 +2593,27 @@ no content hash, no protocol id, no length prefix around the whole. A
 caller that wants an envelope writes its own few lines around these bytes,
 which is §1's promise that schema imposes no envelope. `unpack` is the
 inverse — it writes the tree back out of a `.bin` — which is the tool round
-trip §1 promises, and `unpack` → `pack` is byte-stable.
+trip §1 promises, and `unpack` → `pack` is byte-stable, WITH §16.3's ONE
+CARVE-OUT: a string holding bytes that are not well-formed UTF-8 is written as
+`U+FFFD`, one per bad byte, so its text can be longer than the bytes were and
+the field's own bound then clamps it. That lap is not byte-identical, it is
+COUNTED (`clamped`, which §17.4 makes a nonzero exit), and the FIXED POINT IS
+REACHED IN ONE LAP — after the first write every string is well-formed, so the
+second text and the third agree. The alternative is emitting a text no
+conforming parser can read, which §16.3 already refuses.
+
+§17.2 lets a field's value live in a file or in a directory, and `unpack`
+takes the EXPANDED form by default (`--one-file` takes the last rule's
+instead: one `<Root>.json`, which is the shape §17.1's third golden compares): one `<field>.json` per field of the root, and one
+`<field>/<Variant>.json` per slot of an enum-keyed array. An absent `?T` and
+a guarded-out field write no file at all, because omission is how a tree says
+absence — **and that is why `unpack` PRUNES**: an entry naming a field of the
+table it just wrote, that it did not write this time, is removed. Without it,
+unpacking a newer `.bin` over yesterday's tree would leave the file an absent
+optional used to have standing beside the new one, and byte-stability would
+hold only into an empty directory, which is not the directory the verb is
+pointed at. An entry naming NO field is left exactly where it is: it is not
+the tool's, and `pack` refuses it by name (§17.4).
 
 ### 17.4 Refusals and the report
 
@@ -2600,12 +2623,45 @@ a variant name the enum does not have, a `None.json`, a file that is not
 JSON. Everything §16 counts is counted here too, aggregated across the
 tree, so a pack of a hundred files reports once.
 
+Three rules complete it, because a packer is a TOOL and a tool's edges are
+part of what it promises:
+
+- **A hidden file that is not JSON is passed over, and NAMED.** It is the one
+  thing a tree walk does not refuse — a tool that died on `.DS_Store` would be
+  a tool nobody could run on a checkout — and the skip is narrow enough that it
+  cannot swallow a value: a hidden `.json` file and a hidden directory still
+  name something, and are refused if they name no field.
+- **A report that is not silent is a nonzero exit.** "Reported, never fatal"
+  (§4) is about the walk not stopping, not about a tool's exit code: a value
+  that was skipped, renamed away or cut down is a thing a build pipeline has to
+  be able to fail on. `--tolerate` is how a caller says the report is expected.
+- **Neither verb writes to the unit's schema sources.** Every other command
+  canonicalizes them in place because formatting is part of what it is doing to
+  them; these two are pointed at a config tree and only READ the declarations.
+
 ### 17.5 Held by test
 
 A directory corpus packs to bytes identical to `Save` of the same instance
-built by hand; `unpack` → `pack` is byte-stable; the goldens of §17.1 hold
-the engine to every backend that implements the form; and the hostile tree
-above is refused or counted per §16's rules.
+built by hand; `unpack` → `pack` is byte-stable, INTO A TREE THAT ALREADY
+HOLDS ONE and ACROSS BOTH SHAPES — unpacking either shape over the other packs
+back to the same bytes, because the prune covers the root's whole shape and not
+just the one being written; §17.3's UTF-8 carve-out is pinned by a corpus row
+rather than assumed, fixed point included; the goldens of §17.1 hold the engine
+to every backend that implements the form; and the hostile tree above is
+refused or counted per §16's rules.
+
+**And a HOSTILE-VALUE corpus beside the hostile tree**: one tree per rule §16
+states — every row of the number grammar, a value past a `bits(N)` width, a
+lone surrogate, a `null` at every kind, a `"None"` key, a duplicate key, a
+union with two keys — each carrying the outcome the rule requires. It is a
+TWO-SIDED differential: the same text goes through the packer and through the
+backend's `FromJson`, and their REPORTS must agree counter for counter and
+their WIRE BYTES byte for byte, with a refusal one side refused by both. A
+tree that packs carries one further invariant: its bytes load clean in that
+backend and re-save byte-identically, because a read either implementation
+calls clean must not be one the backend then cuts down. A corpus of
+well-formed trees proves the happy path and nothing else, and the rules are
+where implementations drift apart.
 
 ## 18. The tables baseline
 

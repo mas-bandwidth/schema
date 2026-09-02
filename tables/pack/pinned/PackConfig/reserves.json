@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Alpha",
+    "health": 55,
+    "mass": 1,
+    "hardpoints": []
+  },
+  {
+    "name": "Beta",
+    "health": 100,
+    "mass": 2,
+    "hardpoints": [
+      7
+    ]
+  }
+]
