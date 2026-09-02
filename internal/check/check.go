@@ -102,6 +102,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.resolveBodies()
 	c.checkCycles()
 	c.checkTables()
+	c.checkTableFileDag()
 	c.checkClaimedNames()
 	c.checkTargetNames()
 	c.assemble()
@@ -1846,6 +1847,129 @@ func sortedKeys[V any](m map[string]V) []string {
 	return out
 }
 
+// checkTableFileDag refuses a cross-file reference CYCLE among a unit's table
+// closure (SPEC-TABLES.md §11): if a declaration in file A reaches one in file
+// B, nothing in B may reach back into A.
+//
+// The rule is LANGUAGE-NEUTRAL and so it lives here, in the front end, not in
+// a backend. C++ makes the consequence concrete — the generated <A>Table.h and
+// <B>Table.h would have to include each other and neither could compile — but
+// a unit that is legal under one target and illegal under another is the trap
+// the rule exists to prevent, so every target refuses the same units.
+//
+// Same-file recursion is untouched: only edges that LEAVE a file are graphed,
+// so a pointer chain inside one file is as legal as it ever was, and a
+// by-value cycle is already refused as a composition cycle.
+func (c *checker) checkTableFileDag() {
+	if len(c.tables) == 0 {
+		return
+	}
+	// SORTED throughout: map iteration order must not shuffle which cycle a
+	// multi-cycle unit reports, run to run.
+	deps := map[string]map[string]bool{}
+	// the declaration that first created each cross-file edge, so the cycle
+	// reports AT a source line the author can act on rather than at the unit
+	type edgeOrigin struct {
+		decl string
+		pos  ast.Pos
+	}
+	edgeFrom := map[string]edgeOrigin{}
+	closureNames := make([]string, 0, len(c.tableClosure))
+	for name := range c.tableClosure {
+		closureNames = append(closureNames, name)
+	}
+	sort.Strings(closureNames)
+	for _, name := range closureNames {
+		st := c.closureMember(name)
+		base, known := c.declFile[name]
+		if st == nil || !known {
+			continue
+		}
+		if deps[base] == nil {
+			deps[base] = map[string]bool{}
+		}
+		note := func(target string) {
+			to, ok := c.declFile[target]
+			if !ok || to == base {
+				return
+			}
+			deps[base][to] = true
+			key := base + " -> " + to
+			if _, seen := edgeFrom[key]; !seen {
+				pos := ast.Pos{}
+				if d, known := c.astDecls[name]; known {
+					pos = d.DeclPos()
+				}
+				edgeFrom[key] = edgeOrigin{decl: name, pos: pos}
+			}
+		}
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			note(f.Type.Name)
+			if un, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+				for _, v := range un.Variants {
+					note(v.Type)
+				}
+			}
+		}
+	}
+
+	const (
+		unvisited = 0
+		onPath    = 1
+		done      = 2
+	)
+	color := map[string]int{}
+	var path []string
+	var visit func(base string) bool
+	visit = func(base string) bool {
+		switch color[base] {
+		case onPath:
+			// name the whole cycle, from where it re-enters
+			at := 0
+			for i, p := range path {
+				if p == base {
+					at = i
+					break
+				}
+			}
+			closing := edgeFrom[path[len(path)-1]+" -> "+base]
+			c.errf(closing.pos, "%s closes a cross-file table reference cycle: %s -> %s — a unit's table files form a DAG by reference, so if a declaration in one file reaches one in another, nothing there may reach back; move a declaration so the cross-file graph is acyclic (SPEC-TABLES.md §11)",
+				closing.decl, strings.Join(path[at:], " -> "), base)
+			return false
+		case done:
+			return true
+		}
+		color[base] = onPath
+		path = append(path, base)
+		targets := make([]string, 0, len(deps[base]))
+		for t := range deps[base] {
+			targets = append(targets, t)
+		}
+		sort.Strings(targets)
+		for _, t := range targets {
+			if !visit(t) {
+				return false
+			}
+		}
+		path = path[:len(path)-1]
+		color[base] = done
+		return true
+	}
+	bases := make([]string, 0, len(deps))
+	for b := range deps {
+		bases = append(bases, b)
+	}
+	sort.Strings(bases)
+	for _, b := range bases {
+		if !visit(b) {
+			return // one cycle named is enough; the fix changes the graph
+		}
+	}
+}
+
 // checkTableVariantIdentity enforces the table wire's variant identity
 // (SPEC-TABLES.md §5): an enum value rides as the name hash of its variant and
 // a union body opens with the name hash of its arm, so the ids within one
@@ -2381,12 +2505,30 @@ func (c *checker) checkClaimedNames() {
 	add("Error", "the unit's generated Error type (Rust form)", unitPos)
 	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
 	if len(c.tables) > 0 {
-		// the TABLE-wire runtime the generated Table headers define once per
+		// The TABLE-wire runtime the generated table sources define once per
 		// package (SPEC-TABLES.md) — claimed only when a unit declares a
-		// table, so table-free units keep their whole namespace
+		// table, so table-free units keep their whole namespace.
+		//
+		// EVERY BACKEND'S SPELLING IS CLAIMED FOR ALL OF THEM. This list is
+		// front-end law, not one target's inventory: §11's promise is that no
+		// legal schema reaches a non-compiling generated source through this
+		// door, and a name only one backend emits still breaks that backend.
+		// So the C++ snake_case float helpers and the C# CamelCase ones are
+		// claimed together, and a name a future port needs joins them here
+		// rather than in its emitter.
 		for _, gen := range []string{"TableReport", "TableWriter", "TableReader",
 			"TableTypeInfo", "TableFieldInfo", "table_bits_to_float",
 			"table_float_to_bits", "table_bits_to_double", "table_double_to_bits",
+			// the identity pair every table backend emits per enum in the
+			// closure: C++ spells it TableEnumId/TableEnumValue too, so
+			// claiming it closes both targets at once
+			"TableEnumId", "TableEnumValue",
+			// the C# runtime's verb-first names on the Schema class: the
+			// reader's in-place prefill and the four float helpers. An ENUM
+			// named after one of these resolves to the method group in
+			// expression position and the unit does not compile (CS0119).
+			"TableReset", "TableBitsToFloat", "TableFloatToBits",
+			"TableBitsToDouble", "TableDoubleToBits",
 			// the VARIABLE-LENGTH runtime (SPEC-TABLES.md): claimed whenever a
 			// unit declares a table, not only when one carries pointers, so
 			// adding a pointer to an existing table never turns a legal
@@ -2520,7 +2662,10 @@ func (c *checker) checkClaimedNames() {
 // Tables and types share ONE symbol table, and that is exactly what makes the
 // unprefixed surface collision-free: a declaration colliding with any of
 // these spellings is refused at the source.
-// C++-only today, so only the CamelCase spellings claim.
+// The C++ and C# table backends both spell this surface CamelCase, so one set
+// of claims covers both; a port that spells it otherwise adds its spellings to
+// the unit-level list in checkClaimedNames, which is where target-specific
+// runtime names are reconciled.
 func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name string, pos ast.Pos) {
 	why := fmt.Sprintf("%s's generated TABLE-wire functions", name)
 	for _, verb := range tableGeneratedVerbs {

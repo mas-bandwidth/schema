@@ -412,9 +412,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := checkIncludeCycle(u); err != nil {
-		return nil, err
-	}
 	closure := ir.TableClosure(u)
 	variable := ir.VariableTables(u)
 	targets := ir.PointerTargets(u)
@@ -540,82 +537,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[f.Base+"Table.h"] = []byte(h.String())
 	}
 	return out, nil
-}
-
-// checkIncludeCycle refuses cross-file reference cycles among the table
-// closure: <A>Table.h and <B>Table.h including each other cannot compile
-// (each needs the other's structs complete). Composition cycles are already
-// refused by the checker; this is the FILE-level shadow of the same rule.
-func checkIncludeCycle(u *ir.Unit) error {
-	closure := ir.TableClosure(u)
-	deps := map[string]map[string]bool{}
-	for _, f := range u.Files {
-		set := map[string]bool{}
-		note := func(name string) {
-			if base, ok := u.DeclFile[name]; ok && base != f.Base {
-				set[base] = true
-			}
-		}
-		var members []*ir.Struct
-		members = append(members, f.Tables...)
-		for _, d := range f.Decls {
-			if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
-				members = append(members, st)
-			}
-		}
-		for _, st := range members {
-			for _, fld := range st.Fields {
-				if fld.Type.Kind != ir.TNamed {
-					continue
-				}
-				note(fld.Type.Name)
-				if un, isUnion := fld.Type.Ref.(*ir.Union); isUnion {
-					for _, v := range un.Variants {
-						note(v.Type)
-					}
-				}
-			}
-		}
-		deps[f.Base] = set
-	}
-	color := map[string]int{}
-	var path []string
-	var visit func(base string) error
-	visit = func(base string) error {
-		switch color[base] {
-		case 1:
-			return fmt.Errorf("table include cycle: %s -> %s — the generated Table headers would include each other; move a declaration so the cross-file reference graph is acyclic (SPEC-TABLES.md)",
-				strings.Join(path, " -> "), base)
-		case 2:
-			return nil
-		}
-		color[base] = 1
-		path = append(path, base)
-		targets := make([]string, 0, len(deps[base]))
-		for t := range deps[base] {
-			targets = append(targets, t)
-		}
-		sort.Strings(targets)
-		for _, t := range targets {
-			if err := visit(t); err != nil {
-				return err
-			}
-		}
-		path = path[:len(path)-1]
-		color[base] = 2
-		return nil
-	}
-	bases := make([]string, 0, len(deps))
-	for b := range deps {
-		bases = append(bases, b)
-	}
-	sort.Strings(bases)
-	for _, b := range bases {
-		if err := visit(b); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // orderTables returns a file's tables with every same-file table preceding

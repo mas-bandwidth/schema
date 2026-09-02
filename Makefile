@@ -283,6 +283,10 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) test/tables/V1.sc
 # gated by inspection rather than by the compiler.)
 .PHONY: tables-cs-standalone
 tables-cs-standalone: build/tables-generated-cs/.stamp
+	@n=$$(ls build/tables-generated-cs/*/*Table.cs 2>/dev/null | wc -l | tr -d ' '); \
+		if [ "$$n" -lt 5 ]; then \
+			echo "STANDALONE GATE FAILED: found $$n generated Table sources, expected 5 — the glob, not the property, is what broke"; exit 1; \
+		fi
 	@for f in build/tables-generated-cs/*/*Table.cs; do \
 		if grep -n "Serialize" $$f; then \
 			echo "STANDALONE GATE FAILED: the serialize runtime leaked into $$f"; exit 1; \

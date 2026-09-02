@@ -18,6 +18,8 @@
 /test/cs-ludicrous/obj/
 /test/cs-tables/bin/
 /test/cs-tables/obj/
+/bench/tools/cs-union-form/bin/
+/bench/tools/cs-union-form/obj/
 # every build stamp under generated/ — stamps order the build and are not
 # generator output
 generated/**/.stamp

@@ -1,10 +1,12 @@
-// Tests for the tables generation surface (SPEC-TABLES.md): the C++ target
-// grows Table headers, every other target refuses BY NAME, non-table output
-// is byte-identical with or without tables, and the generated codecs
+// Tests for the tables generation surface (SPEC-TABLES.md): the C++ and C#
+// targets grow table sources, every other target refuses BY NAME, non-table
+// output is byte-identical with or without tables, and the generated codecs
 // allocate nothing.
 package compiler
 
 import (
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -45,11 +47,18 @@ type Packet
 }
 `
 
+// tableSrc adds a table whose closure reaches an ENUM as well as a nested
+// type: the enum is what makes the per-enum identity pair (TableEnumId /
+// TableEnumValue) part of the generated surface, which
+// TestTableRuntimeNamesAreClaimed scans for. Kind is declared by packetSrc
+// already, so this adds a table and no other declaration — the independence
+// proof below still compares like with like.
 const tableSrc = packetSrc + `
 table Config
 {
     scale  float32 = 1.0
     label  string(24)
+    grade  Kind
     points [..8]Point
 }
 `
@@ -480,4 +489,86 @@ func layoutIdOf(t *testing.T, header string) string {
 	}
 	end := strings.Index(header[i:], ";")
 	return header[i : i+end]
+}
+
+// TestTableRuntimeNamesAreClaimed is the SELF-MAINTAINING half of the §11
+// promise: no legal schema reaches a generated source that does not compile.
+//
+// The claim list in internal/check is front-end law, but a list is only as
+// good as its agreement with what the emitters actually emit — and a port
+// adding an eighth runtime name is exactly the edit that would drift. So this
+// test does not hardcode the names: it GENERATES the C# for a table unit,
+// reads back every verb-first Table* spelling the emitter put at unit level
+// (the namespace's own types, and the static members on Schema), and asserts
+// the checker refuses a declaration of each. A new runtime name that nobody
+// claimed fails here, at the emitter that introduced it.
+//
+// The dangerous shape is an ENUM: `enum TableReset { A, B }` puts TableReset
+// in expression position (TableReset.A), where it resolves to the method
+// group rather than the type — CS0119, a legal schema emitting C# that does
+// not compile.
+func TestTableRuntimeNamesAreClaimed(t *testing.T) {
+	files, err := New().Generate(unitFromSource(t, tableSrc), "cs", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// namespace-level types (public sealed class / ref struct Table*) and the
+	// static members on Schema (public static <type> Table*(...))
+	decl := regexp.MustCompile(`(?m)^\s*public (?:sealed class|ref struct) (Table\w+)`)
+	member := regexp.MustCompile(`(?m)^\s*public static \S+ (Table\w+)\(`)
+	names := map[string]bool{}
+	for _, data := range files {
+		for _, m := range decl.FindAllStringSubmatch(string(data), -1) {
+			names[m[1]] = true
+		}
+		for _, m := range member.FindAllStringSubmatch(string(data), -1) {
+			names[m[1]] = true
+		}
+	}
+	if len(names) < 12 {
+		t.Fatalf("scanned only %d unit-level Table* spellings (%v) — the scan, not the claim list, is what broke", len(names), names)
+	}
+	sorted := make([]string, 0, len(names))
+	for name := range names {
+		sorted = append(sorted, name)
+	}
+	sort.Strings(sorted)
+
+	for _, name := range sorted {
+		t.Run(name, func(t *testing.T) {
+			src := "package probe\n\nenum " + name + " { A, B }\n\ntable Holder\n{\n    g " + name + "\n}\n"
+			f, perrs := parser.Parse("Probe.schema", []byte(src))
+			if len(perrs) > 0 {
+				t.Fatalf("parse: %v", perrs[0])
+			}
+			_, cerrs := check.Unit([]check.SourceFile{{
+				Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+			}})
+			if len(cerrs) == 0 {
+				t.Fatalf("a declaration named %s was accepted — the generated table runtime emits that name, "+
+					"so the unit cannot compile; claim it in internal/check's unit-level table list", name)
+			}
+			for _, e := range cerrs {
+				if strings.Contains(e.Error(), "TABLE-wire runtime") {
+					return
+				}
+			}
+			t.Fatalf("%s is refused, but not as a runtime-name collision: %v", name, cerrs)
+		})
+	}
+
+	// the claim is scoped to units that declare a table: a table-free unit
+	// keeps its whole namespace
+	for _, name := range sorted {
+		src := "package probe\n\nenum " + name + " { A, B }\n\ntype Holder\n{\n    g " + name + "\n}\n"
+		f, perrs := parser.Parse("Probe.schema", []byte(src))
+		if len(perrs) > 0 {
+			t.Fatalf("parse: %v", perrs[0])
+		}
+		if _, cerrs := check.Unit([]check.SourceFile{{
+			Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+		}}); len(cerrs) > 0 {
+			t.Errorf("a TABLE-FREE unit must keep the name %s: %v", name, cerrs)
+		}
+	}
 }

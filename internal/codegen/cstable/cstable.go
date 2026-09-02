@@ -426,9 +426,14 @@ public sealed class TableReport
 // id and kind, bounds, ranges, the enum/union vocabulary and its wire ids,
 // and branch guards — enough to walk, print, diff or bind any table value at
 // runtime with no schema files on hand. <Name>TableType() returns the
-// descriptor. The C++ surface's three MEMORY columns (offset, elem_size,
-// count_offset) have no C# twin: a C# field has no offsetof, and a walker
-// reaches storage through the language's own reflection, not through bytes.
+// descriptor.
+//
+// FOUR of the C++ surface's columns are absent, and all four are MEMORY facts
+// with no C# twin: TableFieldInfo's offset, elem_size and count_offset, and
+// TableTypeInfo's size (the storage struct's sizeof). A C# field has no
+// offsetof and a C# class has no meaningful sizeof; a walker reaches storage
+// through the language's own reflection, not through bytes. Every other
+// column is here, name for name.
 
 public sealed class TableFieldInfo
 {
