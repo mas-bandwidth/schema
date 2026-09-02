@@ -700,9 +700,9 @@ schema's codebase:
   **Spellings that add no row, and the one way they differ.** A `?T`
   optional field is framed exactly as the non-optional `T` (§2.3), so the
   two are ONE FRAMING under two declaration spellings. **`*T` naming a
-  TABLE is the exception**: it
-  rides as a node index under its own kind `17` (§3.1), because a body
-  that may be named twice cannot also sit inline at one of its names.
+  TABLE is the exception**: it rides as a node index under its own kind
+  `17` (§3.1), because a body that may be named twice cannot also sit
+  inline at one of its names.
   The distinct kind is what makes moving a field to or from `*T` a
   REPORTED edit rather than a quiet one, for the same reason kind `16`
   exists (§3.2): a node index and a plain `uint32` are the same four
@@ -714,9 +714,10 @@ schema's codebase:
   nothing while a present `?T` at its defaults writes its body. **For any
   content that is not entirely default, `T` and `?T` are byte-identical**,
   and that is the scope of the claim: a schema may move a field between
-  them and no byte moves for such a value. At the empty end the bytes differ and no reader
-  misdecodes — an elided field reads as absent (`?T`), null (`*T`) or the
-  declared default (`T`), which is correct in every direction. Moving a
+  them and no byte moves for such a value. At the empty end the bytes
+  differ and no reader misdecodes — an elided field reads as absent (`?T`),
+  null (`*T`) or the declared default (`T`), which is correct in every
+  direction. Moving a
   field ACROSS families — between `*T` and `T` or `?T` — is not a free
   edit: it changes kind, and §4 counts it (§3.1).
   - **Array elements.** For a scalar element kind the elements sit back to
@@ -796,9 +797,9 @@ A pointered save writes every reachable node ONCE, into a **node table**,
 and a pointer field rides as a `u32` **index** into it under kind `17`.
 The encoding is flat: no pointer edge is a nesting level, so a chain's
 length is not a depth, and two references to one node are one node. It
-moves not one byte of a
-value-only table: a fixed-size table has no pointer, therefore no node
-table, therefore exactly the bytes §3 already describes.
+moves not one byte of a value-only table: a fixed-size table has no
+pointer, therefore no node table, therefore exactly the bytes §3 already
+describes.
 
 **Backend status for this section: spec ahead of the emitter.** This
 section is the landed law; no backend writes it yet. What a reader of
@@ -827,10 +828,10 @@ exist; the set is closed before any of them ship, and §14 records the
 trade.
 
 **What a pointer edge is, and what it is not.** Only a `*T` naming a
-declared TABLE takes a node index; it is the only pointer spelling the
-language has (§2.1). A table-typed
-UNION ARM is a by-value nesting and rides inline as §2.6 frames it; the
-pointer fields INSIDE an arm are indices like any other.
+declared TABLE takes a node index, and it is the only pointer spelling the
+language has (§2.1). A table-typed UNION ARM is a by-value nesting and rides
+inline as §2.6 frames it; the pointer fields INSIDE an arm are indices like
+any other.
 
 **Node numbering.**
 

@@ -114,8 +114,8 @@ layout; the game memory-maps it and points at it with minimal fix-up.
   config-format example holding gate 1 (§12), the C# backend reads the same
   bytes the C++ tools write, and the dogfood carries a real game's two files
   on this wire end to end — 803 values byte-identical, every injected bit
-  flip refused rather than read as data. The cook half
-  is proven in the C++ corpus for what exists — `CookMeasure`, `Cook` and
+  flip refused rather than read as data. The cook half is proven in the C++
+  corpus for what exists — `CookMeasure`, `Cook` and
   `Open` round-trip over the pointer unit under `make` — while addressing a
   cooked artifact by **(asset hash, build version)** is designed and not yet
   built: the build version is **#292**, `schema cook-check` is not built, and
@@ -260,9 +260,9 @@ not cover.
   and the report is what says which fields the reader could not name.
 - **Proof** — **proven** in the dogfood: a real game carries its config from
   its backend into the running server on this wire, 803 values byte-identical
-  across the hop and every injected bit flip refused. The gate
-  behind it is entry 4's — the fixed root, the evolution corpus, and the
-  C++/C# shared goldens.
+  across the hop and every injected bit flip refused. The gate behind it is
+  entry 4's — the fixed root, the evolution corpus, and the C++/C# shared
+  goldens.
 
 ---
 

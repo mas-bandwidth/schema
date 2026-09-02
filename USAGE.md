@@ -1183,7 +1183,7 @@ above with the flat node encoding (SPEC-TABLES.md §7, schema#251).*
 If you have a cooked file whose provenance you doubt — one that crossed a
 machine boundary, or one you are diagnosing — check it with the tool:
 `schema cook-check` — *specified, not yet built* — scans the attribution the
-cook carries beside its data and verifies every reference, buffer and count
+cook carries beside its data and verifies every reference and every count
 against it, without following one reference or decoding one value. That is a
 person's decision, made once, not a flag on a load in the hot path.
 
@@ -1410,8 +1410,8 @@ through descriptor offsets. Generated `static_assert`s enforce it.
 Tables are generated for `--lang cpp` and `--lang cs` today — C++ carries
 both classes, C# the fixed class, and a pointered unit is refused by name
 under C#; every other target refuses a unit that declares tables at all, by
-name. What stays off the table wire: `fixed`,
-`int128`/`uint128` (no neutral table kind), and `const`/`reserved`/`align`
+name. What stays off the table wire: `fixed`, `int128`/`uint128` (no neutral
+table kind), and `const`/`reserved`/`align`
 (bit-position constructs — the table wire has no bit positions). Extents have
 no wire ceiling: string and bytes byte lengths and array counts ride in
 uint32, so the only limit is the language's own int32 storage cap.
