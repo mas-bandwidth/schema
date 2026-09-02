@@ -2709,8 +2709,9 @@ global block nested by value, a bounded array of records and a keyed array
 of scalars, fixed-size down to the leaves — and `tables/pack/config/` is the
 directory tree `schema pack` assembles into it and `unpack` writes back out
 (§17), byte-stable in both directions under `make`. That half proves the
-form; it does not prove the game. The dogfood half is **space#443**, where a
-real game takes its config on this wire.
+form; it does not prove the game. The dogfood half is a real game taking its
+config and asset archives on this wire: 803 values byte-identical end to end,
+and every injected bit flip refused rather than read as data.
 
 **The shape the gate is held to.** `Config.bin` and `Assets.bin` are each
 ONE root table, and each root is FIXED-SIZE down to the leaves: no pointer
