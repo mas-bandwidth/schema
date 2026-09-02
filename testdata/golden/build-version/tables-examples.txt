@@ -1,0 +1,132 @@
+0x2500934549f29bb7
+schema-build-version 1
+protocol 12cf1828bc593ac7
+byteorder little
+record ArchiveConfig sizeof=1488 alignof=8
+    field 2eb8 kind=13 offset=0 size=1480 type=RootConfig
+    field e445 kind=4 offset=1480 size=4 default=1 min=0 max=100
+record Attachment sizeof=8 alignof=4
+    field 37e4 kind=4 offset=0 size=4 default=0 min=0 max=7
+    field d609 kind=10 offset=4 size=4 default=1.0
+record Buff sizeof=4 alignof=4
+    field 32e0 kind=10 offset=0 size=4 default=1.0
+record Debuff sizeof=4 alignof=4
+    field 39cc kind=4 offset=0 size=4 default=0 min=0 max=100
+record GlobalSettings sizeof=72 alignof=4
+    field 1953 kind=8 offset=0 size=4 default=60 min=1 max=240
+    field d53f kind=7 offset=4 size=1 enum=Difficulty default=Normal
+    field b2d4 kind=12 offset=5 size=55 bound=48
+    field 7c01 kind=10 offset=60 size=12 elem=4 array=fixed bound=3
+record GunnerConfig sizeof=8 alignof=4
+    field 900f kind=10 offset=0 size=4 default=0.2
+    field 53d5 kind=1 offset=4 size=1
+record GunnerSettings sizeof=36 alignof=4
+    field 900f kind=10 offset=0 size=4 default=0.2
+    field 53d5 kind=1 offset=4 size=1
+    field 74dc kind=12 offset=5 size=31 bound=24
+record HullConfig sizeof=88 alignof=4
+    field 8617 kind=10 offset=0 size=4 default=100.0
+    field e7a6 kind=10 offset=4 size=4 default=1.0
+    field 48ad kind=13 offset=8 size=80 type=TurretConfig elem=20 array=keyed bound=4 key=Weapon
+record KeyedConfig sizeof=480 alignof=4
+    field 9ae1 kind=13 offset=0 size=112 type=TeamConfig elem=28 array=keyed bound=4 key=Team
+    field eff5 kind=13 offset=112 size=352 type=HullConfig elem=88 array=keyed bound=4 key=Hull
+    field dcf3 kind=13 offset=464 size=16 type=ScoreBoard
+record LoadoutConfig sizeof=176 alignof=8
+    field d272 kind=7 offset=0 size=1 enum=Grade default=Silver
+    field 301a kind=7 offset=1 size=11 enum=Grade elem=1 array=bounded bound=4
+    field 088a kind=7 offset=12 size=3 enum=Grade elem=1 array=fixed bound=3
+    field 2fc5 kind=9 offset=16 size=8
+    field 05f7 kind=13 offset=24 size=28 type=WeaponConfig
+    field 1647 kind=13 offset=52 size=56 type=WeaponConfig elem=28 array=fixed bound=2
+    field 44d5 kind=13 offset=108 size=68 type=Attachment elem=8 array=bounded bound=8
+record PackConfig sizeof=852 alignof=4
+    field e8e6 kind=8 offset=0 size=4 default=1
+    field 1b51 kind=13 offset=4 size=72 type=GlobalSettings
+    field 2d39 kind=13 offset=76 size=432 type=ShipEntry elem=108 array=keyed bound=4 key=ShipType
+    field b2eb kind=4 offset=508 size=16 elem=4 array=keyed bound=4 key=Difficulty min=0 max=1000
+    field 049d kind=13 offset=524 size=328 type=ShipEntry elem=108 array=bounded bound=3
+block PackConfig sizeof=568 alignof=8
+    slot e8e6 offset=24 size=4
+    slot 1b51 offset=28 size=72
+    slot 2d39 offset=100 size=432
+    slot b2eb offset=532 size=16
+    slot 049d offset=552 size=16 out_of_line stride=108
+record Patrol sizeof=36 alignof=4
+    field 405a kind=1 offset=0 size=1
+    field bc00 kind=10 offset=4 size=4 default=1.0
+    field b0a7 kind=1 offset=8 size=1
+    field df6a kind=4 offset=12 size=4 default=0 min=0 max=1000
+    field 832f kind=10 offset=16 size=4 default=0.5
+    field 9da7 kind=12 offset=20 size=16 bound=8
+record ProfileConfig sizeof=304 alignof=8
+    field 30df kind=12 offset=0 size=40 bound=32
+    field f3b0 kind=14 offset=40 size=20 bound=16
+    field 61d8 kind=8 offset=60 size=4 default=0
+    field 023c kind=2 offset=64 size=1
+    field 885d kind=3 offset=66 size=2
+    field 67a0 kind=5 offset=72 size=8
+    field b71c kind=6 offset=80 size=1
+    field 6942 kind=7 offset=82 size=2
+    field f4bd kind=9 offset=88 size=8
+    field 96e0 kind=11 offset=96 size=8
+    field 97dd kind=10 offset=104 size=16 elem=4 array=fixed bound=4
+    field b4db kind=1 offset=120 size=1
+    field 9f78 kind=13 offset=128 size=176 type=LoadoutConfig
+record RootConfig sizeof=1480 alignof=8
+    field e726 kind=12 offset=0 size=24 bound=16
+    field 91cd kind=13 offset=24 size=228 type=WeaponConfig elem=28 array=bounded bound=8
+    field 73fd kind=13 offset=256 size=1220 type=ProfileConfig elem=304 array=bounded bound=4
+record ScoreBoard sizeof=16 alignof=4
+    field 443f kind=4 offset=0 size=16 elem=4 array=keyed bound=4 key=Team min=0 max=100000
+record ShipEntry sizeof=108 alignof=4
+    field cb8b kind=12 offset=0 size=40 bound=32
+    field 8617 kind=10 offset=40 size=4 default=100.0
+    field e7a6 kind=10 offset=44 size=4 default=1.0
+    field c4b2 kind=4 offset=48 size=20 elem=4 array=bounded bound=4 min=0 max=8
+    field 2bc9 kind=13 offset=68 size=37 type=GunnerSettings optional=true
+record TeamConfig sizeof=28 alignof=4
+    field 3668 kind=4 offset=0 size=4 default=4 min=0 max=64
+    field 80e4 kind=12 offset=4 size=24 bound=16
+record TurretConfig sizeof=20 alignof=4
+    field 15a9 kind=10 offset=0 size=4 default=10.0
+    field 2230 kind=10 offset=4 size=4 default=0.5
+    field 2bc9 kind=13 offset=8 size=9 type=GunnerConfig optional=true
+record WeaponConfig sizeof=28 alignof=4
+    field 15a9 kind=10 offset=0 size=4 default=21.0
+    field 2e46 kind=10 offset=4 size=4 default=500.0
+    field 6557 kind=4 offset=8 size=4 default=1 min=0 max=10
+    field 7366 kind=6 offset=12 size=4 min=0 max=63
+    field ab40 kind=1 offset=16 size=1
+    field e33a kind=15 offset=20 size=8 union=Effect
+record WideBlob sizeof=280016 alignof=4
+    field e16a kind=12 offset=0 size=70008 bound=70000
+    field 44aa kind=14 offset=70008 size=70004 bound=70000
+    field af9a kind=7 offset=140012 size=140004 elem=2 array=bounded bound=70000
+enum Difficulty
+    variant 1 Easy
+    variant 2 Normal
+    variant 3 Hard
+enum Grade
+    variant 1 Bronze
+    variant 2 Silver
+    variant 3 Gold
+enum Hull
+    variant 1 Interceptor
+    variant 2 Gunship
+    variant 3 Freighter
+enum ShipType
+    variant 1 Fighter
+    variant 2 Bomber
+    variant 3 Scout
+enum Team
+    variant 1 Red
+    variant 2 Blue
+    variant 3 Green
+enum Weapon
+    variant 1 Cannon
+    variant 2 Missile
+    variant 3 Mine
+union Effect
+    arm 1 buff payload=Buff
+    arm 2 debuff payload=Debuff

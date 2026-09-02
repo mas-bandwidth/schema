@@ -376,6 +376,20 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	done
 	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
 
+# THE BUILD VERSION IS ONE NUMBER (SPEC-TABLES.md §20.7): the constant each
+# backend emits, and the number `schema build-version` prints, are the same
+# number or the tuple a store is indexed by means two different things. The
+# projection it hashes is pinned beside it as a golden, so a change to how it
+# is computed breaks every pinned value loudly.
+.PHONY: tables-block-build-version
+tables-block-build-version: bin/schema build/tables-generated/.stamp build/tables-generated-cs/.stamp
+	@v=$$(./bin/schema build-version tables/block); \
+		grep -q "inline constexpr uint64_t BuildVersion = $${v}ull;" build/tables-generated/block/RenderBlock.h || \
+			{ echo "BUILD VERSION GATE FAILED: the C++ constant is not $$v"; exit 1; }; \
+		grep -q "public const ulong BuildVersion = $${v}UL;" build/tables-generated-cs/block/*Block.cs || \
+			{ echo "BUILD VERSION GATE FAILED: the C# constant is not $$v"; exit 1; }; \
+		echo "block build-version gate: schema build-version, the C++ constant and the C# constant are all $$v"
+
 # THE FILL REFUSER (SPEC-TABLES.md §19.1, §19.5). The multi-threaded fill is an
 # OBLIGATION on the implementation, not a permission to the caller: the
 # generated fill path — Begin, the array accessors and the row storage they
@@ -938,6 +952,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-block
 	$(MAKE) tables-block-zero-cost
+	$(MAKE) tables-block-build-version
 	$(MAKE) tables-block-fill-refuser
 	$(MAKE) tables-block-fill-refuser-negative-control
 	$(MAKE) tables-block-padding-negative-control

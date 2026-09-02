@@ -186,27 +186,30 @@ func TestBuildVersionSurvivesAWasRename(t *testing.T) {
 // it checks proves nothing until it is shown CAPABLE of missing a break — so
 // this reorders two fields of one row and asserts, twice:
 //
-//   - the real build version MOVES, because the layout projection keys every
-//     line on the field's WIRE ID and carries its OFFSET beside it; and
+//   - the real build version MOVES, because §20.2's cook projection carries
+//     each field's OFFSET beside its wire id; and
 //   - a WEAKENED projection with the offsets stripped out — the
 //     positional-versus-keyed sabotage, in this form's own terms — does NOT
 //     move, so the break is silently accepted.
 //
-// The second half is what makes the first mean something: the offset term is
+// The second half is what makes the first mean something: the offset token is
 // load-bearing, and the test says so by removing it.
 func TestBuildVersionOffsetTermIsLoadBearing(t *testing.T) {
+	// The sabotage is the POSITIONAL-VERSUS-KEYED one, in this form's terms: a
+	// digest that treated the projection as a SET of facts keyed by wire id
+	// rather than as an ordered text with each field's offset on its line. Drop
+	// the offsets and sort, and a field reorder becomes invisible.
 	strip := func(projection string) string {
 		var out []string
 		for line := range strings.SplitSeq(projection, "\n") {
-			if line == "" {
-				continue
+			var kept []string
+			for _, token := range strings.Fields(line) {
+				if strings.HasPrefix(token, "offset=") {
+					continue
+				}
+				kept = append(kept, token)
 			}
-			// "field <Record>.<id> <kind> <offset> <size>" -> drop the offset
-			parts := strings.Fields(line)
-			if parts[0] == "field" && len(parts) == 5 {
-				parts = append(parts[:3], parts[4])
-			}
-			out = append(out, strings.Join(parts, " "))
+			out = append(out, strings.Join(kept, " "))
 		}
 		sort.Strings(out)
 		return strings.Join(out, "\n")
@@ -214,7 +217,7 @@ func TestBuildVersionOffsetTermIsLoadBearing(t *testing.T) {
 
 	before := loadRender(t)
 	baselineVersion := ir.BuildVersion(before)
-	baselineWeak := strip(ir.LayoutProjection(before, "RenderShip"))
+	baselineWeak := strip(ir.CookProjection(before))
 
 	// reorder two SAME-SIZE, same-alignment fields of one row: object_id and
 	// target_object_id are both uint32, so nothing about the row's size or
@@ -232,7 +235,7 @@ func TestBuildVersionOffsetTermIsLoadBearing(t *testing.T) {
 	if ir.BuildVersion(after) == baselineVersion {
 		t.Error("reordering two same-size row fields did not move the build version — a consumer would read every row at the wrong offsets and BlockOpen would accept it")
 	}
-	if got := strip(ir.LayoutProjection(after, "RenderShip")); got != baselineWeak {
+	if got := strip(ir.CookProjection(after)); got != baselineWeak {
 		t.Errorf("the sabotaged projection was expected to be BLIND to the reorder, and was not:\n%s", got)
 	}
 }

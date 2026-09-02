@@ -2559,9 +2559,7 @@ in build version (§20.5).
   (§19.1), as `<field>_present` is an optional's generated companion.
   Claimed on every fixed table, for the reason the generated spellings
   below are: the form is not opted into, so a name free today must not
-  become a collision tomorrow. **The checker claims none of the three
-  today**, so this refusal lands with the form and its emitters, on the
-  same terms as the block spellings below (schema#287).
+  become a collision tomorrow.
   **`| stride` is refused as an UNKNOWN ATTRIBUTE**, like any other spelling
   the closed vocabulary does not carry (SPEC.md §4.2), and not by name: the
   pitch is derived and there is no declared stride to reserve a word for
@@ -4498,11 +4496,6 @@ out when both are asked of one table.
   BUILD VERSION cannot do either job — §20 digests `byteorder` as a
   GENERATION input (§20.1), `little` for every target schema generates for
   today, so two builds of one schema for two byte orders emit the SAME id.
-
-  **The prologue is free in this shape either way.** With the render
-  frame's nine triples the projection is 176 bytes, against 168 for two
-  words, and both round to the 192 the first array starts at — so the
-  worked layout below is unchanged to the digit.
 
   **The projection is a record like any other and follows the same C ABI
   rule** (§19.3): its own offsets are part of the contract, not scaffolding

@@ -1,17 +1,21 @@
-// The BUILD VERSION (SPEC-TABLES.md §20, schema#297): ONE digest over every
-// fact the bytes a build produces depend on — the type wire, every table's
-// layout, every table's meaning, and the build's byte order.
+// The BUILD VERSION (SPEC-TABLES.md §20): the low 64 bits of SHA-256 over the
+// unit's COOK PROJECTION, which is exactly how the protocol id is taken over
+// the wire-shape projection (SPEC.md §3.1), for exactly its reason — what an
+// id depends on has to be printable, readable and diffable, and a fact missing
+// from it has to be a review question rather than an implementation detail.
 //
-// There are TWO ids in the design and they are not interchangeable: the
-// PROTOCOL ID is the type wire's and nothing else (SPEC.md §3), and the BUILD
-// VERSION is what everything cooked or blocked is keyed by. A table edit moves
-// the build version and never the protocol id; a type edit moves both.
+// There are TWO unit-wide version ids and no others. The PROTOCOL ID is the
+// type wire's and it is the connect gate; the BUILD VERSION is everything
+// cooked or blocked — the cooked header carries it (§7), the block form's
+// prologue carries it (§19), and a store's tuple is keyed by it. A table edit
+// moves the build version and never the protocol id; a type edit moves both.
 //
-// The BLOCK FORM (§19) stamps this constant into every block's prologue and
-// BlockOpen compares it against its own — the block form is same-build by
-// construction, both sides generated from one declaration at one build, so one
-// number answers "would this binary's blocks differ?" for the whole unit and
-// there is no per-table layout digest to keep beside it.
+// It is COMPILER-SETTLED, and that is the property the tuple rests on: tooling
+// cooks before any game binary exists, so the number has to be knowable from
+// the schema alone. The compiler owns every fact in it, including the layout,
+// which it computes from its own C ABI model (§20.3) — the model both backends
+// assert against, so a build that lays a record out differently fails to BUILD
+// rather than cooking bytes nobody can read.
 package ir
 
 import (
@@ -22,187 +26,191 @@ import (
 	"strings"
 )
 
-// buildVersionToken and cookIdToken are FORM VERSIONS: bump one when its fold
-// changes (SPEC-TABLES.md §20.3).
-const (
-	buildVersionToken = "schema-build-version 1"
-	cookIdToken       = "schema-cook-id 1"
-)
+// BuildVersionForm is the cook projection's own FORM VERSION, and the COOK
+// FORM's too (SPEC-TABLES.md §20.2). Bump it when this rendering changes, and
+// bump it when the cook's own form changes — the region's pack order, the node
+// directory's encoding, the header's shape — because without a version for
+// those a cook's bytes could diverge with the id unmoved.
+const BuildVersionForm = 1
 
-// byteOrderLittle is the build's byte-order byte (§20.3). The compiler emits
-// the constant for a little-endian build; a block written by a big-endian one
-// is refused by the MAGIC, which is read bytewise and establishes the order
-// before any version is compared (§19.1), so a block never has to ask the
-// constant which order produced it.
-const byteOrderLittle = 0x01
+// TableKindPointer is a `*T` reference slot's wire kind (SPEC-TABLES.md §3.1):
+// a pointer rides as a u32 index into the node table, and §20.2 renders it as
+// kind 17 with `type=` naming the pointee.
+const TableKindPointer = 17
 
-// BuildVersion is the unit's build version: an fnv1a64 fold over the token,
-// the protocol id, and every table's COOK ID with the tables sorted by name
-// (SPEC-TABLES.md §20.3).
+// BuildVersion is the unit's build version: the low 64 bits of SHA-256 over
+// [CookProjection], the final eight bytes interpreted big-endian.
 func BuildVersion(u *Unit) uint64 {
-	var b []byte
-	b = append(b, buildVersionToken...)
-	b = appendBE64(b, u.ProtocolId)
-	for _, name := range sortedTableNames(u) {
-		b = appendBE64(b, CookId(u, name))
-	}
-	return fnv1a64Bytes(b)
+	sum := sha256.Sum256([]byte(CookProjection(u)))
+	return binary.BigEndian.Uint64(sum[24:])
 }
 
-// CookId is one table's cook id: the per-TABLE key half (SPEC-TABLES.md
-// §20.3), folded over the token, the unit's protocol id, that table's meaning
-// digest, its name, its layout digest and the build's byte order.
-func CookId(u *Unit, table string) uint64 {
-	var b []byte
-	b = append(b, cookIdToken...)
-	b = appendBE64(b, u.ProtocolId)
-	b = appendBE64(b, MeaningDigest(u, table))
-	b = append(b, table...)
-	b = append(b, 0x00)
-	b = appendBE64(b, LayoutDigest(u, table))
-	b = append(b, byteOrderLittle)
-	return fnv1a64Bytes(b)
-}
-
-// ---- group 2: the layout (SPEC-TABLES.md §20.1) ----
-
-// LayoutProjection is the text one table's LAYOUT digest is taken over: the
-// table and every record its closure reaches, each with its size and
-// alignment, and each field keyed by its WIRE ID rather than by its source
-// name — so a `was` rename moves no line, exactly as it moves no byte.
+// CookProjection renders the unit's cook projection (SPEC-TABLES.md §20.2).
 //
-// One line per fact, ASCII, sorted byte-wise and concatenated, as the meaning
-// projection is (§20.2) and for the same reason: what an id depends on should
-// be printable, readable and diffable.
-func LayoutProjection(u *Unit, table string) string {
-	var lines []string
-	seen := map[string]bool{}
-	var walk func(name string)
-	walk = func(name string) {
-		if seen[name] {
-			return
-		}
-		seen[name] = true
+// ASCII, every line terminated by one "\n", no blank lines; tokens separated
+// by exactly one space; a nested line indented four spaces. Ids are four
+// lowercase hex digits; sizes, offsets and bounds decimal; every value the
+// schemafmt-canonical text of the EVALUATED value.
+func CookProjection(u *Unit) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "schema-build-version %d\n", BuildVersionForm)
+	fmt.Fprintf(&b, "protocol %016x\n", u.ProtocolId)
+	// The byte order is a GENERATION input (§20.1): a cook is produced in the
+	// byte order of the build it is cooked for, and two builds alike in every
+	// other fact produce different cook bytes. It is `little` for every target
+	// schema generates for today; a big-endian cook is §15's question.
+	b.WriteString("byteorder little\n")
+
+	closure := TableClosure(u)
+	if len(closure) == 0 {
+		// a unit that declares no table has a projection of its header lines
+		// alone, deliberately not equal to the protocol id
+		return b.String()
+	}
+	blocks := Blocks(u)
+
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	enums := map[string]*Enum{}
+	unions := map[string]*Union{}
+
+	for _, name := range names {
 		st := memberStruct(u, name)
 		if st == nil {
-			return
+			continue
 		}
 		ml := layoutRecord(u, st)
-		lines = append(lines, fmt.Sprintf("record %s %d %d", name, ml.Size, ml.Align))
+		fmt.Fprintf(&b, "record %s sizeof=%d alignof=%d\n", name, ml.Size, ml.Align)
 		for _, fl := range ml.Fields {
-			f := fl.Field
-			lines = append(lines, fmt.Sprintf("field %s.%04x %d %d %d",
-				name, TableFieldId(f), TableScalarKind(f), fl.Offset, fl.Size))
+			b.WriteString(cookFieldLine(fl, enums, unions))
 		}
-		for _, f := range st.Fields {
-			if f.Type.Kind != TNamed {
-				continue
-			}
-			switch ref := f.Type.Ref.(type) {
-			case *Struct:
-				walk(ref.Name)
-			case *Union:
-				for _, v := range ref.Variants {
-					walk(v.Type)
+		// Every record whose block form MOVES something is followed by its
+		// PROJECTION, whose slots are the other side's contract (§19). A record
+		// with no out-of-line array has a projection that is its own layout
+		// behind the prologue and contributes no line — which is what §20.2's
+		// worked example shows, and the worked example is the golden.
+		if bl := blocks.Block(name); bl != nil && len(bl.Arrays) > 0 {
+			fmt.Fprintf(&b, "block %s sizeof=%d alignof=%d\n", name, bl.Projection.Size, bl.Projection.Align)
+			for _, fl := range bl.Projection.Fields {
+				fmt.Fprintf(&b, "    slot %04x offset=%d size=%d", TableFieldId(fl.Field), fl.Offset, fl.Size)
+				if a := bl.ArrayByName(fl.Field.Name); a != nil {
+					fmt.Fprintf(&b, " out_of_line stride=%d", a.Stride)
 				}
+				b.WriteString("\n")
 			}
 		}
 	}
-	walk(table)
-	sort.Strings(lines)
-	return joinLines(lines)
+
+	for _, name := range sortedKeysOf(enums) {
+		fmt.Fprintf(&b, "enum %s\n", name)
+		for i, v := range enums[name].Variants {
+			// the STORED VALUE, not a positional index: None = 0 is implicit
+			// and never listed, so declared variants start at 1
+			fmt.Fprintf(&b, "    variant %d %s\n", i+1, v)
+		}
+	}
+	for _, name := range sortedKeysOf(unions) {
+		fmt.Fprintf(&b, "union %s\n", name)
+		for i, v := range unions[name].Variants {
+			fmt.Fprintf(&b, "    arm %d %s payload=%s\n", i+1, v.Name, v.Type)
+		}
+	}
+	return b.String()
 }
 
-// LayoutDigest is the low 64 bits of SHA-256 over [LayoutProjection].
-func LayoutDigest(u *Unit, table string) uint64 { return sha256Low64(LayoutProjection(u, table)) }
-
-// ---- group 3: the meaning (SPEC-TABLES.md §20.2) ----
-
-// MeaningProjection is the text one table's MEANING digest is taken over: what
-// a wire load PUTS in the slots, over the table's transitive closure — every
-// specified default, every effective declared range, every compressed float's
-// resolution, and every enum's and union's ordinal-to-name mapping.
-//
-// A field is named by its declaring record's name, a `.`, and its WIRE ID as
-// four lowercase hex digits — never by its source name (§20.2).
-func MeaningProjection(u *Unit, table string) string {
-	var lines []string
-	seen := map[string]bool{}
-	var walk func(name string)
-	walk = func(name string) {
-		if seen[name] {
-			return
-		}
-		seen[name] = true
-		st := memberStruct(u, name)
-		if st == nil {
-			return
-		}
-		for _, f := range st.Fields {
-			id := TableFieldId(f)
-			if f.HasDefault {
-				lines = append(lines, fmt.Sprintf("default %s.%04x %s", name, id, meaningValue(f)))
-			}
-			switch {
-			case f.HasIntRange:
-				lines = append(lines, fmt.Sprintf("range %s.%04x %s %s", name, id, f.IntMin, f.IntMax))
-			case f.HasFloatRange:
-				lines = append(lines, fmt.Sprintf("range %s.%04x %s %s", name, id,
-					canonicalFloat(f.FMin), canonicalFloat(f.FMax)))
-				lines = append(lines, fmt.Sprintf("step %s.%04x %s", name, id, canonicalFloat(f.Resolution)))
-			case f.Type.Kind == TBits:
-				// bits(N) declares [0, 2^N - 1] by its WIDTH, and §4 clamps a
-				// read to it, so the implied range is a meaning fact like any
-				// declared one (§8, §20.1).
-				lines = append(lines, fmt.Sprintf("range %s.%04x 0 %d", name, id, (uint64(1)<<uint(f.Type.Width))-1))
-			}
-			// the vocabularies a slot stores an ORDINAL of
-			if f.KeyEnumRef != nil {
-				walkEnum(&lines, seen, f.KeyEnumRef)
-			}
-			if f.Type.Kind != TNamed {
-				continue
-			}
-			switch ref := f.Type.Ref.(type) {
-			case *Enum:
-				walkEnum(&lines, seen, ref)
-			case *Struct:
-				walk(ref.Name)
-			case *Union:
-				if !seen["union "+ref.Name] {
-					seen["union "+ref.Name] = true
-					for i, v := range ref.Variants {
-						lines = append(lines, fmt.Sprintf("union %s %d %s", ref.Name, i, v.Name))
-					}
-				}
-				for _, v := range ref.Variants {
-					walk(v.Type)
-				}
-			}
-		}
+// cookFieldLine renders one field's line, collecting the vocabularies it
+// reaches. The optional tokens appear in §20.2's order and only where the fact
+// exists.
+func cookFieldLine(fl FieldLayout, enums map[string]*Enum, unions map[string]*Union) string {
+	f := fl.Field
+	kind := TableScalarKind(f)
+	if f.Type.Pointer {
+		kind = TableKindPointer
 	}
-	walk(table)
-	sort.Strings(lines)
-	return joinLines(lines)
+	var b strings.Builder
+	fmt.Fprintf(&b, "    field %04x kind=%d offset=%d size=%d", TableFieldId(f), kind, fl.Offset, fl.Size)
+
+	// the REFERENT: the declaration this field, or its ARRAY ELEMENT, names.
+	// A kind number says a record is nested and not WHICH one, so two
+	// same-shaped records would be interchangeable to a digest that stopped at
+	// the kind — and the nested body would then decode under different ids.
+	if f.Type.Kind == TNamed {
+		switch ref := f.Type.Ref.(type) {
+		case *Struct:
+			fmt.Fprintf(&b, " type=%s", ref.Name)
+		case *Enum:
+			fmt.Fprintf(&b, " enum=%s", ref.Name)
+			enums[ref.Name] = ref
+		case *Union:
+			fmt.Fprintf(&b, " union=%s", ref.Name)
+			unions[ref.Name] = ref
+		}
+		// there is deliberately NO flags= token (§20.1): a mask rides raw and
+		// a load copies it verbatim, so swapping one flags declaration for a
+		// same-width other changes no cook byte. Its WIDTH is in size=.
+	}
+
+	switch {
+	case f.KeyEnum != "":
+		fmt.Fprintf(&b, " elem=%d array=keyed bound=%d key=%s", cookElemSize(fl), f.ArrayBound, f.KeyEnum)
+		if f.KeyEnumRef != nil {
+			enums[f.KeyEnum] = f.KeyEnumRef
+		}
+	case f.Array == ArrayFixed:
+		fmt.Fprintf(&b, " elem=%d array=fixed bound=%d", cookElemSize(fl), f.ArrayBound)
+	case f.Array == ArrayCounted:
+		fmt.Fprintf(&b, " elem=%d array=bounded bound=%d", cookElemSize(fl), f.ArrayBound)
+	case f.Type.Kind == TString, f.Type.Kind == TBytes:
+		// a string's and a bytes' CAPACITY, which §20.1 files beside an
+		// array's bound for the same reason: it is the extent the storage took
+		fmt.Fprintf(&b, " bound=%d", f.Type.Size)
+	}
+
+	if f.Type.Optional {
+		b.WriteString(" optional=true")
+	}
+	if f.HasDefault {
+		fmt.Fprintf(&b, " default=%s", cookValue(f))
+	}
+	switch {
+	case f.HasIntRange:
+		fmt.Fprintf(&b, " min=%s max=%s", f.IntMin, f.IntMax)
+	case f.HasFloatRange:
+		fmt.Fprintf(&b, " min=%s max=%s step=%s",
+			canonicalFloat(f.FMin), canonicalFloat(f.FMax), canonicalFloat(f.Resolution))
+	case f.Type.Kind == TBits:
+		// bits(N) declares [0, 2^N - 1] by its WIDTH and §4 clamps a load to
+		// it, so the implied range is a meaning fact like any declared one
+		fmt.Fprintf(&b, " min=0 max=%d", (uint64(1)<<uint(f.Type.Width))-1)
+	}
+	b.WriteString("\n")
+	return b.String()
 }
 
-// MeaningDigest is the low 64 bits of SHA-256 over [MeaningProjection].
-func MeaningDigest(u *Unit, table string) uint64 { return sha256Low64(MeaningProjection(u, table)) }
-
-func walkEnum(lines *[]string, seen map[string]bool, e *Enum) {
-	if seen["enum "+e.Name] {
-		return
+// cookElemSize is one array element's own size in bytes — the pitch the
+// storage takes per slot, which is what `elem=` names.
+func cookElemSize(fl FieldLayout) int64 {
+	f := fl.Field
+	if f.ArrayBound <= 0 {
+		return 0
 	}
-	seen["enum "+e.Name] = true
-	for i, v := range e.Variants {
-		*lines = append(*lines, fmt.Sprintf("enum %s %d %s", e.Name, i, v))
+	elems := fl.Size
+	if f.Array == ArrayCounted {
+		elems -= 4 // the int32 count companion
 	}
+	if f.Type.Optional {
+		elems -= 1
+	}
+	return elems / f.ArrayBound
 }
 
-// meaningValue renders a field's specified default as schemafmt-canonical text
-// of the EVALUATED value — what a constant now produces, never how it was
-// spelled (§20.2).
-func meaningValue(f *Field) string {
+// cookValue renders a specified default as schemafmt-canonical text of the
+// EVALUATED value — what a constant now produces, never how it was spelled.
+func cookValue(f *Field) string {
 	switch {
 	case f.DefVariant != "":
 		return f.DefVariant
@@ -226,50 +234,11 @@ func canonicalFloat(v float64) string {
 	return s
 }
 
-// ---- the instruments (SPEC-TABLES.md §20.3) ----
-
-func joinLines(lines []string) string {
-	var b strings.Builder
-	for _, l := range lines {
-		b.WriteString(l)
-		b.WriteByte('\n')
+func sortedKeysOf[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
 	}
-	return b.String()
-}
-
-// sha256Low64 takes the low 64 bits of SHA-256 — the final eight bytes,
-// big-endian, exactly as the protocol id is taken (SPEC.md §3.1). The
-// projections are TEXT under SHA-256 because they are many small facts a walk
-// could forget, so what they depend on must be printable and a missing fact
-// must be a review question.
-func sha256Low64(text string) uint64 {
-	sum := sha256.Sum256([]byte(text))
-	return binary.BigEndian.Uint64(sum[24:])
-}
-
-// fnv1a64Bytes is the FOLD: its inputs are already digests, and it must be
-// computable as a constant expression in every backend's own language with no
-// library (§20.3).
-func fnv1a64Bytes(b []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, c := range b {
-		h ^= uint64(c)
-		h *= 0x100000001b3
-	}
-	return h
-}
-
-func appendBE64(b []byte, v uint64) []byte {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], v)
-	return append(b, buf[:]...)
-}
-
-func sortedTableNames(u *Unit) []string {
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
+	sort.Strings(out)
+	return out
 }

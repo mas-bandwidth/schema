@@ -1762,8 +1762,8 @@ func (c *checker) checkTables() {
 		// a collision tomorrow (§11).
 		if st.IsTable {
 			for _, f := range st.Fields {
-				if f.Name == "magic" || f.Name == "build_version" {
-					c.errf(pos, "table %s: field %s collides with the block form's generated prologue — `magic` and `build_version` open every block projection, as `<field>_present` is generated beside an optional's value; rename the field (SPEC-TABLES.md §19.1, §11)",
+				if f.Name == "magic" || f.Name == "build_version" || f.Name == "byte_order" {
+					c.errf(pos, "table %s: field %s collides with the block form's generated prologue — `magic`, `build_version` and `byte_order` open every block projection, as `<field>_present` is generated beside an optional's value; rename the field (SPEC-TABLES.md §19.1, §11)",
 						name, f.Name)
 				}
 			}

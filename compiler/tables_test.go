@@ -5,6 +5,7 @@
 package compiler
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -717,5 +718,63 @@ func TestNoTextFormUnitEmitsNoCpp(t *testing.T) {
 	}
 	if !found {
 		t.Error("a unit with a fixed-size table emitted no Table.cpp")
+	}
+}
+
+// TestEmittedBuildVersionIsTheSpecsNumber holds the two backends to §20's
+// number rather than to a construction of their own: the page works an example
+// and states its digest, a reader derived that digest independently, and the
+// constant the emitters write must BE it.
+//
+// The protocol id is an INPUT to the cook projection (§20.2's first lines), so
+// the example is generated under the id the page states — which is the only
+// way the page's number and this build's can be the same number.
+func TestEmittedBuildVersionIsTheSpecsNumber(t *testing.T) {
+	const workedSource = `package demo
+
+enum Grade { Bronze, Silver, Gold }
+
+table ShipConfig
+{
+    damage float32 = 21.0
+    speed  float32 = 500.0 | was = "velocity"
+    armor  uint8 | min = 0, max = 100
+    grade  Grade = Silver
+}
+`
+	u := unitFromSource(t, workedSource)
+	u.ProtocolId = 0x0123456789abcdef // the id §20.2 works the example under
+
+	const want = "0x7402a36de22d9728"
+	if got := ir.BuildVersion(u); fmt.Sprintf("0x%016x", got) != want {
+		t.Fatalf("the compiler's build version is 0x%016x, and SPEC-TABLES.md §20.2 states %s", got, want)
+	}
+
+	c := New()
+	for _, target := range []string{"cpp", "cs"} {
+		files, err := c.Generate(u, target, Options{})
+		if err != nil {
+			t.Fatalf("generate %s: %v", target, err)
+		}
+		found := false
+		for name, data := range files {
+			if !strings.HasSuffix(name, "Block.h") && !strings.HasSuffix(name, "Block.cs") {
+				continue
+			}
+			for _, line := range strings.Split(string(data), "\n") {
+				// the CONSTANT's own definition, not a descriptor that
+				// references it
+				if !strings.Contains(line, "BuildVersion = 0x") {
+					continue
+				}
+				if !strings.Contains(strings.ToLower(line), "7402a36de22d9728") {
+					t.Errorf("%s emits %q — SPEC-TABLES.md §20.2's number for this unit is %s", name, strings.TrimSpace(line), want)
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s emits no BuildVersion constant at all (SPEC-TABLES.md §20.7)", target)
+		}
 	}
 }
