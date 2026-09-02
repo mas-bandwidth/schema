@@ -269,6 +269,13 @@ func diffFlags(base, live *Unit) []Finding {
 		for i, v := range bf.Variants {
 			j, ok := pos[v]
 			switch {
+			case !ok && i < len(lf.Variants):
+				// the bit is still declared, under another name. The compiler
+				// cannot tell a rename (which moves no byte) from a new
+				// meaning claimed on a spent bit (which remaps every stored
+				// file), so it refuses and makes the author say which.
+				out = append(out, Finding{Refuse, "flags " + bf.Name,
+					fmt.Sprintf("bit %d was %s and is now %s — a spent bit stays spent; if that is a rename it moves no byte, and if bit %d now means something else every stored file is remapped", i, v, lf.Variants[i], i)})
 			case !ok:
 				out = append(out, Finding{Refuse, "flags " + bf.Name,
 					fmt.Sprintf("variant %s removed from bit %d — a spent bit stays spent; retire the name and keep the position", v, i)})

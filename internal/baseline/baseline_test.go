@@ -219,10 +219,24 @@ func TestRefusals(t *testing.T) {
 			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
 		},
 		{
-			name:    "a flags variant removed",
+			name:    "a flags variant renamed in place — a rename, or a spent bit reclaimed",
+			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Stealth, Turbo }"),
+			where:   "flags Perks",
+			what:    "bit 1 was Cloaked and is now Stealth",
+			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
+		},
+		{
+			name:    "a flags variant removed from the middle — every bit above it slides down",
 			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Turbo }"),
 			where:   "flags Perks",
-			what:    "variant Cloaked removed from bit 1",
+			what:    "variant Turbo moved from bit 2 to bit 1",
+			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
+		},
+		{
+			name:    "the last flags variant removed — the bit is freed, and a spent bit stays spent",
+			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked }"),
+			where:   "flags Perks",
+			what:    "variant Turbo removed from bit 2",
 			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
 		},
 	}
