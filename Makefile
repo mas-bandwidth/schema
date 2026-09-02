@@ -199,7 +199,7 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # The tables corpus (SPEC-TABLES.md): the tabledemo unit plus the
 # two-generation evolution pair (tblv1/tblv2), generated at build time into
 # build/ — test-only, never part of the committed generated/ tree.
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated
 	./bin/schema generate --lang cpp --out build/tables-generated/examples tables/examples
 	./bin/schema generate --lang cpp --out build/tables-generated/pointers tables/pointers
@@ -208,6 +208,7 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 	./bin/schema generate --lang cpp --out build/tables-generated/p1 test/tables/P1.schema
 	./bin/schema generate --lang cpp --out build/tables-generated/p2 test/tables/P2.schema
 	./bin/schema generate --lang cpp --out build/tables-generated/p3 test/tables/P3.schema
+	./bin/schema generate --lang cpp --out build/tables-generated/jsonkeys test/tables/JsonKeys.schema
 	@touch $@
 
 # The ZERO-COST GATE (SPEC-TABLES.md): a table with no pointer in its by-value
@@ -227,6 +228,45 @@ tables-zero-cost: build/tables-generated/.stamp
 	done
 	@echo "tables zero-cost gate: value-only tables carry no pointer machinery"
 
+# The GENERIC-WALK GATE (SPEC-TABLES.md §16): the text form is ONE walk over
+# the reflection descriptors, not a per-table codec — that is the property
+# which makes it schema's rather than a packer's. The walker's source must
+# therefore be the SAME BYTES in every generated header of the corpus, whose
+# units disagree about packages, tables, kinds and pointer modes. The package
+# name lives in the guard and the namespace, outside the markers, so this is a
+# strict byte comparison with nothing normalised away.
+.PHONY: tables-json-walk
+tables-json-walk: build/tables-generated/.stamp
+	@rm -rf build/json-walk && mkdir -p build/json-walk
+	@for f in build/tables-generated/*/*Table.h; do \
+		out=build/json-walk/$$(echo $$f | tr / _); \
+		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+		if [ ! -s $$out ]; then echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; fi; \
+	done
+	@first=""; for f in build/json-walk/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "tables generic-walk gate: one walker, byte-identical in $$(ls build/json-walk | wc -l | tr -d ' ') generated headers"
+
+# The NEGATIVE CONTROL for the walk (SPEC-TABLES.md §16.5). A green round-trip
+# suite proves nothing until the suite is shown capable of going red: the
+# walker's field-offset arithmetic is sabotaged by one field width, and the
+# round trip must FAIL on the first table with two fields. Attachment is that
+# table — two four-byte fields at offsets 0 and 4 — so the sabotage swaps them
+# and stays inside the struct.
+.PHONY: tables-json-negative-control
+tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
+	@rm -rf build/json-sabotage && mkdir -p build/json-sabotage
+	./bin/schema generate --lang cpp --out build/json-sabotage tables/examples
+	@sed -i.bak 's|const uint8_t \* storage = (const uint8_t \*) base + f->offset;|const uint8_t * storage = (const uint8_t *) base + ( f->offset ^ 4 );|' build/json-sabotage/TablesTable.h
+	@grep -q 'f->offset ^ 4' build/json-sabotage/TablesTable.h || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-sabotage test/tables/json_negative_main.cpp -o build/schema_test_json_negative
+	./build/schema_test_json_negative
+
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
@@ -235,6 +275,7 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
 		-Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables \
 		-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 		-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p2 -Ibuild/tables-generated/p3 \
+		-Ibuild/tables-generated/jsonkeys \
 		test/tables/main.cpp -o $@
 
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
@@ -390,6 +431,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test_guard
 	./build/schema_test_tables
 	$(MAKE) tables-zero-cost
+	$(MAKE) tables-json-walk
+	$(MAKE) tables-json-negative-control
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c

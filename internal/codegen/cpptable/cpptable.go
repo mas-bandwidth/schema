@@ -225,6 +225,10 @@ struct TableReport
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
+    // a key the TEXT form saw twice: last wins, and the repeat is counted
+    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // id twice is legal input whose last occurrence wins, silently (§3).
+    int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
@@ -237,9 +241,29 @@ struct TableReport
 
 struct TableTypeInfo;
 
+// One arm of a union field: where its payload sits inside the union's storage
+// and what its payload looks like. The arm's NAME and its table-wire id come
+// from the field's enum_name/variant_id functions at the same tag, so nothing
+// is spelled twice (SPEC-TABLES.md §8).
+struct TableUnionArmInfo
+{
+    uint32_t offset;             // offsetof the arm's payload within the union storage
+    const TableTypeInfo * table; // the arm payload's descriptor
+};
+
+// A union field's shape: the tag, and the arms indexed by it. Arms run
+// [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
+struct TableUnionInfo
+{
+    uint32_t tag_offset; // offsetof the tag within the union storage
+    uint32_t tag_size;   // sizeof the tag
+    const TableUnionArmInfo * arms;
+};
+
 struct TableFieldInfo
 {
     const char * name;      // schema field name, e.g. "health"
+    const char * json;      // the TEXT form's key: the json = "key" attribute, else name (§16.3)
     const char * type_name; // schema type name, e.g. "float32", "Grade"
     uint16_t id;            // table-wire field id (name hash; the was alias's hash after a rename)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
@@ -256,12 +280,18 @@ struct TableFieldInfo
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
     double range_max;
     int64_t enum_max;       // enums: highest valid value (None = 0 always valid);
-                            // unions: the arm count (tag range [0, enum_max]); else -1
-    const char * (*enum_name)( uint64_t value ); // enums: value -> name; unions: tag -> arm name; else NULL
+                            // unions: the arm count (tag range [0, enum_max]);
+                            // flags: the highest declared BIT INDEX; else -1
+    // the vocabulary's names, indexed the same way enum_max bounds: an enum's
+    // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
+    // variant name. NULL for every other kind.
+    const char * (*enum_name)( uint64_t value );
     // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
-    // other kind. Walk [0, enum_max] to enumerate a vocabulary and its ids.
+    // other kind — a FLAGS field's variants have no per-variant wire id (§4),
+    // so a NULL here beside a non-NULL enum_name is what says "flags".
+    // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
     // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
@@ -271,6 +301,11 @@ struct TableFieldInfo
     const char * key_type_name;
     const char * (*key_name)( uint64_t value );
     uint16_t (*key_id)( uint64_t value );
+    // union fields: the tag and its arms, behind a function so the whole
+    // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
+    // a function pointer at compile time; the arms themselves are a static
+    // inside it). NULL for every other kind.
+    const TableUnionInfo * (*arms)();
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 
@@ -279,7 +314,13 @@ struct TableTypeInfo
     const char * name;   // schema type name
     uint32_t size;       // sizeof the storage struct
     int32_t num_fields;
-    const TableFieldInfo * fields;` + pointerTypeMember + `
+    const TableFieldInfo * fields;
+    // put one instance back at its declared defaults, in place. A generic
+    // walker that fills a value has to be able to establish the defaults an
+    // absent field takes, and it holds no type to spell — this is the one
+    // thing the descriptors could not express without it. Placement-new
+    // value-init, exactly what the wire's read path does, and no temporary.
+    void (*reset)( void * storage );` + pointerTypeMember + `
 };
 
 struct TableWriter
@@ -434,6 +475,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.owner = st
 				g.emitTableDescriptor(st)
 			}
+			// the TEXT form's surface (SPEC-TABLES.md §16), emitted AFTER the
+			// descriptors it names: three thin wrappers per fixed-size member
+			// over the one generic walk. No per-table codec, which is the
+			// property that makes the text form schema's rather than a
+			// packer's — and the gate that holds it.
+			g.pf("// ---- the text form (SPEC-TABLES.md §16) ----\n\n")
+			for _, st := range members {
+				g.emitJsonSurface(st)
+			}
 		} else {
 			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
@@ -444,10 +494,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		h.WriteString("// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
 		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n#include <type_traits> // the enforced relocatability asserts\n")
+		// the TEXT form (SPEC-TABLES.md §16) rides in every table header, as
+		// the reflection surface does — it is one generic walk over those same
+		// descriptors, and a closure that carries the descriptors carries the
+		// walk. Number conversion is its only runtime dependency.
+		h.WriteString("#include <cstdio> // the text form: number formatting\n#include <cstdlib> // the text form: exact number conversion\n#include <clocale> // the text form: the runtime's decimal point\n")
 		if anyVariable {
 			// VARIABLE-LENGTH tables only: a unit of pointer-free tables pays
 			// for neither header (SPEC-TABLES.md §2, the zero-cost gate)
-			h.WriteString("#include <cstdlib> // the arena's segments (the AUTHORING path may allocate)\n")
 			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
 		}
 		if anyKeyed {
@@ -474,6 +528,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		h.WriteString("\n")
 		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed))
+		h.WriteString("\n")
+		h.WriteString(tableJsonWalk(u.Package))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package))
