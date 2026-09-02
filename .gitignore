@@ -16,6 +16,8 @@
 /test/cs/obj/
 /test/cs-ludicrous/bin/
 /test/cs-ludicrous/obj/
+/test/cs-tables/bin/
+/test/cs-tables/obj/
 # every build stamp under generated/ — stamps order the build and are not
 # generator output
 generated/**/.stamp

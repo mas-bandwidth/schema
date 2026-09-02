@@ -2785,6 +2785,239 @@ static void test_optional_and_keyed_reflection()
     const tblv1::TableFieldInfo * tally = v1_field( cfg, "tally" );
     CHECK( tally != NULL && tally->is_array );
     CHECK( tally->key_type_name == NULL && tally->key_name == NULL && tally->key_id == NULL );
+// ---- the SHARED GOLDEN WIRE (SPEC-TABLES.md §3, the cross-language gate) ----
+//
+// C++ is the reference writer: these instances' encodings are pinned into
+// testdata/wire/tables/<name>.bin, and every other table backend byte-compares
+// its own Save of THE SAME instance against them, then loads these very bytes.
+// A break here under an unchanged schema is stop-the-line, never a quiet
+// re-pin — SCHEMA_UPDATE_WIRE_GOLDENS=1 rewrites them deliberately
+// (make update-goldens).
+
+static void pin_table_golden( const char * name, const uint8_t * data, int64_t bytes )
+{
+    char path[256];
+    snprintf( path, sizeof( path ), "testdata/wire/tables/%s.bin", name );
+    if ( std::getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) )
+    {
+        FILE * f = fopen( path, "wb" );
+        if ( f == NULL )
+        {
+            printf( "FAIL cannot write %s\n", path );
+            failures++;
+            return;
+        }
+        fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        return;
+    }
+    FILE * f = fopen( path, "rb" );
+    if ( f == NULL )
+    {
+        printf( "FAIL missing table wire golden %s (run: make update-goldens)\n", path );
+        failures++;
+        return;
+    }
+    static uint8_t expected[1u << 20];
+    size_t n = fread( expected, 1, sizeof( expected ), f );
+    fclose( f );
+    if ( (int64_t) n != bytes || memcmp( expected, data, n ) != 0 )
+    {
+        printf( "FAIL table wire golden %s: %lld bytes written, %lld pinned\n",
+                name, (long long) bytes, (long long) n );
+        failures++;
+    }
+}
+
+// The pinned instances, built here and mirrored VALUE FOR VALUE by every port
+// (test/cs-tables/src/Program.cs is the C# twin). Keep the two in step: a
+// divergence in the instance is a divergence in the gate.
+
+static void build_golden_root( tabledemo::RootConfig & root )
+{
+    set_string( root.version_note, root.version_note_length, "golden-v1" );
+
+    root.weapons_count = 2;
+    root.weapons[0].damage = 40.5f;
+    root.weapons[0].speed = 250.0f;
+    root.weapons[0].penetration = 7;
+    root.weapons[0].channel = 45;
+    root.weapons[0].homing = true;
+    root.weapons[0].effect.type = tabledemo::EffectType::Buff;
+    root.weapons[0].effect.buff.multiplier = 3.25f;
+    root.weapons[1].effect.type = tabledemo::EffectType::Debuff;
+    root.weapons[1].effect.debuff.amount = 42;
+
+    root.profiles_count = 1;
+    tabledemo::ProfileConfig & p = root.profiles[0];
+    set_string( p.name, p.name_length, "player one" );
+    p.icon[0] = 1; p.icon[1] = 2; p.icon[2] = 250; p.icon_length = 3;
+    p.experience = 777;
+    p.tilt = -12;
+    p.heading = -30000;
+    p.timestamp = -5000000000ll;
+    p.badge = 200;
+    p.port = 40000;
+    p.epoch = 0x1122334455667788ull;
+    p.precision = 2.5;
+    p.ratings[2] = 0.5f;
+    p.has_loadout = true;
+    p.loadout.grade = tabledemo::Grade::Gold;
+    p.loadout.grades_count = 2;
+    p.loadout.grades[0] = tabledemo::Grade::Bronze;
+    p.loadout.grades[1] = tabledemo::Grade::Gold;
+    p.loadout.podium[0] = tabledemo::Grade::Gold;
+    p.loadout.podium[2] = tabledemo::Grade::Silver;
+    p.loadout.perks = tabledemo::Perks_Cloaked | tabledemo::Perks_Turbo;
+    p.loadout.primary.penetration = 7;
+    p.loadout.backups[0].damage = 1.0f;
+    p.loadout.attachments_count = 2;
+    p.loadout.attachments[0].slot = 3;
+    p.loadout.attachments[0].power = 2.0f;
+    p.loadout.attachments[1].slot = 5;
+}
+
+static void build_golden_loadout( tabledemo::LoadoutConfig & loadout )
+{
+    loadout.grade = tabledemo::Grade::Bronze;
+    loadout.grades_count = 3;
+    loadout.grades[0] = tabledemo::Grade::Gold;
+    loadout.grades[1] = tabledemo::Grade::Silver;
+    loadout.grades[2] = tabledemo::Grade::Bronze;
+    loadout.podium[1] = tabledemo::Grade::Bronze;
+    loadout.perks = tabledemo::Perks_Shielded;
+    loadout.primary.damage = 12.5f;
+    loadout.primary.homing = true;
+    loadout.primary.effect.type = tabledemo::EffectType::Buff;
+    loadout.primary.effect.buff.multiplier = 0.5f;
+    loadout.backups[1].channel = 63;
+    loadout.attachments_count = 1;
+    loadout.attachments[0].slot = 6;
+    loadout.attachments[0].power = 0.25f;
+}
+
+static void build_golden_wide( tabledemo::WideBlob & blob )
+{
+    blob.label_length = 70000;
+    for ( int32_t i = 0; i < 70000; i++ ) { blob.label[i] = (char) ( 'a' + ( i % 26 ) ); }
+    blob.label[70000] = 0;
+    blob.payload_length = 100;
+    for ( int32_t i = 0; i < 100; i++ ) { blob.payload[i] = (uint8_t) ( i * 7 + 3 ); }
+    blob.samples_count = 70000;
+    for ( int32_t i = 0; i < 70000; i++ ) { blob.samples[i] = (uint16_t) ( i * 37 + 11 ); }
+}
+
+static void build_golden_v1( tblv1::Cfg & cfg )
+{
+    cfg.a = 9;
+    cfg.b = 8.5f;
+    cfg.mode = tblv1::Mode::Alpha;
+    set_string( cfg.name, cfg.name_length, "aged" );
+    cfg.inner.factor = 1.25f;
+    cfg.items_count = 3;
+    cfg.items[0] = 1; cfg.items[1] = 20; cfg.items[2] = 255;
+    cfg.grade = tblv1::Grade::Gold;
+    cfg.grades_count = 2;
+    cfg.grades[0] = tblv1::Grade::Gold;
+    cfg.grades[1] = tblv1::Grade::Bronze;
+    cfg.podium[0] = tblv1::Grade::Bronze;
+    cfg.podium[2] = tblv1::Grade::Gold;
+    cfg.slots_count = 4;
+    cfg.slots[0] = 11; cfg.slots[1] = 22; cfg.slots[2] = 33; cfg.slots[3] = 44;
+    cfg.tally[0] = 5; cfg.tally[2] = 7;
+    cfg.effect.type = tblv1::EffectType::Ward;
+    cfg.effect.ward.charge = 0.75f;
+}
+
+static void build_golden_v2( tblv2::Cfg & cfg )
+{
+    cfg.a = 7.5f;
+    cfg.c = false;
+    cfg.mode = tblv2::Mode::Alpha;
+    set_string( cfg.title, cfg.title_length, "fresh" );
+    cfg.inner.factor = 9.5f;
+    cfg.inner.gain = 4.0f;
+    cfg.items_count = 2;
+    cfg.items[0] = 10; cfg.items[1] = 200;
+    cfg.grade = tblv2::Grade::Gold;
+    cfg.grades_count = 3;
+    cfg.grades[0] = tblv2::Grade::Silver;
+    cfg.grades[1] = tblv2::Grade::Gold;
+    cfg.grades[2] = tblv2::Grade::Bronze;
+    cfg.podium[1] = tblv2::Grade::Silver;
+    cfg.slots_count = 3;
+    cfg.slots[0] = 7; cfg.slots[1] = 8; cfg.slots[2] = 9;
+    cfg.tally[1] = 3; cfg.tally[3] = 9;
+    cfg.effect.type = tblv2::EffectType::Hex;
+    cfg.effect.hex.level = 6;
+}
+
+static void test_golden_wire()
+{
+    static uint8_t buffer[1u << 20];
+
+    {
+        static tabledemo::RootConfig root;
+        build_golden_root( root );
+        int64_t need = tabledemo::RootConfigMeasure( root );
+        int64_t wrote = tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == need );
+        pin_table_golden( "root_full", buffer, wrote );
+    }
+    {
+        static tabledemo::RootConfig root; // untouched: everything elides
+        int64_t wrote = tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) );
+        CHECK( wrote == 2 );
+        pin_table_golden( "root_default", buffer, wrote );
+    }
+    {
+        // the ELISION shape: non-default fields around an all-default nested
+        // table inside a taken guard. Its bytes are what pin the "all-default
+        // nested elides" decision across languages — nothing else in this set
+        // carries an all-default nesting.
+        static tabledemo::ProfileConfig profile;
+        profile.experience = 1;
+        profile.has_loadout = true; // loadout itself stays all-default: elides
+        int64_t wrote_elide = tabledemo::ProfileConfigSave( profile, buffer, sizeof( buffer ) );
+        CHECK( wrote_elide > 0 && wrote_elide == tabledemo::ProfileConfigMeasure( profile ) );
+        pin_table_golden( "profile_elide", buffer, wrote_elide );
+    }
+    {
+        static tabledemo::LoadoutConfig loadout;
+        build_golden_loadout( loadout );
+        int64_t wrote = tabledemo::LoadoutConfigSave( loadout, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tabledemo::LoadoutConfigMeasure( loadout ) );
+        pin_table_golden( "loadout_full", buffer, wrote );
+    }
+    {
+        static tabledemo::WideBlob blob;
+        build_golden_wide( blob );
+        int64_t wrote = tabledemo::WideBlobSave( blob, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tabledemo::WideBlobMeasure( blob ) );
+        pin_table_golden( "wide_blob", buffer, wrote );
+    }
+    {
+        static tabledemo::ArchiveConfig archive;
+        build_golden_root( archive.root );
+        archive.count = 5;
+        int64_t wrote = tabledemo::ArchiveConfigSave( archive, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tabledemo::ArchiveConfigMeasure( archive ) );
+        pin_table_golden( "archive", buffer, wrote );
+    }
+    {
+        static tblv1::Cfg cfg;
+        build_golden_v1( cfg );
+        int64_t wrote = tblv1::CfgSave( cfg, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tblv1::CfgMeasure( cfg ) );
+        pin_table_golden( "v1_cfg", buffer, wrote );
+    }
+    {
+        static tblv2::Cfg cfg;
+        build_golden_v2( cfg );
+        int64_t wrote = tblv2::CfgSave( cfg, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tblv2::CfgMeasure( cfg ) );
+        pin_table_golden( "v2_cfg", buffer, wrote );
+    }
 }
 
 // ---- the TEXT form (SPEC-TABLES.md §16) ------------------------------------
@@ -4428,6 +4661,7 @@ static void test_json_pinned_keyed_and_optional()
 
 int main()
 {
+    test_golden_wire();
     test_round_trip();
     test_exact_capacity();
     test_storage_invariants();
