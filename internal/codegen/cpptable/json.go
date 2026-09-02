@@ -192,6 +192,22 @@ inline bool TableJsonIsBytes( const TableFieldInfo * f )
     return f->is_array && f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0;
 }
 
+// An ENUM-KEYED array (SPEC-TABLES.md §2.4): its JSON form is an OBJECT
+// keyed by variant name, not a positional array, because that is what the
+// storage is — one slot per variant, addressed by the variant.
+inline bool TableJsonIsKeyed( const TableFieldInfo * f )
+{
+    return f->key_name != NULL;
+}
+
+// SLOT 0 IS NONE'S AND NAMES NOTHING (§2.4, §8): its key id is 0, the
+// reserved id no declared name can fold to, so a walk enumerating
+// [0, array_bound) skips it without needing any rule about slot indices.
+inline bool TableJsonKeyedSlotValid( const TableFieldInfo * f, int64_t slot )
+{
+    return f->key_id( (uint64_t) slot ) != 0;
+}
+
 inline bool TableJsonIsFlags( const TableFieldInfo * f )
 {
     return f->enum_name != NULL && f->variant_id == NULL;
@@ -206,6 +222,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
 {
     if ( f->kind == 12 ) return 's';           // string
     if ( TableJsonIsBytes( f ) ) return 's';   // bytes: base64
+    if ( TableJsonIsKeyed( f ) ) return 'o';   // an object keyed by variant NAME
     if ( f->is_array ) return 'a';
     if ( f->arms != NULL ) return 'o';         // union: an object with ONE key
     if ( f->kind == 13 ) return 'o';           // nested table or type
@@ -586,6 +603,32 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
         TableJsonWriteBase64( out, storage, TableJsonCount( base, f ) );
         return true;
     }
+    if ( TableJsonIsKeyed( f ) )
+    {
+        // one entry per SLOT, keyed by the variant that owns it, so inserting
+        // a variant next season moves nothing in the text either. Slot 0 is
+        // None's and names nothing, so it is skipped by its reserved key id.
+        out.put( '{' );
+        bool first = true;
+        for ( int64_t slot = 0; slot < f->array_bound; slot++ )
+        {
+            if ( !TableJsonKeyedSlotValid( f, slot ) ) { continue; }
+            if ( !first ) { out.put( ',' ); }
+            first = false;
+            out.line( depth + 1 );
+            const char * key = f->key_name( (uint64_t) slot );
+            TableJsonWriteString( out, key, (int32_t) strlen( key ) );
+            out.raw( ": ", 2 );
+            if ( !TableJsonWriteScalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
+            {
+                return false;
+            }
+        }
+        if ( first ) { out.raw( "}", 1 ); return true; }
+        out.line( depth );
+        out.put( '}' );
+        return true;
+    }
     if ( f->is_array )
     {
         int32_t count = TableJsonCount( base, f );
@@ -621,6 +664,14 @@ inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const Ta
     {
         const TableFieldInfo * f = &info->fields[i];
         if ( f->guard[0] != 0 && !TableJsonGuardHolds( base, info, f->guard ) ) { continue; }
+        // an ABSENT optional writes no key: presence of the key IS the
+        // presence (§16.2), so an absent field is an absent key and nothing
+        // else would read back as absent
+        if ( f->optional &&
+             TableJsonGetRaw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
+        {
+            continue;
+        }
         // ---- SEAM (schema#260): an OPTIONAL field writes its key only when
         // ---- present — skip here on !optional_present, since presence is the
         // ---- presence and an absent key is the absence. The enum-keyed half
@@ -1332,6 +1383,61 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         TableJsonSetCount( base, f, placed );
         return true;
     }
+    if ( TableJsonIsKeyed( f ) )
+    {
+        if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
+        in.pos++;
+        // every slot back to its declared defaults first, so a key the text
+        // omits keeps them and a repeated field key cannot leave an earlier
+        // occurrence's slots standing
+        for ( int32_t i = 0; i < f->array_bound; i++ )
+        {
+            void * slot = storage + (int64_t) i * f->elem_size;
+            if ( f->kind == 13 ) { f->table->reset( slot ); }
+            else { memset( slot, 0, (size_t) f->elem_size ); }
+        }
+        char shape = TableJsonElementShape( f );
+        for ( ;; )
+        {
+            char c = TableJsonPeek( in );
+            if ( c == '}' ) { in.pos++; break; }
+            if ( c == 0 ) { in.bad = true; return false; }
+            char key[kTableJsonMaxKey];
+            int32_t key_length = 0;
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            key[key_length] = 0;
+            if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
+            in.pos++;
+            int64_t slot = -1;
+            for ( int64_t v = 0; v < f->array_bound; v++ )
+            {
+                // slot 0 names nothing, so "None" finds no slot and is an
+                // unknown key like any other name this reader cannot place
+                if ( !TableJsonKeyedSlotValid( f, v ) ) { continue; }
+                if ( strcmp( f->key_name( (uint64_t) v ), key ) == 0 ) { slot = v; break; }
+            }
+            if ( slot < 0 )
+            {
+                in.report->unknown++;
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            }
+            else if ( TableJsonValueShape( in ) != shape )
+            {
+                in.report->kind_mismatch++;
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            }
+            else if ( !TableJsonReadScalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
+            {
+                return false;
+            }
+            c = TableJsonPeek( in );
+            if ( c == ',' ) { in.pos++; continue; } // a trailing comma is accepted
+            if ( c == '}' ) { in.pos++; break; }
+            in.bad = true;
+            return false;
+        }
+        return true;
+    }
     if ( f->is_array )
     {
         if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
@@ -1437,21 +1543,36 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
                 if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->duplicate++; }
                 seen[index >> 6] |= bit;
             }
-            // ---- SEAM (schema#260): an OPTIONAL field sets its presence
-            // ---- companion here, because reaching this line IS the key being
-            // ---- present. The enum-keyed half (schema#255) is not here: it
-            // ---- is a shape, and lands in TableJsonShape and
-            // ---- TableJsonReadField, matching each key against the key
-            // ---- vocabulary rather than counting positions.
-            if ( TableJsonValueShape( in ) != TableJsonShape( f ) )
+            // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
+            // is the key being present, so an optional is set present
+            // whatever its value — with one exception the page names: a JSON
+            // null, which reads as ABSENT rather than as a value.
+            char got = TableJsonValueShape( in );
+            if ( f->optional && got == 'z' )
             {
-                // the wrong JSON type for the kind: skipped, never coerced
-                in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+                // absent, and back at its defaults: a repeated key whose last
+                // occurrence is null must not leave an earlier value standing
+                if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
+                TableJsonSetRaw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
-            else if ( !TableJsonReadField( in, base, f, depth ) )
+            else
             {
-                return false;
+                if ( got != TableJsonShape( f ) )
+                {
+                    // the wrong JSON type for the kind: skipped, never coerced
+                    in.report->kind_mismatch++;
+                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                }
+                else if ( !TableJsonReadField( in, base, f, depth ) )
+                {
+                    return false;
+                }
+                if ( f->optional )
+                {
+                    TableJsonSetRaw( (uint8_t *) base + f->present_offset, 1, 1 );
+                }
             }
         }
         c = TableJsonPeek( in );

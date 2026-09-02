@@ -15,6 +15,7 @@
 #include "NestedTable.h"
 #include "WideTable.h"
 #include "GuardedTable.h"
+#include "KeyedTable.h"
 #include "V1Table.h"
 #include "V2Table.h"
 #include "GraphTable.h"
@@ -4122,6 +4123,304 @@ static void test_json_nested_guards()
     JSON_ROUND_TRIP( tabledemo, Patrol, ( []() { tabledemo::Patrol p; p.active = true; p.has_target = false; p.speed = 8.0f; p.wander = 2.5f; return p; }() ) );
 }
 
+// ---- the two constructs #265 added, in the text form --------------------
+//
+// `?T` (SPEC-TABLES.md §2.3): PRESENCE OF THE KEY IS THE PRESENCE.
+// `[E]T` (§2.4): an OBJECT KEYED BY VARIANT NAME, because that is what the
+// storage is — one slot per variant, addressed by the variant, and slot 0 is
+// None's and names nothing.
+
+static tabledemo::KeyedConfig json_keyed_instance()
+{
+    tabledemo::KeyedConfig cfg;
+    cfg.teams[tabledemo::Team::Red].spawn_count = 9;
+    set_string( cfg.teams[tabledemo::Team::Blue].banner,
+                cfg.teams[tabledemo::Team::Blue].banner_length, "blue" );
+    cfg.hulls[tabledemo::Hull::Gunship].health = 55.0f;
+    cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].damage = 7.5f;
+    cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].gunner_present = true;
+    cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].gunner.reaction = 0.9f;
+    cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].gunner.tracking = true;
+    cfg.scores.per_team[(int) tabledemo::Team::Green] = 1234;
+    return cfg;
+}
+
+static void test_json_keyed_and_optional_round_trip()
+{
+    tabledemo::KeyedConfig cfg = json_keyed_instance();
+    JSON_ROUND_TRIP( tabledemo, KeyedConfig, cfg );
+    JSON_ROUND_TRIP( tabledemo, HullConfig, cfg.hulls[tabledemo::Hull::Gunship] );
+    JSON_ROUND_TRIP( tabledemo, TeamConfig, cfg.teams[tabledemo::Team::Red] );
+    JSON_ROUND_TRIP( tabledemo, ScoreBoard, cfg.scores );
+    // an optional PRESENT and an optional ABSENT are different values, and
+    // both have to survive the trip
+    JSON_ROUND_TRIP( tabledemo, TurretConfig,
+                     cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile] );
+    JSON_ROUND_TRIP( tabledemo, TurretConfig,
+                     cfg.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Cannon] );
+    // ... including a PRESENT optional holding nothing but defaults, which is
+    // the case elision by content would destroy
+    tabledemo::TurretConfig defaulted;
+    defaulted.gunner_present = true;
+    JSON_ROUND_TRIP( tabledemo, TurretConfig, defaulted );
+
+    tabledemo::KeyedConfig empty;
+    JSON_ROUND_TRIP( tabledemo, KeyedConfig, empty );
+}
+
+static void test_json_optional_presence()
+{
+    // an absent optional writes NO KEY: nothing else would read back absent
+    {
+        tabledemo::TurretConfig absent;
+        int64_t size = tabledemo::TurretConfigToJsonMeasure( absent );
+        CHECK( size > 0 );
+        std::vector<char> text( (size_t) size + 1 );
+        CHECK( tabledemo::TurretConfigToJson( absent, text.data(), size ) == size );
+        text[(size_t) size] = 0;
+        CHECK( strstr( text.data(), "\"gunner\"" ) == NULL );
+    }
+    // a present one writes its key, even holding only defaults
+    {
+        tabledemo::TurretConfig present;
+        present.gunner_present = true;
+        int64_t size = tabledemo::TurretConfigToJsonMeasure( present );
+        std::vector<char> text( (size_t) size + 1 );
+        CHECK( tabledemo::TurretConfigToJson( present, text.data(), size ) == size );
+        text[(size_t) size] = 0;
+        CHECK( strstr( text.data(), "\"gunner\"" ) != NULL );
+    }
+
+    // PRESENCE OF THE KEY IS THE PRESENCE — whatever the value
+    struct { const char * text; bool present; int kind_mismatch; const char * what; } rows[] = {
+        { "{ \"gunner\": { \"reaction\": 0.5 } }", true,  0, "a value" },
+        { "{ \"gunner\": {} }",                    true,  0, "an empty object" },
+        { "{ \"damage\": 1 }",                     false, 0, "no key at all" },
+        { "{ \"gunner\": null }",                  false, 0, "null reads as ABSENT" },
+        { "{ \"gunner\": 7 }",                     true,  1, "a wrong-typed value is still a present key" },
+        { "{ \"gunner\": \"x\" }",                 true,  1, "likewise a string" },
+    };
+    for ( const auto & row : rows )
+    {
+        tabledemo::TurretConfig value;
+        tabledemo::TableReport report;
+        bool ok = tabledemo::TurretConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        if ( !ok || value.gunner_present != row.present || report.kind_mismatch != row.kind_mismatch )
+        {
+            printf( "FAIL json optional (%s): ok=%d present=%d want %d kind=%d want %d\n",
+                    row.what, ok, (int) value.gunner_present, (int) row.present,
+                    report.kind_mismatch, row.kind_mismatch );
+            failures++;
+        }
+    }
+
+    // null is ABSENT for a ?T and a KIND MISMATCH for everything else
+    {
+        tabledemo::TurretConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"damage\": null, \"gunner\": null }";
+        CHECK( tabledemo::TurretConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.kind_mismatch == 1 );       // damage only
+        CHECK( !value.gunner_present );
+        CHECK( value.damage == 10.0f );           // the declared default
+    }
+
+    // last wins, and a null LAST leaves nothing of the value before it
+    {
+        tabledemo::TurretConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"gunner\": { \"reaction\": 9.5 }, \"gunner\": null }";
+        CHECK( tabledemo::TurretConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( !value.gunner_present && report.duplicate == 1 );
+        CHECK( value.gunner.reaction == 0.2f );   // back at its declared default
+    }
+
+    // an absent optional and a present-all-default one are DIFFERENT wires,
+    // and the text distinguishes them
+    {
+        tabledemo::TurretConfig absent, present;
+        present.gunner_present = true;
+        uint8_t a[512], b[512];
+        int64_t na = tabledemo::TurretConfigSave( absent, a, sizeof( a ) );
+        int64_t nb = tabledemo::TurretConfigSave( present, b, sizeof( b ) );
+        CHECK( na != nb ); // presence is the payload, not content
+    }
+}
+
+static void test_json_keyed_arrays()
+{
+    // an absent key keeps that slot's defaults; the others still land
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Green\": { \"spawn_count\": 7 } } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.teams[tabledemo::Team::Green].spawn_count == 7 );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 );  // the declared default
+        CHECK( value.teams[tabledemo::Team::Blue].spawn_count == 4 );
+        CHECK( report.unknown == 0 && !report.malformed );
+    }
+
+    // "None" NAMES NO SLOT (§2.4): slot 0 is None's and is never valid, so
+    // the key is unknown like any other name this reader cannot place
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"None\": { \"spawn_count\": 3 }, \"Red\": { \"spawn_count\": 5 } } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.unknown == 1 );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 5 );
+    }
+    // ... and the writer never emits it
+    {
+        tabledemo::KeyedConfig value;
+        int64_t size = tabledemo::KeyedConfigToJsonMeasure( value );
+        std::vector<char> text( (size_t) size + 1 );
+        CHECK( tabledemo::KeyedConfigToJson( value, text.data(), size ) == size );
+        text[(size_t) size] = 0;
+        CHECK( strstr( text.data(), "\"None\"" ) == NULL );
+        CHECK( strstr( text.data(), "\"Red\"" ) != NULL );
+    }
+
+    // a variant this build cannot name is skipped and counted
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Violet\": { \"spawn_count\": 3 } } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.unknown == 1 && !report.malformed );
+    }
+
+    // a keyed array is an OBJECT: an array is the wrong shape for it
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": [ { \"spawn_count\": 3 } ] }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.kind_mismatch == 1 && !report.malformed );
+    }
+    // ... and a slot whose value is the wrong shape is counted, not coerced
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Red\": 5 } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.kind_mismatch == 1 );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 );
+    }
+
+    // last wins for a repeated keyed field: the second object replaces the
+    // first outright rather than overlaying it
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Blue\": { \"spawn_count\": 6 } },"
+                            "  \"teams\": { \"Blue\": { \"spawn_count\": 7 } } }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.teams[tabledemo::Team::Blue].spawn_count == 7 );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 ); // back at its default
+        CHECK( report.duplicate == 1 );
+    }
+
+    // trailing commas inside a keyed object, like everywhere else
+    {
+        tabledemo::KeyedConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, }, }";
+        CHECK( tabledemo::KeyedConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 5 && !report.malformed );
+    }
+
+    // a keyed array of SCALARS, on a plain `type`, keyed the same way
+    {
+        tabledemo::ScoreBoard value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"per_team\": { \"Blue\": 900, \"Green\": 200000 } }";
+        CHECK( tabledemo::ScoreBoardFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.per_team[(int) tabledemo::Team::Blue] == 900 );
+        CHECK( value.per_team[(int) tabledemo::Team::Green] == 100000 ); // clamped to max
+        CHECK( report.clamped == 1 );
+    }
+}
+
+// ---- the pinned texts for both constructs -------------------------------
+
+static void test_json_pinned_keyed_and_optional()
+{
+    // an optional PRESENT, and the object it writes
+    tabledemo::TurretConfig turret;
+    turret.damage = 7.5f;
+    turret.gunner_present = true;
+    turret.gunner.reaction = 0.9f;
+    turret.gunner.tracking = true;
+    static const char * present =
+        "{\n"
+        "  \"damage\": 7.5,\n"
+        "  \"cooldown\": 0.5,\n"
+        "  \"gunner\": {\n"
+        "    \"reaction\": 0.9,\n"
+        "    \"tracking\": true\n"
+        "  }\n"
+        "}";
+    {
+        int64_t size = tabledemo::TurretConfigToJsonMeasure( turret );
+        if ( size < 0 ) { printf( "FAIL json pinned optional: refused\n" ); failures++; return; }
+        std::vector<char> text( (size_t) size + 1 );
+        CHECK( tabledemo::TurretConfigToJson( turret, text.data(), size ) == size );
+        text[(size_t) size] = 0;
+        if ( strcmp( text.data(), present ) != 0 )
+        {
+            printf( "FAIL json pinned optional (present)\n--- got ---\n%s\n--- want ---\n%s\n", text.data(), present );
+            failures++;
+        }
+    }
+    // ... and ABSENT: the key is simply not there
+    static const char * absent =
+        "{\n"
+        "  \"damage\": 10,\n"
+        "  \"cooldown\": 0.5\n"
+        "}";
+    {
+        tabledemo::TurretConfig plain;
+        int64_t size = tabledemo::TurretConfigToJsonMeasure( plain );
+        if ( size < 0 ) { printf( "FAIL json pinned optional: refused\n" ); failures++; return; }
+        std::vector<char> text( (size_t) size + 1 );
+        CHECK( tabledemo::TurretConfigToJson( plain, text.data(), size ) == size );
+        text[(size_t) size] = 0;
+        if ( strcmp( text.data(), absent ) != 0 )
+        {
+            printf( "FAIL json pinned optional (absent)\n--- got ---\n%s\n--- want ---\n%s\n", text.data(), absent );
+            failures++;
+        }
+    }
+
+    // an enum-keyed array of scalars: one entry per SLOT, keyed by the
+    // variant that owns it, and NO "None" row
+    tabledemo::ScoreBoard scores;
+    scores.per_team[(int) tabledemo::Team::Red] = 10;
+    scores.per_team[(int) tabledemo::Team::Green] = 1234;
+    static const char * keyed =
+        "{\n"
+        "  \"per_team\": {\n"
+        "    \"Red\": 10,\n"
+        "    \"Blue\": 0,\n"
+        "    \"Green\": 1234\n"
+        "  }\n"
+        "}";
+    {
+        int64_t size = tabledemo::ScoreBoardToJsonMeasure( scores );
+        if ( size < 0 ) { printf( "FAIL json pinned keyed: refused\n" ); failures++; return; }
+        std::vector<char> text( (size_t) size + 1 );
+        CHECK( tabledemo::ScoreBoardToJson( scores, text.data(), size ) == size );
+        text[(size_t) size] = 0;
+        if ( strcmp( text.data(), keyed ) != 0 )
+        {
+            printf( "FAIL json pinned keyed\n--- got ---\n%s\n--- want ---\n%s\n", text.data(), keyed );
+            failures++;
+        }
+    }
+}
+
 int main()
 {
     test_round_trip();
@@ -4197,6 +4496,10 @@ int main()
     test_json_duplicate_arrays_last_wins();
     test_json_null_is_a_kind_mismatch();
     test_json_nested_guards();
+    test_json_keyed_and_optional_round_trip();
+    test_json_optional_presence();
+    test_json_keyed_arrays();
+    test_json_pinned_keyed_and_optional();
     test_json_pinned_text();
     test_json_fuzz_tokenizer();
 
