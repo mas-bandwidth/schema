@@ -1774,20 +1774,36 @@ func sortedKeys[V any](m map[string]V) []string {
 func (c *checker) checkTableVariantIdentity(closureNames []string) {
 	enums := map[string]*ir.Enum{}
 	unions := map[string]*ir.Union{}
+	// the field that pulled each vocabulary into the closure. The refusals
+	// below exist BECAUSE of closure membership, so they name the edge that
+	// created them — in a unit of many tables, "somewhere in a closure" is a
+	// search the compiler can spare the user.
+	reachedBy := map[string]string{}
 	for _, name := range closureNames {
 		st := c.closureMember(name)
 		if st == nil {
 			continue
 		}
+		what := "type"
+		if st.IsTable {
+			what = "table"
+		}
 		for _, f := range st.Fields {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
+			site := fmt.Sprintf("%s %s's field %s", what, name, f.Name)
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
-				enums[ref.Name] = ref
+				if _, seen := enums[ref.Name]; !seen {
+					enums[ref.Name] = ref
+					reachedBy[ref.Name] = site
+				}
 			case *ir.Union:
-				unions[ref.Name] = ref
+				if _, seen := unions[ref.Name]; !seen {
+					unions[ref.Name] = ref
+					reachedBy[ref.Name] = site
+				}
 			}
 		}
 	}
@@ -1800,15 +1816,15 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 	for _, name := range sortedKeys(enums) {
 		e := enums[name]
 		if e.Max > int64(len(e.Variants)) {
-			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s is in a table's closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (SPEC-TABLES.md §5)",
-				name, e.Max, name)
+			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s reaches it, putting %s in a table closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (SPEC-TABLES.md §5)",
+				name, e.Max, reachedBy[name], name)
 		}
 		seen := map[uint16]string{}
 		for _, v := range e.Variants {
 			id := ir.VariantId(v)
 			if prev, dup := seen[id]; dup {
-				c.errf(pos(name), "enum %s: variants %s and %s collide on table-wire id 0x%04x, and %s is in a table's closure — rename one (SPEC-TABLES.md §5)",
-					name, prev, v, id, name)
+				c.errf(pos(name), "enum %s: variants %s and %s collide on table-wire id 0x%04x, and %s reaches it, putting %s in a table closure — rename one (SPEC-TABLES.md §5)",
+					name, prev, v, id, reachedBy[name], name)
 				continue
 			}
 			seen[id] = v
@@ -1820,8 +1836,8 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 		for _, v := range un.Variants {
 			id := ir.VariantId(v.Name)
 			if prev, dup := seen[id]; dup {
-				c.errf(pos(name), "union %s: arms %s and %s collide on table-wire id 0x%04x, and %s is in a table's closure — rename one (SPEC-TABLES.md §5)",
-					name, prev, v.Name, id, name)
+				c.errf(pos(name), "union %s: arms %s and %s collide on table-wire id 0x%04x, and %s reaches it, putting %s in a table closure — rename one (SPEC-TABLES.md §5)",
+					name, prev, v.Name, id, reachedBy[name], name)
 				continue
 			}
 			seen[id] = v.Name
