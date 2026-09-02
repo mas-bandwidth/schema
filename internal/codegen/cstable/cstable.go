@@ -429,11 +429,18 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // runtime guard, and unlike C++'s assert it is NOT compiled out in release,
 // so the C# guard is the stronger of the two at runtime.
 //
-// ITERATION carries over exactly (§2.4): a struct enumerator over slots
-// 1..E.Max, so `foreach` allocates nothing and slot 0 is never yielded. Its
-// key is the SLOT INDEX, the same currency the indexer takes, so the two
-// halves of the surface agree. The wire enforces the rule from the other side
-// regardless: a None key never rides (§3.2).
+// ITERATION carries over with the same RANGE and one difference in what it
+// hands out (§2.4): a struct enumerator over slots 1..E.Max, so `foreach`
+// allocates nothing and slot 0 is never yielded. Its key is the SLOT INDEX,
+// the same currency the indexer takes, so the two halves of the surface agree.
+//
+// The entry's Element is a `readonly T`, so where the element type is a CLASS
+// — a nested table, the common case — it is the live instance and mutating it
+// through the iteration is visible. Where it is a VALUE — a scalar, an enum —
+// it is a COPY: C# iteration READS those, and the indexer is how they are
+// written. C++ hands out a reference in both cases; a ref-yielding enumerator
+// here is a follow-on, not this construct's shape. The wire enforces the slot
+// rule from the other side regardless: a None key never rides (§3.2).
 const tableKeyedStorage = `// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
 // own value, so Turrets[(int)Weapon.Missile] reads as itself.
 //
@@ -447,6 +454,11 @@ const tableKeyedStorage = `// An ENUM-KEYED array's storage: N = E.Max + 1 slots
 // reaches a call site and no caller spells a bound or a lower limit of its
 // own. The enumerator is a struct and foreach binds it by pattern, so the
 // walk allocates nothing.
+//
+// The entry's Element is a readonly T: a CLASS element (a nested table) is the
+// live instance and mutating it through the iteration is visible, and a VALUE
+// element (a scalar, an enum) is a COPY — iteration READS those and the
+// indexer is how they are written.
 //
 // Slots is public and is what the generated codecs walk; the indexer is for
 // callers, and it is the one place the None key can be caught in C#.

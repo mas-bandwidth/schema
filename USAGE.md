@@ -705,15 +705,24 @@ guard on that indexer, and unlike C++'s `assert` it is **not** compiled out in
 release. Generated code walks `.Slots` directly and never pays for the guard.
 
 `foreach` walks the valid slots, `1 .. E.Max`, and yields the slot index beside
-the element — the same currency the indexer takes. The enumerator is a struct,
-so the walk allocates nothing:
+the element — the same currency the indexer takes, so a site that wants the key
+as its enum writes `(ShipType)ship_type` there. The enumerator is a struct, so
+the walk allocates nothing:
 
 ```csharp
 foreach (var (ship_type, ship) in fleet.Ships)
 {
-    // slot 0 is not in the range
+    ship.Health *= 2.0f;   // slot 0 is not in the range
 }
 ```
+
+**The entry's element is a value, so what the loop can WRITE depends on the
+element type.** A class element — a nested table, which is the common case — is
+the live instance, and mutating it through the iteration is visible. A scalar
+or enum element is a copy: **C# iteration reads those, and the indexer writes
+them**, `fleet.Thresholds[(int)Difficulty.Hard] = 3`. C++ yields a reference
+either way; the difference is C#'s, and a ref-yielding enumerator is a
+follow-on rather than part of this construct.
 
 `<Name>TableType()` returns the reflection descriptor: field names, wire ids
 and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
@@ -841,6 +850,13 @@ safety lives: the range is `1 .. Max`, so a consumer of the whole array writes
 no lower bound, no cast and no `Max` of its own, and cannot reach `None`'s
 slot by accident. Iteration is const-correct, and a const keyed array yields
 const elements.
+
+The entry is a **proxy handed out by value** — a key beside a reference — so
+the spelling is `for ( auto [ key, element ] : keyed )`. `auto & [ ... ]` is a
+compile error by design: a non-const lvalue reference cannot bind to the proxy.
+Write `auto [ ... ]`, or `auto && [ ... ]` if you want the reference form; the
+element is a reference to the slot in every case. The iterators carry the
+`iterator_traits` typedefs, so `std::distance` and a forward pass work.
 
 **What changes is the wire: the slots ride by NAME.** Each
 present slot carries its variant's id, so inserting a variant in the middle,

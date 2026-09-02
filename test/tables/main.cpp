@@ -12,6 +12,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <iterator>
 #include <thread>
 #include <vector>
 
@@ -2452,8 +2453,16 @@ static void test_keyed_iteration()
     CHECK( pack.ships.slots[0].mass == 1.0f ); // None's slot, still default
     CHECK( pack.ships[tabledemo::ShipType::Bomber].mass == 2.0f );
 
-    // the evolution unit's four keyed arrays: tables, scalars and enums as
-    // elements, over an enum with five variants
+    // the evolution unit's keyed arrays, BOTH generations: tables, scalars and
+    // enums as elements, over an enum whose variants V2 inserts into and
+    // removes from. Each array is E.Max long in the generation that declares
+    // it — V1's Slot has four variants, V2's five — so the iteration follows
+    // the enum without a consumer touching anything.
+    tblv1::Cfg v1;
+    CHECK( iterate_and_refuse_slot_zero( v1.bank ) == 4 );
+    CHECK( iterate_and_refuse_slot_zero( v1.tokens ) == 4 );
+    CHECK( iterate_and_refuse_slot_zero( v1.ranks ) == 4 );
+
     tblv2::Cfg v2;
     CHECK( iterate_and_refuse_slot_zero( v2.bank ) == 5 );
     CHECK( iterate_and_refuse_slot_zero( v2.tokens ) == 5 );
@@ -2463,6 +2472,11 @@ static void test_keyed_iteration()
     // and the VARIABLE class's keyed array, which is the same storage type
     graphdemo::Depot depot;
     CHECK( iterate_and_refuse_slot_zero( depot.banks ) == 2 );
+
+    // the iterators carry their traits typedefs, so a forward pass over one
+    // works without the range-for
+    CHECK( std::distance( cfg.teams.begin(), cfg.teams.end() ) == 3 );
+    CHECK( std::distance( const_cfg.teams.begin(), const_cfg.teams.end() ) == 3 );
 
     // a scalar element iterates as a reference too
     for ( auto [ slot, tokens ] : v2.tokens )

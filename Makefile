@@ -344,18 +344,37 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 # §2.4). The iteration's whole promise is that slot 0 — None's — is not in the
 # range, and an untouched slot 0 holds the same declared defaults every other
 # untouched slot does, so a walk that visited it would look identical to a walk
-# that did not. This sabotage moves begin() to slot 0 and the fixture must go
-# red; without it, nothing in the suite could see the range slip by one.
+# that did not.
+#
+# It sabotages the EMITTER's begin() to slot 0 and requires THE TABLES SUITE
+# ITSELF — the same test/tables/main.cpp the leg runs, against a whole corpus
+# regenerated from the sabotaged compiler — to go red. A purpose-written
+# fixture would only prove the sabotage is observable by a fixture written for
+# it; what has to be shown is that the GUARDED test reddens.
+#
+# The sabotaged emitter reaches the compiler through `go build -overlay`, so no
+# tracked file is ever written to (the big-endian control's rule).
 .PHONY: tables-keyed-iteration-negative-control
-tables-keyed-iteration-negative-control: bin/schema test/tables/keyed_iteration_negative_main.cpp
-	@rm -rf build/keyed-iteration-sabotage && mkdir -p build/keyed-iteration-sabotage
-	./bin/schema generate --lang cpp --out build/keyed-iteration-sabotage tables/examples
-	@sed -i.bak 's|Iterator begin() { return Iterator{ slots, 1 }; } // 1: slot 0 is None.s|Iterator begin() { return Iterator{ slots, 0 }; } // sabotaged: from slot 0|' build/keyed-iteration-sabotage/KeyedTable.h
-	@grep -q 'sabotaged: from slot 0' build/keyed-iteration-sabotage/KeyedTable.h || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+tables-keyed-iteration-negative-control: bin/schema
 	@mkdir -p build
-	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
-		-Ibuild/keyed-iteration-sabotage test/tables/keyed_iteration_negative_main.cpp -o build/schema_test_keyed_iteration_negative
-	./build/schema_test_keyed_iteration_negative
+	@sed -e 's|Iterator begin() { return Iterator{ slots, 1 }; }|Iterator begin() { return Iterator{ slots, 0 }; } // SABOTAGED|' \
+	     -e 's|ConstIterator begin() const { return ConstIterator{ slots, 1 }; }|ConstIterator begin() const { return ConstIterator{ slots, 0 }; } // SABOTAGED|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-slot-zero.gotext
+	@cmp -s build/cpptable-slot-zero.gotext internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-slot-zero.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-slot-zero-overlay.json
+	@go build -overlay=build/cpptable-slot-zero-overlay.json -o build/schema-slot-zero ./cmd/schema
+	@rm -rf build/tables-slot-zero && mkdir -p build/tables-slot-zero
+	$(call tables_generate,./build/schema-slot-zero,build/tables-slot-zero)
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-slot-zero) \
+		test/tables/main.cpp $$(ls build/tables-slot-zero/*/*Table.cpp) -o build/schema_test_tables_slot_zero
+	@if ./build/schema_test_tables_slot_zero > build/tables-slot-zero.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: begin() reaching slot 0 left the tables suite GREEN"; exit 1; \
+	fi
+	@grep -q "^FAIL test/tables/main.cpp" build/tables-slot-zero.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-slot-zero.log; exit 1; }
+	@echo "negative control: begin() at slot 0 turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-slot-zero.log) failures"
 
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.

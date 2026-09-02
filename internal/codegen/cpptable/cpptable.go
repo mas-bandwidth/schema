@@ -171,39 +171,60 @@ struct TableKeyed
 
     T & operator[]( E key )
     {
-        assert( key != E::None ); // slot 0 is None's, and None is the null key
+        // slot 0 is None's, and None is the null key
+        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
         return slots[ (int32_t) key ];
     }
     const T & operator[]( E key ) const
     {
-        assert( key != E::None );
+        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
         return slots[ (int32_t) key ];
     }
 
     // ---- iteration over the VALID slots: 1..E.Max, key beside element ----
     //
-    // The entry is a key and a REFERENCE, copied by value the way any proxy
-    // is: for ( auto [ key, element ] : keyed ) binds element to the
+    // The entry is a key and a REFERENCE, handed out BY VALUE the way any
+    // proxy is: for ( auto [ key, element ] : keyed ) binds element to the
     // reference member, so iterating fills the array as well as reads it.
+    // auto & [ key, element ] does NOT compile, and that is by design — a
+    // non-const lvalue reference cannot bind to the proxy. Write
+    // auto [ ... ], or auto && [ ... ] if you prefer the reference form.
+    //
+    // The iterators carry the five iterator_traits typedefs, so std::distance
+    // and the algorithms that only need a forward pass work on them.
 
     struct Entry { E key; T & element; };
     struct ConstEntry { E key; const T & element; };
 
     struct Iterator
     {
+        typedef std::forward_iterator_tag iterator_category;
+        typedef Entry value_type;
+        typedef std::ptrdiff_t difference_type;
+        typedef void pointer;
+        typedef Entry reference;
+
         T * slots;
         int32_t index;
         Entry operator*() const { return Entry{ (E) index, slots[index] }; }
         Iterator & operator++() { index++; return *this; }
+        bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
     };
 
     struct ConstIterator
     {
+        typedef std::forward_iterator_tag iterator_category;
+        typedef ConstEntry value_type;
+        typedef std::ptrdiff_t difference_type;
+        typedef void pointer;
+        typedef ConstEntry reference;
+
         const T * slots;
         int32_t index;
         ConstEntry operator*() const { return ConstEntry{ (E) index, slots[index] }; }
         ConstIterator & operator++() { index++; return *this; }
+        bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
 
@@ -523,6 +544,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			// ENUM-KEYED arrays only: indexing one by None is an error, and an
 			// assert is where a runtime key can first be caught (SPEC-TABLES.md §2.4)
 			h.WriteString("#include <cassert> // the keyed accessor's None refusal\n")
+			h.WriteString("#include <iterator> // the keyed iterator's traits typedefs\n")
 		}
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 		names := make([]string, 0, len(g.includes))

@@ -423,21 +423,46 @@ enum is keyed.
   }
   ```
 
-  The element is a REFERENCE to the slot, so iterating is how a whole array
-  is filled as well as read, and the iteration is CONST-CORRECT: a const
-  keyed array yields const elements. **Slot 0 never appears at a call
-  site**, and neither does a lower bound, a cast, or an `E.Max` a consumer
-  had to spell for itself — the three pieces of the slot rule that were
-  re-derived by hand at every one of them before.
+  In C++ the element is a REFERENCE to the slot, so iterating is how a whole
+  array is filled as well as read, and the iteration is CONST-CORRECT: a
+  const keyed array yields const elements. **Slot 0 never appears at a call
+  site**, and neither does a lower bound nor an `E.Max` a consumer had to
+  spell for itself — the pieces of the slot rule that were re-derived by
+  hand at every one of them before.
 
-  A port spells this in its own idiom over exactly the same range: C++ gives
-  the type `begin()`/`end()` so a range-`for` works, C# a struct enumerator
-  so `foreach` works, and every other port the equivalent. Where a port's
-  accessor takes the SLOT INDEX rather than the enum — C# has no non-boxing
-  generic enum conversion, so its indexer takes the index — its iteration
-  yields the same index, so the two halves agree. Nothing about
-  iteration is stateful: the yielded pair holds a key and a reference and
-  nothing else, and the storage type is untouched.
+  **What the range guarantees is the same in every port; what the entry
+  hands out is the port's own.** A port spells the walk in its own idiom
+  over exactly this range — C++ gives the type `begin()`/`end()` so a
+  range-`for` works, C# a struct enumerator so `foreach` works, every other
+  port the equivalent — and two things vary with the language, both of
+  which a port must state:
+
+  - **The KEY's currency.** Where a port's accessor takes the SLOT INDEX
+    rather than the enum — C# has no non-boxing generic enum conversion, so
+    its indexer takes the index — its iteration yields that same index, so
+    the two halves of the surface agree. A site that wants the key as its
+    enum type still writes the cast there; only C++ is free of one.
+  - **Whether the ELEMENT is a reference.** C++ yields a reference for every
+    element type. Where a port's entry holds a VALUE — C#'s does — a class
+    element (a nested table) is the live instance and mutating it through
+    the iteration is visible, while a scalar or enum element is a COPY:
+    there, ITERATION READS AND THE INDEXER WRITES. Iterating is a read in
+    every port and a write in the ports that can express one.
+
+  Nothing about iteration is stateful: the yielded pair holds a key and one
+  element handle and nothing else, and the storage type is untouched.
+
+  **The entry is a PROXY, handed out by value**, which decides the spelling:
+  `for ( auto [ key, element ] : keyed )`. In C++ `auto & [ ... ]` does not
+  compile — a non-const lvalue reference cannot bind to the proxy — and the
+  refusal is by design rather than an omission; `auto && [ ... ]` binds if a
+  reference form is wanted. C++ iterators carry the `iterator_traits`
+  typedefs (`forward_iterator_tag`), so a forward pass such as
+  `std::distance` works on them.
+
+  **Held by test**: every keyed array in the corpus is iterated in both
+  backends and slot 0 is in none of them; the negative control moves
+  `begin()` to slot 0 and the tables suite itself goes red.
 
   The wire enforces the slot rule from the other side regardless: a `None`
   key never rides (§3.2).
