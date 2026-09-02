@@ -285,7 +285,7 @@ Enum        = "enum" ident ( VariantList
 VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; trailing comma OK
 TypeDecl    = "type" ident ( Block
             | AttrSection NL Block ) NL .               // qualifiers = the type TAG, the
-                                                        // cpp_* pair and `view`, §4.2
+                                                        // cpp_* pair, §4.2
 TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
@@ -543,34 +543,8 @@ sequence    uint16
   takes `min`/`max`/`resolution` (all three together — §4.3: this IS the
   compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
   §4.3); enum declarations take `max`; type declarations take a tag, the
-  `cpp_native`/`cpp_include` pair (below) and `view` (below); a field of a
-  **table** body takes `was` (below); and a **table declaration** takes
-  none.
-- **`view` — reflection over a type, type declarations only**
-  (SPEC-TABLES.md §8.2). A valueless marker, and **`view` is reserved out of
-  the type-tag namespace to make it one**: a type declaration's qualification
-  section takes bare identifiers as TAGS (below), so without the reservation
-  `| view` would parse as a tag named `view` and be carried into the IR as
-  one — accepted and inert, which is the outcome an attribute may never
-  have. `view` is therefore an ATTRIBUTE everywhere it appears, and a type
-  tagged `view` is refused by name (§4.11). That is a **language change**:
-  a declaration reading `type Camera | view` meant "tagged view" and now
-  means "reflected", and one that meant the tag has no spelling for it any
-  more. It moves no id — tags never enter the wire-shape projection (§3.1),
-  so no unit's `ProtocolId` moves either way. The marker itself:
-  `type ShipState | view`. It
-  declares nothing and changes no field, no storage and no wire byte — it
-  says the type gets the reflection descriptors a table carries built in, so
-  a tool walks its properties by name at runtime with no schema files on
-  hand, and it appears in the unit's registry (SPEC-TABLES.md §8.3). A type
-  a TABLE reaches has those descriptors already and needs no marker; a
-  marked type pays only in the build that asks for views (`--views`, §6.1),
-  and a game build that asks for none pays nothing for the marker. Refused
-  on a `table` (its view is built in), on an `enum`, `flags`, `union` or
-  `const` declaration (the registry catalogues those unconditionally), and
-  on a field. **It never enters the wire-shape projection** (§3.1): marking
-  a type moves no `ProtocolId`, exactly as a type tag does not, so the same
-  declarations serve an editor build and a game build.
+  `cpp_native`/`cpp_include` pair (below); a field of a **table** body takes
+  `was` (below); and a **table declaration** takes none.
 - **`was = "old_name"` — the rename attribute, table bodies only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
@@ -610,13 +584,6 @@ type Quat | quat4
   and checked. **In v1 a tag is inert**: parsed, carried through the IR,
   emitted as an annotation on the generated type, and it changes zero
   generated code.
-- **The namespace has ONE hole in it, and every valueless attribute a type
-  declaration takes must cut the same one: `view` is not a tag** (§4.11). A
-  bare identifier in a type's qualification section is a tag unless the
-  attribute vocabulary claims it, and a claimed spelling cannot also be a
-  tag — the same identifier cannot be both a marker the compiler acts on and
-  a string it carries through inertly. So the vocabulary's valueless markers
-  are refused as tags by name, `view` being the one that exists.
 - **Meaning arrives by claiming.** A future pass — the delta pass first —
   claims a tag and assigns its semantics and generated actions
   (interpolation, prediction, normalization, render mapping). Claiming is an
@@ -1190,13 +1157,6 @@ NAME rather than falling into a generic parse error:
   of the language; every field of a type is identical on every peer.
 - **`round`** (the attribute) — rounding is not an attribute: it is the one
   fixed-point rule, half away from zero, everywhere (§4.3).
-- **`view` as a TYPE TAG** — `view` is an attribute (§4.2, SPEC-TABLES.md
-  §8.2), so a type tagged `view` is refused naming the declaration rather
-  than carried through the IR as an inert string. A tag and a marker cannot
-  share a spelling: one is acted on and the other is not, and a reader of the
-  line could not tell which they wrote. Tags are excluded from the wire-shape
-  projection (§3.1), so the refusal moves no unit's `ProtocolId` — it costs a
-  rename in a schema that spelled the tag, and nothing on any wire.
 
 The projection (§3.1) keeps FROZEN tokens — `table=false message=false` on
 every type line, `round=nearest` on every compressed-float field line — so
@@ -1354,23 +1314,12 @@ size regression.
 correct at any entry offset; the same type works standalone and nested.
 `MaxBits` covers the worst case.
 
-**Reflection is asked for, per generate request: `--views`.** A generate
-takes `--views declared` (the default: a type marked `| view` gets
-reflection descriptors, and a unit that marks nothing emits no view file),
-`--views all` (every declaration in the unit is viewed — what an editor or a
-debug build asks for), or `--views none` (no view file, whatever the
-declarations say — what a game build asks for). The request is carried as a
-generate option, never in the schema, so the same declarations serve both
-builds and a marker costs a build that did not ask for it nothing.
-
-**`views` is a key EVERY target knows.** A generator ignores option keys it
-does not know — that is the option contract, and it is exactly why the key
-cannot be left unknown to the seven backends that emit no view: ignoring it
-is silent, and a build that asked for a registry would get none without
-being told. So every target either HONORS `views` or REFUSES it by name,
-and refusing is what a target with no view emitter does for any value but
-`none` and an unmarked `declared`. The surface a target that honors it
-emits, and the gates it is held to, are SPEC-TABLES.md §8.
+**Reflection is emitted, never requested.** Every unit gets one view file
+carrying the reflection descriptors of every declaration and the registry
+over them; nothing in the schema asks for it and no flag selects it. A
+project that walks declarations compiles that file; a project that does not
+never includes it and pays nothing for it. The surface it carries, and the
+gates it is held to, are SPEC-TABLES.md §8.
 
 **Output layout.** Each target emits one generated file per schema file —
 `examples/Constants.schema` → `generated/cpp/Constants.h` — so the generated
@@ -1396,15 +1345,15 @@ tree mirrors the schema tree a person navigates.
   TABLES emits one further pair — `<Base>Table.h` and `<Base>Table.cpp` —
   because the table wire carries a RUNTIME the type wire has no equivalent
   of (SPEC-TABLES.md §6.1, §13.5); it is a table-side file and adds nothing
-  to a table-free unit. **A unit that asks for VIEWS emits one further pair
-  per UNIT** — `<Package>View.h` and `<Package>View.cpp` — carrying the unit
-  registry and the reflection descriptors of every type the request views
-  (SPEC-TABLES.md §8.3, §8.5). It is per unit rather than per schema file
-  because the registry is the set of everything the unit declares, and it is
-  named for the package because two units may share one output directory
-  (§3.2). It includes the unit's DATA headers and no wire header, so a tool
-  that walks declarations inherits no serialize runtime; and a unit that
-  asks for no views emits no such file at all.
+  to a table-free unit. **Every unit emits one further pair per UNIT** —
+  `<Package>View.h` and `<Package>View.cpp` — carrying the unit registry and
+  the reflection descriptors of every declaration (SPEC-TABLES.md §8.3,
+  §8.5). It is per unit rather than per schema file because the registry is
+  the set of everything the unit declares, and it is named for the package
+  because two units may share one output directory (§3.2). It includes the
+  unit's DATA headers and no wire header, so a tool that walks declarations
+  inherits no serialize runtime — and a project that never walks them never
+  includes the header or compiles the source.
 - **C:** the same data/wire header pair per schema file (`<Base>.h` /
   `<Base>Wire.h`), mirroring the C++ split in C's own types.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
@@ -1414,8 +1363,8 @@ tree mirrors the schema tree a person navigates.
   `lib.rs` declaring and glob re-exporting them.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
-  `namespace <Package>`. A unit that asks for views emits one further file
-  per unit, `<Package>View.cs`, on the same terms as the C++ pair above.
+  `namespace <Package>`. Every unit emits one further file per unit,
+  `<Package>View.cs`, on the same terms as the C++ pair above.
 - **JavaScript:** one ES module per schema file, cross-file `import`s derived
   from actual references; classes whose constructors initialize every member
   in declaration order (specified defaults live in construction; `ZeroX` is

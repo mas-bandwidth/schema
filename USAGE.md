@@ -1331,34 +1331,26 @@ uint32, so the only limit is the language's own int32 storage cap.
 
 ### Inspecting a whole build: the view
 
+*Specified, not yet implemented — no backend emits the view file yet
+(SPEC-TABLES.md §8). The per-table descriptors above are live today.*
+
 The descriptors above answer "what is in this table". The **view** answers
 "what is in this build" — every declaration the schema made, walkable by a
-tool that has the generated code and no schema files at all. Ask for it at
-generate time:
+tool that has the generated code and no schema files at all. Nothing asks
+for it: every unit generates one more pair of files beside the rest,
 
 ```
-schema generate --lang cpp --views all --out generated tables/examples
+generated/TabledemoView.h
+generated/TabledemoView.cpp
 ```
 
-That adds one pair of files to the unit — `TabledemoView.h` and
-`TabledemoView.cpp`, named for the unit's package, one pair for the whole
-unit however many schema files it has — holding a registry of everything the
-schema declared. An editor or a debug build compiles it; a game build
-generates with the default (or `--views none`) and never sees it. Marking one
-type instead of the whole unit is `| view` on the declaration:
-
-```
-type ShipState | view
-{
-    position Vec3
-    health   int16 | min = 0, max = 1000
-}
-```
-
-Marking `ShipState` views `Vec3` too: a marker takes the type's whole
-by-value closure, so the recursion below never dead-ends inside a type you
-marked. A type a TABLE reaches needs no marker — it has had descriptors all
-along.
+named for the unit's package, one pair for the whole unit however many
+schema files it has, holding a registry of every type, table, enum, flags,
+union and constant the schema declared. **You pay for it by compiling it.**
+An editor, an inspector or a debug build includes the header and compiles
+the source; a game does neither and carries none of it. There is no flag and
+no marker on a declaration — a tool that inspects a build wants everything
+in it, and the one declaration it needs is the one nobody would have marked.
 
 ```cpp
 #include "TabledemoView.h"
@@ -1401,16 +1393,13 @@ for ( int32_t i = 0; i < unit->num_tables; i++ )   // then unit->types, the same
 }
 ```
 
-`unit->tables` is every table in the unit, always. `unit->types` is the
-types with a view — the marked ones, the ones a table reaches, or all of
-them under `--views all`. Every entry points at the same `TableTypeInfo` the
+`unit->tables` is every table in the unit and `unit->types` every type —
+both complete, and every entry points at the same `TableTypeInfo` the
 section above walks, so one printer serves both. C# is the same registry
 through `Schema.UnitView()`.
 
-Constants, enums, flags and unions are listed whenever the view exists — they
-cost names and values, so nothing marks them. Each set is ordered by
-declaration name, so a listing does not churn when a file is renamed or a
-declaration moves between files.
+Each set is ordered by declaration name, so a listing does not churn when a
+file is renamed or a declaration moves between files.
 
 What the view does not carry: descriptions, UI hints, semantics for a type
 tag (the tags are listed; their meaning is yours), and the packet wire's bit
