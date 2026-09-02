@@ -475,16 +475,19 @@ BLOCK_FUZZ_SED_CPP_maximum := /count > (uint64_t) %sBlock/,/overflow on a count 
 BLOCK_FUZZ_SED_CS_maximum := /count > (ulong) %sMax/d
 
 # how a sabotage is built: $(1) is its name, and the two sed programs above
-# named by it are what come out of each emitter
+# named by it are what come out of each emitter. The replacement files take a
+# .go.txt suffix on purpose: `go build -overlay` does not care what a
+# replacement is called, and `go test ./...` walks build/ and would otherwise
+# find two packages sitting in one directory.
 define block_fuzz_sabotage
 	@rm -rf build/block-fuzz-$(1) && mkdir -p build/block-fuzz-$(1)
-	@sed '$(BLOCK_FUZZ_SED_CPP_$(1))' internal/codegen/cpptable/block.go > build/block-fuzz-$(1)/cpptable-block.go
-	@sed '$(BLOCK_FUZZ_SED_CS_$(1))' internal/codegen/cstable/block.go > build/block-fuzz-$(1)/cstable-block.go
-	@cmp -s internal/codegen/cpptable/block.go build/block-fuzz-$(1)/cpptable-block.go && \
+	@sed '$(BLOCK_FUZZ_SED_CPP_$(1))' internal/codegen/cpptable/block.go > build/block-fuzz-$(1)/cpptable-block.go.txt
+	@sed '$(BLOCK_FUZZ_SED_CS_$(1))' internal/codegen/cstable/block.go > build/block-fuzz-$(1)/cstable-block.go.txt
+	@cmp -s internal/codegen/cpptable/block.go build/block-fuzz-$(1)/cpptable-block.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ emitter sabotage did not apply"; exit 1; } || true
-	@cmp -s internal/codegen/cstable/block.go build/block-fuzz-$(1)/cstable-block.go && \
+	@cmp -s internal/codegen/cstable/block.go build/block-fuzz-$(1)/cstable-block.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C# emitter sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/block.go":"%s/build/block-fuzz-$(1)/cpptable-block.go","%s/internal/codegen/cstable/block.go":"%s/build/block-fuzz-$(1)/cstable-block.go"}}\n' \
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/block.go":"%s/build/block-fuzz-$(1)/cpptable-block.go.txt","%s/internal/codegen/cstable/block.go":"%s/build/block-fuzz-$(1)/cstable-block.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/block-fuzz-$(1)/overlay.json
 	go build -overlay build/block-fuzz-$(1)/overlay.json -o build/block-fuzz-$(1)/schema ./cmd/schema
 	@rm -rf build/block-fuzz-$(1)/generated
