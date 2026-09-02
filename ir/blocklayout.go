@@ -15,11 +15,20 @@ package ir
 
 import "sort"
 
-// BlockPrologueBytes is the projection's generated prologue: two uint64s,
-// `magic` and `layout_id` (SPEC-TABLES.md §19.1). It is generated exactly as
-// an optional's presence companion is, and a field may not be named after
-// either half (§11).
-const BlockPrologueBytes = 16
+// BlockPrologueBytes is the projection's generated prologue: three uint64s —
+// `magic`, which identifies a schema block; `build_version`, the digest §20
+// defines; and `byte_order`, which a producer stamps with its own. They are
+// generated exactly as an optional's presence companion is, and a field may
+// not be named after any of the three (§11).
+const BlockPrologueBytes = 24
+
+// Byte-order values a block's prologue carries (SPEC-TABLES.md §20.3's byte).
+// A block written by a build of the other order is REFUSED: the fix-up path is
+// a named obligation, not something a consumer improvises.
+const (
+	BlockByteOrderLittle = 1
+	BlockByteOrderBig    = 2
+)
 
 // BlockAlign is the alignment every block base and every out-of-line array
 // start takes: a cache line, so two workers filling different arrays never

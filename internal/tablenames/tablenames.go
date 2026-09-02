@@ -118,6 +118,11 @@ var registry = []Name{
 	// whenever a unit declares a table, on the same terms as everything above:
 	// nothing declares the block form, every fixed table has one, and a table
 	// gains and loses it as its closure gains and loses a pointer.
+	{Name: "TableBlockAllocator", By: Cpp, What: "the caller's alloc/free pair, used once at build time"},
+	{Name: "TableBlockDefaultAllocator", By: Cpp, What: "the malloc/free pair, for a caller with none of its own"},
+	{Name: "TableBlockByteOrder", By: Cpp, What: "this build's byte order, as the prologue carries it"},
+	{Name: "table_block_default_alloc", By: Cpp, What: "the default allocator's alloc half"},
+	{Name: "table_block_default_free", By: Cpp, What: "the default allocator's free half"},
 	{Name: "TableBlockTriple", By: Cpp | Cs, What: "one array's (offset_of, count, stride)"},
 	{Name: "TableBlockRefusal", By: Cpp, What: "why Begin refused: the array, its count and its maximum"},
 	{Name: "TableBlockRows", By: Cpp | Cs, What: "one array's rows, iterated at the pitch the instance gives"},

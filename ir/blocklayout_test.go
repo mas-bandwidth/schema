@@ -40,9 +40,13 @@ func TestBlockLayoutMatchesTheWorkedTable(t *testing.T) {
 		t.Fatal("RenderFrame is not a block-form table")
 	}
 
-	// the projection: the 16-byte prologue, a uint64, and nine triples
-	if bl.Projection.Size != 168 || bl.Projection.Align != 8 {
-		t.Errorf("projection sizeof/alignof = %d/%d, want 168/8", bl.Projection.Size, bl.Projection.Align)
+	// the projection: the 24-byte prologue, a uint64, and nine triples. §19.1
+	// works the shape with a 16-byte prologue and 168 bytes; the byte-order
+	// word makes it 176, and the nine starts and the extent are UNCHANGED
+	// because 168 and 176 both round to 192 — which is the page's own point
+	// about the prologue being free in this shape.
+	if bl.Projection.Size != 176 || bl.Projection.Align != 8 {
+		t.Errorf("projection sizeof/alignof = %d/%d, want 176/8", bl.Projection.Size, bl.Projection.Align)
 	}
 
 	wantRows := []struct {

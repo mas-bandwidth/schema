@@ -69,6 +69,43 @@ struct TableBlockTriple
     uint32_t stride;    // the pitch the consumer indexes with, from the data
 };
 
+// THE CALLER'S ALLOCATOR, with malloc semantics. A block's storage is one
+// extent sized from the declared maxima and allocated ONCE, at build time,
+// through this pair — never at fill time, never per row, and never grown. The
+// FILL path allocates nothing and takes no lock, which is the obligation the
+// refuser holds (§19.1); "the block form never allocates" would be a claim
+// about who owns the extent, and the answer is that the caller does.
+struct TableBlockAllocator
+{
+    void * ( *alloc )( void * context, int64_t bytes );
+    void ( *free )( void * context, void * pointer );
+    void * context;
+};
+
+// The default pair, for a caller that has no allocator of its own to hand in.
+// Nothing in the generated surface reaches for it: a caller names it.
+inline void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return malloc( (size_t) bytes ); }
+inline void table_block_default_free( void * context, void * pointer ) { (void) context; ::free( pointer ); }
+
+inline TableBlockAllocator TableBlockDefaultAllocator()
+{
+    TableBlockAllocator allocator;
+    allocator.alloc = table_block_default_alloc;
+    allocator.free = table_block_default_free;
+    allocator.context = NULL;
+    return allocator;
+}
+
+// THIS BUILD's byte order, as the prologue carries it (SPEC-TABLES.md §20.3).
+// A block written by a build of the other order is REFUSED by BlockOpen: a
+// big-endian fix-up path is a named obligation, not something a consumer
+// improvises row by row.
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+inline constexpr uint64_t TableBlockByteOrder = 2; // big
+#else
+inline constexpr uint64_t TableBlockByteOrder = 1; // little
+#endif
+
 // Why Begin refused: the array, its count and its maximum (§19.1). Clamping a
 // count to its maximum before Begin is the PRODUCER's job — Begin is a
 // contract check, not a policy — and a producer at sixty hertz that silently
@@ -252,7 +289,7 @@ func blockHeader(u *ir.Unit, f *ir.File, g *tableGen, formed int) []byte {
 	h.WriteString("// many there are and how far apart they sit — and then those rows, each array\n")
 	h.WriteString("// at a fixed pitch. The other side reads those three facts and points.\n\n")
 	h.WriteString("#pragma once\n\n")
-	h.WriteString("#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the layout contract\n#include <type_traits> // the layout contract's standard-layout asserts\n")
+	h.WriteString("#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the layout contract\n#include <cstdlib> // the DEFAULT allocator pair, for a caller with none of its own\n#include <type_traits> // the layout contract's standard-layout asserts\n")
 	fmt.Fprintf(&h, "\n#include \"%sTable.h\"\n", f.Base)
 	names := make([]string, 0, len(g.includes))
 	for n := range g.includes {
@@ -328,9 +365,27 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("// once, never grown, never pooled (SPEC-TABLES.md §19.1). The sum is loose by\n")
 	g.pf("// construction — arrays commonly draw from one shared pool, so their maxima\n")
 	g.pf("// can add to more than can ever be occupied at once.\n")
+	g.pf("// It is allocated ONCE, at build time, through the CALLER'S allocator, and\n")
+	g.pf("// released through the same pair. The fill path allocates nothing.\n")
 	g.pf("inline constexpr int64_t %sBlockMaxBytes = %d;\n\n", name, bl.MaxBytes)
-	g.pf("struct alignas( %d ) %sBlockStorage\n{\n", ir.BlockAlign, name)
-	g.pf("    uint8_t bytes[%sBlockMaxBytes];\n", name)
+	g.pf("struct %sBlockStorage\n{\n", name)
+	g.pf("    uint8_t * base = NULL;             // the extent, 64-byte aligned\n")
+	g.pf("    void * allocation = NULL;          // what the allocator handed back\n")
+	g.pf("    TableBlockAllocator allocator = {};\n\n")
+	g.pf("    // Create allocates %sBlockMaxBytes + %d bytes through the caller's pair\n", name, ir.BlockAlign-1)
+	g.pf("    // and aligns the base inside them: malloc's guarantee is not a cache\n")
+	g.pf("    // line's, and the 64-byte base is what keeps two workers filling\n")
+	g.pf("    // different arrays off one line (§19.1). One call, at build time.\n")
+	g.pf("    bool Create( const TableBlockAllocator & from )\n    {\n")
+	g.pf("        allocator = from;\n")
+	g.pf("        allocation = allocator.alloc( allocator.context, %sBlockMaxBytes + %d );\n", name, ir.BlockAlign-1)
+	g.pf("        if ( allocation == NULL ) { base = NULL; return false; }\n")
+	g.pf("        const uintptr_t raw = (uintptr_t) allocation;\n")
+	g.pf("        base = (uint8_t *) ( ( raw + %d ) & ~(uintptr_t) %d );\n", ir.BlockAlign-1, ir.BlockAlign-1)
+	g.pf("        return true;\n    }\n\n")
+	g.pf("    void Destroy()\n    {\n")
+	g.pf("        if ( allocation != NULL ) { allocator.free( allocator.context, allocation ); }\n")
+	g.pf("        allocation = NULL;\n        base = NULL;\n    }\n")
 	g.pf("};\n\n")
 
 	g.pf("// The block: one extent, 64-byte aligned at its base, the PROJECTION at\n")
@@ -349,8 +404,9 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("    // (§19.3) — its own offsets are part of the contract, not scaffolding\n")
 	g.pf("    // around it. It opens with the generated PROLOGUE of two uint64s.\n")
 	g.pf("    struct Projection\n    {\n")
-	g.pf("        uint64_t magic = 0;         // generated: identifies a schema block, and the byte order with it\n")
+	g.pf("        uint64_t magic = 0;         // generated: identifies a schema block\n")
 	g.pf("        uint64_t build_version = 0; // generated: the unit's build version (SPEC-TABLES.md §20)\n")
+	g.pf("        uint64_t byte_order = 0;    // generated: 1 little, 2 big — the producer stamps its own\n")
 	for _, f := range bl.Table.Fields {
 		g.emitBlockProjectionField(f)
 	}
@@ -375,8 +431,9 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.emitBlockFillPath(bl)
 
 	g.pf("// BlockOpen checks once and points, and this is the WHOLE check (§19.2): the\n")
-	g.pf("// magic read bytewise, the byte order it establishes, the BUILD VERSION against\n")
-	g.pf("// this build's own, each array's offset_of and extent inside the block, the\n")
+	g.pf("// magic read bytewise, the BYTE ORDER the prologue carries against this\n")
+	g.pf("// build's own, the BUILD VERSION against this build's own, each array's\n")
+	g.pf("// offset_of and extent inside the block, the\n")
 	g.pf("// used extent against the bytes the caller passed, and the base's alignment.\n")
 	g.pf("// On a match the bytes are what a build with this layout wrote, so there is\n")
 	g.pf("// nothing to validate and nothing to fix up. On any failure it returns false\n")
@@ -414,6 +471,7 @@ func (g *tableGen) emitBlockLayoutAsserts(bl *ir.BlockLayout) {
 		name, bl.Projection.Align, name)
 	g.pf("static_assert( offsetof( %sBlock::Projection, magic ) == 0, \"the block prologue's magic sits at offset 0 (SPEC-TABLES.md §19.1)\" );\n", name)
 	g.pf("static_assert( offsetof( %sBlock::Projection, build_version ) == 8, \"the block prologue's build_version sits at offset 8 (SPEC-TABLES.md §19.1, §20)\" );\n", name)
+	g.pf("static_assert( offsetof( %sBlock::Projection, byte_order ) == 16, \"the block prologue's byte_order sits at offset 16 (SPEC-TABLES.md §19.1)\" );\n", name)
 	for _, fl := range bl.Projection.Fields {
 		g.pf("static_assert( offsetof( %sBlock::Projection, %s ) == %d, \"%s's projection field %s moved: the C# side asserts %d (SPEC-TABLES.md §19.3)\" );\n",
 			name, fl.Field.Name, fl.Offset, name, fl.Field.Name, fl.Offset)
@@ -494,10 +552,12 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	if len(bl.Arrays) == 0 {
 		g.pf("    (void) counts; (void) refusal; // no out-of-line array: no count to refuse\n")
 	}
-	g.pf("    block.base = storage.bytes;\n")
-	g.pf("    block.projection = (%sBlock::Projection *) storage.bytes;\n", name)
+	g.pf("    if ( storage.base == NULL )\n        return false; // Create was not called, or the allocator refused\n")
+	g.pf("    block.base = storage.base;\n")
+	g.pf("    block.projection = (%sBlock::Projection *) storage.base;\n", name)
 	g.pf("    block.projection->magic = TableBlockMagic;\n")
 	g.pf("    block.projection->build_version = BuildVersion;\n")
+	g.pf("    block.projection->byte_order = TableBlockByteOrder;\n")
 	g.pf("    int64_t offset = %d; // sizeof the projection\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		g.pf("    offset = table_block_align( offset, %d ); // max( 64, alignof( %s ) )\n", blockStartAlign(a), a.ElemName)
@@ -588,6 +648,8 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("        return false;\n")
 	g.pf("    }\n")
 	g.pf("    if ( table_block_read64( raw + 8 ) != BuildVersion )\n        return false;\n")
+	g.pf("    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )\n")
+	g.pf("        return false; // a block of the other byte order: the fix-up path is a named obligation\n")
 	g.pf("    %sBlock::Projection * projection = (%sBlock::Projection *) base;\n", name, name)
 	g.pf("    int64_t used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
