@@ -1,4 +1,4 @@
-// JsonKeys.schema — the `json = "key"` attribute (SPEC-TABLES.md §16.3): a
+// JsonKeys.schema — the `json = "key"` attribute (SPEC-TABLES.md §16.4): a
 // declaration meeting a text that already exists. The keys differ from the
 // schema names, and no wire byte moves — a field's wire id is still the hash
 // of its own name, so this file's wire is exactly what it would be with the

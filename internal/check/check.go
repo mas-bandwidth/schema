@@ -1346,17 +1346,17 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 			}
 			out.WasName = lit.Value
 		case "json":
-			// the text form's key (SPEC-TABLES.md §16.3): the one attribute
+			// the text form's key (SPEC-TABLES.md §16.4): the one attribute
 			// the JSON walk adds, so a declaration can meet an existing text.
 			// Table fields only — enforced below, where the owner's kind is
 			// known — and it moves no wire byte.
 			lit, ok := a.Value.(*ast.StringLit)
 			if !ok {
-				c.errf(a.Pos, `json takes the field's text key as a quoted string, e.g. json = "type" (SPEC-TABLES.md §16.3)`)
+				c.errf(a.Pos, `json takes the field's text key as a quoted string, e.g. json = "type" (SPEC-TABLES.md §16.4)`)
 				continue
 			}
 			if lit.Value == "" {
-				c.errf(a.Pos, "json = \"\" names nothing — json records the key this field reads and writes in the text form (SPEC-TABLES.md §16.3)")
+				c.errf(a.Pos, "json = \"\" names nothing — json records the key this field reads and writes in the text form (SPEC-TABLES.md §16.4)")
 				continue
 			}
 			out.JsonKey = lit.Value
@@ -1365,7 +1365,7 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 			// fixed-point rule, half away from zero, everywhere (SPEC §4.3)
 			c.errf(a.Pos, "round is not part of the language — rounding is the one fixed-point rule: half away from zero, everywhere (SPEC §4.3)")
 		default:
-			c.errf(a.Pos, "unknown attribute %q — the vocabulary is typed and closed per compiler version (SPEC §4.6)", a.Key)
+			c.errf(a.Pos, "unknown attribute %q — the vocabulary is typed and closed per compiler version (SPEC §4.2)", a.Key)
 		}
 	}
 
@@ -1747,7 +1747,7 @@ func (c *checker) checkTables() {
 			c.errf(pos, "table %s: the name collides with a member of the generated %sBuilder — a member function hides the type name it shares, and the header would not compile; rename the table (SPEC-TABLES.md §6.2)",
 				name, name)
 		}
-		// the TEXT form's keys (SPEC-TABLES.md §16.3): two fields of one
+		// the TEXT form's keys (SPEC-TABLES.md §16.4): two fields of one
 		// closure member whose keys collide are indistinguishable in a JSON
 		// object, exactly as colliding ids are on the wire — refused once,
 		// naming both, whether the collision comes from a `json` attribute
@@ -1756,7 +1756,7 @@ func (c *checker) checkTables() {
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
 			if prev, dup := seenKey[key]; dup {
-				c.errf(pos, "%s %s: fields %s and %s collide on the JSON key %q — rename one, or give one a different json key (SPEC-TABLES.md §16.3)",
+				c.errf(pos, "%s %s: fields %s and %s collide on the JSON key %q — rename one, or give one a different json key (SPEC-TABLES.md §16.4)",
 					what, name, describeTableJsonField(prev), describeTableJsonField(f), key)
 				continue
 			}
@@ -1815,7 +1815,7 @@ func (c *checker) checkTables() {
 }
 
 // checkJsonKeysInClosure refuses `json = "key"` on a field no table closure
-// reaches (SPEC-TABLES.md §16.3). The text form is the table closure's — a
+// reaches (SPEC-TABLES.md §16.4). The text form is the table closure's — a
 // `type` a table nests has one and may carry the attribute; a type nothing in
 // a closure reaches has no text form for a key to name.
 func (c *checker) checkJsonKeysInClosure() {
@@ -1830,7 +1830,7 @@ func (c *checker) checkJsonKeysInClosure() {
 		}
 		for _, f := range st.Fields {
 			if f.JsonKey != "" {
-				c.errf(pos, "type %s: field %s carries json = %q, but no table reaches %s — the text form is the table closure's, and a type outside one has none (SPEC-TABLES.md §16.3)",
+				c.errf(pos, "type %s: field %s carries json = %q, but no table reaches %s — the text form is the table closure's, and a type outside one has none (SPEC-TABLES.md §16.4)",
 					name, f.Name, f.JsonKey, name)
 			}
 		}
