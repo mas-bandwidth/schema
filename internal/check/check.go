@@ -2538,6 +2538,7 @@ var tableGeneratedVerbs = []string{
 	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
 	"At", "Root", "Emplace", "Pack", "PackMeasure", "OpenWalk",
 	"Cook", "CookMeasure", "Open", "LayoutId", "TableFields", "TableInfo",
+	"FromJson", "ToJson", "ToJsonMeasure",
 }
 
 // tableBuilderMembers are the member names of a generated <Name>Builder. A

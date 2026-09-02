@@ -1114,22 +1114,26 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( TableJsonIsBytes( f ) )
     {
-        char encoded[kTableJsonMaxKey];
-        int32_t encoded_length = 0;
-        // base64 is scanned into a bounded window: a body longer than the
-        // window cannot fit the field either, so the excess clamps
-        if ( !TableJsonScanString( in, encoded, kTableJsonMaxKey, &encoded_length ) ) { return false; }
+        // base64 decodes STRAIGHT INTO the field's storage, six bits at a
+        // time — no window, no temporary, so a bytes(N) of any declared
+        // extent reads the same way. A base64 body carries no escapes, so a
+        // backslash in one is simply not an alphabet character.
+        if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
+        in.pos++;
+        const char * alphabet = TableJsonBase64Alphabet();
         int32_t placed = 0;
         uint32_t accumulator = 0;
         int32_t held = 0;
+        bool clamped = false;
         bool malformed = false;
-        for ( int32_t i = 0; i < encoded_length; i++ )
+        for ( ;; )
         {
-            char c = encoded[i];
-            if ( c == '=' ) { break; }
-            const char * alphabet = TableJsonBase64Alphabet();
-            const char * at = strchr( alphabet, c );
-            if ( at == NULL || c == 0 ) { malformed = true; break; }
+            if ( in.pos >= in.size ) { in.bad = true; return false; }
+            char c = in.text[in.pos++];
+            if ( c == '"' ) { break; }
+            if ( c == '=' || malformed ) { continue; }
+            const char * at = c != 0 ? strchr( alphabet, c ) : NULL;
+            if ( at == NULL ) { malformed = true; continue; }
             accumulator = ( accumulator << 6 ) | (uint32_t) ( at - alphabet );
             held += 6;
             if ( held >= 8 )
@@ -1141,8 +1145,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 }
                 else
                 {
-                    in.report->clamped++;
-                    break;
+                    clamped = true;
                 }
             }
         }
@@ -1153,6 +1156,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             in.report->kind_mismatch++;
             return true;
         }
+        if ( clamped ) { in.report->clamped++; }
         TableJsonSetCount( base, f, placed );
         return true;
     }

@@ -1230,6 +1230,15 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 
 			hasRange := "false"
 			rangeMin, rangeMax := "0.0", "0.0"
+			if f.Type.Kind == ir.TBits && !f.HasIntRange {
+				// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The
+				// codec has always clamped a read to it (SPEC-TABLES.md §4);
+				// carrying it here is what lets a generic walker apply the
+				// same bound without re-deriving it from the type name.
+				max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+				hasRange = "true"
+				rangeMin, rangeMax = "0.0", bigToDouble(max)
+			}
 			if f.HasIntRange {
 				hasRange = "true"
 				rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)

@@ -22,6 +22,7 @@
 #include "P1Table.h"
 #include "P2Table.h"
 #include "P3Table.h"
+#include "JsonKeysTable.h"
 
 static int failures = 0;
 
@@ -51,6 +52,14 @@ static uint16_t field_id( const char * name )
 }
 
 static const tabledemo::TableFieldInfo * demo_field( const tabledemo::TableTypeInfo * type, const char * name )
+{
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+        if ( strcmp( type->fields[i].name, name ) == 0 )
+            return &type->fields[i];
+    return NULL;
+}
+
+static const jsonkeys::TableFieldInfo * jsonkeys_field( const jsonkeys::TableTypeInfo * type, const char * name )
 {
     for ( int32_t i = 0; i < type->num_fields; i++ )
         if ( strcmp( type->fields[i].name, name ) == 0 )
@@ -2769,6 +2778,752 @@ static void test_optional_and_keyed_reflection()
     const tblv1::TableFieldInfo * tally = v1_field( cfg, "tally" );
     CHECK( tally != NULL && tally->is_array );
     CHECK( tally->key_type_name == NULL && tally->key_name == NULL && tally->key_id == NULL );
+// ---- the TEXT form (SPEC-TABLES.md §16) ------------------------------------
+//
+// ONE walk over the reflection descriptors, so these tests are about the
+// WALK, not about any table: what holds for the corpus root holds for every
+// table in the closure by construction, and the round-trip loop below says
+// so table by table anyway.
+
+// the text form's contract in one call: write it, read it back, and prove the
+// instance that came back saves to THE SAME WIRE BYTES as the one that went
+// out. The wire is the arbiter — a text that round-trips through it has lost
+// nothing the wire would have carried.
+template <typename T>
+static void check_json_round_trip( const T & value,
+                                   int64_t ( *measure )( const T & ),
+                                   int64_t ( *to_json )( const T &, char *, int64_t ),
+                                   bool ( *from_json )( T &, const char *, int64_t, tabledemo::TableReport * ),
+                                   int64_t ( *wire_measure )( const T & ),
+                                   int64_t ( *wire_save )( const T &, uint8_t *, int64_t ),
+                                   const char * what )
+{
+    int64_t size = measure( value );
+    if ( size < 0 ) { printf( "FAIL %s: ToJsonMeasure refused\n", what ); failures++; return; }
+
+    // measure == write at EXACT capacity, the wire's invariant carried across
+    std::vector<char> text( (size_t) size );
+    CHECK( to_json( value, text.data(), size ) == size );
+    if ( size > 0 )
+    {
+        std::vector<char> tight( (size_t) size - 1 );
+        CHECK( to_json( value, tight.data(), size - 1 ) == -1 ); // one byte short REFUSES
+    }
+    // and a roomy write produces the same bytes as the exact one
+    std::vector<char> roomy( (size_t) size + 64 );
+    CHECK( to_json( value, roomy.data(), size + 64 ) == size );
+    CHECK( memcmp( roomy.data(), text.data(), (size_t) size ) == 0 );
+
+    T back;
+    tabledemo::TableReport report;
+    if ( !from_json( back, text.data(), size, &report ) )
+    {
+        printf( "FAIL %s: FromJson refused its own text\n", what );
+        failures++;
+        return;
+    }
+    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
+         report.duplicate != 0 || report.malformed )
+    {
+        printf( "FAIL %s: a text this build wrote reported %d/%d/%d/%d/%d\n", what,
+                report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
+                (int) report.malformed );
+        failures++;
+    }
+
+    int64_t wire_a = wire_measure( value );
+    int64_t wire_b = wire_measure( back );
+    if ( wire_a < 0 || wire_a != wire_b ) { printf( "FAIL %s: wire sizes differ\n", what ); failures++; return; }
+    std::vector<uint8_t> a( (size_t) wire_a ), b( (size_t) wire_b );
+    CHECK( wire_save( value, a.data(), wire_a ) == wire_a );
+    CHECK( wire_save( back, b.data(), wire_b ) == wire_b );
+    if ( memcmp( a.data(), b.data(), (size_t) wire_a ) != 0 )
+    {
+        printf( "FAIL %s: round trip changed the wire\n", what );
+        failures++;
+    }
+}
+
+#define JSON_ROUND_TRIP( ns, type, value )                                    \
+    check_json_round_trip<ns::type>( value, ns::type##ToJsonMeasure,           \
+        ns::type##ToJson, ns::type##FromJson, ns::type##Measure, ns::type##Save, #type )
+
+// a corpus root with every kind of the closure populated away from its
+// default, so nothing round-trips green by riding a default
+static tabledemo::RootConfig json_corpus_root()
+{
+    tabledemo::RootConfig root;
+    set_string( root.version_note, root.version_note_length, "note \"q\"\n" );
+    root.weapons_count = 2;
+    root.weapons[0].damage = 33.5f;
+    root.weapons[0].speed = 0.1f;          // a value no short decimal names exactly
+    root.weapons[0].penetration = 7;
+    root.weapons[0].channel = 63;          // bits(6) at its ceiling
+    root.weapons[0].homing = true;
+    root.weapons[0].effect.type = tabledemo::EffectType::Buff;
+    root.weapons[0].effect.buff.multiplier = 2.25f;
+    root.weapons[1].effect.type = tabledemo::EffectType::Debuff;
+    root.weapons[1].effect.debuff.amount = 99;
+
+    root.profiles_count = 1;
+    tabledemo::ProfileConfig & p = root.profiles[0];
+    set_string( p.name, p.name_length, "Ada \xc3\xa9 \xe2\x9c\x93" ); // multi-byte UTF-8
+    const uint8_t icon[5] = { 0x00, 0x01, 0xfe, 0xff, 0x7f };
+    memcpy( p.icon, icon, sizeof( icon ) );
+    p.icon_length = (int32_t) sizeof( icon );
+    p.experience = 4294967295u;            // u32 at its ceiling
+    p.tilt = -128;                         // i8 at its floor
+    p.heading = 32767;
+    p.timestamp = -9223372036854775807LL - 1; // i64 at its floor
+    p.badge = 255;
+    p.port = 65535;
+    p.epoch = 18446744073709551615ull;     // u64 at its ceiling: past int64
+    p.precision = 0.1;                     // a double no short decimal names exactly
+    p.ratings[0] = 1.5f;
+    p.ratings[3] = -2.25f;
+    p.has_loadout = true;
+    p.loadout.grade = tabledemo::Grade::Gold;
+    p.loadout.grades_count = 3;
+    p.loadout.grades[0] = tabledemo::Grade::Bronze;
+    p.loadout.grades[1] = tabledemo::Grade::None;
+    p.loadout.grades[2] = tabledemo::Grade::Silver;
+    p.loadout.podium[0] = tabledemo::Grade::Silver;
+    p.loadout.podium[2] = tabledemo::Grade::Gold;
+    p.loadout.perks = tabledemo::Perks_Shielded | tabledemo::Perks_Turbo;
+    p.loadout.primary.damage = 12.0f;
+    p.loadout.backups[1].homing = true;
+    p.loadout.attachments_count = 2;
+    p.loadout.attachments[0].slot = 7;
+    p.loadout.attachments[0].power = 3.5f;
+    p.loadout.attachments[1].slot = 0;
+    return root;
+}
+
+// ---- every table in tables/examples round-trips ToJson -> FromJson -> Save,
+// ---- byte-identical to the Save of the instance that went out
+
+static void test_json_corpus_round_trip()
+{
+    tabledemo::RootConfig root = json_corpus_root();
+    JSON_ROUND_TRIP( tabledemo, RootConfig, root );
+    JSON_ROUND_TRIP( tabledemo, WeaponConfig, root.weapons[0] );
+    JSON_ROUND_TRIP( tabledemo, WeaponConfig, root.weapons[1] );
+    JSON_ROUND_TRIP( tabledemo, ProfileConfig, root.profiles[0] );
+    JSON_ROUND_TRIP( tabledemo, LoadoutConfig, root.profiles[0].loadout );
+    JSON_ROUND_TRIP( tabledemo, Attachment, root.profiles[0].loadout.attachments[0] );
+    JSON_ROUND_TRIP( tabledemo, Buff, root.weapons[0].effect.buff );
+    JSON_ROUND_TRIP( tabledemo, Debuff, root.weapons[1].effect.debuff );
+
+    // an ALL-DEFAULT instance: the text carries every field anyway (a text is
+    // for people, and one that elides is one a reader must know the schema to
+    // complete), and the wire it comes back as is the empty one
+    tabledemo::RootConfig empty;
+    JSON_ROUND_TRIP( tabledemo, RootConfig, empty );
+    tabledemo::WeaponConfig plain;
+    JSON_ROUND_TRIP( tabledemo, WeaponConfig, plain );
+
+    // cross-file: ArchiveConfig nests RootConfig from another file
+    tabledemo::ArchiveConfig archive;
+    archive.root = root;
+    archive.count = 42;
+    JSON_ROUND_TRIP( tabledemo, ArchiveConfig, archive );
+
+    // extents past the old 16-bit ceiling ride the text form too
+    tabledemo::WideBlob wide;
+    for ( int32_t i = 0; i < 70000; i++ ) { wide.label[i] = char( 'a' + ( i % 26 ) ); }
+    wide.label[70000] = 0;
+    wide.label_length = 70000;
+    for ( int32_t i = 0; i < 66000; i++ ) { wide.payload[i] = (uint8_t) ( i * 7 ); }
+    wide.payload_length = 66000;
+    wide.samples_count = 70000;
+    for ( int32_t i = 0; i < 70000; i++ ) { wide.samples[i] = (uint16_t) ( i * 3 ); }
+    JSON_ROUND_TRIP( tabledemo, WideBlob, wide );
+
+    // the evolution pair's tables are ordinary tables to the walk
+    tblv1::Cfg cfg;
+    cfg.a = 900;
+    cfg.b = 2.5f;
+    cfg.mode = tblv1::Mode::Alpha;
+    set_string( cfg.name, cfg.name_length, "v1" );
+    cfg.inner.factor = 9.0f;
+    cfg.items_count = 2; cfg.items[0] = 3; cfg.items[1] = 250;
+    cfg.grade = tblv1::Grade::Gold;
+    cfg.effect.type = tblv1::EffectType::Ward;
+    cfg.effect.ward.charge = 0.25f;
+    {
+        int64_t size = tblv1::CfgToJsonMeasure( cfg );
+        CHECK( size > 0 );
+        std::vector<char> text( (size_t) size );
+        CHECK( tblv1::CfgToJson( cfg, text.data(), size ) == size );
+        tblv1::Cfg back;
+        tblv1::TableReport report;
+        CHECK( tblv1::CfgFromJson( back, text.data(), size, &report ) );
+        uint8_t a[4096], b[4096];
+        int64_t na = tblv1::CfgSave( cfg, a, sizeof( a ) );
+        int64_t nb = tblv1::CfgSave( back, b, sizeof( b ) );
+        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
+    }
+}
+
+// ---- the dialect: what the walk accepts, and what it will not guess at ----
+
+static void test_json_dialect()
+{
+    tabledemo::Attachment value;
+    tabledemo::TableReport report;
+
+    // trailing commas: the authoring files this section exists for carry them
+    const char * trailing = "{ \"slot\": 3, \"power\": 1.5, }";
+    CHECK( tabledemo::AttachmentFromJson( value, trailing, (int64_t) strlen( trailing ), &report ) );
+    CHECK( value.slot == 3 && value.power == 1.5f );
+    CHECK( report.unknown == 0 && !report.malformed );
+
+    // ... in arrays too
+    tabledemo::LoadoutConfig loadout;
+    const char * array_trailing = "{ \"grades\": [ \"Gold\", \"Bronze\", ], }";
+    CHECK( tabledemo::LoadoutConfigFromJson( loadout, array_trailing, (int64_t) strlen( array_trailing ), &report ) );
+    CHECK( loadout.grades_count == 2 && loadout.grades[0] == tabledemo::Grade::Gold );
+
+    // comments are not JSON, and a walk that guessed at one would be reading
+    // a dialect nobody wrote down
+    tabledemo::TableReport comment_report;
+    const char * comment = "{ // a note\n \"slot\": 3 }";
+    CHECK( !tabledemo::AttachmentFromJson( value, comment, (int64_t) strlen( comment ), &comment_report ) );
+    CHECK( comment_report.malformed );
+
+    // whitespace anywhere, and a text that is not an object at all
+    const char * spaced = "  \t\n { \n \"slot\" \t : \n 2 \n } \n ";
+    CHECK( tabledemo::AttachmentFromJson( value, spaced, (int64_t) strlen( spaced ), &report ) );
+    CHECK( value.slot == 2 );
+    tabledemo::TableReport not_object;
+    const char * scalar = "42";
+    CHECK( !tabledemo::AttachmentFromJson( value, scalar, 2, &not_object ) );
+    CHECK( not_object.malformed );
+
+    // trailing rubbish after the one text is not one text
+    tabledemo::TableReport trailing_junk;
+    const char * two = "{ \"slot\": 1 } { \"slot\": 2 }";
+    CHECK( !tabledemo::AttachmentFromJson( value, two, (int64_t) strlen( two ), &trailing_junk ) );
+    CHECK( trailing_junk.malformed );
+
+    // an absent key keeps the field's DECLARED default, exactly as an absent
+    // field does on the wire (SPEC-TABLES.md §4)
+    tabledemo::WeaponConfig weapon;
+    const char * partial = "{ \"homing\": true }";
+    CHECK( tabledemo::WeaponConfigFromJson( weapon, partial, (int64_t) strlen( partial ), &report ) );
+    CHECK( weapon.homing && weapon.damage == 21.0f && weapon.speed == 500.0f );
+
+    // unknown keys are skipped and counted, whatever they carry
+    tabledemo::TableReport unknown;
+    const char * strange = "{ \"nope\": { \"deep\": [ 1, 2, { \"x\": null } ] }, \"slot\": 4, \"also\": \"text\" }";
+    CHECK( tabledemo::AttachmentFromJson( value, strange, (int64_t) strlen( strange ), &unknown ) );
+    CHECK( value.slot == 4 );
+    CHECK( unknown.unknown == 2 && !unknown.malformed );
+
+    // a duplicate key is LAST WINS, and the repeat is counted
+    tabledemo::TableReport duplicate;
+    const char * repeated = "{ \"slot\": 1, \"slot\": 6, \"slot\": 2 }";
+    CHECK( tabledemo::AttachmentFromJson( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
+    CHECK( value.slot == 2 && duplicate.duplicate == 2 );
+
+    // string escapes both ways, including a surrogate pair
+    tabledemo::ProfileConfig profile;
+    const char * escapes = "{ \"name\": \"a\\\"b\\\\c\\nd\\u00e9e\\ud83d\\ude00\" }";
+    CHECK( tabledemo::ProfileConfigFromJson( profile, escapes, (int64_t) strlen( escapes ), &report ) );
+    CHECK( strcmp( profile.name, "a\"b\\c\nd\xc3\xa9""e\xf0\x9f\x98\x80" ) == 0 );
+}
+
+// ---- hostile: the wrong JSON type at every kind, and every width overflowed
+
+static void test_json_hostile_kinds()
+{
+    // a key present with the WRONG JSON TYPE is skipped and counted, never
+    // coerced: the field keeps its default and the read carries on
+    struct { const char * text; const char * what; } wrong[] = {
+        { "{ \"experience\": \"12\" }",      "string where a number is declared" },
+        { "{ \"experience\": true }",        "bool where a number is declared" },
+        { "{ \"experience\": null }",        "null where a number is declared" },
+        { "{ \"experience\": [ 1 ] }",       "array where a number is declared" },
+        { "{ \"experience\": { \"a\": 1 } }", "object where a number is declared" },
+        { "{ \"name\": 5 }",                 "number where a string is declared" },
+        { "{ \"name\": [ \"a\" ] }",         "array where a string is declared" },
+        { "{ \"icon\": 7 }",                 "number where bytes are declared" },
+        { "{ \"has_loadout\": 1 }",          "number where a bool is declared" },
+        { "{ \"has_loadout\": \"true\" }",   "string where a bool is declared" },
+        { "{ \"ratings\": 3.5 }",            "number where an array is declared" },
+        { "{ \"loadout\": [ ] }",            "array where a table is declared" },
+        { "{ \"precision\": \"1e3\" }",      "string where a float is declared" },
+    };
+    for ( const auto & row : wrong )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        bool ok = tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        if ( !ok || report.kind_mismatch != 1 || report.malformed )
+        {
+            printf( "FAIL json kind mismatch (%s): ok=%d mismatch=%d malformed=%d\n",
+                    row.what, ok, report.kind_mismatch, (int) report.malformed );
+            failures++;
+        }
+        CHECK( value.experience == 0 && value.name_length == 0 && !value.has_loadout );
+    }
+
+    // a vocabulary field wants a NAME, not a number
+    {
+        tabledemo::LoadoutConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"grade\": 3, \"perks\": 5 }";
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.kind_mismatch == 2 );
+        CHECK( value.grade == tabledemo::Grade::Silver ); // the declared default
+        CHECK( value.perks == 0 );
+    }
+
+    // a name no variant names reads as None and counts as UNKNOWN — the same
+    // event an unknown variant id is on the wire (SPEC-TABLES.md §4)
+    {
+        tabledemo::LoadoutConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"grade\": \"Platinum\", \"perks\": [ \"Turbo\", \"Warp\" ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.grade == tabledemo::Grade::None );
+        CHECK( value.perks == tabledemo::Perks_Turbo );
+        CHECK( report.unknown == 2 );
+    }
+
+    // a fraction where an INTEGER is declared is the wrong shape for the kind,
+    // not framing damage: counted and skipped, never rounded into place
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"experience\": 12.5, \"badge\": 3 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.experience == 0 && value.badge == 3 );
+        CHECK( report.kind_mismatch == 1 && !report.malformed );
+    }
+}
+
+static void test_json_hostile_overflow()
+{
+    // every integer width, over its ceiling and under its floor: CLAMPED and
+    // counted, never wrapped (SPEC-TABLES.md §4)
+    struct { const char * text; const char * field; int64_t expect; } rows[] = {
+        { "{ \"tilt\": 999 }",                          "tilt+",  127 },
+        { "{ \"tilt\": -999 }",                         "tilt-",  -128 },
+        { "{ \"badge\": 300 }",                         "badge",  255 },
+        { "{ \"badge\": -1 }",                          "badge-", 0 },
+        { "{ \"heading\": 40000 }",                     "head+",  32767 },
+        { "{ \"heading\": -40000 }",                    "head-",  -32768 },
+        { "{ \"port\": 70000 }",                        "port",   65535 },
+        { "{ \"experience\": 5000000000 }",             "exp",    4294967295ll },
+        { "{ \"timestamp\": 99999999999999999999 }",    "time+",  9223372036854775807ll },
+        { "{ \"timestamp\": -99999999999999999999 }",   "time-",  -9223372036854775807ll - 1 },
+    };
+    for ( const auto & row : rows )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        CHECK( tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        int64_t got = 0;
+        if ( strncmp( row.field, "tilt", 4 ) == 0 ) { got = value.tilt; }
+        else if ( strncmp( row.field, "badge", 5 ) == 0 ) { got = value.badge; }
+        else if ( strncmp( row.field, "head", 4 ) == 0 ) { got = value.heading; }
+        else if ( strncmp( row.field, "port", 4 ) == 0 ) { got = value.port; }
+        else if ( strncmp( row.field, "exp", 3 ) == 0 ) { got = (int64_t) value.experience; }
+        else { got = value.timestamp; }
+        if ( got != row.expect || report.clamped == 0 || report.malformed )
+        {
+            printf( "FAIL json overflow (%s): got %lld want %lld clamped=%d\n",
+                    row.field, (long long) got, (long long) row.expect, report.clamped );
+            failures++;
+        }
+    }
+
+    // u64 past int64 is NOT an overflow — it is the top of the field
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"epoch\": 18446744073709551615 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.epoch == 18446744073709551615ull && report.clamped == 0 );
+    }
+    // ... and past THAT it saturates at the ceiling
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"epoch\": 99999999999999999999999 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.epoch == 18446744073709551615ull && report.clamped == 1 );
+    }
+
+    // a DECLARED range clamps before the storage width does
+    {
+        tabledemo::WeaponConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"penetration\": 500, \"channel\": 4000 }";
+        CHECK( tabledemo::WeaponConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.penetration == 10 );  // | min = 0, max = 10
+        CHECK( value.channel == 63 );      // bits(6): the width IS the range
+        CHECK( report.clamped == 2 );
+    }
+
+    // a float range clamps the same way
+    {
+        tabledemo::Attachment value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"slot\": -5 }";
+        CHECK( tabledemo::AttachmentFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.slot == 0 && report.clamped == 1 );
+    }
+}
+
+static void test_json_hostile_extents()
+{
+    // a string longer than the field CLAMPS AT A CODE POINT BOUNDARY: the
+    // storage never holds half a character
+    {
+        tabledemo::RootConfig value;   // version_note is string(16)
+        tabledemo::TableReport report;
+        // 15 ASCII bytes, then a 2-byte character that cannot fit in the 16th
+        const char * text = "{ \"version_note\": \"123456789012345\xc3\xa9\" }";
+        CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.version_note_length == 15 );
+        CHECK( strcmp( value.version_note, "123456789012345" ) == 0 );
+        CHECK( report.clamped == 1 );
+    }
+    {
+        // and a 3-byte character that WOULD have fit at 14 does
+        tabledemo::RootConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"version_note\": \"1234567890123\xe2\x9c\x93X\" }";
+        CHECK( tabledemo::RootConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.version_note_length == 16 );
+        CHECK( report.clamped == 1 ); // the trailing X did not fit
+    }
+
+    // more array elements than the reader's bound: the bounded prefix is kept
+    // and the excess counts, the wire's rule
+    {
+        tabledemo::LoadoutConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"grades\": [ \"Gold\", \"Gold\", \"Gold\", \"Gold\", \"Gold\", \"Gold\" ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.grades_count == 4 && report.clamped == 2 );
+    }
+    // fewer than a FIXED array's extent: the tail keeps its defaults
+    {
+        tabledemo::LoadoutConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"podium\": [ \"Gold\" ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.podium[0] == tabledemo::Grade::Gold );
+        CHECK( value.podium[1] == tabledemo::Grade::None && value.podium[2] == tabledemo::Grade::None );
+        CHECK( report.clamped == 0 );
+    }
+
+    // base64 both ways, and a body that is not base64 at all
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"icon\": \"AQID/w==\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.icon_length == 4 );
+        CHECK( value.icon[0] == 0x01 && value.icon[1] == 0x02 && value.icon[2] == 0x03 && value.icon[3] == 0xff );
+        CHECK( report.kind_mismatch == 0 );
+    }
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"icon\": \"not base64 at all!\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.icon_length == 0 && report.kind_mismatch == 1 && !report.malformed );
+    }
+    {
+        // a base64 body longer than bytes(16) clamps and counts
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"icon\": \"QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.icon_length == 16 && report.clamped == 1 );
+    }
+}
+
+static void test_json_hostile_unions()
+{
+    tabledemo::WeaponConfig value;
+    tabledemo::TableReport report;
+
+    // {} and an absent key are both None
+    const char * empty = "{ \"effect\": {} }";
+    CHECK( tabledemo::WeaponConfigFromJson( value, empty, (int64_t) strlen( empty ), &report ) );
+    CHECK( value.effect.type == tabledemo::EffectType::None );
+
+    // ONE key, the arm's name
+    const char * one = "{ \"effect\": { \"debuff\": { \"amount\": 12 } } }";
+    CHECK( tabledemo::WeaponConfigFromJson( value, one, (int64_t) strlen( one ), &report ) );
+    CHECK( value.effect.type == tabledemo::EffectType::Debuff && value.effect.debuff.amount == 12 );
+
+    // an arm this build cannot name reads as None and counts
+    tabledemo::TableReport unknown_arm;
+    const char * strange = "{ \"effect\": { \"hex\": { \"power\": 3 } } }";
+    CHECK( tabledemo::WeaponConfigFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( value.effect.type == tabledemo::EffectType::None && unknown_arm.unknown == 1 );
+
+    // TWO keys is not a one-of, and the walk will not choose for you
+    tabledemo::TableReport two;
+    const char * both = "{ \"effect\": { \"buff\": { \"multiplier\": 2.0 }, \"debuff\": { \"amount\": 1 } } }";
+    CHECK( !tabledemo::WeaponConfigFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( two.malformed );
+
+    // a selected arm is RE-ESTABLISHED, never overlaid on the last one: a
+    // repeated key that names a different arm leaves nothing of the first
+    tabledemo::TableReport repeat;
+    const char * again = "{ \"effect\": { \"buff\": { \"multiplier\": 9.0 } }, "
+                         "\"effect\": { \"debuff\": { \"amount\": 4 } } }";
+    CHECK( tabledemo::WeaponConfigFromJson( value, again, (int64_t) strlen( again ), &repeat ) );
+    CHECK( value.effect.type == tabledemo::EffectType::Debuff && value.effect.debuff.amount == 4 );
+    CHECK( repeat.duplicate == 1 );
+}
+
+static void test_json_hostile_framing()
+{
+    tabledemo::Attachment value;
+
+    struct { const char * text; const char * what; } broken[] = {
+        { "",                          "empty" },
+        { "{",                         "unterminated object" },
+        { "{ \"slot\"",                "key with no colon" },
+        { "{ \"slot\": }",             "colon with no value" },
+        { "{ \"slot\" 3 }",            "no colon" },
+        { "{ slot: 3 }",               "unquoted key" },
+        { "{ \"slot\": 3",             "no close" },
+        { "{ \"slot\": [ 1, 2 }",      "array closed as an object" },
+        { "{ \"slot\": \"unterminated }", "unterminated string" },
+        { "{ \"slot\": tru }",         "truncated literal" },
+        { "{ \"slot\": - }",           "a sign with no digits" },
+        { "{ \"slot\": \"\\q\" }",     "an escape that is not one" },
+        { "{ \"slot\": \"\\u00\" }",   "a short unicode escape" },
+    };
+    for ( const auto & row : broken )
+    {
+        tabledemo::TableReport report;
+        bool ok = tabledemo::AttachmentFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        if ( ok || !report.malformed )
+        {
+            printf( "FAIL json framing (%s): ok=%d malformed=%d\n", row.what, ok, (int) report.malformed );
+            failures++;
+        }
+    }
+
+    // nesting past the cap is refused rather than run off the C stack
+    {
+        std::vector<char> deep;
+        const char * head = "{ \"nope\": ";
+        deep.insert( deep.end(), head, head + strlen( head ) );
+        for ( int i = 0; i < 400; i++ ) { deep.push_back( '[' ); }
+        for ( int i = 0; i < 400; i++ ) { deep.push_back( ']' ); }
+        deep.push_back( '}' );
+        tabledemo::TableReport report;
+        CHECK( !tabledemo::AttachmentFromJson( value, deep.data(), (int64_t) deep.size(), &report ) );
+        CHECK( report.malformed );
+    }
+    // a nesting the walk CAN take is still taken
+    {
+        std::vector<char> deep;
+        const char * head = "{ \"nope\": ";
+        deep.insert( deep.end(), head, head + strlen( head ) );
+        for ( int i = 0; i < 100; i++ ) { deep.push_back( '[' ); }
+        for ( int i = 0; i < 100; i++ ) { deep.push_back( ']' ); }
+        const char * tail = ", \"slot\": 5 }";
+        deep.insert( deep.end(), tail, tail + strlen( tail ) );
+        tabledemo::TableReport report;
+        CHECK( tabledemo::AttachmentFromJson( value, deep.data(), (int64_t) deep.size(), &report ) );
+        CHECK( value.slot == 5 && report.unknown == 1 && !report.malformed );
+    }
+
+    // a NULL text, and a negative size
+    {
+        tabledemo::TableReport report;
+        CHECK( !tabledemo::AttachmentFromJson( value, NULL, 0, &report ) );
+        CHECK( report.malformed );
+    }
+    // ... and no report at all is legal: the walk owns one when the caller
+    // does not
+    CHECK( !tabledemo::AttachmentFromJson( value, "{", 1, NULL ) );
+}
+
+// ---- the writer refuses what the text cannot name, exactly as measure and
+// ---- save refuse what the wire cannot name (SPEC-TABLES.md §5)
+
+static void test_json_writer_refusals()
+{
+    {
+        tabledemo::LoadoutConfig value;
+        value.grade = (tabledemo::Grade) 9; // no variant names it
+        CHECK( tabledemo::LoadoutConfigToJsonMeasure( value ) == -1 );
+    }
+    {
+        tabledemo::LoadoutConfig value;
+        value.perks = uint64_t( 1 ) << 40; // no variant names that bit
+        CHECK( tabledemo::LoadoutConfigToJsonMeasure( value ) == -1 );
+    }
+    {
+        tabledemo::WeaponConfig value;
+        value.effect.type = (tabledemo::EffectType) 7; // no arm names it
+        CHECK( tabledemo::WeaponConfigToJsonMeasure( value ) == -1 );
+    }
+    {
+        // a non-finite float has no JSON spelling at all, and the writer will
+        // not lose one silently
+        tabledemo::WeaponConfig value;
+        value.damage = 1.0f / 0.0f - 1.0f / 0.0f; // NaN, computed so no literal is needed
+        CHECK( tabledemo::WeaponConfigToJsonMeasure( value ) == -1 );
+        value.damage = 3.4e38f * 10.0f;           // +inf
+        CHECK( tabledemo::WeaponConfigToJsonMeasure( value ) == -1 );
+    }
+}
+
+// ---- guards: the wire's elision, carried into the text (SPEC-TABLES.md §16.2)
+
+static void test_json_guards()
+{
+    tabledemo::ProfileConfig off;
+    off.has_loadout = false;
+    off.loadout.grade = tabledemo::Grade::Gold; // stale, and off the wire
+    int64_t size = tabledemo::ProfileConfigToJsonMeasure( off );
+    CHECK( size > 0 );
+    std::vector<char> text( (size_t) size + 1 );
+    CHECK( tabledemo::ProfileConfigToJson( off, text.data(), size ) == size );
+    text[(size_t) size] = 0;
+    CHECK( strstr( text.data(), "\"loadout\"" ) == NULL ); // guarded off, as on the wire
+    CHECK( strstr( text.data(), "\"has_loadout\"" ) != NULL ); // the guard is a plain key
+
+    tabledemo::ProfileConfig on;
+    on.has_loadout = true;
+    on.loadout.grade = tabledemo::Grade::Gold;
+    size = tabledemo::ProfileConfigToJsonMeasure( on );
+    std::vector<char> text_on( (size_t) size + 1 );
+    CHECK( tabledemo::ProfileConfigToJson( on, text_on.data(), size ) == size );
+    text_on[(size_t) size] = 0;
+    CHECK( strstr( text_on.data(), "\"loadout\"" ) != NULL );
+
+    // reading INFERS NOTHING: the guard is an ordinary bool key, and a guarded
+    // field's key is placed whether or not the guard came first — key order in
+    // an object is nobody's contract
+    tabledemo::ProfileConfig value;
+    tabledemo::TableReport report;
+    const char * after = "{ \"loadout\": { \"grade\": \"Gold\" }, \"has_loadout\": true }";
+    CHECK( tabledemo::ProfileConfigFromJson( value, after, (int64_t) strlen( after ), &report ) );
+    CHECK( value.has_loadout && value.loadout.grade == tabledemo::Grade::Gold );
+
+    // and a guarded field placed with the guard FALSE is elided on the way
+    // out, so the wire never sees it either
+    tabledemo::ProfileConfig ignored;
+    const char * no_guard = "{ \"loadout\": { \"grade\": \"Gold\" } }";
+    CHECK( tabledemo::ProfileConfigFromJson( ignored, no_guard, (int64_t) strlen( no_guard ), &report ) );
+    CHECK( !ignored.has_loadout );
+    uint8_t wire[512];
+    int64_t wrote = tabledemo::ProfileConfigSave( ignored, wire, sizeof( wire ) );
+    tabledemo::ProfileConfig fresh;
+    CHECK( wrote == tabledemo::ProfileConfigMeasure( fresh ) ); // the empty body
+}
+
+// ---- the json = "key" attribute: the text's vocabulary, not the wire's ----
+
+static void test_json_key_attribute()
+{
+    const tabledemo::TableFieldInfo * f = demo_field( tabledemo::WeaponConfigTableType(), "damage" );
+    CHECK( f != NULL && strcmp( f->json, "damage" ) == 0 );
+
+    // jsonkeys::Ship renames two fields in the TEXT and moves no wire byte:
+    // the id is still the hash of the schema name (SPEC-TABLES.md §16.3)
+    const jsonkeys::TableFieldInfo * ship_type = jsonkeys_field( jsonkeys::ShipTableType(), "ship_type" );
+    CHECK( ship_type != NULL );
+    CHECK( strcmp( ship_type->json, "type" ) == 0 );
+    CHECK( ship_type->id == field_id( "ship_type" ) );
+
+    jsonkeys::Ship ship;
+    jsonkeys::TableReport report;
+    const char * text = "{ \"type\": 3, \"label\": \"Hauler\", \"hp\": 250 }";
+    CHECK( jsonkeys::ShipFromJson( ship, text, (int64_t) strlen( text ), &report ) );
+    CHECK( ship.ship_type == 3 && ship.hit_points == 250 );
+    CHECK( strcmp( ship.name, "Hauler" ) == 0 );
+    CHECK( report.unknown == 0 && !report.malformed );
+
+    // the SCHEMA name is not a key: it reads as unknown
+    jsonkeys::Ship other;
+    jsonkeys::TableReport by_name;
+    const char * schema_names = "{ \"ship_type\": 3, \"name\": \"Hauler\" }";
+    CHECK( jsonkeys::ShipFromJson( other, schema_names, (int64_t) strlen( schema_names ), &by_name ) );
+    CHECK( other.ship_type == 0 && by_name.unknown == 2 );
+
+    // and the text the writer produces uses the keys, round-tripping clean
+    int64_t size = jsonkeys::ShipToJsonMeasure( ship );
+    std::vector<char> out( (size_t) size + 1 );
+    CHECK( jsonkeys::ShipToJson( ship, out.data(), size ) == size );
+    out[(size_t) size] = 0;
+    CHECK( strstr( out.data(), "\"type\"" ) != NULL );
+    CHECK( strstr( out.data(), "\"ship_type\"" ) == NULL );
+    jsonkeys::Ship back;
+    CHECK( jsonkeys::ShipFromJson( back, out.data(), size, &report ) );
+    uint8_t a[512], b[512];
+    int64_t na = jsonkeys::ShipSave( ship, a, sizeof( a ) );
+    int64_t nb = jsonkeys::ShipSave( back, b, sizeof( b ) );
+    CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
+}
+
+// ---- the tokenizer under a mutation fuzz: no input, however malformed,
+// ---- may crash, hang, or read past the text it was handed
+
+static void test_json_fuzz_tokenizer()
+{
+    // one seed corpus, mutated deterministically: the point is not coverage
+    // of the schema, it is that the TOKENIZER survives arbitrary bytes
+    static const char * seeds[] = {
+        "{ \"slot\": 3, \"power\": 1.5 }",
+        "{ \"name\": \"a\\u00e9b\", \"icon\": \"AQID\", \"ratings\": [ 1, 2, 3, 4 ] }",
+        "{ \"effect\": { \"buff\": { \"multiplier\": 2.0 } } }",
+        "{ \"grades\": [ \"Gold\", \"Bronze\" ], \"perks\": [ \"Turbo\" ] }",
+        "{ \"loadout\": { \"primary\": { \"damage\": 1e30 } }, \"has_loadout\": true }",
+    };
+    uint64_t state = 0x9e3779b97f4a7c15ull;
+    auto next = [&state]() -> uint32_t
+    {
+        state ^= state << 13; state ^= state >> 7; state ^= state << 17;
+        return (uint32_t) ( state >> 32 );
+    };
+    std::vector<char> work;
+    for ( int iteration = 0; iteration < 20000; iteration++ )
+    {
+        const char * seed = seeds[ next() % ( sizeof( seeds ) / sizeof( seeds[0] ) ) ];
+        work.assign( seed, seed + strlen( seed ) );
+        int mutations = 1 + (int) ( next() % 6 );
+        for ( int m = 0; m < mutations && !work.empty(); m++ )
+        {
+            uint32_t at = next() % (uint32_t) work.size();
+            switch ( next() % 4 )
+            {
+                case 0: work[at] = (char) ( next() & 0xff ); break;      // flip a byte
+                case 1: work.erase( work.begin() + at ); break;          // cut one
+                case 2: work.insert( work.begin() + at, (char) ( next() & 0xff ) ); break;
+                case 3: work.resize( (size_t) at ); break;               // truncate
+            }
+        }
+        // every table the walk can enter, over the same mutated bytes: a
+        // tokenizer defect that only one descriptor shape reaches is still a
+        // defect
+        tabledemo::TableReport report;
+        tabledemo::ProfileConfig profile;
+        tabledemo::ProfileConfigFromJson( profile, work.data(), (int64_t) work.size(), &report );
+        tabledemo::WeaponConfig weapon;
+        tabledemo::WeaponConfigFromJson( weapon, work.data(), (int64_t) work.size(), &report );
+        tabledemo::LoadoutConfig loadout;
+        tabledemo::LoadoutConfigFromJson( loadout, work.data(), (int64_t) work.size(), &report );
+        tabledemo::RootConfig root;
+        tabledemo::RootConfigFromJson( root, work.data(), (int64_t) work.size(), &report );
+        // whatever came back is a legal instance: it must still save
+        CHECK( tabledemo::RootConfigMeasure( root ) > 0 );
+    }
 }
 
 int main()
@@ -2829,6 +3584,18 @@ int main()
     test_open_refuses_dirty_reserved();
     test_descriptors_are_constant();
     test_cross_file_pointer_unit();
+
+    test_json_corpus_round_trip();
+    test_json_dialect();
+    test_json_hostile_kinds();
+    test_json_hostile_overflow();
+    test_json_hostile_extents();
+    test_json_hostile_unions();
+    test_json_hostile_framing();
+    test_json_writer_refusals();
+    test_json_guards();
+    test_json_key_attribute();
+    test_json_fuzz_tokenizer();
 
     if ( failures > 0 )
     {

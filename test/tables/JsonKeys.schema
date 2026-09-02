@@ -1,0 +1,14 @@
+// JsonKeys.schema — the `json = "key"` attribute (SPEC-TABLES.md §16.3): a
+// declaration meeting a text that already exists. The keys differ from the
+// schema names, and no wire byte moves — a field's wire id is still the hash
+// of its own name, so this file's wire is exactly what it would be with the
+// attribute deleted. The corpus holds both halves.
+package jsonkeys
+
+table Ship
+{
+    ship_type  int32       | json = "type"
+    name       string(24)  | json = "label"
+    hit_points int32 = 100 | json = "hp", min = 0, max = 1000
+    shielded   bool
+}
