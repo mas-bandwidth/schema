@@ -386,37 +386,65 @@ enum is keyed.
 
 - **Storage** is a generated KEYED-ARRAY TYPE wrapping `T slots[E.Max + 1]`
   — one slot per variant, indexed by the enum value, no count companion
-  because every slot exists. The wrapper is what gives the accessors below
-  a home; the array inside it is an ordinary array, so the type stays
-  trivially copyable and standard-layout (§9).
+  because every slot exists. The wrapper is what gives the accessor and the
+  iteration below a home; the array inside it is its ONE member, and the
+  iteration surface holds no state, so the type stays trivially copyable
+  and standard-layout (§9).
 - **SLOT 0 EXISTS AND IS NEVER VALID.** `None` is the enum's null, so it
   keys nothing: only `E.Max` slots can ever hold data. Slot 0 is kept in
-  storage so indexing stays unbiased, and reaching it is an ERROR. The two
-  accessors put that error as early as each can:
-  - `operator[]( E )` takes a runtime key and ASSERTS that it is not
-    `None`;
-  - a compile-time accessor beside it — `Slot<Key>()` in C++ — takes the
-    key as a constant and REFUSES `None` with a `static_assert`, so the
-    common case where the key is written literally never reaches a runtime
-    check at all.
+  storage so indexing stays unbiased, and reaching it is an ERROR.
+
+  **The accessor is `operator[]( E )`**: it takes a runtime key and ASSERTS
+  that it is not `None`. A key in a data-driven program IS a runtime value —
+  an enum field read out of a file, a key handed in by a tool, the key an
+  iteration just yielded — so this is the form call sites use, and a
+  compile-time accessor taking the key as a template parameter is not
+  offered: it would serve only literal keys, which is not where keys come
+  from.
 
   ```cpp
-  fleet.ships[ ShipType::Bomber ]        // runtime key: asserts key != None
-  fleet.ships.Slot<ShipType::Bomber>()   // constant key: static_asserts
+  fleet.ships[ ship_type ]   // runtime key: asserts key != None
   ```
 
-  A port provides both wherever its language expresses both, and the
-  runtime half wherever it does not. **The compile-time accessor is the
-  form that holds in a release build**: an assert is compiled out under
-  `NDEBUG` and its equivalent elsewhere, so a runtime key carries no guard
-  at all in the configuration a shipped game runs. `Slot<Key>()` costs
-  nothing and cannot be disabled — prefer it wherever the key is written
-  literally, which is most places. The wire enforces the rule from the
-  other side regardless: a `None` key never rides (§3.2).
+  **The assert is a DEBUG guard and it is COMPILED OUT UNDER `NDEBUG`** —
+  and its equivalent elsewhere — so a shipped build carries no check on a
+  keyed index at all. That is the normal case, not an edge one, and the
+  page says it plainly rather than leaving a reader to infer a protection
+  that is not there in the configuration a game ships.
+
+- **ITERATION IS THE SAFETY**, and it is the form a consumer of a whole
+  keyed array should reach for. The keyed type ITERATES ITS VALID SLOTS —
+  `1 .. E.Max`, never slot 0 — yielding the KEY beside the ELEMENT:
+
+  ```cpp
+  for ( auto [ ship_type, ship ] : fleet.ships )   // slot 0 is not in the range
+  {
+      ship.health *= 2.0f;                         // the element is a reference
+  }
+  ```
+
+  The element is a REFERENCE to the slot, so iterating is how a whole array
+  is filled as well as read, and the iteration is CONST-CORRECT: a const
+  keyed array yields const elements. **Slot 0 never appears at a call
+  site**, and neither does a lower bound, a cast, or an `E.Max` a consumer
+  had to spell for itself — the three pieces of the slot rule that were
+  re-derived by hand at every one of them before.
+
+  A port spells this in its own idiom over exactly the same range: C++ gives
+  the type `begin()`/`end()` so a range-`for` works, C# a struct enumerator
+  so `foreach` works, and every other port the equivalent. Where a port's
+  accessor takes the SLOT INDEX rather than the enum — C# has no non-boxing
+  generic enum conversion, so its indexer takes the index — its iteration
+  yields the same index, so the two halves agree. Nothing about
+  iteration is stateful: the yielded pair holds a key and a reference and
+  nothing else, and the storage type is untouched.
+
+  The wire enforces the slot rule from the other side regardless: a `None`
+  key never rides (§3.2).
 - **In a `type` body the same spelling is a PLAIN ARRAY.** `per_team [Team]int32`
   inside a `type` generates `int32_t per_team[4]` — no wrapper, no keyed
-  accessor, and no `None` guard of any kind. The type wire is positional
-  (below), so there is no key to check and nothing to protect: slot 0 is an
+  accessor, no iteration surface, and no `None` guard of any kind. The
+  type wire is positional (below), so there is no key to check and nothing to protect: slot 0 is an
   ordinary element a `type` may read and write. **The guard exists only
   where the keyed storage type is generated, which is table bodies**, and
   only the TABLE-wire ENCODING is keyed. A porter reading this section
@@ -1976,12 +2004,12 @@ lockstep redeploy by a table edit. This independence is held by test.
 - **Enum-keyed arrays** (§2.4): a bound naming a `flags` declaration (a mask
   names no single slot); a bounded keyed array, `[..E]` or `[A..E]` (a keyed
   array is complete by construction); an element that is a pointer, as for
-  any array (§15); an index of `E::None`, which names no slot — refused at
-  compile time through the constant accessor (`Slot<Key>()`) and asserted
-  through `operator[]( E )`; and, on the KEY ENUM itself because a key is a
-  reaching edge into the table closure, `| max = K` headroom and variant id
-  collisions, each diagnostic naming the keying field that pulled the enum
-  in. A slot value no variant names is a SAVE failure, not a silent `None`
+  any array (§15); an index of `E::None`, which names no slot — asserted
+  through `operator[]( E )` in a debug build, and not reachable at all
+  through the iteration surface, which offers the valid slots only (§2.4);
+  and, on the KEY ENUM itself because a key is a reaching edge into the
+  table closure, `| max = K` headroom and variant id collisions, each
+  diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   specified default on one; an array of them — a buffer takes no node
