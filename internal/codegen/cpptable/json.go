@@ -423,9 +423,10 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         {
             return false; // a tag no arm names, exactly as measure refuses it
         }
+        const char * arm = f->enum_name( tag );
         out.put( '{' );
         out.line( depth + 1 );
-        TableJsonWriteString( out, f->enum_name( tag ), (int32_t) strlen( f->enum_name( tag ) ) );
+        TableJsonWriteString( out, arm, (int32_t) strlen( arm ) );
         out.raw( ": ", 2 );
         if ( !TableJsonWriteValue( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
         {
@@ -904,14 +905,21 @@ inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth )
         case 0:   in.bad = true; return false;
         default:
         {
-            char token[kTableJsonMaxNumber];
-            int32_t length = 0;
-            bool integral = false;
-            if ( !TableJsonScanNumber( in, token, kTableJsonMaxNumber, &length, &integral ) )
+            // consumed, never converted: skipping needs no buffer, and this
+            // is the one walk a hostile text drives to the depth cap
+            TableJsonSpace( in );
+            int64_t start = in.pos;
+            bool digits = false;
+            while ( in.pos < in.size )
             {
-                in.bad = true;
-                return false;
+                char n = in.text[in.pos];
+                bool numeric = ( n >= '0' && n <= '9' ) || n == '-' || n == '+' ||
+                               n == '.' || n == 'e' || n == 'E';
+                if ( !numeric ) { break; }
+                if ( n >= '0' && n <= '9' ) { digits = true; }
+                in.pos++;
             }
+            if ( in.pos == start || !digits ) { in.bad = true; return false; }
             return true;
         }
     }
