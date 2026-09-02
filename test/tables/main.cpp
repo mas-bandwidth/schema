@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <new>
 #include <thread>
 #include <vector>
 
@@ -2833,6 +2834,94 @@ static void pin_table_golden( const char * name, const uint8_t * data, int64_t b
     }
 }
 
+// ---- and the goldens READ BACK (SPEC-TABLES.md §3) --------------------------
+//
+// pin_table_golden proves the WRITER: the bytes this build produces are the
+// bytes on disk. This proves the READER against those same files — every
+// golden is loaded from disk into a fresh instance and re-saved, and the bytes
+// must come back identical.
+//
+// On a little-endian host that is a round trip through a file. On the
+// BIG-ENDIAN leg (Makefile: tables-big-endian) it is the claim itself: the
+// files were written by a little-endian build, so a codec that reached for
+// host byte order anywhere would read them wrong and write them back
+// differently. §3's "little-endian, byte-oriented throughout" is a property of
+// the WIRE, not of the machine, and this is where that costs something.
+
+static uint8_t golden_pinned[1u << 20];
+static uint8_t golden_again[1u << 20];
+
+static int64_t read_table_golden( const char * name )
+{
+    char path[256];
+    snprintf( path, sizeof( path ), "testdata/wire/tables/%s.bin", name );
+    FILE * f = fopen( path, "rb" );
+    if ( f == NULL )
+    {
+        printf( "FAIL missing table wire golden %s (run: make update-goldens)\n", path );
+        failures++;
+        return -1;
+    }
+    size_t n = fread( golden_pinned, 1, sizeof( golden_pinned ), f );
+    fclose( f );
+    return (int64_t) n;
+}
+
+template <typename T, typename Report>
+static void reload_table_golden( const char * name,
+                                 bool ( *load )( T &, const uint8_t *, int64_t, Report * ),
+                                 int64_t ( *save )( const T &, uint8_t *, int64_t ) )
+{
+    const int64_t pinned = read_table_golden( name );
+    if ( pinned < 0 ) return;
+
+    static T value;
+    new ( &value ) T(); // the read path's own reset: value-init, in place
+    Report report;
+    if ( !load( value, golden_pinned, pinned, &report ) || report.malformed )
+    {
+        printf( "FAIL table wire golden %s does not load\n", name );
+        failures++;
+        return;
+    }
+    // its own writer's bytes: nothing in them is unknown, nothing mismatches
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+
+    const int64_t wrote = save( value, golden_again, sizeof( golden_again ) );
+    if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
+    {
+        printf( "FAIL table wire golden %s re-saves differently: %lld bytes out, %lld pinned\n",
+                name, (long long) wrote, (long long) pinned );
+        failures++;
+    }
+}
+
+// Every file in testdata/wire/tables, read by the type that wrote it. The
+// three pointer-form goldens are read by their by-value and optional twins,
+// which is exactly right: the three spellings are ONE FRAMING (§3), and the
+// twins' Save is the one that answers in bytes.
+static void test_golden_reload()
+{
+    reload_table_golden( "root_full", tabledemo::RootConfigLoad, tabledemo::RootConfigSave );
+    reload_table_golden( "root_default", tabledemo::RootConfigLoad, tabledemo::RootConfigSave );
+    reload_table_golden( "profile_elide", tabledemo::ProfileConfigLoad, tabledemo::ProfileConfigSave );
+    reload_table_golden( "loadout_full", tabledemo::LoadoutConfigLoad, tabledemo::LoadoutConfigSave );
+    reload_table_golden( "wide_blob", tabledemo::WideBlobLoad, tabledemo::WideBlobSave );
+    reload_table_golden( "archive", tabledemo::ArchiveConfigLoad, tabledemo::ArchiveConfigSave );
+    reload_table_golden( "keyed_config", tabledemo::KeyedConfigLoad, tabledemo::KeyedConfigSave );
+    reload_table_golden( "keyed_default", tabledemo::KeyedConfigLoad, tabledemo::KeyedConfigSave );
+    reload_table_golden( "v1_cfg", tblv1::CfgLoad, tblv1::CfgSave );
+    reload_table_golden( "v1_seams", tblv1::CfgLoad, tblv1::CfgSave );
+    reload_table_golden( "v2_cfg", tblv2::CfgLoad, tblv2::CfgSave );
+    reload_table_golden( "v2_seams", tblv2::CfgLoad, tblv2::CfgSave );
+    reload_table_golden( "chain_value", tblp1::ChainLoad, tblp1::ChainSave );
+    reload_table_golden( "chain_value_empty", tblp1::ChainLoad, tblp1::ChainSave );
+    reload_table_golden( "chain_pointer", tblp1::ChainLoad, tblp1::ChainSave );
+    reload_table_golden( "chain_optional", tblp3::ChainLoad, tblp3::ChainSave );
+    reload_table_golden( "chain_optional_empty", tblp3::ChainLoad, tblp3::ChainSave );
+    reload_table_golden( "chain_pointer_empty", tblp3::ChainLoad, tblp3::ChainSave );
+}
+
 // The pinned instances, built here and mirrored VALUE FOR VALUE by every port
 // (test/cs-tables/src/Program.cs is the C# twin). Keep the two in step: a
 // divergence in the instance is a divergence in the gate.
@@ -4860,9 +4949,10 @@ static void test_golden_seams()
         tblp2::Chain * root = builder.GetRoot();
         root->link = builder.Alloc<tblp2::Link>(); // non-null and all-default: it RIDES
         CHECK( builder.Lock() );
-        int64_t w_ptr = tblp2::ChainSave( builder, other, sizeof( other ) );
-        CHECK( w_ptr == w_opt && memcmp( other, other, (size_t) w_ptr ) == 0 );
-        pin_table_golden( "chain_pointer_empty", other, w_ptr );
+        static uint8_t pointered[4096];
+        int64_t w_ptr = tblp2::ChainSave( builder, pointered, sizeof( pointered ) );
+        CHECK( w_ptr == w_opt && memcmp( pointered, other, (size_t) w_ptr ) == 0 );
+        pin_table_golden( "chain_pointer_empty", pointered, w_ptr );
     }
 }
 
@@ -4993,6 +5083,7 @@ int main()
 {
     test_golden_wire();
     test_golden_seams();
+    test_golden_reload();
     test_round_trip();
     test_exact_capacity();
     test_storage_invariants();
