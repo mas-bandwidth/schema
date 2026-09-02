@@ -145,8 +145,12 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 			t.Errorf("generated table code contains %q — generated codecs must not allocate", banned)
 		}
 	}
+	// every `new` in the header is a PLACEMENT new — `new ( address ) T{}`,
+	// which allocates nothing: the read path's in-place prefill, and the
+	// descriptor's reset hook (SPEC-TABLES.md §8) which is the same prefill
+	// behind a function pointer. An allocating new has no parenthesis after it.
 	for line := range strings.SplitSeq(table, "\n") {
-		if found := strings.Contains(line, "new "); found && !strings.Contains(line, "new ( &") && !strings.Contains(line, "<new>") {
+		if found := strings.Contains(line, "new "); found && !strings.Contains(line, "new (") && !strings.Contains(line, "<new>") {
 			t.Errorf("generated table code contains a non-placement new: %q", line)
 		}
 	}
@@ -213,17 +217,23 @@ func tableHeader(t *testing.T, src string) string {
 
 // TestZeroCostForValueOnlyTables is the mode's whole justification, at the
 // grain the property actually holds: a UNIT whose tables are all fixed-size
-// emits none of the pointer machinery — no builder, no arena, no reference
+// emits none of the POINTER machinery — no builder, no arena, no reference
 // type, no lifecycle surface, not one extra descriptor column, not one extra
 // include (SPEC-TABLES.md §2.2). Per TABLE the guarantee is narrower and
 // TestPointerSurfaceEmitted states it exactly.
+//
+// What the gate is NOT about: the reflection surface and the text form that
+// walks it ride in every table closure's header by design, fixed class
+// included (SPEC-TABLES.md §16.1), and <cstdlib> is one of the text form's
+// three number-conversion includes rather than the arena's — which is why it
+// left this list when the walk landed.
 func TestZeroCostForValueOnlyTables(t *testing.T) {
 	header := tableHeader(t, tableSrc)
 	for _, leak := range []string{
 		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
 		"kTableSegment", "kTableSlab", "kTableMaxDepth", "is_pointer", "variable",
 		"Builder", "LayoutId", "OpenWalk", "PackMeasure", "LoadMeasure",
-		"Cook", "Open", "<atomic>", "<cstdlib>", "template",
+		"Cook", "Open", "<atomic>", "template",
 	} {
 		if strings.Contains(header, leak) {
 			t.Errorf("pointer machinery leaked into a value-only unit: %q", leak)

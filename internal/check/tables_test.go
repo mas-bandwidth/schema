@@ -43,6 +43,16 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { speed float32 | was = \"\" }\n"},
 		{name: "was takes a quoted string", want: "was takes the field's old name as a quoted string",
 			src: "package t\ntable Tab { speed float32 | was = velocity }\n"},
+		{name: "json outside a table closure is refused by name", want: "the text form is the table closure's",
+			src: "package t\ntype P { a int32 | json = \"b\" }\n"},
+		{name: "json keys collide inside one table", want: "collide on the JSON key",
+			src: "package t\ntable Tab {\n    a int32 | json = \"b\"\n    b int32\n}\n"},
+		{name: "two json attributes naming one key", want: "collide on the JSON key",
+			src: "package t\ntable Tab {\n    a int32 | json = \"k\"\n    b int32 | json = \"k\"\n}\n"},
+		{name: "json takes a quoted string", want: "json takes the field's text key as a quoted string",
+			src: "package t\ntable Tab { a int32 | json = b }\n"},
+		{name: "json with an empty string", want: "json = \"\" names nothing",
+			src: "package t\ntable Tab { a int32 | json = \"\" }\n"},
 		{name: "effective wire ids collide (was aliases a live sibling)", want: "collide on table-wire id",
 			src: "package t\ntable Tab {\n    a int32 | was = \"b\"\n    b int32\n}\n"},
 		{name: "a table nesting itself is a composition cycle", want: "type composition cycle",
@@ -301,6 +311,63 @@ table Config
 	}
 	if base.ProtocolId != keyed.ProtocolId {
 		t.Fatalf("an optional field or a keyed array moved the protocol id %#x -> %#x", base.ProtocolId, keyed.ProtocolId)
+	}
+}
+
+// TestJsonKeyMovesNoWire is §16.3's independence requirement: the text form's
+// key is the TEXT's vocabulary and the wire id is the WIRE's, so declaring a
+// json key moves no byte on either wire — not a table field's id, not the
+// packet projection, not the protocol id. Keys are the text's business.
+func TestJsonKeyMovesNoWire(t *testing.T) {
+	plain := tablelessSrc + `
+table Config
+{
+    ship_type int32
+    label     string(32)
+}
+type Keyed
+{
+    weight float32
+}
+`
+	keyed := tablelessSrc + `
+table Config
+{
+    ship_type int32      | json = "type"
+    label     string(32) | json = "name"
+}
+type Keyed
+{
+    weight float32
+}
+`
+	before := buildUnit(t, plain)
+	after := buildUnit(t, keyed)
+
+	if ir.WireProjection(before) != ir.WireProjection(after) {
+		t.Fatalf("a json key changed the wire projection:\n--- without ---\n%s\n--- with ---\n%s",
+			ir.WireProjection(before), ir.WireProjection(after))
+	}
+	if before.ProtocolId != after.ProtocolId {
+		t.Fatalf("a json key moved the protocol id %#x -> %#x", before.ProtocolId, after.ProtocolId)
+	}
+	for i, f := range after.Tables["Config"].Fields {
+		was := before.Tables["Config"].Fields[i]
+		if ir.TableFieldId(f) != ir.TableFieldId(was) {
+			t.Errorf("field %s: a json key moved the table-wire id %#04x -> %#04x",
+				f.Name, ir.TableFieldId(was), ir.TableFieldId(f))
+		}
+		if ir.TableFieldId(f) != ir.FieldId(f.Name) {
+			t.Errorf("field %s: the wire id is not the hash of the SCHEMA name", f.Name)
+		}
+	}
+	// and the key itself is what the walk reads and writes under
+	if got := ir.TableFieldJsonKey(after.Tables["Config"].Fields[0]); got != "type" {
+		t.Errorf("json key = %q, want %q", got, "type")
+	}
+	// a field with no attribute keys under its own name
+	if got := ir.TableFieldJsonKey(before.Tables["Config"].Fields[0]); got != "ship_type" {
+		t.Errorf("default json key = %q, want the field name", got)
 	}
 }
 
