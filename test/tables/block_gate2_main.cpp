@@ -369,6 +369,21 @@ int main( int argc, char ** argv )
         }
     }
 
+    // The C# half of this gate reads THE SAME representative frame, so the
+    // producer writes it out here rather than a half-megabyte golden going
+    // into the tree: the pinned small block already proves the bytes, and this
+    // one exists to be read fast.
+    {
+        FILE * f = fopen( "build/block_gate2.bin", "wb" );
+        if ( f == NULL )
+        {
+            printf( "REFUSING TO BENCH: cannot write build/block_gate2.bin\n" );
+            return 1;
+        }
+        fwrite( generated_storage.base, 1, (size_t) generated_bytes, f );
+        fclose( f );
+    }
+
     // Arms INTERLEAVED in one sitting, medians paired.
     const int warmup = 50;
     const int samples = 15;

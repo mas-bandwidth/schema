@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("schemablocktest")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2ece48c18291c79ebff4b4d8165b0a10400a82ff")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f8371d775423ba15211cfd5d0bd9571e34e67079")]
 [assembly: System.Reflection.AssemblyProductAttribute("schemablocktest")]
 [assembly: System.Reflection.AssemblyTitleAttribute("schemablocktest")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

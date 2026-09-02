@@ -190,6 +190,25 @@ static class Program
 
         CheckPadded();
 
+        // GATE 2's C# half (SPEC-TABLES.md §12.1), run only when asked: it is a
+        // MEASUREMENT, and a measurement in a correctness leg would make the
+        // leg's verdict depend on the machine's mood.
+        string[] argv = Environment.GetCommandLineArgs();
+        foreach (string arg in argv)
+        {
+            if (arg == "--gate2")
+            {
+                // the REPRESENTATIVE frame §19.1 works, written by the C++
+                // gate-2 harness into build/ — a half-megabyte golden in the
+                // tree would buy the gate nothing the pinned small one does
+                // not already prove about the bytes
+                if (!Gate2.Run(Path.Combine("..", "..", "build", "block_gate2.bin")))
+                {
+                    failed = true;
+                }
+            }
+        }
+
         Console.WriteLine(failed ? "FAILED" : "OK");
         return failed ? 1 : 0;
     }

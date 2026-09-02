@@ -441,6 +441,24 @@ tables-block-padding-negative-control: build/tables-generated-cs/.stamp
 	@grep -q "schema block layout" build/block-padding-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the failure was not the layout check"; cat build/block-padding-sabotage.log; exit 1; }
 	@echo "block padding negative control: deleting the generated padding fields turns the layout check red"
+
+# GATE 2 (SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
+# part of `make test` on purpose — a correctness suite whose verdict depends on
+# the machine's mood is not a correctness suite, and the estate's bench rules
+# want one bench at a time per machine and a quiet window.
+#
+# The C++ half writes the representative frame it measured into
+# build/block_gate2.bin and the C# half reads THE SAME BYTES, so the two
+# numbers are taken over one frame rather than over two descriptions of one.
+# Each half runs its own golden gate first and REFUSES to bench on a mismatch.
+build/schema_test_block_gate2: build/tables-generated/.stamp test/tables/block_gate2_main.cpp
+	@mkdir -p build
+	$(CXX) -O2 $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) test/tables/block_gate2_main.cpp $(BLOCK_SOURCES) -o $@
+
+.PHONY: tables-block-gate2
+tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
+	./build/schema_test_block_gate2
+	cd test/cs-block && dotnet run -c Release -- --gate2
 # The NEGATIVE CONTROL for a KEYED object's duplicate counting
 # (SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
 # the missing count was invisible to every round-trip test — the value was
