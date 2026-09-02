@@ -4581,16 +4581,16 @@ out-of-line array's element and pitch, and every row field's offset, size and
 kind — the `block` and `slot` lines of §20.2. A cook and a block share the id
 and differ in their MAGIC, which is where a form's identity belongs (§7).
 
-**A declared MAXIMUM is not a line in the projection**, and for the block's
-own facts that is exactly right: a maximum sizes the storage and moves the
-`offset_of`s written into the instance, and it moves no offset a consumer
-reads AT, because a consumer takes every `offset_of` from the instance
-(§19.2). A block's `slot` lines therefore do not move when one is raised — a
-triple is sixteen bytes whatever the maximum is. **But the table's own
-by-value `record` lines DO move**, because raising a maximum grows the inline
-array's storage and every later field's offset with it, and those lines are
-what a COOK of that table is opened against. So the build version moves, and
-`BlockOpen` refuses the edit like any other (§19.4).
+**A declared MAXIMUM moves NO `slot` line**, and for the block's own facts
+that is exactly right: a maximum sizes the storage and moves the `offset_of`s
+written into the instance, and it moves no offset a consumer reads AT, because
+a consumer takes every `offset_of` from the instance (§19.2). A triple is
+sixteen bytes whatever the maximum is. **But it is a `bound=` on the table's
+own `field` line, and the by-value `record` lines move with it**, because
+raising a maximum grows the inline array's storage and every later field's
+offset — and those lines are what a COOK of that table is opened against. So
+the build version moves, and `BlockOpen` refuses the edit like any other
+(§19.4).
 
 **What the id sees, and what it does not.** It sees layout and it sees
 meaning — the facts that decide what a load puts in a slot are §20's group 3.
@@ -4724,9 +4724,10 @@ and never the protocol id; a type edit moves both.**
 Tooling cooks before any game binary exists, so Y has to be knowable from the
 schema alone. The compiler owns every fact in it, including the layout: it
 computes each record's layout from its own C ABI model — the model §19.3
-already states and both backends already assert against — and emits the id as
-one constant. A build whose compiler lays a record out differently fails to
-BUILD, loudly, naming the type and the field (§20.3); it never reaches a cook.
+states and both backends MUST assert against (§20.3) — and emits the id as one
+constant. A build whose compiler lays a record out differently is meant to
+fail to BUILD, loudly, naming the type and the field; those asserts are owed
+and not yet emitted, which §20.3 states in full.
 
 **Backend status: specified, unimplemented.** No backend emits `BuildVersion`,
 `schema build-version` does not exist, and `schema cook-check` (§7) does not
@@ -5061,16 +5062,15 @@ wrong fails to build instead of degrading.
   integer it rides as, a union arm's payload swapped. Each keeps the kind, the
   size, the offset and the wire id and changes what the bytes MEAN, and each
   moves a `type=`, `enum=`, `union=`, `key=` or `payload=` token;
-
-- **a declared MAXIMUM raised or lowered.** A maximum is not itself a line in
-  the projection, but the inline storage it sizes is: the array field's `size`
-  grows, every later field's `offset` moves and the record's `sizeof` moves
-  with them. It could not be excluded even if a block would rather it were —
-  a build that read another's cook under a larger declared maximum would read
-  past the region — and under one same-build entry point per form there is
-  nothing for the exclusion to buy: `BlockOpen` refuses this edit exactly as
-  it refuses an appended field (§19.4), and both sides regenerate. The
-  block's own `slot` lines still do not move, because a triple is sixteen
+- **a declared MAXIMUM raised or lowered.** It is a `bound=` on the field
+  line, and the inline storage it sizes moves with it: the array field's
+  `size` grows, every later field's `offset` moves and the record's `sizeof`
+  moves with them. It could not be excluded even if a block would rather it
+  were — a build that read another's cook under a larger declared maximum
+  would read past the region — and under one same-build entry point per form
+  there is nothing for the exclusion to buy: `BlockOpen` refuses this edit
+  exactly as it refuses an appended field (§19.4), and both sides regenerate.
+  The block's own `slot` lines still do not move, because a triple is sixteen
   bytes whatever the maximum is;
 
 - **a specified default changed, added or removed**, and **a declared range
