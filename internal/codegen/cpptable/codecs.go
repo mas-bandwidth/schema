@@ -1308,27 +1308,27 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			if g.anyVariable {
 				pointerColumn = fmt.Sprintf("%v, ", f.Type.Pointer)
 			}
-			g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %v, %s%v, %v, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
+			g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %v, %s%v, %v, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\"%s },\n",
 				indent, f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 				st.Name, f.Name, elemSize, countOffset, presentOffset, table,
 				hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
-				keyTypeName, keyName, keyId, arms, guards[f.Name])
+				keyTypeName, keyName, keyId, arms, guards[f.Name], g.blockFieldColumns(st, f))
 		}
 		if hoisted {
 			g.pf("};\n")
-			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s };\n",
-				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st))
+			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s%s };\n",
+				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.blockColumns(st), g.modeColumn(st))
 		} else {
 			g.pf("    };\n")
-			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s };\n",
-				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st))
+			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s%s };\n",
+				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.blockColumns(st), g.modeColumn(st))
 		}
 	case hoisted:
-		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s };\n",
-			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st))
+		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s%s };\n",
+			st.Name, st.Name, st.Name, resetLambda(st.Name), g.blockColumns(st), g.modeColumn(st))
 	default:
-		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s };\n",
-			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st))
+		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s%s };\n",
+			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.blockColumns(st), g.modeColumn(st))
 	}
 	if hoisted {
 		g.pf("inline const TableTypeInfo * %sTableType() { return &%sTableInfo; }\n\n", st.Name, st.Name)
