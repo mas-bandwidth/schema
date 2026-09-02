@@ -14,6 +14,7 @@
 #include "KeyedTable.h"
 #include "NestedTable.h"
 #include "WideTable.h"
+#include "GuardedTable.h"
 #include "V1Table.h"
 #include "V2Table.h"
 #include "GraphTable.h"
@@ -4022,6 +4023,85 @@ static void test_json_null_is_a_kind_mismatch()
     }
 }
 
+// ---- composed guards: nested and negated branches ------------------------
+//
+// Tables.schema's only guard is a flat `if has_loadout`, so the composition
+// TableJsonGuardHolds actually has to parse — "active && !has_target" — was
+// never reached by this suite. Patrol reaches all four states.
+
+static void test_json_nested_guards()
+{
+    struct { bool active; bool has_target; } states[] = {
+        { false, false }, { false, true }, { true, false }, { true, true },
+    };
+    for ( const auto & state : states )
+    {
+        tabledemo::Patrol value;
+        value.active = state.active;
+        value.has_target = state.has_target;
+        value.speed = 3.5f;
+        value.target_id = 42;
+        value.wander = 9.5f;
+        set_string( value.note, value.note_length, "patrol" );
+
+        int64_t size = tabledemo::PatrolToJsonMeasure( value );
+        CHECK( size > 0 );
+        std::vector<char> text( (size_t) size + 1 );
+        CHECK( tabledemo::PatrolToJson( value, text.data(), size ) == size );
+        text[(size_t) size] = 0;
+
+        // the text carries exactly the fields the WIRE would carry: a guard
+        // decides both, from one composition
+        CHECK( ( strstr( text.data(), "\"speed\"" ) != NULL ) == state.active );
+        CHECK( ( strstr( text.data(), "\"has_target\"" ) != NULL ) == state.active );
+        CHECK( ( strstr( text.data(), "\"target_id\"" ) != NULL ) == ( state.active && state.has_target ) );
+        CHECK( ( strstr( text.data(), "\"wander\"" ) != NULL ) == ( state.active && !state.has_target ) );
+        CHECK( ( strstr( text.data(), "\"note\"" ) != NULL ) == !state.active );
+        CHECK( strstr( text.data(), "\"active\"" ) != NULL ); // the guard itself is a plain key
+
+        // and the round trip lands the same wire
+        tabledemo::Patrol back;
+        tabledemo::TableReport report;
+        CHECK( tabledemo::PatrolFromJson( back, text.data(), size, &report ) );
+        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+        uint8_t a[512], b[512];
+        int64_t na = tabledemo::PatrolSave( value, a, sizeof( a ) );
+        int64_t nb = tabledemo::PatrolSave( back, b, sizeof( b ) );
+        if ( na <= 0 || na != nb || memcmp( a, b, (size_t) na ) != 0 )
+        {
+            printf( "FAIL json nested guard (active=%d has_target=%d): wire %lld vs %lld\n",
+                    (int) state.active, (int) state.has_target, (long long) na, (long long) nb );
+            failures++;
+        }
+    }
+
+    // reading is ORDER-FREE: every key placed before either guard is named,
+    // and the instance still matches the one built by hand
+    {
+        tabledemo::Patrol value;
+        tabledemo::TableReport report;
+        const char * text =
+            "{ \"target_id\": 7, \"wander\": 1.5, \"note\": \"x\", \"speed\": 2.5,"
+            "  \"has_target\": true, \"active\": true }";
+        CHECK( tabledemo::PatrolFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.active && value.has_target && value.target_id == 7 && value.speed == 2.5f );
+
+        tabledemo::Patrol hand;
+        hand.active = true;
+        hand.has_target = true;
+        hand.target_id = 7;
+        hand.speed = 2.5f;
+        hand.wander = 1.5f;
+        set_string( hand.note, hand.note_length, "x" );
+        uint8_t a[512], b[512];
+        int64_t na = tabledemo::PatrolSave( value, a, sizeof( a ) );
+        int64_t nb = tabledemo::PatrolSave( hand, b, sizeof( b ) );
+        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
+    }
+
+    JSON_ROUND_TRIP( tabledemo, Patrol, ( []() { tabledemo::Patrol p; p.active = true; p.has_target = false; p.speed = 8.0f; p.wander = 2.5f; return p; }() ) );
+}
+
 int main()
 {
     test_round_trip();
@@ -4096,6 +4176,7 @@ int main()
     test_json_no_infinity_reaches_storage();
     test_json_duplicate_arrays_last_wins();
     test_json_null_is_a_kind_mismatch();
+    test_json_nested_guards();
     test_json_pinned_text();
     test_json_fuzz_tokenizer();
 
