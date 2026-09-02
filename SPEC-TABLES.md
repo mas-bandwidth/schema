@@ -2512,18 +2512,17 @@ in build version (§20.5).
   follow-on (§15).
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
-  FOR it** — a table that cannot have one simply has none (§19), and these
-  two are refusals of a DECLARATION that collides with what the form
-  generates:
-  - **`| stride` in this version** — the pitch is `sizeof` by construction
-    (§19); declared headroom is a named follow-on (§15), and the attribute
-    is refused rather than accepted-and-ignored, because an inert attribute
-    is a lie about the declaration;
-  - **a field of a FIXED table named `magic` or `build_version`** — those two
-    are the projection's generated prologue (§19.1), as `<field>_present` is an
-    optional's generated companion. Claimed on every fixed table, for the
-    reason the generated spellings below are: the form is not opted into, so
-    a name that was free yesterday must not become a collision tomorrow.
+  FOR it** — a table that cannot have one simply has none (§19) — and there
+  is one refusal, of a DECLARATION that collides with what the form
+  generates: **a field of a FIXED table named `magic` or `build_version`**,
+  the projection's generated prologue (§19.1), as `<field>_present` is an
+  optional's generated companion. Claimed on every fixed table, for the
+  reason the generated spellings below are: the form is not opted into, so a
+  name that was free yesterday must not become a collision tomorrow.
+  **`| stride` is refused as an UNKNOWN ATTRIBUTE**, like any other spelling
+  the closed vocabulary does not carry (SPEC.md §4.2), and not by name: the
+  pitch is derived and there is no declared stride to reserve a word for
+  (§19).
 
   **What is NOT refused, and it is worth stating because the block form's own
   need for a base invites the opposite guess**: a block-form table nested by
@@ -3089,14 +3088,25 @@ Owner rulings, 2026-09-02, in the order given.
   between C++ and C#" — "so that's the real thing here." The pitch is the
   point: blittable records both generated sides point at, no marshalling and
   no copy (§12.1, §19).
-- **What the stride ALSO buys, and its reduced weight**: "the benefit of
-  striding is that i can add new fields at the end of types/tables, without
-  C# exploding", "because C# just doesn't know about the new fields yet, and
+- **What a DECLARED stride would also have bought**: "the benefit of striding
+  is that i can add new fields at the end of types/tables, without C#
+  exploding", "because C# just doesn't know about the new fields yet, and
   stride is bigger than struct width" — then, refining: "It may be obsolete
   now, but this was the original intent", "If we generate both render data
-  C++ and C# side now, it's less of a concern." Declared headroom is a named
-  follow-on (§15) rather than v1 language; the layout contract and the
-  baseline are the guard of record (§19.3, §19.4).
+  C++ and C# side now, it's less of a concern."
+- **The declared stride is CUT, 2026-09-02**: **"OK got it. We cut it."** The
+  pitch is `sizeof` rounded to alignment, derived, always, and it rides in
+  the triple (§19); there is no `| stride`, no headroom follow-on and no
+  reserved spelling — an unknown attribute is refused as unknown. The
+  condition the cut is held to is the hard requirement: "I mean as long as we
+  can make it work with the fast blitted C# stuff." / "that's the hard
+  requirement. so if we don't need stride anymore then c'est la vie." A
+  derived pitch is what MAKES that work — rows at `sizeof` are contiguous, so
+  the C# read is a span reinterpreted over blittable storage, and a declared
+  stride is exactly what would have broken the contiguity it needs (§19.2).
+  The layout contract and the baseline are the guard of record (§19.3,
+  §19.4), and gate 2 on the box is the proof, at the owner's bar: same speed,
+  or not significantly slower (§12.1).
 - **The purpose, in one line**: "this is a 'nice' property to get some sort
   of more robust structure (ABI) between C++ and C# without hardcore
   versioning", "because both sides were previously manually updated."
@@ -3450,13 +3460,15 @@ have added one are priced here.
   the primary case never fires is not a trigger. What is left is the mode
   (§2.2): fixed tables have the form, variable-length ones do not, and the
   answer is derived rather than declared, exactly as the mode itself is.
-- **No `| stride` attribute at all in this version — TAKEN, on the same
-  evidence plus the consumer's.** Beyond the zero declared strides, the one
-  consumer that exists cannot read a strided array: it reads rows by casting
-  the byte range to a row type, which requires pitch `== sizeof`, and it
-  drops any array whose pitch differs. Shipping headroom costs that consumer
-  its fast path in exchange for a property the owner has already called
-  possibly obsolete. §15 holds it as a follow-on with the reason.
+- **No `| stride` attribute at all — TAKEN, on the same evidence plus the
+  consumer's, and taken as a CUT rather than a deferral** (§13.6). Beyond the
+  zero declared strides, the one consumer that exists cannot read a strided
+  array: it reads rows by casting the byte range to a row type, which
+  requires pitch `== sizeof`, and it drops any array whose pitch differs.
+  That consumer's fast path is the hard requirement the form exists to serve,
+  so headroom trades it away for a property both generated sides already
+  give. Nothing is held for it: no follow-on, no refusal by name, no reserved
+  word.
 - **ONE exact id and ONE entry point — TAKEN, because a block is
   same-build.** A tolerant second entry point was weighed and dropped: both
   sides of a block are generated from one declaration by one compiler run, so
@@ -3590,22 +3602,6 @@ pre-empted here.
 
 - **A hash-guarded fallback loader** — open the cooked form, else load
   the wire — as a convenience helper.
-- **DECLARED STRIDE HEADROOM in the block form** — `| stride = N` on an
-  out-of-line array, `N` greater than the element's `sizeof`, so a field
-  appended at the end of a row does not move the pitch. The owner's case for
-  it: *"the benefit of striding is that i can add new fields at the end of
-  types/tables, without C# exploding … because C# just doesn't know about the
-  new fields yet, and stride is bigger than struct width."* Three things hold
-  it out of this version. Its weight is reduced now that both sides are
-  generated from one declaration — *"It may be obsolete now … If we generate
-  both render data C++ and C# side now, it's less of a concern."* The case it
-  exists for has zero declared strides today, and the one consumer that
-  exists loses its cast path on any pitch that is not `sizeof` (§14).
-  **And a row that grows moves its DERIVED pitch anyway**, which moves the
-  build version, which refuses at `BlockOpen` (§19.4) — so what headroom
-  would add is a pitch that does not move at all, and under one same-build id
-  that matters only to something OUTSIDE the block which has assumed one.
-  Landing it is an attribute, its refusals, and the §18 row.
 - **A SHARED BOUND across several out-of-line arrays.** `BlockMaxBytes` sums
   each array's declared maximum, and several arrays commonly draw from one
   pool — so the sum is loose by construction and reserves extent that can
@@ -4388,13 +4384,15 @@ declaration does not spell:**
   `string(N)` or of `bytes(N)` stays INLINE in the projection, exactly as a
   fixed `[N]T` does: striding what another language cannot point at as a
   record buys nothing, and the projection is a struct either way.
-- **THE PITCH IS `sizeof`.** A row's stride is the element's `sizeof`, rounded
-  up to its alignment — which for a standard-layout struct (§9) is `sizeof`
-  itself. It is derived, always, and no declaration adjusts it in this
-  version; declared headroom is a named follow-on (§15) with the reason it is
-  not here. The stride still RIDES in the triple, because it is the pitch the
-  consumer indexes with and it must come from the data, never from the
-  consumer's own constant (§19.2).
+- **THE PITCH IS `sizeof`, DERIVED, ALWAYS.** A row's stride is the element's
+  `sizeof` rounded up to its alignment — which for a standard-layout struct
+  (§9) is `sizeof` itself. Nothing declares it and nothing adjusts it: there
+  is no `| stride`, no headroom and no reserved spelling for one (§13.6). The
+  pitch RIDES in the triple all the same, because it is what the consumer
+  indexes with and it must come from the data rather than from the consumer's
+  own constant (§19.2) — and because the pitch is `sizeof`, a consumer's rows
+  are CONTIGUOUS, which is what lets C# reinterpret the byte range as a span
+  of blittable rows with no marshalling and no copy (§12.1, §19.2).
 - **A TABLE, NOT A NEW KIND OF TABLE.** A table in its block form keeps
   everything an ordinary fixed table has: `Measure`, `Save` and `Load` over
   the tolerant wire (§3), its cook (§7), its reflection descriptors (§8), its
@@ -4597,8 +4595,9 @@ ReadOnlySpan<RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is 
 - **A contiguous view is available because the pitch IS `sizeof`** (§19), so
   a consumer that casts a byte range to a row type — which is how the fast
   path is actually written — is always able to. That is a property of
-  deriving the pitch; a version that let a declaration widen it would cost
-  this, and §15 records the trade.
+  deriving the pitch, and it is the hard requirement the derived pitch is
+  held to (§13.6): a declaration that could widen the pitch would cost this
+  read its contiguity, which is why there is no such declaration.
 - **The consumer reads `offset_of`, `count` and `stride` FROM THE INSTANCE,
   never from its own constants.** Its constants exist to be asserted against
   (§19.3), not to index with. That is the difference between a generated pair
