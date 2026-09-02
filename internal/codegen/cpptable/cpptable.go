@@ -24,93 +24,32 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// table-wire kinds (SPEC-TABLES.md) — the whole vocabulary of the neutral
-// wire: plain little-endian scalars, length-prefixed strings/bytes/tables.
+// table-wire kinds (SPEC-TABLES.md §3), named locally over the one
+// target-independent definition in ir — the vocabulary is wire law, and the
+// baseline projection reads the same mapping this emitter writes.
 const (
-	tkBool   = 1
-	tkI8     = 2
-	tkI16    = 3
-	tkI32    = 4
-	tkI64    = 5
-	tkU8     = 6
-	tkU16    = 7
-	tkU32    = 8
-	tkU64    = 9
-	tkF32    = 10
-	tkF64    = 11
-	tkString = 12
-	tkTable  = 13
-	tkArray  = 14
-	tkUnion  = 15
+	tkBool   = ir.TableKindBool
+	tkI8     = ir.TableKindI8
+	tkI16    = ir.TableKindI16
+	tkI32    = ir.TableKindI32
+	tkI64    = ir.TableKindI64
+	tkU8     = ir.TableKindU8
+	tkU16    = ir.TableKindU16
+	tkU32    = ir.TableKindU32
+	tkU64    = ir.TableKindU64
+	tkF32    = ir.TableKindF32
+	tkF64    = ir.TableKindF64
+	tkString = ir.TableKindString
+	tkTable  = ir.TableKindTable
+	tkArray  = ir.TableKindArray
+	tkUnion  = ir.TableKindUnion
 	// an ENUM-KEYED array body is its OWN kind (SPEC-TABLES.md §3.2): the
 	// positional array body and the keyed one are incompatible, so a reader
 	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
-	tkKeyed = 16
+	tkKeyed = ir.TableKindKeyed
 )
 
-func tableScalarKind(f *ir.Field) int {
-	switch f.Type.Kind {
-	case ir.TBool:
-		return tkBool
-	case ir.TInt:
-		if f.Type.Signed {
-			switch f.Type.Width {
-			case 8:
-				return tkI8
-			case 16:
-				return tkI16
-			case 32:
-				return tkI32
-			default:
-				return tkI64
-			}
-		}
-		switch f.Type.Width {
-		case 8:
-			return tkU8
-		case 16:
-			return tkU16
-		case 32:
-			return tkU32
-		default:
-			return tkU64
-		}
-	case ir.TBits:
-		switch {
-		case f.Type.Width <= 8:
-			return tkU8
-		case f.Type.Width <= 16:
-			return tkU16
-		case f.Type.Width <= 32:
-			return tkU32
-		default:
-			return tkU64
-		}
-	case ir.TFloat32:
-		return tkF32
-	case ir.TFloat64:
-		return tkF64
-	case ir.TString:
-		return tkString
-	case ir.TBytes:
-		return tkArray
-	case ir.TNamed:
-		switch f.Type.Ref.(type) {
-		case *ir.Enum:
-			// an enum value rides as the u16 hash of its VARIANT NAME, whatever
-			// the declaration-side storage width (SPEC-TABLES.md §5): identity
-			// is the name here, exactly as it is for a field
-			return tkU16
-		case *ir.Flags:
-			return tkU64
-		case *ir.Struct:
-			return tkTable
-		case *ir.Union:
-			return tkUnion
-		}
-	}
-	return 0
-}
+func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
 
 func tableKindWidth(kind int) int {
 	switch kind {

@@ -99,6 +99,17 @@ emitters — carries no promise and may change in any
 release. Building on the compiler means `compiler.Generator` and `ir`, which is
 the same door the built-in backends come through.
 
+The tables baseline (SPEC-TABLES.md §18) adds to that covered surface:
+`compiler.TablesBaselineText` and `compiler.UpdateTablesBaseline`, the
+`TablesBaseline` and `OnWarn` policy fields on `compiler.Compiler`, and in `ir`
+the table-wire kind vocabulary — the `TableKind*` constants and
+`TableScalarKind` / `TableFieldKind` / `TableElemKind`, which are wire law and
+therefore frozen (SPEC-TABLES.md §3). The baseline FILE's own rendering carries
+its own version on its first line, independent of these: a bump there makes
+every committed baseline stale at once and is repaired with
+`schema tables-baseline --update --reason "..."`, which preserves each file's
+history section.
+
 **The SPEC is versioned with the compiler.** [SPEC.md](SPEC.md) is normative;
 where the compiler and the SPEC disagree, one of them is a bug.
 

@@ -99,3 +99,14 @@ consts bench/tools/variantgen/main.go 3 three comments stating the 438-byte gold
 
 paths test/bench/c_main.c 1 the §1.5 golden pinner: correctness code, no timing
 paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
+
+# ---------------------------------------------------------------------------
+# A CALENDAR DATE IS NOT A CLOCK.
+#
+# The tables baseline (SPEC-TABLES.md §18.4) stamps each history entry with the
+# day it was written, so a person reading the intentional-break log years
+# later knows when the break happened. It measures no interval and times
+# nothing; the timing check is lexical and cannot tell a date from a clock.
+# ---------------------------------------------------------------------------
+
+timing internal/baseline/file.go 1 the history entry's calendar date — a day written into a text log, no interval measured (prose)

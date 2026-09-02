@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/baseline"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/format"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
@@ -48,6 +49,20 @@ type Compiler struct {
 	// actually rewrote. The CLI prints "formatted <path>"; a build tool might
 	// stage the file, or fail the build.
 	OnFormat func(path string)
+
+	// TablesBaseline turns on the TABLES BASELINE check (SPEC-TABLES.md §18.2):
+	// when a tables.baseline sits in the unit's directory, Load diffs the
+	// unit's table closure against it and REFUSES the edits the table wire
+	// cannot report — a changed specified default, a moved flags bit, a
+	// changed field kind. No file means no check. The CLI sets it for `check`
+	// and `generate`.
+	TablesBaseline bool
+
+	// OnWarn, when set, receives each non-fatal report a load produced — the
+	// baseline's warn class (a shrunk bound, a removed enum variant or union
+	// arm): data survives, something is lost, and the runtime read report
+	// counts it. The CLI writes them to stderr.
+	OnWarn func(msg string)
 
 	gens      map[string]Generator // every accepted --lang spelling
 	canonical []string             // one per registered generator, its first name
@@ -127,6 +142,17 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	u, cerrs := check.Unit(files)
 	if len(cerrs) > 0 {
 		return nil, Diagnostics(cerrs)
+	}
+	if c.TablesBaseline {
+		warns, berrs := baseline.Check(u, paths)
+		for _, w := range warns {
+			if c.OnWarn != nil {
+				c.OnWarn(w)
+			}
+		}
+		if len(berrs) > 0 {
+			return nil, Diagnostics(berrs)
+		}
 	}
 	return u, nil
 }

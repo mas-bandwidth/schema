@@ -4,6 +4,7 @@
 //	schema generate   --lang cpp --out <dir> [dir]   emit generated code
 //	schema id         [dir|files...]                 print the protocol id
 //	schema projection [dir|files...]                 print the wire shape the id hashes
+//	schema tables-baseline [--update --reason "..."]  print or move the tables baseline
 //	schema fmt        [dir|files...]                 canonicalize schema files in place
 //	schema version                                   print the build identity
 //
@@ -43,6 +44,10 @@ func main() {
 			fmt.Printf("formatted %s\n", path)
 		}
 	}
+	// Warnings are never quiet and never gated on --verbose: a warning nobody
+	// reads is a warning that does not exist. Today they come from the tables
+	// baseline's warn class (SPEC-TABLES.md §18.2).
+	c.OnWarn = func(msg string) { fmt.Fprintln(os.Stderr, "warning: "+msg) }
 
 	switch os.Args[1] {
 	// Accept every spelling a newcomer will try. `--version` costs nothing to
@@ -55,6 +60,7 @@ func main() {
 		fs := flag.NewFlagSet("check", flag.ExitOnError)
 		fs.BoolVar(&verbose, "verbose", false, "report the package and protocol id on success")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.TablesBaseline = true
 		unit := loadUnit(c, fs.Args())
 		if verbose {
 			fmt.Printf("ok: package %s, protocol id 0x%016x\n", unit.Package, unit.ProtocolId)
@@ -68,6 +74,48 @@ func main() {
 		// and that is a review question, not an implementation detail.
 		unit := loadUnit(c, os.Args[2:])
 		fmt.Print(ir.WireProjection(unit))
+	case "tables-baseline":
+		// The TABLES BASELINE (SPEC-TABLES.md §18). Printing is the default:
+		// the same canonical projection the committed file holds, so a
+		// pipeline can diff without writing anything. --update moves the file
+		// and records WHY in its history — and never without --reason,
+		// because an intentional break that nobody declared is the failure
+		// this file exists to prevent.
+		//
+		// Neither mode runs the baseline check on load: --update is the tool
+		// for moving a baseline the check is refusing, and it cannot be
+		// blocked by the refusal it exists to resolve.
+		fs := flag.NewFlagSet("tables-baseline", flag.ExitOnError)
+		update := fs.Bool("update", false, "rewrite the unit's tables.baseline and record the move in its history")
+		reason := fs.String("reason", "", "why the baseline moves — mandatory with --update, and written into the file's history")
+		fs.BoolVar(&verbose, "verbose", false, "name the file written")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		paths, err := compiler.GatherPaths(fs.Args())
+		if err != nil {
+			fail(err)
+		}
+		u, err := c.Load(paths)
+		if err != nil {
+			fail(err)
+		}
+		if !*update {
+			if *reason != "" {
+				fatalf("--reason belongs with --update: it records why a baseline MOVED")
+			}
+			fmt.Print(compiler.TablesBaselineText(u))
+			break
+		}
+		path, rewrote, err := compiler.UpdateTablesBaseline(u, paths, *reason)
+		if err != nil {
+			fail(err)
+		}
+		if verbose {
+			if rewrote {
+				fmt.Printf("wrote %s\n", path)
+			} else {
+				fmt.Printf("%s is already current\n", path)
+			}
+		}
 	case "fmt":
 		// standalone formatting; check/generate/id already format before
 		// processing, so this exists for editors and pre-commit hooks
@@ -99,6 +147,7 @@ func main() {
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.TablesBaseline = true
 		unit := loadUnit(c, fs.Args())
 		files, err := c.Generate(unit, *lang, compiler.Options{})
 		if err != nil {
@@ -133,6 +182,7 @@ func usage() {
   schema generate   [--lang c|cpp|cs|dart|elixir|go|java|js|rust] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
+  schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
   schema fmt        [--verbose] [dir|files...]
   schema version
 
