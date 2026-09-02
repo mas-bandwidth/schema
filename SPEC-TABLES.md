@@ -218,8 +218,6 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
   or absent by value, with no pointer and no change of mode.
 - **An array may be ENUM-KEYED** (§2.4). `ships [ShipType]ShipConfig` has
   exactly one slot per variant, indexed by the variant.
-- **A blob is a node** (§2.5). `data *bytes` declares an unbounded byte
-  buffer at exactly its used size, and `*string` is its sibling.
 - **A union arm may be a table** (§2.6), which is what makes an evolvable
   message set expressible.
 - **`was` — the rename attribute** (§5).
@@ -248,12 +246,12 @@ table Scene
 **A pointer is for recursion, sharing and size — not for optionality.**
 Every field on this wire is already optional: absence is the reader's
 default (§4), so nothing has to be pointed at to be left out. The spelling
-for an OPTIONAL SECTION is `?T` (§2.3):
+for an OPTIONAL GROUP is `?T` (§2.3):
 
 ```
 table Scene
 {
-    settings ?Settings   // an optional section: off the wire when it is absent
+    settings ?Settings   // an optional group: off the wire when it is absent
 }
 ```
 
@@ -268,23 +266,21 @@ lifecycle, so the choice is a real one.
 The spelling is C's, deliberately: it reads as what it is. The rules,
 each refused by name (§11):
 
-- **A pointer targets a `table`, or one of the two buffer primitives.**
-  `*Node` names a declared table; `*bytes` and `*string` name an unbounded
-  buffer at its used size (§2.5). Everything else is refused — `*SomeType`,
-  `*SomeEnum`, `*SomeUnion` — because value-semantics data has no
-  independent identity to point at. Nest it by value instead.
+- **A pointer targets a `table`, and nothing else.** `*Node` names a declared
+  table. Everything else is refused — `*SomeType`, `*SomeEnum`, `*SomeUnion`,
+  and the buffer spellings `*bytes` and `*string`, which do not parse (§15) —
+  because value-semantics data has no independent identity to point at. Nest
+  it by value instead.
 - **A pointer is declared inside a table body, and nowhere else.** A
   `type` body refuses one: types remain value semantics, and that is the
   founding line of the split.
 - **A pointer field takes no specified default.** A fresh pointer is
   null, and null is the only value a default could name.
 
-**An array of pointers is a bounded array like any other.** `[..8]*Node`
-declares eight reference slots and rides as an array of node indices
-(§3.1); a null element is index `0`. It is the spelling for a node with a
-fixed fan-out, and it costs four bytes a slot instead of a whole table by
-value. An array of `*bytes` or `*string` stays refused (§2.5): a buffer
-takes no index, so there is nothing to put in the slots.
+**An ARRAY OF POINTERS is refused, and it is a named follow-on** (§15).
+`[..8]*Node` and `[8]*Node` are both refused by name, and the diagnostic says
+what to write instead: a bounded array of tables BY VALUE, or a pointer to a
+table that holds the array.
 
 A pointer's STORAGE is a four-byte relocatable reference — never a
 machine address — which is what keeps §9's relocatability true with
@@ -296,12 +292,11 @@ pointers in the struct. Its meaning depends on the form it sits in
 The compiler works out which class a table belongs to; the schema never
 says. The rule is a least-fixed-point over BY-VALUE edges:
 
-- A table is **VARIABLE-LENGTH** if it declares a pointer — including
-  `*bytes` and `*string` (§2.5) — or if anything it nests by value is
-  variable-length. "Nests by value" reaches through every by-value edge
-  there is: a plain nested table, an element of a bounded array, an
-  element of an enum-keyed array, a member of a guarded (`if`) group, an
-  optional's value (§2.3), and a UNION ARM that is a table (§2.6).
+- A table is **VARIABLE-LENGTH** if it declares a pointer, or if anything it
+  nests by value is variable-length. "Nests by value" reaches through every
+  by-value edge there is: a plain nested table, an element of a bounded
+  array, an element of an enum-keyed array, a member of a guarded (`if`)
+  group, an optional's value (§2.3), and a UNION ARM that is a table (§2.6).
 - Every other table is **FIXED-SIZE**.
 
 Pointer edges do not propagate the mode: a table that is merely POINTED
@@ -572,62 +567,14 @@ set of bits at once, so it names no single slot); a bounded keyed array,
 element that is a pointer, as for any array (§15); and an index of
 `E::None`, which names no slot.
 
-### 2.5 Byte buffers: `data *bytes`
+### 2.5 Byte buffers
 
-```
-table Asset
-{
-    format  AssetFormat
-    data    *bytes        // an unbounded blob, stored at exactly its used size
-    label   *string       // the sibling: a string node at its used length
-}
-```
-
-`bytes(N)` is fixed inline storage of N bytes in every instance. `*bytes`
-is a POINTER to a byte buffer that has no declared bound and occupies
-exactly the size it is given. The distinction is what makes large content
-expressible: in a table of a million nodes, a `bytes(65536)` field costs
-64 KB per node whether it is used or not, because the region packs storage
-verbatim, while a `*bytes` field costs the four-byte reference plus what
-each node actually holds.
-
-- **Storage** is the four-byte relocatable reference (§2.1) beside a u32
-  used length. Declaring one makes the holder VARIABLE-LENGTH (§2.2), like
-  any other pointer.
-- **In the arena**, `builder.AllocBytes( n )` returns a node of exactly `n`
-  bytes; `builder.AllocString( n )` is the sibling.
-- **In a region** it is packed at its used length, its reference
-  self-relative like every other (§6.3).
-- **On the wire it is framed exactly as `bytes(N)` is** — kind `14`, an
-  array of element kind `6` (u8) at its used count — and `*string` is
-  framed exactly as `string(N)` is, kind `12`. No new kind, no new skip
-  rule, and one useful consequence: `bytes(N)` and `*bytes` share one
-  framing, as `T`, `?T` and `*T` do (§3.1), so a field that outgrows its
-  inline bound moves to a blob and no byte changes **for any non-empty
-  value**. The one difference is the empty end, the same asymmetry the
-  other family has: an empty `bytes(N)` elides, while a non-null
-  ZERO-LENGTH `*bytes` writes an empty payload, because presence decides
-  for a pointer-shaped spelling. A null blob is absent, exactly as a null
-  pointer is.
-- **In the cooked form**, `Open`'s walk bounds the blob by its length as it
-  bounds every node, so a pointer into a mapped file IS the asset: no copy,
-  no parse (§7).
-
-Two sentences that must travel together: **a tolerant wire load COPIES the
-blob** — a gigabyte on the wire path is a gigabyte read — and **the cooked
-path is the zero-copy one.** Both are true and neither is the whole story.
-
-schema does not interpret the bytes. A format tag beside the blob is an
-ordinary field the user declares. A pattern falls out and is worth naming
-though it is no construct: a sub-document, or a rarely needed arm, can be
-stored as its own wire bytes inside a `*bytes` and decoded only when
-something asks for it — which keeps a very large file's resident memory
-proportional to what is touched rather than to what exists.
-
-Refused by name: `*bytes` or `*string` outside a table body; a specified
-default on one (a fresh reference is null); an array of them — a buffer
-takes no node index, so there is nothing to put in the slots (§3.1); `?`
-on one, because null already IS absence (§2.3).
+**There is no buffer primitive: `*bytes` and `*string` do not parse.** A
+pointer targets a declared `table` (§2.1), and `bytes` and `string` are
+keywords rather than table names, so the spelling is a parse failure and not
+a construct with rules. An unbounded byte buffer at its used size is a NAMED
+FOLLOW-ON (§15), tracked as schema#259; today a blob is `bytes(N)` at a
+declared bound, and a very large one is a table of its own pointed at.
 
 ### 2.6 Union arms may be tables
 
@@ -751,28 +698,26 @@ schema's codebase:
   kind `13` payload carries.
 
   **Spellings that add no row, and the one way they differ.** A `?T`
-  optional field is framed exactly as the non-optional `T` (§2.3), and
-  `*bytes` and `*string` are framed exactly as `bytes(N)` and
-  `string(N)` (§2.5). Each family is ONE FRAMING under several
-  declaration spellings. **`*T` naming a TABLE is the exception**: it
-  rides as a node index under its own kind `17` (§3.1), because a body
-  that may be named twice cannot also sit inline at one of its names.
+  optional field is framed exactly as the non-optional `T` (§2.3), so the
+  two are ONE FRAMING under two declaration spellings. **`*T` naming a
+  TABLE is the exception**: it rides as a node index under its own kind
+  `17` (§3.1), because a body that may be named twice cannot also sit
+  inline at one of its names.
   The distinct kind is what makes moving a field to or from `*T` a
   REPORTED edit rather than a quiet one, for the same reason kind `16`
   exists (§3.2): a node index and a plain `uint32` are the same four
   bytes, and only the kind can tell a reader which it is holding.
 
-  **What differs inside a family is ELISION, and only at the empty end.**
-  Content decides for the by-value spellings and presence decides for the
-  pointer-shaped ones (above), so a by-value `T` at its defaults writes
-  nothing while a present `?T` at its defaults writes its body, and an
-  empty `bytes(N)` writes nothing while a non-null zero-length `*bytes`
-  writes an empty payload. **For any content that is not entirely default,
-  the spellings in a family are byte-identical**, and that is the scope of
-  the claim: a schema may move a field among them and no byte moves for
-  such a value. At the empty end the bytes differ and no reader
-  misdecodes — an elided field reads as absent (`?T`), null (`*T`) or the
-  declared default (`T`), which is correct in every direction. Moving a
+  **What differs inside the family is ELISION, and only at the empty end.**
+  Content decides for a by-value spelling and presence decides for a
+  pointer-shaped one (above), so a by-value `T` at its defaults writes
+  nothing while a present `?T` at its defaults writes its body. **For any
+  content that is not entirely default, `T` and `?T` are byte-identical**,
+  and that is the scope of the claim: a schema may move a field between
+  them and no byte moves for such a value. At the empty end the bytes
+  differ and no reader misdecodes — an elided field reads as absent (`?T`),
+  null (`*T`) or the declared default (`T`), which is correct in every
+  direction. Moving a
   field ACROSS families — between `*T` and `T` or `?T` — is not a free
   edit: it changes kind, and §4 counts it (§3.1).
   - **Array elements.** For a scalar element kind the elements sit back to
@@ -821,14 +766,13 @@ schema's codebase:
   **A field under a FALSE GUARD is elided too**, whatever its storage
   holds: an `if` branch that does not run writes none of its fields, so a
   guarded group rides only when its guard is true. That is what makes a
-  guard an optional SECTION on the wire and not merely in the language, and
+  guard an optional GROUP on the wire and not merely in the language, and
   the text form defers to this rule rather than restating it (§16.2).
-  **PRESENCE, not content, decides the three pointer-shaped spellings.** An
-  absent `?T`, a null `*T` and a null `*bytes` are not written; a present
-  optional, a non-null pointer and a non-null blob are ALWAYS written, even
-  when the value is entirely default and even when the blob is zero bytes
-  long — otherwise "absent" and "present with nothing to say" would be one
-  value on the wire (§2.3, §2.5, §3.1).
+  **PRESENCE, not content, decides the two pointer-shaped spellings.** An
+  absent `?T` and a null `*T` are not written; a present optional and a
+  non-null pointer are ALWAYS written, even when the value is entirely
+  default — otherwise "absent" and "present with nothing to say" would be
+  one value on the wire (§2.3, §3.1).
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
   narrowest unsigned kind that holds it, compressed floats as f32, and a
@@ -852,10 +796,10 @@ schema's codebase:
 A pointered save writes every reachable node ONCE, into a **node table**,
 and a pointer field rides as a `u32` **index** into it under kind `17`.
 The encoding is flat: no pointer edge is a nesting level, so a chain's
-length is not a depth; two references to one node are one node; and an
-array of pointers is an array of indices. It moves not one byte of a
-value-only table: a fixed-size table has no pointer, therefore no node
-table, therefore exactly the bytes §3 already describes.
+length is not a depth, and two references to one node are one node. It
+moves not one byte of a value-only table: a fixed-size table has no
+pointer, therefore no node table, therefore exactly the bytes §3 already
+describes.
 
 **Backend status for this section: spec ahead of the emitter.** This
 section is the landed law; no backend writes it yet. What a reader of
@@ -884,12 +828,10 @@ exist; the set is closed before any of them ship, and §14 records the
 trade.
 
 **What a pointer edge is, and what it is not.** Only a `*T` naming a
-declared TABLE takes a node index. `*bytes` and `*string` are leaf
-buffers and are framed inline exactly as `bytes(N)` and `string(N)` are
-(§2.5) — they charge no node, take no index, and create no depth,
-because a buffer has nothing inside it to descend into. A table-typed
-UNION ARM is a by-value nesting and rides inline as §2.6 frames it; the
-pointer fields INSIDE an arm are indices like any other.
+declared TABLE takes a node index, and it is the only pointer spelling the
+language has (§2.1). A table-typed UNION ARM is a by-value nesting and rides
+inline as §2.6 frames it; the pointer fields INSIDE an arm are indices like
+any other.
 
 **Node numbering.**
 
@@ -993,7 +935,7 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
 - **The record scan is authoritative.** `node_count` is data from the
   wire: a reader scans records until the fields are consumed and takes
   what it finds, and a `node_count` that disagrees with the scan is
-  **malformed**. Nothing — no directory, no region, no buffer — is sized
+  **malformed**. Nothing — no directory, no region, no allocation — is sized
   from `node_count` before the scan has confirmed it.
 - **The `unknown` count is per TRANSPORT FIELD, not per schema
   difference.** A reader that cannot name `0xFFFF` counts one for each
@@ -1017,7 +959,7 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
 - The **length** is a `u32`, and **a node body that would exceed
   `0xFFFFFFFF` bytes is a SAVE-TIME REFUSAL** naming the node: measure
   and save return failure, and nothing truncates. The case is reachable —
-  two 2 GiB `*bytes` in one table are four gigabytes of body under §2.5 —
+  two `bytes(2147483647)` fields in one table are four gigabytes of body —
   and it is refused rather than widened, because the repair is more
   nodes, which is the shape the flat encoding wants anyway, and a `u64`
   length would cost four bytes on every node in every save to frame a
@@ -1025,8 +967,8 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   AGGREGATE one, and the repeating field removed it.
 - The **body** is an ordinary table body — fields, then the `u16` zero
   terminator, exactly as §3 describes. Everything inside is ordinary:
-  by-value nesting still nests, arrays are arrays, guards still guard,
-  buffers ride inline.
+  by-value nesting still nests, arrays are arrays, guards still guard, and
+  `string(N)` and `bytes(N)` ride inline.
 
 **A pointer field, and the constructs that ride on it.**
 
@@ -1044,15 +986,13 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   counted, never misdecoded, the field taking its default. The framings
   cannot merge while identity holds: a body that may be named twice
   cannot also sit inline at one of its names.
-- **An array of pointers rides as an array of indices**: `kind = 14`,
-  element kind `17`, `N`, then `N` `u32` indices. `[..8]*Node` is a legal
-  declaration (§2.1) — an array of `*bytes` or `*string` is still refused
-  (§2.5), because a buffer has no index to put in a slot. An array whose
-  elements are all null elides like any other all-default array; an array
-  with any non-null element rides as §3 frames arrays, so a null inside
-  it is index `0` and every position is preserved. §3's element-kind rule
-  applies unchanged, so an array of indices and an array of `uint32` do
-  not decode each other either.
+- **No array carries indices**, because an array of pointers is refused and
+  is a named follow-on (§2.1, §15). Kind `17` is a field's kind and never an
+  array's element kind, so an array of `uint32` is the only four-byte array
+  the wire has and there is no pair for §3's element-kind rule to hold
+  apart. What the follow-on would frame — `kind = 14`, element kind `17`,
+  `N`, then `N` `u32` indices — is what it costs to state, and nothing
+  writes it.
 
 **Reading: every failure is one of §4's events, and none is new.**
 
@@ -1342,9 +1282,10 @@ change data, or add a new field and leave the old one alone.
 
 ### 4.1 The silent class, in full
 
-Almost every edit lands in the read report. **Exactly two do not**, and
+Almost every edit lands in the read report. **Exactly three do not**, and
 naming the whole set is the point of this subsection — a person reading a
-save game that came back wrong needs to know there is no third:
+save game that came back wrong needs the whole of it, and the third member is
+the one the committed baseline (§18) exists to refuse:
 
 1. **A specified DEFAULT changed, added or removed.** An elided field means
    "the reader's declared default", so the same bytes now mean something
@@ -1353,12 +1294,22 @@ save game that came back wrong needs to know there is no third:
    mask is the wire's one positional vocabulary (§3), so a variant's
    identity is its bit position; moving one remaps every stored file and
    the wire carries nothing that could say so.
+3. **A field's REFERENT dropped, or replaced by one that cannot STAND IN for
+   it.** An enum-typed field respelled as its raw `uint16` rides under kind
+   `7` either way (§4), so the stored value is read as a variant hash and
+   lands on `None` — or on a real variant — with no counter to fire; and a
+   nested table swapped for a twin that carries the same field ids under a
+   different specified default rewrites what every stored body means while
+   every id survives. The kinds are coarser than the declaration side, so
+   the wire cannot see WHICH declaration a field names. This is the class
+   §18 exists for, and §18.3 states the standard each vocabulary is held to.
+
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed and reordered; array bounds may move; a field may
-change between `T` and `?T`, or between `bytes(N)` and `*bytes` — all of
-it either invisible to the wire or counted in the report. Moving a field
-to or from `*T` is a kind change and is counted (§3.1).
+change between `T` and `?T` — all of it either invisible to the wire or
+counted in the report. Moving a field to or from `*T` is a kind change and
+is counted (§3.1).
 
 **Three edits that would otherwise be silent are made REPORTABLE by
 construction, and it is worth saying how, because the claim above depends
@@ -1387,21 +1338,48 @@ directions — the value comes back, the report is silent, and the silence is
 honest, because nothing was lost on the way in. The loss, if it comes, is
 on the way OUT: a reader whose guard is false elides the field on its next
 save. So it is not a silent decoding edit, and the enumeration above stays
-at two; it is a round-trip hazard, and a tool that loads, edits and stores
+at three; it is a round-trip hazard, and a tool that loads, edits and stores
 a file — the save-game cycle §18 exists for — should be read as carrying
-it. A person whose file came back wrong needs the two above; a person whose
+it. A person whose file came back wrong needs the three above; a person whose
 tool rewrote a file needs this one.
 
-Each of the two has its own answer:
+Each of the three has its own answer:
 
 - **Flags** are answered by DISCIPLINE, stated as law: **append at the end,
   never insert or reorder**, and retire a name in place rather than freeing
   its bit.
-- **Both** are answered by MACHINERY, opt-in: the committed tables
+- **All three** are answered by MACHINERY, opt-in: the committed tables
   baseline (§18) is the history the compiler does not keep, and it
-  refuses either edit until the baseline moves with a recorded reason. It
+  refuses every one of them until the baseline moves with a recorded reason. It
   refuses the spelling changes above too, at compile time, ahead of the
   reader's report.
+
+**THE THREE FRAMES, ONCE.** Three sections judge an edit and they answer
+three different questions, which is why their lists differ: the READ REPORT
+says what a reader can tell you happened (§4), the BASELINE says what the
+compiler refuses to let you do to data already written (§18.2), and the BUILD
+VERSION says whether a cooked or blocked file this build wrote is still this
+build's (§20.1). The table is the reconciliation, and §18 and §20.1 cite it
+rather than restate it. "Silent" in this subsection means the first column
+only.
+
+| the edit | the read report | the baseline | the build version |
+|---|---|---|---|
+| a specified DEFAULT changed, added or removed | silent | **refuses** | **moves** |
+| a FLAGS variant inserted, removed, reordered or renamed in place | silent | **refuses** | no — a mask rides raw and a load copies it verbatim |
+| a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
+| a field's wire KIND, or an array's ELEMENT kind, changed | `kind_mismatch` | **refuses** | **moves** |
+| an array changed between keyed and positional, or its KEY enum swapped | `kind_mismatch` | **refuses** | **moves** |
+| a declared RANGE tightened | `clamped` | passes | **moves** |
+| an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves** |
+| a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes | **moves** |
+| a field renamed under `was` | silent, and nothing is lost | passes | no — `was` holds the wire id fixed |
+| an array BOUND or a string/`bytes` capacity moved | `clamped` past the reader's bound | warns on a shrink | **moves** |
+| a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
+| a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
+| an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
+| a DECLARATION renamed — a `type` or a table | silent: a declaration name is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
+| a `type`'s FIELD renamed, where `was` is refused (SPEC.md §4.2) | `unknown` on the table wire, whose field id is the name's hash | passes in silence | **moves**, and through the protocol id as well (SPEC.md §3.1) |
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -1438,8 +1416,12 @@ at compile time:
 
   The field's wire id is the hash of the OLD name, so identity survives
   the rename and old data loads into the new field. `was` naming the
-  field's own name is refused; `was` outside a table body is refused
-  (renaming a `type` field is free — positional wire, SPEC §3.1).
+  field's own name is refused; `was` outside a table body is refused,
+  because a `type` field has no stored identity for it to preserve — the
+  packet wire is positional, so a renamed `type` field loses no data. It
+  is not a free edit: field NAMES ride in the wire-shape projection, so a
+  `type` rename MOVES THE PROTOCOL ID and buys a lockstep redeploy
+  (SPEC.md §3.1).
 - **Id collisions are refused.** Two fields of one table whose ids
   collide — by hash accident, or a `was` colliding with a live field —
   are a compile error naming both fields. This is the failure hand-rolled
@@ -1588,9 +1570,7 @@ yields NULL and can never fabricate the root.
 
 Every node starts at its own type's alignment and the directory's offsets
 are those padded starts, so "is a directory entry" and "is aligned" are
-one check rather than two. A node's own buffers (§2.5) are packed inside
-its extent, so a buffer reference is checked against the extent of the
-node whose slot names it — no search at all.
+one check rather than two.
 
 **The directory is ATTRIBUTION, and attribution is separable.** Nothing
 that READS a structure touches it: a deref is one add on a self-relative
@@ -1602,6 +1582,13 @@ doing, and a validating reader or a tool checks a region against it (§7).
 separately, so a caller may place them together or apart and may release
 the attribution once `Load` returns. `Cook` writes them as two parts for
 the same reason (§7).
+
+**Backend status for this section: spec ahead of the emitter.** The node
+directory is the landed law and no backend writes one. A C++ region carries
+its data and nothing beside it: `Lock` packs the bodies, `Load` resolves
+indices without a resident directory, and `Cook` writes one part rather than
+two (§7), so the attribution a validating tool reads has no writer yet. It
+lands with §3.1's flat node table, tracked as schema#251.
 
 **The price, stated.** Twelve bytes a node on the wire (an 8-byte type id
 and a 4-byte length per record) and sixteen a node of attribution, which
@@ -1702,6 +1689,37 @@ SceneCook( builder, buffer, data, attribution );   // write it
 
 const Scene * scene = SceneOpen( bytes, size );    // point at it, or NULL
 ```
+
+**Backend status for this section: spec ahead of the emitter.** This section
+is the landed law and the C++ table backend — the only one that emits a cook
+(§11) — emits wire v1's, which differs from it in five ways a reader must
+know before building on either. `Open` matches the header and then WALKS the
+region behind a monotonic high-water mark, the traversal §14 REJECTS by name
+as forgeable, so the match-and-point below is the law and not the code. The
+header carries ONE 32-bit part length, which reimposes the ceiling §3.1
+removes. There is no attribution part and no node directory (§6.3) beside the
+data, so there is nothing for a tool to check a file against. A FIXED table
+has no cook at all: `Cook`, `CookMeasure` and `Open` are emitted for
+VARIABLE-LENGTH tables, and only in a unit that declares one, so the
+fixed-root cook stated below has no code behind it. And `schema
+cook-check` is not built. Moving the emitter to this section — the header
+match, the two 64-bit lengths, the attribution beside the data and the tool
+over it — is tracked as schema#251, the same change that lands §3.1's flat
+node table; §20's status paragraph carries the emitter obligations the build
+version adds to that list.
+
+**THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
+*"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
+point."* / *"We would want this to be fast :)"*. Three consequences bind the
+emitter. `Open` is **O(1) in the file's size**: the header match, the reserved
+words, the lengths and the base's alignment, and nothing per node — which is
+what the match-and-point rule below already states and what a walk of any
+shape forfeits. The **byte order is settled at cook time** for the target
+build (below), so the reading side runs no fix-up pass at all. And a mapped
+file's **pages are touched only as they are used**, which is a property of
+touching nothing at open rather than a separate mechanism. **Not built**: the
+gate is open time flat across a 1 MB, a 100 MB and a 1 GB cook, and it rides
+with the emitter (schema#251).
 
 **The pipeline, in the owner's words**: *"the optimized path is still
 available, it is tooling does the build, then cooks to the rad binary format.
@@ -1836,8 +1854,7 @@ the wire, and keeps the flexibility that comes with it.
   2. **Every node, in directory order.** An entry's type id says which
      walk to run over that node; each pointer slot must resolve to an
      offset the directory NAMES, with the type the declaration requires;
-     each buffer reference must lie inside its own node's extent; each
-     count companion must sit inside its declared bound — including the
+     each count companion must sit inside its declared bound — including the
      companions of fixed-size tables and plain types nested by value,
      whose counts bound a walker just as a table's do. It reads no field
      value and decodes no payload.
@@ -1875,8 +1892,8 @@ the wire, and keeps the flexibility that comes with it.
   leaves the file, carries a sentinel entry, names a type the unit does not
   have, does not ascend, or overlaps a node with the next; a reference that
   leaves the region, that the directory does not name, or that it names as
-  another type; a misaligned reference; a buffer outside its node's extent;
-  a count companion outside its declared bound.
+  another type; a misaligned reference; or a count companion outside its
+  declared bound.
 
 - **Alignment.** The header pads the data part to the region's alignment,
   so a base the allocator or `mmap` gave you is already aligned; `mmap`
@@ -2002,10 +2019,6 @@ printing a `None` row, and it needs no rule about slot indices to do it —
 the same reserved id that keeps `None` off the wire keeps it out of a
 listing.
 
-**A `*bytes` or `*string` field** carries its used-length companion's
-offset beside the reference, so a walker reads the blob's extent the way
-it reads an array's count (§2.5).
-
 **A FIXED table carries a second set of positions for the same fields, and
 this is what makes the block form READABLE BY REFLECTION** (§19.2). No flag
 says it has the form — every fixed table does (§2.7), and the mode is already
@@ -2029,15 +2042,14 @@ POINTER columns below are conditional (§2.2).
 
 A unit that has pointers carries three more facts, and a unit that has
 none carries not one of them (§2.2): a field's **`is_pointer`** flag —
-whose `table` member then names the TARGET table's descriptor, NULL for a
-`*bytes` or `*string` because a buffer is not a declared table, and whose
+whose `table` member then names the TARGET table's descriptor and whose
 `elem_size` is the reference slot's width; a type's derived
 **`variable`** mode, so a tool can tell at runtime which of §6's two
 lives a table has without being told; and a table's own **node type id**
 (§3.1), so a tool can map a node table's records — or a region's node
 directory — onto descriptors with no schema files on hand. The
 compile-time refusals those ids bring (§11) apply to EVERY unit, as the
-27 generated spellings do, because a unit gains and loses pointers as an
+26 generated spellings do, because a unit gains and loses pointers as an
 edit and a name that was free yesterday must not become a collision
 tomorrow. A self-referential pointer resolves to its own type's
 descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
@@ -2506,9 +2518,9 @@ in build version (§20.5).
   with them missing.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
-  outside a table body; a specified default on a pointer field. An array
-  of table pointers is legal (§3.1); an array of `*bytes` or `*string`
-  is not (§2.5).
+  outside a table body; a specified default on a pointer field; and an
+  ARRAY of pointers — `[..N]*T` and `[N]*T` — which is a named follow-on
+  (§15), the diagnostic naming the two spellings that serve today.
 - **Optional fields** (§2.3): `?T` outside a table body; `?` on a pointer
   (already optional); `?` on a union (its `None` IS the absence); `?` on an
   array, a string or `bytes` (a named follow-on, §15 — the count or length
@@ -2524,24 +2536,26 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
-- **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
-  specified default on one; an array of them — a buffer takes no node
-  index (§3.1), unlike an array of table pointers, which is legal; `?` on
-  one, because a null reference already IS absence.
+- **Byte buffers** (§2.5): `*bytes` and `*string` reach no refusal of their
+  own — a pointer takes a declared table's name and these are keywords, so
+  the parser refuses the spelling where it stands. The construct is a named
+  follow-on (§15).
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
-  FOR it** — a table that cannot have one simply has none (§19), and these
-  two are refusals of a DECLARATION that collides with what the form
-  generates:
-  - **`| stride` in this version** — the pitch is `sizeof` by construction
-    (§19); declared headroom is a named follow-on (§15), and the attribute
-    is refused rather than accepted-and-ignored, because an inert attribute
-    is a lie about the declaration;
-  - **a field of a FIXED table named `magic` or `build_version`** — those two
-    are the projection's generated prologue (§19.1), as `<field>_present` is an
-    optional's generated companion. Claimed on every fixed table, for the
-    reason the generated spellings below are: the form is not opted into, so
-    a name that was free yesterday must not become a collision tomorrow.
+  FOR it** — a table that cannot have one simply has none (§19) — and there
+  is one refusal, of a DECLARATION that collides with what the form
+  generates: **a field of a FIXED table named `magic`, `build_version` or
+  `byte_order`** — those three are the projection's generated prologue
+  (§19.1), as `<field>_present` is an optional's generated companion.
+  Claimed on every fixed table, for the reason the generated spellings
+  below are: the form is not opted into, so a name free today must not
+  become a collision tomorrow. **The checker claims none of the three
+  today**, so this refusal lands with the form and its emitters, on the
+  same terms as the block spellings below (schema#287).
+  **`| stride` is refused as an UNKNOWN ATTRIBUTE**, like any other spelling
+  the closed vocabulary does not carry (SPEC.md §4.2), and not by name: the
+  pitch is derived and there is no declared stride to reserve a word for
+  (§19).
 
   **What is NOT refused, and it is worth stating because the block form's own
   need for a base invites the opposite guess**: a block-form table nested by
@@ -2574,8 +2588,8 @@ in build version (§20.5).
   from it reproduces what it was given.
 - **A node body past `0xFFFFFFFF` bytes** (§3.1): a record's length is a
   `u32`, so measure and save return failure naming the node rather than
-  truncating it. Two 2 GiB `*bytes` in one table reach it; the repair is
-  more nodes.
+  truncating it. Two `bytes(2147483647)` fields in one table reach it; the
+  repair is more nodes.
 - **A field id colliding with the reserved node-table id `0xFFFF`**
   (§3.1) — by hash accident or through `was` — naming the field. **Two
   tables in one unit's closure whose NAME ids collide** (§5), naming
@@ -2592,31 +2606,55 @@ in build version (§20.5).
   TOOL's: a missing or out-of-file attribution part, a sentinel entry, a type
   the unit does not have, a directory that does not ascend or overlaps a node
   with the next, a reference that leaves the region or that the directory does
-  not name or names as another type, a misaligned reference, a buffer outside
-  its node's extent, or a count companion outside its declared bound.
+  not name or names as another type, a misaligned reference, or a count
+  companion outside its declared bound.
 
 - **A declaration colliding with a generated table spelling.** Tables and
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **32 suffixes**, and a declaration spelling one of them is
+  each of these **26 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
   At  Root  Emplace  Pack  PackMeasure  OpenWalk
-  Cook  CookMeasure  Open  TableFields  TableInfo
+  Cook  CookMeasure  Open  LayoutId  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
-  Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
-  Counts
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
-  free yesterday must not become a collision tomorrow. The seven block
-  spellings are claimed on the same terms and for a stronger reason: every
-  fixed table has a block form (§2.7), so every fixed table claims them.
+  free yesterday must not become a collision tomorrow. That list is the
+  checker's own, and this section is held to it: the count and the spellings
+  here equal `tableGeneratedVerbs` exactly, because a claim the page states
+  and the checker does not make is a name a user may take.
+
+  **Two of the twenty-six outlive what they guard, and both are stated rather
+  than quietly carried.** `LayoutId` is the id constant wire v1's cook emits
+  (§20's status, obligation 3 — a 32-bit id where the build version is 64),
+  and it retires into the unit-wide build version with the emitter
+  (schema#251); the claim goes in that same change and never before it, since
+  dropping it first frees a name the generated code still spells.
+  `Root` is claimed and NO emitter spells `<X>Root` — the builder's accessor
+  is the member `GetRoot`, renamed for the reason below — so the claim guards
+  nothing and is tracked for removal as schema#310, page and checker moving
+  together.
+
+  **The BLOCK FORM claims seven more, and the checker does not claim them
+  yet** (§19's status: no backend emits the form). They are law on the same
+  terms and for a stronger reason — every fixed table has a block form
+  (§2.7), so every fixed table claims them:
+
+  ```
+  Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
+  Counts
+  ```
+
+  Claiming them is owed with the form (schema#287) and belongs BEFORE its
+  emitters, for exactly the reason the set exists: a name free today must not
+  become a collision the day the form lands.
 
   **THE DESCRIPTOR SURFACE'S CLAIMS ARE UNCONDITIONAL — every declaration,
   every unit, tables or not.** Every unit emits a view file and that file
@@ -2628,7 +2666,7 @@ in build version (§20.5).
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
-    for every declaration in every unit. All three are in the 36 above and
+    for every declaration in every unit. All three are in the 26 above and
     are claimed today only for closure members; the descriptor emission
     spells all three per declaration, so widening one of them would leave
     two open.
@@ -2657,7 +2695,9 @@ in build version (§20.5).
   introduces a generated name that is not derived from a schema file's own.
 
   **A FIXED TABLE claims two more per out-of-line array, because its
-  row accessors are named after its fields.** `<Table>` followed by the
+  row accessors are named after its fields — and this claim is owed with the
+  block form too, on the same terms as the seven above** (schema#287): the
+  checker makes it today for neither. `<Table>` followed by the
   PascalCase of the field's name is the accessor that hands back that
   field's rows, and the same name with `Span` appended is the contiguous
   view (§19.2) — so `RenderFrame` with a `ships` array claims
@@ -2700,17 +2740,18 @@ schema prescribing any of their structure.
 
 **Where the gate is held.** The corpus half is a config format declared and
 packed end to end: `tables/examples/Pack.schema` is the root — an
-enum-keyed collection of records, an optional section inside a record, a
+enum-keyed collection of records, an optional group inside a record, a
 global block nested by value, a bounded array of records and a keyed array
 of scalars, fixed-size down to the leaves — and `tables/pack/config/` is the
 directory tree `schema pack` assembles into it and `unpack` writes back out
 (§17), byte-stable in both directions under `make`. That half proves the
-form; it does not prove the game. The dogfood half is **space#443**, where a
-real game takes its config on this wire.
+form; it does not prove the game. The dogfood half is a real game taking its
+config and asset archives on this wire: 803 values byte-identical end to end,
+and every injected bit flip refused rather than read as data.
 
 **The shape the gate is held to.** `Config.bin` and `Assets.bin` are each
 ONE root table, and each root is FIXED-SIZE down to the leaves: no pointer
-anywhere in the closure. `?T` (§2.3) expresses an optional section by
+anywhere in the closure. `?T` (§2.3) expresses an optional group by
 value and `[E]T` (§2.4) expresses the enum-keyed collection as language
 rather than as convention, so neither forces a pointer. A fixed root is
 the strong form of the gate: it says the whole content pipeline runs on
@@ -2818,6 +2859,13 @@ the gate; a third language joins it as its backend lands (§15).
 
 ## 13. Rulings, recorded
 
+**THE AIM, 2026-09-02, in the owner's words, and every ruling below is
+measured against it**: *"We aim to build the best cross-language data type
+system for games."* — *"This includes save games, tooling, cooking to runtime
+efficient structures and so on."* It spans the whole use-case list
+(USECASES.md), not the wire alone: the tolerant wire, the cook and the block
+form are three answers under one aim rather than three products.
+
 Owner rulings, 2026-09-01, in the order given.
 
 - **The model**: "wire itself being evolution tolerant is what I thought
@@ -2908,7 +2956,7 @@ are these rulings, in the owner's words:
   unions, this way you can have a pseudo-union in golang."
 - **The closing rung**: "variable tables, you'll obviously need to alloc
   and assuming otherwise is foolish."
-- **Why very large tables want a blob node** (§2.5): "the key with variable
+- **Why very large tables want a blob node** (§15): "the key with variable
   tables is imagine they could be very large, like a gigabyte. you'd not in
   that case want to blow out memory with extra union tables you don't need
   and so on" — and the primitive itself, "yes, I like byte buffer as
@@ -2964,6 +3012,16 @@ are these rulings, in the owner's words:
   versions."
 - **When it does not run at all**: "or, the game, if cooking is not
   required for speed, would just use the generic table."
+- **The cook is ON the ladder, and the dogfood not using it is not a verdict
+  on it**, 2026-09-02: "We do cook. We just aren't using it in space game
+  right now." The two files the dogfood carries are small enough to stay on
+  the generic wire (below); the cook is built for the catalogue-scale files
+  beside them (§7).
+- **The scale, and when its gate binds**: "We can keep the gigabyte scale
+  stuff for v2, but think about it as we work now." The 1 GB open-time gate
+  belongs to the wire v2 emitter (§7's status, schema#251); the design
+  constraint it comes from — nothing per node at open — is held now, in this
+  section's `Open`.
 - **Which files earn one**: "imagine a huge data file that specifies all
   the meshes used in the game for example, or all the texture files" —
   "that would be a cook"; against "Config.bin and Assets.bin are small
@@ -3084,14 +3142,25 @@ Owner rulings, 2026-09-02, in the order given.
   between C++ and C#" — "so that's the real thing here." The pitch is the
   point: blittable records both generated sides point at, no marshalling and
   no copy (§12.1, §19).
-- **What the stride ALSO buys, and its reduced weight**: "the benefit of
-  striding is that i can add new fields at the end of types/tables, without
-  C# exploding", "because C# just doesn't know about the new fields yet, and
+- **What a DECLARED stride would also have bought**: "the benefit of striding
+  is that i can add new fields at the end of types/tables, without C#
+  exploding", "because C# just doesn't know about the new fields yet, and
   stride is bigger than struct width" — then, refining: "It may be obsolete
   now, but this was the original intent", "If we generate both render data
-  C++ and C# side now, it's less of a concern." Declared headroom is a named
-  follow-on (§15) rather than v1 language; the layout contract and the
-  baseline are the guard of record (§19.3, §19.4).
+  C++ and C# side now, it's less of a concern."
+- **The declared stride is CUT, 2026-09-02**: **"OK got it. We cut it."** The
+  pitch is `sizeof` rounded to alignment, derived, always, and it rides in
+  the triple (§19); there is no `| stride`, no headroom follow-on and no
+  reserved spelling — an unknown attribute is refused as unknown. The
+  condition the cut is held to is the hard requirement: "I mean as long as we
+  can make it work with the fast blitted C# stuff." / "that's the hard
+  requirement. so if we don't need stride anymore then c'est la vie." A
+  derived pitch is what MAKES that work — rows at `sizeof` are contiguous, so
+  the C# read is a span reinterpreted over blittable storage, and a declared
+  stride is exactly what would have broken the contiguity it needs (§19.2).
+  The layout contract and the baseline are the guard of record (§19.3,
+  §19.4), and gate 2 on the box is the proof, at the owner's bar: same speed,
+  or not significantly slower (§12.1).
 - **The purpose, in one line**: "this is a 'nice' property to get some sort
   of more robust structure (ABI) between C++ and C# without hardcore
   versioning", "because both sides were previously manually updated."
@@ -3445,13 +3514,15 @@ have added one are priced here.
   the primary case never fires is not a trigger. What is left is the mode
   (§2.2): fixed tables have the form, variable-length ones do not, and the
   answer is derived rather than declared, exactly as the mode itself is.
-- **No `| stride` attribute at all in this version — TAKEN, on the same
-  evidence plus the consumer's.** Beyond the zero declared strides, the one
-  consumer that exists cannot read a strided array: it reads rows by casting
-  the byte range to a row type, which requires pitch `== sizeof`, and it
-  drops any array whose pitch differs. Shipping headroom costs that consumer
-  its fast path in exchange for a property the owner has already called
-  possibly obsolete. §15 holds it as a follow-on with the reason.
+- **No `| stride` attribute at all — TAKEN, on the same evidence plus the
+  consumer's, and taken as a CUT rather than a deferral** (§13.6). Beyond the
+  zero declared strides, the one consumer that exists cannot read a strided
+  array: it reads rows by casting the byte range to a row type, which
+  requires pitch `== sizeof`, and it drops any array whose pitch differs.
+  That consumer's fast path is the hard requirement the form exists to serve,
+  so headroom trades it away for a property both generated sides already
+  give. Nothing is held for it: no follow-on, no refusal by name, no reserved
+  word.
 - **ONE exact id and ONE entry point — TAKEN, because a block is
   same-build.** A tolerant second entry point was weighed and dropped: both
   sides of a block are generated from one declaration by one compiler run, so
@@ -3549,6 +3620,30 @@ pre-empted here.
   it becomes wire. Wrap the field in a table and make that optional today.
 - **An array of `?T`** — the same question one level down: an element's
   presence bit beside the array's own count.
+- **AN UNBOUNDED BYTE BUFFER — `*bytes`, and `*string` beside it** (§2.5),
+  tracked as schema#259. Neither spelling parses today. The case for it is
+  the owner's and is two sentences: *"yes, i like byte buffer as primitive"*
+  / *"since it can be nulled."* — a buffer that is a REFERENCE has an absent
+  state a bounded `bytes(N)` has to spend a field to express; and
+  *"instantly, it turns a table into variable"*, which is the price, because
+  one such field flips its holder's whole closure to the variable class
+  (§2.2) and with it the arena, the region and the lifecycle. What it buys is
+  size: in a table of a million nodes a `bytes(65536)` field costs 64 KB a
+  node whether it is used or not, while a reference costs four bytes plus
+  what each node actually holds — the same argument as a sub-document stored
+  as its own wire bytes and decoded only when something asks for it. What it
+  needs decided is the framing it rides under and the elision at the empty
+  end, since a null buffer and a zero-length one are different values.
+- **AN ARRAY OF POINTERS** — `[..N]*T` and `[N]*T`. It is refused by name
+  today (§11), and the diagnostic carries the two spellings that serve
+  instead: *"declare a
+  bounded array of tables by value, or a pointer to a table that holds the
+  array"*. It is the spelling a node with a fixed fan-out wants, and it costs
+  four bytes a slot where a by-value array costs a whole table. What it needs
+  decided first is the wire: an array whose ELEMENT kind is the pointer index
+  `17` (§3.1) is one shape, and it wants the null element, the all-null
+  elision and the element-kind separation from an array of `uint32` settled
+  together rather than one at a time.
 - **Cross-endian COOKING**: producing a cook for a target whose byte order
   is not the cooking machine's, by swapping as the region is written. The
   ENDIAN FIX-UP ITSELF IS NOT DEFERRED — it is part of the cook and §7 states
@@ -3561,22 +3656,6 @@ pre-empted here.
 
 - **A hash-guarded fallback loader** — open the cooked form, else load
   the wire — as a convenience helper.
-- **DECLARED STRIDE HEADROOM in the block form** — `| stride = N` on an
-  out-of-line array, `N` greater than the element's `sizeof`, so a field
-  appended at the end of a row does not move the pitch. The owner's case for
-  it: *"the benefit of striding is that i can add new fields at the end of
-  types/tables, without C# exploding … because C# just doesn't know about the
-  new fields yet, and stride is bigger than struct width."* Three things hold
-  it out of this version. Its weight is reduced now that both sides are
-  generated from one declaration — *"It may be obsolete now … If we generate
-  both render data C++ and C# side now, it's less of a concern."* The case it
-  exists for has zero declared strides today, and the one consumer that
-  exists loses its cast path on any pitch that is not `sizeof` (§14).
-  **And a row that grows moves its DERIVED pitch anyway**, which moves the
-  build version, which refuses at `BlockOpen` (§19.4) — so what headroom
-  would add is a pitch that does not move at all, and under one same-build id
-  that matters only to something OUTSIDE the block which has assumed one.
-  Landing it is an attribute, its refusals, and the §18 row.
 - **A SHARED BOUND across several out-of-line arrays.** `BlockMaxBytes` sums
   each array's declared maximum, and several arrays commonly draw from one
   pool — so the sum is loose by construction and reserves extent that can
@@ -3755,8 +3834,8 @@ Per kind:
 | integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` clamps and counts |
 | `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity |
 | `bool` | `true` / `false` | |
-| `string(N)`, `*string` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted (`*string` has no bound to clamp against) |
-| `bytes(N)`, `*bytes` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
+| `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
+| `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
@@ -3767,13 +3846,12 @@ Per kind:
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer |
 
-**Three of the entries above describe constructs no declaration reaches
-yet**: the `*string` and `*bytes` halves of their rows land with those
-declarations (schema#259), and the `table` union arm named in the union row
-lands with its own (schema#258). They are stated here rather than added
-later because a text mapping is a property of the KIND — each one lands as
-its declaration lands, not as a second decision about text. The `*T`
-pointer row is the variable class's, covered by the status in §16.1.
+**One entry above describes a construct no declaration reaches yet**: the
+`table` union arm named in the union row lands with its own (schema#258). It
+is stated here rather than added later because a text mapping is a property
+of the KIND — it lands as its declaration lands, not as a second decision
+about text. The `*T` pointer row is the variable class's, covered by the
+status in §16.1.
 
 **The text form is a TREE, and a pointer graph is not.** A pointee is
 written in place, so a node several parents name is written once per
@@ -4052,9 +4130,15 @@ where implementations drift apart.
 
 **An optional committed projection of a unit's table closure, and the check
 that refuses the edits the wire cannot report.** §4.1 names those edits:
-exactly two, a changed specified default and a moved flags variant. The
-compiler retains no history and cannot see either on its own. The baseline
-IS that history, in a text file a person can read in a diff.
+exactly three — a changed specified default, a moved flags variant, and a
+referent that cannot stand in for the one it replaces. The compiler retains
+no history and cannot see any of them on its own. The baseline IS that
+history, in a text file a person can read in a diff. It refuses more than
+those three (§18.2), because an edit the wire DOES report is still an edit a
+save game may not survive, and a refusal a person overrides deliberately is
+cheaper than a counter nobody reads. **§4.1's table is where the three frames
+are set beside each other** — what a reader is told, what this file refuses,
+and what moves a build version — and this section states only its own column.
 
 The motivating case is a SAVE GAME — a file written by a build the reader
 no longer has, read by a build the writer never saw, years apart — and tool
@@ -4140,7 +4224,7 @@ committed file whenever one is there, and:
   removed, reordered or renamed under `was`; enum variants and union arms
   added anywhere; flags variants APPENDED at the end; bounds and capacities
   grown; a bounded array made fixed or the reverse; a field moved between
-  `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`.
+  `T`, `?T` and `*T`.
 
 **The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an
@@ -4356,13 +4440,15 @@ declaration does not spell:**
   `string(N)` or of `bytes(N)` stays INLINE in the projection, exactly as a
   fixed `[N]T` does: striding what another language cannot point at as a
   record buys nothing, and the projection is a struct either way.
-- **THE PITCH IS `sizeof`.** A row's stride is the element's `sizeof`, rounded
-  up to its alignment — which for a standard-layout struct (§9) is `sizeof`
-  itself. It is derived, always, and no declaration adjusts it in this
-  version; declared headroom is a named follow-on (§15) with the reason it is
-  not here. The stride still RIDES in the triple, because it is the pitch the
-  consumer indexes with and it must come from the data, never from the
-  consumer's own constant (§19.2).
+- **THE PITCH IS `sizeof`, DERIVED, ALWAYS.** A row's stride is the element's
+  `sizeof` rounded up to its alignment — which for a standard-layout struct
+  (§9) is `sizeof` itself. Nothing declares it and nothing adjusts it: there
+  is no `| stride`, no headroom and no reserved spelling for one (§13.6). The
+  pitch RIDES in the triple all the same, because it is what the consumer
+  indexes with and it must come from the data rather than from the consumer's
+  own constant (§19.2) — and because the pitch is `sizeof`, a consumer's rows
+  are CONTIGUOUS, which is what lets C# reinterpret the byte range as a span
+  of blittable rows with no marshalling and no copy (§12.1, §19.2).
 - **A TABLE, NOT A NEW KIND OF TABLE.** A table in its block form keeps
   everything an ordinary fixed table has: `Measure`, `Save` and `Load` over
   the tolerant wire (§3), its cook (§7), its reflection descriptors (§8), its
@@ -4382,15 +4468,35 @@ out when both are asked of one table.
 **One extent, 64-byte aligned at its base**, laid out in this order:
 
 - **The PROJECTION at offset 0** (above). It opens with a generated PROLOGUE
-  of two `uint64`s — `magic`, a constant identifying a schema block and the
-  byte-order check with it, and `build_version`, the unit's id (§20) — and
-  the table's own fields follow, each at its natural offset, with every
-  out-of-line array's storage replaced in place by its sixteen-byte
-  `(offset_of, count, stride)`. The prologue is generated, as an optional's
-  presence companion is, and a field may not be named after either half
-  (§11). **The projection is a record like any other and follows the same C
-  ABI rule** (§19.3): its own offsets are part of the contract, not
-  scaffolding around it.
+  of three `uint64`s — `magic`, a constant identifying a schema block;
+  `build_version`, the unit's id (§20); and `byte_order`, `1` little and `2`
+  big, which the producer stamps with its own — and the table's own fields
+  follow, each at its natural offset, with every out-of-line array's storage
+  replaced in place by its sixteen-byte `(offset_of, count, stride)`. The
+  prologue is generated, as an optional's presence companion is, and a field
+  may not be named after any of the three (§11).
+
+  **What each of the three does, stated because two of them look like one.**
+  The MAGIC is what REFUSES a foreign byte order: read bytewise it either is
+  this build's constant, or is that constant byte-reversed — which identifies
+  a block of the other order — or is not a block at all. The `byte_order`
+  word is what RECORDS which order wrote it, so the refusal can name the
+  order rather than infer it and a tool dumping a block can read the fact
+  instead of deducing it from a constant. `BlockOpen` checks both: a block
+  whose magic matched and whose order word did not is a corrupt or
+  hand-edited artifact, and there is no reading that recovers it. The
+  BUILD VERSION cannot do either job — §20 digests `byteorder` as a
+  GENERATION input (§20.1), `little` for every target schema generates for
+  today, so two builds of one schema for two byte orders emit the SAME id.
+
+  **The prologue is free in this shape either way.** With the render
+  frame's nine triples the projection is 176 bytes, against 168 for two
+  words, and both round to the 192 the first array starts at — so the
+  worked layout below is unchanged to the digit.
+
+  **The projection is a record like any other and follows the same C ABI
+  rule** (§19.3): its own offsets are part of the contract, not scaffolding
+  around it.
 - **Then each out-of-line ARRAY, in declaration order**, starting at an
   offset aligned to `max( 64, alignof( element ) )`.
 - **Rows sit at the pitch**: row `i` of an array begins at
@@ -4465,7 +4571,7 @@ ships[i].position = ...;
   accessors, and the row storage they hand back — contains **no allocation,
   no lock and no atomic**, and the build fails if one appears, on the model
   §2.2 already uses for the zero-cost gate. A backend may not satisfy this
-  section with a serial `Begin` that allocates, or an accessor that
+  requirement with a serial `Begin` that allocates, or an accessor that
   synchronises. It is held twice over: by that refuser, and by a real
   multi-threaded fill in the corpus (§19.5) whose result is byte-identical to
   a serial one.
@@ -4493,7 +4599,7 @@ storages and alternates. The form allocates nothing and will not allocate a
 second buffer for you.
 
 **Worked, over nine arrays and a representative frame.** With the projection
-at 168 bytes — the 16-byte prologue, a `uint64`, and nine triples — and rows
+at 176 bytes — the 24-byte prologue, a `uint64`, and nine triples — and rows
 of 72 / 88 / 64 / 72 / 72 / 80 / 80 / 64 / 80 bytes:
 
 | array | count | pitch | start | extent |
@@ -4513,7 +4619,7 @@ one frame**: the rule stated here and the hand-written layout this form
 replaces are the same walk over the same pitches, so they land every array at
 the same offset for ANY counts — the table above is one instance of that,
 chosen to be legible rather than measured. The prologue is free in this
-shape: 152 and 168 both round to 192.
+shape: 152, 168 and 176 all round to 192.
 
 ### 19.2 The reflective read
 
@@ -4565,8 +4671,9 @@ ReadOnlySpan<RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is 
 - **A contiguous view is available because the pitch IS `sizeof`** (§19), so
   a consumer that casts a byte range to a row type — which is how the fast
   path is actually written — is always able to. That is a property of
-  deriving the pitch; a version that let a declaration widen it would cost
-  this, and §15 records the trade.
+  deriving the pitch, and it is the hard requirement the derived pitch is
+  held to (§13.6): a declaration that could widen the pitch would cost this
+  read its contiguity, which is why there is no such declaration.
 - **The consumer reads `offset_of`, `count` and `stride` FROM THE INSTANCE,
   never from its own constants.** Its constants exist to be asserted against
   (§19.3), not to index with. That is the difference between a generated pair
@@ -4856,7 +4963,10 @@ question §15 owns.
 declaration-side fact this language has appears in it exactly once, assigned
 to the group that carries it or to `none` with the reason it carries nothing.
 A meaning fact is one that changes a stored VALUE while moving no offset, no
-size and no wire id; there is no fourth kind of such fact.
+size and no wire id; there is no fourth kind of such fact. **§4.1's table sets
+this column beside the other two** — what the read report tells a reader, and
+what the baseline refuses — so a reader asking "what does this edit do?" reads
+one table rather than three lists.
 
 **Every fact below has a TOKEN that carries it** (§20.2), and that is the rule
 the table is held to: a fact with no token is a promise the digest does not
@@ -4883,7 +4993,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | a compressed float's RESOLUTION | **meaning** | `step=` |
 | an `enum`'s variant order and names | **meaning** | the `variant` lines — the wire carries a name hash, the slot the stored value (§3) |
 | a `union`'s arm order and names | **meaning** | the `arm` lines, the same one level up |
-| a `flags`' variant order and names, and WHICH flags declaration a field names | none | a mask rides raw and a load copies it VERBATIM — no masking rule, no report counter (§3, §4). A reorder changes what the bits MEAN and not one cook byte; §4.1's discipline and §18's baseline are its guard. Hence no `flags=` token |
+| a `flags`' variant order and names, and WHICH flags declaration a field names | none | a mask rides raw and a load copies it VERBATIM — no masking rule, no report counter (§3, §4). The stronger basis is the storage: SPEC.md §4.2 makes a `flags` field a `uint64` in EVERY target and a flags field carries no specified default, so a slot is a raw `u64` copied through, and no declaration-side flags fact can reach a cook's bytes. A reorder changes what the bits MEAN and not one cook byte; §4.1's discipline and §18's baseline are its guard. Hence no `flags=` token |
 | `cpp_native` / `cpp_include` | none | SPEC.md §6.1 guarantees layout identity by DERIVATION — the native type is the one the emitted struct would have had — so there is nothing for a token to distinguish |
 | an `if` GUARD added or removed | none | a load finds a field by its id whatever branch encloses it, with every counter zero (§4.1). The cost is on the next WRITE, which is §18's case and not a cook's |
 | the `json` key (§16.4) | none | a cook is produced from the WIRE file, whose hash is the tuple's other half (§7) |

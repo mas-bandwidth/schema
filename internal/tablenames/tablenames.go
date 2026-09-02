@@ -88,8 +88,8 @@ var registry = []Name{
 	{Name: "table_double_to_bits", By: Cpp, What: "double -> u64 bits"},
 
 	// C#'s twins, plus the reader's in-place prefill. These are VERB-FIRST on
-	// purpose: §11 freezes the 23 name-first suffixes a closure member claims,
-	// and a port does not mint a 24th — so the reset joins the runtime family
+	// purpose: §11 freezes the 26 name-first suffixes a closure member claims,
+	// and a port does not mint a 27th — so the reset joins the runtime family
 	// here instead, where it is claimed at unit level.
 	{Name: "TableReset", By: Cs, What: "restore a value's declared defaults in place"},
 	{Name: "TableBitsToFloat", By: Cs, What: "u32 bits -> float"},

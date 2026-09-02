@@ -1,5 +1,9 @@
 # schema — supported use cases
 
+**"We aim to build the best cross-language data type system for games."** —
+*"This includes save games, tooling, cooking to runtime efficient structures
+and so on."*
+
 The use cases schema is designed for. Find your situation in the list, and
 each entry names the **form** that serves it, the **versioning contract**
 that form carries, and the **proof** it has today — a corpus case, a gate,
@@ -108,8 +112,10 @@ layout; the game memory-maps it and points at it with minimal fix-up.
 - **Proof** — the wire half is **proven**: `Config.bin` and `Assets.bin` are
   each one fixed root table down to the leaves, the corpus carries a
   config-format example holding gate 1 (§12), the C# backend reads the same
-  bytes the C++ tools write, and the dogfood is **space#443**. The cook half
-  is proven in the C++ corpus for what exists — `CookMeasure`, `Cook` and
+  bytes the C++ tools write, and the dogfood carries a real game's two files
+  on this wire end to end — 803 values byte-identical, every injected bit
+  flip refused rather than read as data. The cook half is proven in the C++
+  corpus for what exists — `CookMeasure`, `Cook` and
   `Open` round-trip over the pointer unit under `make` — while addressing a
   cooked artifact by **(asset hash, build version)** is designed and not yet
   built: the build version is **#292**, `schema cook-check` is not built, and
@@ -165,7 +171,8 @@ language.
   byte (`tables/pack/hostile-values`, **#272**); `unpack` → `pack` is
   byte-stable across both tree shapes, with §17.3's UTF-8 carve-out pinned
   rather than assumed. The generated readers exist in C++ and C# (**#267**,
-  **#266**), and the dogfood is space#443.
+  **#266**), and the dogfood packed and unpacked a real game's config and
+  asset trees with 803 values byte-identical on the round trip.
 
 ## 7. Reflection and introspection over tables and types
 
@@ -251,10 +258,11 @@ not cover.
   load-bearing for: the backend and the server build and deploy separately,
   so a config written by one build is read by another as a matter of course,
   and the report is what says which fields the reader could not name.
-- **Proof** — **proven** in the dogfood: space carries its config from the
-  backend into the running server on the table wire (space#443). The gate
-  behind it is entry 4's — the fixed root, the evolution corpus, and the
-  C++/C# shared goldens.
+- **Proof** — **proven** in the dogfood: a real game carries its config from
+  its backend into the running server on this wire, 803 values byte-identical
+  across the hop and every injected bit flip refused. The gate behind it is
+  entry 4's — the fixed root, the evolution corpus, and the C++/C# shared
+  goldens.
 
 ---
 

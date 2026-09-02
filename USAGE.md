@@ -946,8 +946,8 @@ never a type body. Arrays of pointers, and a specified default on a pointer,
 are refused by name.
 
 **Do not reach for a pointer to make a field optional.** Every field on this
-wire is already optional — absence is the reader's default — and a section
-that is present or absent as a unit is spelled `?T`:
+wire is already optional — absence is the reader's default — and a group of
+fields that is present or absent as a unit is spelled `?T`:
 
 ```
 table Scene
@@ -1026,38 +1026,14 @@ differ: a by-value `T` at its defaults elides, a non-null pointer does not).
 Null pointers are simply absent. **Wire v1 is a tree**: two pointers to one
 node write two bodies and load as two nodes.
 
-### Byte buffers: `data *bytes`
+### Byte buffers: `bytes(N)`
 
-`bytes(N)` is N bytes of inline storage in every instance. `*bytes` is a
-pointer to a buffer that has no bound and takes exactly the size you give it
-— which is how an image or an asset lives inside a table:
-
-```
-table Asset
-{
-    format AssetFormat
-    data   *bytes        // sized per node, not per declaration
-    label  *string       // the sibling
-}
-```
-
-```cpp
-Asset * asset = builder.Alloc<Asset>();
-asset->data = builder.AllocBytes( png_bytes );
-memcpy( BytesAt( asset->data ), png, png_bytes );
-```
-
-In a million-node table a `bytes(65536)` field costs 64 KB a node whether it
-is used or not; a `*bytes` costs the reference plus what each node holds.
-Like any pointer it makes the holder variable-length. On the wire it is
-framed exactly as `bytes(N)` is, so a field that outgrows its inline bound
-moves to a blob and no byte changes for any non-empty value — the same empty-end
-asymmetry as above: an empty `bytes(N)` elides, a non-null zero-length `*bytes`
-writes an empty payload.
-
-Two sentences that go together: **a tolerant wire load COPIES the blob** — a
-gigabyte on the wire path is a gigabyte read — and **the cooked path is the
-zero-copy one**, where a pointer into a mapped file IS the asset.
+A blob is `bytes(N)` — N bytes of inline storage in every instance, at a
+bound you declare. `*bytes` and `*string` are NOT language: a pointer takes a
+declared table's name, and `bytes` and `string` are keywords, so the spelling
+does not parse. An unbounded buffer at its used size is a named follow-on
+(SPEC-TABLES.md §15, schema#259); until it lands, a blob whose size varies
+per node is a table of its own with a `bytes(N)` field, pointed at.
 
 ### The block form: rows another language points at
 
@@ -1190,21 +1166,34 @@ target's byte order, so it refuses the moment any of it moves and you
 regenerate it. The tolerant wire stays the format of record.
 
 `Open` checks the header and points — the magic, the byte order it
-establishes, the build version, the two part lengths, the base's alignment —
-and that is the whole of it. On a match the bytes ARE what this build wrote,
-so there is nothing to validate and nothing to fix up. It is the only runtime
-entry point there is: a cook is your build's own accelerator, and a file that
-is not your build's returns NULL and you load the wire.
+establishes, the build version, every reserved word zero, the two part lengths
+against the size you passed, the base's alignment — and that is the whole of
+it. On a match the bytes ARE what this build wrote, so there is nothing to
+validate and nothing to fix up, and open time does not grow with the file. It
+is the only runtime entry point there is: a cook is your build's own
+accelerator, and a file that is not your build's returns NULL and you load the
+wire.
+
+*What the C++ backend emits today is wire v1's cook, and it differs: `Open`
+matches the header and then walks the region, the header carries one 32-bit
+length rather than two 64-bit ones, and no attribution part is written — so
+`schema cook-check` has nothing to read. The emitter moves to the surface
+above with the flat node encoding (SPEC-TABLES.md §7, schema#251).*
 
 If you have a cooked file whose provenance you doubt — one that crossed a
 machine boundary, or one you are diagnosing — check it with the tool:
 `schema cook-check` — *specified, not yet built* — scans the attribution the
-cook carries beside its data and verifies every reference, buffer and count
+cook carries beside its data and verifies every reference and every count
 against it, without following one reference or decoding one value. That is a
 person's decision, made once, not a flag on a load in the hot path.
 
-Value-only tables get no `Cook`/`Open` of their own: they are structs, and
-`sizeof` plus `memcpy` already is their region form.
+A FIXED table cooks too, and its cook is the same idea with nothing in it:
+one struct behind the header, so you memcpy it or point at it where it lies —
+no region, no node table, no attribution, and the build version is the whole
+of the check. *That one is law and not yet code: the emitter gives `Cook`,
+`CookMeasure` and `Open` to VARIABLE-LENGTH tables only, and only in a unit
+that declares one, so a fixed table has no cook surface today — it lands with
+the same emitter (SPEC-TABLES.md §7, schema#251).*
 
 ### The build version: what a cooked asset is stored under
 
@@ -1276,9 +1265,12 @@ refuses any two fields of one table whose effective ids collide.
 Think of a save game. A player's file was written two years ago by a build
 nobody has any more, and today's build has to read it. Almost every schema
 edit since is safe by construction — fields came and went, an enum grew,
-bounds moved — and the wire reports whatever it cannot use. **Exactly two
+bounds moved — and the wire reports whatever it cannot use. **Exactly three
 edits are different**: they change what an OLD file MEANS, and nothing on the
-wire can tell you.
+wire can tell you. Two are below; the third is a field's REFERENT dropped or
+swapped for one that cannot stand in for it — an enum-typed field respelled
+as its raw `uint16`, say, which rides under the same kind either way — and it
+is the one this file's whole job is (SPEC-TABLES.md §4.1).
 
 ```
 table ShipConfig
@@ -1421,9 +1413,11 @@ pointer-free, arrays inline with their `_count`/`_length` companions — so a
 value can be memcpy'd, mmap'd or shared across processes and still walked
 through descriptor offsets. Generated `static_assert`s enforce it.
 
-Tables are generated for `--lang cpp` only today; every other target refuses
-a unit that declares them, by name. What stays off the table wire: `fixed`,
-`int128`/`uint128` (no neutral table kind), and `const`/`reserved`/`align`
+Tables are generated for `--lang cpp` and `--lang cs` today — C++ carries
+both classes, C# the fixed class, and a pointered unit is refused by name
+under C#; every other target refuses a unit that declares tables at all, by
+name. What stays off the table wire: `fixed`, `int128`/`uint128` (no neutral
+table kind), and `const`/`reserved`/`align`
 (bit-position constructs — the table wire has no bit positions). Extents have
 no wire ceiling: string and bytes byte lengths and array counts ride in
 uint32, so the only limit is the language's own int32 storage cap.
@@ -1543,7 +1537,7 @@ and it is pretty-printed: one entry per line, two-space indent.
 
 The mapping is the obvious one: enums and flags by variant NAME, a union as
 an object with one key, an enum-keyed array as an object keyed by variant
-name, a `?T` optional present exactly when its key is present, `*bytes` as
+name, a `?T` optional present exactly when its key is present, `bytes(N)` as
 base64. **JSON has one number type**, so `2`, `2.0` and `1e3` all read into an
 integer field; a genuinely fractional value there is a kind mismatch, and a
 token that is not a JSON number at all — `1-2`, `1.2.3` — is malformed rather
