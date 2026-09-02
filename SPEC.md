@@ -284,7 +284,7 @@ Enum        = "enum" ident ( VariantList
             | AttrSection NL VariantList ) NL .
 VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; trailing comma OK
 TypeDecl    = "type" ident ( Block
-            | AttrSection NL Block ) NL .               // qualifiers = the type TAG, the
+            | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
 TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
@@ -542,7 +542,7 @@ sequence    uint16
   vocabulary: integers take `min`/`max` (both together or neither); `float32`
   takes `min`/`max`/`resolution` (all three together — §4.3: this IS the
   compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
-  §4.3); enum declarations take `max`; type declarations take a tag, the
+  §4.3); enum declarations take `max`; type declarations take a tag and the
   `cpp_native`/`cpp_include` pair (below); a field of a **table** body takes
   `was` (below); and a **table declaration** takes none.
 - **`was = "old_name"` — the rename attribute, table bodies only**

@@ -1988,6 +1988,29 @@ were never checked for collisions (§5's refusal is scoped to the closure, as
 one id and a text-form key for a text form that does not exist. A type
 inside a closure carries both as it always did.
 
+**The same rule governs EVERY id column the view carries, for the same
+reason.** §5's refusals are scoped to the closure throughout: the variant
+refusal reaches a vocabulary through a closure member's field, and through
+the KEY of a closure member's keyed array, so a declaration no table closure
+reaches has ids nothing ever checked. So **an enum, a flags or a union no
+table closure reaches carries `id = 0` on every variant row** — the
+registry's `ViewVariant.id` (§8.3) and a descriptor's `variant_id()`
+function (§8.1) alike — and **an enum-keyed array whose KEY enum no table
+closure reaches carries `key_id( slot )` of `0` in every slot**. `0` is the
+reserved id no declared name folds to (§5), and it already spells "no
+table-wire identity here" in the two places the columns state it: a flags
+bit's id, and slot 0 of a keyed array. A vocabulary a closure reaches
+carries its checked ids exactly as it did before.
+
+**The compiler is unchanged, and is right to be.** Inside a closure it
+refuses a collision by name; outside one it accepts the unit, because the
+packet wire identifies a variant by its ORDINAL and carries no name hash
+(§5) — an enum nothing in a table reaches keeps every spelling it ever had,
+and widening the refusal unit-wide would reject a packet-only schema over an
+identity its wire does not have. The consequence is the rule above, stated
+so a tool never has to know it: **outside a table closure an id is not
+unique**, and the view hands out none.
+
 **The vocabulary keeps its `Table` spellings** — `TableFieldInfo`,
 `TableTypeInfo`, `<Name>TableType()` — in a unit that declares no table at
 all — and every unit now has a view, so every unit spells them. They are one
@@ -2018,10 +2041,13 @@ struct ViewVariant          // one enum variant, one flags bit, one union arm
 {
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
-    uint16_t id;            // the table-wire id (§5); 0 for a flags bit
+    uint16_t id;            // the table-wire id (§5); 0 for a flags bit, and 0
+                            // throughout a vocabulary no table closure reaches
+                            // (§8.2)
     const char * payload_name;      // a union arm's payload TYPE name, else NULL
-    const TableTypeInfo * payload;  // that payload's descriptor where it has a
-                                    // view (§8.2), else NULL
+    const TableTypeInfo * payload;  // that payload's descriptor — never NULL for
+                                    // a declared payload (§8.2); NULL on tag 0
+                                    // and on an enum or flags row
 };
 
 struct ViewVocabulary       // an enum, a flags or a union declaration
@@ -2034,7 +2060,7 @@ struct ViewVocabulary       // an enum, a flags or a union declaration
     const ViewVariant * variants;
 };
 
-struct ViewType             // a type with a view, or a table
+struct ViewType             // one declaration: a type, or a table
 {
     const char * name;
     const char * file;
@@ -2070,9 +2096,11 @@ const UnitViewInfo * UnitView();
   registry.
 - **An ENUM lists its NAMED values in order, beside its `max`.** Row 0 is
   `None`, the reserved id (§5), then the variants in declared order with the
-  wire id each rides under. A value inside `[0, max]` that no row names is
-  `| max = K` headroom (SPEC §4.2), and a tool that shows such a value
-  unnamed is showing the truth rather than inventing a name for it.
+  wire id each rides under — `0` throughout where no table closure reaches
+  the enum, because nothing checked those ids (§8.2). A value inside
+  `[0, max]` that no row names is `| max = K` headroom (SPEC §4.2), and a
+  tool that shows such a value unnamed is showing the truth rather than
+  inventing a name for it.
 - **A FLAGS row's `value` is a BIT INDEX and its `id` is 0**, because a
   mask's variants ride by position and have no per-variant wire id (§4) —
   the same rule §8.1's columns state, in data rather than in functions.
@@ -2220,23 +2248,38 @@ applied to reflection). The scope is per backend because acceptance already
 is: C# refuses a pointered unit by name (§11), and a gate cannot ask a
 backend for a listing of a unit it declines to emit at all. Completeness is
 the count the pin carries: every declaration, every field of every type,
-every variant of every enum, flags and union, and every constant, in the
-schema's own order. How the compiler produces its half is the
-implementation's business — a test that walks the checked unit is enough,
-and nothing in this section asks for a new command.
+every variant of every enum, flags and union, and every constant, each set
+in DECLARATION-NAME order (§8.3) — a variant list keeps its declared order,
+which is the one order that is a property of the declaration itself. How the
+compiler produces its half is the implementation's business — a test that
+walks the checked unit is enough, and nothing in this section asks for a new
+command.
 
 **A gate that cannot go red proves nothing.** Dropping one declaration, one
 property, one variant or one constant from an emitter's registry turns the
 corpus gate red, and that is established by doing it rather than assumed.
 
 **The INDEPENDENCE gate, and it is what the whole section rests on.** The
-view adds a file and moves nothing else: for every corpus unit, every
-generated file other than `<Package>View.*` is byte-identical to what the
-same unit emitted before the view existed, and `schema id` reports the same
-protocol id. That is what proves reflection costs the type wire's generated
-code not one byte — §10's independence, claimed for a table edit, holding
-for a view. Beside it, the containment gate of §8.4: not one of the six
-registry symbols appears in any generated file but the view pair.
+view adds a file and moves nothing else: every generated file other than
+`<Package>View.*` is byte-identical to what the same unit emitted before the
+view existed, and `schema id` reports the same protocol id. That is what
+proves reflection costs the type wire's generated code not one byte — §10's
+independence, claimed for a table edit, holding for a view.
+
+**Its left-hand side is the RECORDED SOURCE GOLDENS**, because with nothing
+selecting the view there is no second generate to compare against: "before
+the view existed" is a snapshot, and the repo keeps one — the source goldens
+pin every backend's generated text byte for byte, with the protocol id
+beside them, so the gate reduces to "landing the view moves nothing in the
+recorded goldens", which is mechanical and already red-capable. Today those
+goldens cover the `examples` and `examples128` units, and **extending them
+to the two TABLE corpora is a named follow-on (§15)** — that is the half
+where movement is plausible, since §8.5 draws the boundary between the table
+header and the view file straight through `<Base>Table.h`, and until the
+snapshot exists the gate has no referent for those units.
+
+Beside it, the containment gate of §8.4: not one of the six registry symbols
+appears in any generated file but the view pair.
 
 ## 9. Relocatable, and built wide
 
@@ -2925,8 +2968,8 @@ Owner rulings, 2026-09-02, in the order given.
 - **The question that opened it, and both halves are yes**: "We should
   revisit the 'view' concept. Does a type have a view generated for it,
   alongside it, and a table has the view built in?" A table's descriptors
-  are built in (§8.1); a type's view is generated alongside it when asked
-  (§8.2). That is the section's whole shape.
+  are built in (§8.1); a type's view is generated alongside it, for every
+  type, always (§8.2). That is the section's whole shape.
 - **What has to be walkable, beyond fields**: "I would find it valuable to
   be able to walk enums, constants at runtime via some reflection." Constants
   had no runtime surface at all before §8.3, and enums had one only through
@@ -3380,6 +3423,14 @@ pre-empted here.
   per table: walk the registry, print or compare every declaration, with the
   instance-level walk of §8.1 underneath it. The listing §8.7's gate already
   produces is the dump half of it in embryo.
+- **THE SOURCE GOLDENS EXTENDED TO THE TABLE CORPORA.** §8.7's independence
+  gate compares against a recorded snapshot of generated text, and the
+  snapshot covers the `examples` and `examples128` units only — nothing
+  records what the two table corpora emit, so for exactly the units whose
+  table headers the view's boundary runs through, the gate has nothing to
+  compare. It is the same harness pointed at two more directories, and it
+  belongs with the emitters rather than with this page, because a snapshot
+  taken before the code that could move it is a snapshot of nothing.
 - **The view in a ported backend** — C++ and C# carry it; every other
   backend emits no view file until it emits the same registry against the
   same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
