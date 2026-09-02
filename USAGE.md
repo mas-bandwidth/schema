@@ -781,7 +781,16 @@ reader has no name for is skipped and counted `unknown`; a slot the writer
 never sent keeps its declared default. A `None` key never rides at all.
 
 In a `type` body the same spelling is exactly `[E.Max + 1]T` — positional and
-bitpacked, the packet wire as always, with the same protocol id either way.
+bitpacked, the packet wire as always, with the same protocol id either way —
+and there the storage is a **plain array**: `per_team [Team]int32` in a `type`
+is `int32_t per_team[4]`, no accessor and no `None` guard, because there is no
+key to check. Only the table wire keys the slots.
+
+Note that the runtime assert goes away under `NDEBUG`, so `Slot<Key>()` is the
+form that still catches a `None` in a release build. And a key enum counts as
+part of the table closure: it rides by variant name, so `| max` headroom and
+colliding variant names are refused for it too, with the diagnostic naming the
+field that keys on it.
 
 **On the TABLE wire the two spellings are different encodings**, and changing
 a table field from one to the other is a wire break, not a refactor: the keyed

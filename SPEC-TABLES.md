@@ -335,11 +335,21 @@ enum is keyed.
   ```
 
   A port provides both wherever its language expresses both, and the
-  runtime half wherever it does not. The wire enforces the same rule from
-  the other side: a `None` key never rides (§3.2).
-- **In a `type` body the same spelling is a plain array** with no wrapper
-  and no accessor — the type wire is positional and has no key to check
-  (below).
+  runtime half wherever it does not. **The compile-time accessor is the
+  form that holds in a release build**: an assert is compiled out under
+  `NDEBUG` and its equivalent elsewhere, so a runtime key carries no guard
+  at all in the configuration a shipped game runs. `Slot<Key>()` costs
+  nothing and cannot be disabled — prefer it wherever the key is written
+  literally, which is most places. The wire enforces the rule from the
+  other side regardless: a `None` key never rides (§3.2).
+- **In a `type` body the same spelling is a PLAIN ARRAY.** `per_team [Team]int32`
+  inside a `type` generates `int32_t per_team[4]` — no wrapper, no keyed
+  accessor, and no `None` guard of any kind. The type wire is positional
+  (below), so there is no key to check and nothing to protect: slot 0 is an
+  ordinary element a `type` may read and write. **The guard exists only
+  where the keyed storage type is generated, which is table bodies**, and
+  only the TABLE-wire ENCODING is keyed. A porter reading this section
+  should not emit the wrapper for a `type`.
 - **On the TABLE wire the slots ride by NAME** (§3.2): the body carries
   `(variant id, element)` pairs, so inserting, removing or reordering
   variants leaves every surviving slot in its own home. This is the whole
@@ -359,6 +369,17 @@ is a kind mismatch — skipped, counted, never misdecoded (§4) — and the
 committed baseline refuses the edit at compile time (§18.2). Giving the
 keyed body its own kind is what buys that; the two encodings are not
 mutually decodable and nothing should let them be tried.
+
+**A KEY ENUM IS IN THE TABLE CLOSURE'S VOCABULARY**, and the closure's
+rules reach it through the keying field. An enum that a table closure
+reaches ONLY as an array key — never as a field type — still rides by
+variant name on this wire (§3.2), so it takes the closure's two vocabulary
+refusals (§5): **`| max = K` headroom is refused**, because a headroom
+value is reserved by number and named by nothing, and **variant id
+collisions are refused**, naming both variants. Both diagnostics name the
+KEYING FIELD as the edge that pulled the enum in, because that edge is the
+only reason the rule applies and a person looking at the enum alone would
+not otherwise see it.
 
 Refused by name: a bound naming a `flags` declaration (a mask holds any
 set of bits at once, so it names no single slot); a bounded keyed array,
@@ -923,9 +944,14 @@ values and a union's arms ride under their own name hashes (§3), so:
   are a compile error naming both** — the field rule, applied to the
   vocabulary. Scoped to the TABLE CLOSURE: the packet wire identifies a
   variant by its ordinal and is untouched.
-- **`| max = K` headroom on an enum in a table closure is refused.** A
-  headroom value is reserved by number and named by nothing, so it has no
-  identity to ride under — and the table wire needs no headroom, because a
+- **A closure is reached by every edge, including an ARRAY KEY.** An enum
+  that a table closure reaches only as an enum-keyed array's key (§2.4)
+  rides by variant name exactly as a field-typed one does, so both rules
+  above apply to it, and the diagnostic names the keying field as the edge
+  that pulled it in.
+- **`| max = K` headroom on an enum in a table closure is refused**, key
+  enums included. A headroom value is reserved by number and named by
+  nothing, so it has no identity to ride under — and the table wire needs no headroom, because a
   variant may be added anywhere. A stored value no variant names is
   likewise refused on the way out: measure and save return failure rather
   than writing `None` over it, exactly as they refuse an out-of-range union
@@ -1277,9 +1303,12 @@ lockstep redeploy by a table edit. This independence is held by test.
 - Id collisions, hash or `was`-induced (§5).
 - `was` outside a table body (§5).
 - **Variant id collisions** — two variants of one enum, or two arms of one
-  union, whose name hashes collide, with both named (§5).
+  union, whose name hashes collide, with both named (§5). An enum reaching
+  the closure only as an ARRAY KEY is in scope, and the diagnostic names
+  the keying field as the reaching edge (§2.4).
 - **`| max = K` headroom on an enum in a table closure** — a headroom value
-  has no name, and the table wire identifies a variant by name (§5).
+  has no name, and the table wire identifies a variant by name (§5). Key
+  enums are in scope on the same terms.
 - Tables under any backend but C++ (status, above) — refused with the
   follow-on named, never silently ignored.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
