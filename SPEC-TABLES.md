@@ -1307,9 +1307,9 @@ the one the committed baseline (§18) exists to refuse:
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed and reordered; array bounds may move; a field may
-change between `T` and `?T` — all of
-it either invisible to the wire or counted in the report. Moving a field
-to or from `*T` is a kind change and is counted (§3.1).
+change between `T` and `?T` — all of it either invisible to the wire or
+counted in the report. Moving a field to or from `*T` is a kind change and
+is counted (§3.1).
 
 **Three edits that would otherwise be silent are made REPORTABLE by
 construction, and it is worth saying how, because the claim above depends
@@ -3625,8 +3625,8 @@ pre-empted here.
   needs decided is the framing it rides under and the elision at the empty
   end, since a null buffer and a zero-length one are different values.
 - **AN ARRAY OF POINTERS** — `[..N]*T` and `[N]*T`. It is refused by name
-  today (§11) and the
-  diagnostic carries the two spellings that serve instead: *"declare a
+  today (§11), and the diagnostic carries the two spellings that serve
+  instead: *"declare a
   bounded array of tables by value, or a pointer to a table that holds the
   array"*. It is the spelling a node with a fixed fan-out wants, and it costs
   four bytes a slot where a by-value array costs a whole table. What it needs
@@ -4932,11 +4932,11 @@ question §15 owns.
 **The set is closed, and the table below is the proof.** Every
 declaration-side fact this language has appears in it exactly once, assigned
 to the group that carries it or to `none` with the reason it carries nothing.
-**§4.1's table sets this column beside the other two** — what the read report
-tells a reader, and what the baseline refuses — so a reader asking "what does
-this edit do?" reads one table rather than three lists.
 A meaning fact is one that changes a stored VALUE while moving no offset, no
-size and no wire id; there is no fourth kind of such fact.
+size and no wire id; there is no fourth kind of such fact. **§4.1's table sets
+this column beside the other two** — what the read report tells a reader, and
+what the baseline refuses — so a reader asking "what does this edit do?" reads
+one table rather than three lists.
 
 **Every fact below has a TOKEN that carries it** (§20.2), and that is the rule
 the table is held to: a fact with no token is a promise the digest does not
