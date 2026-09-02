@@ -724,8 +724,12 @@ written; a present one always is, even at its defaults — so "absent" and
 sees the field sets `_present` whatever it contains.
 
 The framing is the ordinary field's, which makes `?T`, `*T` and a plain `T`
-nesting **one field on the wire**: move a field among the three and no byte
-changes, in either direction.
+nesting **three spellings of one field**: for any value that is not entirely
+default, move a field among the three and no byte changes, in either
+direction. The one difference is at the empty end — a plain `T` holding
+nothing but defaults writes nothing, while a present `?T` and a non-null `*T`
+write a body — and no direction misdecodes: an absent field reads as the
+declared default, as null, or as absent, each of which is right.
 
 `?` goes on nested tables and types, enums, flags and scalars. It is refused
 on a pointer (already optional), a union (`None` is its absence), and on
@@ -743,18 +747,23 @@ enum ShipType { Fighter, Bomber, Scout }
 
 table Fleet
 {
-    ships [ShipType]ShipConfig   // ShipType.Max + 1 slots; slot 0 is None's
+    ships [ShipType]ShipConfig   // one slot per variant, indexed by the variant
 }
 ```
 
 ```cpp
 Fleet fleet;
-fleet.ships[int( ShipType::Bomber )].health = 400.0f;
+fleet.ships[ShipType::Bomber].health = 400.0f;
 ```
 
 Storage is a plain fixed array with no count companion — every slot exists —
 so this is the array you would have written by hand as `[ShipType.Max +
-1]ShipConfig`. **What changes is the wire: the slots ride by NAME.** Each
+1]ShipConfig`. **Slot 0 exists and is never valid**: `None` is the enum's
+null, so it keys nothing and only `ShipType.Max` slots ever hold data. The
+slot is kept so indexing stays unbiased, and reaching it is an error —
+a compile-time refusal on a constant index, an assert otherwise.
+
+**What changes is the wire: the slots ride by NAME.** Each
 present slot carries its variant's id, so inserting a variant in the middle,
 removing one, or reordering them leaves every surviving slot in its own home:
 
@@ -767,10 +776,16 @@ enum ShipType { Fighter, Heavy, Bomber, Scout }    // v2 — every stored Bomber
 Under the positional spelling every slot after the insert would shift one
 place, silently. A slot the writer left at its default is elided; a slot this
 reader has no name for is skipped and counted `unknown`; a slot the writer
-never sent keeps its declared default.
+never sent keeps its declared default. A `None` key never rides at all.
 
 In a `type` body the same spelling is exactly `[E.Max + 1]T` — positional and
 bitpacked, the packet wire as always, with the same protocol id either way.
+
+**On the TABLE wire the two spellings are different encodings**, and changing
+a table field from one to the other is a wire break, not a refactor: the keyed
+body has its own wire kind, so an old file read under the new spelling is
+reported as a kind mismatch rather than decoded with keys taken for values.
+A committed baseline refuses the edit outright.
 
 ### Messages: a union whose arms are tables
 
@@ -900,8 +915,10 @@ const Scene * scene = SceneLoad( region, need, wire, wire_size, &report );
 
 On the wire a pointer rides as its pointee's table body — framing identical
 to a by-value nesting AND to an optional (`?T`), so a field may change among
-the three and no byte moves. Null pointers are simply absent. **Wire v1 is a
-tree**: two pointers to one node write two bodies and load as two nodes.
+the three and no byte moves for any non-default value (at the empty end they
+differ: a by-value `T` at its defaults elides, a non-null pointer does not).
+Null pointers are simply absent. **Wire v1 is a tree**: two pointers to one
+node write two bodies and load as two nodes.
 
 ### Byte buffers: `data *bytes`
 
@@ -928,7 +945,9 @@ In a million-node table a `bytes(65536)` field costs 64 KB a node whether it
 is used or not; a `*bytes` costs the reference plus what each node holds.
 Like any pointer it makes the holder variable-length. On the wire it is
 framed exactly as `bytes(N)` is, so a field that outgrows its inline bound
-moves to a blob and no byte changes.
+moves to a blob and no byte changes for any non-empty value — the same empty-end
+asymmetry as above: an empty `bytes(N)` elides, a non-null zero-length `*bytes`
+writes an empty payload.
 
 Two sentences that go together: **a tolerant wire load COPIES the blob** — a
 gigabyte on the wire path is a gigabyte read — and **the cooked path is the
@@ -1051,11 +1070,15 @@ or it does not happen.
 
 **What refuses, what warns, what passes.** Refused: a specified default
 changed, added or removed; a flags variant inserted, removed, reordered or
-renamed in place; a field's wire kind changed. Warned, because the read
-report already counts what is lost: a bound or a string capacity shrunk, an
-enum variant or a union arm removed. Passed in silence, because the wire
+renamed in place; a field's wire kind or an array's ELEMENT kind changed; an
+array changed between the keyed and positional spellings, or a keyed array's
+key enum swapped; a field's referent dropped, or swapped for one whose
+identities do not ride. Warned, because the read report already counts what is
+lost: a bound or a string capacity shrunk, an enum variant or a union arm
+removed, a declaration no longer covered. Passed in silence, because the wire
 absorbs it: fields added, removed, reordered or renamed under `was`; variants
-added anywhere; flags variants APPENDED; bounds grown.
+added anywhere; flags variants APPENDED; bounds grown; a declaration renamed,
+whose contents keep being judged under the new name.
 
 The whole thing is opt-in — no `tables.baseline`, no check — and the first
 one you write covers only what comes after it: data written before it existed
@@ -1143,15 +1166,24 @@ ShipConfigToJson( ship, buffer, size );
 
 `FromJson` places what the text mentions and leaves the rest at its declared
 defaults, exactly as an absent field on the wire does; unknown keys, wrong
-JSON types and out-of-range numbers land in the same report the wire uses.
-`ToJson` writes every field, defaults included — a text is for people.
+JSON types and out-of-range numbers land in the same report the wire uses,
+plus one counter the wire never raises — `duplicate`, for a key the text gave
+twice. `ToJson` writes every field, defaults included — a text is for people —
+and it is pretty-printed: one entry per line, two-space indent.
 
 The mapping is the obvious one: enums and flags by variant NAME, a union as
 an object with one key, an enum-keyed array as an object keyed by variant
 name, a `?T` optional present exactly when its key is present, `*bytes` as
-base64. Trailing commas are accepted on read and never written. A field can
-meet an existing text with `| json = "type"`, which changes no byte on the
-wire.
+base64. **JSON has one number type**, so `2`, `2.0` and `1e3` all read into an
+integer field; a genuinely fractional value there is a kind mismatch, and a
+token that is not a JSON number at all — `1-2`, `1.2.3` — is malformed rather
+than quietly clamped. Trailing commas are accepted on read and never written.
+A field can meet an existing text with `| json = "type"`, which changes no
+byte on the wire.
+
+**The writer refuses rather than lie**: `ToJson` returns -1 for an enum value
+or a set flags bit no variant names, an invalid union tag, or a non-finite
+float. The text it does emit is always valid JSON and valid UTF-8.
 
 ### Packing a directory into a table
 
@@ -1164,11 +1196,16 @@ $ schema unpack --root Config --in Config.bin configs/
 ```
 
 A directory named after a field holds that field's value; an enum-keyed array
-takes one `<Variant>.json` per variant; a bounded array takes files in name
-order; anything can collapse to a single `<field>.json`. The output is the
-table's wire bytes and **nothing else** — no magic, no hash, no protocol id.
-If you want an envelope, write your own few lines around them. `unpack` is
-the inverse, and `unpack` → `pack` is byte-stable.
+takes one `<Variant>.json` per variant (there is no `None.json` — `None` keys
+no slot); a bounded array takes files in name order; anything can collapse to
+a single `<field>.json`. The output is the table's wire bytes and **nothing
+else** — no magic, no hash, no protocol id. If you want an envelope, write
+your own few lines around them. `unpack` is the inverse, and `unpack` → `pack`
+is byte-stable.
+
+`pack` reads the texts with its own engine inside the compiler rather than by
+calling generated code — the compiler is a Go program — so the tree carries a
+second implementation of the same wire, held to the backends by goldens.
 
 ---
 

@@ -268,9 +268,19 @@ field that did not leaves `present = false` with the value at its declared
 defaults.
 
 The framing is exactly the non-optional field's, which makes `?T`, `*T`
-and a plain `T` nesting **one field on the wire**: a schema may move a
-field among the three and no byte moves, in either direction. The corpus
-holds all six directions and the byte-identity of the three writers.
+and a plain `T` nesting **one framing with three spellings**: for any value
+that is not entirely default, a schema may move a field among the three and
+no byte moves, in either direction.
+
+**The one difference is at the empty end**, and it follows from the two
+elision rules above: a plain `T` holding nothing but defaults is not
+written at all, while a PRESENT `?T` and a non-null `*T` are written even
+then. No direction misdecodes — an absent field reads as the declared
+default by value, as null through a pointer, and as absent through an
+optional, each of which is the right answer — but the bytes are not
+identical for an all-default value, and an implementer should not be
+promised that they are. The corpus holds all six directions, and the
+byte-identity of the three writers **over non-default content**.
 
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask
 and any scalar. It is refused, by name, on:
@@ -304,24 +314,40 @@ constant is the fixed array it has always been, and `[Name]` naming an
 enum is keyed.
 
 - **Storage** is `T ships[ShipType.Max + 1]`, indexed directly by the enum
-  value — slot 0 is `None`'s. Every slot exists, so there is no count
-  companion, and `ships[int( ShipType::Bomber )]` just works.
-- **On the TABLE wire the slots ride by NAME** (§3.2): the array body
-  carries `(variant id, element)` pairs, so inserting, removing or
-  reordering variants leaves every surviving slot in its own home. This is
-  the whole point of the construct: an ordinal-indexed array is the last
-  positional vocabulary the table wire had, and it failed silently.
+  value. Every slot exists, so there is no count companion, and
+  `ships[ShipType::Bomber]` reads with no biased arithmetic.
+- **SLOT 0 EXISTS AND IS NEVER VALID.** `None` is the enum's null, so it
+  keys nothing: only `E.Max` slots can ever hold data. Slot 0 is kept in
+  storage so indexing stays unbiased, and reaching it is an ERROR —
+  a compile-time refusal where the language can express one (a
+  `static_assert` on a constant index in C++), an assert otherwise —
+  through the generated keyed type's `operator[]( E )`. The wire enforces
+  the same thing from the other side: a `None` key never rides (§3.2).
+- **On the TABLE wire the slots ride by NAME** (§3.2): the body carries
+  `(variant id, element)` pairs, so inserting, removing or reordering
+  variants leaves every surviving slot in its own home. This is the whole
+  point of the construct: an ordinal-indexed array is the last positional
+  vocabulary the table wire had, and it failed silently.
 - **On the TYPE wire the spelling IS `[E.Max + 1]T`** — positional,
   bitpacked, same-build, the protocol id moving exactly as that spelling
-  moves it. One construct, two wires, the same rule every kind follows.
-  The two spellings project identically and share one protocol id, and
-  that is held by test.
+  moves it. The two spellings project identically and share one protocol
+  id, and that is held by test.
 - **Fixed-size when `T` is**, so the zero-cost gate holds.
+
+**The two spellings are ONE FIELD on the type wire and TWO DIFFERENT
+ENCODINGS on the table wire.** `[E]T` is kind `16` and `[E.Max + 1]T` is
+kind `14` (§3), so changing a TABLE field from one spelling to the other
+is a wire break, not a refactor: an old file read under the new spelling
+is a kind mismatch — skipped, counted, never misdecoded (§4) — and the
+committed baseline refuses the edit at compile time (§18.2). Giving the
+keyed body its own kind is what buys that; the two encodings are not
+mutually decodable and nothing should let them be tried.
 
 Refused by name: a bound naming a `flags` declaration (a mask holds any
 set of bits at once, so it names no single slot); a bounded keyed array,
-`[..E]` or `[A..E]` (a keyed array is COMPLETE by construction); and an
-element that is a pointer, as for any array (§15).
+`[..E]` or `[A..E]` (a keyed array is COMPLETE by construction); an
+element that is a pointer, as for any array (§15); and an index of
+`E::None`, which names no slot.
 
 ### 2.5 Byte buffers: `data *bytes`
 
@@ -352,10 +378,14 @@ each node actually holds.
 - **On the wire it is framed exactly as `bytes(N)` is** — kind `14`, an
   array of element kind `6` (u8) at its used count — and `*string` is
   framed exactly as `string(N)` is, kind `12`. No new kind, no new skip
-  rule, and one useful consequence: `bytes(N)` and `*bytes` are ONE FIELD
-  ON THE WIRE, as `T`, `?T` and `*T` are (§3.1), so a field that outgrows
-  its inline bound moves to a blob and no byte changes. A null blob is
-  absent, exactly as a null pointer is.
+  rule, and one useful consequence: `bytes(N)` and `*bytes` share one
+  framing, as `T`, `?T` and `*T` do (§3.1), so a field that outgrows its
+  inline bound moves to a blob and no byte changes **for any non-empty
+  value**. The one difference is the empty end, the same asymmetry the
+  other family has: an empty `bytes(N)` elides, while a non-null
+  ZERO-LENGTH `*bytes` writes an empty payload, because presence decides
+  for a pointer-shaped spelling. A null blob is absent, exactly as a null
+  pointer is.
 - **In the cooked form**, `Open`'s walk bounds the blob by its length as it
   bounds every node, so a pointer into a mapped file IS the asset: no copy,
   no parse (§7).
@@ -435,7 +465,8 @@ schema's codebase:
   0 mapping to 1 so the terminator can never collide (§5).
 - **The kinds are a closed set**, and these are their numbers: `1` bool,
   `2` i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64,
-  `10` f32, `11` f64, `12` string, `13` table, `14` array, `15` union.
+  `10` f32, `11` f64, `12` string, `13` table, `14` array, `15` union,
+  `16` enum-keyed array.
 - **Payloads**, one row per kind. `L` is a u32 byte length; `N` is a u32
   element count. Nothing is aligned and nothing is padded.
 
@@ -448,8 +479,8 @@ schema's codebase:
   | `12` string | `L`, then `L` bytes. No terminator; no encoding imposed |
   | `13` table | `L`, then `L` bytes of table body (fields, then the u16 zero terminator) |
   | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
-  | `14` array, ENUM-KEYED | `L`, then the array body: `element kind (u8)`, `N` = the number of SLOTS PRESENT, then N pairs of `variant id (u16)`, `L (u32)`, `L` bytes of element (§3.2) |
   | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of arm body |
+  | `16` enum-keyed array | `L`, then the body: `element kind (u8)`, `N` = the number of SLOTS PRESENT, then N pairs of `variant id (u16)`, `L (u32)`, `L` bytes of element (§3.2) |
 
   **The union carries NO outer length** — its `arm id` sits where the other
   three containers put theirs, and the length that follows frames the arm
@@ -458,12 +489,23 @@ schema's codebase:
   a `table` (§2.6): fields, then the u16 zero terminator, the same bytes a
   kind `13` payload carries.
 
-  **Three spellings that add no row.** A `?T` optional field is framed
-  exactly as the non-optional `T` (§2.3); `*T` is framed exactly as a
-  by-value `T` (§3.1); and `*bytes` and `*string` are framed exactly as
-  `bytes(N)` and `string(N)` (§2.5). Each family is ONE FIELD ON THE WIRE
-  under several declaration spellings, which is what lets a schema move a
-  field among them without moving a byte.
+  **Spellings that add no row, and the one way they differ.** A `?T`
+  optional field is framed exactly as the non-optional `T` (§2.3); `*T` is
+  framed exactly as a by-value `T` (§3.1); and `*bytes` and `*string` are
+  framed exactly as `bytes(N)` and `string(N)` (§2.5). Each family is ONE
+  FRAMING under several declaration spellings.
+
+  **What differs inside a family is ELISION, and only at the empty end.**
+  Content decides for the by-value spellings and presence decides for the
+  pointer-shaped ones (above), so a by-value `T` at its defaults writes
+  nothing while a present `?T` at its defaults writes its body, and an
+  empty `bytes(N)` writes nothing while a non-null zero-length `*bytes`
+  writes an empty payload. **For any content that is not entirely default,
+  the spellings in a family are byte-identical**, and that is the scope of
+  the claim: a schema may move a field among them and no byte moves for
+  such a value. At the empty end the bytes differ and no reader
+  misdecodes — an elided field reads as absent (`?T`), null (`*T`) or the
+  declared default (`T`), which is correct in every direction.
   - **Array elements.** For a scalar element kind the elements sit back to
     back at that kind's fixed width. For element kind `13` (table) each
     element is preceded by its own `L`. `bytes(N)` rides as an array of
@@ -475,9 +517,12 @@ schema's codebase:
     reader accepts it.
 - **Skipping a field you cannot name** needs the kind byte and nothing
   else, which is what makes an unknown field survivable (§4). Three rules
-  cover the set: kinds `1`–`11` skip their fixed width; kinds `12`, `13`
-  and `14` read `L` and skip `L` bytes; kind `15` reads the `u16` arm id
-  and stops there if it is 0, else reads `L` and skips `L` bytes.
+  cover the set: kinds `1`–`11` skip their fixed width; kinds `12`, `13`,
+  `14` and `16` read `L` and skip `L` bytes; kind `15` reads the `u16` arm
+  id and stops there if it is 0, else reads `L` and skips `L` bytes.
+  **A kind a reader does not know at all is not skippable** and is framing
+  damage, which is why the set is closed and why a new kind is a wire
+  change rather than an addition.
 - **Field ORDER within a body is not part of the contract.** This
   implementation writes fields in declaration order, and a reader must not
   rely on it: every field is found by its id, so any order decodes the same
@@ -530,12 +575,17 @@ Three consequences, all deliberate:
 - **A non-null pointer ALWAYS rides**, even when its pointee is entirely
   default. Elision is decided by presence, not by content — otherwise
   null and "points at an empty node" would be one value on the wire.
-- **A pointer field, an OPTIONAL field and a by-value nesting are
-  wire-identical** — one field on the wire with three spellings (§2.3). A
-  schema may change any of them into any other and no byte moves: old
-  readers take the first body by value, pointer readers allocate one node
-  from it, optional readers mark it present. The corpus holds all six
-  directions, and the byte-identity of the three writers.
+- **A pointer field, an OPTIONAL field and a by-value nesting share one
+  framing** — three spellings of one field (§2.3). A schema may change any
+  of them into any other and, for content that is not entirely default, no
+  byte moves: old readers take the first body by value, pointer readers
+  allocate one node from it, optional readers mark it present. **At the
+  empty end they differ**, because content decides elision by value and
+  presence decides it here: an all-default `T` writes nothing, a present
+  `?T` and a non-null `*T` write a body. Every direction still reads
+  correctly; only the byte-identity claim is scoped. The corpus holds all
+  six directions, and the byte-identity of the three writers over
+  non-default content.
 
 **Wire v1 is a TREE, and identity is not preserved.** Two pointers to one
 node write two bodies and load as two nodes. Aliasing, sharing and DAG
@@ -569,14 +619,30 @@ wants a flat, indexed node encoding — a named follow-on (§15).
 
 ### 3.2 Enum-keyed arrays on the wire: slots by name
 
-An enum-keyed array (§2.4) rides as kind `14`, and its body opens exactly
-as any array's does — `element kind (u8)`, then a u32 count. What differs
-is what the count counts and what each element carries:
+An enum-keyed array (§2.4) rides as **kind `16`, its own kind**, and its
+body opens as an array's does — `element kind (u8)`, then a u32 count.
+Kind `16` exists so that the keyed and the positional spellings cannot be
+mistaken for one another: they are different encodings, a reader meeting
+the wrong one reports a kind mismatch instead of decoding a body under the
+wrong rule, and no reader ever has to guess which layout a `14` carries.
+What differs from a plain array is what the count counts and what each
+element carries:
 
 - **`N` is the number of SLOTS PRESENT**, not the array's extent. A slot
   whose element holds its default is elided, exactly as a defaulted field
-  is; `None`'s slot rides only when it is non-default; and an array with no
-  present slot is not written at all.
+  is, and an array with no present slot is not written at all. The upper
+  bound on `N` is therefore `E.Max`, never `E.Max + 1`.
+- **A `None` key NEVER RIDES.** `None` is the enum's null and keys no slot
+  (§2.4), so slot 0 is not written whatever it holds, and **a stored key of
+  `0` is MALFORMED** — not an unknown variant, because `0` is the reserved
+  id no declared name can ever fold to (§5), so a body carrying one is
+  damaged rather than merely foreign. The reader stops that body, keeps
+  what it decoded, and flags malformed (§4).
+- **Slots are written in ascending variant ordinal**, and a reader must
+  not rely on it — the field-order rule (§3) one level down. Every slot is
+  found by its key, so any order decodes the same value; byte-identical
+  output against this implementation requires matching the ascending order
+  as well as the framing.
 - **Each element is a pair**: `variant id (u16)`, then `L (u32)`, then `L`
   bytes of element. The variant id is the key's name hash, folded exactly as
   a field id is (§5). The length rides for EVERY element kind, scalars
@@ -599,6 +665,13 @@ The keyed spelling costs `2 + 4` bytes per present slot and closes that
 class. The corpus holds it with a middle insert and a removal in one
 generation step, and the negative control — encoding the slots
 positionally — turns the middle-insert test red.
+
+**And the two spellings do not decode each other.** A `16` body read as a
+`14`, or the reverse, would take keys for values and values for keys — the
+same silent corruption in a different costume — so the distinct kind is
+what makes changing spelling a REPORTED edit (§4) rather than a quiet one.
+A reader meeting the other kind skips the field, counts `kind_mismatch`,
+and leaves the array at its declared defaults.
 
 The same bytes serve every use: a file on disk, a blob in memory, a
 payload handed from a tool to a game, a message between services whose
@@ -634,7 +707,10 @@ tolerance is the versioning model:
   declaration side, so this catches a change of KIND, not every change of
   type: an enum field and a plain `uint16` field are both kind `7`, so an
   edit between the two is not a kind mismatch — the raw value is read as a
-  variant hash, and lands on `None` unless it happens to name one.
+  variant hash, and lands on `None` unless it happens to name one. **An
+  array changed between the keyed and the positional spelling IS a kind
+  mismatch** (`16` against `14`, §3.2), which is exactly why the keyed body
+  has a kind of its own.
 - **A changed array BOUND** (a literal, a constant, or an `E.Max + 1`
   expression that moved): the array still loads, and the bound is not part
   of identity — a field is its name hash and its kind, and neither carries
@@ -653,13 +729,20 @@ tolerance is the versioning model:
   bounds**: a count the body cannot cover yields the bounded prefix and
   the malformed flag, never values fabricated from a neighbor's bytes.
 
-Every event lands in the **read report** — unknown, kind_mismatch,
-clamped, malformed. `unknown` counts every id this reader cannot name: a
-field id, an enum variant id, a union arm id. Silence (all zero) means the
-data matched this reader's schema exactly. Tools surface the report; games decide their own
-policy over it. Nothing crashes on data from a different schema version,
-in either direction, and that property is held by a both-directions
-evolution test in the corpus.
+Every event lands in the **read report**, whose counters are `unknown`,
+`kind_mismatch`, `clamped`, `duplicate` and the `malformed` flag.
+`unknown` counts every id this reader cannot name: a field id, an enum
+variant id, a union arm id, a keyed slot's key. Silence (all zero) means
+the data matched this reader's schema exactly. Tools surface the report;
+games decide their own policy over it. Nothing crashes on data from a
+different schema version, in either direction, and that property is held by
+a both-directions evolution test in the corpus.
+
+**`duplicate` is the TEXT FORM's counter and the wire never raises it**
+(§16.2). It rides on the same report struct because a caller has one report
+type, not two — so every backend carries the counter, and a wire read
+always leaves it zero: a body carrying an id twice is legal input whose
+last occurrence wins, silently, by §3.
 
 Fields may be added anywhere, removed freely, and reordered freely —
 identity is the name, not the position. **So may an enum's variants and a
@@ -717,19 +800,30 @@ Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed and reordered; array bounds may move; a field may
 change between `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes` —
-all of it either invisible to the wire or counted in the report. **The last
-positional vocabulary besides flags was the enum-ordinal-indexed array, and
-`[E]T` (§2.4) closes it**: keyed slots ride by name, so a middle insert
-moves no slot.
+all of it either invisible to the wire or counted in the report.
 
-Each of the two has its own answer:
+**Two edits that would otherwise be silent are made REPORTABLE by
+construction, and it is worth saying how, because the claim above depends
+on it.**
+
+- **An enum-ordinal-indexed array** was the last positional vocabulary
+  besides flags: insert a variant in the middle and every later slot lands
+  one place off. `[E]T` (§2.4) closes it — keyed slots ride by name, so a
+  middle insert moves no slot.
+- **Changing a table field between `[E]T` and `[E.Max + 1]T`** would then
+  have replaced it: two encodings under one kind would have let a reader
+  decode keys as values and report nothing. The keyed body's own kind `16`
+  (§3.2) turns that edit into a kind mismatch, counted like any other.
+
+Each of the two real ones has its own answer:
 
 - **Flags** are answered by DISCIPLINE, stated as law: **append at the end,
   never insert or reorder**, and retire a name in place rather than freeing
   its bit.
 - **Both** are answered by MACHINERY, opt-in: the committed tables baseline
   (§18) is the history the compiler does not keep, and it refuses either
-  edit until the baseline moves with a recorded reason.
+  edit until the baseline moves with a recorded reason. It refuses the
+  spelling change above too, at compile time, ahead of the reader's report.
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -1003,6 +1097,22 @@ element size, array bound and count-companion offset, declared bounds,
 branch guards, and the nested table's descriptor. `<Name>TableType()`
 returns that table's descriptor.
 
+**A type descriptor also carries a RESET hook** — put one instance back at
+its declared defaults, in place. A generic walker that FILLS a value has to
+be able to establish the defaults an absent field takes, and it holds no
+type to spell; this is the one thing the columns cannot express without a
+function. It does what the wire's read path does, with no temporary.
+
+**A field carries its TEXT KEY** beside its name — the `json = "..."`
+attribute's value, else the field's own name (§16.3) — so a walker over the
+text form spells keys without a second table.
+
+**A `bits(N)` field carries its IMPLIED RANGE.** `bits(N)` declares
+`[0, 2^N − 1]` by its width rather than by an attribute, and the codec has
+always clamped to it (§4); carrying it in the descriptor is what lets a
+generic walker apply the same bound without re-deriving it from a type
+name.
+
 **An optional field carries its presence companion.** `optional` marks the
 field and `present_offset` names the `<field>_present` bool, exactly as
 `counted` and `count_offset` name a count companion — so a walker can read
@@ -1023,13 +1133,22 @@ function beside a **value→wire-id** function, so a tool can enumerate the
 names AND the ids without the schema files (§5).
 
 **A union field also names each arm's PAYLOAD**, by that type's descriptor,
-whether the arm is a declared `type` or a `table` (§2.6). Without it a
-walker can name the arm a value holds and cannot enter it, which stops
-every generic walk — the text form (§16) among them — at the union.
+whether the arm is a declared `type` or a `table` (§2.6), **beside the
+TAG's own offset and width** and each arm's offset within the union
+storage. Without those a walker can name the arm a value holds and can
+neither read the tag nor enter the payload, which stops every generic
+walk — the text form (§16) among them — at the union. Arms are indexed
+`[0, enum_max]`, and index 0 is the EMPTY arm, which carries no payload.
 
-**A flags field carries its BIT NAMES**: a bit-index→name function and the
-bit count, as an enum carries its value→name. It carries no per-variant
-wire id, because a mask's variants ride by position and have none (§4).
+**A flags field carries its BIT NAMES**: a bit-index→name function bounded
+by **the highest declared BIT INDEX** — not a count, so a walker loops
+`[0, enum_max]` inclusive, exactly as it does for an enum's values and a
+union's arms. It carries no per-variant wire id, because a mask's variants
+ride by position and have none (§4); a null id function beside a non-null
+name function is what identifies a flags field.
+
+**An enum-keyed array's slot 0 is marked invalid** (§2.4), so a walker
+enumerating slots skips it rather than printing a `None` row.
 
 **A `*bytes` or `*string` field** carries its used-length companion's
 offset beside the reference, so a walker reads the blob's extent the way
@@ -1135,9 +1254,11 @@ lockstep redeploy by a table edit. This independence is held by test.
   whose JSON keys collide, naming both, as wire ids do (§5).
 - **An edit the committed TABLES BASELINE forbids** (§18), when a unit has
   one: a specified default changed, added or removed; a flags variant
-  inserted, removed, reordered or renamed in place; a field's wire kind
-  changed; an enum-keyed array's key enum swapped. Overridden only by
-  moving the baseline with a recorded reason.
+  inserted, removed, reordered or renamed in place; a field's wire kind or
+  an array's ELEMENT kind changed; an array changed between the keyed and
+  the positional spelling; an enum-keyed array's key enum swapped; a
+  field's referent dropped, or swapped for one whose identities do not
+  ride. Overridden only by moving the baseline with a recorded reason.
 - **A save-time data cycle or over-deep graph** (§3.1): measure, save,
   cook and `Lock` all return failure. Nothing recurses away.
 - **A read-time nesting past the depth cap** (§3.1): the subtree is
@@ -1191,13 +1312,12 @@ config-format example holding that gate.
 
 **The shape the gate is held to.** `Config.bin` and `Assets.bin` are each
 ONE root table, and each root is FIXED-SIZE down to the leaves: no pointer
-anywhere in the closure. That is expressible because the constructs that
-used to force a pointer no longer do — `?T` (§2.3) gives an optional
-section by value, and `[E]T` (§2.4) gives the enum-keyed collection those
-formats always were, as language rather than as convention. A fixed root
-is the strong form of the gate: it says the whole content pipeline runs
-on the ladder's second rung, with no arena, no region and no allocation
-on either side.
+anywhere in the closure. `?T` (§2.3) expresses an optional section by
+value and `[E]T` (§2.4) expresses the enum-keyed collection as language
+rather than as convention, so neither forces a pointer. A fixed root is
+the strong form of the gate: it says the whole content pipeline runs on
+the ladder's second rung, with no arena, no region and no allocation on
+either side.
 
 **The gate is a per-language obligation, not a one-language one.** A game
 whose engine runtime is not the language its tools are written in has to
@@ -1207,8 +1327,7 @@ the per-language backends are named follow-ons (§15).
 
 ## 13. Rulings, recorded
 
-Owner rulings, 2026-09-01, in the order given. The fenced/append-only
-draft this document previously carried is dead; these replace it.
+Owner rulings, 2026-09-01, in the order given.
 
 - **The model**: "wire itself being evolution tolerant is what I thought
   versioning was … when you consider the wire also being save/load to
@@ -1313,7 +1432,10 @@ are these rulings, in the owner's words:
   tooling, you'd want to safely evolve those tables / messages."
 - **The text form** (§16): "the general idea of reading JSON file into a
   table can move into schema… that's not opinionated. but only one table at
-  a time?" — one table, one text, and the linking left outside.
+  a time? So we separate packing from table reading JSON, the actual
+  linking up by enums has to be replicant only since that is opinionated."
+  One table, one text; the ruling's second half is what §17 answers, and it
+  answers it by removing the opinion rather than by keeping the tool out.
 - **Packing** (§17): "It also may make it possible to move the table
   reading and packing entirely down into schema now… which is a WIN", with
   the directory rule taken as it stands and revisited against a real packed
@@ -1440,21 +1562,42 @@ with which instance, what key an instance is filed under, how instances are
 linked into a root table's collections, what envelope wraps the bytes. A
 packer (§17) calls this section once per text and does the rest itself.
 
+**This section states RULES, not one implementation.** A generic walk over
+the descriptors is what makes the form cheap enough to exist at all, and
+the C++ backend holds it as one walker whose source is byte-identical in
+every generated header — but that is C++'s way of meeting the rules, not
+the definition of them. Another backend, and the compiler's own packer
+(§17), implement the same rules over the same IR, and goldens are what make
+the implementations one form: for every instance in the corpus, every
+implementation's text is byte-identical and every implementation's read of
+that text produces the same wire bytes.
+
+**The walk rides in every table closure's header, the fixed class
+included.** It is not gated on a unit's mode, because a fixed-size table is
+exactly the kind a tool authors as text; there is no opt-out.
+
 ### 16.1 The surface
 
-For every table in a unit's closure, name first, C++:
+For every FIXED-SIZE table in a unit's closure, name first, C++:
 
 ```cpp
 TableReport report;
 ShipConfig ship;
 if ( !ShipConfigFromJson( ship, text, text_bytes, &report ) )
 {
-    // the text is not JSON, or a value cannot be placed at all
-    // (report.malformed) — the instance holds what was placed before the stop
+    // the text is not JSON (report.malformed) — the instance holds what
+    // was placed before the stop
 }
 
 int64_t size = ShipConfigToJsonMeasure( ship );      // exact bytes, writes nothing
-ShipConfigToJson( ship, buffer, size );              // returns size; -1 = too small
+ShipConfigToJson( ship, buffer, size );              // returns size; -1 = refused
+```
+
+A VARIABLE-LENGTH table reads through its builder, because that is where
+its storage comes from (§6.5):
+
+```cpp
+SceneFromJson( builder, text, text_bytes, &report );
 ```
 
 - **`FromJson` fills ONE instance from ONE text.** The instance is the
@@ -1466,11 +1609,12 @@ ShipConfigToJson( ship, buffer, size );              // returns size; -1 = too s
   that elides is a text a reader has to know the schema to complete.
   Measure and write agree byte for byte, the wire's invariant (§9) carried
   across.
-- **Both are ONE generic walk.** No per-table codec is emitted: the
-  generated header carries the descriptors and one walker over them. That
-  is the property that makes this schema's rather than a packer's, and it
-  is a gate: the walker's source is the same bytes in every generated
-  header of the corpus.
+- **`ToJson` is PRETTY-PRINTED**, and the shape is part of the contract:
+  one entry per line, two-space indent per nesting level. Measure must
+  equal write byte for byte and `unpack` → `pack` must be byte-stable
+  (§17.2), and neither is checkable while the shape is unstated. It is the
+  form's one formatting opinion, and it is held because a text these files
+  exist for is read and diffed by people.
 
 ### 16.2 The mapping, field kind by field kind
 
@@ -1478,43 +1622,100 @@ The JSON form of a table is an object whose keys are field names. Per kind:
 
 | declaration | JSON | notes |
 |---|---|---|
-| integers, `bits(N)` | number | integral; a fraction is malformed |
-| `float32`, `float64`, compressed floats | number | |
+| integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` clamps and counts |
+| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity |
 | `bool` | `true` / `false` | |
-| `string(N)`, `*string` | string | UTF-8; longer than N is CLAMPED to N bytes at a code point boundary, counted (a `*string` has no bound to clamp against) |
-| `bytes(N)`, `*bytes` | string, base64 | longer than N is clamped, counted (a `*bytes` has no bound to clamp against) |
-| enum | string, the variant NAME | `"Silver"`; an unknown name → None, counted |
-| flags | array of variant names | `["Shielded", "Turbo"]`; an unknown name is skipped, counted |
+| `string(N)`, `*string` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted (`*string` has no bound to clamp against) |
+| `bytes(N)`, `*bytes` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
+| enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
+| flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
 | `[..N]T` bounded array | array | count = length; more than N are dropped, counted |
-| `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; an unknown key is skipped, counted; a duplicate key is last-wins, counted |
+| `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; an unknown key is skipped and counted, and **`"None"` is such a key** — it names no slot (§2.4) |
 | nested `type` / `table` | object | the same walk, recursively |
 | `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only |
-| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `{}` or absent = None; two keys is malformed. A `table` arm (§2.6) is the same object form |
-| pointer `*T` | object, or `null` | the pointee's object in place; a variable-length table reads through its builder (§6.5), so `FromJson` for one takes the builder: `SceneFromJson( builder, text, bytes, &report )` |
+| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form |
+| pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer |
 
-**Guarded fields** (`if guard { ... }`): a guarded group's fields are placed
-only when the guard reads true, and the guard is an ordinary bool field in
-the text — it is written and read like any other field, and the walk infers
-nothing from the presence of the group. A field that is genuinely present
-or absent is `?T`, which the walk does model, and that is the difference
-between the two constructs.
+**Numbers.** JSON has ONE number type, so an integer field accepts any
+token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
+and 1000 — because that is how every library that round-trips numbers
+through a double writes them, and meeting an existing text is what §16.3
+exists for. A token with a genuinely fractional value in an integer field
+is `kind_mismatch`, skipped and counted. A value outside the field's
+declared or implied range clamps and counts (**Bounds**, below); a float
+value the field's width cannot represent is `kind_mismatch`, so an
+infinity is never stored. **A token that is not a JSON number at all** —
+`1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
+8259's, and a typo in an authoring file is a diagnostic, never a clamped
+value.
+
+**`null`** is `kind_mismatch` for every kind except the two where absence
+is a value: a `?T` reads `null` as ABSENT, and a pointer reads it as null.
+
+**Guarded fields** (`if guard { ... }`) are ordinary fields, and the walk
+infers nothing from them:
+
+- **Writing** elides a field whose guard is false, exactly as the wire does
+  (§3), so a text and a wire of the same instance describe the same fields.
+- **Reading** places every key it can name, in whatever order the text
+  gives them, and never lets a guard's position in the object decide
+  whether a key is honoured. A field placed under a false guard is elided
+  again on the way out, so the wire never sees it.
+
+That order-independence is the whole reason the rule is stated this way: a
+text whose guard key follows the fields it guards must not silently lose
+them. A field that is genuinely present-or-absent is `?T`, which the walk
+DOES model, and that is the difference between the two constructs.
 
 **Bounds.** A number outside a field's declared `[min, max]` is clamped and
 counted, never refused — the wire's rule (§4), so a text and a wire loaded
 from the same data land the same instance.
 
 **Unknown keys** are skipped and counted in `report.unknown`. **Duplicate
-keys**: last wins, counted. **Trailing commas** in objects and arrays are
-accepted on read — the authoring files this section exists for carry them —
-and never written. Comments are not JSON and are refused.
+keys**: the last occurrence wins and the repeat is counted in
+`report.duplicate` (§4). Last-wins applies to a WHOLE value: a repeated
+array key replaces the array outright rather than overlaying a prefix on
+what the first occurrence left, and a repeated table or union key
+re-establishes the whole value at its defaults before placing it.
+**Trailing commas** in objects and arrays are accepted on read — the
+authoring files this section exists for carry them — and never written.
+Comments are not JSON and are refused.
 
-**The report is the wire's report** (§4): `unknown`, `kind_mismatch` (a key
-present with the wrong JSON type — a string where a number was declared —
-is skipped, never coerced), `clamped`, `malformed`. Silence means the text
-matched the schema exactly.
+**The report** (§4): `unknown`, `kind_mismatch` (a key present with the
+wrong JSON type — a string where a number was declared — is skipped, never
+coerced), `clamped`, `duplicate`, `malformed`. Silence means the text
+matched the schema exactly, and it means it honestly: no value a read calls
+clean can be one the writer would refuse.
 
-### 16.3 The key: `json`
+### 16.3 What the writer refuses
+
+`ToJsonMeasure` and `ToJson` return **-1** rather than write a text that
+does not say what the instance holds. This is §5's save-failure rule
+carried across: an unnameable value is refused on the way out rather than
+written as something else.
+
+- **An enum value no variant names**, and **a set flags bit no variant
+  names** — refused by the NAME, not by a bound, so a vocabulary that
+  disagrees with its own extent cannot slip through as a placeholder.
+- **A union tag outside its arm range.**
+- **A non-finite float.** The read path cannot produce one (above), so an
+  instance that came from a text is always writable; one built in code with
+  an infinity in it is refused, and says so.
+
+`-1` therefore has two meanings on `ToJson` — a buffer too small, and a
+value that cannot be written — and a caller that distinguishes them calls
+`ToJsonMeasure` first, which fails only for the second reason.
+
+**The writer always emits valid JSON and valid UTF-8.** A stored byte
+sequence that is not well-formed UTF-8 — which the storage permits, and
+which a text can introduce through a lone surrogate escape — is written as
+the replacement character `U+FFFD`, one per ill-formed sequence, rather
+than passed through. RFC 8259 requires a JSON text to be valid UTF-8, and a
+text this form emits must be readable by any conforming parser, not only by
+schema's own reader.
+
+### 16.4 The key: `json`
 
 A field's JSON key is its name. The one attribute this form adds lets a
 declaration meet an existing text:
@@ -1530,21 +1731,29 @@ attribute changes no byte on the wire**: keys are the text's business, ids
 are the wire's, and a schema may add, change or remove a `json` key without
 touching a stored file.
 
-### 16.4 Held by test
+### 16.5 Held by test
 
 - Every table in the corpus round-trips `ToJson` → `FromJson` → `Save` and
   byte-matches the wire of the original instance.
-- A hostile battery: wrong JSON types at every kind, overflow at every
-  integer width, nesting past the depth cap, unknown keys, duplicate keys,
+- **A PINNED TEXT.** `ToJson` of a known instance equals a known literal
+  text, checked as bytes. A round trip alone cannot see a vocabulary error
+  — reader and writer share the name function, so a wrong spelling
+  round-trips perfectly — and this is the test that closes that class for
+  enums, flags, union arms and `None`.
+- A hostile battery: wrong JSON types at every kind, malformed number
+  tokens, overflow at every integer width and float width, nesting past the
+  depth cap, unknown keys, duplicate keys at every kind including arrays,
   clamped strings at a multi-byte boundary, a union with two keys, an
-  enum-keyed object with a name the enum lacks.
+  enum-keyed object keyed `"None"`, a lone surrogate.
+- Guards in every configuration, including nested and negated ones, and a
+  text whose keys precede their guards.
 - **Negative control:** with the walker's offset arithmetic sabotaged by
   one field, the round-trip goes red on the first table that has two
   fields.
-- The generic-walk gate: the walker's source is identical in every
-  generated header of the corpus.
+- The one-walk gate: within a backend that holds the form as a single
+  walker, that walker's source is identical in every generated header.
 
-### 16.5 What this is not
+### 16.6 What this is not
 
 Not a file format, not a directory layout, not a manifest, not an envelope.
 Those are a packer's business; §17 is one packer, and it is a TOOL over
@@ -1561,13 +1770,45 @@ schema pack   --root Config --out Config.bin  configs/
 schema unpack --root Config --in  Config.bin  configs/
 ```
 
-### 17.1 The directory rule
+**Why this is not the opinion the text form's ruling kept out.** What made
+packing an opinion was linking instances into a collection by an enum key,
+and the key field inside each instance that made the link possible. With
+`[E]T` (§2.4) the link IS the declaration and the key is the slot, so there
+is no manifest, no collection concept and no key field to invent. What is
+left is a structural convention about where a value's text lives, which is
+the part that prescribes nothing about content.
+
+### 17.1 The engine
+
+**`schema pack` carries its own implementation of §16's rules and §3's
+wire**, inside the compiler, driven by the same IR the emitters are driven
+by. It does not call generated code: the compiler is a Go program and the
+generated walk is the target language's, so there is no path from the one
+to the other, and building one would make the compiler depend on a C++
+toolchain to pack a file.
+
+That means the tree holds **two implementations of one wire**, and goldens
+are what make them one:
+
+- for every corpus tree, `schema pack`'s bytes equal a backend's `Save` of
+  the same instance built by hand;
+- `schema pack` → a backend's `Load` → that backend's `ToJson` →
+  `schema unpack` is byte-stable;
+- every text `schema unpack` writes is byte-identical to the one the
+  backend's `ToJson` writes for the same instance.
+
+Every backend that implements the text form inherits that obligation
+against the same corpus, which is what keeps one wire and one text form as
+the number of implementations grows.
+
+### 17.2 The directory rule
 
 The tree MIRRORS the root table's shape, and nothing else:
 
 - a **directory named after a field** holds that field's value;
 - for an **enum-keyed array** (§2.4), one file per variant,
-  `<Variant>.json`;
+  `<Variant>.json` — and there is no `None.json`, because `None` keys no
+  slot;
 - for a **bounded array**, files in name order become the elements, or one
   `<field>.json` holds the whole array;
 - for a **nested table**, either `<field>.json` or a directory of its
@@ -1575,33 +1816,34 @@ The tree MIRRORS the root table's shape, and nothing else:
 - a plain **`<field>.json` at any level** is that field's value verbatim;
 - the **root may simply be one `<Root>.json`**.
 
-Each file's content is read by §16's walk, so every rule about kinds,
-presence, clamping and the report is that section's and is not restated
-here. The tree rule is structural only — it says where a value lives, never
-what a value means — which is what keeps a packer out of the format.
+Each file's content is read under §16's rules, so everything about kinds,
+presence, numbers, clamping and the report is that section's and is not
+restated here. The tree rule is structural only — it says where a value
+lives, never what a value means.
 
-### 17.2 What comes out
+### 17.3 What comes out
 
 **The output is the root table's wire bytes and nothing else**: no magic,
 no content hash, no protocol id, no length prefix around the whole. A
 caller that wants an envelope writes its own few lines around these bytes,
 which is §1's promise that schema imposes no envelope. `unpack` is the
-inverse — it writes the tree back out of a `.bin` through `ToJson`, which
-is the tool round trip §1 promises, and `unpack` → `pack` is byte-stable.
+inverse — it writes the tree back out of a `.bin` — which is the tool round
+trip §1 promises, and `unpack` → `pack` is byte-stable.
 
-### 17.3 Refusals and the report
+### 17.4 Refusals and the report
 
 A tree that does not mirror the table is reported rather than guessed at: a
 directory or file naming no field, two files claiming one enum-keyed slot,
-a variant name the enum does not have, a file that is not JSON. Everything
-§16 counts is counted here too, aggregated across the tree, so a pack of a
-hundred files reports once.
+a variant name the enum does not have, a `None.json`, a file that is not
+JSON. Everything §16 counts is counted here too, aggregated across the
+tree, so a pack of a hundred files reports once.
 
-### 17.4 Held by test
+### 17.5 Held by test
 
 A directory corpus packs to bytes identical to `Save` of the same instance
-built by hand; `unpack` → `pack` is byte-stable; and the hostile tree above
-is refused or counted per §16's rules.
+built by hand; `unpack` → `pack` is byte-stable; the goldens of §17.1 hold
+the engine to every backend that implements the form; and the hostile tree
+above is refused or counted per §16's rules.
 
 ## 18. The tables baseline
 
@@ -1623,17 +1865,28 @@ means.**
 **It is `tables.baseline`, in the unit directory, and it is opt-in: no
 file, no check.** It is a canonical text projection of the closure — the
 members sorted, each member's fields in declaration order, one fact per
-line: name, wire id, kind, array shape (fixed, bounded or enum-keyed, with
-the bound's EVALUATED value), string and bytes capacity, presence of an
+line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
+bounded or enum-keyed, with the bound's EVALUATED value and, for a keyed
+array, the KEY enum it names), string and bytes capacity, presence of an
 optional, the specified default as exact canonical text, and the `was`
 alias; then each enum's variants in order with their ids, each flags'
 variants in positional order, and each union's arms in order with their ids
 and payloads.
 
+**A field that names a declaration records WHICH KIND of declaration it
+names** — a table, an `enum`, a `flags` or a `union` — because those four
+are judged by four different identity rules (§18.3).
+
 **The values are EVALUATED**, not the source text: a constant that moves
 and flows through an expression into a default shows up as the value it now
 produces, which is the whole point — the projection records what data will
 mean, not how it was spelled.
+
+**Presence is RECORDED and judged on nothing.** An optional's presence
+companion is a fact in the file so a person reading a diff can see it, but
+a field moving between `T`, `?T` and `*T` moves no byte (§3.1) and passes
+in silence. Recording a fact and judging it are two different things, and
+this one is only recorded.
 
 It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
@@ -1662,19 +1915,49 @@ committed file whenever one is there, and:
   changed, added or removed; a flags variant inserted, removed, reordered,
   or RENAMED IN PLACE (a rename moves no byte, and a new meaning on a spent
   bit remaps every stored file; nothing distinguishes the two, so the
-  author says which); a field's wire kind or an array's element kind
-  changed; an enum-keyed array's key enum swapped for another.
+  author says which); a field's wire kind or an array's ELEMENT kind
+  changed; an array changed between the keyed and the positional spelling,
+  or an enum-keyed array's KEY enum swapped for another; a field's REFERENT
+  dropped, or swapped for one whose identities do not ride (§18.3).
 - **WARNS** — an array bound or a string/bytes capacity shrunk; an enum
-  variant or a union arm removed. The data survives and the read report
-  already counts what is lost (`clamped`, `unknown`), so this reports
-  rather than stops.
+  variant or a union arm removed; a closure member no longer covered by the
+  baseline (§18.3). The data survives and the read report already counts
+  what is lost (`clamped`, `unknown`), so this reports rather than stops.
 - **PASSES, in silence** — everything the wire absorbs: fields added,
   removed, reordered or renamed under `was`; enum variants and union arms
   added anywhere; flags variants APPENDED at the end; bounds and capacities
   grown; a bounded array made fixed or the reverse; a field moved between
-  `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`.
+  `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`; a DECLARATION
+  renamed, whose contents keep being judged under its new name (§18.3).
 
-### 18.3 Moving it is an explicit act
+### 18.3 What a name is worth, and what a referent is worth
+
+**A DECLARATION NAME IS NOT ON THE WIRE, and renaming one must not take its
+contents out of coverage.** Members match by name first; a baseline name
+with no live namesake is then matched to the unmatched live declaration of
+the same kind carrying the most of its identities, when that is at least
+half of them and unique. Either way the vanished name WARNS — a paired one
+saying where it went, an unpaired one saying nothing carries its identities
+any more — so a hole in the coverage is never silent. A removal stays
+legal; it stops being invisible.
+
+**A FIELD'S REFERENT is judged by whether the identities ride**, and each
+vocabulary's identity is its own (§3):
+
+- a **table body** decodes by field id, so a nested table — or a union
+  arm's payload, which is the same fact one level in — rides when every
+  field id the old one carried is still carried;
+- an **enum** value is its variant NAME hash and a **union** body opens
+  with its arm NAME hash, so those ride when the names survive;
+- a **flags** mask carries no names at all, so it rides only when the old
+  variants sit at the same bits.
+
+**Dropping the referent entirely always refuses** — an enum-typed field
+respelled as its raw `uint16`, say. §4 states that both ride as kind `7`,
+so that is precisely the edit no reader can report, which is this file's
+whole job.
+
+### 18.4 Moving it is an explicit act
 
 ```
 schema tables-baseline --update --reason "damage rebalanced in 2.0; saves from 1.x read the new value" configs/
@@ -1688,16 +1971,25 @@ break — and it is what a person consults when an old save or an old tool
 file reads back wrong. The update is idempotent: a unit that has not moved
 rewrites nothing.
 
-### 18.4 What it does not cover
+**`--update` works on a baseline the checker cannot read.** A corrupt file,
+another unit's file, or one written under a rendering version this compiler
+does not write, all refuse on check and name `--update` as the remedy — so
+the remedy runs: it salvages the `## history` lines verbatim, regenerates
+the projection from the unit as it stands, and records in the history that
+the previous projection could not be diffed. The one artifact in the file
+that cannot be regenerated is never the price of repairing it.
+
+### 18.5 What it does not cover
 
 **The first baseline covers only what comes after it.** It is a snapshot of
 whatever the schema is on the day it is written; data written before that
 day was written against a shape nobody recorded, and no check can speak for
 it. The created file says so in its own first history entry.
 
-### 18.5 Held by test
+### 18.6 Held by test
 
 Each refusal class has a fixture pair and its negative control — remove the
 check and the edit passes. The projection over the corpus regenerates
 byte-identical. The warn class warns and does not refuse. `--update`
-without `--reason` refuses.
+without `--reason` refuses, and `--update` over an unreadable baseline
+repairs it while keeping every history line.

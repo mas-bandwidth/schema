@@ -324,8 +324,9 @@ Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact
                                                                     // An exact bound NAMING A DECLARED
                                                                     // ENUM is an ENUM-KEYED array: exactly
                                                                     // E.Max + 1 slots, indexed by the
-                                                                    // variant (SPEC-TABLES.md §2.4). On
-                                                                    // this wire it IS [E.Max + 1]T
+                                                                    // variant, of which slot 0 (None) is
+                                                                    // never valid (SPEC-TABLES.md §2.4).
+                                                                    // On this wire it IS [E.Max + 1]T
 
 AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
                                                                  // or a // comment terminates it —
