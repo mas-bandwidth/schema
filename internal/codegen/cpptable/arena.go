@@ -59,12 +59,21 @@ static const int32_t kTableMaxDepth = 128;
 //                   so a deref is one add, needs no base pointer, and a whole
 //                   region relocates by memcpy with zero fix-up
 //
-// 0 is null in both. Region deltas are always POSITIVE: a region is packed by
-// a depth-first walk, so a child always sits after the slot that names it —
-// which is what makes a packed region cycle-free by construction.
+// 0 is null in both, and a slot can never name the node that contains it, so
+// zero names nothing real in either form.
+//
+// A REGION DELTA HAS NO REQUIRED SIGN (§6.3). A region is packed depth-first,
+// so a node's FIRST reference points forward; every LATER reference to that
+// same node points BACK at the one body it already has, which is exactly what
+// makes one node one node in a region. Sharing and a back-reference are the
+// same fact, and nothing validates a reference by its sign.
+//
+// IT IS EIGHT BYTES, SIGNED, so ONE REGION REACHES EVERYTHING (§6.3, §7): a
+// four-byte slot bounded a region at 2 GiB, and the scale a cook exists for is
+// *"100mbs or many gigabytes of data in Assets.bin"*.
 struct TableRef
 {
-    uint32_t value = 0;
+    int64_t value = 0;
     bool null() const { return value == 0; }
 };
 

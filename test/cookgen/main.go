@@ -112,7 +112,7 @@ func main() {
 	rootRec := make([]byte, rootLayout.Size)
 	// the root's reference names the first chain node: the SELF-RELATIVE delta
 	// from the slot's own address (§6.3)
-	ord.PutUint32(rootRec[rootRef.Offset:], uint32(int32(chainBase-rootRef.Offset)))
+	ord.PutUint64(rootRec[rootRef.Offset:], uint64(chainBase-rootRef.Offset))
 	must(w.Write(rootRec))
 	must(w.Write(make([]byte, chainBase-rootLayout.Size)))
 
@@ -120,12 +120,12 @@ func main() {
 	// the pitch is constant, so the forward delta is the SAME NUMBER in every
 	// record: one node on, less the slot's own position inside the record
 	forward := chainLayout.Size - chainRef.Offset
-	ord.PutUint32(chainRec[chainRef.Offset:], uint32(int32(forward)))
+	ord.PutUint64(chainRec[chainRef.Offset:], uint64(forward))
 	for range nodes - 1 {
 		must(w.Write(chainRec))
 	}
 	// the last node's reference is NULL, which in a region is a delta of zero
-	ord.PutUint32(chainRec[chainRef.Offset:], 0)
+	ord.PutUint64(chainRec[chainRef.Offset:], 0)
 	must(w.Write(chainRec))
 	must(w.Write(make([]byte, dataLength-(chainBase+nodes*chainLayout.Size))))
 

@@ -173,19 +173,25 @@ func TestCookCheckRefusesEveryForgeryItNames(t *testing.T) {
 		}},
 		{"a reference that names no directory entry", func(f []byte) []byte {
 			at := h.DataOffset() + refSlot(t, u, m, "Scene", "head")
-			ord.PutUint32(f[at:], ord.Uint32(f[at:])+1)
+			ord.PutUint64(f[at:], ord.Uint64(f[at:])+1)
 			return f
 		}},
-		{"a reference that leaves the region", func(f []byte) []byte {
+		{"a reference that leaves the region forward", func(f []byte) []byte {
 			at := h.DataOffset() + refSlot(t, u, m, "Scene", "head")
-			ord.PutUint32(f[at:], 0xFFF00000)
+			ord.PutUint64(f[at:], uint64(h.DataLength)+8)
+			return f
+		}},
+		{"a reference that leaves the region backward", func(f []byte) []byte {
+			// the slot is SIGNED and a back-reference is ordinary (§6.3), so a
+			// negative delta is only a forgery when it lands outside
+			at := h.DataOffset() + refSlot(t, u, m, "Scene", "head")
+			ord.PutUint64(f[at:], uint64(-(refSlot(t, u, m, "Scene", "head") + 8)))
 			return f
 		}},
 		{"a reference the directory names as another type", func(f []byte) []byte {
 			// Scene.settings names a Settings node; point it at the ListNode
-			at := h.DataOffset() + refSlot(t, u, m, "Scene", "settings")
-			target := dir[1].Offset
-			ord.PutUint32(f[at:], uint32(int32(target-refSlot(t, u, m, "Scene", "settings"))))
+			slot := refSlot(t, u, m, "Scene", "settings")
+			ord.PutUint64(f[h.DataOffset()+slot:], uint64(dir[1].Offset-slot))
 			return f
 		}},
 		{"a used length past its declared bound", func(f []byte) []byte {

@@ -22,18 +22,22 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// RefBytes is a `*T` reference slot's width in a record: four bytes, at four
+// RefBytes is a `*T` reference slot's width in a record: EIGHT bytes, at eight
 // (SPEC-TABLES.md §6.3). In the arena it is the node's arena offset; IN A
 // REGION IT IS THE SELF-RELATIVE BYTE DELTA FROM THE SLOT'S OWN ADDRESS, so a
 // deref is one add and needs no base pointer at all, and a whole region
 // relocates by plain memcpy with zero fix-up.
-const RefBytes = int64(4)
+//
+// Eight and not four because a self-relative delta is what bounds a REGION: at
+// four bytes one region reached 2 GiB, and the scale a cook exists for is
+// "many gigabytes". At eight there is no reach to refuse and no case to write.
+const RefBytes = int64(8)
 
 // RefNull is the region encoding of a null reference: a delta of zero. A slot
 // can never hold the address of the node that contains it, so zero names no
 // node and is free to mean null — which is the same value null takes on the
 // wire, where index `0` is null (§3.1).
-const RefNull = int32(0)
+const RefNull = int64(0)
 
 // Node is one node of a laid-out region: where it begins, what it is, and the
 // instance whose values fill it.
@@ -209,7 +213,7 @@ func (w *regionWriter) slots(at int64, f *ir.Field, elems []tabletext.Cell, n in
 // address to the node's start, and zero for null.
 func (w *regionWriter) ref(at int64, f *ir.Field, target *tabletext.Instance) error {
 	if target == nil {
-		w.putI32(at, RefNull)
+		w.putI64(at, RefNull)
 		return nil
 	}
 	to, ok := w.nodeOffset(target)
@@ -217,13 +221,12 @@ func (w *regionWriter) ref(at int64, f *ir.Field, target *tabletext.Instance) er
 		return fmt.Errorf("field %s references a node the numbering does not carry — a cook refuses a partial region (SPEC-TABLES.md §7)", f.Name)
 	}
 	delta := to - at
-	if delta < math.MinInt32 || delta > math.MaxInt32 {
-		return fmt.Errorf("field %s: the region reference is %d bytes and a reference slot is four (SPEC-TABLES.md §6.3) — this region is past the reach of a self-relative delta; cook refuses it rather than widening a slot the build version was taken over", f.Name, delta)
-	}
-	if delta == int64(RefNull) {
+	// there is no reach to check: the slot is as wide as the offsets it holds
+	// the difference of, so every delta a region can produce fits in it
+	if delta == RefNull {
 		return fmt.Errorf("internal: a reference slot resolved to itself")
 	}
-	w.putI32(at, int32(delta))
+	w.putI64(at, delta)
 	return nil
 }
 
@@ -304,6 +307,7 @@ func (w *regionWriter) putBool(at int64, v bool) {
 func (w *regionWriter) putU32(at int64, v uint32) { w.ord.PutUint32(w.buf[at:], v) }
 func (w *regionWriter) putU64(at int64, v uint64) { w.ord.PutUint64(w.buf[at:], v) }
 func (w *regionWriter) putI32(at int64, v int32)  { w.ord.PutUint32(w.buf[at:], uint32(v)) }
+func (w *regionWriter) putI64(at int64, v int64)  { w.ord.PutUint64(w.buf[at:], uint64(v)) }
 
 func (w *regionWriter) putWidth(at, width int64, v uint64) {
 	switch width {

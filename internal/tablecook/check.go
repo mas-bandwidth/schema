@@ -228,8 +228,8 @@ func (s *scan) element(at int64, f *ir.Field) error {
 // offsets the padded starts.
 func (s *scan) ref(at int64, f *ir.Field) error {
 	s.pointers++
-	delta := int64(int32(s.ord.Uint32(s.buf[at:])))
-	if delta == int64(RefNull) {
+	delta := int64(s.ord.Uint64(s.buf[at:]))
+	if delta == RefNull {
 		return nil // null, and null is the only value a slot holds for absence
 	}
 	target := at + delta

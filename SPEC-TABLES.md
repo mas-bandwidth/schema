@@ -1613,7 +1613,7 @@ the reference is null.
 
 ### 6.3 Two reference encodings, one slot
 
-A pointer's four-byte slot means different things in the two forms, and
+A pointer's eight-byte slot means different things in the two forms, and
 the form in hand always says which:
 
 - **In the arena**, it is the node's arena offset.
@@ -1640,18 +1640,24 @@ free to mean null. It is the same value null takes on the wire, where index
 `0` is null (§3.1), so the two encodings agree on their one reserved value
 and a walk that meets a zero does the same thing on both sides.
 
-**The slot is FOUR BYTES AND SIGNED, so ONE REGION reaches `2 GiB`** — every
-delta runs from a slot to a node inside the same region, so a region whose
-packed extent fits in `2^31` bytes can always express every reference it
-holds. A structure past that is REFUSED — at `Lock`, at `Cook` and at save —
-naming the field and the delta, never truncated and never silently widened,
-because widening the slot moves every record's `sizeof` and with it the build
-version. Widening it is a named follow-on (§15); today a region is the unit
-that has to fit, and a catalogue larger than one is more than one cook, which
-is what "cooking is a choice made per asset" already permits (§7).
-**A cook's PART LENGTHS are 64 bits all the same** (§7), because the FILE is
-not the region: a part length has to frame whatever a form puts beside the
-data, and a 32-bit field there would reimpose at cook time the aggregate
+**THE SLOT IS EIGHT BYTES AND SIGNED, so ONE REGION REACHES EVERYTHING.**
+Every delta runs from a slot to a node inside the same region, so a slot as
+wide as the offsets it subtracts can express every reference any region can
+hold: there is no reach to check, no refusal to write and no case to get
+wrong. It is what the scale §7 is built for asks for — *"Assume we have say,
+100mbs or many gigabytes of data in Assets.bin at some point."* — and a
+four-byte slot would have bounded ONE REGION at `2 GiB`, which is a ceiling in
+exactly the place a mesh or texture catalogue meets it (§13.4).
+
+**The cost, stated.** Eight bytes a reference instead of four, in every
+VARIABLE-LENGTH record, whether the structure needs the reach or not; and the
+edit moves every record that holds a pointer, so every affected unit's BUILD
+VERSION moves and every cooked file in existence is re-cooked. Pre-release
+that is a regeneration, and it is the whole of the price. A value-only table
+still pays nothing at all: it has no pointer, therefore no slot (§3.1).
+**A cook's PART LENGTHS are 64 bits for the same reason** (§7), because the
+FILE is not the region: a part length has to frame whatever a form puts beside
+the data, and a 32-bit field there would reimpose at cook time the aggregate
 ceiling §3.1 removed.
 
 **A region carries a NODE DIRECTORY**, and it is the wire's numbering
@@ -2121,7 +2127,7 @@ fields would get wrong:
 | `[N]T` | `N` elements at the element's `sizeof` |
 | `[..N]T` | `N` elements, then `int32` used count |
 | `[E]T` | `E.Max + 1` elements, slot `0` included |
-| `*T` | `int32` self-relative delta, four bytes at four |
+| `*T` | `int64` self-relative delta, eight bytes at eight |
 | `?T` | the value's own pieces, then `bool` present |
 
 - **An ENUM slot holds the ORDINAL**, at the enum's own derived storage width
@@ -2144,8 +2150,10 @@ fields would get wrong:
   scalar, the element type's own declared defaults for a record. That is what
   `T x[N] = {}` produces and what a wire load leaves there (§6.1), so a cook
   of a loaded wire and a cook of a built structure agree.
-- **A `*T` SLOT IS FOUR BYTES AT FOUR**, holding the self-relative delta of
-  §6.3, and **NULL IS ZERO**.
+- **A `*T` SLOT IS EIGHT BYTES AT EIGHT**, holding the signed self-relative
+  delta of §6.3, and **NULL IS ZERO**. It is as wide as the offsets it is the
+  difference of, so a region of any size expresses every reference it holds and
+  a cook has no reach to refuse.
 
 **EVERY BYTE NO FIELD COVERS IS ZERO** — interior padding, a record's trailing
 padding, a string's or `bytes`' unused tail, the bytes of a union outside its
@@ -2170,29 +2178,30 @@ with `scene.name = "hi"`, `scene.head = A`, `A.next = B`, `A.value = 1`,
 `B.value = 2`, and `scene.palette = P` with `P.id = 7`.
 
 - **The layouts** are §20.3's: `Palette` is `sizeof=4 alignof=4`; `Node` is
-  `value` at 0 and `next` at 4, `sizeof=8 alignof=4`; `Scene` is `name`'s
-  `char[5]` at 0 and its `int32` length at 8 — the buffer aligns at one and
-  the length at four — then `head` at 12 and `palette` at 16,
-  `sizeof=20 alignof=4`. `schema build-version --facts` prints those same
-  numbers.
+  `value` at 0 and `next` — an eight-byte slot, so eight-aligned — at 8,
+  `sizeof=16 alignof=8`; `Scene` is `name`'s `char[5]` at 0 and its `int32`
+  length at 8 — the buffer aligns at one and the length at four — then `head`
+  at 16 and `palette` at 24, `sizeof=32 alignof=8`. `schema build-version
+  --facts` prints those same numbers, and the id over them is
+  `0x4efe97313c704bb5`.
 - **The numbering** is §3.1's walk: the root is 1; `head` reaches A, so A is
   2; descending A, `next` reaches B, so B is 3; then `palette` reaches P, so
   P is 4.
-- **The offsets** follow: `Scene` at 0, A at 20, B at 28, P at 36. The
-  region's extent is 40, its alignment `max( 8, 4 ) = 8`, and 40 is already a
-  multiple of it.
-- **The deltas** are self-relative: `head`'s slot is at 12 and A is at 20, so
-  it holds 8; `palette`'s slot is at 16 and P is at 36, so it holds 20; `A.next`'s
-  slot is at 24 and B is at 28, so it holds 4; `B.next` is null, so it holds 0.
-- **The directory** is four entries: `(0, Scene)`, `(20, Node)`, `(28, Node)`,
-  `(36, Palette)`, and the type ids are `fnv1a64` over the table's name (§3.1).
-- **The file** is `64 + 40 + 64 = 168` bytes.
+- **The offsets** follow: `Scene` at 0, A at 32, B at 48, P at 64. The
+  region's extent is 68, its alignment `max( 8, 8 ) = 8`, and 68 rounds to 72.
+- **The deltas** are self-relative: `head`'s slot is at 16 and A is at 32, so
+  it holds 16; `palette`'s slot is at 24 and P is at 64, so it holds 40;
+  `A.next`'s slot is at 40 and B is at 48, so it holds 8; `B.next` is null, so
+  it holds 0.
+- **The directory** is four entries: `(0, Scene)`, `(32, Node)`, `(48, Node)`,
+  `(64, Palette)`, and the type ids are `fnv1a64` over the table's name (§3.1).
+- **The file** is `64 + 72 + 64 = 200` bytes.
 
 ```
 0000  53 43 48 4d 43 4f 4f 4b   magic "SCHMCOOK"
-0008  a3 18 ad ff 81 e9 d0 0b   build_version 0x0bd0e981ffad18a3
+0008  b5 4b 70 3c 31 97 fe 4e   build_version 0x4efe97313c704bb5
 0010  01 00 00 00 00 00 00 00   byte_order = 1 (little)
-0018  28 00 00 00 00 00 00 00   data_length = 40
+0018  48 00 00 00 00 00 00 00   data_length = 72
 0020  40 00 00 00 00 00 00 00   attribution_length = 64
 0028  08 00 00 00 00 00 00 00   alignment = 8
 0030  00 00 00 00 00 00 00 00   reserved
@@ -2201,24 +2210,26 @@ with `scene.name = "hi"`, `scene.head = A`, `A.next = B`, `A.value = 1`,
 0040  68 69 00 00 00            Scene.name  char[5] = "hi", zero tail
 0045  00 00 00                  padding to the length's alignment
 0048  02 00 00 00               Scene.name  used length = 2
-004c  08 00 00 00               Scene.head     delta +8  -> node 2 at 20
-0050  14 00 00 00               Scene.palette  delta +20 -> node 4 at 36
-0054  01 00 00 00               A.value = 1
-0058  04 00 00 00               A.next  delta +4 -> node 3 at 28
-005c  02 00 00 00               B.value = 2
-0060  00 00 00 00               B.next  = 0, and zero is null
-0064  07 00 00 00               P.id = 7
-                                the region ends at 40, already a multiple
-                                of 8, so nothing is padded after it
+004c  00 00 00 00               padding to the reference slot's alignment
+0050  10 00 00 00 00 00 00 00   Scene.head     delta +16 -> node 2 at 32
+0058  28 00 00 00 00 00 00 00   Scene.palette  delta +40 -> node 4 at 64
+0060  01 00 00 00               A.value = 1
+0064  00 00 00 00               padding to the reference slot's alignment
+0068  08 00 00 00 00 00 00 00   A.next  delta +8 -> node 3 at 48
+0070  02 00 00 00               B.value = 2
+0074  00 00 00 00               padding
+0078  00 00 00 00 00 00 00 00   B.next  = 0, and zero is null
+0080  07 00 00 00               P.id = 7
+0084  00 00 00 00               the region ends at 68 and rounds to 72
 
-0068  00 00 00 00 00 00 00 00   node 1: offset 0
-0070  13 f2 b5 3a 62 31 9a 4a   node 1: type id, Scene
-0078  14 00 00 00 00 00 00 00   node 2: offset 20
-0080  8d b6 f6 d2 c6 1c bd 66   node 2: type id, Node
-0088  1c 00 00 00 00 00 00 00   node 3: offset 28
-0090  8d b6 f6 d2 c6 1c bd 66   node 3: type id, Node
-0098  24 00 00 00 00 00 00 00   node 4: offset 36
-00a0  e0 ad 84 20 6e 53 af c8   node 4: type id, Palette
+0088  00 00 00 00 00 00 00 00   node 1: offset 0
+0090  13 f2 b5 3a 62 31 9a 4a   node 1: type id, Scene
+0098  20 00 00 00 00 00 00 00   node 2: offset 32
+00a0  8d b6 f6 d2 c6 1c bd 66   node 2: type id, Node
+00a8  30 00 00 00 00 00 00 00   node 3: offset 48
+00b0  8d b6 f6 d2 c6 1c bd 66   node 3: type id, Node
+00b8  40 00 00 00 00 00 00 00   node 4: offset 64
+00c0  e0 ad 84 20 6e 53 af c8   node 4: type id, Palette
 ```
 
 **The BIG-ENDIAN cook of the same structure is the same 168 bytes with every
@@ -3425,6 +3436,18 @@ are these rulings, in the owner's words:
   data so we can separate if needed. We may not need at runtime in a
   shipped build for example (it is read only and not mutable)."
 - **On sizing the wire's ids**: "u64 now", and "u64 now, why fuck around."
+- **THE REGION REFERENCE SLOT IS EIGHT BYTES**, 2026-09-03: "move now." The
+  slot had been four, which bounded ONE REGION at `2 GiB` — a self-relative
+  delta cannot reach further than the width it is stored in — and the ruling
+  applies the two facts already on this page to it: the sizing rule above,
+  "u64 now, why fuck around", and the scale the cook exists for, "Assume we
+  have say, 100mbs or many gigabytes of data in Assets.bin at some point."
+  A ceiling that a mesh or texture catalogue is exactly the thing to meet is
+  not a ceiling to keep pre-release. **The cost is stated rather than
+  discovered** (§6.3): eight bytes a reference in every variable-length
+  record, needed or not, and every affected unit's BUILD VERSION moves, so
+  every cooked file is re-cooked — which pre-release is a regeneration. A
+  value-only table pays nothing: no pointer, no slot.
 - **On optimizing ahead of evidence**: "we can worry about optimization
   later, unless there are specific decisions we need to make now that will
   knowingly make things slower."
@@ -4113,20 +4136,6 @@ pre-empted here.
   else identifies a build — a compiler version, a build stamp — is settled
   where build versioning is settled, and the registry gains a column then
   rather than inventing one first.
-- **A REGION LARGER THAN `2 GiB`** (§6.3, §7). A region reference is four
-  bytes and self-relative, so one region reaches `2^31` bytes and a larger one
-  is refused naming the field. §7's scale sentence — *"Assume we have say,
-  100mbs or many gigabytes of data in Assets.bin at some point."* — is met
-  today by more than one cook, since cooking is a choice made per asset; what
-  is NOT decided is whether one region should reach further, and every road
-  there is a decision with a cost. A wider slot moves every record's `sizeof`
-  and therefore every unit's build version, for eight bytes a reference in
-  structures that never needed them. A base-relative `u32` doubles the reach
-  in the same four bytes and forfeits the memcpy relocation §9 calls the
-  strongest form of the guarantee. A SCALED self-relative delta — a count of
-  eight-byte units — reaches `16 GiB` in four bytes and constrains every node
-  to an eight-byte start, which is a change to the layout model rather than to
-  the slot. None of that is settled here.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - Arrays of unions in table bodies.

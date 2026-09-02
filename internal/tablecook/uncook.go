@@ -84,8 +84,8 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 	}
 	switch {
 	case f.Type.Pointer:
-		delta := int64(int32(r.ord.Uint32(r.buf[value.Offset:])))
-		if delta == int64(RefNull) {
+		delta := int64(r.ord.Uint64(r.buf[value.Offset:]))
+		if delta == RefNull {
 			fv.Cell.Node = nil
 			return nil
 		}

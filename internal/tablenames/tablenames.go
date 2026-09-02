@@ -104,7 +104,7 @@ var registry = []Name{
 	// lazy factory for the nested table's descriptor, which is scoped. The
 	// C++ meaning is unit-level, so the name is claimed whatever the target —
 	// the claim is the union, never the intersection.
-	{Name: "TableRef", By: Cpp | Cs, What: "C++: a pointer's four-byte reference slot; C#: a field descriptor's nested-table factory"},
+	{Name: "TableRef", By: Cpp | Cs, What: "C++: a pointer's eight-byte reference slot; C#: a field descriptor's nested-table factory"},
 	{Name: "TableSlot", By: Cpp, What: "an arena slot"},
 	{Name: "TableArena", By: Cpp, What: "the builder's segmented slab arena"},
 	{Name: "TableSlab", By: Cpp, What: "one worker's privately-owned slab of it"},

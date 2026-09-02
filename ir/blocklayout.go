@@ -544,7 +544,11 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 	var pieces []storagePiece
 	switch {
 	case f.Type.Pointer:
-		pieces = append(pieces, storagePiece{size: 4, align: 4}) // TableRef
+		// TableRef: EIGHT bytes at eight (SPEC-TABLES.md §6.3). The slot holds
+		// an arena offset in one form and a self-relative region delta in the
+		// other, and the region delta is what sizes it: at eight bytes one
+		// region reaches everything, which is the scale §7 is built for.
+		pieces = append(pieces, storagePiece{size: 8, align: 8})
 	case f.Type.Kind == TString:
 		pieces = append(pieces, storagePiece{size: f.Type.Size + 1, align: 1}) // char[N+1]
 		pieces = append(pieces, storagePiece{size: 4, align: 4})               // int32 length
