@@ -2621,13 +2621,13 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **25 suffixes**, and a declaration spelling one of them is
+  each of these **24 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
-  At  Root  Emplace  Pack  PackMeasure  OpenWalk
+  At  Emplace  Pack  PackMeasure  OpenWalk
   Cook  CookMeasure  Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   ```
@@ -2639,17 +2639,13 @@ in build version (§20.5).
   here equal `tableGeneratedVerbs` exactly, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **Four of the twenty-five are claimed AHEAD of their emitter.** `Cook`,
+  **Four of the twenty-four are claimed AHEAD of their emitter.** `Cook`,
   `CookMeasure`, `Open` and `OpenWalk` are the cook's spellings and no backend
   emits one: the cook is wire v2's (§7) and is not built (schema#251). The
   claim is held while the emitter is absent, on this list's own rule — a name
-  freed now is a collision the day it lands.
-
-  **`Root` outlives what it guards, and it is stated rather than quietly
-  carried.** It is claimed and NO emitter spells `<X>Root` — the builder's
-  accessor is the member `GetRoot`, renamed for the reason below — so the
-  claim guards nothing and is tracked for removal as schema#310, page and
-  checker moving together.
+  freed now is a collision the day it lands. `<X>Root` is NOT claimed and needs
+  no claim: the builder's accessor is the member `GetRoot`, renamed for the
+  reason below, so no emitter ever spells it.
 
   **The BLOCK FORM claims nine more, and the checker claims them.** They are
   law on the same terms and for a stronger reason — every fixed table has a

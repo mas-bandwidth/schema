@@ -2688,7 +2688,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 }
 
 // tableGeneratedVerbs is the full name-first suffix set a closure member
-// claims. The mutable-life suffixes (Builder, LoadMeasure, At, Root) are
+// claims. The mutable-life suffixes (Builder, LoadMeasure, At) are
 // claimed for EVERY closure member, not only pointer-bearing ones: a table
 // gains or loses pointers as an edit, and a name that was free yesterday must
 // not become a collision tomorrow (SPEC-TABLES.md).
@@ -2703,7 +2703,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
 	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
-	"At", "Root", "Emplace", "Pack", "PackMeasure", "OpenWalk",
+	"At", "Emplace", "Pack", "PackMeasure", "OpenWalk",
 	"Cook", "CookMeasure", "Open", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
