@@ -2702,7 +2702,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // rule — freeing a name now is a collision the day it lands.
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
-	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
+	"Reset", "LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
 	"At", "Emplace", "Pack", "PackMeasure", "OpenWalk",
 	"Cook", "CookMeasure", "Open", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",

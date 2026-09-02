@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 #include <cassert> // the keyed accessor's None refusal
 #include <iterator> // the keyed iterator's traits typedefs
@@ -424,6 +423,55 @@ inline bool TableEnumValue( uint16_t id, Hull & out )
 }
 #endif // TABLEDEMO_SCHEMA_TABLE_ENUM_HULL
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void TeamConfigReset( TeamConfig & value );
+inline void GunnerConfigReset( GunnerConfig & value );
+inline void TurretConfigReset( TurretConfig & value );
+inline void HullConfigReset( HullConfig & value );
+inline void KeyedConfigReset( KeyedConfig & value );
+inline void ScoreBoardReset( ScoreBoard & value );
+
+inline void TeamConfigReset( TeamConfig & value )
+{
+    value.spawn_count = 4;
+    memset( value.banner, 0, sizeof( value.banner ) );
+    value.banner_length = 0;
+}
+
+inline void GunnerConfigReset( GunnerConfig & value )
+{
+    value.reaction = 0.2f;
+    value.tracking = false;
+}
+
+inline void TurretConfigReset( TurretConfig & value )
+{
+    value.damage = 10.0f;
+    value.cooldown = 0.5f;
+    GunnerConfigReset( value.gunner );
+    value.gunner_present = false;
+}
+
+inline void HullConfigReset( HullConfig & value )
+{
+    value.health = 100.0f;
+    value.mass = 1.0f;
+    TurretConfigReset( value.turrets.slots[0] );
+    for ( int32_t i = 1; i < 4; i++ ) { value.turrets.slots[i] = value.turrets.slots[0]; }
+}
+
+inline void KeyedConfigReset( KeyedConfig & value )
+{
+    TeamConfigReset( value.teams.slots[0] );
+    for ( int32_t i = 1; i < 4; i++ ) { value.teams.slots[i] = value.teams.slots[0]; }
+    HullConfigReset( value.hulls.slots[0] );
+    for ( int32_t i = 1; i < 4; i++ ) { value.hulls.slots[i] = value.hulls.slots[0]; }
+    ScoreBoardReset( value.scores );
+}
+
+inline void ScoreBoardReset( ScoreBoard & value ) { value = ScoreBoard(); }
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t TeamConfigMeasure( const TeamConfig & value );
@@ -481,7 +529,7 @@ inline int64_t TeamConfigSave( const TeamConfig & value, uint8_t * buffer, int64
 
 inline bool TeamConfigLoadBody( TableReader & r, TeamConfig & value )
 {
-    new ( &value ) TeamConfig{}; // prefill declared defaults in place, then overlay
+    TeamConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -575,7 +623,7 @@ inline int64_t GunnerConfigSave( const GunnerConfig & value, uint8_t * buffer, i
 
 inline bool GunnerConfigLoadBody( TableReader & r, GunnerConfig & value )
 {
-    new ( &value ) GunnerConfig{}; // prefill declared defaults in place, then overlay
+    GunnerConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -673,7 +721,7 @@ inline int64_t TurretConfigSave( const TurretConfig & value, uint8_t * buffer, i
 
 inline bool TurretConfigLoadBody( TableReader & r, TurretConfig & value )
 {
-    new ( &value ) TurretConfig{}; // prefill declared defaults in place, then overlay
+    TurretConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -826,7 +874,7 @@ inline int64_t HullConfigSave( const HullConfig & value, uint8_t * buffer, int64
 
 inline bool HullConfigLoadBody( TableReader & r, HullConfig & value )
 {
-    new ( &value ) HullConfig{}; // prefill declared defaults in place, then overlay
+    HullConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1065,7 +1113,7 @@ inline int64_t KeyedConfigSave( const KeyedConfig & value, uint8_t * buffer, int
 
 inline bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & value )
 {
-    new ( &value ) KeyedConfig{}; // prefill declared defaults in place, then overlay
+    KeyedConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1279,7 +1327,7 @@ inline int64_t ScoreBoardSave( const ScoreBoard & value, uint8_t * buffer, int64
 
 inline bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & value )
 {
-    new ( &value ) ScoreBoard{}; // prefill declared defaults in place, then overlay
+    ScoreBoardReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1396,7 +1444,7 @@ inline const TableTypeInfo * TeamConfigTableType()
         { "spawn_count", "spawn_count", "int32", 0x3668, 4, false, false, false, 0, (uint32_t) offsetof( TeamConfig, spawn_count ), (uint32_t) sizeof( TeamConfig::spawn_count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "banner", "banner", "string", 0x80e4, 12, false, true, false, 16, (uint32_t) offsetof( TeamConfig, banner ), (uint32_t) sizeof( TeamConfig::banner ), (uint32_t) offsetof( TeamConfig, banner_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "TeamConfig", (uint32_t) sizeof( TeamConfig ), 2, fields, +[]( void * p ) { new ( p ) TeamConfig{}; } };
+    static const TableTypeInfo info = { "TeamConfig", (uint32_t) sizeof( TeamConfig ), 2, fields, +[]( void * p ) { TeamConfigReset( *(TeamConfig *) p ); } };
     return &info;
 }
 
@@ -1406,7 +1454,7 @@ inline const TableTypeInfo * GunnerConfigTableType()
         { "reaction", "reaction", "float32", 0x900f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, reaction ), (uint32_t) sizeof( GunnerConfig::reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "tracking", "tracking", "bool", 0x53d5, 1, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, tracking ), (uint32_t) sizeof( GunnerConfig::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "GunnerConfig", (uint32_t) sizeof( GunnerConfig ), 2, fields, +[]( void * p ) { new ( p ) GunnerConfig{}; } };
+    static const TableTypeInfo info = { "GunnerConfig", (uint32_t) sizeof( GunnerConfig ), 2, fields, +[]( void * p ) { GunnerConfigReset( *(GunnerConfig *) p ); } };
     return &info;
 }
 
@@ -1417,7 +1465,7 @@ inline const TableTypeInfo * TurretConfigTableType()
         { "cooldown", "cooldown", "float32", 0x2230, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, cooldown ), (uint32_t) sizeof( TurretConfig::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "gunner", "gunner", "GunnerConfig", 0x2bc9, 13, false, false, true, 0, (uint32_t) offsetof( TurretConfig, gunner ), (uint32_t) sizeof( TurretConfig::gunner ), 0xffffffffu, (uint32_t) offsetof( TurretConfig, gunner_present ), GunnerConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "TurretConfig", (uint32_t) sizeof( TurretConfig ), 3, fields, +[]( void * p ) { new ( p ) TurretConfig{}; } };
+    static const TableTypeInfo info = { "TurretConfig", (uint32_t) sizeof( TurretConfig ), 3, fields, +[]( void * p ) { TurretConfigReset( *(TurretConfig *) p ); } };
     return &info;
 }
 
@@ -1428,7 +1476,7 @@ inline const TableTypeInfo * HullConfigTableType()
         { "mass", "mass", "float32", 0xe7a6, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, mass ), (uint32_t) sizeof( HullConfig::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "turrets", "turrets", "TurretConfig", 0x48ad, 13, true, false, false, 4, (uint32_t) offsetof( HullConfig, turrets ), (uint32_t) sizeof( HullConfig::turrets.slots[0] ), 0xffffffffu, 0xffffffffu, TurretConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Weapon", +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Weapon( v ), id ); return id; }, NULL, "" },
     };
-    static const TableTypeInfo info = { "HullConfig", (uint32_t) sizeof( HullConfig ), 3, fields, +[]( void * p ) { new ( p ) HullConfig{}; } };
+    static const TableTypeInfo info = { "HullConfig", (uint32_t) sizeof( HullConfig ), 3, fields, +[]( void * p ) { HullConfigReset( *(HullConfig *) p ); } };
     return &info;
 }
 
@@ -1439,7 +1487,7 @@ inline const TableTypeInfo * KeyedConfigTableType()
         { "hulls", "hulls", "HullConfig", 0xeff5, 13, true, false, false, 4, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( KeyedConfig::hulls.slots[0] ), 0xffffffffu, 0xffffffffu, HullConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Hull", +[]( uint64_t v ) { return EnumName( Hull( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Hull( v ), id ); return id; }, NULL, "" },
         { "scores", "scores", "ScoreBoard", 0xdcf3, 13, false, false, false, 0, (uint32_t) offsetof( KeyedConfig, scores ), (uint32_t) sizeof( KeyedConfig::scores ), 0xffffffffu, 0xffffffffu, ScoreBoardTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 3, fields, +[]( void * p ) { new ( p ) KeyedConfig{}; } };
+    static const TableTypeInfo info = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 3, fields, +[]( void * p ) { KeyedConfigReset( *(KeyedConfig *) p ); } };
     return &info;
 }
 
@@ -1448,7 +1496,7 @@ inline const TableTypeInfo * ScoreBoardTableType()
     static const TableFieldInfo fields[] = {
         { "per_team", "per_team", "int32", 0x443f, 4, true, false, false, 4, (uint32_t) offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( ScoreBoard::per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100000.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
     };
-    static const TableTypeInfo info = { "ScoreBoard", (uint32_t) sizeof( ScoreBoard ), 1, fields, +[]( void * p ) { new ( p ) ScoreBoard{}; } };
+    static const TableTypeInfo info = { "ScoreBoard", (uint32_t) sizeof( ScoreBoard ), 1, fields, +[]( void * p ) { ScoreBoardReset( *(ScoreBoard *) p ); } };
     return &info;
 }
 

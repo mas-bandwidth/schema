@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 #include <cassert> // the keyed accessor's None refusal
 #include <iterator> // the keyed iterator's traits typedefs
@@ -336,7 +335,7 @@ struct PackConfig {
     GlobalSettings global;
     TableKeyed<ShipEntry, ShipType, 4> ships; // [ShipType]: one slot per variant, indexed by the value
     TableKeyed<int32_t, Difficulty, 4> thresholds; // [Difficulty]: one slot per variant, indexed by the value
-    ShipEntry reserves[3] = {}; // used count beside it; count in [0, 3]
+    ShipEntry reserves[3]; // used count beside it; count in [0, 3]
     int32_t reserves_count = 0;
 };
 
@@ -398,6 +397,54 @@ inline bool TableEnumValue( uint16_t id, ShipType & out )
 }
 #endif // TABLEDEMO_SCHEMA_TABLE_ENUM_SHIPTYPE
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void GunnerSettingsReset( GunnerSettings & value );
+inline void ShipEntryReset( ShipEntry & value );
+inline void GlobalSettingsReset( GlobalSettings & value );
+inline void PackConfigReset( PackConfig & value );
+
+inline void GunnerSettingsReset( GunnerSettings & value )
+{
+    value.reaction = 0.2f;
+    value.tracking = false;
+    memset( value.callsign, 0, sizeof( value.callsign ) );
+    value.callsign_length = 0;
+}
+
+inline void ShipEntryReset( ShipEntry & value )
+{
+    memset( value.display_name, 0, sizeof( value.display_name ) );
+    value.display_name_length = 0;
+    value.health = 100.0f;
+    value.mass = 1.0f;
+    memset( value.hardpoints, 0, sizeof( value.hardpoints ) );
+    value.hardpoints_count = 0;
+    GunnerSettingsReset( value.gunner );
+    value.gunner_present = false;
+}
+
+inline void GlobalSettingsReset( GlobalSettings & value )
+{
+    value.tick_rate = 60;
+    value.difficulty = Difficulty::Normal;
+    memset( value.build_note, 0, sizeof( value.build_note ) );
+    value.build_note_length = 0;
+    memset( value.spawn_delays, 0, sizeof( value.spawn_delays ) );
+}
+
+inline void PackConfigReset( PackConfig & value )
+{
+    value.version = 1;
+    GlobalSettingsReset( value.global );
+    ShipEntryReset( value.ships.slots[0] );
+    for ( int32_t i = 1; i < 4; i++ ) { value.ships.slots[i] = value.ships.slots[0]; }
+    memset( value.thresholds.slots, 0, sizeof( value.thresholds.slots ) );
+    ShipEntryReset( value.reserves[0] );
+    for ( int32_t i = 1; i < 3; i++ ) { value.reserves[i] = value.reserves[0]; }
+    value.reserves_count = 0;
+}
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t GunnerSettingsMeasure( const GunnerSettings & value );
@@ -455,7 +502,7 @@ inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffe
 
 inline bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value )
 {
-    new ( &value ) GunnerSettings{}; // prefill declared defaults in place, then overlay
+    GunnerSettingsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -598,7 +645,7 @@ inline int64_t ShipEntrySave( const ShipEntry & value, uint8_t * buffer, int64_t
 
 inline bool ShipEntryLoadBody( TableReader & r, ShipEntry & value )
 {
-    new ( &value ) ShipEntry{}; // prefill declared defaults in place, then overlay
+    ShipEntryReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -798,7 +845,7 @@ inline int64_t GlobalSettingsSave( const GlobalSettings & value, uint8_t * buffe
 
 inline bool GlobalSettingsLoadBody( TableReader & r, GlobalSettings & value )
 {
-    new ( &value ) GlobalSettings{}; // prefill declared defaults in place, then overlay
+    GlobalSettingsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1074,7 +1121,7 @@ inline int64_t PackConfigSave( const PackConfig & value, uint8_t * buffer, int64
 
 inline bool PackConfigLoadBody( TableReader & r, PackConfig & value )
 {
-    new ( &value ) PackConfig{}; // prefill declared defaults in place, then overlay
+    PackConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1311,7 +1358,7 @@ inline const TableTypeInfo * GunnerSettingsTableType()
         { "tracking", "tracking", "bool", 0x53d5, 1, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, tracking ), (uint32_t) sizeof( GunnerSettings::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "callsign", "callsign", "string", 0x74dc, 12, false, true, false, 24, (uint32_t) offsetof( GunnerSettings, callsign ), (uint32_t) sizeof( GunnerSettings::callsign ), (uint32_t) offsetof( GunnerSettings, callsign_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, fields, +[]( void * p ) { new ( p ) GunnerSettings{}; } };
+    static const TableTypeInfo info = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 3, fields, +[]( void * p ) { GunnerSettingsReset( *(GunnerSettings *) p ); } };
     return &info;
 }
 
@@ -1324,7 +1371,7 @@ inline const TableTypeInfo * ShipEntryTableType()
         { "hardpoints", "hardpoints", "int32", 0xc4b2, 4, true, true, false, 4, (uint32_t) offsetof( ShipEntry, hardpoints ), (uint32_t) sizeof( ShipEntry::hardpoints[0] ), (uint32_t) offsetof( ShipEntry, hardpoints_count ), 0xffffffffu, NULL, true, 0.0, 8.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "gunner", "gunner", "GunnerSettings", 0x2bc9, 13, false, false, true, 0, (uint32_t) offsetof( ShipEntry, gunner ), (uint32_t) sizeof( ShipEntry::gunner ), 0xffffffffu, (uint32_t) offsetof( ShipEntry, gunner_present ), GunnerSettingsTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, fields, +[]( void * p ) { new ( p ) ShipEntry{}; } };
+    static const TableTypeInfo info = { "ShipEntry", (uint32_t) sizeof( ShipEntry ), 5, fields, +[]( void * p ) { ShipEntryReset( *(ShipEntry *) p ); } };
     return &info;
 }
 
@@ -1336,7 +1383,7 @@ inline const TableTypeInfo * GlobalSettingsTableType()
         { "build_note", "build_note", "string", 0xb2d4, 12, false, true, false, 48, (uint32_t) offsetof( GlobalSettings, build_note ), (uint32_t) sizeof( GlobalSettings::build_note ), (uint32_t) offsetof( GlobalSettings, build_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "spawn_delays", "spawn_delays", "float32", 0x7c01, 10, true, false, false, 3, (uint32_t) offsetof( GlobalSettings, spawn_delays ), (uint32_t) sizeof( GlobalSettings::spawn_delays[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, fields, +[]( void * p ) { new ( p ) GlobalSettings{}; } };
+    static const TableTypeInfo info = { "GlobalSettings", (uint32_t) sizeof( GlobalSettings ), 4, fields, +[]( void * p ) { GlobalSettingsReset( *(GlobalSettings *) p ); } };
     return &info;
 }
 
@@ -1349,7 +1396,7 @@ inline const TableTypeInfo * PackConfigTableType()
         { "thresholds", "thresholds", "int32", 0xb2eb, 4, true, false, false, 4, (uint32_t) offsetof( PackConfig, thresholds ), (uint32_t) sizeof( PackConfig::thresholds.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, "Difficulty", +[]( uint64_t v ) { return EnumName( Difficulty( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Difficulty( v ), id ); return id; }, NULL, "" },
         { "reserves", "reserves", "ShipEntry", 0x049d, 13, true, true, false, 3, (uint32_t) offsetof( PackConfig, reserves ), (uint32_t) sizeof( PackConfig::reserves[0] ), (uint32_t) offsetof( PackConfig, reserves_count ), 0xffffffffu, ShipEntryTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, fields, +[]( void * p ) { new ( p ) PackConfig{}; } };
+    static const TableTypeInfo info = { "PackConfig", (uint32_t) sizeof( PackConfig ), 5, fields, +[]( void * p ) { PackConfigReset( *(PackConfig *) p ); } };
     return &info;
 }
 

@@ -9,10 +9,10 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
+#include <new> // a node's lifetime starts in arena storage (placement new)
 #include <cstdlib> // the arena's segments (the AUTHORING path may allocate)
 #include <atomic> // one atomic per slab: the arena is lock-free by ownership
 #include <cassert> // the keyed accessor's None refusal
@@ -527,6 +527,20 @@ struct Stamp {
     int32_t seq = 0;
 };
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void StampReset( Stamp & value );
+inline void ColourReset( Colour & value );
+
+inline void StampReset( Stamp & value )
+{
+    memset( value.tag, 0, sizeof( value.tag ) );
+    value.tag_length = 0;
+    value.seq = 0;
+}
+
+inline void ColourReset( Colour & value ) { value = Colour(); }
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t StampMeasure( const Stamp & value );
@@ -572,7 +586,7 @@ inline int64_t StampSave( const Stamp & value, uint8_t * buffer, int64_t capacit
 
 inline bool StampLoadBody( TableReader & r, Stamp & value )
 {
-    new ( &value ) Stamp{}; // prefill declared defaults in place, then overlay
+    StampReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -672,7 +686,7 @@ inline int64_t ColourSave( const Colour & value, uint8_t * buffer, int64_t capac
 
 inline bool ColourLoadBody( TableReader & r, Colour & value )
 {
-    new ( &value ) Colour{}; // prefill declared defaults in place, then overlay
+    ColourReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -770,7 +784,7 @@ inline const TableFieldInfo StampTableFields[] = {
     { "tag", "tag", "string", 0xbc64, 12, false, false, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "seq", "seq", "int32", 0xc29b, 4, false, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { new ( p ) Stamp{}; }, false };
+inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, false };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
 inline const TableFieldInfo ColourTableFields[] = {
@@ -778,7 +792,7 @@ inline const TableFieldInfo ColourTableFields[] = {
     { "g", "g", "uint8", 0xc40a, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "b", "b", "uint8", 0xcae9, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { new ( p ) Colour{}; }, false };
+inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }
 
 // ---- the text form (SPEC-TABLES.md §16) ----

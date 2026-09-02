@@ -158,9 +158,9 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		g.pf("    TableKeyed<%s, %s, %d> %s; // [%s]: one slot per variant, indexed by the value\n",
 			typ, f.KeyEnum, f.ArrayBound, f.Name, f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
-		g.pf("    %s %s[%d] = {};\n", typ, f.Name, f.ArrayBound)
+		g.pf("    %s %s[%d]%s;\n", typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
 	case f.Array == ir.ArrayCounted:
-		g.pf("    %s %s[%d] = {}; // used count beside it; count in [0, %d]\n", typ, f.Name, f.ArrayBound, f.ArrayBound)
+		g.pf("    %s %s[%d]%s; // used count beside it; count in [0, %d]\n", typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.ArrayBound)
 		g.pf("    int32_t %s_count = 0;\n", f.Name)
 	default:
 		init := ""
@@ -175,6 +175,130 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// not content, decides whether the field rides.
 		g.pf("    bool %s_present = false; // ?%s: absent until set\n", f.Name, tableFieldTypeName(f))
 	}
+}
+
+// tableArrayInit renders an array member's initializer. An element type that
+// initializes itself — a generated struct, a union, a native mapping — needs
+// none: default-initializing the array runs the element type's own member
+// initializers, and value-initializing it does the same, so ` = {}` states
+// what already holds. It is also the expensive half of #320 (below), which is
+// why the redundant form is not kept for symmetry. A scalar element type has
+// no initializers of its own and keeps the braces.
+func tableArrayInit(selfInit bool) string {
+	if selfInit {
+		return ""
+	}
+	return " = {}"
+}
+
+// ---- prefill: the declared defaults, one member at a time ----
+//
+// Every site that needs a closure member's declared defaults calls its
+// `<T>Reset` — the read path before it overlays, and the descriptor's reset
+// column. None of them writes `T{}` over the whole object.
+//
+// THE REASON IS A COMPILE-TIME ONE, MEASURED (#320). cl 19.51 expands a
+// value-initialisation of a large aggregate element by element in its front
+// end, at O(bytes) rather than O(declarations). Against blockdemo::RenderFrame
+// — 7,879,320 bytes over ~105,000 rows — each `T{}` cost ~6 s and ` = {}` on
+// the array members another ~5 s, so a translation unit with that table in
+// scope cost cl ~20 s against clang's 0.15 s, all of it in the front end
+// (c1xx 19.85 s, c2 0.03 s, zero functions generated). Giving one element the
+// defaults and copying it across the array is the same work at run time and
+// the cost of a single element at compile time.
+func (g *tableGen) emitTableResetDeclarations(members []*ir.Struct) {
+	g.pf("// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----\n\n")
+	for _, st := range members {
+		g.pf("inline void %sReset( %s & value );\n", st.Name, st.Name)
+	}
+	g.pf("\n")
+}
+
+func (g *tableGen) emitTableReset(st *ir.Struct) {
+	if !st.IsTable {
+		// a closure `type` is declared in <Base>.h and bounded by a packet: one
+		// value-init says exactly what its own initializers say, and costs the
+		// size of a packet field to compile
+		g.pf("inline void %sReset( %s & value ) { value = %s(); }\n\n", st.Name, st.Name, st.Name)
+		return
+	}
+	g.pf("inline void %sReset( %s & value )\n{\n", st.Name, st.Name)
+	if len(st.Fields) == 0 {
+		g.pf("    (void) value;\n")
+	}
+	for _, f := range st.Fields {
+		g.emitTableResetField(f)
+	}
+	g.pf("}\n\n")
+}
+
+func (g *tableGen) emitTableResetField(f *ir.Field) {
+	if f.Type.Pointer {
+		g.pf("    value.%s.value = 0; // *%s — null\n", f.Name, f.Type.Name)
+		return
+	}
+	typ, selfInit := g.cppFieldType(f.Type)
+	switch {
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
+		g.pf("    value.%s_length = 0;\n", f.Name)
+	case f.KeyEnum != "":
+		g.emitTableResetArray("value."+f.Name+".slots", f.ArrayBound, typ, selfInit, f)
+	case f.Array == ir.ArrayFixed:
+		g.emitTableResetArray("value."+f.Name, f.ArrayBound, typ, selfInit, f)
+	case f.Array == ir.ArrayCounted:
+		g.emitTableResetArray("value."+f.Name, f.ArrayBound, typ, selfInit, f)
+		g.pf("    value.%s_count = 0;\n", f.Name)
+	case selfInit:
+		g.emitTableResetOne("value."+f.Name, typ, f)
+	default:
+		g.pf("    value.%s = %s;\n", f.Name, g.fieldDefaultExpr(f))
+	}
+	if f.Type.Optional {
+		g.pf("    value.%s_present = false;\n", f.Name)
+	}
+}
+
+// emitTableResetArray gives ONE element the declared defaults and copies it
+// across the rest. Compiling this costs one element whatever the bound is.
+func (g *tableGen) emitTableResetArray(expr string, bound int64, typ string, selfInit bool, f *ir.Field) {
+	if bound <= 0 {
+		return
+	}
+	if !selfInit {
+		// a scalar element's array carries ` = {}`, which gives every element a
+		// zero whatever the field's own default says (SPEC-TABLES.md): a memset
+		// is that, exactly
+		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
+		return
+	}
+	g.emitTableResetOne(expr+"[0]", typ, f)
+	if bound > 1 {
+		g.pf("    for ( int32_t i = 1; i < %d; i++ ) { %s[i] = %s[0]; }\n", bound, expr, expr)
+	}
+}
+
+// emitTableResetOne gives one self-initializing member its declared defaults:
+// through the element type's own Reset where this header emits one — so a
+// table nested inside a table stays O(declarations) too — and otherwise, for a
+// union or a native mapping, through the value-init its own declaration means.
+func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
+	if name, ok := g.tableResetName(f.Type, typ); ok {
+		g.pf("    %sReset( %s );\n", name, expr)
+		return
+	}
+	g.pf("    %s = %s();\n", expr, typ)
+}
+
+// tableResetName names the member type's Reset when the storage spelling IS
+// the generated type. A native mapping stores a hand type whose Reset no
+// header emits, and a union is not a struct; both take the value-init their
+// own declaration means.
+func (g *tableGen) tableResetName(t ir.FieldType, typ string) (string, bool) {
+	if _, ok := t.Ref.(*ir.Struct); !ok || typ != t.Name {
+		return "", false
+	}
+	return t.Name, true
 }
 
 // ---- enum identity on the table wire (SPEC-TABLES.md §5) ----
@@ -773,10 +897,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	} else {
 		g.pf("inline bool %sLoadBody( TableReader & r, %s & value )\n{\n", st.Name, st.Name)
 	}
-	// placement new, NOT `value = T{}`: assignment materializes a temporary,
-	// and generated types can be large — a stack bomb on worker threads.
-	// In-place value-init applies the same NSDMI defaults with no temporary.
-	g.pf("    new ( &value ) %s{}; // prefill declared defaults in place, then overlay\n", st.Name)
+	// `<T>Reset`, NOT `value = T{}` and not `new ( &value ) T{}`: assignment
+	// materializes a temporary, and generated types can be large — a stack
+	// bomb on worker threads — while a whole-object value-init costs cl
+	// O(bytes) to COMPILE (#320). Reset applies the same declared defaults in
+	// place, with neither cost.
+	g.pf("    %sReset( value ); // prefill declared defaults in place, then overlay\n", st.Name)
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        uint16_t field_id = r.get16();\n")
@@ -1107,11 +1233,12 @@ func unionArmLambda(un *ir.Union, result string, arm func(ir.UnionVariant) strin
 	return b.String()
 }
 
-// resetLambda renders a type descriptor's reset column: placement-new
-// value-init, the same in-place prefill the read path uses, behind a
-// captureless lambda so the descriptor stays constant-initialisable.
+// resetLambda renders a type descriptor's reset column: the same in-place
+// prefill the read path uses, behind a captureless lambda so the descriptor
+// stays constant-initialisable. The storage a walk hands it is a live object
+// of the type, so this assigns rather than starting a lifetime.
 func resetLambda(name string) string {
-	return fmt.Sprintf("+[]( void * p ) { new ( p ) %s{}; }", name)
+	return fmt.Sprintf("+[]( void * p ) { %sReset( *(%s *) p ); }", name, name)
 }
 
 // unionArmsLambda renders a union field's arms column: a captureless lambda

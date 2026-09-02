@@ -16,16 +16,13 @@ name: CI
 # A cross-compiler inline regression a PR cannot see still fails loudly on
 # main minutes after merge, and nightly re-certifies a quiet main.
 #
-# The `msvc` leg sits on the certification side for the same reason and by the
-# same measurement (#286, #317): the job cost 2:27, 2:28 and 2:26 across three
-# runs and 5:14 on a fourth, with byte-identical input — the longest job in the
-# PR gate at its slow end, and a flake at any end. Its job comment carries the
-# per-translation-unit numbers and where they come from.
+# The `msvc` leg RIDES EVERY PULL REQUEST, and that is a measurement too: the
+# job costs about a minute and a quarter, well inside the one-to-two minute
+# rule (#320). Its job comment carries the per-translation-unit numbers.
 #
 # For a full run on a branch before merging (e.g. a change near the hot
 # paths, or anything that moves the C++ emitters): gh workflow run ci.yml
-# --ref <branch>. That is also the only way to exercise the msvc leg from a
-# pull request, since it does not run on the pull_request event.
+# --ref <branch>.
 
 on:
   push:
@@ -430,30 +427,24 @@ jobs:
   # line of what the compiler EMITS with cl. The `windows` job above proves the
   # COMPILER runs on Windows; this one proves its OUTPUT builds there.
   #
-  # A CERTIFICATION INSTRUMENT, NOT AN ITERATION ONE — same condition and same
-  # reasoning as the inline-budget gates above, and it is a measurement rather
-  # than a preference. Whole job, four runs: 2:27, 2:28, 2:26 — and one at
-  # 5:14, on input BYTE-IDENTICAL to a 2:27. One run in four at 2.1x the
-  # median is a flake in the PR gate, which is worse than a slow job, and at
-  # 5:14 it was also the longest job in that gate. On push-to-main it costs
-  # nothing anybody waits for, and a Windows regression fails loudly minutes
-  # after merge.
+  # AN ITERATION GATE: it runs on every pull request, and the one-to-two
+  # minute rule is what says it may. Whole job, three runs on identical input:
+  # 1:18, 1:08, 1:09. The corpus step itself is 19, 16 and 17 s of that; the
+  # rest is checkout, Go, the serialize clone and vcvars.
   #
-  # WHERE THE TIME GOES, per translation unit (runs 33640076155 / 33641197840,
-  # and the reason this job compiles one TU at a time): the `block` unit is
-  # 80.7 s of an 89.7 s corpus, spread almost evenly across its FOUR
-  # translation units — 23.0 / 19.1 / 19.2 / 19.2 s, and 22.0 / 19.4 / 19.4 /
-  # 19.3 s on the second run. It is not one pathological function, and the
-  # per-TU cost reproduces to within a second: the 5:14 outlier was the whole
-  # runner being slow, not this. Every one of those four includes
-  # RenderTable.h — PaddedTable.h and RenderBlock.h include it directly,
-  # PaddedBlock.h through PaddedTable.h — and that header defines
-  # blockdemo::RenderFrame, a 7 879 320-byte aggregate. cl charges ~20 s per
-  # translation unit for having that type in scope; clang compiles the same
-  # four in 0.18, 0.14, 0.13 and 0.15 s. Roughly 130x, uniform.
+  # WHERE THE TIME GOES, per translation unit (and the reason this job compiles
+  # one TU at a time): nothing dominates. The whole 44-TU corpus is about
+  # twenty seconds, the first cl invocation of the job carries several of them
+  # on its own — toolchain and STL headers cold — and no unit past it costs
+  # more than half a second.
   #
-  # So moving this leg back into the PR gate is a question about what cl does
-  # with a multi-megabyte aggregate, not about this file.
+  # WHAT IT GUARDS BEYOND COMPILING. cl's front end expands a
+  # value-initialisation of a large aggregate element by element, at O(bytes)
+  # — which is why the emitted header never writes `T{}` over a table and
+  # prefills member by member instead (#320). One such `T{}` over
+  # blockdemo::RenderFrame, a 7 879 320-byte aggregate, costs cl about six
+  # seconds in a translation unit clang compiles whole in 0.15 s, and this job
+  # is the only place in the tree where that is visible at all.
   #
   # THE PIN. The image is NAMED rather than `-latest`, the argument the
   # big-endian leg makes: which extensions cl accepts is exactly a
@@ -471,14 +462,12 @@ jobs:
   # THE TIMING IS PART OF THE OUTPUT. One cl invocation per translation unit,
   # each preceded by a clock line, so the log shows where the cost is and how
   # far it swings between runs. That is what turned #316's "the corpus does not
-  # compile" into two named emitter defects, and it is what any future argument
-  # about this job's cost will be settled with. It is also why /MP is absent:
-  # parallel TUs are faster and unmeasurable, and here the measurement is worth
-  # more than the minute.
+  # compile" into two named emitter defects and #320's ~20 s per TU into one
+  # named one. It is also why /MP is absent: parallel TUs are faster and
+  # unmeasurable, and here the measurement is worth more than the seconds.
   msvc:
-    if: github.event_name != 'pull_request'
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

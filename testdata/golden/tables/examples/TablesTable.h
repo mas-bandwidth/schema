@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 #include <cassert> // the keyed accessor's None refusal
 #include <iterator> // the keyed iterator's traits typedefs
@@ -317,8 +316,8 @@ struct LoadoutConfig {
     Grade podium[3] = {};
     Perks perks = 0;
     WeaponConfig primary;
-    WeaponConfig backups[2] = {};
-    Attachment attachments[8] = {}; // used count beside it; count in [0, 8]
+    WeaponConfig backups[2];
+    Attachment attachments[8]; // used count beside it; count in [0, 8]
     int32_t attachments_count = 0;
 };
 
@@ -350,9 +349,9 @@ struct ProfileConfig {
 struct RootConfig {
     char version_note[16 + 1] = {}; // string(16): max length, used length beside it
     int32_t version_note_length = 0;
-    WeaponConfig weapons[8] = {}; // used count beside it; count in [0, 8]
+    WeaponConfig weapons[8]; // used count beside it; count in [0, 8]
     int32_t weapons_count = 0;
-    ProfileConfig profiles[4] = {}; // used count beside it; count in [0, 4]
+    ProfileConfig profiles[4]; // used count beside it; count in [0, 4]
     int32_t profiles_count = 0;
 };
 
@@ -384,6 +383,78 @@ inline bool TableEnumValue( uint16_t id, Grade & out )
     }
 }
 #endif // TABLEDEMO_SCHEMA_TABLE_ENUM_GRADE
+
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void WeaponConfigReset( WeaponConfig & value );
+inline void LoadoutConfigReset( LoadoutConfig & value );
+inline void ProfileConfigReset( ProfileConfig & value );
+inline void RootConfigReset( RootConfig & value );
+inline void AttachmentReset( Attachment & value );
+inline void BuffReset( Buff & value );
+inline void DebuffReset( Debuff & value );
+
+inline void WeaponConfigReset( WeaponConfig & value )
+{
+    value.damage = 21.0f;
+    value.speed = 500.0f;
+    value.penetration = 1;
+    value.channel = 0;
+    value.homing = false;
+    value.effect = Effect();
+}
+
+inline void LoadoutConfigReset( LoadoutConfig & value )
+{
+    value.grade = Grade::Silver;
+    memset( value.grades, 0, sizeof( value.grades ) );
+    value.grades_count = 0;
+    memset( value.podium, 0, sizeof( value.podium ) );
+    value.perks = 0;
+    WeaponConfigReset( value.primary );
+    WeaponConfigReset( value.backups[0] );
+    for ( int32_t i = 1; i < 2; i++ ) { value.backups[i] = value.backups[0]; }
+    AttachmentReset( value.attachments[0] );
+    for ( int32_t i = 1; i < 8; i++ ) { value.attachments[i] = value.attachments[0]; }
+    value.attachments_count = 0;
+}
+
+inline void ProfileConfigReset( ProfileConfig & value )
+{
+    memset( value.name, 0, sizeof( value.name ) );
+    value.name_length = 0;
+    memset( value.icon, 0, sizeof( value.icon ) );
+    value.icon_length = 0;
+    value.experience = 0;
+    value.tilt = 0;
+    value.heading = 0;
+    value.timestamp = 0;
+    value.badge = 0;
+    value.port = 0;
+    value.epoch = 0;
+    value.precision = 0.0;
+    memset( value.ratings, 0, sizeof( value.ratings ) );
+    value.has_loadout = false;
+    LoadoutConfigReset( value.loadout );
+}
+
+inline void RootConfigReset( RootConfig & value )
+{
+    memset( value.version_note, 0, sizeof( value.version_note ) );
+    value.version_note_length = 0;
+    WeaponConfigReset( value.weapons[0] );
+    for ( int32_t i = 1; i < 8; i++ ) { value.weapons[i] = value.weapons[0]; }
+    value.weapons_count = 0;
+    ProfileConfigReset( value.profiles[0] );
+    for ( int32_t i = 1; i < 4; i++ ) { value.profiles[i] = value.profiles[0]; }
+    value.profiles_count = 0;
+}
+
+inline void AttachmentReset( Attachment & value ) { value = Attachment(); }
+
+inline void BuffReset( Buff & value ) { value = Buff(); }
+
+inline void DebuffReset( Debuff & value ) { value = Debuff(); }
 
 // ---- codecs: measure/save/load per closure member ----
 
@@ -499,7 +570,7 @@ inline int64_t WeaponConfigSave( const WeaponConfig & value, uint8_t * buffer, i
 
 inline bool WeaponConfigLoadBody( TableReader & r, WeaponConfig & value )
 {
-    new ( &value ) WeaponConfig{}; // prefill declared defaults in place, then overlay
+    WeaponConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -794,7 +865,7 @@ inline int64_t LoadoutConfigSave( const LoadoutConfig & value, uint8_t * buffer,
 
 inline bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfig & value )
 {
-    new ( &value ) LoadoutConfig{}; // prefill declared defaults in place, then overlay
+    LoadoutConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1173,7 +1244,7 @@ inline int64_t ProfileConfigSave( const ProfileConfig & value, uint8_t * buffer,
 
 inline bool ProfileConfigLoadBody( TableReader & r, ProfileConfig & value )
 {
-    new ( &value ) ProfileConfig{}; // prefill declared defaults in place, then overlay
+    ProfileConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1506,7 +1577,7 @@ inline int64_t RootConfigSave( const RootConfig & value, uint8_t * buffer, int64
 
 inline bool RootConfigLoadBody( TableReader & r, RootConfig & value )
 {
-    new ( &value ) RootConfig{}; // prefill declared defaults in place, then overlay
+    RootConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1669,7 +1740,7 @@ inline int64_t AttachmentSave( const Attachment & value, uint8_t * buffer, int64
 
 inline bool AttachmentLoadBody( TableReader & r, Attachment & value )
 {
-    new ( &value ) Attachment{}; // prefill declared defaults in place, then overlay
+    AttachmentReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1750,7 +1821,7 @@ inline int64_t BuffSave( const Buff & value, uint8_t * buffer, int64_t capacity 
 
 inline bool BuffLoadBody( TableReader & r, Buff & value )
 {
-    new ( &value ) Buff{}; // prefill declared defaults in place, then overlay
+    BuffReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1816,7 +1887,7 @@ inline int64_t DebuffSave( const Debuff & value, uint8_t * buffer, int64_t capac
 
 inline bool DebuffLoadBody( TableReader & r, Debuff & value )
 {
-    new ( &value ) Debuff{}; // prefill declared defaults in place, then overlay
+    DebuffReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1899,7 +1970,7 @@ inline const TableTypeInfo * WeaponConfigTableType()
         { "homing", "homing", "bool", 0xab40, 1, false, false, false, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( WeaponConfig::homing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "effect", "effect", "Effect", 0xe33a, 15, false, false, false, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( WeaponConfig::effect ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0xeae6; case 2: return 0xb0d3; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( Effect, buff ), BuffTableType() }, { (uint32_t) offsetof( Effect, debuff ), DebuffTableType() }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Effect, type ), (uint32_t) sizeof( Effect::type ), arms }; return &info; }, "" },
     };
-    static const TableTypeInfo info = { "WeaponConfig", (uint32_t) sizeof( WeaponConfig ), 6, fields, +[]( void * p ) { new ( p ) WeaponConfig{}; } };
+    static const TableTypeInfo info = { "WeaponConfig", (uint32_t) sizeof( WeaponConfig ), 6, fields, +[]( void * p ) { WeaponConfigReset( *(WeaponConfig *) p ); } };
     return &info;
 }
 
@@ -1914,7 +1985,7 @@ inline const TableTypeInfo * LoadoutConfigTableType()
         { "backups", "backups", "WeaponConfig", 0x1647, 13, true, false, false, 2, (uint32_t) offsetof( LoadoutConfig, backups ), (uint32_t) sizeof( LoadoutConfig::backups[0] ), 0xffffffffu, 0xffffffffu, WeaponConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "attachments", "attachments", "Attachment", 0x44d5, 13, true, true, false, 8, (uint32_t) offsetof( LoadoutConfig, attachments ), (uint32_t) sizeof( LoadoutConfig::attachments[0] ), (uint32_t) offsetof( LoadoutConfig, attachments_count ), 0xffffffffu, AttachmentTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "LoadoutConfig", (uint32_t) sizeof( LoadoutConfig ), 7, fields, +[]( void * p ) { new ( p ) LoadoutConfig{}; } };
+    static const TableTypeInfo info = { "LoadoutConfig", (uint32_t) sizeof( LoadoutConfig ), 7, fields, +[]( void * p ) { LoadoutConfigReset( *(LoadoutConfig *) p ); } };
     return &info;
 }
 
@@ -1935,7 +2006,7 @@ inline const TableTypeInfo * ProfileConfigTableType()
         { "has_loadout", "has_loadout", "bool", 0xb4db, 1, false, false, false, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ProfileConfig::has_loadout ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "loadout", "loadout", "LoadoutConfig", 0x9f78, 13, false, false, false, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ProfileConfig::loadout ), 0xffffffffu, 0xffffffffu, LoadoutConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "has_loadout" },
     };
-    static const TableTypeInfo info = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, fields, +[]( void * p ) { new ( p ) ProfileConfig{}; } };
+    static const TableTypeInfo info = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, fields, +[]( void * p ) { ProfileConfigReset( *(ProfileConfig *) p ); } };
     return &info;
 }
 
@@ -1946,7 +2017,7 @@ inline const TableTypeInfo * RootConfigTableType()
         { "weapons", "weapons", "WeaponConfig", 0x91cd, 13, true, true, false, 8, (uint32_t) offsetof( RootConfig, weapons ), (uint32_t) sizeof( RootConfig::weapons[0] ), (uint32_t) offsetof( RootConfig, weapons_count ), 0xffffffffu, WeaponConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "profiles", "profiles", "ProfileConfig", 0x73fd, 13, true, true, false, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( RootConfig::profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, ProfileConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, fields, +[]( void * p ) { new ( p ) RootConfig{}; } };
+    static const TableTypeInfo info = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, fields, +[]( void * p ) { RootConfigReset( *(RootConfig *) p ); } };
     return &info;
 }
 
@@ -1956,7 +2027,7 @@ inline const TableTypeInfo * AttachmentTableType()
         { "slot", "slot", "int32", 0x37e4, 4, false, false, false, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( Attachment::slot ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "power", "power", "float32", 0xd609, 10, false, false, false, 0, (uint32_t) offsetof( Attachment, power ), (uint32_t) sizeof( Attachment::power ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "Attachment", (uint32_t) sizeof( Attachment ), 2, fields, +[]( void * p ) { new ( p ) Attachment{}; } };
+    static const TableTypeInfo info = { "Attachment", (uint32_t) sizeof( Attachment ), 2, fields, +[]( void * p ) { AttachmentReset( *(Attachment *) p ); } };
     return &info;
 }
 
@@ -1965,7 +2036,7 @@ inline const TableTypeInfo * BuffTableType()
     static const TableFieldInfo fields[] = {
         { "multiplier", "multiplier", "float32", 0x32e0, 10, false, false, false, 0, (uint32_t) offsetof( Buff, multiplier ), (uint32_t) sizeof( Buff::multiplier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "Buff", (uint32_t) sizeof( Buff ), 1, fields, +[]( void * p ) { new ( p ) Buff{}; } };
+    static const TableTypeInfo info = { "Buff", (uint32_t) sizeof( Buff ), 1, fields, +[]( void * p ) { BuffReset( *(Buff *) p ); } };
     return &info;
 }
 
@@ -1974,7 +2045,7 @@ inline const TableTypeInfo * DebuffTableType()
     static const TableFieldInfo fields[] = {
         { "amount", "amount", "int32", 0x39cc, 4, false, false, false, 0, (uint32_t) offsetof( Debuff, amount ), (uint32_t) sizeof( Debuff::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "Debuff", (uint32_t) sizeof( Debuff ), 1, fields, +[]( void * p ) { new ( p ) Debuff{}; } };
+    static const TableTypeInfo info = { "Debuff", (uint32_t) sizeof( Debuff ), 1, fields, +[]( void * p ) { DebuffReset( *(Debuff *) p ); } };
     return &info;
 }
 

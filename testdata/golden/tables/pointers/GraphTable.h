@@ -9,10 +9,10 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
+#include <new> // a node's lifetime starts in arena storage (placement new)
 #include <cstdlib> // the arena's segments (the AUTHORING path may allocate)
 #include <atomic> // one atomic per slab: the arena is lock-free by ownership
 #include <cassert> // the keyed accessor's None refusal
@@ -574,7 +574,7 @@ struct Scene {
     TableRef settings; // *Settings — null until assigned
     TableRef alias; // *ListNode — null until assigned
     Layer ground;
-    Layer layers[4] = {}; // used count beside it; count in [0, 4]
+    Layer layers[4]; // used count beside it; count in [0, 4]
     int32_t layers_count = 0;
     Meta meta;
 };
@@ -628,6 +628,91 @@ inline bool TableEnumValue( uint16_t id, Tier & out )
     }
 }
 #endif // GRAPHDEMO_SCHEMA_TABLE_ENUM_TIER
+
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void MetaReset( Meta & value );
+inline void SettingsReset( Settings & value );
+inline void ListNodeReset( ListNode & value );
+inline void TreeNodeReset( TreeNode & value );
+inline void LayerReset( Layer & value );
+inline void SceneReset( Scene & value );
+inline void DepotReset( Depot & value );
+inline void AlbumReset( Album & value );
+
+inline void MetaReset( Meta & value )
+{
+    value.build = 1;
+    memset( value.tag, 0, sizeof( value.tag ) );
+    value.tag_length = 0;
+}
+
+inline void SettingsReset( Settings & value )
+{
+    value.quality = 2;
+    memset( value.label, 0, sizeof( value.label ) );
+    value.label_length = 0;
+}
+
+inline void ListNodeReset( ListNode & value )
+{
+    value.value = 0;
+    memset( value.name, 0, sizeof( value.name ) );
+    value.name_length = 0;
+    value.next.value = 0; // *ListNode — null
+}
+
+inline void TreeNodeReset( TreeNode & value )
+{
+    memset( value.label, 0, sizeof( value.label ) );
+    value.label_length = 0;
+    value.left.value = 0; // *TreeNode — null
+    value.right.value = 0; // *TreeNode — null
+}
+
+inline void LayerReset( Layer & value )
+{
+    value.depth = 0;
+    value.head.value = 0; // *ListNode — null
+}
+
+inline void SceneReset( Scene & value )
+{
+    memset( value.name, 0, sizeof( value.name ) );
+    value.name_length = 0;
+    value.version = 1;
+    value.head.value = 0; // *ListNode — null
+    value.tree.value = 0; // *TreeNode — null
+    value.settings.value = 0; // *Settings — null
+    value.alias.value = 0; // *ListNode — null
+    LayerReset( value.ground );
+    LayerReset( value.layers[0] );
+    for ( int32_t i = 1; i < 4; i++ ) { value.layers[i] = value.layers[0]; }
+    value.layers_count = 0;
+    MetaReset( value.meta );
+}
+
+inline void DepotReset( Depot & value )
+{
+    memset( value.name, 0, sizeof( value.name ) );
+    value.name_length = 0;
+    LayerReset( value.banks.slots[0] );
+    for ( int32_t i = 1; i < 3; i++ ) { value.banks.slots[i] = value.banks.slots[0]; }
+    MetaReset( value.spare );
+    value.spare_present = false;
+    value.head.value = 0; // *ListNode — null
+}
+
+inline void AlbumReset( Album & value )
+{
+    memset( value.name, 0, sizeof( value.name ) );
+    value.name_length = 0;
+    value.tint = ::ColourMath();
+    StampReset( value.stamp );
+    MarkerReset( value.marker );
+    value.pin.value = 0; // *Marker — null
+    value.head.value = 0; // *ListNode — null
+}
 
 // ---- pointer targets: allocation and resolution (SPEC-TABLES.md §2) ----
 //
@@ -845,7 +930,7 @@ inline int64_t MetaSave( const Meta & value, uint8_t * buffer, int64_t capacity 
 
 inline bool MetaLoadBody( TableReader & r, Meta & value )
 {
-    new ( &value ) Meta{}; // prefill declared defaults in place, then overlay
+    MetaReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -942,7 +1027,7 @@ inline int64_t SettingsSave( const Settings & value, uint8_t * buffer, int64_t c
 
 inline bool SettingsLoadBody( TableReader & r, Settings & value )
 {
-    new ( &value ) Settings{}; // prefill declared defaults in place, then overlay
+    SettingsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1059,7 +1144,7 @@ inline bool ListNodeSaveBody( const Ctx & ctx, TableWriter & w, const ListNode &
 template <typename Sink>
 inline bool ListNodeLoadBody( TableReader & r, Sink & sink, ListNode & value, int32_t depth )
 {
-    new ( &value ) ListNode{}; // prefill declared defaults in place, then overlay
+    ListNodeReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1216,7 +1301,7 @@ inline bool TreeNodeSaveBody( const Ctx & ctx, TableWriter & w, const TreeNode &
 template <typename Sink>
 inline bool TreeNodeLoadBody( TableReader & r, Sink & sink, TreeNode & value, int32_t depth )
 {
-    new ( &value ) TreeNode{}; // prefill declared defaults in place, then overlay
+    TreeNodeReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1368,7 +1453,7 @@ inline bool LayerSaveBody( const Ctx & ctx, TableWriter & w, const Layer & value
 template <typename Sink>
 inline bool LayerLoadBody( TableReader & r, Sink & sink, Layer & value, int32_t depth )
 {
-    new ( &value ) Layer{}; // prefill declared defaults in place, then overlay
+    LayerReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1615,7 +1700,7 @@ inline bool SceneSaveBody( const Ctx & ctx, TableWriter & w, const Scene & value
 template <typename Sink>
 inline bool SceneLoadBody( TableReader & r, Sink & sink, Scene & value, int32_t depth )
 {
-    new ( &value ) Scene{}; // prefill declared defaults in place, then overlay
+    SceneReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1993,7 +2078,7 @@ inline bool DepotSaveBody( const Ctx & ctx, TableWriter & w, const Depot & value
 template <typename Sink>
 inline bool DepotLoadBody( TableReader & r, Sink & sink, Depot & value, int32_t depth )
 {
-    new ( &value ) Depot{}; // prefill declared defaults in place, then overlay
+    DepotReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -2253,7 +2338,7 @@ inline bool AlbumSaveBody( const Ctx & ctx, TableWriter & w, const Album & value
 template <typename Sink>
 inline bool AlbumLoadBody( TableReader & r, Sink & sink, Album & value, int32_t depth )
 {
-    new ( &value ) Album{}; // prefill declared defaults in place, then overlay
+    AlbumReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -4270,14 +4355,14 @@ inline const TableFieldInfo MetaTableFields[] = {
     { "build", "build", "int32", 0x3138, 4, false, false, false, false, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( Meta::build ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "tag", "tag", "string", 0xbc64, 12, false, false, true, false, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( Meta::tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo MetaTableInfo = { "Meta", (uint32_t) sizeof( Meta ), 2, MetaTableFields, +[]( void * p ) { new ( p ) Meta{}; }, false };
+inline const TableTypeInfo MetaTableInfo = { "Meta", (uint32_t) sizeof( Meta ), 2, MetaTableFields, +[]( void * p ) { MetaReset( *(Meta *) p ); }, false };
 inline const TableTypeInfo * MetaTableType() { return &MetaTableInfo; }
 
 inline const TableFieldInfo SettingsTableFields[] = {
     { "quality", "quality", "int32", 0xcaf3, 4, false, false, false, false, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( Settings::quality ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "label", "label", "string", 0xe16a, 12, false, false, true, false, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( Settings::label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo SettingsTableInfo = { "Settings", (uint32_t) sizeof( Settings ), 2, SettingsTableFields, +[]( void * p ) { new ( p ) Settings{}; }, false };
+inline const TableTypeInfo SettingsTableInfo = { "Settings", (uint32_t) sizeof( Settings ), 2, SettingsTableFields, +[]( void * p ) { SettingsReset( *(Settings *) p ); }, false };
 inline const TableTypeInfo * SettingsTableType() { return &SettingsTableInfo; }
 
 inline const TableFieldInfo ListNodeTableFields[] = {
@@ -4285,7 +4370,7 @@ inline const TableFieldInfo ListNodeTableFields[] = {
     { "name", "name", "string", 0x30df, 12, false, false, true, false, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ListNode::name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "next", "next", "ListNode", 0xd15e, 13, false, true, false, false, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo ListNodeTableInfo = { "ListNode", (uint32_t) sizeof( ListNode ), 3, ListNodeTableFields, +[]( void * p ) { new ( p ) ListNode{}; }, true };
+inline const TableTypeInfo ListNodeTableInfo = { "ListNode", (uint32_t) sizeof( ListNode ), 3, ListNodeTableFields, +[]( void * p ) { ListNodeReset( *(ListNode *) p ); }, true };
 inline const TableTypeInfo * ListNodeTableType() { return &ListNodeTableInfo; }
 
 inline const TableFieldInfo TreeNodeTableFields[] = {
@@ -4293,14 +4378,14 @@ inline const TableFieldInfo TreeNodeTableFields[] = {
     { "left", "left", "TreeNode", 0xfe3a, 13, false, true, false, false, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "right", "right", "TreeNode", 0x5506, 13, false, true, false, false, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo TreeNodeTableInfo = { "TreeNode", (uint32_t) sizeof( TreeNode ), 3, TreeNodeTableFields, +[]( void * p ) { new ( p ) TreeNode{}; }, true };
+inline const TableTypeInfo TreeNodeTableInfo = { "TreeNode", (uint32_t) sizeof( TreeNode ), 3, TreeNodeTableFields, +[]( void * p ) { TreeNodeReset( *(TreeNode *) p ); }, true };
 inline const TableTypeInfo * TreeNodeTableType() { return &TreeNodeTableInfo; }
 
 inline const TableFieldInfo LayerTableFields[] = {
     { "depth", "depth", "int32", 0x609f, 4, false, false, false, false, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( Layer::depth ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "head", "head", "ListNode", 0x79aa, 13, false, true, false, false, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo LayerTableInfo = { "Layer", (uint32_t) sizeof( Layer ), 2, LayerTableFields, +[]( void * p ) { new ( p ) Layer{}; }, true };
+inline const TableTypeInfo LayerTableInfo = { "Layer", (uint32_t) sizeof( Layer ), 2, LayerTableFields, +[]( void * p ) { LayerReset( *(Layer *) p ); }, true };
 inline const TableTypeInfo * LayerTableType() { return &LayerTableInfo; }
 
 inline const TableFieldInfo SceneTableFields[] = {
@@ -4314,7 +4399,7 @@ inline const TableFieldInfo SceneTableFields[] = {
     { "layers", "layers", "Layer", 0x1ee8, 13, true, false, true, false, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( Scene::layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "meta", "meta", "Meta", 0xcea6, 13, false, false, false, false, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( Scene::meta ), 0xffffffffu, 0xffffffffu, &MetaTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo SceneTableInfo = { "Scene", (uint32_t) sizeof( Scene ), 9, SceneTableFields, +[]( void * p ) { new ( p ) Scene{}; }, true };
+inline const TableTypeInfo SceneTableInfo = { "Scene", (uint32_t) sizeof( Scene ), 9, SceneTableFields, +[]( void * p ) { SceneReset( *(Scene *) p ); }, true };
 inline const TableTypeInfo * SceneTableType() { return &SceneTableInfo; }
 
 inline const TableFieldInfo DepotTableFields[] = {
@@ -4323,7 +4408,7 @@ inline const TableFieldInfo DepotTableFields[] = {
     { "spare", "spare", "Meta", 0x3a4f, 13, false, false, false, true, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( Depot::spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &MetaTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "head", "head", "ListNode", 0x79aa, 13, false, true, false, false, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo DepotTableInfo = { "Depot", (uint32_t) sizeof( Depot ), 4, DepotTableFields, +[]( void * p ) { new ( p ) Depot{}; }, true };
+inline const TableTypeInfo DepotTableInfo = { "Depot", (uint32_t) sizeof( Depot ), 4, DepotTableFields, +[]( void * p ) { DepotReset( *(Depot *) p ); }, true };
 inline const TableTypeInfo * DepotTableType() { return &DepotTableInfo; }
 
 inline const TableFieldInfo AlbumTableFields[] = {
@@ -4334,7 +4419,7 @@ inline const TableFieldInfo AlbumTableFields[] = {
     { "pin", "pin", "Marker", 0x69d5, 13, false, true, false, false, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "head", "head", "ListNode", 0x79aa, 13, false, true, false, false, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 6, AlbumTableFields, +[]( void * p ) { new ( p ) Album{}; }, true };
+inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 6, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true };
 inline const TableTypeInfo * AlbumTableType() { return &AlbumTableInfo; }
 
 // ---- the text form (SPEC-TABLES.md §16) ----

@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 #include <cassert> // the keyed accessor's None refusal
 #include <iterator> // the keyed iterator's traits typedefs
@@ -318,7 +317,7 @@ struct PaddedRow {
 struct PaddedFrame {
     uint8_t marker = 0;
     uint64_t stamp = 0;
-    PaddedRow rows[64] = {}; // used count beside it; count in [0, 64]
+    PaddedRow rows[64]; // used count beside it; count in [0, 64]
     int32_t rows_count = 0;
     uint8_t blob[12] = {}; // bytes(12): fixed buffer, used length beside it
     int32_t blob_length = 0;
@@ -354,6 +353,36 @@ inline bool TableEnumValue( uint16_t id, Team & out )
     }
 }
 #endif // BLOCKDEMO_SCHEMA_TABLE_ENUM_TEAM
+
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void PaddedRowReset( PaddedRow & value );
+inline void PaddedFrameReset( PaddedFrame & value );
+
+inline void PaddedRowReset( PaddedRow & value )
+{
+    value.tag = 0;
+    value.value = 0.0;
+    value.flag = false;
+    value.id = 0;
+    memset( value.label, 0, sizeof( value.label ) );
+    value.label_length = 0;
+    memset( value.slots, 0, sizeof( value.slots ) );
+    memset( value.teams.slots, 0, sizeof( value.teams.slots ) );
+    value.counter = 0;
+    value.counter_present = false;
+}
+
+inline void PaddedFrameReset( PaddedFrame & value )
+{
+    value.marker = 0;
+    value.stamp = 0;
+    PaddedRowReset( value.rows[0] );
+    for ( int32_t i = 1; i < 64; i++ ) { value.rows[i] = value.rows[0]; }
+    value.rows_count = 0;
+    memset( value.blob, 0, sizeof( value.blob ) );
+    value.blob_length = 0;
+}
 
 // ---- codecs: measure/save/load per closure member ----
 
@@ -494,7 +523,7 @@ inline int64_t PaddedRowSave( const PaddedRow & value, uint8_t * buffer, int64_t
 
 inline bool PaddedRowLoadBody( TableReader & r, PaddedRow & value )
 {
-    new ( &value ) PaddedRow{}; // prefill declared defaults in place, then overlay
+    PaddedRowReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -762,7 +791,7 @@ inline int64_t PaddedFrameSave( const PaddedFrame & value, uint8_t * buffer, int
 
 inline bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & value )
 {
-    new ( &value ) PaddedFrame{}; // prefill declared defaults in place, then overlay
+    PaddedFrameReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -922,7 +951,7 @@ inline const TableTypeInfo * PaddedRowTableType()
         { "teams", "teams", "uint8", 0x9ae1, 6, true, false, false, 5, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( PaddedRow::teams.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
         { "counter", "counter", "int32", 0x428f, 4, false, false, true, 0, (uint32_t) offsetof( PaddedRow, counter ), (uint32_t) sizeof( PaddedRow::counter ), 0xffffffffu, (uint32_t) offsetof( PaddedRow, counter_present ), NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "PaddedRow", (uint32_t) sizeof( PaddedRow ), 8, fields, +[]( void * p ) { new ( p ) PaddedRow{}; } };
+    static const TableTypeInfo info = { "PaddedRow", (uint32_t) sizeof( PaddedRow ), 8, fields, +[]( void * p ) { PaddedRowReset( *(PaddedRow *) p ); } };
     return &info;
 }
 
@@ -934,7 +963,7 @@ inline const TableTypeInfo * PaddedFrameTableType()
         { "rows", "rows", "PaddedRow", 0x99af, 13, true, true, false, 64, (uint32_t) offsetof( PaddedFrame, rows ), (uint32_t) sizeof( PaddedFrame::rows[0] ), (uint32_t) offsetof( PaddedFrame, rows_count ), 0xffffffffu, PaddedRowTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "blob", "blob", "bytes", 0xd316, 6, true, true, false, 12, (uint32_t) offsetof( PaddedFrame, blob ), (uint32_t) sizeof( PaddedFrame::blob[0] ), (uint32_t) offsetof( PaddedFrame, blob_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "PaddedFrame", (uint32_t) sizeof( PaddedFrame ), 4, fields, +[]( void * p ) { new ( p ) PaddedFrame{}; } };
+    static const TableTypeInfo info = { "PaddedFrame", (uint32_t) sizeof( PaddedFrame ), 4, fields, +[]( void * p ) { PaddedFrameReset( *(PaddedFrame *) p ); } };
     return &info;
 }
 

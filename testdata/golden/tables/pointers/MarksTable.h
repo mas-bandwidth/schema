@@ -9,10 +9,10 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
+#include <new> // a node's lifetime starts in arena storage (placement new)
 #include <cstdlib> // the arena's segments (the AUTHORING path may allocate)
 #include <atomic> // one atomic per slab: the arena is lock-free by ownership
 #include <cassert> // the keyed accessor's None refusal
@@ -533,6 +533,23 @@ struct Marker {
     TableRef note; // *Tally — null until assigned
 };
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void TallyReset( Tally & value );
+inline void MarkerReset( Marker & value );
+
+inline void TallyReset( Tally & value )
+{
+    value.hits = 0;
+}
+
+inline void MarkerReset( Marker & value )
+{
+    memset( value.label, 0, sizeof( value.label ) );
+    value.label_length = 0;
+    value.note.value = 0; // *Tally — null
+}
+
 // ---- pointer targets: allocation and resolution (SPEC-TABLES.md §2) ----
 //
 // A reference resolves differently in the two forms, and the CONTEXT says
@@ -666,7 +683,7 @@ inline int64_t TallySave( const Tally & value, uint8_t * buffer, int64_t capacit
 
 inline bool TallyLoadBody( TableReader & r, Tally & value )
 {
-    new ( &value ) Tally{}; // prefill declared defaults in place, then overlay
+    TallyReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -758,7 +775,7 @@ inline bool MarkerSaveBody( const Ctx & ctx, TableWriter & w, const Marker & val
 template <typename Sink>
 inline bool MarkerLoadBody( TableReader & r, Sink & sink, Marker & value, int32_t depth )
 {
-    new ( &value ) Marker{}; // prefill declared defaults in place, then overlay
+    MarkerReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1142,14 +1159,14 @@ extern const TableTypeInfo MarkerTableInfo;
 inline const TableFieldInfo TallyTableFields[] = {
     { "hits", "hits", "int32", 0xb723, 4, false, false, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo TallyTableInfo = { "Tally", (uint32_t) sizeof( Tally ), 1, TallyTableFields, +[]( void * p ) { new ( p ) Tally{}; }, false };
+inline const TableTypeInfo TallyTableInfo = { "Tally", (uint32_t) sizeof( Tally ), 1, TallyTableFields, +[]( void * p ) { TallyReset( *(Tally *) p ); }, false };
 inline const TableTypeInfo * TallyTableType() { return &TallyTableInfo; }
 
 inline const TableFieldInfo MarkerTableFields[] = {
     { "label", "label", "string", 0xe16a, 12, false, false, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "note", "note", "Tally", 0x9da7, 13, false, true, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo MarkerTableInfo = { "Marker", (uint32_t) sizeof( Marker ), 2, MarkerTableFields, +[]( void * p ) { new ( p ) Marker{}; }, true };
+inline const TableTypeInfo MarkerTableInfo = { "Marker", (uint32_t) sizeof( Marker ), 2, MarkerTableFields, +[]( void * p ) { MarkerReset( *(Marker *) p ); }, true };
 inline const TableTypeInfo * MarkerTableType() { return &MarkerTableInfo; }
 
 // ---- the text form (SPEC-TABLES.md §16) ----

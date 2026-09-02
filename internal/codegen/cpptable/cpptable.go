@@ -494,6 +494,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			for _, e := range tableEnums(members) {
 				g.emitEnumIdentity(e)
 			}
+			g.emitTableResetDeclarations(members)
+			for _, st := range members {
+				g.emitTableReset(st)
+			}
 			g.emitCodecDeclarations(members)
 			for _, st := range members {
 				g.owner = st
@@ -547,10 +551,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x (packets only: tables version by field id, not by protocol id)\n", u.Package, u.ProtocolId)
 		h.WriteString("// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
-		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n#include <type_traits> // the enforced relocatability asserts\n")
+		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring> // the prefill's scalar-array fills\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <type_traits> // the enforced relocatability asserts\n")
 		if anyVariable {
 			// VARIABLE-LENGTH tables only: a unit of pointer-free tables pays
-			// for neither header (SPEC-TABLES.md §2, the zero-cost gate)
+			// for none of these headers (SPEC-TABLES.md §2, the zero-cost gate)
+			h.WriteString("#include <new> // a node's lifetime starts in arena storage (placement new)\n")
 			h.WriteString("#include <cstdlib> // the arena's segments (the AUTHORING path may allocate)\n")
 			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
 		}

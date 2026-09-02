@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 #include <cassert> // the keyed accessor's None refusal
 #include <iterator> // the keyed iterator's traits typedefs
@@ -414,23 +413,23 @@ struct RenderExplosion {
 // member initializers (SPEC-TABLES.md)
 struct RenderFrame {
     uint64_t version = 0;
-    RenderCamera cameras[1] = {}; // used count beside it; count in [0, 1]
+    RenderCamera cameras[1]; // used count beside it; count in [0, 1]
     int32_t cameras_count = 0;
-    RenderShip ships[4096] = {}; // used count beside it; count in [0, 4096]
+    RenderShip ships[4096]; // used count beside it; count in [0, 4096]
     int32_t ships_count = 0;
-    RenderTurret turrets[1024] = {}; // used count beside it; count in [0, 1024]
+    RenderTurret turrets[1024]; // used count beside it; count in [0, 1024]
     int32_t turrets_count = 0;
-    RenderMissile missiles[4096] = {}; // used count beside it; count in [0, 4096]
+    RenderMissile missiles[4096]; // used count beside it; count in [0, 4096]
     int32_t missiles_count = 0;
-    RenderDynamicProp dynamic_props[4096] = {}; // used count beside it; count in [0, 4096]
+    RenderDynamicProp dynamic_props[4096]; // used count beside it; count in [0, 4096]
     int32_t dynamic_props_count = 0;
-    RenderStaticProp static_props[20000] = {}; // used count beside it; count in [0, 20000]
+    RenderStaticProp static_props[20000]; // used count beside it; count in [0, 20000]
     int32_t static_props_count = 0;
-    RenderCosmeticProp cosmetic_props[8192] = {}; // used count beside it; count in [0, 8192]
+    RenderCosmeticProp cosmetic_props[8192]; // used count beside it; count in [0, 8192]
     int32_t cosmetic_props_count = 0;
-    RenderLaser lasers[32000] = {}; // used count beside it; count in [0, 32000]
+    RenderLaser lasers[32000]; // used count beside it; count in [0, 32000]
     int32_t lasers_count = 0;
-    RenderExplosion explosions[32000] = {}; // used count beside it; count in [0, 32000]
+    RenderExplosion explosions[32000]; // used count beside it; count in [0, 32000]
     int32_t explosions_count = 0;
 };
 
@@ -604,6 +603,160 @@ inline bool TableEnumValue( uint16_t id, ExplosionType & out )
 }
 #endif // BLOCKDEMO_SCHEMA_TABLE_ENUM_EXPLOSIONTYPE
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void RenderCameraReset( RenderCamera & value );
+inline void RenderShipReset( RenderShip & value );
+inline void RenderTurretReset( RenderTurret & value );
+inline void RenderMissileReset( RenderMissile & value );
+inline void RenderDynamicPropReset( RenderDynamicProp & value );
+inline void RenderStaticPropReset( RenderStaticProp & value );
+inline void RenderCosmeticPropReset( RenderCosmeticProp & value );
+inline void RenderLaserReset( RenderLaser & value );
+inline void RenderExplosionReset( RenderExplosion & value );
+inline void RenderFrameReset( RenderFrame & value );
+inline void RenderVector3Reset( RenderVector3 & value );
+inline void RenderQuaternionReset( RenderQuaternion & value );
+
+inline void RenderCameraReset( RenderCamera & value )
+{
+    RenderVector3Reset( value.position );
+    RenderQuaternionReset( value.rotation );
+    value.camera_id = 0;
+    value.camera_type = 0;
+    value.target_object_id = 0;
+    value.fov = 0.0f;
+}
+
+inline void RenderShipReset( RenderShip & value )
+{
+    RenderVector3Reset( value.position );
+    RenderQuaternionReset( value.rotation );
+    value.flags = 0;
+    value.object_id = 0;
+    value.target_object_id = 0;
+    value.thrust = 0.0f;
+    value.object_sequence = 0;
+    value.ship_type = ShipType::None;
+    value.team = Team::None;
+    value.has_target_lock = false;
+    value.predicted_explode = false;
+}
+
+inline void RenderTurretReset( RenderTurret & value )
+{
+    RenderQuaternionReset( value.rotation );
+    value.flags = 0;
+    value.object_id = 0;
+    value.parent_object_id = 0;
+    value.turret_index = 0;
+    value.target_object_id = 0;
+    value.object_sequence = 0;
+    value.team = Team::None;
+    value.has_target_lock = false;
+}
+
+inline void RenderMissileReset( RenderMissile & value )
+{
+    RenderVector3Reset( value.position );
+    RenderQuaternionReset( value.rotation );
+    value.flags = 0;
+    value.object_id = 0;
+    value.object_sequence = 0;
+    value.missile_type = MissileType::None;
+    value.team = Team::None;
+}
+
+inline void RenderDynamicPropReset( RenderDynamicProp & value )
+{
+    RenderVector3Reset( value.position );
+    RenderQuaternionReset( value.rotation );
+    value.flags = 0;
+    value.object_id = 0;
+    value.object_sequence = 0;
+    value.prop_type = PropType::None;
+    value.team = Team::None;
+}
+
+inline void RenderStaticPropReset( RenderStaticProp & value )
+{
+    RenderVector3Reset( value.position );
+    RenderQuaternionReset( value.rotation );
+    value.scale = 0.0;
+    value.flags = 0;
+    value.static_prop_id = 0;
+    value.prop_type = PropType::None;
+    value.team = Team::None;
+}
+
+inline void RenderCosmeticPropReset( RenderCosmeticProp & value )
+{
+    RenderVector3Reset( value.position );
+    RenderQuaternionReset( value.rotation );
+    value.scale = 0.0;
+    value.flags = 0;
+    value.cosmetic_prop_id = 0;
+    value.prop_sequence = 0;
+    value.prop_type = PropType::None;
+    value.team = Team::None;
+}
+
+inline void RenderLaserReset( RenderLaser & value )
+{
+    RenderVector3Reset( value.start );
+    RenderVector3Reset( value.finish );
+    value.t = 0.0;
+    value.laser_id = 0;
+    value.laser_type = LaserType::None;
+    value.team = Team::None;
+}
+
+inline void RenderExplosionReset( RenderExplosion & value )
+{
+    RenderVector3Reset( value.position );
+    RenderQuaternionReset( value.rotation );
+    value.t = 0.0;
+    value.explosion_id = 0;
+    value.parent_object_id = 0;
+    value.explosion_type = ExplosionType::None;
+    value.team = Team::None;
+}
+
+inline void RenderFrameReset( RenderFrame & value )
+{
+    value.version = 0;
+    RenderCameraReset( value.cameras[0] );
+    value.cameras_count = 0;
+    RenderShipReset( value.ships[0] );
+    for ( int32_t i = 1; i < 4096; i++ ) { value.ships[i] = value.ships[0]; }
+    value.ships_count = 0;
+    RenderTurretReset( value.turrets[0] );
+    for ( int32_t i = 1; i < 1024; i++ ) { value.turrets[i] = value.turrets[0]; }
+    value.turrets_count = 0;
+    RenderMissileReset( value.missiles[0] );
+    for ( int32_t i = 1; i < 4096; i++ ) { value.missiles[i] = value.missiles[0]; }
+    value.missiles_count = 0;
+    RenderDynamicPropReset( value.dynamic_props[0] );
+    for ( int32_t i = 1; i < 4096; i++ ) { value.dynamic_props[i] = value.dynamic_props[0]; }
+    value.dynamic_props_count = 0;
+    RenderStaticPropReset( value.static_props[0] );
+    for ( int32_t i = 1; i < 20000; i++ ) { value.static_props[i] = value.static_props[0]; }
+    value.static_props_count = 0;
+    RenderCosmeticPropReset( value.cosmetic_props[0] );
+    for ( int32_t i = 1; i < 8192; i++ ) { value.cosmetic_props[i] = value.cosmetic_props[0]; }
+    value.cosmetic_props_count = 0;
+    RenderLaserReset( value.lasers[0] );
+    for ( int32_t i = 1; i < 32000; i++ ) { value.lasers[i] = value.lasers[0]; }
+    value.lasers_count = 0;
+    RenderExplosionReset( value.explosions[0] );
+    for ( int32_t i = 1; i < 32000; i++ ) { value.explosions[i] = value.explosions[0]; }
+    value.explosions_count = 0;
+}
+
+inline void RenderVector3Reset( RenderVector3 & value ) { value = RenderVector3(); }
+
+inline void RenderQuaternionReset( RenderQuaternion & value ) { value = RenderQuaternion(); }
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t RenderCameraMeasure( const RenderCamera & value );
@@ -718,7 +871,7 @@ inline int64_t RenderCameraSave( const RenderCamera & value, uint8_t * buffer, i
 
 inline bool RenderCameraLoadBody( TableReader & r, RenderCamera & value )
 {
-    new ( &value ) RenderCamera{}; // prefill declared defaults in place, then overlay
+    RenderCameraReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -951,7 +1104,7 @@ inline int64_t RenderShipSave( const RenderShip & value, uint8_t * buffer, int64
 
 inline bool RenderShipLoadBody( TableReader & r, RenderShip & value )
 {
-    new ( &value ) RenderShip{}; // prefill declared defaults in place, then overlay
+    RenderShipReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1231,7 +1384,7 @@ inline int64_t RenderTurretSave( const RenderTurret & value, uint8_t * buffer, i
 
 inline bool RenderTurretLoadBody( TableReader & r, RenderTurret & value )
 {
-    new ( &value ) RenderTurret{}; // prefill declared defaults in place, then overlay
+    RenderTurretReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1480,7 +1633,7 @@ inline int64_t RenderMissileSave( const RenderMissile & value, uint8_t * buffer,
 
 inline bool RenderMissileLoadBody( TableReader & r, RenderMissile & value )
 {
-    new ( &value ) RenderMissile{}; // prefill declared defaults in place, then overlay
+    RenderMissileReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1715,7 +1868,7 @@ inline int64_t RenderDynamicPropSave( const RenderDynamicProp & value, uint8_t *
 
 inline bool RenderDynamicPropLoadBody( TableReader & r, RenderDynamicProp & value )
 {
-    new ( &value ) RenderDynamicProp{}; // prefill declared defaults in place, then overlay
+    RenderDynamicPropReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -1950,7 +2103,7 @@ inline int64_t RenderStaticPropSave( const RenderStaticProp & value, uint8_t * b
 
 inline bool RenderStaticPropLoadBody( TableReader & r, RenderStaticProp & value )
 {
-    new ( &value ) RenderStaticProp{}; // prefill declared defaults in place, then overlay
+    RenderStaticPropReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -2190,7 +2343,7 @@ inline int64_t RenderCosmeticPropSave( const RenderCosmeticProp & value, uint8_t
 
 inline bool RenderCosmeticPropLoadBody( TableReader & r, RenderCosmeticProp & value )
 {
-    new ( &value ) RenderCosmeticProp{}; // prefill declared defaults in place, then overlay
+    RenderCosmeticPropReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -2431,7 +2584,7 @@ inline int64_t RenderLaserSave( const RenderLaser & value, uint8_t * buffer, int
 
 inline bool RenderLaserLoadBody( TableReader & r, RenderLaser & value )
 {
-    new ( &value ) RenderLaser{}; // prefill declared defaults in place, then overlay
+    RenderLaserReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -2652,7 +2805,7 @@ inline int64_t RenderExplosionSave( const RenderExplosion & value, uint8_t * buf
 
 inline bool RenderExplosionLoadBody( TableReader & r, RenderExplosion & value )
 {
-    new ( &value ) RenderExplosion{}; // prefill declared defaults in place, then overlay
+    RenderExplosionReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -3061,7 +3214,7 @@ inline int64_t RenderFrameSave( const RenderFrame & value, uint8_t * buffer, int
 
 inline bool RenderFrameLoadBody( TableReader & r, RenderFrame & value )
 {
-    new ( &value ) RenderFrame{}; // prefill declared defaults in place, then overlay
+    RenderFrameReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -3518,7 +3671,7 @@ inline int64_t RenderVector3Save( const RenderVector3 & value, uint8_t * buffer,
 
 inline bool RenderVector3LoadBody( TableReader & r, RenderVector3 & value )
 {
-    new ( &value ) RenderVector3{}; // prefill declared defaults in place, then overlay
+    RenderVector3Reset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -3626,7 +3779,7 @@ inline int64_t RenderQuaternionSave( const RenderQuaternion & value, uint8_t * b
 
 inline bool RenderQuaternionLoadBody( TableReader & r, RenderQuaternion & value )
 {
-    new ( &value ) RenderQuaternion{}; // prefill declared defaults in place, then overlay
+    RenderQuaternionReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -3757,7 +3910,7 @@ inline const TableTypeInfo * RenderCameraTableType()
         { "target_object_id", "target_object_id", "uint32", 0x38dc, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, target_object_id ), (uint32_t) sizeof( RenderCamera::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "fov", "fov", "float32", 0x392f, 10, false, false, false, 0, (uint32_t) offsetof( RenderCamera, fov ), (uint32_t) sizeof( RenderCamera::fov ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderCamera", (uint32_t) sizeof( RenderCamera ), 6, fields, +[]( void * p ) { new ( p ) RenderCamera{}; } };
+    static const TableTypeInfo info = { "RenderCamera", (uint32_t) sizeof( RenderCamera ), 6, fields, +[]( void * p ) { RenderCameraReset( *(RenderCamera *) p ); } };
     return &info;
 }
 
@@ -3776,7 +3929,7 @@ inline const TableTypeInfo * RenderShipTableType()
         { "has_target_lock", "has_target_lock", "bool", 0xf223, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, has_target_lock ), (uint32_t) sizeof( RenderShip::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "predicted_explode", "predicted_explode", "bool", 0x88bd, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, predicted_explode ), (uint32_t) sizeof( RenderShip::predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderShip", (uint32_t) sizeof( RenderShip ), 11, fields, +[]( void * p ) { new ( p ) RenderShip{}; } };
+    static const TableTypeInfo info = { "RenderShip", (uint32_t) sizeof( RenderShip ), 11, fields, +[]( void * p ) { RenderShipReset( *(RenderShip *) p ); } };
     return &info;
 }
 
@@ -3793,7 +3946,7 @@ inline const TableTypeInfo * RenderTurretTableType()
         { "team", "team", "Team", 0xdff1, 7, false, false, false, 0, (uint32_t) offsetof( RenderTurret, team ), (uint32_t) sizeof( RenderTurret::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
         { "has_target_lock", "has_target_lock", "bool", 0xf223, 1, false, false, false, 0, (uint32_t) offsetof( RenderTurret, has_target_lock ), (uint32_t) sizeof( RenderTurret::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderTurret", (uint32_t) sizeof( RenderTurret ), 9, fields, +[]( void * p ) { new ( p ) RenderTurret{}; } };
+    static const TableTypeInfo info = { "RenderTurret", (uint32_t) sizeof( RenderTurret ), 9, fields, +[]( void * p ) { RenderTurretReset( *(RenderTurret *) p ); } };
     return &info;
 }
 
@@ -3808,7 +3961,7 @@ inline const TableTypeInfo * RenderMissileTableType()
         { "missile_type", "missile_type", "MissileType", 0x423a, 7, false, false, false, 0, (uint32_t) offsetof( RenderMissile, missile_type ), (uint32_t) sizeof( RenderMissile::missile_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 2, +[]( uint64_t v ) { return EnumName( MissileType( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( MissileType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
         { "team", "team", "Team", 0xdff1, 7, false, false, false, 0, (uint32_t) offsetof( RenderMissile, team ), (uint32_t) sizeof( RenderMissile::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderMissile", (uint32_t) sizeof( RenderMissile ), 7, fields, +[]( void * p ) { new ( p ) RenderMissile{}; } };
+    static const TableTypeInfo info = { "RenderMissile", (uint32_t) sizeof( RenderMissile ), 7, fields, +[]( void * p ) { RenderMissileReset( *(RenderMissile *) p ); } };
     return &info;
 }
 
@@ -3823,7 +3976,7 @@ inline const TableTypeInfo * RenderDynamicPropTableType()
         { "prop_type", "prop_type", "PropType", 0xe338, 7, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, prop_type ), (uint32_t) sizeof( RenderDynamicProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
         { "team", "team", "Team", 0xdff1, 7, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, team ), (uint32_t) sizeof( RenderDynamicProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderDynamicProp", (uint32_t) sizeof( RenderDynamicProp ), 7, fields, +[]( void * p ) { new ( p ) RenderDynamicProp{}; } };
+    static const TableTypeInfo info = { "RenderDynamicProp", (uint32_t) sizeof( RenderDynamicProp ), 7, fields, +[]( void * p ) { RenderDynamicPropReset( *(RenderDynamicProp *) p ); } };
     return &info;
 }
 
@@ -3838,7 +3991,7 @@ inline const TableTypeInfo * RenderStaticPropTableType()
         { "prop_type", "prop_type", "PropType", 0xe338, 7, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, prop_type ), (uint32_t) sizeof( RenderStaticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
         { "team", "team", "Team", 0xdff1, 7, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, team ), (uint32_t) sizeof( RenderStaticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderStaticProp", (uint32_t) sizeof( RenderStaticProp ), 7, fields, +[]( void * p ) { new ( p ) RenderStaticProp{}; } };
+    static const TableTypeInfo info = { "RenderStaticProp", (uint32_t) sizeof( RenderStaticProp ), 7, fields, +[]( void * p ) { RenderStaticPropReset( *(RenderStaticProp *) p ); } };
     return &info;
 }
 
@@ -3854,7 +4007,7 @@ inline const TableTypeInfo * RenderCosmeticPropTableType()
         { "prop_type", "prop_type", "PropType", 0xe338, 7, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_type ), (uint32_t) sizeof( RenderCosmeticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
         { "team", "team", "Team", 0xdff1, 7, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, team ), (uint32_t) sizeof( RenderCosmeticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderCosmeticProp", (uint32_t) sizeof( RenderCosmeticProp ), 8, fields, +[]( void * p ) { new ( p ) RenderCosmeticProp{}; } };
+    static const TableTypeInfo info = { "RenderCosmeticProp", (uint32_t) sizeof( RenderCosmeticProp ), 8, fields, +[]( void * p ) { RenderCosmeticPropReset( *(RenderCosmeticProp *) p ); } };
     return &info;
 }
 
@@ -3868,7 +4021,7 @@ inline const TableTypeInfo * RenderLaserTableType()
         { "laser_type", "laser_type", "LaserType", 0xc46a, 7, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_type ), (uint32_t) sizeof( RenderLaser::laser_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 2, +[]( uint64_t v ) { return EnumName( LaserType( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( LaserType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
         { "team", "team", "Team", 0xdff1, 7, false, false, false, 0, (uint32_t) offsetof( RenderLaser, team ), (uint32_t) sizeof( RenderLaser::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderLaser", (uint32_t) sizeof( RenderLaser ), 6, fields, +[]( void * p ) { new ( p ) RenderLaser{}; } };
+    static const TableTypeInfo info = { "RenderLaser", (uint32_t) sizeof( RenderLaser ), 6, fields, +[]( void * p ) { RenderLaserReset( *(RenderLaser *) p ); } };
     return &info;
 }
 
@@ -3883,7 +4036,7 @@ inline const TableTypeInfo * RenderExplosionTableType()
         { "explosion_type", "explosion_type", "ExplosionType", 0x98fa, 7, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_type ), (uint32_t) sizeof( RenderExplosion::explosion_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 2, +[]( uint64_t v ) { return EnumName( ExplosionType( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( ExplosionType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
         { "team", "team", "Team", 0xdff1, 7, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, team ), (uint32_t) sizeof( RenderExplosion::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderExplosion", (uint32_t) sizeof( RenderExplosion ), 7, fields, +[]( void * p ) { new ( p ) RenderExplosion{}; } };
+    static const TableTypeInfo info = { "RenderExplosion", (uint32_t) sizeof( RenderExplosion ), 7, fields, +[]( void * p ) { RenderExplosionReset( *(RenderExplosion *) p ); } };
     return &info;
 }
 
@@ -3901,7 +4054,7 @@ inline const TableTypeInfo * RenderFrameTableType()
         { "lasers", "lasers", "RenderLaser", 0x411a, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, lasers ), (uint32_t) sizeof( RenderFrame::lasers[0] ), (uint32_t) offsetof( RenderFrame, lasers_count ), 0xffffffffu, RenderLaserTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "explosions", "explosions", "RenderExplosion", 0x6bfb, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, explosions ), (uint32_t) sizeof( RenderFrame::explosions[0] ), (uint32_t) offsetof( RenderFrame, explosions_count ), 0xffffffffu, RenderExplosionTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderFrame", (uint32_t) sizeof( RenderFrame ), 10, fields, +[]( void * p ) { new ( p ) RenderFrame{}; } };
+    static const TableTypeInfo info = { "RenderFrame", (uint32_t) sizeof( RenderFrame ), 10, fields, +[]( void * p ) { RenderFrameReset( *(RenderFrame *) p ); } };
     return &info;
 }
 
@@ -3912,7 +4065,7 @@ inline const TableTypeInfo * RenderVector3TableType()
         { "y", "y", "float64", 0xb2f8, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, y ), (uint32_t) sizeof( RenderVector3::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "z", "z", "float64", 0xaca1, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, z ), (uint32_t) sizeof( RenderVector3::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderVector3", (uint32_t) sizeof( RenderVector3 ), 3, fields, +[]( void * p ) { new ( p ) RenderVector3{}; } };
+    static const TableTypeInfo info = { "RenderVector3", (uint32_t) sizeof( RenderVector3 ), 3, fields, +[]( void * p ) { RenderVector3Reset( *(RenderVector3 *) p ); } };
     return &info;
 }
 
@@ -3924,7 +4077,7 @@ inline const TableTypeInfo * RenderQuaternionTableType()
         { "z", "z", "float64", 0xaca1, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, z ), (uint32_t) sizeof( RenderQuaternion::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "w", "w", "float64", 0xcd3a, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, w ), (uint32_t) sizeof( RenderQuaternion::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "RenderQuaternion", (uint32_t) sizeof( RenderQuaternion ), 4, fields, +[]( void * p ) { new ( p ) RenderQuaternion{}; } };
+    static const TableTypeInfo info = { "RenderQuaternion", (uint32_t) sizeof( RenderQuaternion ), 4, fields, +[]( void * p ) { RenderQuaternionReset( *(RenderQuaternion *) p ); } };
     return &info;
 }
 

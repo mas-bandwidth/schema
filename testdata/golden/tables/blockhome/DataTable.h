@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 
 #include "Data.h"
@@ -212,6 +211,21 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace blockhome {
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void ArmorPlateReset( ArmorPlate & value );
+inline void ArmorConfigReset( ArmorConfig & value );
+inline void FiringGroupReset( FiringGroup & value );
+inline void GunnerSettingsReset( GunnerSettings & value );
+
+inline void ArmorPlateReset( ArmorPlate & value ) { value = ArmorPlate(); }
+
+inline void ArmorConfigReset( ArmorConfig & value ) { value = ArmorConfig(); }
+
+inline void FiringGroupReset( FiringGroup & value ) { value = FiringGroup(); }
+
+inline void GunnerSettingsReset( GunnerSettings & value ) { value = GunnerSettings(); }
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t ArmorPlateMeasure( const ArmorPlate & value );
@@ -266,7 +280,7 @@ inline int64_t ArmorPlateSave( const ArmorPlate & value, uint8_t * buffer, int64
 
 inline bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & value )
 {
-    new ( &value ) ArmorPlate{}; // prefill declared defaults in place, then overlay
+    ArmorPlateReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -394,7 +408,7 @@ inline int64_t ArmorConfigSave( const ArmorConfig & value, uint8_t * buffer, int
 
 inline bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & value )
 {
-    new ( &value ) ArmorConfig{}; // prefill declared defaults in place, then overlay
+    ArmorConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -515,7 +529,7 @@ inline int64_t FiringGroupSave( const FiringGroup & value, uint8_t * buffer, int
 
 inline bool FiringGroupLoadBody( TableReader & r, FiringGroup & value )
 {
-    new ( &value ) FiringGroup{}; // prefill declared defaults in place, then overlay
+    FiringGroupReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -654,7 +668,7 @@ inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffe
 
 inline bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value )
 {
-    new ( &value ) GunnerSettings{}; // prefill declared defaults in place, then overlay
+    GunnerSettingsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -819,7 +833,7 @@ inline const TableTypeInfo * ArmorPlateTableType()
         { "material", "material", "uint32", 0x0284, 8, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, material ), (uint32_t) sizeof( ArmorPlate::material ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "layer", "layer", "uint8", 0x4750, 6, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, layer ), (uint32_t) sizeof( ArmorPlate::layer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "ArmorPlate", (uint32_t) sizeof( ArmorPlate ), 3, fields, +[]( void * p ) { new ( p ) ArmorPlate{}; } };
+    static const TableTypeInfo info = { "ArmorPlate", (uint32_t) sizeof( ArmorPlate ), 3, fields, +[]( void * p ) { ArmorPlateReset( *(ArmorPlate *) p ); } };
     return &info;
 }
 
@@ -831,7 +845,7 @@ inline const TableTypeInfo * ArmorConfigTableType()
         { "rating", "rating", "float32", 0xe2d9, 10, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rating ), (uint32_t) sizeof( ArmorConfig::rating ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "tier", "tier", "uint8", 0xe958, 6, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, tier ), (uint32_t) sizeof( ArmorConfig::tier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "ArmorConfig", (uint32_t) sizeof( ArmorConfig ), 4, fields, +[]( void * p ) { new ( p ) ArmorConfig{}; } };
+    static const TableTypeInfo info = { "ArmorConfig", (uint32_t) sizeof( ArmorConfig ), 4, fields, +[]( void * p ) { ArmorConfigReset( *(ArmorConfig *) p ); } };
     return &info;
 }
 
@@ -841,7 +855,7 @@ inline const TableTypeInfo * FiringGroupTableType()
         { "barrel", "barrel", "uint32", 0x87ed, 8, false, false, false, 0, (uint32_t) offsetof( FiringGroup, barrel ), (uint32_t) sizeof( FiringGroup::barrel ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "cooldown", "cooldown", "float32", 0x2230, 10, false, false, false, 0, (uint32_t) offsetof( FiringGroup, cooldown ), (uint32_t) sizeof( FiringGroup::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "FiringGroup", (uint32_t) sizeof( FiringGroup ), 2, fields, +[]( void * p ) { new ( p ) FiringGroup{}; } };
+    static const TableTypeInfo info = { "FiringGroup", (uint32_t) sizeof( FiringGroup ), 2, fields, +[]( void * p ) { FiringGroupReset( *(FiringGroup *) p ); } };
     return &info;
 }
 
@@ -853,7 +867,7 @@ inline const TableTypeInfo * GunnerSettingsTableType()
         { "reload_seconds", "reload_seconds", "float32", 0xd08f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, reload_seconds ), (uint32_t) sizeof( GunnerSettings::reload_seconds ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "gunner_id", "gunner_id", "uint32", 0xe0d2, 8, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, gunner_id ), (uint32_t) sizeof( GunnerSettings::gunner_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 4, fields, +[]( void * p ) { new ( p ) GunnerSettings{}; } };
+    static const TableTypeInfo info = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 4, fields, +[]( void * p ) { GunnerSettingsReset( *(GunnerSettings *) p ); } };
     return &info;
 }
 
