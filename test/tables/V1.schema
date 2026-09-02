@@ -1,23 +1,49 @@
 // V1.schema — the OLD side of the both-directions evolution test
 // (SPEC-TABLES.md): V2 adds c, removes b, changes a's kind, renames name to
-// title (with was), and grows Inner. Distinct packages so both generations
-// compile into ONE test binary; the wire does not care — table identity is
-// the field-name hash, not the package or the protocol id.
+// title (with was), grows Inner, and inserts a variant IN THE MIDDLE of both
+// Grade and Effect. Distinct packages so both generations compile into ONE
+// test binary; the wire does not care — table identity is the field-name
+// hash, and variant identity is the variant-name hash, not the package, not
+// the ordinal and not the protocol id.
 package tblv1
 
 enum Mode { Alpha, Beta }
+
+// Grade gains Silver in the MIDDLE in V2: under ordinals Gold would slide
+// from 2 to 3 and every stored Gold would read back as Silver. It rides as
+// the hash of "Gold", so it does not (SPEC-TABLES.md §5).
+enum Grade { Bronze, Gold }
 
 type Inner
 {
     factor float32 = 2.5
 }
 
+type Boost
+{
+    power int32 = 0
+}
+
+type Ward
+{
+    charge float32 = 0.0
+}
+
+// Effect gains a hex arm in the MIDDLE in V2, the union twin of Grade's case.
+union Effect
+{
+    boost Boost
+    ward  Ward
+}
+
 table Cfg
 {
-    a     int32 = 5     | min = 0, max = 1000
-    b     float32 = 1.5
-    mode  Mode = Beta
-    name  string(32)
-    inner Inner
-    items [..8]int32    | min = 0, max = 255
+    a      int32 = 5     | min = 0, max = 1000
+    b      float32 = 1.5
+    mode   Mode = Beta
+    name   string(32)
+    inner  Inner
+    items  [..8]int32    | min = 0, max = 255
+    grade  Grade
+    effect Effect
 }

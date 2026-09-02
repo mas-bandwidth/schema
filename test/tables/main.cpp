@@ -12,6 +12,7 @@
 
 #include "TablesTable.h"
 #include "NestedTable.h"
+#include "WideTable.h"
 #include "V1Table.h"
 #include "V2Table.h"
 #include "GraphTable.h"
@@ -278,16 +279,16 @@ static void test_bounded_elements()
     const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     CHECK( items != NULL && a != NULL );
 
-    // body_len = 3 covers only elem_kind + count; count claims 2 elements —
+    // body_len = 5 covers only elem_kind + count; count claims 2 elements —
     // the elements would have to come from the NEXT field's bytes. They must
     // not: prefix kept (empty), malformed flagged, and a = 42 still decodes.
     uint8_t wire[32];
     int n = 0;
     le16( wire + n, items->id ); n += 2;
     wire[n++] = 14;              // kArray
-    le32( wire + n, 3 ); n += 4; // body_len: header only, no element bytes
+    le32( wire + n, 5 ); n += 4; // body_len: header only, no element bytes
     wire[n++] = 4;               // elem_kind kI32
-    le16( wire + n, 2 ); n += 2; // count 2 — a lie
+    le32( wire + n, 2 ); n += 4; // count 2 — a lie
     le16( wire + n, a->id ); n += 2;
     wire[n++] = 4;               // kI32
     le32( wire + n, 42 ); n += 4;
@@ -304,9 +305,9 @@ static void test_bounded_elements()
     n = 0;
     le16( wire + n, items->id ); n += 2;
     wire[n++] = 14;
-    le32( wire + n, 3 + 4 + 2 ); n += 4; // one i32 element + 2 slack bytes
+    le32( wire + n, 5 + 4 + 2 ); n += 4; // one i32 element + 2 slack bytes
     wire[n++] = 4;
-    le16( wire + n, 2 ); n += 2;         // count 2, body holds 1.5
+    le32( wire + n, 2 ); n += 4;         // count 2, body holds 1.5
     le32( wire + n, 10 ); n += 4;        // element 0
     wire[n++] = 0; wire[n++] = 0;        // the half element
     le16( wire + n, a->id ); n += 2;
@@ -417,6 +418,213 @@ static void test_evolution_new_reader_old_data()
     CHECK( out.inner.gain == 1.0f );    // nested added field defaults
 }
 
+// ---- a variant inserted IN THE MIDDLE: identity is the NAME, not the ordinal
+// ---- (SPEC-TABLES.md §5). V2 inserts Silver between Bronze and Gold, so Gold
+// ---- slides from ordinal 2 to 3 — and every stored Gold still reads as Gold.
+
+static void test_evolution_enum_insert_old_data()
+{
+    tblv1::Cfg v1;
+    v1.grade = tblv1::Grade::Gold; // ordinal 2 in V1, ordinal 3 in V2
+
+    uint8_t wire[1024];
+    int64_t bytes = tblv1::CfgSave( v1, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( v1 ) );
+
+    // the value on the wire is the NAME hash, not an ordinal — pinned against
+    // the independent id implementation above
+    const tblv1::TableFieldInfo * grade = v1_field( tblv1::CfgTableType(), "grade" );
+    CHECK( grade != NULL && grade->kind == 7 ); // kU16: every enum, every width
+    CHECK( grade->variant_id != NULL && grade->variant_id( 2 ) == field_id( "Gold" ) );
+
+    tblv2::TableReport report;
+    tblv2::Cfg out;
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.malformed && report.unknown == 0 && report.clamped == 0 );
+    CHECK( out.grade == tblv2::Grade::Gold ); // NOT Silver, which holds ordinal 2 in V2
+}
+
+static void test_evolution_enum_insert_new_data()
+{
+    tblv2::Cfg v2;
+    v2.grade = tblv2::Grade::Silver; // V1 has no name for it at all
+
+    uint8_t wire[1024];
+    int64_t bytes = tblv2::CfgSave( v2, wire, sizeof( wire ) );
+    CHECK( bytes > 0 );
+
+    tblv1::TableReport report;
+    tblv1::Cfg out;
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.malformed );
+    CHECK( report.unknown == 1 );                 // an id this reader cannot name
+    CHECK( out.grade == tblv1::Grade::None );     // never a neighbour's variant
+
+    // a variant V1 DOES know, whose ordinal moved: it lands correctly
+    tblv2::Cfg gold;
+    gold.grade = tblv2::Grade::Gold; // ordinal 3 in V2, 2 in V1
+    bytes = tblv2::CfgSave( gold, wire, sizeof( wire ) );
+    tblv1::TableReport report2;
+    tblv1::Cfg out2;
+    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.malformed && report2.unknown == 0 );
+    CHECK( out2.grade == tblv1::Grade::Gold );
+}
+
+static void test_evolution_union_insert_old_data()
+{
+    tblv1::Cfg v1;
+    v1.effect.type = tblv1::EffectType::Ward; // tag 2 in V1, tag 3 in V2
+    v1.effect.ward = tblv1::Ward{};
+    v1.effect.ward.charge = 7.5f;
+
+    uint8_t wire[1024];
+    int64_t bytes = tblv1::CfgSave( v1, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( v1 ) );
+
+    const tblv1::TableFieldInfo * effect = v1_field( tblv1::CfgTableType(), "effect" );
+    CHECK( effect != NULL && effect->kind == 15 && effect->enum_max == 2 );
+    CHECK( effect->variant_id != NULL && effect->variant_id( 2 ) == field_id( "ward" ) );
+    CHECK( effect->enum_name != NULL && strcmp( effect->enum_name( 2 ), "ward" ) == 0 );
+
+    tblv2::TableReport report;
+    tblv2::Cfg out;
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.malformed && report.unknown == 0 );
+    CHECK( out.effect.type == tblv2::EffectType::Ward ); // NOT hex, which holds tag 2 in V2
+    CHECK( out.effect.ward.charge == 7.5f );
+}
+
+static void test_evolution_union_insert_new_data()
+{
+    tblv2::Cfg v2;
+    v2.effect.type = tblv2::EffectType::Hex; // V1 has no name for this arm
+    v2.effect.hex = tblv2::Hex{};
+    v2.effect.hex.level = 4;
+
+    uint8_t wire[1024];
+    int64_t bytes = tblv2::CfgSave( v2, wire, sizeof( wire ) );
+    CHECK( bytes > 0 );
+
+    tblv1::TableReport report;
+    tblv1::Cfg out;
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.malformed );
+    CHECK( report.unknown == 1 );                          // an arm id V1 cannot name
+    CHECK( out.effect.type == tblv1::EffectType::None );   // empty, never a neighbour's arm
+
+    // an arm V1 DOES know, whose tag moved: it lands correctly
+    tblv2::Cfg ward;
+    ward.effect.type = tblv2::EffectType::Ward; // tag 3 in V2, 2 in V1
+    ward.effect.ward = tblv2::Ward{};
+    ward.effect.ward.charge = -2.0f;
+    bytes = tblv2::CfgSave( ward, wire, sizeof( wire ) );
+    tblv1::TableReport report2;
+    tblv1::Cfg out2;
+    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.malformed && report2.unknown == 0 );
+    CHECK( out2.effect.type == tblv1::EffectType::Ward && out2.effect.ward.charge == -2.0f );
+}
+
+// a value no variant names has no wire identity: measure and save refuse it,
+// exactly as they refuse an out-of-range union tag
+static void test_unnameable_enum_refused()
+{
+    uint8_t buffer[256];
+    tblv1::Cfg cfg;
+    cfg.grade = (tblv1::Grade) 9;
+    CHECK( tblv1::CfgMeasure( cfg ) == -1 );
+    CHECK( tblv1::CfgSave( cfg, buffer, sizeof( buffer ) ) == -1 );
+}
+
+// ---- FLAGS STAY POSITIONAL: a mask is a set of bits, and a bit has no cheap
+// ---- name-identified form. It rides as its raw uint64 storage, so variants
+// ---- are APPENDED AT THE END only (SPEC-TABLES.md §4, §5).
+
+static void test_flags_are_positional()
+{
+    const tabledemo::TableFieldInfo * perks = demo_field( tabledemo::LoadoutConfigTableType(), "perks" );
+    CHECK( perks != NULL );
+    CHECK( perks->kind == 9 );            // kU64: the mask's raw storage
+    CHECK( perks->variant_id == NULL );   // no per-variant wire id exists to carry
+    CHECK( perks->enum_max == -1 );
+
+    tabledemo::LoadoutConfig loadout;
+    loadout.perks = tabledemo::Perks_Cloaked; // bit 1
+    uint8_t buffer[1024];
+    int64_t wrote = tabledemo::LoadoutConfigSave( loadout, buffer, sizeof( buffer ) );
+    CHECK( wrote > 0 );
+
+    // the payload is the mask itself: bit position IS the identity
+    bool found = false;
+    for ( int64_t i = 0; i + 11 <= wrote; i++ )
+    {
+        if ( buffer[i] == (uint8_t) ( perks->id & 0xff ) && buffer[i+1] == (uint8_t) ( perks->id >> 8 ) && buffer[i+2] == 9 )
+        {
+            CHECK( buffer[i+3] == 2 ); // 1 << 1, little-endian, low byte
+            found = true;
+        }
+    }
+    CHECK( found );
+}
+
+// ---- extents past 65535: u32 lengths and u32 counts (SPEC-TABLES.md §3) ----
+
+static void test_wide_extents()
+{
+    static tabledemo::WideBlob blob;
+    blob.label_length = 70000;
+    memset( blob.label, 'w', 70000 );
+    blob.label[70000] = 0;
+    blob.payload_length = 70000;
+    for ( int32_t i = 0; i < 70000; i++ ) blob.payload[i] = (uint8_t) ( i & 0xff );
+    blob.samples_count = 70000;
+    for ( int32_t i = 0; i < 70000; i++ ) blob.samples[i] = (uint16_t) ( i & 0xffff );
+
+    int64_t need = tabledemo::WideBlobMeasure( blob );
+    CHECK( need > 65535 * 3 );
+    uint8_t * buffer = (uint8_t *) malloc( (size_t) need );
+    CHECK( buffer != NULL );
+    CHECK( tabledemo::WideBlobSave( blob, buffer, need ) == need ); // exact capacity holds out here too
+    CHECK( tabledemo::WideBlobSave( blob, buffer, need - 1 ) == -1 );
+
+    tabledemo::TableReport report;
+    static tabledemo::WideBlob out;
+    CHECK( tabledemo::WideBlobLoad( out, buffer, need, &report ) );
+    CHECK( !report.malformed && report.unknown == 0 && report.clamped == 0 );
+    CHECK( out.label_length == 70000 && out.label[69999] == 'w' && out.label[70000] == 0 );
+    CHECK( out.payload_length == 70000 && out.payload[69999] == (uint8_t) ( 69999 & 0xff ) );
+    CHECK( out.samples_count == 70000 && out.samples[69999] == (uint16_t) 69999 );
+
+    // the wide case of the bounded-elements rule: a u32 count the body cannot
+    // cover yields the bounded PREFIX and malformed, never a fabricated value
+    const tabledemo::TableFieldInfo * samples = demo_field( tabledemo::WideBlobTableType(), "samples" );
+    const tabledemo::TableFieldInfo * label = demo_field( tabledemo::WideBlobTableType(), "label" );
+    CHECK( samples != NULL && label != NULL );
+    uint8_t wire[64];
+    int n = 0;
+    le16( wire + n, samples->id ); n += 2;
+    wire[n++] = 14;                    // kArray
+    le32( wire + n, 5 + 4 ); n += 4;   // body: header + two u16 elements
+    wire[n++] = 7;                     // elem_kind kU16
+    le32( wire + n, 70000 ); n += 4;   // a count no uint16 could even hold — a lie
+    le16( wire + n, 11 ); n += 2;      // element 0
+    le16( wire + n, 22 ); n += 2;      // element 1
+    le16( wire + n, label->id ); n += 2;
+    wire[n++] = 12;                    // kString
+    le32( wire + n, 2 ); n += 4;
+    wire[n++] = 'o'; wire[n++] = 'k';
+    le16( wire + n, 0 ); n += 2;       // terminator
+
+    tabledemo::TableReport report2;
+    static tabledemo::WideBlob out2;
+    CHECK( tabledemo::WideBlobLoad( out2, wire, n, &report2 ) );
+    CHECK( report2.malformed );                                  // the lie is framing damage
+    CHECK( out2.samples_count == 2 );                            // the bounded prefix, nothing fabricated
+    CHECK( out2.samples[0] == 11 && out2.samples[1] == 22 );
+    CHECK( out2.label_length == 2 && strcmp( out2.label, "ok" ) == 0 ); // the parent read on
+}
+
 // ---- clamping: hostile or stale numerics clamp and count ----
 
 static void test_clamping()
@@ -460,7 +668,7 @@ static void test_clamping()
     n = 0;
     le16( wire4 + n, nameInfo->id ); n += 2;
     wire4[n++] = 12; // kString
-    le16( wire4 + n, 40 ); n += 2; // longer than string(32)
+    le32( wire4 + n, 40 ); n += 4; // longer than string(32)
     for ( int i = 0; i < 40; i++ ) wire4[n++] = 'y';
     le16( wire4 + n, 0 ); n += 2;
 
@@ -532,6 +740,15 @@ static void test_reflection()
     CHECK( strcmp( grade->enum_name( 3 ), "Gold" ) == 0 );
     CHECK( strcmp( grade->enum_name( 9 ), "???" ) == 0 );
 
+    // and the id each name rides under: the vocabulary and its wire identity
+    // are both reachable with no schema files (SPEC-TABLES.md §5, §8)
+    CHECK( grade->variant_id != NULL );
+    CHECK( grade->variant_id( 0 ) == 0 ); // None is the reserved id
+    CHECK( grade->variant_id( 1 ) == field_id( "Bronze" ) );
+    CHECK( grade->variant_id( 2 ) == field_id( "Silver" ) );
+    CHECK( grade->variant_id( 3 ) == field_id( "Gold" ) );
+    CHECK( grade->variant_id( 9 ) == 0 ); // no variant names it
+
     // nested-table descriptors chain, arrays carry bounds and companions
     const tabledemo::TableTypeInfo * rootType = tabledemo::RootConfigTableType();
     const tabledemo::TableFieldInfo * profiles = demo_field( rootType, "profiles" );
@@ -567,6 +784,12 @@ static void test_reflection()
     CHECK( homing != NULL && homing->kind == 1 ); // bool
     const tabledemo::TableFieldInfo * effect = demo_field( weapon, "effect" );
     CHECK( effect != NULL && effect->kind == 15 ); // union
+    // a union's arms are a vocabulary too: [0, enum_max], names and ids
+    CHECK( effect->enum_max == 2 && effect->enum_name != NULL && effect->variant_id != NULL );
+    CHECK( strcmp( effect->enum_name( 0 ), "None" ) == 0 );
+    CHECK( strcmp( effect->enum_name( 1 ), "buff" ) == 0 );
+    CHECK( effect->variant_id( 0 ) == 0 );
+    CHECK( effect->variant_id( 2 ) == field_id( "debuff" ) );
     const tabledemo::TableFieldInfo * nameF = demo_field( profileType, "name" );
     CHECK( nameF != NULL && nameF->kind == 12 ); // string
 
@@ -1645,6 +1868,13 @@ int main()
     test_guard();
     test_evolution_old_reader_new_data();
     test_evolution_new_reader_old_data();
+    test_evolution_enum_insert_old_data();
+    test_evolution_enum_insert_new_data();
+    test_evolution_union_insert_old_data();
+    test_evolution_union_insert_new_data();
+    test_unnameable_enum_refused();
+    test_flags_are_positional();
+    test_wide_extents();
     test_clamping();
     test_malformed();
     test_reflection();

@@ -1,10 +1,14 @@
 // V2.schema — the NEW side of the evolution test: relative to V1, `a`
 // changed kind (int32 -> float32), `c` was added, `b` was removed, `name`
-// was renamed to `title` (was = "name" keeps the wire id), and Inner gained
-// a field. Any reader x any data, both directions (SPEC-TABLES.md).
+// was renamed to `title` (was = "name" keeps the wire id), Inner gained a
+// field, Grade gained Silver BETWEEN Bronze and Gold, and Effect gained a
+// hex arm BETWEEN boost and ward. Any reader x any data, both directions
+// (SPEC-TABLES.md).
 package tblv2
 
 enum Mode { Alpha, Beta }
+
+enum Grade { Bronze, Silver, Gold }
 
 type Inner
 {
@@ -12,12 +16,36 @@ type Inner
     gain   float32 = 1.0
 }
 
+type Boost
+{
+    power int32 = 0
+}
+
+type Hex
+{
+    level int32 = 0
+}
+
+type Ward
+{
+    charge float32 = 0.0
+}
+
+union Effect
+{
+    boost Boost
+    hex   Hex
+    ward  Ward
+}
+
 table Cfg
 {
-    a     float32 = 5.0
-    c     bool = true
-    mode  Mode = Beta
-    title string(32)    | was = "name"
-    inner Inner
-    items [..8]int32    | min = 0, max = 255
+    a      float32 = 5.0
+    c      bool = true
+    mode   Mode = Beta
+    title  string(32)    | was = "name"
+    inner  Inner
+    items  [..8]int32    | min = 0, max = 255
+    grade  Grade
+    effect Effect
 }
