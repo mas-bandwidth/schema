@@ -4,7 +4,7 @@
 // its generated output is byte-identical to a build with this file deleted —
 // that zero-cost property is the point of deriving the mode.
 //
-// The three pieces:
+// The two pieces:
 //
 //	TableArena  — the MUTABLE form: one logical arena of equal-size segments,
 //	              handed out to workers in thread-local slabs with a single
@@ -14,9 +14,6 @@
 //	the region  — the CONST form: one exact-packed block, nodes laid back to
 //	              back, references SELF-RELATIVE so a deref is one add and a
 //	              whole region relocates by pure memcpy with zero fix-up.
-//	the header  — the cooked form's guard: magic, layout id, size. A cooked
-//	              file is an accelerator, build-locked; a mismatch refuses
-//	              loudly and the caller falls back to a wire load.
 package cpptable
 
 import "strings"
@@ -45,8 +42,8 @@ static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one at
 static const uint32_t kTableAlign       = 8;                           // every node starts 8-aligned
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
-// The pointer-chain depth cap. It bounds recursion on every walk — save,
-// load, cook and open — so a data cycle is an ERROR and never a hang, and a
+// The pointer-chain depth cap. It bounds recursion on every walk — measure,
+// save, load and pack — so a data cycle is an ERROR and never a hang, and a
 // hostile wire cannot drive the C stack into the ground. A pointer chain's
 // WIRE nesting equals its length (§3), so this also caps chain length: wide
 // structures are unbounded, deep ones are not. Lifting it wants a flat,
@@ -64,8 +61,7 @@ static const int32_t kTableMaxDepth = 128;
 //
 // 0 is null in both. Region deltas are always POSITIVE: a region is packed by
 // a depth-first walk, so a child always sits after the slot that names it —
-// which is also what makes the cooked-form bounds walk cycle-free by
-// construction.
+// which is what makes a packed region cycle-free by construction.
 struct TableRef
 {
     uint32_t value = 0;
@@ -155,9 +151,9 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
         {
             if ( arena.segments[segment].load( std::memory_order_acquire ) == NULL )
             {
-                // calloc, NOT malloc: Lock and Cook copy whole nodes, PADDING
+                // calloc, NOT malloc: Lock copies whole nodes, PADDING
                 // INCLUDED, so anything uninitialised here reaches a packed
-                // region and a cooked file on disk. Value-initialising a node
+                // region. Value-initialising a node
                 // with placement new zeroes its MEMBERS and not its padding, so
                 // the zeroing has to happen here or not at all. It costs nothing
                 // measurable: a fresh segment is untouched pages either way, and
@@ -189,8 +185,8 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
 //     No locks, no atomics per node.
 //   * Writing fields of a node ANOTHER worker allocated is your own
 //     synchronization problem — this runtime does not arbitrate it.
-//   * Lock, Save, Cook and Open are single-threaded: call them after the
-//     workers have joined.
+//   * Lock and Save are single-threaded: call them after the workers have
+//     joined.
 struct TableWorker
 {
     TableArena * arena = NULL;
@@ -235,66 +231,6 @@ struct TableRegionSink
     int64_t capacity = 0;
     int64_t used = 0;
 };
-
-// ---- the cooked form's header ----
-//
-// The cooked form answers one requirement: load a big file, point at its
-// root, without copying it and without parsing it. It is an accelerator
-// beside the wire, not an archive — the tolerant wire (§3) stays the format
-// of record, and a cooked file is regenerated whenever the schema moves.
-// The header is what makes the build-locking honest:
-//
-//   magic     — identifies the form AND the byte order (a foreign-endian
-//               writer's magic reads wrong, and Open refuses)
-//   layout_id — a compile-time digest of the packed-layout facts: the field
-//               shape from the schema, mixed with each closure type's sizeof
-//               as this build compiled it, so schema drift AND ABI drift both
-//               refuse
-//   bytes     — the packed region's length
-//
-// 32 bytes, so a root at base + 32 keeps the alignment the allocator gave the
-// base (mmap gives page alignment for free).
-static const uint32_t kTableCookedMagic = 0x314B4353u; // 'S','C','K','1'
-static const int64_t kTableCookedHeaderBytes = 32;
-
-struct TableRegionHeader
-{
-    uint32_t magic;
-    uint32_t layout_id;
-    uint32_t bytes;
-    uint32_t reserved[5];
-};
-
-inline void TableCookedHeaderWrite( uint8_t * at, uint32_t layout_id, uint32_t bytes )
-{
-    TableRegionHeader header = {};
-    header.magic = kTableCookedMagic;
-    header.layout_id = layout_id;
-    header.bytes = bytes;
-    memcpy( at, &header, sizeof( header ) );
-}
-
-// TableCookedHeaderCheck refuses a region this build cannot point at. Every
-// refusal is loud and the caller's fallback is a real wire Load.
-inline bool TableCookedHeaderCheck( const uint8_t * bytes, int64_t size, uint32_t layout_id, int64_t * region_bytes )
-{
-    if ( bytes == NULL || size < kTableCookedHeaderBytes ) { return false; }
-    if ( ( ( (uintptr_t) bytes ) & ( kTableAlign - 1 ) ) != 0 ) { return false; } // an unaligned base cannot be pointed at
-    TableRegionHeader header;
-    memcpy( &header, bytes, sizeof( header ) );
-    if ( header.magic != kTableCookedMagic ) { return false; } // wrong form, or foreign byte order
-    if ( header.layout_id != layout_id ) { return false; }     // schema or ABI drift: regenerate the cooked file
-    if ( (int64_t) header.bytes > size - kTableCookedHeaderBytes ) { return false; }
-    // the reserved words are reserved: a writer that used them wrote a form
-    // this build does not understand, and silently ignoring them would make
-    // them unusable later
-    for ( size_t i = 0; i < sizeof( header.reserved ) / sizeof( header.reserved[0] ); i++ )
-    {
-        if ( header.reserved[i] != 0 ) { return false; }
-    }
-    *region_bytes = (int64_t) header.bytes;
-    return true;
-}
 
 } // namespace ` + pkg + `
 

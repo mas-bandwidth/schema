@@ -2621,14 +2621,14 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **26 suffixes**, and a declaration spelling one of them is
+  each of these **25 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
   At  Root  Emplace  Pack  PackMeasure  OpenWalk
-  Cook  CookMeasure  Open  LayoutId  TableFields  TableInfo
+  Cook  CookMeasure  Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   ```
 
@@ -2639,16 +2639,17 @@ in build version (§20.5).
   here equal `tableGeneratedVerbs` exactly, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **Two of the twenty-six outlive what they guard, and both are stated rather
-  than quietly carried.** `LayoutId` is the id constant wire v1's cook emits
-  (§20's status, obligation 3 — a 32-bit id where the build version is 64),
-  and it retires into the unit-wide build version with the emitter
-  (schema#251); the claim goes in that same change and never before it, since
-  dropping it first frees a name the generated code still spells.
-  `Root` is claimed and NO emitter spells `<X>Root` — the builder's accessor
-  is the member `GetRoot`, renamed for the reason below — so the claim guards
-  nothing and is tracked for removal as schema#310, page and checker moving
-  together.
+  **Four of the twenty-five are claimed AHEAD of their emitter.** `Cook`,
+  `CookMeasure`, `Open` and `OpenWalk` are the cook's spellings and no backend
+  emits one: the cook is wire v2's (§7) and is not built (schema#251). The
+  claim is held while the emitter is absent, on this list's own rule — a name
+  freed now is a collision the day it lands.
+
+  **`Root` outlives what it guards, and it is stated rather than quietly
+  carried.** It is claimed and NO emitter spells `<X>Root` — the builder's
+  accessor is the member `GetRoot`, renamed for the reason below — so the
+  claim guards nothing and is tracked for removal as schema#310, page and
+  checker moving together.
 
   **The BLOCK FORM claims nine more, and the checker claims them.** They are
   law on the same terms and for a stronger reason — every fixed table has a

@@ -111,7 +111,6 @@ var registry = []Name{
 	{Name: "TableWorker", By: Cpp, What: "a builder worker's allocation front"},
 	{Name: "TableBuilder", By: Cpp, What: "the mutable life's base"},
 	{Name: "TableRegion", By: Cpp, What: "the locked, packed region"},
-	{Name: "TableRegionHeader", By: Cpp, What: "the cooked form's build-locking header"},
 
 	// the BLOCK FORM's runtime (SPEC-TABLES.md §19), emitted into
 	// <Base>Block.h / <Base>Block.cs and into no Table source at all. Claimed

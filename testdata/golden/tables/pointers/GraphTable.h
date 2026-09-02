@@ -322,8 +322,8 @@ static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one at
 static const uint32_t kTableAlign       = 8;                           // every node starts 8-aligned
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
-// The pointer-chain depth cap. It bounds recursion on every walk — save,
-// load, cook and open — so a data cycle is an ERROR and never a hang, and a
+// The pointer-chain depth cap. It bounds recursion on every walk — measure,
+// save, load and pack — so a data cycle is an ERROR and never a hang, and a
 // hostile wire cannot drive the C stack into the ground. A pointer chain's
 // WIRE nesting equals its length (§3), so this also caps chain length: wide
 // structures are unbounded, deep ones are not. Lifting it wants a flat,
@@ -341,8 +341,7 @@ static const int32_t kTableMaxDepth = 128;
 //
 // 0 is null in both. Region deltas are always POSITIVE: a region is packed by
 // a depth-first walk, so a child always sits after the slot that names it —
-// which is also what makes the cooked-form bounds walk cycle-free by
-// construction.
+// which is what makes a packed region cycle-free by construction.
 struct TableRef
 {
     uint32_t value = 0;
@@ -432,9 +431,9 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
         {
             if ( arena.segments[segment].load( std::memory_order_acquire ) == NULL )
             {
-                // calloc, NOT malloc: Lock and Cook copy whole nodes, PADDING
+                // calloc, NOT malloc: Lock copies whole nodes, PADDING
                 // INCLUDED, so anything uninitialised here reaches a packed
-                // region and a cooked file on disk. Value-initialising a node
+                // region. Value-initialising a node
                 // with placement new zeroes its MEMBERS and not its padding, so
                 // the zeroing has to happen here or not at all. It costs nothing
                 // measurable: a fresh segment is untouched pages either way, and
@@ -466,8 +465,8 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
 //     No locks, no atomics per node.
 //   * Writing fields of a node ANOTHER worker allocated is your own
 //     synchronization problem — this runtime does not arbitrate it.
-//   * Lock, Save, Cook and Open are single-threaded: call them after the
-//     workers have joined.
+//   * Lock and Save are single-threaded: call them after the workers have
+//     joined.
 struct TableWorker
 {
     TableArena * arena = NULL;
@@ -512,66 +511,6 @@ struct TableRegionSink
     int64_t capacity = 0;
     int64_t used = 0;
 };
-
-// ---- the cooked form's header ----
-//
-// The cooked form answers one requirement: load a big file, point at its
-// root, without copying it and without parsing it. It is an accelerator
-// beside the wire, not an archive — the tolerant wire (§3) stays the format
-// of record, and a cooked file is regenerated whenever the schema moves.
-// The header is what makes the build-locking honest:
-//
-//   magic     — identifies the form AND the byte order (a foreign-endian
-//               writer's magic reads wrong, and Open refuses)
-//   layout_id — a compile-time digest of the packed-layout facts: the field
-//               shape from the schema, mixed with each closure type's sizeof
-//               as this build compiled it, so schema drift AND ABI drift both
-//               refuse
-//   bytes     — the packed region's length
-//
-// 32 bytes, so a root at base + 32 keeps the alignment the allocator gave the
-// base (mmap gives page alignment for free).
-static const uint32_t kTableCookedMagic = 0x314B4353u; // 'S','C','K','1'
-static const int64_t kTableCookedHeaderBytes = 32;
-
-struct TableRegionHeader
-{
-    uint32_t magic;
-    uint32_t layout_id;
-    uint32_t bytes;
-    uint32_t reserved[5];
-};
-
-inline void TableCookedHeaderWrite( uint8_t * at, uint32_t layout_id, uint32_t bytes )
-{
-    TableRegionHeader header = {};
-    header.magic = kTableCookedMagic;
-    header.layout_id = layout_id;
-    header.bytes = bytes;
-    memcpy( at, &header, sizeof( header ) );
-}
-
-// TableCookedHeaderCheck refuses a region this build cannot point at. Every
-// refusal is loud and the caller's fallback is a real wire Load.
-inline bool TableCookedHeaderCheck( const uint8_t * bytes, int64_t size, uint32_t layout_id, int64_t * region_bytes )
-{
-    if ( bytes == NULL || size < kTableCookedHeaderBytes ) { return false; }
-    if ( ( ( (uintptr_t) bytes ) & ( kTableAlign - 1 ) ) != 0 ) { return false; } // an unaligned base cannot be pointed at
-    TableRegionHeader header;
-    memcpy( &header, bytes, sizeof( header ) );
-    if ( header.magic != kTableCookedMagic ) { return false; } // wrong form, or foreign byte order
-    if ( header.layout_id != layout_id ) { return false; }     // schema or ABI drift: regenerate the cooked file
-    if ( (int64_t) header.bytes > size - kTableCookedHeaderBytes ) { return false; }
-    // the reserved words are reserved: a writer that used them wrote a form
-    // this build does not understand, and silently ignoring them would make
-    // them unusable later
-    for ( size_t i = 0; i < sizeof( header.reserved ) / sizeof( header.reserved[0] ); i++ )
-    {
-        if ( header.reserved[i] != 0 ) { return false; }
-    }
-    *region_bytes = (int64_t) header.bytes;
-    return true;
-}
 
 } // namespace graphdemo
 
@@ -842,7 +781,7 @@ template <typename Ctx> inline int64_t AlbumMeasureBody( const Ctx & ctx, const 
 template <typename Ctx> inline bool AlbumSaveBody( const Ctx & ctx, TableWriter & w, const Album & value, int32_t depth );
 template <typename Sink> inline bool AlbumLoadBody( TableReader & r, Sink & sink, Album & value, int32_t depth );
 
-// ---- pointer-graph walkers: pack (Lock/Cook), size (Load), bound (Open) ----
+// ---- pointer-graph walkers: pack (Lock), size (Load) ----
 
 template <typename Ctx> inline int64_t SettingsPackMeasure( const Ctx & ctx, const Settings & value, int32_t depth );
 template <typename Ctx> inline bool SettingsPack( const Ctx & ctx, const Settings & src, Settings & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
@@ -865,17 +804,6 @@ inline int64_t DepotLoadMeasureBody( TableReader & r, int32_t depth );
 template <typename Ctx> inline int64_t AlbumPackMeasure( const Ctx & ctx, const Album & value, int32_t depth );
 template <typename Ctx> inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t AlbumLoadMeasureBody( TableReader & r, int32_t depth );
-
-// ---- the cooked form's bounds walks (SPEC-TABLES.md §7) ----
-
-inline bool MetaOpenWalk( const Meta * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
-inline bool SettingsOpenWalk( const Settings * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
-inline bool ListNodeOpenWalk( const ListNode * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
-inline bool TreeNodeOpenWalk( const TreeNode * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
-inline bool LayerOpenWalk( const Layer * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
-inline bool SceneOpenWalk( const Scene * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
-inline bool DepotOpenWalk( const Depot * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
-inline bool AlbumOpenWalk( const Album * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
 
 inline int64_t MetaMeasure( const Meta & value )
 {
@@ -2495,12 +2423,9 @@ inline int64_t SettingsPackMeasure( const Ctx & ctx, const Settings & value, int
 // SettingsPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT SettingsOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool SettingsPack( const Ctx & ctx, const Settings & src, Settings & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -2543,12 +2468,9 @@ inline int64_t ListNodePackMeasure( const Ctx & ctx, const ListNode & value, int
 // ListNodePack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT ListNodeOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool ListNodePack( const Ctx & ctx, const ListNode & src, ListNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -2641,12 +2563,9 @@ inline int64_t TreeNodePackMeasure( const Ctx & ctx, const TreeNode & value, int
 // TreeNodePack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT TreeNodeOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -2758,12 +2677,9 @@ inline int64_t LayerPackMeasure( const Ctx & ctx, const Layer & value, int32_t d
 // LayerPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT LayerOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool LayerPack( const Ctx & ctx, const Layer & src, Layer & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -2885,12 +2801,9 @@ inline int64_t ScenePackMeasure( const Ctx & ctx, const Scene & value, int32_t d
 // ScenePack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT SceneOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -3110,12 +3023,9 @@ inline int64_t DepotPackMeasure( const Ctx & ctx, const Depot & value, int32_t d
 // DepotPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT DepotOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool DepotPack( const Ctx & ctx, const Depot & src, Depot & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -3244,12 +3154,9 @@ inline int64_t AlbumPackMeasure( const Ctx & ctx, const Album & value, int32_t d
 // AlbumPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT AlbumOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -3355,301 +3262,6 @@ inline int64_t AlbumLoadMeasureBody( TableReader & r, int32_t depth )
     }
 }
 
-// MetaOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// Meta holds no reference of its own, so it neither reads the watermark nor
-// advances it: its placement in the region is decided entirely by the pack
-// of whatever variable table nests it, and the mark passes through here
-// untouched. What this walk owes is the COUNT COMPANIONS — a member nested
-// by value carries bounds that any traversal trusts, and an unbounded one
-// is the over-read. That is why it is emitted even for a table nothing
-// points at, in a file that declares no variable table at all.
-inline bool MetaOpenWalk( const Meta * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    (void) base; (void) bytes; (void) watermark; (void) depth;
-    if ( node->tag_length < 0 || node->tag_length > 8 ) { return false; } // tag
-    return true;
-}
-
-// SettingsOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// Settings holds no reference of its own, so it neither reads the watermark nor
-// advances it: its placement in the region is decided entirely by the pack
-// of whatever variable table nests it, and the mark passes through here
-// untouched. What this walk owes is the COUNT COMPANIONS — a member nested
-// by value carries bounds that any traversal trusts, and an unbounded one
-// is the over-read. That is why it is emitted even for a table nothing
-// points at, in a file that declares no variable table at all.
-inline bool SettingsOpenWalk( const Settings * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    (void) base; (void) bytes; (void) watermark; (void) depth;
-    if ( node->label_length < 0 || node->label_length > 16 ) { return false; } // label
-    return true;
-}
-
-// ListNodeOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// The watermark is the termination proof. ListNodePack lays nodes out in PRE-ORDER
-// by bump allocation and this walk visits them in the SAME ORDER, so a
-// genuine region always satisfies `at >= watermark`. Requiring it makes the
-// walk consume region bytes monotonically: linear in the region, immune to a
-// forged file whose references alias forward (which without it costs 2^n),
-// and closed to mid-node overlaps a range check alone would admit.
-// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.
-inline bool ListNodeOpenWalk( const ListNode * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    if ( node->name_length < 0 || node->name_length > 12 ) { return false; } // name
-    {
-        uint32_t delta = node->next.value; // next
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->next - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( ListNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            if ( !ListNodeOpenWalk( (const ListNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    return true;
-}
-
-// TreeNodeOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// The watermark is the termination proof. TreeNodePack lays nodes out in PRE-ORDER
-// by bump allocation and this walk visits them in the SAME ORDER, so a
-// genuine region always satisfies `at >= watermark`. Requiring it makes the
-// walk consume region bytes monotonically: linear in the region, immune to a
-// forged file whose references alias forward (which without it costs 2^n),
-// and closed to mid-node overlaps a range check alone would admit.
-// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.
-inline bool TreeNodeOpenWalk( const TreeNode * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    if ( node->label_length < 0 || node->label_length > 12 ) { return false; } // label
-    {
-        uint32_t delta = node->left.value; // left
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->left - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( TreeNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            if ( !TreeNodeOpenWalk( (const TreeNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    {
-        uint32_t delta = node->right.value; // right
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->right - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( TreeNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            if ( !TreeNodeOpenWalk( (const TreeNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    return true;
-}
-
-// LayerOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// The watermark is the termination proof. LayerPack lays nodes out in PRE-ORDER
-// by bump allocation and this walk visits them in the SAME ORDER, so a
-// genuine region always satisfies `at >= watermark`. Requiring it makes the
-// walk consume region bytes monotonically: linear in the region, immune to a
-// forged file whose references alias forward (which without it costs 2^n),
-// and closed to mid-node overlaps a range check alone would admit.
-// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.
-inline bool LayerOpenWalk( const Layer * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    {
-        uint32_t delta = node->head.value; // head
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->head - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( ListNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            if ( !ListNodeOpenWalk( (const ListNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    return true;
-}
-
-// SceneOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// The watermark is the termination proof. ScenePack lays nodes out in PRE-ORDER
-// by bump allocation and this walk visits them in the SAME ORDER, so a
-// genuine region always satisfies `at >= watermark`. Requiring it makes the
-// walk consume region bytes monotonically: linear in the region, immune to a
-// forged file whose references alias forward (which without it costs 2^n),
-// and closed to mid-node overlaps a range check alone would admit.
-// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.
-inline bool SceneOpenWalk( const Scene * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    if ( node->name_length < 0 || node->name_length > 24 ) { return false; } // name
-    if ( node->layers_count < 0 || node->layers_count > 4 ) { return false; } // layers
-    {
-        uint32_t delta = node->head.value; // head
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->head - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( ListNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            if ( !ListNodeOpenWalk( (const ListNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    {
-        uint32_t delta = node->tree.value; // tree
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->tree - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( TreeNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            if ( !TreeNodeOpenWalk( (const TreeNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    {
-        uint32_t delta = node->settings.value; // settings
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->settings - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( Settings ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
-            if ( !SettingsOpenWalk( (const Settings *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    {
-        uint32_t delta = node->alias.value; // alias
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->alias - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( ListNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            if ( !ListNodeOpenWalk( (const ListNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    if ( !LayerOpenWalk( &node->ground, base, bytes, watermark, depth ) ) { return false; }
-    for ( int32_t i = 0; i < node->layers_count && i < 4; i++ )
-    {
-        if ( !LayerOpenWalk( &node->layers[i], base, bytes, watermark, depth ) ) { return false; }
-    }
-    if ( !MetaOpenWalk( &node->meta, base, bytes, watermark, depth ) ) { return false; }
-    return true;
-}
-
-// DepotOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// The watermark is the termination proof. DepotPack lays nodes out in PRE-ORDER
-// by bump allocation and this walk visits them in the SAME ORDER, so a
-// genuine region always satisfies `at >= watermark`. Requiring it makes the
-// walk consume region bytes monotonically: linear in the region, immune to a
-// forged file whose references alias forward (which without it costs 2^n),
-// and closed to mid-node overlaps a range check alone would admit.
-// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.
-inline bool DepotOpenWalk( const Depot * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    if ( node->name_length < 0 || node->name_length > 12 ) { return false; } // name
-    {
-        uint32_t delta = node->head.value; // head
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->head - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( ListNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            if ( !ListNodeOpenWalk( (const ListNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    for ( int32_t i = 0; i < 3; i++ )
-    {
-        if ( !LayerOpenWalk( &node->banks.slots[i], base, bytes, watermark, depth ) ) { return false; }
-    }
-    if ( !MetaOpenWalk( &node->spare, base, bytes, watermark, depth ) ) { return false; }
-    return true;
-}
-
-// AlbumOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// The watermark is the termination proof. AlbumPack lays nodes out in PRE-ORDER
-// by bump allocation and this walk visits them in the SAME ORDER, so a
-// genuine region always satisfies `at >= watermark`. Requiring it makes the
-// walk consume region bytes monotonically: linear in the region, immune to a
-// forged file whose references alias forward (which without it costs 2^n),
-// and closed to mid-node overlaps a range check alone would admit.
-// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.
-inline bool AlbumOpenWalk( const Album * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    if ( node->name_length < 0 || node->name_length > 16 ) { return false; } // name
-    {
-        uint32_t delta = node->pin.value; // pin
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->pin - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( Marker ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
-            if ( !MarkerOpenWalk( (const Marker *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    {
-        uint32_t delta = node->head.value; // head
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->head - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( ListNode ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            if ( !ListNodeOpenWalk( (const ListNode *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    if ( !ColourOpenWalk( &node->tint, base, bytes, watermark, depth ) ) { return false; }
-    if ( !StampOpenWalk( &node->stamp, base, bytes, watermark, depth ) ) { return false; }
-    if ( !MarkerOpenWalk( &node->marker, base, bytes, watermark, depth ) ) { return false; }
-    return true;
-}
-
 // ---- ListNode: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: ListNodeBuilder — allocate nodes, wire them together, then Lock.
@@ -3659,16 +3271,6 @@ inline bool AlbumOpenWalk( const Album * node, const uint8_t * base, int64_t byt
 //          re-editing means loading the const form into a fresh builder.
 // ListNode is never held by value — a file-format-scale structure is a region
 // and a root pointer, not a struct you copy.
-
-// The cooked form's build lock: the schema's packed-layout facts mixed with
-// this build's own sizeof for every type in the closure, so schema drift AND
-// ABI drift both refuse at Open.
-inline constexpr uint32_t ListNodeLayoutId =
-    0xe2dee0ffu
-    ^ ( (uint32_t) sizeof( ListNode ) * 0x9e3779b1u )
-    ^ ( (uint32_t) offsetof( ListNode, value ) * 0x2423441du )
-    ^ ( (uint32_t) offsetof( ListNode, name ) * 0xaa0f0e87u )
-    ^ ( (uint32_t) offsetof( ListNode, next ) * 0x2ffad8f3u );
 
 struct ListNodeBuilder
 {
@@ -3818,98 +3420,6 @@ inline bool ListNodeLoadBuilder( ListNodeBuilder & builder, const uint8_t * wire
     return ListNodeLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- ListNode cooked: the region form (SPEC-TABLES.md §7) ----
-//
-// One requirement: load a big file, point at its root, without copying it
-// and without parsing it. The cooked form is the structure laid out exactly
-// as the runtime reads it, behind a header that build-locks it. It is an
-// ACCELERATOR, regenerated whenever the schema moves; the tolerant wire is
-// the format of record, and a cooked file is never an archive.
-
-inline int64_t ListNodeCookMeasure( const ListNode * root )
-{
-    if ( root == NULL ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = ListNodePackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( ListNode ) ) + below;
-}
-
-inline int64_t ListNodeCookMeasure( const ListNodeBuilder & builder )
-{
-    if ( builder.region != NULL ) { return kTableCookedHeaderBytes + builder.region_bytes; }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    int64_t below = ListNodePackMeasure( ctx, *(const ListNode *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( ListNode ) ) + below;
-}
-
-inline int64_t ListNodeCook( const ListNode * root, uint8_t * buffer, int64_t capacity )
-{
-    if ( root == NULL || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = ListNodePackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( ListNode ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( ListNode ) );
-    ListNode * destination = new ( base ) ListNode{};
-    if ( !ListNodePack( ctx, *root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, ListNodeLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-inline int64_t ListNodeCook( const ListNodeBuilder & builder, uint8_t * buffer, int64_t capacity )
-{
-    if ( builder.region != NULL )
-    {
-        // already packed by Lock: the cooked file IS those bytes
-        if ( buffer == NULL || kTableCookedHeaderBytes + builder.region_bytes > capacity ) { return -1; }
-        if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-        memcpy( buffer + kTableCookedHeaderBytes, builder.region, (size_t) builder.region_bytes );
-        TableCookedHeaderWrite( buffer, ListNodeLayoutId, (uint32_t) builder.region_bytes );
-        return kTableCookedHeaderBytes + builder.region_bytes;
-    }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    const ListNode & root = *(const ListNode *) TableArenaAt( builder.arena, builder.root_ref.value );
-    int64_t below = ListNodePackMeasure( ctx, root, 1 );
-    if ( below < 0 || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( ListNode ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( ListNode ) );
-    ListNode * destination = new ( base ) ListNode{};
-    if ( !ListNodePack( ctx, root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, ListNodeLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-// ListNodeOpen: point at a cooked file's root. Every refusal is loud and the
-// caller's fallback is a real wire Load: wrong form or byte order, a layout
-// id this build did not produce, a truncated region, an unaligned base, or
-// an offset graph that leaves the region.
-inline const ListNode * ListNodeOpen( const uint8_t * bytes, int64_t size )
-{
-    int64_t region_bytes = 0;
-    if ( !TableCookedHeaderCheck( bytes, size, ListNodeLayoutId, &region_bytes ) ) { return NULL; }
-    if ( region_bytes < (int64_t) sizeof( ListNode ) ) { return NULL; }
-    const uint8_t * base = bytes + kTableCookedHeaderBytes;
-    const ListNode * root = (const ListNode *) base;
-    // the root occupies the head of the region, so everything it names must
-    // land at or past its end — the walk's high-water mark starts there
-    int64_t watermark = TableAlignUp64( (int64_t) sizeof( ListNode ) );
-    if ( watermark > region_bytes ) { return NULL; }
-    if ( !ListNodeOpenWalk( root, base, region_bytes, watermark, 1 ) ) { return NULL; }
-    return root;
-}
-
 // ---- TreeNode: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: TreeNodeBuilder — allocate nodes, wire them together, then Lock.
@@ -3919,16 +3429,6 @@ inline const ListNode * ListNodeOpen( const uint8_t * bytes, int64_t size )
 //          re-editing means loading the const form into a fresh builder.
 // TreeNode is never held by value — a file-format-scale structure is a region
 // and a root pointer, not a struct you copy.
-
-// The cooked form's build lock: the schema's packed-layout facts mixed with
-// this build's own sizeof for every type in the closure, so schema drift AND
-// ABI drift both refuse at Open.
-inline constexpr uint32_t TreeNodeLayoutId =
-    0x0e826445u
-    ^ ( (uint32_t) sizeof( TreeNode ) * 0x9e3779b1u )
-    ^ ( (uint32_t) offsetof( TreeNode, label ) * 0x2423441du )
-    ^ ( (uint32_t) offsetof( TreeNode, left ) * 0xaa0f0e87u )
-    ^ ( (uint32_t) offsetof( TreeNode, right ) * 0x2ffad8f3u );
 
 struct TreeNodeBuilder
 {
@@ -4078,98 +3578,6 @@ inline bool TreeNodeLoadBuilder( TreeNodeBuilder & builder, const uint8_t * wire
     return TreeNodeLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- TreeNode cooked: the region form (SPEC-TABLES.md §7) ----
-//
-// One requirement: load a big file, point at its root, without copying it
-// and without parsing it. The cooked form is the structure laid out exactly
-// as the runtime reads it, behind a header that build-locks it. It is an
-// ACCELERATOR, regenerated whenever the schema moves; the tolerant wire is
-// the format of record, and a cooked file is never an archive.
-
-inline int64_t TreeNodeCookMeasure( const TreeNode * root )
-{
-    if ( root == NULL ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = TreeNodePackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + below;
-}
-
-inline int64_t TreeNodeCookMeasure( const TreeNodeBuilder & builder )
-{
-    if ( builder.region != NULL ) { return kTableCookedHeaderBytes + builder.region_bytes; }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    int64_t below = TreeNodePackMeasure( ctx, *(const TreeNode *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + below;
-}
-
-inline int64_t TreeNodeCook( const TreeNode * root, uint8_t * buffer, int64_t capacity )
-{
-    if ( root == NULL || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = TreeNodePackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-    TreeNode * destination = new ( base ) TreeNode{};
-    if ( !TreeNodePack( ctx, *root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, TreeNodeLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-inline int64_t TreeNodeCook( const TreeNodeBuilder & builder, uint8_t * buffer, int64_t capacity )
-{
-    if ( builder.region != NULL )
-    {
-        // already packed by Lock: the cooked file IS those bytes
-        if ( buffer == NULL || kTableCookedHeaderBytes + builder.region_bytes > capacity ) { return -1; }
-        if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-        memcpy( buffer + kTableCookedHeaderBytes, builder.region, (size_t) builder.region_bytes );
-        TableCookedHeaderWrite( buffer, TreeNodeLayoutId, (uint32_t) builder.region_bytes );
-        return kTableCookedHeaderBytes + builder.region_bytes;
-    }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    const TreeNode & root = *(const TreeNode *) TableArenaAt( builder.arena, builder.root_ref.value );
-    int64_t below = TreeNodePackMeasure( ctx, root, 1 );
-    if ( below < 0 || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-    TreeNode * destination = new ( base ) TreeNode{};
-    if ( !TreeNodePack( ctx, root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, TreeNodeLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-// TreeNodeOpen: point at a cooked file's root. Every refusal is loud and the
-// caller's fallback is a real wire Load: wrong form or byte order, a layout
-// id this build did not produce, a truncated region, an unaligned base, or
-// an offset graph that leaves the region.
-inline const TreeNode * TreeNodeOpen( const uint8_t * bytes, int64_t size )
-{
-    int64_t region_bytes = 0;
-    if ( !TableCookedHeaderCheck( bytes, size, TreeNodeLayoutId, &region_bytes ) ) { return NULL; }
-    if ( region_bytes < (int64_t) sizeof( TreeNode ) ) { return NULL; }
-    const uint8_t * base = bytes + kTableCookedHeaderBytes;
-    const TreeNode * root = (const TreeNode *) base;
-    // the root occupies the head of the region, so everything it names must
-    // land at or past its end — the walk's high-water mark starts there
-    int64_t watermark = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-    if ( watermark > region_bytes ) { return NULL; }
-    if ( !TreeNodeOpenWalk( root, base, region_bytes, watermark, 1 ) ) { return NULL; }
-    return root;
-}
-
 // ---- Layer: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: LayerBuilder — allocate nodes, wire them together, then Lock.
@@ -4179,19 +3587,6 @@ inline const TreeNode * TreeNodeOpen( const uint8_t * bytes, int64_t size )
 //          re-editing means loading the const form into a fresh builder.
 // Layer is never held by value — a file-format-scale structure is a region
 // and a root pointer, not a struct you copy.
-
-// The cooked form's build lock: the schema's packed-layout facts mixed with
-// this build's own sizeof for every type in the closure, so schema drift AND
-// ABI drift both refuse at Open.
-inline constexpr uint32_t LayerLayoutId =
-    0xc94a472fu
-    ^ ( (uint32_t) sizeof( Layer ) * 0x9e3779b1u )
-    ^ ( (uint32_t) offsetof( Layer, depth ) * 0x2423441du )
-    ^ ( (uint32_t) offsetof( Layer, head ) * 0xaa0f0e87u )
-    ^ ( (uint32_t) sizeof( ListNode ) * 0x2ffad8f3u )
-    ^ ( (uint32_t) offsetof( ListNode, value ) * 0xb5e6a35du )
-    ^ ( (uint32_t) offsetof( ListNode, name ) * 0x3bd26dc9u )
-    ^ ( (uint32_t) offsetof( ListNode, next ) * 0xc1be3833u );
 
 struct LayerBuilder
 {
@@ -4341,98 +3736,6 @@ inline bool LayerLoadBuilder( LayerBuilder & builder, const uint8_t * wire, int6
     return LayerLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- Layer cooked: the region form (SPEC-TABLES.md §7) ----
-//
-// One requirement: load a big file, point at its root, without copying it
-// and without parsing it. The cooked form is the structure laid out exactly
-// as the runtime reads it, behind a header that build-locks it. It is an
-// ACCELERATOR, regenerated whenever the schema moves; the tolerant wire is
-// the format of record, and a cooked file is never an archive.
-
-inline int64_t LayerCookMeasure( const Layer * root )
-{
-    if ( root == NULL ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = LayerPackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Layer ) ) + below;
-}
-
-inline int64_t LayerCookMeasure( const LayerBuilder & builder )
-{
-    if ( builder.region != NULL ) { return kTableCookedHeaderBytes + builder.region_bytes; }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    int64_t below = LayerPackMeasure( ctx, *(const Layer *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Layer ) ) + below;
-}
-
-inline int64_t LayerCook( const Layer * root, uint8_t * buffer, int64_t capacity )
-{
-    if ( root == NULL || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = LayerPackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Layer ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Layer ) );
-    Layer * destination = new ( base ) Layer{};
-    if ( !LayerPack( ctx, *root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, LayerLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-inline int64_t LayerCook( const LayerBuilder & builder, uint8_t * buffer, int64_t capacity )
-{
-    if ( builder.region != NULL )
-    {
-        // already packed by Lock: the cooked file IS those bytes
-        if ( buffer == NULL || kTableCookedHeaderBytes + builder.region_bytes > capacity ) { return -1; }
-        if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-        memcpy( buffer + kTableCookedHeaderBytes, builder.region, (size_t) builder.region_bytes );
-        TableCookedHeaderWrite( buffer, LayerLayoutId, (uint32_t) builder.region_bytes );
-        return kTableCookedHeaderBytes + builder.region_bytes;
-    }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    const Layer & root = *(const Layer *) TableArenaAt( builder.arena, builder.root_ref.value );
-    int64_t below = LayerPackMeasure( ctx, root, 1 );
-    if ( below < 0 || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Layer ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Layer ) );
-    Layer * destination = new ( base ) Layer{};
-    if ( !LayerPack( ctx, root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, LayerLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-// LayerOpen: point at a cooked file's root. Every refusal is loud and the
-// caller's fallback is a real wire Load: wrong form or byte order, a layout
-// id this build did not produce, a truncated region, an unaligned base, or
-// an offset graph that leaves the region.
-inline const Layer * LayerOpen( const uint8_t * bytes, int64_t size )
-{
-    int64_t region_bytes = 0;
-    if ( !TableCookedHeaderCheck( bytes, size, LayerLayoutId, &region_bytes ) ) { return NULL; }
-    if ( region_bytes < (int64_t) sizeof( Layer ) ) { return NULL; }
-    const uint8_t * base = bytes + kTableCookedHeaderBytes;
-    const Layer * root = (const Layer *) base;
-    // the root occupies the head of the region, so everything it names must
-    // land at or past its end — the walk's high-water mark starts there
-    int64_t watermark = TableAlignUp64( (int64_t) sizeof( Layer ) );
-    if ( watermark > region_bytes ) { return NULL; }
-    if ( !LayerOpenWalk( root, base, region_bytes, watermark, 1 ) ) { return NULL; }
-    return root;
-}
-
 // ---- Scene: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: SceneBuilder — allocate nodes, wire them together, then Lock.
@@ -4442,39 +3745,6 @@ inline const Layer * LayerOpen( const uint8_t * bytes, int64_t size )
 //          re-editing means loading the const form into a fresh builder.
 // Scene is never held by value — a file-format-scale structure is a region
 // and a root pointer, not a struct you copy.
-
-// The cooked form's build lock: the schema's packed-layout facts mixed with
-// this build's own sizeof for every type in the closure, so schema drift AND
-// ABI drift both refuse at Open.
-inline constexpr uint32_t SceneLayoutId =
-    0xd4a38874u
-    ^ ( (uint32_t) sizeof( Scene ) * 0x9e3779b1u )
-    ^ ( (uint32_t) offsetof( Scene, name ) * 0x2423441du )
-    ^ ( (uint32_t) offsetof( Scene, version ) * 0xaa0f0e87u )
-    ^ ( (uint32_t) offsetof( Scene, head ) * 0x2ffad8f3u )
-    ^ ( (uint32_t) offsetof( Scene, tree ) * 0xb5e6a35du )
-    ^ ( (uint32_t) offsetof( Scene, settings ) * 0x3bd26dc9u )
-    ^ ( (uint32_t) offsetof( Scene, alias ) * 0xc1be3833u )
-    ^ ( (uint32_t) offsetof( Scene, ground ) * 0x47aa029fu )
-    ^ ( (uint32_t) offsetof( Scene, layers ) * 0xcd95cd09u )
-    ^ ( (uint32_t) offsetof( Scene, meta ) * 0x53819775u )
-    ^ ( (uint32_t) sizeof( ListNode ) * 0xd96d61dfu )
-    ^ ( (uint32_t) offsetof( ListNode, value ) * 0x5f592c4bu )
-    ^ ( (uint32_t) offsetof( ListNode, name ) * 0xe544f6b5u )
-    ^ ( (uint32_t) offsetof( ListNode, next ) * 0x6b30c121u )
-    ^ ( (uint32_t) sizeof( TreeNode ) * 0xf11c8b8bu )
-    ^ ( (uint32_t) offsetof( TreeNode, label ) * 0x770855f7u )
-    ^ ( (uint32_t) offsetof( TreeNode, left ) * 0xfcf42061u )
-    ^ ( (uint32_t) offsetof( TreeNode, right ) * 0x82dfeacdu )
-    ^ ( (uint32_t) sizeof( Settings ) * 0x08cbb537u )
-    ^ ( (uint32_t) offsetof( Settings, quality ) * 0x8eb77fa3u )
-    ^ ( (uint32_t) offsetof( Settings, label ) * 0x14a34a0du )
-    ^ ( (uint32_t) sizeof( Layer ) * 0x9a8f1479u )
-    ^ ( (uint32_t) offsetof( Layer, depth ) * 0x207adee3u )
-    ^ ( (uint32_t) offsetof( Layer, head ) * 0xa666a94fu )
-    ^ ( (uint32_t) sizeof( Meta ) * 0x2c5273b9u )
-    ^ ( (uint32_t) offsetof( Meta, build ) * 0xb23e3e25u )
-    ^ ( (uint32_t) offsetof( Meta, tag ) * 0x382a088fu );
 
 struct SceneBuilder
 {
@@ -4624,98 +3894,6 @@ inline bool SceneLoadBuilder( SceneBuilder & builder, const uint8_t * wire, int6
     return SceneLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- Scene cooked: the region form (SPEC-TABLES.md §7) ----
-//
-// One requirement: load a big file, point at its root, without copying it
-// and without parsing it. The cooked form is the structure laid out exactly
-// as the runtime reads it, behind a header that build-locks it. It is an
-// ACCELERATOR, regenerated whenever the schema moves; the tolerant wire is
-// the format of record, and a cooked file is never an archive.
-
-inline int64_t SceneCookMeasure( const Scene * root )
-{
-    if ( root == NULL ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = ScenePackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Scene ) ) + below;
-}
-
-inline int64_t SceneCookMeasure( const SceneBuilder & builder )
-{
-    if ( builder.region != NULL ) { return kTableCookedHeaderBytes + builder.region_bytes; }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    int64_t below = ScenePackMeasure( ctx, *(const Scene *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Scene ) ) + below;
-}
-
-inline int64_t SceneCook( const Scene * root, uint8_t * buffer, int64_t capacity )
-{
-    if ( root == NULL || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = ScenePackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Scene ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Scene ) );
-    Scene * destination = new ( base ) Scene{};
-    if ( !ScenePack( ctx, *root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, SceneLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-inline int64_t SceneCook( const SceneBuilder & builder, uint8_t * buffer, int64_t capacity )
-{
-    if ( builder.region != NULL )
-    {
-        // already packed by Lock: the cooked file IS those bytes
-        if ( buffer == NULL || kTableCookedHeaderBytes + builder.region_bytes > capacity ) { return -1; }
-        if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-        memcpy( buffer + kTableCookedHeaderBytes, builder.region, (size_t) builder.region_bytes );
-        TableCookedHeaderWrite( buffer, SceneLayoutId, (uint32_t) builder.region_bytes );
-        return kTableCookedHeaderBytes + builder.region_bytes;
-    }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    const Scene & root = *(const Scene *) TableArenaAt( builder.arena, builder.root_ref.value );
-    int64_t below = ScenePackMeasure( ctx, root, 1 );
-    if ( below < 0 || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Scene ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Scene ) );
-    Scene * destination = new ( base ) Scene{};
-    if ( !ScenePack( ctx, root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, SceneLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-// SceneOpen: point at a cooked file's root. Every refusal is loud and the
-// caller's fallback is a real wire Load: wrong form or byte order, a layout
-// id this build did not produce, a truncated region, an unaligned base, or
-// an offset graph that leaves the region.
-inline const Scene * SceneOpen( const uint8_t * bytes, int64_t size )
-{
-    int64_t region_bytes = 0;
-    if ( !TableCookedHeaderCheck( bytes, size, SceneLayoutId, &region_bytes ) ) { return NULL; }
-    if ( region_bytes < (int64_t) sizeof( Scene ) ) { return NULL; }
-    const uint8_t * base = bytes + kTableCookedHeaderBytes;
-    const Scene * root = (const Scene *) base;
-    // the root occupies the head of the region, so everything it names must
-    // land at or past its end — the walk's high-water mark starts there
-    int64_t watermark = TableAlignUp64( (int64_t) sizeof( Scene ) );
-    if ( watermark > region_bytes ) { return NULL; }
-    if ( !SceneOpenWalk( root, base, region_bytes, watermark, 1 ) ) { return NULL; }
-    return root;
-}
-
 // ---- Depot: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: DepotBuilder — allocate nodes, wire them together, then Lock.
@@ -4725,27 +3903,6 @@ inline const Scene * SceneOpen( const uint8_t * bytes, int64_t size )
 //          re-editing means loading the const form into a fresh builder.
 // Depot is never held by value — a file-format-scale structure is a region
 // and a root pointer, not a struct you copy.
-
-// The cooked form's build lock: the schema's packed-layout facts mixed with
-// this build's own sizeof for every type in the closure, so schema drift AND
-// ABI drift both refuse at Open.
-inline constexpr uint32_t DepotLayoutId =
-    0xdad6c239u
-    ^ ( (uint32_t) sizeof( Depot ) * 0x9e3779b1u )
-    ^ ( (uint32_t) offsetof( Depot, name ) * 0x2423441du )
-    ^ ( (uint32_t) offsetof( Depot, banks ) * 0xaa0f0e87u )
-    ^ ( (uint32_t) offsetof( Depot, spare ) * 0x2ffad8f3u )
-    ^ ( (uint32_t) offsetof( Depot, head ) * 0xb5e6a35du )
-    ^ ( (uint32_t) sizeof( Layer ) * 0x3bd26dc9u )
-    ^ ( (uint32_t) offsetof( Layer, depth ) * 0xc1be3833u )
-    ^ ( (uint32_t) offsetof( Layer, head ) * 0x47aa029fu )
-    ^ ( (uint32_t) sizeof( ListNode ) * 0xcd95cd09u )
-    ^ ( (uint32_t) offsetof( ListNode, value ) * 0x53819775u )
-    ^ ( (uint32_t) offsetof( ListNode, name ) * 0xd96d61dfu )
-    ^ ( (uint32_t) offsetof( ListNode, next ) * 0x5f592c4bu )
-    ^ ( (uint32_t) sizeof( Meta ) * 0xe544f6b5u )
-    ^ ( (uint32_t) offsetof( Meta, build ) * 0x6b30c121u )
-    ^ ( (uint32_t) offsetof( Meta, tag ) * 0xf11c8b8bu );
 
 struct DepotBuilder
 {
@@ -4895,98 +4052,6 @@ inline bool DepotLoadBuilder( DepotBuilder & builder, const uint8_t * wire, int6
     return DepotLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- Depot cooked: the region form (SPEC-TABLES.md §7) ----
-//
-// One requirement: load a big file, point at its root, without copying it
-// and without parsing it. The cooked form is the structure laid out exactly
-// as the runtime reads it, behind a header that build-locks it. It is an
-// ACCELERATOR, regenerated whenever the schema moves; the tolerant wire is
-// the format of record, and a cooked file is never an archive.
-
-inline int64_t DepotCookMeasure( const Depot * root )
-{
-    if ( root == NULL ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = DepotPackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Depot ) ) + below;
-}
-
-inline int64_t DepotCookMeasure( const DepotBuilder & builder )
-{
-    if ( builder.region != NULL ) { return kTableCookedHeaderBytes + builder.region_bytes; }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    int64_t below = DepotPackMeasure( ctx, *(const Depot *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Depot ) ) + below;
-}
-
-inline int64_t DepotCook( const Depot * root, uint8_t * buffer, int64_t capacity )
-{
-    if ( root == NULL || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = DepotPackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Depot ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Depot ) );
-    Depot * destination = new ( base ) Depot{};
-    if ( !DepotPack( ctx, *root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, DepotLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-inline int64_t DepotCook( const DepotBuilder & builder, uint8_t * buffer, int64_t capacity )
-{
-    if ( builder.region != NULL )
-    {
-        // already packed by Lock: the cooked file IS those bytes
-        if ( buffer == NULL || kTableCookedHeaderBytes + builder.region_bytes > capacity ) { return -1; }
-        if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-        memcpy( buffer + kTableCookedHeaderBytes, builder.region, (size_t) builder.region_bytes );
-        TableCookedHeaderWrite( buffer, DepotLayoutId, (uint32_t) builder.region_bytes );
-        return kTableCookedHeaderBytes + builder.region_bytes;
-    }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    const Depot & root = *(const Depot *) TableArenaAt( builder.arena, builder.root_ref.value );
-    int64_t below = DepotPackMeasure( ctx, root, 1 );
-    if ( below < 0 || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Depot ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Depot ) );
-    Depot * destination = new ( base ) Depot{};
-    if ( !DepotPack( ctx, root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, DepotLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-// DepotOpen: point at a cooked file's root. Every refusal is loud and the
-// caller's fallback is a real wire Load: wrong form or byte order, a layout
-// id this build did not produce, a truncated region, an unaligned base, or
-// an offset graph that leaves the region.
-inline const Depot * DepotOpen( const uint8_t * bytes, int64_t size )
-{
-    int64_t region_bytes = 0;
-    if ( !TableCookedHeaderCheck( bytes, size, DepotLayoutId, &region_bytes ) ) { return NULL; }
-    if ( region_bytes < (int64_t) sizeof( Depot ) ) { return NULL; }
-    const uint8_t * base = bytes + kTableCookedHeaderBytes;
-    const Depot * root = (const Depot *) base;
-    // the root occupies the head of the region, so everything it names must
-    // land at or past its end — the walk's high-water mark starts there
-    int64_t watermark = TableAlignUp64( (int64_t) sizeof( Depot ) );
-    if ( watermark > region_bytes ) { return NULL; }
-    if ( !DepotOpenWalk( root, base, region_bytes, watermark, 1 ) ) { return NULL; }
-    return root;
-}
-
 // ---- Album: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: AlbumBuilder — allocate nodes, wire them together, then Lock.
@@ -4996,35 +4061,6 @@ inline const Depot * DepotOpen( const uint8_t * bytes, int64_t size )
 //          re-editing means loading the const form into a fresh builder.
 // Album is never held by value — a file-format-scale structure is a region
 // and a root pointer, not a struct you copy.
-
-// The cooked form's build lock: the schema's packed-layout facts mixed with
-// this build's own sizeof for every type in the closure, so schema drift AND
-// ABI drift both refuse at Open.
-inline constexpr uint32_t AlbumLayoutId =
-    0x3f8f160bu
-    ^ ( (uint32_t) sizeof( Album ) * 0x9e3779b1u )
-    ^ ( (uint32_t) offsetof( Album, name ) * 0x2423441du )
-    ^ ( (uint32_t) offsetof( Album, tint ) * 0xaa0f0e87u )
-    ^ ( (uint32_t) offsetof( Album, stamp ) * 0x2ffad8f3u )
-    ^ ( (uint32_t) offsetof( Album, marker ) * 0xb5e6a35du )
-    ^ ( (uint32_t) offsetof( Album, pin ) * 0x3bd26dc9u )
-    ^ ( (uint32_t) offsetof( Album, head ) * 0xc1be3833u )
-    ^ ( (uint32_t) sizeof( Colour ) * 0x47aa029fu )
-    ^ ( (uint32_t) offsetof( Colour, r ) * 0xcd95cd09u )
-    ^ ( (uint32_t) offsetof( Colour, g ) * 0x53819775u )
-    ^ ( (uint32_t) offsetof( Colour, b ) * 0xd96d61dfu )
-    ^ ( (uint32_t) sizeof( Stamp ) * 0x5f592c4bu )
-    ^ ( (uint32_t) offsetof( Stamp, tag ) * 0xe544f6b5u )
-    ^ ( (uint32_t) offsetof( Stamp, seq ) * 0x6b30c121u )
-    ^ ( (uint32_t) sizeof( Marker ) * 0xf11c8b8bu )
-    ^ ( (uint32_t) offsetof( Marker, label ) * 0x770855f7u )
-    ^ ( (uint32_t) offsetof( Marker, note ) * 0xfcf42061u )
-    ^ ( (uint32_t) sizeof( Tally ) * 0x82dfeacdu )
-    ^ ( (uint32_t) offsetof( Tally, hits ) * 0x08cbb537u )
-    ^ ( (uint32_t) sizeof( ListNode ) * 0x8eb77fa3u )
-    ^ ( (uint32_t) offsetof( ListNode, value ) * 0x14a34a0du )
-    ^ ( (uint32_t) offsetof( ListNode, name ) * 0x9a8f1479u )
-    ^ ( (uint32_t) offsetof( ListNode, next ) * 0x207adee3u );
 
 struct AlbumBuilder
 {
@@ -5172,98 +4208,6 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire, int6
     if ( root == NULL ) { out->malformed = true; return false; }
     TableReader r( wire, wire_bytes, out );
     return AlbumLoadBody( r, builder.main, *root, 1 );
-}
-
-// ---- Album cooked: the region form (SPEC-TABLES.md §7) ----
-//
-// One requirement: load a big file, point at its root, without copying it
-// and without parsing it. The cooked form is the structure laid out exactly
-// as the runtime reads it, behind a header that build-locks it. It is an
-// ACCELERATOR, regenerated whenever the schema moves; the tolerant wire is
-// the format of record, and a cooked file is never an archive.
-
-inline int64_t AlbumCookMeasure( const Album * root )
-{
-    if ( root == NULL ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = AlbumPackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Album ) ) + below;
-}
-
-inline int64_t AlbumCookMeasure( const AlbumBuilder & builder )
-{
-    if ( builder.region != NULL ) { return kTableCookedHeaderBytes + builder.region_bytes; }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    int64_t below = AlbumPackMeasure( ctx, *(const Album *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Album ) ) + below;
-}
-
-inline int64_t AlbumCook( const Album * root, uint8_t * buffer, int64_t capacity )
-{
-    if ( root == NULL || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = AlbumPackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Album ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Album ) );
-    Album * destination = new ( base ) Album{};
-    if ( !AlbumPack( ctx, *root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, AlbumLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-inline int64_t AlbumCook( const AlbumBuilder & builder, uint8_t * buffer, int64_t capacity )
-{
-    if ( builder.region != NULL )
-    {
-        // already packed by Lock: the cooked file IS those bytes
-        if ( buffer == NULL || kTableCookedHeaderBytes + builder.region_bytes > capacity ) { return -1; }
-        if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-        memcpy( buffer + kTableCookedHeaderBytes, builder.region, (size_t) builder.region_bytes );
-        TableCookedHeaderWrite( buffer, AlbumLayoutId, (uint32_t) builder.region_bytes );
-        return kTableCookedHeaderBytes + builder.region_bytes;
-    }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    const Album & root = *(const Album *) TableArenaAt( builder.arena, builder.root_ref.value );
-    int64_t below = AlbumPackMeasure( ctx, root, 1 );
-    if ( below < 0 || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Album ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Album ) );
-    Album * destination = new ( base ) Album{};
-    if ( !AlbumPack( ctx, root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, AlbumLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-// AlbumOpen: point at a cooked file's root. Every refusal is loud and the
-// caller's fallback is a real wire Load: wrong form or byte order, a layout
-// id this build did not produce, a truncated region, an unaligned base, or
-// an offset graph that leaves the region.
-inline const Album * AlbumOpen( const uint8_t * bytes, int64_t size )
-{
-    int64_t region_bytes = 0;
-    if ( !TableCookedHeaderCheck( bytes, size, AlbumLayoutId, &region_bytes ) ) { return NULL; }
-    if ( region_bytes < (int64_t) sizeof( Album ) ) { return NULL; }
-    const uint8_t * base = bytes + kTableCookedHeaderBytes;
-    const Album * root = (const Album *) base;
-    // the root occupies the head of the region, so everything it names must
-    // land at or past its end — the walk's high-water mark starts there
-    int64_t watermark = TableAlignUp64( (int64_t) sizeof( Album ) );
-    if ( watermark > region_bytes ) { return NULL; }
-    if ( !AlbumOpenWalk( root, base, region_bytes, watermark, 1 ) ) { return NULL; }
-    return root;
 }
 
 // ---- relocatability, enforced: the wire is a pure length-prefixed

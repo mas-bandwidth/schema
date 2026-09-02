@@ -319,8 +319,8 @@ static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one at
 static const uint32_t kTableAlign       = 8;                           // every node starts 8-aligned
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
-// The pointer-chain depth cap. It bounds recursion on every walk — save,
-// load, cook and open — so a data cycle is an ERROR and never a hang, and a
+// The pointer-chain depth cap. It bounds recursion on every walk — measure,
+// save, load and pack — so a data cycle is an ERROR and never a hang, and a
 // hostile wire cannot drive the C stack into the ground. A pointer chain's
 // WIRE nesting equals its length (§3), so this also caps chain length: wide
 // structures are unbounded, deep ones are not. Lifting it wants a flat,
@@ -338,8 +338,7 @@ static const int32_t kTableMaxDepth = 128;
 //
 // 0 is null in both. Region deltas are always POSITIVE: a region is packed by
 // a depth-first walk, so a child always sits after the slot that names it —
-// which is also what makes the cooked-form bounds walk cycle-free by
-// construction.
+// which is what makes a packed region cycle-free by construction.
 struct TableRef
 {
     uint32_t value = 0;
@@ -429,9 +428,9 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
         {
             if ( arena.segments[segment].load( std::memory_order_acquire ) == NULL )
             {
-                // calloc, NOT malloc: Lock and Cook copy whole nodes, PADDING
+                // calloc, NOT malloc: Lock copies whole nodes, PADDING
                 // INCLUDED, so anything uninitialised here reaches a packed
-                // region and a cooked file on disk. Value-initialising a node
+                // region. Value-initialising a node
                 // with placement new zeroes its MEMBERS and not its padding, so
                 // the zeroing has to happen here or not at all. It costs nothing
                 // measurable: a fresh segment is untouched pages either way, and
@@ -463,8 +462,8 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
 //     No locks, no atomics per node.
 //   * Writing fields of a node ANOTHER worker allocated is your own
 //     synchronization problem — this runtime does not arbitrate it.
-//   * Lock, Save, Cook and Open are single-threaded: call them after the
-//     workers have joined.
+//   * Lock and Save are single-threaded: call them after the workers have
+//     joined.
 struct TableWorker
 {
     TableArena * arena = NULL;
@@ -509,66 +508,6 @@ struct TableRegionSink
     int64_t capacity = 0;
     int64_t used = 0;
 };
-
-// ---- the cooked form's header ----
-//
-// The cooked form answers one requirement: load a big file, point at its
-// root, without copying it and without parsing it. It is an accelerator
-// beside the wire, not an archive — the tolerant wire (§3) stays the format
-// of record, and a cooked file is regenerated whenever the schema moves.
-// The header is what makes the build-locking honest:
-//
-//   magic     — identifies the form AND the byte order (a foreign-endian
-//               writer's magic reads wrong, and Open refuses)
-//   layout_id — a compile-time digest of the packed-layout facts: the field
-//               shape from the schema, mixed with each closure type's sizeof
-//               as this build compiled it, so schema drift AND ABI drift both
-//               refuse
-//   bytes     — the packed region's length
-//
-// 32 bytes, so a root at base + 32 keeps the alignment the allocator gave the
-// base (mmap gives page alignment for free).
-static const uint32_t kTableCookedMagic = 0x314B4353u; // 'S','C','K','1'
-static const int64_t kTableCookedHeaderBytes = 32;
-
-struct TableRegionHeader
-{
-    uint32_t magic;
-    uint32_t layout_id;
-    uint32_t bytes;
-    uint32_t reserved[5];
-};
-
-inline void TableCookedHeaderWrite( uint8_t * at, uint32_t layout_id, uint32_t bytes )
-{
-    TableRegionHeader header = {};
-    header.magic = kTableCookedMagic;
-    header.layout_id = layout_id;
-    header.bytes = bytes;
-    memcpy( at, &header, sizeof( header ) );
-}
-
-// TableCookedHeaderCheck refuses a region this build cannot point at. Every
-// refusal is loud and the caller's fallback is a real wire Load.
-inline bool TableCookedHeaderCheck( const uint8_t * bytes, int64_t size, uint32_t layout_id, int64_t * region_bytes )
-{
-    if ( bytes == NULL || size < kTableCookedHeaderBytes ) { return false; }
-    if ( ( ( (uintptr_t) bytes ) & ( kTableAlign - 1 ) ) != 0 ) { return false; } // an unaligned base cannot be pointed at
-    TableRegionHeader header;
-    memcpy( &header, bytes, sizeof( header ) );
-    if ( header.magic != kTableCookedMagic ) { return false; } // wrong form, or foreign byte order
-    if ( header.layout_id != layout_id ) { return false; }     // schema or ABI drift: regenerate the cooked file
-    if ( (int64_t) header.bytes > size - kTableCookedHeaderBytes ) { return false; }
-    // the reserved words are reserved: a writer that used them wrote a form
-    // this build does not understand, and silently ignoring them would make
-    // them unusable later
-    for ( size_t i = 0; i < sizeof( header.reserved ) / sizeof( header.reserved[0] ); i++ )
-    {
-        if ( header.reserved[i] != 0 ) { return false; }
-    }
-    *region_bytes = (int64_t) header.bytes;
-    return true;
-}
 
 } // namespace graphdemo
 
@@ -687,7 +626,7 @@ template <typename Ctx> inline int64_t MarkerMeasureBody( const Ctx & ctx, const
 template <typename Ctx> inline bool MarkerSaveBody( const Ctx & ctx, TableWriter & w, const Marker & value, int32_t depth );
 template <typename Sink> inline bool MarkerLoadBody( TableReader & r, Sink & sink, Marker & value, int32_t depth );
 
-// ---- pointer-graph walkers: pack (Lock/Cook), size (Load), bound (Open) ----
+// ---- pointer-graph walkers: pack (Lock), size (Load) ----
 
 template <typename Ctx> inline int64_t TallyPackMeasure( const Ctx & ctx, const Tally & value, int32_t depth );
 template <typename Ctx> inline bool TallyPack( const Ctx & ctx, const Tally & src, Tally & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
@@ -695,11 +634,6 @@ inline int64_t TallyLoadMeasureBody( TableReader & r, int32_t depth );
 template <typename Ctx> inline int64_t MarkerPackMeasure( const Ctx & ctx, const Marker & value, int32_t depth );
 template <typename Ctx> inline bool MarkerPack( const Ctx & ctx, const Marker & src, Marker & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t MarkerLoadMeasureBody( TableReader & r, int32_t depth );
-
-// ---- the cooked form's bounds walks (SPEC-TABLES.md §7) ----
-
-inline bool TallyOpenWalk( const Tally * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
-inline bool MarkerOpenWalk( const Marker * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth );
 
 inline int64_t TallyMeasure( const Tally & value )
 {
@@ -907,12 +841,9 @@ inline int64_t TallyPackMeasure( const Ctx & ctx, const Tally & value, int32_t d
 // TallyPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT TallyOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool TallyPack( const Ctx & ctx, const Tally & src, Tally & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -955,12 +886,9 @@ inline int64_t MarkerPackMeasure( const Ctx & ctx, const Marker & value, int32_t
 // MarkerPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// THAT PRE-ORDER IS AN INVARIANT MarkerOpenWalk DEPENDS ON. Because a child
-// always lands after the slot naming it, region deltas are strictly
-// positive and a packed region cannot contain a cycle; because siblings
-// land in field order, OpenWalk's high-water mark — which is what keeps
-// validation linear rather than exponential — is satisfied by every
-// genuine region. NEITHER THIS ORDER NOR OPENWALK'S MAY CHANGE ALONE.
+// The pre-order is what makes a region simple to reason about: a child
+// always lands after the slot naming it, so region deltas are strictly
+// positive and a packed region cannot contain a cycle.
 template <typename Ctx>
 inline bool MarkerPack( const Ctx & ctx, const Marker & src, Marker & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
@@ -1021,53 +949,6 @@ inline int64_t MarkerLoadMeasureBody( TableReader & r, int32_t depth )
     }
 }
 
-// TallyOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// Tally holds no reference of its own, so it neither reads the watermark nor
-// advances it: its placement in the region is decided entirely by the pack
-// of whatever variable table nests it, and the mark passes through here
-// untouched. What this walk owes is the COUNT COMPANIONS — a member nested
-// by value carries bounds that any traversal trusts, and an unbounded one
-// is the over-read. That is why it is emitted even for a table nothing
-// points at, in a file that declares no variable table at all.
-inline bool TallyOpenWalk( const Tally * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    (void) base; (void) bytes; (void) watermark; (void) depth;
-    return true;
-}
-
-// MarkerOpenWalk: validate the REFERENCE GRAPH and the counts that bound a
-// traversal of it — no field value is read, no payload is decoded.
-//
-// The watermark is the termination proof. MarkerPack lays nodes out in PRE-ORDER
-// by bump allocation and this walk visits them in the SAME ORDER, so a
-// genuine region always satisfies `at >= watermark`. Requiring it makes the
-// walk consume region bytes monotonically: linear in the region, immune to a
-// forged file whose references alias forward (which without it costs 2^n),
-// and closed to mid-node overlaps a range check alone would admit.
-// NEITHER THIS ORDER NOR PACK'S MAY CHANGE ALONE.
-inline bool MarkerOpenWalk( const Marker * node, const uint8_t * base, int64_t bytes, int64_t & watermark, int32_t depth )
-{
-    if ( node == NULL || depth > kTableMaxDepth ) { return false; }
-    if ( node->label_length < 0 || node->label_length > 8 ) { return false; } // label
-    {
-        uint32_t delta = node->note.value; // note
-        if ( delta != 0 )
-        {
-            if ( (int32_t) delta <= 0 ) { return false; } // a packed reference is strictly forward
-            int64_t at = ( (const uint8_t *) &node->note - base ) + (int64_t) delta;
-            if ( at < watermark ) { return false; } // out of pre-order: an alias, or an overlap
-            if ( ( at & ( kTableAlign - 1 ) ) != 0 ) { return false; }
-            if ( at + (int64_t) sizeof( Tally ) > bytes ) { return false; }
-            watermark = at + TableAlignUp64( (int64_t) sizeof( Tally ) );
-            if ( !TallyOpenWalk( (const Tally *) ( base + at ), base, bytes, watermark, depth + 1 ) ) { return false; }
-        }
-    }
-    return true;
-}
-
 // ---- Marker: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: MarkerBuilder — allocate nodes, wire them together, then Lock.
@@ -1077,17 +958,6 @@ inline bool MarkerOpenWalk( const Marker * node, const uint8_t * base, int64_t b
 //          re-editing means loading the const form into a fresh builder.
 // Marker is never held by value — a file-format-scale structure is a region
 // and a root pointer, not a struct you copy.
-
-// The cooked form's build lock: the schema's packed-layout facts mixed with
-// this build's own sizeof for every type in the closure, so schema drift AND
-// ABI drift both refuse at Open.
-inline constexpr uint32_t MarkerLayoutId =
-    0x66e432b4u
-    ^ ( (uint32_t) sizeof( Marker ) * 0x9e3779b1u )
-    ^ ( (uint32_t) offsetof( Marker, label ) * 0x2423441du )
-    ^ ( (uint32_t) offsetof( Marker, note ) * 0xaa0f0e87u )
-    ^ ( (uint32_t) sizeof( Tally ) * 0x2ffad8f3u )
-    ^ ( (uint32_t) offsetof( Tally, hits ) * 0xb5e6a35du );
 
 struct MarkerBuilder
 {
@@ -1235,98 +1105,6 @@ inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire, in
     if ( root == NULL ) { out->malformed = true; return false; }
     TableReader r( wire, wire_bytes, out );
     return MarkerLoadBody( r, builder.main, *root, 1 );
-}
-
-// ---- Marker cooked: the region form (SPEC-TABLES.md §7) ----
-//
-// One requirement: load a big file, point at its root, without copying it
-// and without parsing it. The cooked form is the structure laid out exactly
-// as the runtime reads it, behind a header that build-locks it. It is an
-// ACCELERATOR, regenerated whenever the schema moves; the tolerant wire is
-// the format of record, and a cooked file is never an archive.
-
-inline int64_t MarkerCookMeasure( const Marker * root )
-{
-    if ( root == NULL ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = MarkerPackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Marker ) ) + below;
-}
-
-inline int64_t MarkerCookMeasure( const MarkerBuilder & builder )
-{
-    if ( builder.region != NULL ) { return kTableCookedHeaderBytes + builder.region_bytes; }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    int64_t below = MarkerPackMeasure( ctx, *(const Marker *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
-    if ( below < 0 ) { return -1; }
-    return kTableCookedHeaderBytes + TableAlignUp64( (int64_t) sizeof( Marker ) ) + below;
-}
-
-inline int64_t MarkerCook( const Marker * root, uint8_t * buffer, int64_t capacity )
-{
-    if ( root == NULL || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    TableRegionCtx ctx;
-    int64_t below = MarkerPackMeasure( ctx, *root, 1 );
-    if ( below < 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Marker ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Marker ) );
-    Marker * destination = new ( base ) Marker{};
-    if ( !MarkerPack( ctx, *root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, MarkerLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-inline int64_t MarkerCook( const MarkerBuilder & builder, uint8_t * buffer, int64_t capacity )
-{
-    if ( builder.region != NULL )
-    {
-        // already packed by Lock: the cooked file IS those bytes
-        if ( buffer == NULL || kTableCookedHeaderBytes + builder.region_bytes > capacity ) { return -1; }
-        if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-        memcpy( buffer + kTableCookedHeaderBytes, builder.region, (size_t) builder.region_bytes );
-        TableCookedHeaderWrite( buffer, MarkerLayoutId, (uint32_t) builder.region_bytes );
-        return kTableCookedHeaderBytes + builder.region_bytes;
-    }
-    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
-    TableArenaCtx ctx = { &builder.arena };
-    const Marker & root = *(const Marker *) TableArenaAt( builder.arena, builder.root_ref.value );
-    int64_t below = MarkerPackMeasure( ctx, root, 1 );
-    if ( below < 0 || buffer == NULL ) { return -1; }
-    if ( ( ( (uintptr_t) buffer ) & ( kTableAlign - 1 ) ) != 0 ) { return -1; }
-    int64_t region_bytes = TableAlignUp64( (int64_t) sizeof( Marker ) ) + below;
-    if ( kTableCookedHeaderBytes + region_bytes > capacity ) { return -1; }
-    uint8_t * base = buffer + kTableCookedHeaderBytes;
-    memset( base, 0, (size_t) region_bytes );
-    int64_t used = TableAlignUp64( (int64_t) sizeof( Marker ) );
-    Marker * destination = new ( base ) Marker{};
-    if ( !MarkerPack( ctx, root, *destination, base, region_bytes, used, 1 ) || used != region_bytes ) { return -1; }
-    TableCookedHeaderWrite( buffer, MarkerLayoutId, (uint32_t) region_bytes );
-    return kTableCookedHeaderBytes + region_bytes;
-}
-
-// MarkerOpen: point at a cooked file's root. Every refusal is loud and the
-// caller's fallback is a real wire Load: wrong form or byte order, a layout
-// id this build did not produce, a truncated region, an unaligned base, or
-// an offset graph that leaves the region.
-inline const Marker * MarkerOpen( const uint8_t * bytes, int64_t size )
-{
-    int64_t region_bytes = 0;
-    if ( !TableCookedHeaderCheck( bytes, size, MarkerLayoutId, &region_bytes ) ) { return NULL; }
-    if ( region_bytes < (int64_t) sizeof( Marker ) ) { return NULL; }
-    const uint8_t * base = bytes + kTableCookedHeaderBytes;
-    const Marker * root = (const Marker *) base;
-    // the root occupies the head of the region, so everything it names must
-    // land at or past its end — the walk's high-water mark starts there
-    int64_t watermark = TableAlignUp64( (int64_t) sizeof( Marker ) );
-    if ( watermark > region_bytes ) { return NULL; }
-    if ( !MarkerOpenWalk( root, base, region_bytes, watermark, 1 ) ) { return NULL; }
-    return root;
 }
 
 // ---- relocatability, enforced: the wire is a pure length-prefixed
