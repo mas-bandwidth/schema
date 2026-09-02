@@ -10,6 +10,8 @@ package ir_test
 
 import (
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -176,5 +178,61 @@ func TestBuildVersionSurvivesAWasRename(t *testing.T) {
 	if got := ir.BuildVersion(u); got != baseline {
 		t.Errorf("a `was` rename moved the build version (0x%016x -> 0x%016x) — the projections key on the WIRE ID for exactly this reason",
 			baseline, got)
+	}
+}
+
+// THE DIGEST'S NEGATIVE CONTROL (the block form's second, and the one a layout
+// test cannot supply for itself). A digest that shares its model with the code
+// it checks proves nothing until it is shown CAPABLE of missing a break — so
+// this reorders two fields of one row and asserts, twice:
+//
+//   - the real build version MOVES, because the layout projection keys every
+//     line on the field's WIRE ID and carries its OFFSET beside it; and
+//   - a WEAKENED projection with the offsets stripped out — the
+//     positional-versus-keyed sabotage, in this form's own terms — does NOT
+//     move, so the break is silently accepted.
+//
+// The second half is what makes the first mean something: the offset term is
+// load-bearing, and the test says so by removing it.
+func TestBuildVersionOffsetTermIsLoadBearing(t *testing.T) {
+	strip := func(projection string) string {
+		var out []string
+		for _, line := range strings.Split(projection, "\n") {
+			if line == "" {
+				continue
+			}
+			// "field <Record>.<id> <kind> <offset> <size>" -> drop the offset
+			parts := strings.Fields(line)
+			if parts[0] == "field" && len(parts) == 5 {
+				parts = append(parts[:3], parts[4])
+			}
+			out = append(out, strings.Join(parts, " "))
+		}
+		sort.Strings(out)
+		return strings.Join(out, "\n")
+	}
+
+	before := loadRender(t)
+	baselineVersion := ir.BuildVersion(before)
+	baselineWeak := strip(ir.LayoutProjection(before, "RenderShip"))
+
+	// reorder two SAME-SIZE, same-alignment fields of one row: object_id and
+	// target_object_id are both uint32, so nothing about the row's size or
+	// alignment moves — only two offsets do, which is exactly the break a
+	// pointed-at row cannot survive and cannot report.
+	after := loadRender(t)
+	ship := after.Tables["RenderShip"]
+	for i := range ship.Fields {
+		if ship.Fields[i].Name == "object_id" {
+			ship.Fields[i], ship.Fields[i+1] = ship.Fields[i+1], ship.Fields[i]
+			break
+		}
+	}
+
+	if ir.BuildVersion(after) == baselineVersion {
+		t.Error("reordering two same-size row fields did not move the build version — a consumer would read every row at the wrong offsets and BlockOpen would accept it")
+	}
+	if got := strip(ir.LayoutProjection(after, "RenderShip")); got != baselineWeak {
+		t.Errorf("the sabotaged projection was expected to be BLIND to the reorder, and was not:\n%s", got)
 	}
 }

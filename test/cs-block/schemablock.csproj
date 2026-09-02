@@ -25,11 +25,15 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>schemablocktest</AssemblyName>
+    <!-- Overridable so the Makefile's padding NEGATIVE CONTROL can point this
+         leg at a sabotaged copy of the generated sources and require it to go
+         red (SPEC-TABLES.md §19.5's negative-control rule). -->
+    <BlockGeneratedDir Condition="'$(BlockGeneratedDir)' == ''">../../build/tables-generated-cs/block</BlockGeneratedDir>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="src/*.cs" />
-    <Compile Include="../../build/tables-generated-cs/block/*.cs" />
+    <Compile Include="$(BlockGeneratedDir)/*.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>
