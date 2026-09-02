@@ -313,14 +313,38 @@ tables-cs-refuses-pointers: bin/schema
 
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
+#
+# TABLES_INCLUDES is shared with the sanitized twin below, so the two builds
+# can never drift into covering different code.
+TABLES_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables \
+	-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p2 -Ibuild/tables-generated/p3 \
+	-Ibuild/tables-generated/jsonkeys
+TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread
+
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
 	@mkdir -p build
-	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread \
-		-Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables \
-		-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
-		-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p2 -Ibuild/tables-generated/p3 \
-		-Ibuild/tables-generated/jsonkeys \
-		test/tables/main.cpp -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp -o $@
+
+# The SANITIZED twin (issue #277). The tables leg is where the pointer
+# machinery lives — an arena whose Lock() frees it one way, a packed region
+# read through self-relative deltas, a cooked file Open validates by walking
+# an offset graph, a builder that goes wide across threads — and those are
+# lifetime and bounds questions -Werror cannot see. A heap-use-after-free
+# lived here with CI green over it, because the assertion it corrupted
+# happened to compare equal every time (#276).
+#
+# -fno-sanitize-recover=all is what makes it a GATE: UBSan's default is to
+# print and continue, which exits 0 and proves nothing.
+#
+# Both builds run, and that is not duplication: ASan replaces the allocator,
+# so the two see different addresses and alignments — and this suite refuses
+# unaligned bases and misaligned region references by design. Each build
+# reaches states the other does not.
+build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g $(TABLES_INCLUDES) test/tables/main.cpp -o $@
 
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
@@ -470,10 +494,11 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables
+	./build/schema_test_tables_asan
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-negative-control
