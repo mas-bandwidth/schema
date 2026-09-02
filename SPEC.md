@@ -561,8 +561,10 @@ sequence    uint16
   bare rename would orphan every byte ever written under the old one; `was`
   keeps the old identity through the rename: `speed float32 | was =
   "velocity"`. It takes the old name as a QUOTED STRING. On a `type` field it
-  is refused by name — renaming a `type` field is free, because the packet
-  wire is positional (§3.1).
+  is refused by name: the packet wire is positional, so a rename orphans no
+  stored value and there is no identity for `was` to carry. It is not a free
+  edit — field NAMES ride in the projection (§3.1), so renaming a `type`
+  field moves the protocol id and both sides redeploy together.
 
 ### Type tags — types are the user's; meaning is claimed later
 

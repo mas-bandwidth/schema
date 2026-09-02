@@ -1446,8 +1446,12 @@ at compile time:
 
   The field's wire id is the hash of the OLD name, so identity survives
   the rename and old data loads into the new field. `was` naming the
-  field's own name is refused; `was` outside a table body is refused
-  (renaming a `type` field is free — positional wire, SPEC §3.1).
+  field's own name is refused; `was` outside a table body is refused,
+  because a `type` field has no stored identity for it to preserve — the
+  packet wire is positional, so a renamed `type` field loses no data. It
+  is not a free edit: field NAMES ride in the wire-shape projection, so a
+  `type` rename MOVES THE PROTOCOL ID and buys a lockstep redeploy
+  (SPEC.md §3.1).
 - **Id collisions are refused.** Two fields of one table whose ids
   collide — by hash accident, or a `was` colliding with a live field —
   are a compile error naming both fields. This is the failure hand-rolled
