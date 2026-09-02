@@ -1342,9 +1342,10 @@ change data, or add a new field and leave the old one alone.
 
 ### 4.1 The silent class, in full
 
-Almost every edit lands in the read report. **Exactly two do not**, and
+Almost every edit lands in the read report. **Exactly three do not**, and
 naming the whole set is the point of this subsection — a person reading a
-save game that came back wrong needs to know there is no third:
+save game that came back wrong needs the whole of it, and the third member is
+the one the committed baseline (§18) exists to refuse:
 
 1. **A specified DEFAULT changed, added or removed.** An elided field means
    "the reader's declared default", so the same bytes now mean something
@@ -1353,6 +1354,16 @@ save game that came back wrong needs to know there is no third:
    mask is the wire's one positional vocabulary (§3), so a variant's
    identity is its bit position; moving one remaps every stored file and
    the wire carries nothing that could say so.
+3. **A field's REFERENT dropped, or replaced by one that cannot STAND IN for
+   it.** An enum-typed field respelled as its raw `uint16` rides under kind
+   `7` either way (§4), so the stored value is read as a variant hash and
+   lands on `None` — or on a real variant — with no counter to fire; and a
+   nested table swapped for a twin that carries the same field ids under a
+   different specified default rewrites what every stored body means while
+   every id survives. The kinds are coarser than the declaration side, so
+   the wire cannot see WHICH declaration a field names. This is the class
+   §18 exists for, and §18.3 states the standard each vocabulary is held to.
+
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed and reordered; array bounds may move; a field may
@@ -1387,19 +1398,19 @@ directions — the value comes back, the report is silent, and the silence is
 honest, because nothing was lost on the way in. The loss, if it comes, is
 on the way OUT: a reader whose guard is false elides the field on its next
 save. So it is not a silent decoding edit, and the enumeration above stays
-at two; it is a round-trip hazard, and a tool that loads, edits and stores
+at three; it is a round-trip hazard, and a tool that loads, edits and stores
 a file — the save-game cycle §18 exists for — should be read as carrying
-it. A person whose file came back wrong needs the two above; a person whose
+it. A person whose file came back wrong needs the three above; a person whose
 tool rewrote a file needs this one.
 
-Each of the two has its own answer:
+Each of the three has its own answer:
 
 - **Flags** are answered by DISCIPLINE, stated as law: **append at the end,
   never insert or reorder**, and retire a name in place rather than freeing
   its bit.
-- **Both** are answered by MACHINERY, opt-in: the committed tables
+- **All three** are answered by MACHINERY, opt-in: the committed tables
   baseline (§18) is the history the compiler does not keep, and it
-  refuses either edit until the baseline moves with a recorded reason. It
+  refuses every one of them until the baseline moves with a recorded reason. It
   refuses the spelling changes above too, at compile time, ahead of the
   reader's report.
 
@@ -4087,9 +4098,13 @@ where implementations drift apart.
 
 **An optional committed projection of a unit's table closure, and the check
 that refuses the edits the wire cannot report.** §4.1 names those edits:
-exactly two, a changed specified default and a moved flags variant. The
-compiler retains no history and cannot see either on its own. The baseline
-IS that history, in a text file a person can read in a diff.
+exactly three — a changed specified default, a moved flags variant, and a
+referent that cannot stand in for the one it replaces. The compiler retains
+no history and cannot see any of them on its own. The baseline IS that
+history, in a text file a person can read in a diff. It refuses more than
+those three (§18.2), because an edit the wire DOES report is still an edit a
+save game may not survive, and a refusal a person overrides deliberately is
+cheaper than a counter nobody reads.
 
 The motivating case is a SAVE GAME — a file written by a build the reader
 no longer has, read by a build the writer never saw, years apart — and tool
