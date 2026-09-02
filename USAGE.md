@@ -576,6 +576,32 @@ out-of-range values are clamped. Every such event is counted in a report;
 only structural damage stops a load. Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
+**Enum variants and union arms ride by name too.** An enum value on the wire
+is the hash of its variant's name and a union body opens with the hash of its
+arm's name, so you can insert a variant in the MIDDLE and every stored value
+still reads back as itself:
+
+```
+enum Grade { Bronze, Gold }          // v1
+enum Grade { Bronze, Silver, Gold }  // v2 — every stored Gold still loads Gold
+```
+
+A variant a reader has no name for loads as `None` (enum) or empty (union)
+and counts as `unknown` — never as its neighbour. There is no `was` for a
+variant: renaming one is a new variant, and old data reads as unknown.
+
+**`flags` is the exception: append at the END.** A mask rides as its raw
+bits, so a variant's identity is its BIT POSITION. Inserting or reordering
+remaps every stored file silently — nothing on the wire says the bits moved:
+
+```
+flags Perks { Shielded, Cloaked, Turbo }           // v1: bits 0, 1, 2
+flags Perks { Shielded, Hardened, Cloaked, Turbo } // WRONG: stored Cloaked reads Hardened
+flags Perks { Shielded, Cloaked, Turbo, Hardened } // RIGHT: appended, nothing moves
+```
+
+Removing a variant frees no bit either — retire the name, keep the position.
+
 ### Save and load
 
 Generation produces `<Base>Table.h` beside the packet headers — plain byte
@@ -594,7 +620,8 @@ std::vector<uint8_t> buffer( size );               // or any storage you own
 ShipConfigSave( ship, buffer.data(), size );  // returns size — a buffer
 // of exactly Measure's answer always suffices; -1 means the buffer is
 // too small, or the value violates a storage bound (a _count or _length
-// outside its declared range — measure returns -1 for those too)
+// outside its declared range, or an enum value or union tag no variant
+// names — measure returns -1 for those too)
 
 TableReport report;
 ShipConfig loaded;
@@ -611,6 +638,15 @@ if ( report.unknown || report.kind_mismatch || report.clamped )
 
 Values at their defaults stay off the wire entirely — an all-default table
 saves as 2 bytes and loads back complete.
+
+**Which makes a default part of the wire contract.** An absent field means
+"the reader's declared default", so changing a default changes what every
+file already written says. A v1 writer elided `damage = 21.0`; a v2 reader
+declaring `damage = 25.0` loads 25.0 from that same file, and no report event
+fires — nothing was lost or skipped. A default change is a semantic edit to
+every stored file, and `was` does not cover it: `was` preserves an identity,
+not a value. Change a default the way you would change data, or add a new
+field and leave the old one alone.
 
 ### Nesting: a root table IS a format
 
@@ -655,14 +691,35 @@ table Node
 
 table Scene
 {
-    head     *Node
-    settings *Settings   // an optional subtable: null when absent
+    head    *Node
+    palette *Palette     // shared and large: one copy, pointed at
 }
 ```
 
 A pointer targets a `table`, never a `type` — and lives in a table body,
 never a type body. Arrays of pointers, and a specified default on a pointer,
 are refused by name.
+
+**Do not reach for a pointer to make a field optional.** Every field on this
+wire is already optional — absence is the reader's default. The spelling for
+an optional SECTION is a guarded field:
+
+```
+table Scene
+{
+    has_settings bool
+    if has_settings
+    {
+        settings Settings   // off the wire entirely when the guard is false
+    }
+}
+```
+
+No pointer, no allocation, and the table stays fixed-size. Use `*` when the
+structure needs it: recursion (a chain, a tree), one large subtree you would
+rather not carry by value, or a node several parents name. One pointer
+anywhere in a table's by-value closure turns it variable-length, and that
+changes the whole build-and-load lifecycle below.
 
 **The compiler derives the mode; you never declare it.** A table with no
 pointer anywhere in its by-value closure is FIXED-SIZE — a plain struct with
@@ -805,9 +862,11 @@ length-prefixed body is a self-contained decode.
 ### Walking fields at runtime
 
 Every closure type gets a reflection descriptor — name, wire id and kind,
-storage offset, array bounds and count companions, declared ranges, enum
-name functions, branch guards — enough to write a generic editor, printer or
-differ with no RTTI and no schema files at runtime:
+storage offset, array bounds and count companions, declared ranges, branch
+guards, and for an enum or union field the whole vocabulary: `[0, enum_max]`
+indexed, `enum_name` for each name and `variant_id` for the wire id it rides
+under. Enough to write a generic editor, printer or differ with no RTTI and
+no schema files at runtime:
 
 ```cpp
 const TableTypeInfo * type = ShipConfigTableType();
@@ -817,8 +876,8 @@ for ( int32_t i = 0; i < type->num_fields; i++ )
     printf( "%s %s @%u", field.name, field.type_name, field.offset );
     if ( field.has_range )
         printf( "  [%g, %g]", field.range_min, field.range_max );
-    if ( field.enum_name )
-        printf( "  (%s)", field.enum_name( 1 ) );
+    for ( int64_t v = 0; field.enum_name && v <= field.enum_max; v++ )
+        printf( "  %s=0x%04x", field.enum_name( v ), field.variant_id( v ) );
     if ( field.table )
         printf( "  -> %s", field.table->name );   // recurse for nested tables
     printf( "\n" );
@@ -832,9 +891,10 @@ through descriptor offsets. Generated `static_assert`s enforce it.
 
 Tables are generated for `--lang cpp` only today; every other target refuses
 a unit that declares them, by name. What stays off the table wire: `fixed`,
-`int128`/`uint128` (no neutral table kind), `const`/`reserved`/`align`
-(bit-position constructs — the table wire has no bit positions), and
-string/bytes/array extents past 65535 (lengths and counts ride in uint16).
+`int128`/`uint128` (no neutral table kind), and `const`/`reserved`/`align`
+(bit-position constructs — the table wire has no bit positions). Extents have
+no wire ceiling: string and bytes byte lengths and array counts ride in
+uint32, so the only limit is the language's own int32 storage cap.
 
 ---
 
