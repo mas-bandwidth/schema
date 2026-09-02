@@ -151,7 +151,7 @@ func diffTokens(where string, bf, lf Field, policy map[string]TokenRule) []Findi
 			if err1 != nil || err2 != nil || now >= was {
 				continue
 			}
-			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (a count past the new bound keeps the prefix and counts clamped)", tokenNoun(bt.Key), bt.Value, lv)})
+			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, shrinkNote(bt.Key))})
 		}
 	}
 	// a fact the live projection carries and the baseline does not: only the
@@ -164,6 +164,18 @@ func diffTokens(where string, bf, lf Field, policy map[string]TokenRule) []Findi
 		out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s added", tokenNoun(lt.Key), lt.Value)})
 	}
 	return out
+}
+
+// shrinkNote says what a reader loses when one of the shrinkable extents
+// shrinks — the runtime event is the same (clamped), the loss is not.
+func shrinkNote(key string) string {
+	switch key {
+	case "bound":
+		return "a stored count past the new bound keeps the bounded prefix and counts clamped"
+	case "size":
+		return "a stored value longer than the new capacity is truncated and counts clamped"
+	}
+	return "stored values past the new limit are clamped"
 }
 
 // tokenNoun names a token in a diagnostic the way a person would say it.

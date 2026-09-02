@@ -85,7 +85,7 @@ func Check(u *ir.Unit, paths []string) (warnings []string, errs []error) {
 
 	refusals, warns := Split(Diff(base, Render(u), DefaultTokenPolicy))
 	for _, w := range warns {
-		warnings = append(warnings, fmt.Sprintf("%s: %s (%s)", path, w, FileName))
+		warnings = append(warnings, fmt.Sprintf("%s: %s", path, w))
 	}
 	for _, r := range refusals {
 		errs = append(errs, fmt.Errorf("%s: %s — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason \"...\" (SPEC-TABLES.md §16)", path, r))
@@ -134,9 +134,13 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 		}
 		entry = historyEntry(date, reason, Diff(base, live, DefaultTokenPolicy))
 	} else if os.IsNotExist(readErr) {
+		noun := "tables"
+		if len(live.Tables) == 1 {
+			noun = "table"
+		}
 		entry = []string{
 			fmt.Sprintf("### %s — %s", date, reason),
-			fmt.Sprintf("- baseline created over %d tables — data written BEFORE this point is not covered by it", len(live.Tables)),
+			fmt.Sprintf("- baseline created over %d %s — data written BEFORE this point is not covered by it", len(live.Tables), noun),
 		}
 	} else {
 		return "", false, readErr

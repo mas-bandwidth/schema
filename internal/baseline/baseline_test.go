@@ -189,11 +189,11 @@ func TestRefusals(t *testing.T) {
 			control: replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver, Gold, Platinum }"),
 		},
 		{
-			name:    "a field's kind changed",
-			edited:  replace(t, "heading int16", "heading int32"),
-			where:   "Config.heading",
-			what:    "wire kind 3 -> 4",
-			token:   "kind",
+			name:   "a field's kind changed",
+			edited: replace(t, "heading int16", "heading int32"),
+			where:  "Config.heading",
+			what:   "wire kind 3 -> 4",
+			token:  "kind",
 			// the absorbed edit of the same shape: a NEW field of the changed
 			// type beside the old one, which is the migration the wire wants
 			control: replace(t, "heading int16", "heading int16\n    heading_wide int32"),
