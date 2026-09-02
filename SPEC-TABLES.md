@@ -15,24 +15,70 @@ arena, read through a region and a root pointer, never held by value).
 A fixed-size table pays for none of the variable-length machinery: that
 property is a gate, held by test, not an intention (§2.2).
 
-Tables are schema's declarations for **data that crosses builds**: config
-files, asset archives, tool output, editor state — and just as much,
-**messages**: bytes produced by one build of one program and consumed by
-another build of another, whether the trip is a disk file read years later
-or a datagram read milliseconds later by a peer that deployed last week.
-The hardcoded wire (`type`, SPEC.md) is the same-build contract, guarded by
-the protocol id: same-or-refuse. Packets are its loudest user, not its
-definition — any data whose writer and reader share a schema build belongs
-there. The table wire is the opposite contract: **any reader reads any
-data**, and the differences are reported, never fatal.
+Tables are schema's declarations for **data that outlives the build that
+wrote it**: config files, asset archives, tool output, editor state,
+**save games** — a file written by a build nobody has any more and read by
+a build its writer never saw, years apart — and just as much, **messages**:
+bytes produced by one build of one program and consumed by another build of
+another, whether the trip is a disk file read years later or a datagram
+read milliseconds later by a peer that deployed last week. Save games and
+tool output are one case, not two, and the whole of this document serves
+it. The hardcoded wire (`type`, SPEC.md) is the same-build contract,
+guarded by the protocol id: same-or-refuse. Packets are its loudest user,
+not its definition — any data whose writer and reader share a schema build
+belongs there. The table wire is the opposite contract: **any reader reads
+any data**, and the differences are reported, never fatal.
 
 The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
 hardcoded under the protocol id, and nothing in this document changes that.
 
+## The performance ladder
+
+**Tables are LESS performant than types**, and that is the trade they exist
+to make: types buy speed with a hardcoded, same-build wire; tables buy
+tolerance, reflection and evolution with a neutral byte wire, length
+prefixes and — in one narrow case — an allocation. A chosen cost is
+licensed. Unexplained slowness is still a defect, in every rung.
+
+- **A type is a raw struct.** Its generated storage IS the struct a person
+  would have written, and its codec is measured against a hand-written
+  serialize of that struct. The fastest-correct mission applies to types
+  without qualification, and the standing ledger holds them to it.
+- **A fixed-size table is a raw struct with a tolerant byte codec around
+  it**, and is expected to run as close to its equivalent type as the
+  neutral wire allows. That is a bench obligation, not an intention: a
+  fixed table sits beside its equivalent type on the ledger, and the gap
+  is explained or closed. The zero-cost gate (§2.2) holds the storage
+  half of it; the bench leg holds the codec half.
+- **The variable-length class pays for exactly what it buys** — pointers,
+  an arena on the building side, a region on the reading side, a
+  reference indirection per edge. This is where "less performant" lives,
+  and it is deliberate.
+
+## What allocates, and what never does
+
+- **A type never allocates**, in any backend, on any path. This rung does
+  not move.
+- **A fixed-size table with no union allocates nowhere, in any backend.**
+  It is a struct; measure, save and load work over caller-owned buffers.
+- **A fixed-size table WITH a union may allocate for the arm, and only
+  where the LANGUAGE needs it.** The carve-out is keyed on the backend
+  language, never on the table's class: a backend with no native union
+  builds a pseudo-union — one reference per arm, the set arm non-null,
+  allocated on read and write — and a backend with a native union (C++)
+  allocates nothing for the same declaration.
+- **The variable-length class allocates by nature**, and assuming
+  otherwise is foolish: the arena on build, the region on load. C++ keeps
+  the caller-owned form — `LoadMeasure` sizes the region and the caller
+  supplies it, `Builder` grows storage the caller owns — which is
+  allocation with the caller holding the pointer, not its absence. Other
+  backends allocate inside their runtime and say so. No port contorts
+  itself toward zero allocation for a variable-length table.
+
 **Backend status: C++.** Every other backend refuses a unit that declares
 tables, by name, with this document cited. Per-language backends are named
-follow-ons.
+follow-ons (§15).
 
 ## 1. Purpose
 
@@ -72,7 +118,7 @@ table ShipConfig
 A table body is a type body — the field grammar of SPEC §4.2, hosted by
 `table`: bare and ranged integers, `bits(N)`, `bool`, floats and
 compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
-`if` branches, and declared types as field groups. Two additions:
+`if` branches, and declared types as field groups. Six additions:
 
 - **Tables nest.** A named table is a field type (above); nesting is by
   value, and a bounded array of tables is a collection. A table may not
@@ -83,6 +129,14 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 - **Tables point** (§2.1). `next *Node` declares a POINTER to a table.
   Recursion THROUGH a pointer edge is legal and expected — the by-value
   cycle rule exempts pointer edges, because a pointer carries no size.
+- **Fields may be OPTIONAL** (§2.3). `settings ?GunnerSettings` is present
+  or absent by value, with no pointer and no change of mode.
+- **An array may be ENUM-KEYED** (§2.4). `ships [ShipType]ShipConfig` has
+  exactly one slot per variant, indexed by the variant.
+- **A blob is a node** (§2.5). `data *bytes` declares an unbounded byte
+  buffer at exactly its used size, and `*string` is its sibling.
+- **A union arm may be a table** (§2.6), which is what makes an evolvable
+  message set expressible.
 - **`was` — the rename attribute** (§5).
 
 ### 2.1 Pointers
@@ -104,22 +158,16 @@ table Scene
 **A pointer is for recursion, sharing and size — not for optionality.**
 Every field on this wire is already optional: absence is the reader's
 default (§4), so nothing has to be pointed at to be left out. The spelling
-for an OPTIONAL SECTION is the guarded field:
+for an OPTIONAL SECTION is `?T` (§2.3):
 
 ```
 table Scene
 {
-    has_settings bool
-    if has_settings
-    {
-        settings Settings   // an optional section: off the wire when the guard is false
-    }
+    settings ?Settings   // an optional section: off the wire when it is absent
 }
 ```
 
-The guard is a field like any other, the section rides only when it is
-true, and a reader whose writer left it out gets the declared defaults —
-with no pointer, no allocation and no change of mode. Reach for `*` when
+No pointer, no allocation and no change of mode. Reach for `*` when
 the structure genuinely needs it: a table that refers to ITSELF (a chain, a
 tree), a large subtree you would rather not carry by value, or one node
 several parents name (sharing is a named follow-on, §15 — v1 writes a
@@ -130,8 +178,10 @@ choice is a real one.
 The spelling is C's, deliberately: it reads as what it is. The rules,
 each refused by name (§11):
 
-- **A pointer targets a `table`, and only a `table`.** `*SomeType`,
-  `*SomeEnum`, `*SomeUnion` are refused: value-semantics data has no
+- **A pointer targets a `table`, or one of the two buffer primitives.**
+  `*Node` names a declared table; `*bytes` and `*string` name an unbounded
+  buffer at its used size (§2.5). Everything else is refused — `*SomeType`,
+  `*SomeEnum`, `*SomeUnion` — because value-semantics data has no
   independent identity to point at. Nest it by value instead.
 - **A pointer is declared inside a table body, and nowhere else.** A
   `type` body refuses one: types remain value semantics, and that is the
@@ -151,22 +201,32 @@ pointers in the struct. Its meaning depends on the form it sits in
 The compiler works out which class a table belongs to; the schema never
 says. The rule is a least-fixed-point over BY-VALUE edges:
 
-- A table is **VARIABLE-LENGTH** if it declares a pointer, or if anything
-  it nests by value — directly, or as a bounded array — is
-  variable-length.
+- A table is **VARIABLE-LENGTH** if it declares a pointer — including
+  `*bytes` and `*string` (§2.5) — or if anything it nests by value is
+  variable-length. "Nests by value" reaches through every by-value edge
+  there is: a plain nested table, an element of a bounded array, an
+  element of an enum-keyed array, a member of a guarded (`if`) group, an
+  optional's value (§2.3), and a UNION ARM that is a table (§2.6).
 - Every other table is **FIXED-SIZE**.
 
 Pointer edges do not propagate the mode: a table that is merely POINTED
 AT stays fixed-size if it holds no pointer of its own. It gains an
 allocation and a resolution entry, and nothing else.
 
-**A fixed-size table pays nothing for any of this**, and that is a gate,
-not a hope: for a unit whose tables are all fixed-size, the generated
-output is byte-for-byte what it was before pointers existed — no
-builder, no arena, no reference type, no lifecycle surface, not one extra
-descriptor column, not one extra branch in a codec, not one extra
-`#include`. The build fails if a single symbol of the pointer machinery
-appears in a pointer-free unit's generated header.
+**A fixed-size table pays nothing for the VARIABLE-LENGTH machinery**, and
+that is a gate, not a hope: in a unit whose tables are all fixed-size the
+generated output carries no builder, no arena, no reference type, no
+lifecycle surface, not one descriptor column that exists to describe a
+pointer, not one branch in a codec that exists to follow one, and not one
+extra `#include`. The build fails if a single symbol of the pointer
+machinery appears in a pointer-free unit's generated header.
+
+The gate is scoped to that machinery and to nothing else. A LANGUAGE
+FEATURE the fixed class itself can use — an optional's presence companion,
+an enum-keyed array's key columns, the wire id a variant rides under — is
+emitted in every unit, whatever its mode, because a fixed-size table can
+declare it and a tool walking a fixed-size table has to find it. The gate
+asks "did the pointer world leak in?", never "did the descriptor grow?".
 
 The assumption behind the split, stated so nobody quietly designs against
 it: size and mode correlate in practice. Value-only tables are assumed
@@ -182,6 +242,184 @@ follow-on. **Extents have no wire ceiling**: lengths and counts ride as u32
 (§3), so the only limit is the language's own — a string, bytes or array
 extent lives in int32 storage (SPEC §4.3), and that cap is what a too-large
 extent is refused against.
+
+### 2.3 Optional fields: `settings ?GunnerSettings`
+
+```
+table ShipConfig
+{
+    health   float32 = 100.0
+    settings ?GunnerSettings   // present or absent, by value
+    tier     ?int32            // scalars too: present, and the value
+}
+```
+
+`?T` declares a field that is PRESENT or ABSENT. Its storage is the value
+plus a generated `<field>_present` bool, so the holder stays FIXED-SIZE:
+an optional costs one bool, one branch and no allocation, and a table of
+optionals is still a plain struct (§2.2's gate is untouched).
+
+**PRESENCE decides whether the field rides, never content.** An absent
+optional is not written; a present one is ALWAYS written, even when its
+value is entirely default — the pointer's rule (§3.1), for the same
+reason: otherwise "absent" and "present with nothing to say" would be one
+value on the wire. On load, a field that rode sets `present = true`; a
+field that did not leaves `present = false` with the value at its declared
+defaults.
+
+The framing is exactly the non-optional field's, which makes `?T`, `*T`
+and a plain `T` nesting **one field on the wire**: a schema may move a
+field among the three and no byte moves, in either direction. The corpus
+holds all six directions and the byte-identity of the three writers.
+
+`?` applies to a nested table, a nested `type`, an enum, a `flags` mask
+and any scalar. It is refused, by name, on:
+
+- **a `type` body** — a type's wire is positional and every field always
+  rides, so there is no absence to express;
+- **a pointer** — a pointer is already optional, and null rides exactly
+  as an absent optional does;
+- **a union** — its `None` arm IS the absence, and an empty union already
+  elides;
+- **an array, a string or `bytes`** — each already carries a count or
+  length whose zero is emptiness, and a second presence bit beside it
+  would be two answers to one question. Wrap it in a table and make that
+  optional; the general form is a named follow-on (§15).
+- **a specified default** — presence is the only default an optional has.
+
+### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
+
+```
+enum ShipType { Fighter, Bomber, Scout }
+
+table Fleet
+{
+    ships [ShipType]ShipConfig   // one slot per variant, indexed by the variant
+}
+```
+
+An array bound that NAMES A DECLARED ENUM is an enum-keyed array. The two
+spellings never overlap, because an enum is declared: `[Name]` naming a
+constant is the fixed array it has always been, and `[Name]` naming an
+enum is keyed.
+
+- **Storage** is `T ships[ShipType.Max + 1]`, indexed directly by the enum
+  value — slot 0 is `None`'s. Every slot exists, so there is no count
+  companion, and `ships[int( ShipType::Bomber )]` just works.
+- **On the TABLE wire the slots ride by NAME** (§3.2): the array body
+  carries `(variant id, element)` pairs, so inserting, removing or
+  reordering variants leaves every surviving slot in its own home. This is
+  the whole point of the construct: an ordinal-indexed array is the last
+  positional vocabulary the table wire had, and it failed silently.
+- **On the TYPE wire the spelling IS `[E.Max + 1]T`** — positional,
+  bitpacked, same-build, the protocol id moving exactly as that spelling
+  moves it. One construct, two wires, the same rule every kind follows.
+  The two spellings project identically and share one protocol id, and
+  that is held by test.
+- **Fixed-size when `T` is**, so the zero-cost gate holds.
+
+Refused by name: a bound naming a `flags` declaration (a mask holds any
+set of bits at once, so it names no single slot); a bounded keyed array,
+`[..E]` or `[A..E]` (a keyed array is COMPLETE by construction); and an
+element that is a pointer, as for any array (§15).
+
+### 2.5 Byte buffers: `data *bytes`
+
+```
+table Asset
+{
+    format  AssetFormat
+    data    *bytes        // an unbounded blob, stored at exactly its used size
+    label   *string       // the sibling: a string node at its used length
+}
+```
+
+`bytes(N)` is fixed inline storage of N bytes in every instance. `*bytes`
+is a POINTER to a byte buffer that has no declared bound and occupies
+exactly the size it is given. The distinction is what makes large content
+expressible: in a table of a million nodes, a `bytes(65536)` field costs
+64 KB per node whether it is used or not, because the region packs storage
+verbatim, while a `*bytes` field costs the four-byte reference plus what
+each node actually holds.
+
+- **Storage** is the four-byte relocatable reference (§2.1) beside a u32
+  used length. Declaring one makes the holder VARIABLE-LENGTH (§2.2), like
+  any other pointer.
+- **In the arena**, `builder.AllocBytes( n )` returns a node of exactly `n`
+  bytes; `builder.AllocString( n )` is the sibling.
+- **In a region** it is packed at its used length, its reference
+  self-relative like every other (§6.3).
+- **On the wire it is framed exactly as `bytes(N)` is** — kind `14`, an
+  array of element kind `6` (u8) at its used count — and `*string` is
+  framed exactly as `string(N)` is, kind `12`. No new kind, no new skip
+  rule, and one useful consequence: `bytes(N)` and `*bytes` are ONE FIELD
+  ON THE WIRE, as `T`, `?T` and `*T` are (§3.1), so a field that outgrows
+  its inline bound moves to a blob and no byte changes. A null blob is
+  absent, exactly as a null pointer is.
+- **In the cooked form**, `Open`'s walk bounds the blob by its length as it
+  bounds every node, so a pointer into a mapped file IS the asset: no copy,
+  no parse (§7).
+
+Two sentences that must travel together: **a tolerant wire load COPIES the
+blob** — a gigabyte on the wire path is a gigabyte read — and **the cooked
+path is the zero-copy one.** Both are true and neither is the whole story.
+
+schema does not interpret the bytes. A format tag beside the blob is an
+ordinary field the user declares. A pattern falls out and is worth naming
+though it is no construct: a sub-document, or a rarely needed arm, can be
+stored as its own wire bytes inside a `*bytes` and decoded only when
+something asks for it — which keeps a very large file's resident memory
+proportional to what is touched rather than to what exists.
+
+Refused by name: `*bytes` or `*string` outside a table body; a specified
+default on one (a fresh reference is null); an array of them, as for any
+pointer (§15); `?` on one, because null already IS absence (§2.3).
+
+### 2.6 Union arms may be tables
+
+Inside a TABLE closure a union's arm may name a `table`, not only a
+declared `type`:
+
+```
+table OpenDocument  { path string(256), line uint32 }
+table SaveDocument  { path string(256), force bool   }
+
+union ToolBody
+{
+    open OpenDocument
+    save SaveDocument
+}
+
+table ToolMessage
+{
+    sequence uint32
+    body     ToolBody
+}
+```
+
+That is an evolvable MESSAGE SET by construction, and it is the case this
+document's opening promises. Arms ride under their own name hashes (§5),
+so adding a message is adding an arm; a reader that lacks the arm reads
+the union as empty, skips the body by its length and counts `unknown`
+(§4); arms may be removed and reordered freely. A message may therefore
+carry a nested table, a collection, or anything else a table body holds —
+which is what a message set of documents needs and what a `type`-only
+payload could never express.
+
+- **A union declared for the TYPE wire keeps refusing table arms.** Types
+  are value semantics and their wire is positional; a table arm is a
+  table-closure construct and is refused by name outside one.
+- **Mode derivation runs through arms** (§2.2): an arm that is a
+  variable-length table makes the union's holder variable-length. A union
+  of fixed-size table arms leaves its holder fixed-size, and the zero-cost
+  gate holds.
+- **On the wire an arm's body is framed exactly as a nested table's is**
+  (§3, kind `15`): `arm id (u16)`, then `L`, then `L` bytes of table body.
+  A `type` arm and a `table` arm are the same three bytes of framing, so a
+  reader needs no new rule and an arm may change between the two forms
+  without the framing moving.
+- **A backend without a native union may allocate for the arm** (the
+  ladder, above): the carve-out is the language's, not the table's.
 
 ## 3. The wire
 
@@ -210,11 +448,22 @@ schema's codebase:
   | `12` string | `L`, then `L` bytes. No terminator; no encoding imposed |
   | `13` table | `L`, then `L` bytes of table body (fields, then the u16 zero terminator) |
   | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
-  | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of table body |
+  | `14` array, ENUM-KEYED | `L`, then the array body: `element kind (u8)`, `N` = the number of SLOTS PRESENT, then N pairs of `variant id (u16)`, `L (u32)`, `L` bytes of element (§3.2) |
+  | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of arm body |
 
   **The union carries NO outer length** — its `arm id` sits where the other
   three containers put theirs, and the length that follows frames the arm
   alone. It is the one payload whose framing a skipper has to know (below).
+  An arm's body is a table body whether the arm names a declared `type` or
+  a `table` (§2.6): fields, then the u16 zero terminator, the same bytes a
+  kind `13` payload carries.
+
+  **Three spellings that add no row.** A `?T` optional field is framed
+  exactly as the non-optional `T` (§2.3); `*T` is framed exactly as a
+  by-value `T` (§3.1); and `*bytes` and `*string` are framed exactly as
+  `bytes(N)` and `string(N)` (§2.5). Each family is ONE FIELD ON THE WIRE
+  under several declaration spellings, which is what lets a schema move a
+  field among them without moving a byte.
   - **Array elements.** For a scalar element kind the elements sit back to
     back at that kind's fixed width. For element kind `13` (table) each
     element is preceded by its own `L`. `bytes(N)` rides as an array of
@@ -240,10 +489,17 @@ schema's codebase:
 - **Writers elide what readers default**: a field holding its default, an
   empty string or array, an all-default FIXED array, an empty union and an
   all-default nested table are not written at all (fixed arrays of tables
-  keep their elements — position is identity there). Elision is why old
-  readers and new writers meet cleanly, and why measure and save agree byte
-  for byte (§7). Elision makes the DECLARED DEFAULT part of the wire
-  contract: see §4.
+  keep their elements — position is identity there; an ENUM-KEYED array
+  elides per slot instead, because identity there is the key, §3.2).
+  Elision is why old readers and new writers meet cleanly, and why measure
+  and save agree byte for byte (§7). Elision makes the DECLARED DEFAULT
+  part of the wire contract: see §4.
+  **PRESENCE, not content, decides the three pointer-shaped spellings.** An
+  absent `?T`, a null `*T` and a null `*bytes` are not written; a present
+  optional, a non-null pointer and a non-null blob are ALWAYS written, even
+  when the value is entirely default and even when the blob is zero bytes
+  long — otherwise "absent" and "present with nothing to say" would be one
+  value on the wire (§2.3, §2.5, §3.1).
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
   narrowest unsigned kind that holds it, compressed floats as f32, and a
@@ -274,10 +530,12 @@ Three consequences, all deliberate:
 - **A non-null pointer ALWAYS rides**, even when its pointee is entirely
   default. Elision is decided by presence, not by content — otherwise
   null and "points at an empty node" would be one value on the wire.
-- **A pointer field and a by-value nesting are wire-identical.** A schema
-  may change one into the other and no byte moves: old readers take the
-  first body by value; new readers allocate one node from it. The corpus
-  holds that as a both-directions evolution test.
+- **A pointer field, an OPTIONAL field and a by-value nesting are
+  wire-identical** — one field on the wire with three spellings (§2.3). A
+  schema may change any of them into any other and no byte moves: old
+  readers take the first body by value, pointer readers allocate one node
+  from it, optional readers mark it present. The corpus holds all six
+  directions, and the byte-identity of the three writers.
 
 **Wire v1 is a TREE, and identity is not preserved.** Two pointers to one
 node write two bodies and load as two nodes. Aliasing, sharing and DAG
@@ -309,11 +567,46 @@ The cap in force:
 Wide structures are unbounded; deep ones are capped. Lifting the cap
 wants a flat, indexed node encoding — a named follow-on (§15).
 
+### 3.2 Enum-keyed arrays on the wire: slots by name
+
+An enum-keyed array (§2.4) rides as kind `14`, and its body opens exactly
+as any array's does — `element kind (u8)`, then a u32 count. What differs
+is what the count counts and what each element carries:
+
+- **`N` is the number of SLOTS PRESENT**, not the array's extent. A slot
+  whose element holds its default is elided, exactly as a defaulted field
+  is; `None`'s slot rides only when it is non-default; and an array with no
+  present slot is not written at all.
+- **Each element is a pair**: `variant id (u16)`, then `L (u32)`, then `L`
+  bytes of element. The variant id is the key's name hash, folded exactly as
+  a field id is (§5). The length rides for EVERY element kind, scalars
+  included, so one rule skips an unknown key whatever the element is.
+- **On load, each pair is placed by its variant id.** A key this reader can
+  name lands in that variant's slot; a key it cannot name is skipped by its
+  length and counted `unknown`; a slot the writer never sent keeps its
+  declared default. Insert a variant, remove one, reorder them — every
+  surviving slot still finds its home, in both directions.
+- **A repeated key is legal input and the last occurrence wins**, the
+  field-level rule (§3) applied inside the body.
+- **A key with no name on the WRITING side is a save error**, not a silent
+  `None`: measure and save return failure, exactly as they refuse an
+  unnameable enum value or an out-of-range union tag (§5).
+
+The contrast is the point. A plain `[E.Max + 1]T` array is POSITIONAL:
+insert a variant in the middle and every later slot lands one place off,
+with nothing on the wire to say so and no report event that could fire.
+The keyed spelling costs `2 + 4` bytes per present slot and closes that
+class. The corpus holds it with a middle insert and a removal in one
+generation step, and the negative control — encoding the slots
+positionally — turns the middle-insert test red.
+
 The same bytes serve every use: a file on disk, a blob in memory, a
 payload handed from a tool to a game, a message between services whose
 deploys never align. Save and load are symmetric over caller-provided
-buffers — message-ready by construction; generated code allocates
-nothing on the reading path.
+buffers — message-ready by construction; generated code allocates nothing
+on the reading path, with the two carve-outs the ladder names: the
+variable-length class allocates by nature, and a union arm may allocate in
+a backend whose language has no native union.
 
 ## 4. Versioning is wire tolerance
 
@@ -324,11 +617,18 @@ tolerance is the versioning model:
 - **Unknown field** (newer writer): skipped by its length, counted.
 - **Absent field** (older writer): the reader's value takes the field's
   default — the specified default, else zero.
-- **Unknown enum variant or union arm** (a name this reader does not have):
-  the enum value reads as `None`, the union reads as empty, the arm's body
-  is skipped by its length, and the event is counted as **unknown** —
-  the same counter an unknown field id uses, because it is the same event:
-  the writer named something this reader cannot name.
+- **Unknown enum variant, union arm or KEYED SLOT** (a name this reader
+  does not have): the enum value reads as `None`, the union reads as empty,
+  a keyed array's slot is dropped and the rest of its slots land normally,
+  the body is skipped by its length, and the event is counted as
+  **unknown** — the same counter an unknown field id uses, because it is
+  the same event: the writer named something this reader cannot name.
+- **A keyed slot this reader has but the writer never sent**: the slot
+  keeps its declared default, exactly as an absent field does (§3.2).
+- **An OPTIONAL field the writer did not send** reads as ABSENT, with the
+  value at its declared defaults; one that rode reads as PRESENT, whatever
+  the content (§2.3). A field moved between `?T`, `*T` and a plain nesting
+  is not an evolution event at all — the bytes do not move (§3.1).
 - **Kind mismatch** (a field changed type between builds): skipped, never
   misdecoded, counted. The kinds are a coarser vocabulary than the
   declaration side, so this catches a change of KIND, not every change of
@@ -398,6 +698,38 @@ fires, because nothing was lost or skipped. **A default change is a
 semantic edit to every stored file**, and `was` does not cover it: `was`
 preserves an identity, not a value. Change a default the way you would
 change data, or add a new field and leave the old one alone.
+
+### 4.1 The silent class, in full
+
+Almost every edit lands in the read report. **Exactly two do not**, and
+naming the whole set is the point of this subsection — a person reading a
+save game that came back wrong needs to know there is no third:
+
+1. **A specified DEFAULT changed, added or removed.** An elided field means
+   "the reader's declared default", so the same bytes now mean something
+   else. Nothing was lost or skipped, so no counter can fire.
+2. **A FLAGS variant inserted, removed, reordered, or renamed in place.** A
+   mask is the wire's one positional vocabulary (§3), so a variant's
+   identity is its bit position; moving one remaps every stored file and
+   the wire carries nothing that could say so.
+
+Everything else is either reported or safe. Fields may be added, removed,
+reordered and renamed under `was`; enum variants and union arms may be
+added anywhere, removed and reordered; array bounds may move; a field may
+change between `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes` —
+all of it either invisible to the wire or counted in the report. **The last
+positional vocabulary besides flags was the enum-ordinal-indexed array, and
+`[E]T` (§2.4) closes it**: keyed slots ride by name, so a middle insert
+moves no slot.
+
+Each of the two has its own answer:
+
+- **Flags** are answered by DISCIPLINE, stated as law: **append at the end,
+  never insert or reorder**, and retire a name in place rather than freeing
+  its bit.
+- **Both** are answered by MACHINERY, opt-in: the committed tables baseline
+  (§18) is the history the compiler does not keep, and it refuses either
+  edit until the baseline moves with a recorded reason.
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -564,7 +896,19 @@ The builder is designed to go wide, lock-free by ownership:
   fresh builder, so loaded data can be edited and locked again.
 
 Contract split, stated once: the AUTHORING path (builder growth, `Lock`)
-may allocate; the reading path never does.
+may allocate; the reading path allocates nothing of its own — the caller
+owns the region, and `LoadMeasure` exists so it can.
+
+**The one carve-out, and it belongs to the LANGUAGE, not to the table.** A
+UNION inside a table may allocate per arm, on read and on write, in a
+backend whose language has no native union: the arm becomes a pseudo-union
+— one reference per arm, the set arm non-null, allocated when it is read
+or written. C++ has a native union and allocates nothing for the same
+declaration; a backend that has one must not allocate either. The rule is
+stated here once and inherited by every port rather than rediscovered as a
+per-backend accident, and it does not widen: the type wire allocates
+nowhere, in any language, and a fixed-size table with no union allocates
+nowhere either.
 
 ## 7. The cooked form
 
@@ -659,18 +1003,47 @@ element size, array bound and count-companion offset, declared bounds,
 branch guards, and the nested table's descriptor. `<Name>TableType()`
 returns that table's descriptor.
 
+**An optional field carries its presence companion.** `optional` marks the
+field and `present_offset` names the `<field>_present` bool, exactly as
+`counted` and `count_offset` name a count companion — so a walker can read
+and write presence without knowing the spelling that produced it, and can
+tell "absent" from "present and default" (§2.3).
+
+**An enum-keyed array carries its KEY's vocabulary.** `key_type_name` names
+the keying enum, and `key_name` and `key_id` map a slot index to that
+variant's name and to the wire id it rides under — so a tool prints
+`ships[Bomber]` rather than `ships[2]`, with no schema files on hand. The
+element's own vocabulary columns are unaffected: a keyed array OF enums
+carries both (§2.4). A positional array leaves all three NULL.
+
 **A vocabulary field carries its vocabulary and the ids it rides under.**
 An enum field and a union field both describe a named set indexed by
 `[0, enum_max]` — an enum's values, a union's arms — with a value→name
 function beside a **value→wire-id** function, so a tool can enumerate the
-names AND the ids without the schema files (§5). For every other kind those
-columns are absent: a flags field carries none, because its variants have
-no per-variant wire id to carry (§4).
+names AND the ids without the schema files (§5).
+
+**A union field also names each arm's PAYLOAD**, by that type's descriptor,
+whether the arm is a declared `type` or a `table` (§2.6). Without it a
+walker can name the arm a value holds and cannot enter it, which stops
+every generic walk — the text form (§16) among them — at the union.
+
+**A flags field carries its BIT NAMES**: a bit-index→name function and the
+bit count, as an enum carries its value→name. It carries no per-variant
+wire id, because a mask's variants ride by position and have none (§4).
+
+**A `*bytes` or `*string` field** carries its used-length companion's
+offset beside the reference, so a walker reads the blob's extent the way
+it reads an array's count (§2.5).
+
+These columns exist in every unit, whatever its mode — they describe the
+LANGUAGE, and a fixed-size table can declare all of them. Only the two
+POINTER columns below are conditional (§2.2).
 
 A unit that has pointers carries two more facts, and a unit that has none
 carries neither (§2.2): a field's **`is_pointer`** flag — whose `table`
-member then names the TARGET table's descriptor, and whose `elem_size` is
-the reference slot's width — and a type's derived **`variable`** mode, so
+member then names the TARGET table's descriptor, NULL for a `*bytes` or
+`*string` because a buffer is not a declared table, and whose `elem_size`
+is the reference slot's width — and a type's derived **`variable`** mode, so
 a tool can tell at runtime which of §6's two lives a table has without
 being told. A self-referential pointer resolves to its own type's
 descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
@@ -741,6 +1114,30 @@ lockstep redeploy by a table edit. This independence is held by test.
   value-semantics data has no identity to point at; a pointer declared
   outside a table body; an array of pointers (§15); a specified default
   on a pointer field.
+- **Optional fields** (§2.3): `?T` outside a table body; `?` on a pointer
+  (already optional); `?` on a union (its `None` IS the absence); `?` on an
+  array, a string or `bytes` (a named follow-on, §15 — the count or length
+  already carries emptiness); a specified default on an optional; and a
+  field whose name collides with an optional's `<field>_present` companion.
+- **Enum-keyed arrays** (§2.4): a bound naming a `flags` declaration (a mask
+  names no single slot); a bounded keyed array, `[..E]` or `[A..E]` (a keyed
+  array is complete by construction); an element that is a pointer, as for
+  any array (§15). A slot value no variant names is a SAVE failure, not a
+  silent `None` (§3.2).
+- **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
+  specified default on one; an array of them (§15); `?` on one, because a
+  null reference already IS absence.
+- **A `table` union arm outside a table closure** (§2.6) — a union declared
+  for the type wire takes `type` payloads only, because types are value
+  semantics.
+- **The text form's key** (§16): `json = "..."` on a field no table closure
+  reaches — keys are a table-wire construct; and two fields of one table
+  whose JSON keys collide, naming both, as wire ids do (§5).
+- **An edit the committed TABLES BASELINE forbids** (§18), when a unit has
+  one: a specified default changed, added or removed; a flags variant
+  inserted, removed, reordered or renamed in place; a field's wire kind
+  changed; an enum-keyed array's key enum swapped. Overridden only by
+  moving the baseline with a recorded reason.
 - **A save-time data cycle or over-deep graph** (§3.1): measure, save,
   cook and `Lock` all return failure. Nothing recurses away.
 - **A read-time nesting past the depth cap** (§3.1): the subtree is
@@ -754,7 +1151,7 @@ lockstep redeploy by a table edit. This independence is held by test.
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **23 suffixes**, and a declaration spelling one of them is
+  each of these **26 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
@@ -762,6 +1159,7 @@ lockstep redeploy by a table edit. This independence is held by test.
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
   At  Root  Emplace  Pack  PackMeasure  OpenWalk
   Cook  CookMeasure  Open  LayoutId  TableFields  TableInfo
+  FromJson  ToJson  ToJsonMeasure
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
@@ -784,11 +1182,28 @@ lockstep redeploy by a table edit. This independence is held by test.
 
 ## 12. The expressiveness gate
 
-The feature's acceptance test: a real game's binary config and asset
-archive formats — a root table of nested collections of typed records,
-built by tools, loaded by the game — must be expressible as declared
-tables with nothing left over, without schema prescribing any of their
-structure. The corpus carries a config-format example holding that gate.
+The feature's acceptance test is a DOGFOOD, not a thought experiment: a
+real game's binary config and asset archive formats — a root table of
+nested collections of typed records, built by tools, loaded by the game —
+must be expressible as declared tables with nothing left over, and without
+schema prescribing any of their structure. The corpus carries a
+config-format example holding that gate.
+
+**The shape the gate is held to.** `Config.bin` and `Assets.bin` are each
+ONE root table, and each root is FIXED-SIZE down to the leaves: no pointer
+anywhere in the closure. That is expressible because the constructs that
+used to force a pointer no longer do — `?T` (§2.3) gives an optional
+section by value, and `[E]T` (§2.4) gives the enum-keyed collection those
+formats always were, as language rather than as convention. A fixed root
+is the strong form of the gate: it says the whole content pipeline runs
+on the ladder's second rung, with no arena, no region and no allocation
+on either side.
+
+**The gate is a per-language obligation, not a one-language one.** A game
+whose engine runtime is not the language its tools are written in has to
+read the same bytes from the same declarations, with the same report, on
+both sides — so a backend clears the gate only in its own language, and
+the per-language backends are named follow-ons (§15).
 
 ## 13. Rulings, recorded
 
@@ -859,6 +1274,59 @@ draft this document previously carried is dead; these replace it.
   a big file and point at its root, without copying it and without
   parsing the whole thing.
 
+### 13.2 Cost and allocation, ruled
+
+The performance ladder and the allocation rules in this document's opening
+are these rulings, in the owner's words:
+
+- **The trade**: "Tables are 'less' performant than types."
+- **The top rung**: "Types are expected to match the equivalent of raw
+  structs."
+- **The second rung**: "Fixed tables should be as performant, when
+  possible…" — which this document reads as a bench obligation, a fixed
+  table beside its equivalent type on the ledger.
+- **The union carve-out, keyed on the LANGUAGE**: "but for example, if
+  fixed with a union, it's OK to alloc (if the language needs it)"; and
+  for the ported backends, "I have no problem for the message and table
+  case (not types) if you do some allocations while you read or write for
+  unions, this way you can have a pseudo-union in golang."
+- **The closing rung**: "variable tables, you'll obviously need to alloc
+  and assuming otherwise is foolish."
+- **Why very large tables want a blob node** (§2.5): "the key with variable
+  tables is imagine they could be very large, like a gigabyte. you'd not in
+  that case want to blow out memory with extra union tables you don't need
+  and so on" — and the primitive itself, "yes, I like byte buffer as
+  primitive", so that "we can include say, images or assets inside them."
+
+### 13.3 The fixed-class constructs, ruled
+
+- **Optional fields** (§2.3): "If you want to have optional fields without
+  needing pointers too, and that's elegant, then go for it" — and, once
+  they existed, "it's cool to keep the Config.bin and Assets.bin fixed
+  tables, for now. No pointers", which is the fixed-down-to-root shape §12
+  holds the gate to.
+- **Enum-keyed arrays** (§2.4): "I like the enum keyed arrays. That is
+  cool… It's a really good, unique language feature, that is optional."
+  Optional is part of the design: `[E.Max + 1]T` stays legal and
+  positional; `[E]T` is the keyed form a user chooses.
+- **Union arms as tables** (§2.6): "if you had a set of messages for
+  tooling, you'd want to safely evolve those tables / messages."
+- **The text form** (§16): "the general idea of reading JSON file into a
+  table can move into schema… that's not opinionated. but only one table at
+  a time?" — one table, one text, and the linking left outside.
+- **Packing** (§17): "It also may make it possible to move the table
+  reading and packing entirely down into schema now… which is a WIN", with
+  the directory rule taken as it stands and revisited against a real packed
+  corpus rather than in advance.
+- **The baseline** (§18): "Practically, consider the save game example.
+  You'd have to just be careful, and if the compiler helped you be careful
+  -- that would be good"; the invariant, "the save games would have to not
+  ever break compatibility with stuff already written"; the same for tool
+  output, "same for example, for tooling"; and the override, "or
+  *explicitly* override it, saying, ok fine, from this version on, we
+  intentionally break compat and that's OK" — which is why `--update`
+  without `--reason` is refused.
+
 ## 14. Design notes: the models weighed
 
 Recorded because the rejected options are the useful part.
@@ -917,32 +1385,319 @@ together.
 
 ## 15. Named follow-ons
 
-- Per-language backends beyond C++ (the refusal in §11 names this).
-- **Graph and DAG identity**: preserving aliasing and sharing across the
-  wire, so two references to one node stay one node. Wire v1 is a tree
-  (§3.1) and says so.
-- **Arrays of pointers** (§2.1).
-- **Lifting the depth cap** with a flat, indexed node encoding, so a
-  pointer chain's length stops being a nesting depth (§3.1).
+- **TABLE WIRE V2 — the flat indexed node encoding.** One design answers
+  three of the entries that follow it: a pointered root writes every
+  reachable node ONCE into a node table and a pointer field rides as an
+  index into it, which lifts the depth cap, preserves DAG identity, and
+  makes an array of pointers an array of indices. It reaches past §3.1 into
+  the region and the cooked form, and it is drafted spec-first, ahead of
+  any emitter, because it changes what the bytes mean wherever a pointer
+  appears. **The pointer-free classes are untouched by it**, byte for byte,
+  so nothing in the fixed class waits on it.
+  - **Graph and DAG identity**: preserving aliasing and sharing across the
+    wire, so two references to one node stay one node. Wire v1 is a tree
+    (§3.1) and says so.
+  - **Lifting the depth cap**, so a pointer chain's length stops being a
+    nesting depth (§3.1).
+  - **Arrays of pointers** (§2.1).
+- **Per-language backends beyond C++** (the refusal in §11 names this). The
+  first is C#, because the dogfood's game engine reads the same config and
+  asset bytes the C++ tools write (§12), and the FIXED class is what that
+  needs: storage structs, measure/save/load over caller-owned buffers, the
+  report, the reflection descriptors, `?T`, `[E]T`, name-hashed vocabularies
+  and the text form. A port mirrors this document and invents no contract of
+  its own; where a language forces a shape — a pseudo-union for a language
+  with no native union — the ladder above already says what is licensed.
+- **The variable class in a ported backend** — the arena, the region, the
+  cooked form and the pointer surface — after that port's fixed class.
+- **`?` on an array, a string or `bytes`** (§2.3): a presence bit beside an
+  existing count or length wants a decision about what the pair means before
+  it becomes wire. Wrap the field in a table and make that optional today.
+- **An array of `?T`** — the same question one level down: an element's
+  presence bit beside the array's own count.
 - **Cross-endian `Open`**: an in-place, descriptor-driven byte-swap pass
   sharing `Open`'s existing traversal — the same nodes and fields are
   already visited, and kinds and offsets are already in the descriptors.
   v1 refuses a foreign byte order instead (§7).
 - **A hash-guarded fallback loader** — open the cooked form, else load
   the wire — as a convenience helper.
-- **A generic JSON walk over the reflection descriptors.** A text
-  authoring form is a pattern the owner described from practice: humans
-  and tools edit text, a build cooks it, the runtime points at the
-  result. Because the descriptors carry every field's name, kind and
-  offset, that walk is ONE implementation over the reflection surface —
-  no per-table codecs — which is what makes it worth doing as its own
-  round. It pairs with the field-level name-mapping attribute already
-  filed below.
 - A generic dump/diff tool over the reflection surface.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - Arrays of unions in table bodies.
 - `fixed` and 128-bit table-wire kinds, if a need ever materializes.
-- A field-level name-mapping attribute for text-format tooling (the
-  JSON-authoring surface real pipelines pair with binary tables) —
-  tool-side, never wire.
+- **An `--envelope` shape for `schema pack`** (§17), if one recurring
+  wrapper — a magic, a content hash, a protocol id — earns being schema's
+  rather than each caller's.
+
+## 16. The text form: JSON in and out of one table
+
+Reading a JSON text into a table, and writing one out, is not an opinion:
+it is one table, one text, one walk over the reflection descriptors (§8),
+the same for every table in the closure. schema owns it. Everything AROUND
+it is an opinion and belongs to whatever tool holds it — which file goes
+with which instance, what key an instance is filed under, how instances are
+linked into a root table's collections, what envelope wraps the bytes. A
+packer (§17) calls this section once per text and does the rest itself.
+
+### 16.1 The surface
+
+For every table in a unit's closure, name first, C++:
+
+```cpp
+TableReport report;
+ShipConfig ship;
+if ( !ShipConfigFromJson( ship, text, text_bytes, &report ) )
+{
+    // the text is not JSON, or a value cannot be placed at all
+    // (report.malformed) — the instance holds what was placed before the stop
+}
+
+int64_t size = ShipConfigToJsonMeasure( ship );      // exact bytes, writes nothing
+ShipConfigToJson( ship, buffer, size );              // returns size; -1 = too small
+```
+
+- **`FromJson` fills ONE instance from ONE text.** The instance is the
+  caller's; the read path allocates nothing beyond it. Fields the text does
+  not mention keep their storage defaults (SPEC §4.2: zero, or the
+  specified default), exactly as an absent field on the wire does (§4).
+- **`ToJson` writes ONE instance as ONE text**, every field, in declaration
+  order, defaults included — a text is for people and tools, and a text
+  that elides is a text a reader has to know the schema to complete.
+  Measure and write agree byte for byte, the wire's invariant (§9) carried
+  across.
+- **Both are ONE generic walk.** No per-table codec is emitted: the
+  generated header carries the descriptors and one walker over them. That
+  is the property that makes this schema's rather than a packer's, and it
+  is a gate: the walker's source is the same bytes in every generated
+  header of the corpus.
+
+### 16.2 The mapping, field kind by field kind
+
+The JSON form of a table is an object whose keys are field names. Per kind:
+
+| declaration | JSON | notes |
+|---|---|---|
+| integers, `bits(N)` | number | integral; a fraction is malformed |
+| `float32`, `float64`, compressed floats | number | |
+| `bool` | `true` / `false` | |
+| `string(N)`, `*string` | string | UTF-8; longer than N is CLAMPED to N bytes at a code point boundary, counted (a `*string` has no bound to clamp against) |
+| `bytes(N)`, `*bytes` | string, base64 | longer than N is clamped, counted (a `*bytes` has no bound to clamp against) |
+| enum | string, the variant NAME | `"Silver"`; an unknown name → None, counted |
+| flags | array of variant names | `["Shielded", "Turbo"]`; an unknown name is skipped, counted |
+| `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
+| `[..N]T` bounded array | array | count = length; more than N are dropped, counted |
+| `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; an unknown key is skipped, counted; a duplicate key is last-wins, counted |
+| nested `type` / `table` | object | the same walk, recursively |
+| `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only |
+| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `{}` or absent = None; two keys is malformed. A `table` arm (§2.6) is the same object form |
+| pointer `*T` | object, or `null` | the pointee's object in place; a variable-length table reads through its builder (§6.5), so `FromJson` for one takes the builder: `SceneFromJson( builder, text, bytes, &report )` |
+
+**Guarded fields** (`if guard { ... }`): a guarded group's fields are placed
+only when the guard reads true, and the guard is an ordinary bool field in
+the text — it is written and read like any other field, and the walk infers
+nothing from the presence of the group. A field that is genuinely present
+or absent is `?T`, which the walk does model, and that is the difference
+between the two constructs.
+
+**Bounds.** A number outside a field's declared `[min, max]` is clamped and
+counted, never refused — the wire's rule (§4), so a text and a wire loaded
+from the same data land the same instance.
+
+**Unknown keys** are skipped and counted in `report.unknown`. **Duplicate
+keys**: last wins, counted. **Trailing commas** in objects and arrays are
+accepted on read — the authoring files this section exists for carry them —
+and never written. Comments are not JSON and are refused.
+
+**The report is the wire's report** (§4): `unknown`, `kind_mismatch` (a key
+present with the wrong JSON type — a string where a number was declared —
+is skipped, never coerced), `clamped`, `malformed`. Silence means the text
+matched the schema exactly.
+
+### 16.3 The key: `json`
+
+A field's JSON key is its name. The one attribute this form adds lets a
+declaration meet an existing text:
+
+```
+ship_type ShipType | json = "type"
+```
+
+The field reads from and writes to `"type"`. Two fields of one table whose
+keys collide are refused at compile time, naming both, as wire ids are
+(§5); `json` on a field no table closure reaches is refused (§11). **The
+attribute changes no byte on the wire**: keys are the text's business, ids
+are the wire's, and a schema may add, change or remove a `json` key without
+touching a stored file.
+
+### 16.4 Held by test
+
+- Every table in the corpus round-trips `ToJson` → `FromJson` → `Save` and
+  byte-matches the wire of the original instance.
+- A hostile battery: wrong JSON types at every kind, overflow at every
+  integer width, nesting past the depth cap, unknown keys, duplicate keys,
+  clamped strings at a multi-byte boundary, a union with two keys, an
+  enum-keyed object with a name the enum lacks.
+- **Negative control:** with the walker's offset arithmetic sabotaged by
+  one field, the round-trip goes red on the first table that has two
+  fields.
+- The generic-walk gate: the walker's source is identical in every
+  generated header of the corpus.
+
+### 16.5 What this is not
+
+Not a file format, not a directory layout, not a manifest, not an envelope.
+Those are a packer's business; §17 is one packer, and it is a TOOL over
+this section rather than a second definition of it.
+
+## 17. Packing: a directory tree that mirrors a root table
+
+`schema pack` assembles ONE table instance from a directory tree and writes
+the root's wire bytes. It adds no format: the tree is the table, the text
+in it is §16's, and the output is §3's.
+
+```
+schema pack   --root Config --out Config.bin  configs/
+schema unpack --root Config --in  Config.bin  configs/
+```
+
+### 17.1 The directory rule
+
+The tree MIRRORS the root table's shape, and nothing else:
+
+- a **directory named after a field** holds that field's value;
+- for an **enum-keyed array** (§2.4), one file per variant,
+  `<Variant>.json`;
+- for a **bounded array**, files in name order become the elements, or one
+  `<field>.json` holds the whole array;
+- for a **nested table**, either `<field>.json` or a directory of its
+  fields;
+- a plain **`<field>.json` at any level** is that field's value verbatim;
+- the **root may simply be one `<Root>.json`**.
+
+Each file's content is read by §16's walk, so every rule about kinds,
+presence, clamping and the report is that section's and is not restated
+here. The tree rule is structural only — it says where a value lives, never
+what a value means — which is what keeps a packer out of the format.
+
+### 17.2 What comes out
+
+**The output is the root table's wire bytes and nothing else**: no magic,
+no content hash, no protocol id, no length prefix around the whole. A
+caller that wants an envelope writes its own few lines around these bytes,
+which is §1's promise that schema imposes no envelope. `unpack` is the
+inverse — it writes the tree back out of a `.bin` through `ToJson`, which
+is the tool round trip §1 promises, and `unpack` → `pack` is byte-stable.
+
+### 17.3 Refusals and the report
+
+A tree that does not mirror the table is reported rather than guessed at: a
+directory or file naming no field, two files claiming one enum-keyed slot,
+a variant name the enum does not have, a file that is not JSON. Everything
+§16 counts is counted here too, aggregated across the tree, so a pack of a
+hundred files reports once.
+
+### 17.4 Held by test
+
+A directory corpus packs to bytes identical to `Save` of the same instance
+built by hand; `unpack` → `pack` is byte-stable; and the hostile tree above
+is refused or counted per §16's rules.
+
+## 18. The tables baseline
+
+**An optional committed projection of a unit's table closure, and the check
+that refuses the edits the wire cannot report.** §4.1 names those edits:
+exactly two, a changed specified default and a moved flags variant. The
+compiler retains no history and cannot see either on its own. The baseline
+IS that history, in a text file a person can read in a diff.
+
+The motivating case is a SAVE GAME — a file written by a build the reader
+no longer has, read by a build the writer never saw, years apart — and tool
+output is the same case, not a second one: data that outlives the build
+that wrote it. The invariant the check protects is the plain one: **no edit
+may make data already written unreadable, or quietly change what it
+means.**
+
+### 18.1 The file
+
+**It is `tables.baseline`, in the unit directory, and it is opt-in: no
+file, no check.** It is a canonical text projection of the closure — the
+members sorted, each member's fields in declaration order, one fact per
+line: name, wire id, kind, array shape (fixed, bounded or enum-keyed, with
+the bound's EVALUATED value), string and bytes capacity, presence of an
+optional, the specified default as exact canonical text, and the `was`
+alias; then each enum's variants in order with their ids, each flags'
+variants in positional order, and each union's arms in order with their ids
+and payloads.
+
+**The values are EVALUATED**, not the source text: a constant that moves
+and flows through an expression into a default shows up as the value it now
+produces, which is the whole point — the projection records what data will
+mean, not how it was spelled.
+
+It carries no protocol id and no packet fact: the type wire, the wire-shape
+projection and the protocol id are untouched by all of it (§10).
+
+```
+schema-tables-baseline 1
+package shipdemo
+
+table ShipConfig
+    field damage id=0x15a9 kind=10 default=21.0
+    field speed id=0x2e46 kind=10 default=500.0 was=velocity
+    field name id=0x30df kind=12 size=32
+
+## history
+### 2026-09-02 — first baseline before 1.0 ships
+- baseline created over 1 table — data written BEFORE this point is not covered by it
+```
+
+### 18.2 The check
+
+`schema tables-baseline <unit>` prints the projection. `schema check` — and
+therefore every `schema generate` — diffs the live closure against the
+committed file whenever one is there, and:
+
+- **REFUSES, naming `table.field` and the edit** — a specified default
+  changed, added or removed; a flags variant inserted, removed, reordered,
+  or RENAMED IN PLACE (a rename moves no byte, and a new meaning on a spent
+  bit remaps every stored file; nothing distinguishes the two, so the
+  author says which); a field's wire kind or an array's element kind
+  changed; an enum-keyed array's key enum swapped for another.
+- **WARNS** — an array bound or a string/bytes capacity shrunk; an enum
+  variant or a union arm removed. The data survives and the read report
+  already counts what is lost (`clamped`, `unknown`), so this reports
+  rather than stops.
+- **PASSES, in silence** — everything the wire absorbs: fields added,
+  removed, reordered or renamed under `was`; enum variants and union arms
+  added anywhere; flags variants APPENDED at the end; bounds and capacities
+  grown; a bounded array made fixed or the reverse; a field moved between
+  `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`.
+
+### 18.3 Moving it is an explicit act
+
+```
+schema tables-baseline --update --reason "damage rebalanced in 2.0; saves from 1.x read the new value" configs/
+```
+
+`--update` rewrites the file AND appends a dated entry to the `## history`
+section inside it, naming every edit it recorded, old value to new, beside
+the reason. **`--update` without `--reason` is refused.** The history is
+therefore the one record the wire lacks — the log of every intentional
+break — and it is what a person consults when an old save or an old tool
+file reads back wrong. The update is idempotent: a unit that has not moved
+rewrites nothing.
+
+### 18.4 What it does not cover
+
+**The first baseline covers only what comes after it.** It is a snapshot of
+whatever the schema is on the day it is written; data written before that
+day was written against a shape nobody recorded, and no check can speak for
+it. The created file says so in its own first history entry.
+
+### 18.5 Held by test
+
+Each refusal class has a fixture pair and its negative control — remove the
+check and the edit passes. The projection over the corpus regenerates
+byte-identical. The warn class warns and does not refuse. `--update`
+without `--reason` refuses.
