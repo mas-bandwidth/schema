@@ -198,30 +198,52 @@ schema's codebase:
 - **The kinds are a closed set**, and these are their numbers: `1` bool,
   `2` i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64,
   `10` f32, `11` f64, `12` string, `13` table, `14` array, `15` union.
-- **Payloads.**
-  - A scalar payload is its kind's fixed width: 1 byte for bool (0 or 1),
-    1/2/4/8 for the integer kinds, 4 for f32 and 8 for f64 (IEEE-754 bit
-    patterns).
-  - **string** carries a **u32 byte length**, then that many bytes. No
-    terminator; no encoding is imposed.
-  - **table**, **array** and **union** carry a **u32 byte length**, then
-    the body — so any reader can skip any field without understanding it,
-    and any parent can hand each nested body to a different worker (§7).
-  - An **array body** opens with its **element kind (u8)** and its
-    **element count (u32)**, then the elements: fixed-width elements back
-    to back for a scalar kind, each element preceded by its own **u32 byte
-    length** when the element kind is `table`. A `bytes(N)` field rides as
-    an array of `u8`. Fixed-extent scalar arrays are positional: absent
-    trailing elements pad to the declared bound.
-  - A **union body** opens with its **u16 arm id** — the hash of the arm's
-    NAME, `0` for the empty union — and, when the id is not 0, a **u32 byte
-    length** then the arm's value as a table body.
+- **Payloads**, one row per kind. `L` is a u32 byte length; `N` is a u32
+  element count. Nothing is aligned and nothing is padded.
+
+  | kind | payload |
+  |---|---|
+  | `1` bool | 1 byte, `0` or `1` |
+  | `2`–`5` i8/i16/i32/i64 | 1/2/4/8 bytes, two's complement |
+  | `6`–`9` u8/u16/u32/u64 | 1/2/4/8 bytes |
+  | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern |
+  | `12` string | `L`, then `L` bytes. No terminator; no encoding imposed |
+  | `13` table | `L`, then `L` bytes of table body (fields, then the u16 zero terminator) |
+  | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
+  | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of table body |
+
+  **The union carries NO outer length** — its `arm id` sits where the other
+  three containers put theirs, and the length that follows frames the arm
+  alone. It is the one payload whose framing a skipper has to know (below).
+  - **Array elements.** For a scalar element kind the elements sit back to
+    back at that kind's fixed width. For element kind `13` (table) each
+    element is preceded by its own `L`. `bytes(N)` rides as an array of
+    element kind `6` (u8). A fixed-extent array writes all its declared
+    elements, so a reader that decodes fewer than its own bound leaves the
+    tail at its declared defaults.
+  - **An arm id of 0 is the empty union** and carries nothing after it.
+    This writer never emits it — an empty union elides (below) — but a
+    reader accepts it.
+- **Skipping a field you cannot name** needs the kind byte and nothing
+  else, which is what makes an unknown field survivable (§4). Three rules
+  cover the set: kinds `1`–`11` skip their fixed width; kinds `12`, `13`
+  and `14` read `L` and skip `L` bytes; kind `15` reads the `u16` arm id
+  and stops there if it is 0, else reads `L` and skips `L` bytes.
+- **Field ORDER within a body is not part of the contract.** This
+  implementation writes fields in declaration order, and a reader must not
+  rely on it: every field is found by its id, so any order decodes the same
+  value, and a body carrying an id more than once is legal input — the last
+  occurrence wins. An encoder written from this section is therefore free
+  to order fields as it likes, and byte-identical output against this
+  implementation requires matching its declaration order as well as its
+  framing.
 - **Writers elide what readers default**: a field holding its default, an
-  empty string or array, and an all-default nested table are not written
-  at all (fixed arrays of tables keep their elements — position is
-  identity there). Elision is why old readers and new writers meet
-  cleanly, and why measure and save agree byte for byte (§7). Elision
-  makes the DECLARED DEFAULT part of the wire contract: see §4.
+  empty string or array, an all-default FIXED array, an empty union and an
+  all-default nested table are not written at all (fixed arrays of tables
+  keep their elements — position is identity there). Elision is why old
+  readers and new writers meet cleanly, and why measure and save agree byte
+  for byte (§7). Elision makes the DECLARED DEFAULT part of the wire
+  contract: see §4.
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
   narrowest unsigned kind that holds it, compressed floats as f32, and a
