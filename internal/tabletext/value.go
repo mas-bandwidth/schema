@@ -1,0 +1,525 @@
+// Package tabletext is the compiler-side instance model and text form for the
+// TABLE wire (SPEC-TABLES.md §16): an IR-driven reader and writer of §16's
+// JSON, over an in-memory instance built from the same IR the emitters
+// consume.
+//
+// It is TOOLING, never a runtime. The generated C++ carries the walk a program
+// runs (§16.1); this carries the walk the COMPILER runs, because `schema pack`
+// (§17) is a Go command and a compiler cannot execute the code it emits. The
+// two are held to one wire by goldens, not by sharing source: for every corpus
+// tree the bytes this engine produces equal C++ `Save` of the same instance.
+// Where this package's comments name a C++ construct they name the contract it
+// mirrors — a port never invents one.
+package tabletext
+
+import (
+	"math/big"
+	"sort"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// The neutral wire's closed kind set (SPEC-TABLES.md §3).
+const (
+	KindBool   = 1
+	KindI8     = 2
+	KindI16    = 3
+	KindI32    = 4
+	KindI64    = 5
+	KindU8     = 6
+	KindU16    = 7
+	KindU32    = 8
+	KindU64    = 9
+	KindF32    = 10
+	KindF64    = 11
+	KindString = 12
+	KindTable  = 13
+	KindArray  = 14
+	KindUnion  = 15
+)
+
+// Report is the read report both forms share (SPEC-TABLES.md §4, §16.2):
+// silence — every counter zero and Malformed false — means the data matched
+// this schema exactly.
+type Report struct {
+	Unknown      int
+	KindMismatch int
+	Clamped      int
+	Duplicate    int
+	Malformed    bool
+}
+
+// Add folds another report into this one, which is how a pack over a tree of
+// files reports once (SPEC-TABLES.md §17.3).
+func (r *Report) Add(o Report) {
+	r.Unknown += o.Unknown
+	r.KindMismatch += o.KindMismatch
+	r.Clamped += o.Clamped
+	r.Duplicate += o.Duplicate
+	r.Malformed = r.Malformed || o.Malformed
+}
+
+// Silent reports whether nothing at all was counted.
+func (r Report) Silent() bool {
+	return r.Unknown == 0 && r.KindMismatch == 0 && r.Clamped == 0 && r.Duplicate == 0 && !r.Malformed
+}
+
+// Cell is one storage slot: a scalar in whichever representation its kind
+// uses, a nested instance, or a union's tag beside its arm. One struct with
+// every representation keeps the walks free of a type switch per access; only
+// the member the field's kind names is ever read.
+type Cell struct {
+	B   bool      // KindBool
+	I   int64     // signed integers
+	U   uint64    // unsigned integers, bits, flags, an enum value, a union tag
+	F   float64   // f32 / f64, held at double width as the descriptors do
+	Str []byte    // string / bytes payload, at its used extent
+	Tab *Instance // a nested table or type, or a union arm's payload
+}
+
+// Field is one field's storage in an [Instance] — the value, the companions
+// the generated struct carries beside it (a used count, a `?T` presence bool),
+// and the declaration it belongs to.
+type Field struct {
+	Def *ir.Field
+
+	// Present is the `<field>_present` companion of a `?T` field
+	// (SPEC-TABLES.md §2.3). PRESENCE, not content, decides whether the field
+	// rides.
+	Present bool
+
+	// Count is the used extent companion: a counted array's element count, a
+	// string's or bytes' used length. A fixed or enum-keyed array has none —
+	// every slot exists.
+	Count int
+
+	Cell  Cell   // the value, when the field is not an array
+	Elems []Cell // the slots, when it is: len == the declared bound
+}
+
+// Instance is one table or type value with its fields in declaration order.
+// A fresh instance holds exactly what the generated struct's member
+// initializers hold, so a field the text or the wire never mentions keeps the
+// default an absent field takes (SPEC-TABLES.md §4).
+type Instance struct {
+	Def    *ir.Struct
+	Fields []Field
+
+	byKey  map[string]int // json key -> field index
+	byName map[string]int // field name -> field index (guard evaluation)
+}
+
+// Model is the closure the walks run over: the unit, plus the lookups a walk
+// needs at every node.
+type Model struct {
+	Unit *ir.Unit
+}
+
+// NewModel binds a checked unit for the text and wire walks.
+func NewModel(u *ir.Unit) *Model { return &Model{Unit: u} }
+
+// Lookup resolves a closure member by name — a `table` or the `type` a table
+// reaches — exactly as the emitters resolve one.
+func (m *Model) Lookup(name string) *ir.Struct {
+	if st := m.Unit.Tables[name]; st != nil {
+		return st
+	}
+	return m.Unit.Structs[name]
+}
+
+// Roots are the unit's table declarations by name, sorted — the set `--root`
+// may name.
+func (m *Model) Roots() []string {
+	names := make([]string, 0, len(m.Unit.Tables))
+	for name := range m.Unit.Tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// New builds a fresh instance of a closure member at its declared defaults.
+func (m *Model) New(st *ir.Struct) *Instance {
+	inst := &Instance{
+		Def:    st,
+		Fields: make([]Field, len(st.Fields)),
+		byKey:  make(map[string]int, len(st.Fields)),
+		byName: make(map[string]int, len(st.Fields)),
+	}
+	for i, f := range st.Fields {
+		inst.Fields[i].Def = f
+		inst.byKey[ir.TableFieldJsonKey(f)] = i
+		inst.byName[f.Name] = i
+		m.reset(&inst.Fields[i])
+	}
+	return inst
+}
+
+// reset returns one field to its declared defaults, mirroring the generated
+// struct's member initializers exactly: a scalar takes its specified default,
+// and an ARRAY's slots take the value-initialized element — zero for a scalar
+// element, the element type's own defaults for a nested table or type. That
+// asymmetry is C++'s `T x[N] = {}` and is mirrored, not invented.
+func (m *Model) reset(fv *Field) {
+	f := fv.Def
+	fv.Present = false
+	fv.Count = 0
+	fv.Cell = Cell{}
+	fv.Elems = nil
+	switch {
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		return
+	case f.Array != ir.ArrayNone:
+		fv.Elems = make([]Cell, f.ArrayBound)
+		for i := range fv.Elems {
+			fv.Elems[i] = m.elementZero(f)
+		}
+		return
+	}
+	fv.Cell = m.fieldDefault(f)
+}
+
+// elementZero is one value-initialized array slot.
+func (m *Model) elementZero(f *ir.Field) Cell {
+	if f.Type.Pointer {
+		return Cell{} // a fresh reference is null, and null is its only default
+	}
+	if f.Type.Kind == ir.TNamed {
+		if st, ok := f.Type.Ref.(*ir.Struct); ok {
+			return Cell{Tab: m.New(st)}
+		}
+		if un, ok := f.Type.Ref.(*ir.Union); ok {
+			_ = un
+			return Cell{}
+		}
+	}
+	return Cell{}
+}
+
+// FieldDefaultCell is the value a field elides against on the write side — the
+// same literal the generated NSDMI carries (SPEC-TABLES.md §3, §4).
+func (m *Model) FieldDefaultCell(f *ir.Field) Cell { return m.fieldDefault(f) }
+
+// fieldDefault is a non-array field's declared default — the same literal the
+// generated NSDMI carries, and the same value the writer elides against.
+func (m *Model) fieldDefault(f *ir.Field) Cell {
+	if f.Type.Pointer {
+		// a pointer field takes no specified default: a fresh reference is
+		// NULL, and null is the only value a default could name (§2.1). It is
+		// also what keeps this walk finite — recursion through a pointer edge
+		// is legal and expected, and materializing a pointee here would not
+		// terminate.
+		return Cell{}
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return Cell{B: f.HasDefault && f.DefBool}
+	case ir.TFloat32, ir.TFloat64:
+		if f.HasDefault {
+			return Cell{F: f.DefFloat}
+		}
+		return Cell{}
+	case ir.TInt:
+		if f.HasDefault && f.DefInt != nil {
+			return intCell(f.DefInt, f.Type.Signed)
+		}
+		return Cell{}
+	case ir.TBits:
+		if f.HasDefault && f.DefInt != nil {
+			return intCell(f.DefInt, false)
+		}
+		return Cell{}
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			if f.HasDefault && f.DefVariant != "" {
+				return Cell{U: uint64(EnumValue(ref, f.DefVariant))}
+			}
+			return Cell{}
+		case *ir.Flags:
+			return Cell{}
+		case *ir.Struct:
+			return Cell{Tab: m.New(ref)}
+		case *ir.Union:
+			return Cell{} // tag 0 is None; no arm is materialized until one is set
+		}
+	}
+	return Cell{}
+}
+
+func intCell(v *big.Int, signed bool) Cell {
+	if signed {
+		return Cell{I: v.Int64(), U: uint64(v.Int64())}
+	}
+	if v.Sign() < 0 {
+		return Cell{I: v.Int64(), U: uint64(v.Int64())}
+	}
+	return Cell{U: v.Uint64(), I: int64(v.Uint64())}
+}
+
+// EnumValue is the declaration-side value of a variant name: 0 is the implicit
+// None, and the declared variants pack from 1 (SPEC §4.2). -1 when the enum
+// has no such name.
+func EnumValue(e *ir.Enum, name string) int64 {
+	if name == "None" {
+		return 0
+	}
+	for i, v := range e.Variants {
+		if v == name {
+			return int64(i + 1)
+		}
+	}
+	return -1
+}
+
+// EnumName is the variant name a value spells, "" when no variant names it —
+// a value with no name has no text spelling and no wire identity (§5).
+func EnumName(e *ir.Enum, value int64) string {
+	if value == 0 {
+		return "None"
+	}
+	if value >= 1 && int(value) <= len(e.Variants) {
+		return e.Variants[value-1]
+	}
+	return ""
+}
+
+// ScalarKind is a field's neutral wire kind, mirroring the C++ emitter's
+// tableScalarKind exactly (SPEC-TABLES.md §3): an enum rides as u16 carrying
+// its variant's name hash, a flags mask as u64, bytes as an array of u8.
+func ScalarKind(f *ir.Field) int {
+	switch f.Type.Kind {
+	case ir.TBool:
+		return KindBool
+	case ir.TInt:
+		if f.Type.Signed {
+			switch f.Type.Width {
+			case 8:
+				return KindI8
+			case 16:
+				return KindI16
+			case 32:
+				return KindI32
+			default:
+				return KindI64
+			}
+		}
+		switch f.Type.Width {
+		case 8:
+			return KindU8
+		case 16:
+			return KindU16
+		case 32:
+			return KindU32
+		default:
+			return KindU64
+		}
+	case ir.TBits:
+		switch {
+		case f.Type.Width <= 8:
+			return KindU8
+		case f.Type.Width <= 16:
+			return KindU16
+		case f.Type.Width <= 32:
+			return KindU32
+		default:
+			return KindU64
+		}
+	case ir.TFloat32:
+		return KindF32
+	case ir.TFloat64:
+		return KindF64
+	case ir.TString:
+		return KindString
+	case ir.TBytes:
+		return KindArray
+	case ir.TNamed:
+		switch f.Type.Ref.(type) {
+		case *ir.Enum:
+			return KindU16
+		case *ir.Flags:
+			return KindU64
+		case *ir.Struct:
+			return KindTable
+		case *ir.Union:
+			return KindUnion
+		}
+	}
+	return 0
+}
+
+// KindWidth is a fixed-width kind's payload size in bytes; 0 for the framed
+// kinds (string, table, array, union).
+func KindWidth(kind int) int {
+	switch kind {
+	case KindBool, KindI8, KindU8:
+		return 1
+	case KindI16, KindU16:
+		return 2
+	case KindI32, KindU32, KindF32:
+		return 4
+	case KindI64, KindU64, KindF64:
+		return 8
+	}
+	return 0
+}
+
+// StorageBytes is the width of a field's own C++ storage slot, which the text
+// form's integer clamp bounds against — the same `elem_size` the descriptors
+// carry. It is the wire kind's width for a plain integer, and the declared
+// storage for `bits(N)`, which is wider than the kind it rides in.
+func StorageBytes(f *ir.Field) int {
+	switch f.Type.Kind {
+	case ir.TInt:
+		return f.Type.Width / 8
+	case ir.TBits:
+		if f.Type.Width <= 32 {
+			return 4
+		}
+		return 8
+	}
+	return KindWidth(ScalarKind(f))
+}
+
+// EnumOf returns the enum a field's values come from, or nil.
+func EnumOf(f *ir.Field) *ir.Enum {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	e, _ := f.Type.Ref.(*ir.Enum)
+	return e
+}
+
+// FlagsOf returns the flags declaration a field's mask comes from, or nil.
+func FlagsOf(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	fl, _ := f.Type.Ref.(*ir.Flags)
+	return fl
+}
+
+// UnionOf returns the union a field holds, or nil.
+func UnionOf(f *ir.Field) *ir.Union {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	un, _ := f.Type.Ref.(*ir.Union)
+	return un
+}
+
+// StructOf returns the nested table or type a field holds, or nil.
+func StructOf(f *ir.Field) *ir.Struct {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	st, _ := f.Type.Ref.(*ir.Struct)
+	return st
+}
+
+// IsArrayShaped reports whether the field's payload is a wire ARRAY — a
+// declared array, or `bytes(N)`, which rides as an array of u8 (§2.5).
+func IsArrayShaped(f *ir.Field) bool {
+	return f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
+}
+
+// ---- guards ----
+
+// GuardTerm is one conjunct of a guarded field's branch condition: a bool
+// field of the same body, and the value it must hold.
+type GuardTerm struct {
+	Field string
+	Want  bool
+}
+
+// Guards maps each guarded field's name to its branch condition, composed
+// through nesting exactly as the C++ emitter composes it. A field with no
+// entry is unguarded and always rides.
+func Guards(st *ir.Struct) map[string][]GuardTerm {
+	out := map[string][]GuardTerm{}
+	var walk func(items []ir.Item, cond []GuardTerm)
+	walk = func(items []ir.Item, cond []GuardTerm) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(cond) > 0 {
+					terms := make([]GuardTerm, len(cond))
+					copy(terms, cond)
+					out[item.F.Name] = terms
+				}
+			case *ir.Branch:
+				pos, neg := true, false
+				if item.Neg {
+					pos, neg = false, true
+				}
+				walk(item.Then, append(cond[:len(cond):len(cond)], GuardTerm{item.Cond, pos}))
+				walk(item.Else, append(cond[:len(cond):len(cond)], GuardTerm{item.Cond, neg}))
+			}
+		}
+	}
+	walk(st.Items, nil)
+	return out
+}
+
+// GuardHolds evaluates a guarded field's condition against the instance — the
+// wire's own elision (§4) carried into both forms, so a text and a wire
+// written from one instance say the same thing.
+func (inst *Instance) GuardHolds(terms []GuardTerm) bool {
+	for _, t := range terms {
+		i, ok := inst.byName[t.Field]
+		if !ok {
+			return false
+		}
+		if inst.Fields[i].Cell.B != t.Want {
+			return false
+		}
+	}
+	return true
+}
+
+// FieldByKey finds the field a text key names (SPEC-TABLES.md §16.3).
+func (inst *Instance) FieldByKey(key string) (*Field, bool) {
+	i, ok := inst.byKey[key]
+	if !ok {
+		return nil, false
+	}
+	return &inst.Fields[i], true
+}
+
+// FieldIndexByKey is [Instance.FieldByKey]'s index form, for duplicate
+// tracking.
+func (inst *Instance) FieldIndexByKey(key string) (int, bool) {
+	i, ok := inst.byKey[key]
+	return i, ok
+}
+
+// ---- enum-keyed arrays: the slot <-> variant mapping ----
+
+// The owner ruled (2026-09-02, schema#255) that an enum-keyed array's STORAGE
+// keeps E.Max + 1 slots — slot i is the variant whose value is i, so
+// `ships[int( ShipType::Bomber )]` still just works — and that SLOT 0 IS NEVER
+// VALID: None keys no record. Every rule that follows is one consequence of
+// that: a None key never rides on the wire, a stored key of 0 is malformed, a
+// "None" key in a text is unknown and counted, and a keyed field's directory
+// has no `None.json`. The three functions below are the ONE place the mapping
+// lives.
+
+// KeyedSlotCount is the number of slots an enum-keyed array stores, slot 0
+// included. Iterate from [KeyedFirstSlot].
+func KeyedSlotCount(f *ir.Field) int { return int(f.ArrayBound) }
+
+// KeyedFirstSlot is the first slot a walk visits: slot 0 belongs to None and
+// no walk ever reaches it.
+func KeyedFirstSlot() int { return 1 }
+
+// KeyedSlotValue is the enum value slot i belongs to.
+func KeyedSlotValue(f *ir.Field, slot int) int64 { return int64(slot) }
+
+// KeyedValueSlot is the inverse: the slot an enum value owns, or -1 when the
+// array has no slot for it — which None, value 0, never has.
+func KeyedValueSlot(f *ir.Field, value int64) int {
+	if value < int64(KeyedFirstSlot()) || value >= int64(KeyedSlotCount(f)) {
+		return -1
+	}
+	return int(value)
+}

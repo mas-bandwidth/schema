@@ -362,6 +362,54 @@ build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cp
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 		-fno-omit-frame-pointer -g $(TABLES_INCLUDES) test/tables/main.cpp -o $@
 
+# The PACK GOLDEN (SPEC-TABLES.md §17.4, issue #257). `schema pack` carries an
+# IR-driven engine in Go — the compiler cannot run the code it emits — so the
+# gate that makes the two ONE WIRE is a byte comparison: the bytes pack builds
+# from the directory tree at tables/pack/config must equal PackConfigSave of
+# the same instance built by hand in C++, and a C++ Load of pack's bytes must
+# report nothing at all.
+PACK_TREE := $(shell find tables/pack/config tables/pack/root -type f 2>/dev/null)
+
+build/tables-pack.bin: bin/schema tables/examples/Pack.schema $(PACK_TREE)
+	@mkdir -p build
+	./bin/schema pack --root PackConfig --out $@ tables/pack/config tables/examples
+
+build/tables-pack-root.bin: bin/schema $(PACK_TREE)
+	@mkdir -p build
+	./bin/schema pack --root RootConfig --out $@ tables/pack/root tables/examples
+
+build/schema_test_pack: build/tables-generated/.stamp test/tables/pack_main.cpp
+	@mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/tables-generated/examples test/tables/pack_main.cpp -o $@
+
+.PHONY: tables-pack
+tables-pack: build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin
+	./build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin
+
+# The NEGATIVE CONTROL for that golden: break ONE framing rule in the Go
+# encoder — elide a present `?T`, which §2.3 says always rides — and the golden
+# must go red. A gate that cannot be made to fail is not a gate, so this target
+# runs the POSITIVE one first: a red golden must not be able to pass as a
+# successful sabotage.
+.PHONY: tables-pack-negative
+tables-pack-negative: tables-pack
+	@mkdir -p build
+	@sed 's/if !fv\.Present {/if true { \/\/ SABOTAGED: a present ?T elides/' \
+		internal/tablewire/encode.go > build/encode-sabotaged.gotext
+	@cmp -s build/encode-sabotaged.gotext internal/tablewire/encode.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@cp internal/tablewire/encode.go build/encode-original.gotext
+	@cp build/encode-sabotaged.gotext internal/tablewire/encode.go
+	@go build -o build/schema-sabotaged ./cmd/schema; status=$$?; \
+		cp build/encode-original.gotext internal/tablewire/encode.go; exit $$status
+	@./build/schema-sabotaged pack --root PackConfig --out build/tables-pack-sabotaged.bin \
+		tables/pack/config tables/examples
+	@if ./build/schema_test_pack build/tables-pack-sabotaged.bin build/tables-pack-root.bin > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: eliding a present ?T left the golden green"; exit 1; \
+	fi
+	@echo "pack negative control: eliding a present ?T turns the golden red"
+
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/cpp -Itest test/random_main.cpp -o $@
@@ -510,7 +558,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables
@@ -522,6 +570,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cs-refuses-pointers
 	cd test/cs-tables && dotnet run
 	$(MAKE) tables-json-keyed-dup-negative-control
+	$(MAKE) tables-pack
+	$(MAKE) tables-pack-negative
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c

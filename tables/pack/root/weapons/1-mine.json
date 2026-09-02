@@ -1,0 +1,4 @@
+{
+  "damage": 21.0,
+  "effect": { "debuff": { "amount": 15 } }
+}

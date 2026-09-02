@@ -6,6 +6,8 @@
 //	schema projection [dir|files...]                 print the wire shape the id hashes
 //	schema tables-baseline [--update --reason "..."]  print or move the tables baseline
 //	schema fmt        [dir|files...]                 canonicalize schema files in place
+//	schema pack       --root T --out F <dir>         a directory tree becomes one table's wire bytes
+//	schema unpack     --root T --in  F <dir>         the wire bytes become the tree again
 //	schema version                                   print the build identity
 //
 // Every command here is a few lines over the public API in
@@ -170,10 +172,84 @@ func main() {
 				fmt.Printf("wrote %s\n", path)
 			}
 		}
+	case "pack":
+		// SPEC-TABLES.md §17: the tree IS the table, the text in it is §16's,
+		// and the output is §3's — no envelope of schema's own.
+		fs := flag.NewFlagSet("pack", flag.ExitOnError)
+		root := fs.String("root", "", "the root `table` the tree mirrors")
+		out := fs.String("out", "", "file to write the root's wire bytes to")
+		fs.BoolVar(&verbose, "verbose", false, "print the read report even when it is silent")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		dir, rest := packTree(fs.Args())
+		if *root == "" || *out == "" {
+			fatalf("pack needs --root <Table> and --out <file>")
+		}
+		unit := loadUnit(c, rest)
+		bytes, report, err := c.Pack(unit, *root, dir)
+		if err != nil {
+			fail(err)
+		}
+		if err := os.WriteFile(*out, bytes, 0o644); err != nil {
+			fatalf("%v", err)
+		}
+		reportLine(report, verbose, fmt.Sprintf("packed %s: %d bytes", *out, len(bytes)))
+	case "unpack":
+		fs := flag.NewFlagSet("unpack", flag.ExitOnError)
+		root := fs.String("root", "", "the root `table` the bytes carry")
+		in := fs.String("in", "", "file holding the root's wire bytes")
+		fs.BoolVar(&verbose, "verbose", false, "print the read report even when it is silent")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		dir, rest := packTree(fs.Args())
+		if *root == "" || *in == "" {
+			fatalf("unpack needs --root <Table> and --in <file>")
+		}
+		wire, err := os.ReadFile(*in)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		unit := loadUnit(c, rest)
+		report, err := c.Unpack(unit, *root, wire, dir)
+		if err != nil {
+			fail(err)
+		}
+		reportLine(report, verbose, fmt.Sprintf("unpacked %s into %s", *in, dir))
 	default:
 		usage()
 		os.Exit(2)
 	}
+}
+
+// packTree splits pack's positional arguments: the FIRST is the tree, and
+// anything after it names the unit's schema files. With nothing after it the
+// unit is the working directory, which is where a schema tree usually sits
+// beside its declarations.
+func packTree(args []string) (string, []string) {
+	if len(args) == 0 {
+		fatalf("pack needs the directory the tree lives in")
+	}
+	rest := args[1:]
+	if len(rest) == 0 {
+		rest = []string{"."}
+	}
+	return args[0], rest
+}
+
+// reportLine prints what a pack or unpack counted. A silent report — the data
+// matched the schema exactly — says nothing unless --verbose asks; anything
+// counted is printed, because a value that was skipped or cut down is a thing
+// the caller has to know about (SPEC-TABLES.md §4).
+func reportLine(r compiler.TableReport, verbose bool, done string) {
+	if verbose {
+		fmt.Println(done)
+	}
+	if r.Silent() {
+		if verbose {
+			fmt.Println("report: silent — the data matched the schema exactly")
+		}
+		return
+	}
+	fmt.Printf("report: unknown %d, kind_mismatch %d, clamped %d, duplicate %d, malformed %v\n",
+		r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.Malformed)
 }
 
 func usage() {
@@ -184,6 +260,8 @@ func usage() {
   schema projection [dir|files...]
   schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
   schema fmt        [--verbose] [dir|files...]
+  schema pack       --root <Table> --out <file> [--verbose] <tree-dir> [dir|files...]
+  schema unpack     --root <Table> --in  <file> [--verbose] <tree-dir> [dir|files...]
   schema version
 
 Every command formats the unit's schema files in place before processing them

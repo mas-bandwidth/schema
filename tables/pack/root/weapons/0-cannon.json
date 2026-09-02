@@ -1,0 +1,8 @@
+{
+  "damage": 42.5,
+  "speed": 750.0,
+  "penetration": 7,
+  "channel": 33,
+  "homing": true,
+  "effect": { "buff": { "multiplier": 2.5 } }
+}

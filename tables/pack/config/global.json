@@ -1,0 +1,6 @@
+{
+  "tick_rate": 120,
+  "difficulty": "Hard",
+  "build_note": "corpus",
+  "spawn_delays": [ 0.5, 1.25, 2.0 ],
+}
