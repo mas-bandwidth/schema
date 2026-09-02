@@ -313,16 +313,33 @@ spellings never overlap, because an enum is declared: `[Name]` naming a
 constant is the fixed array it has always been, and `[Name]` naming an
 enum is keyed.
 
-- **Storage** is `T ships[ShipType.Max + 1]`, indexed directly by the enum
-  value. Every slot exists, so there is no count companion, and
-  `ships[ShipType::Bomber]` reads with no biased arithmetic.
+- **Storage** is a generated KEYED-ARRAY TYPE wrapping `T slots[E.Max + 1]`
+  — one slot per variant, indexed by the enum value, no count companion
+  because every slot exists. The wrapper is what gives the accessors below
+  a home; the array inside it is an ordinary array, so the type stays
+  trivially copyable and standard-layout (§9).
 - **SLOT 0 EXISTS AND IS NEVER VALID.** `None` is the enum's null, so it
   keys nothing: only `E.Max` slots can ever hold data. Slot 0 is kept in
-  storage so indexing stays unbiased, and reaching it is an ERROR —
-  a compile-time refusal where the language can express one (a
-  `static_assert` on a constant index in C++), an assert otherwise —
-  through the generated keyed type's `operator[]( E )`. The wire enforces
-  the same thing from the other side: a `None` key never rides (§3.2).
+  storage so indexing stays unbiased, and reaching it is an ERROR. The two
+  accessors put that error as early as each can:
+  - `operator[]( E )` takes a runtime key and ASSERTS that it is not
+    `None`;
+  - a compile-time accessor beside it — `Slot<Key>()` in C++ — takes the
+    key as a constant and REFUSES `None` with a `static_assert`, so the
+    common case where the key is written literally never reaches a runtime
+    check at all.
+
+  ```cpp
+  fleet.ships[ ShipType::Bomber ]        // runtime key: asserts key != None
+  fleet.ships.Slot<ShipType::Bomber>()   // constant key: static_asserts
+  ```
+
+  A port provides both wherever its language expresses both, and the
+  runtime half wherever it does not. The wire enforces the same rule from
+  the other side: a `None` key never rides (§3.2).
+- **In a `type` body the same spelling is a plain array** with no wrapper
+  and no accessor — the type wire is positional and has no key to check
+  (below).
 - **On the TABLE wire the slots ride by NAME** (§3.2): the body carries
   `(variant id, element)` pairs, so inserting, removing or reordering
   variants leaves every surviving slot in its own home. This is the whole
@@ -482,6 +499,14 @@ schema's codebase:
   | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of arm body |
   | `16` enum-keyed array | `L`, then the body: `element kind (u8)`, `N` = the number of SLOTS PRESENT, then N pairs of `variant id (u16)`, `L (u32)`, `L` bytes of element (§3.2) |
 
+  **An array's ELEMENT KIND is part of its identity, not only its framing.**
+  For kinds `14` and `16` a reader compares the element kind it declares
+  against the one in the body and, when they differ, skips the field and
+  counts a kind mismatch (§4) — exactly as it does for the field's own
+  kind. Without that rule a `[3]int32` body would decode into a
+  `[3]float32` field as three reinterpreted bit patterns, reported by
+  nothing: the field-level silent-corruption class, one level down.
+
   **The union carries NO outer length** — its `arm id` sits where the other
   three containers put theirs, and the length that follows frames the arm
   alone. It is the one payload whose framing a skipper has to know (below).
@@ -539,6 +564,11 @@ schema's codebase:
   Elision is why old readers and new writers meet cleanly, and why measure
   and save agree byte for byte (§7). Elision makes the DECLARED DEFAULT
   part of the wire contract: see §4.
+  **A field under a FALSE GUARD is elided too**, whatever its storage
+  holds: an `if` branch that does not run writes none of its fields, so a
+  guarded group rides only when its guard is true. That is what makes a
+  guard an optional SECTION on the wire and not merely in the language, and
+  the text form defers to this rule rather than restating it (§16.2).
   **PRESENCE, not content, decides the three pointer-shaped spellings.** An
   absent `?T`, a null `*T` and a null `*bytes` are not written; a present
   optional, a non-null pointer and a non-null blob are ALWAYS written, even
@@ -710,7 +740,9 @@ tolerance is the versioning model:
   variant hash, and lands on `None` unless it happens to name one. **An
   array changed between the keyed and the positional spelling IS a kind
   mismatch** (`16` against `14`, §3.2), which is exactly why the keyed body
-  has a kind of its own.
+  has a kind of its own — **and so is an array whose ELEMENT kind differs**,
+  which is the same event one level in (§3): `[3]int32` read into a
+  `[3]float32` field is skipped and counted, never reinterpreted.
 - **A changed array BOUND** (a literal, a constant, or an `E.Max + 1`
   expression that moved): the array still loads, and the bound is not part
   of identity — a field is its name hash and its kind, and neither carries
@@ -722,6 +754,15 @@ tolerance is the versioning model:
   bytes do not.
 - **Out-of-range value** (bounds tightened since the writer): clamped to
   the reader's declared bounds, counted.
+- **A GUARD added or removed around an existing field**: the READ is
+  faithful in both directions — a field is found by its id whatever branch
+  now encloses it, so a reader whose build added `if g { x }` still loads
+  `x` out of an old file, with every counter zero and nothing lost. What
+  changes is the WRITE: that reader will elide `x` on its next save if `g`
+  is false (§3), so a load-edit-store cycle drops a value the load itself
+  read correctly. Adding or removing a guard is therefore not a decoding
+  hazard but a ROUND-TRIP one, and it is the one edit whose cost lands on
+  the tool that rewrites the file rather than on the one that reads it.
 - **Framing damage**: decode stops the damaged nesting level, keeps what
   it decoded there, flags malformed, and the parent continues past the
   field's declared length — one bad subtable never takes down the rest
@@ -814,6 +855,18 @@ on it.**
   have replaced it: two encodings under one kind would have let a reader
   decode keys as values and report nothing. The keyed body's own kind `16`
   (§3.2) turns that edit into a kind mismatch, counted like any other.
+
+**One edit is adjacent to this class without belonging to it, and the
+difference is worth stating rather than leaving to the reader.** Adding or
+removing a GUARD around an existing field (§4) reads correctly in both
+directions — the value comes back, the report is silent, and the silence is
+honest, because nothing was lost on the way in. The loss, if it comes, is
+on the way OUT: a reader whose guard is false elides the field on its next
+save. So it is not a silent decoding edit, and the enumeration above stays
+at two; it is a round-trip hazard, and a tool that loads, edits and stores
+a file — the save-game cycle §18 exists for — should be read as carrying
+it. A person whose file came back wrong needs the two above; a person whose
+tool rewrote a file needs this one.
 
 Each of the two real ones has its own answer:
 
@@ -1104,7 +1157,7 @@ type to spell; this is the one thing the columns cannot express without a
 function. It does what the wire's read path does, with no temporary.
 
 **A field carries its TEXT KEY** beside its name — the `json = "..."`
-attribute's value, else the field's own name (§16.3) — so a walker over the
+attribute's value, else the field's own name (§16.4) — so a walker over the
 text form spells keys without a second table.
 
 **A `bits(N)` field carries its IMPLIED RANGE.** `bits(N)` declares
@@ -1618,7 +1671,9 @@ SceneFromJson( builder, text, text_bytes, &report );
 
 ### 16.2 The mapping, field kind by field kind
 
-The JSON form of a table is an object whose keys are field names. Per kind:
+The JSON form of a table is an object whose keys are field KEYS — a
+field's name, or the `json` attribute's value where one is declared (§16.4).
+Per kind:
 
 | declaration | JSON | notes |
 |---|---|---|
@@ -1640,7 +1695,7 @@ The JSON form of a table is an object whose keys are field names. Per kind:
 **Numbers.** JSON has ONE number type, so an integer field accepts any
 token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
 and 1000 — because that is how every library that round-trips numbers
-through a double writes them, and meeting an existing text is what §16.3
+through a double writes them, and meeting an existing text is what §16.4
 exists for. A token with a genuinely fractional value in an integer field
 is `kind_mismatch`, skipped and counted. A value outside the field's
 declared or implied range clamps and counts (**Bounds**, below); a float
@@ -1892,7 +1947,7 @@ It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
 
 ```
-schema-tables-baseline 1
+schema-tables-baseline 2
 package shipdemo
 
 table ShipConfig
@@ -1918,17 +1973,19 @@ committed file whenever one is there, and:
   author says which); a field's wire kind or an array's ELEMENT kind
   changed; an array changed between the keyed and the positional spelling,
   or an enum-keyed array's KEY enum swapped for another; a field's REFERENT
-  dropped, or swapped for one whose identities do not ride (§18.3).
+  dropped, or replaced by one that cannot STAND IN for it — every identity
+  survives AND, for a table or a union arm's payload, the facts under the
+  shared field ids are unchanged (§18.3).
 - **WARNS** — an array bound or a string/bytes capacity shrunk; an enum
-  variant or a union arm removed; a closure member no longer covered by the
-  baseline (§18.3). The data survives and the read report already counts
-  what is lost (`clamped`, `unknown`), so this reports rather than stops.
+  variant or a union arm removed; a DECLARATION renamed, or otherwise no
+  longer in the closure under its baseline name (§18.3). The data survives
+  and the read report already counts what is lost (`clamped`, `unknown`), so
+  this reports rather than stops.
 - **PASSES, in silence** — everything the wire absorbs: fields added,
   removed, reordered or renamed under `was`; enum variants and union arms
   added anywhere; flags variants APPENDED at the end; bounds and capacities
   grown; a bounded array made fixed or the reverse; a field moved between
-  `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`; a DECLARATION
-  renamed, whose contents keep being judged under its new name (§18.3).
+  `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`.
 
 ### 18.3 What a name is worth, and what a referent is worth
 
@@ -1937,20 +1994,34 @@ contents out of coverage.** Members match by name first; a baseline name
 with no live namesake is then matched to the unmatched live declaration of
 the same kind carrying the most of its identities, when that is at least
 half of them and unique. Either way the vanished name WARNS — a paired one
-saying where it went, an unpaired one saying nothing carries its identities
-any more — so a hole in the coverage is never silent. A removal stays
-legal; it stops being invisible.
+naming the declaration that carries it on, an unpaired one naming the
+closest candidate and its score — so a hole in the coverage is never
+silent. A removal stays legal; it stops being invisible.
 
-**A FIELD'S REFERENT is judged by whether the identities ride**, and each
-vocabulary's identity is its own (§3):
+**Two kinds of edit, and they never judge each other.** A declaration
+edited IN PLACE is judged by its own walk, where the verdicts follow what
+the runtime can report. A field REPOINTED at a different declaration is
+judged by the referent rule below. A rename is the first kind wearing the
+second's clothes, so a PAIRED rename is left to the walk: the same wire
+loss draws the same verdict whether or not the author also renamed — an
+enum variant or a union arm dropped from a renamed declaration WARNS,
+exactly as it does when the name did not move.
 
-- a **table body** decodes by field id, so a nested table — or a union
-  arm's payload, which is the same fact one level in — rides when every
-  field id the old one carried is still carried;
-- an **enum** value is its variant NAME hash and a **union** body opens
-  with its arm NAME hash, so those ride when the names survive;
-- a **flags** mask carries no names at all, so it rides only when the old
-  variants sit at the same bits.
+**A FIELD'S REFERENT must be able to STAND IN for the one it replaces**,
+and each vocabulary's standard is its own (§3):
+
+- A **table** — a nested field, or a union arm's payload, which is the
+  same fact one level in — is read by field id, so it stands in when every
+  id the old one carried is still carried AND THE FACTS UNDER THOSE IDS
+  ARE UNCHANGED. Id membership alone is not enough: a twin declaration
+  carrying the same id under a different specified default rewrites the
+  meaning of every stored body, and that is the flagship class this file
+  exists to refuse. The facts are judged by the same rules a field's own
+  facts are, so the two paths cannot disagree.
+- An **enum** value is its variant NAME hash and a **union** body opens
+  with its arm NAME hash, so those stand in when the names survive.
+- A **flags** mask carries no names at all, so it stands in only when the
+  old variants sit at the same bits.
 
 **Dropping the referent entirely always refuses** — an enum-typed field
 respelled as its raw `uint16`, say. §4 states that both ride as kind `7`,

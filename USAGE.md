@@ -753,12 +753,14 @@ table Fleet
 
 ```cpp
 Fleet fleet;
-fleet.ships[ShipType::Bomber].health = 400.0f;
+fleet.ships[ShipType::Bomber].health = 400.0f;   // runtime key: asserts
+fleet.ships.Slot<ShipType::Scout>().health = 90; // constant key: static_asserts
 ```
 
-Storage is a plain fixed array with no count companion — every slot exists —
-so this is the array you would have written by hand as `[ShipType.Max +
-1]ShipConfig`. **Slot 0 exists and is never valid**: `None` is the enum's
+Storage is a generated keyed-array type wrapping a plain `ShipConfig[ShipType.Max
++ 1]` — no count companion, because every slot exists — so the memory is the
+array you would have written by hand, with the two accessors above on top of
+it. **Slot 0 exists and is never valid**: `None` is the enum's
 null, so it keys nothing and only `ShipType.Max` slots ever hold data. The
 slot is kept so indexing stays unbiased, and reaching it is an error —
 a compile-time refusal on a constant index, an assert otherwise.
@@ -1072,13 +1074,23 @@ or it does not happen.
 changed, added or removed; a flags variant inserted, removed, reordered or
 renamed in place; a field's wire kind or an array's ELEMENT kind changed; an
 array changed between the keyed and positional spellings, or a keyed array's
-key enum swapped; a field's referent dropped, or swapped for one whose
-identities do not ride. Warned, because the read report already counts what is
-lost: a bound or a string capacity shrunk, an enum variant or a union arm
-removed, a declaration no longer covered. Passed in silence, because the wire
+key enum swapped; a field pointed at a different enum, flags, union or table
+that cannot stand in for the old one — or at none at all, like an enum-typed
+field respelled as its raw `uint16`, which the runtime cannot report because
+both ride as kind 7. **"Stand in" means every identity survives AND, for a
+table, the facts under the shared field ids are unchanged**: a twin
+declaration carrying the same id under a different default is refused,
+because every stored body's elided value would quietly change meaning.
+Warned, because the read report already counts what is lost: a bound or a
+string capacity shrunk, an enum variant or a union arm removed, a declaration
+renamed or otherwise no longer covered. Passed in silence, because the wire
 absorbs it: fields added, removed, reordered or renamed under `was`; variants
-added anywhere; flags variants APPENDED; bounds grown; a declaration renamed,
-whose contents keep being judged under the new name.
+added anywhere; flags variants APPENDED; bounds grown.
+
+Renaming a declaration never raises a verdict of its own: it warns, saying
+which declaration carries the old one's contents on, and the contents keep
+being judged by their own walk — so a dropped variant draws the same warning
+whether or not its enum was renamed in the same edit.
 
 The whole thing is opt-in — no `tables.baseline`, no check — and the first
 one you write covers only what comes after it: data written before it existed
