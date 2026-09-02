@@ -231,14 +231,15 @@ tables-zero-cost: build/tables-generated/.stamp
 # The GENERIC-WALK GATE (SPEC-TABLES.md §16): the text form is ONE walk over
 # the reflection descriptors, not a per-table codec — that is the property
 # which makes it schema's rather than a packer's. The walker's source must
-# therefore be the SAME BYTES in every generated header of the corpus, whose
+# therefore be the SAME BYTES in every generated .cpp of the corpus, whose
 # units disagree about packages, tables, kinds and pointer modes. The package
 # name lives in the guard and the namespace, outside the markers, so this is a
-# strict byte comparison with nothing normalised away.
+# strict byte comparison with nothing normalised away. (It moved from the
+# headers to the .cpp files with the walker itself — SPEC-TABLES.md §16.1.)
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
 	@rm -rf build/json-walk && mkdir -p build/json-walk
-	@for f in build/tables-generated/*/*Table.h; do \
+	@for f in build/tables-generated/*/*Table.cpp; do \
 		out=build/json-walk/$$(echo $$f | tr / _); \
 		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
 		if [ ! -s $$out ]; then echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; fi; \
@@ -248,7 +249,7 @@ tables-json-walk: build/tables-generated/.stamp
 			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
 		fi; \
 	done
-	@echo "tables generic-walk gate: one walker, byte-identical in $$(ls build/json-walk | wc -l | tr -d ' ') generated headers"
+	@echo "tables generic-walk gate: one walker, byte-identical in $$(ls build/json-walk | wc -l | tr -d ' ') generated .cpp files"
 
 # The NEGATIVE CONTROL for the walk (SPEC-TABLES.md §16.5). A green round-trip
 # suite proves nothing until the suite is shown capable of going red: the
@@ -260,11 +261,11 @@ tables-json-walk: build/tables-generated/.stamp
 tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 	@rm -rf build/json-sabotage && mkdir -p build/json-sabotage
 	./bin/schema generate --lang cpp --out build/json-sabotage tables/examples
-	@sed -i.bak 's|const uint8_t \* storage = (const uint8_t \*) base + f->offset;|const uint8_t * storage = (const uint8_t *) base + ( f->offset ^ 4 );|' build/json-sabotage/TablesTable.h
-	@grep -q 'f->offset ^ 4' build/json-sabotage/TablesTable.h || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@sed -i.bak 's|const uint8_t \* storage = (const uint8_t \*) base + f->offset;|const uint8_t * storage = (const uint8_t *) base + ( f->offset ^ 4 );|' build/json-sabotage/TablesTable.cpp
+	@grep -q 'f->offset ^ 4' build/json-sabotage/TablesTable.cpp || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
-		-Ibuild/json-sabotage test/tables/json_negative_main.cpp -o build/schema_test_json_negative
+		-Ibuild/json-sabotage test/tables/json_negative_main.cpp build/json-sabotage/TablesTable.cpp -o build/schema_test_json_negative
 	./build/schema_test_json_negative
 
 # The same corpus through the C# table backend (SPEC-TABLES.md, schema#262):
@@ -320,11 +321,11 @@ tables-cs-refuses-pointers: bin/schema
 tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_negative_main.cpp
 	@rm -rf build/json-dup-sabotage && mkdir -p build/json-dup-sabotage
 	./bin/schema generate --lang cpp --out build/json-dup-sabotage tables/examples
-	@sed -i.bak 's|if ( ( seen\[slot >> 6\] \& bit ) != 0 ) { in.report->duplicate++; }|if ( ( seen[slot >> 6] \& bit ) != 0 ) { /* sabotaged: no count */ }|' build/json-dup-sabotage/KeyedTable.h
-	@grep -q 'sabotaged: no count' build/json-dup-sabotage/KeyedTable.h || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@sed -i.bak 's|if ( ( seen\[slot >> 6\] \& bit ) != 0 ) { in.report->duplicate++; }|if ( ( seen[slot >> 6] \& bit ) != 0 ) { /* sabotaged: no count */ }|' build/json-dup-sabotage/KeyedTable.cpp
+	@grep -q 'sabotaged: no count' build/json-dup-sabotage/KeyedTable.cpp || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
-		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp -o build/schema_test_json_keyed_dup_negative
+		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
@@ -338,9 +339,15 @@ TABLES_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/po
 	-Ibuild/tables-generated/jsonkeys
 TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread
 
+# The text form's runtime is a generated TRANSLATION UNIT now, not header
+# content (SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
+# compiles the generated <Base>Table.cpp, and one that never does compiles
+# nothing for it. Expanded in the recipe because these are build-time output.
+TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp)
+
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
 	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 # The SANITIZED twin (issue #277). The tables leg is where the pointer
 # machinery lives — an arena whose Lock() frees it one way, a packed region
@@ -360,7 +367,7 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
 build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
-		-fno-omit-frame-pointer -g $(TABLES_INCLUDES) test/tables/main.cpp -o $@
+		-fno-omit-frame-pointer -g $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 # The PACK GOLDEN (SPEC-TABLES.md §17.4, issue #257). `schema pack` carries an
 # IR-driven engine in Go — the compiler cannot run the code it emits — so the
