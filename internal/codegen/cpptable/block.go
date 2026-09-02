@@ -165,28 +165,38 @@ struct TableBlockSpan
 // points at rows, with no hand-written struct per table and no knowledge of
 // the spelling that produced any of it. They are constant data, so this costs
 // a lookup, not a parse — and they are immutable, so any thread may read them.
+struct TableBlockInfo;
+
 struct TableBlockFieldInfo
 {
     const char * name;
-    uint32_t offset; // the field's offset IN THE PROJECTION, which is a different struct from the by-value one
-    uint32_t size;   // its size there
-    uint8_t kind;    // the table-wire kind, as TableFieldInfo carries it
+    uint32_t offset;  // the field's offset in the record this descriptor describes
+    uint32_t size;    // its size there
+    uint8_t kind;     // the table-wire kind, as TableFieldInfo carries it
     bool out_of_line; // an out-of-line array: the three members below are live
     uint32_t offset_of_offset; // the triple's offset_of member, or 0xffffffff
     uint32_t count_offset;     // its count member, or 0xffffffff
     uint32_t stride_offset;    // its stride member, or 0xffffffff
     uint32_t stride;           // THIS BUILD's pitch, to assert against — never to index with (§19.2)
-    // the ELEMENT's own descriptor, behind a function so the whole table stays
-    // constant-initialised. NULL for every field that is not an out-of-line array.
-    const TableTypeInfo * (*element)();
+    // the ELEMENT's or the nested record's own layout, behind a function so the
+    // whole table stays constant-initialised. NULL when the field is a scalar.
+    // Following it is how a walker DESCENDS: an out-of-line array's rows, and a
+    // nested record's fields, are both reached through this one column.
+    const TableBlockInfo * (*element)();
 };
 
+// One record's layout as DATA — the whole mechanism behind the block form's
+// read side. A block-form table's own descriptor describes its PROJECTION; the
+// element descriptor of each out-of-line array describes that array's ROW, and
+// so on down. Nothing here is named at file scope: a walker reaches every
+// record through the graph, which is what keeps the block form's reflection
+// free of a name per row type.
 struct TableBlockInfo
 {
     const char * name;
-    uint64_t build_version; // the unit's, not a per-table digest (SPEC-TABLES.md §20)
-    uint32_t projection_size;
-    uint32_t projection_align;
+    uint64_t build_version; // the unit's (SPEC-TABLES.md §20)
+    uint32_t size;          // the record's own sizeof: a projection's, or a row's
+    uint32_t align;
     int32_t num_fields;
     const TableBlockFieldInfo * fields;
 };
@@ -683,25 +693,109 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 // §11's set.
 func (g *tableGen) emitBlockDescriptors(bl *ir.BlockLayout) {
 	name := bl.Table.Name
+	// every record this block's descriptors reach, in a stable order
+	records := blockDescriptorRecords(g.blocks, bl)
 	g.pf("namespace {\n\n")
-	g.pf("const TableBlockFieldInfo %s_block_fields[] = {\n", strings.ToLower(name))
-	for _, fl := range bl.Projection.Fields {
+	g.pf("// forward declarations, so the element column can be a constant\n")
+	g.pf("// expression whatever order the records fall in\n")
+	for _, r := range records {
+		g.pf("extern const TableBlockInfo %s;\n", blockInfoSymbol(name, r))
+	}
+	g.pf("extern const TableBlockInfo %s;\n\n", blockInfoSymbol(name, ""))
+	for _, r := range records {
+		g.emitBlockRecordDescriptor(name, r, g.blocks.Layout(r), nil)
+	}
+	g.emitBlockRecordDescriptor(name, "", &bl.Projection, bl)
+	g.pf("} // namespace\n\n")
+	g.pf("const TableBlockInfo * %sBlock::Type() { return &%s; }\n\n", name, blockInfoSymbol(name, ""))
+}
+
+// emitBlockRecordDescriptor emits one record's field table and its info. When
+// bl is non-nil the record is that block's PROJECTION; otherwise it is a row
+// or something a row nests by value.
+func (g *tableGen) emitBlockRecordDescriptor(owner, record string, ml *ir.MemberLayout, bl *ir.BlockLayout) {
+	if ml == nil {
+		return
+	}
+	symbol := blockInfoSymbol(owner, record)
+	name := record
+	if bl != nil {
+		name = bl.Table.Name
+	}
+	g.pf("const TableBlockFieldInfo %s_fields[] = {\n", symbol)
+	for _, fl := range ml.Fields {
 		f := fl.Field
 		kind := tableScalarKind(f)
 		if f.Type.Kind == ir.TBytes {
 			kind = tkU8
 		}
-		if a := bl.ArrayByName(f.Name); a != nil {
-			g.pf("    { \"%s\", %du, %du, %d, true, %du, %du, %du, %du, +[]() { return %sTableType(); } },\n",
-				f.Name, fl.Offset, fl.Size, kind, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride, a.ElemName)
-			continue
+		if bl != nil {
+			if a := bl.ArrayByName(f.Name); a != nil {
+				g.pf("    { \"%s\", %du, %du, %d, true, %du, %du, %du, %du, +[]() { return &%s; } },\n",
+					f.Name, fl.Offset, fl.Size, kind, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride,
+					blockInfoSymbol(owner, a.ElemName))
+				continue
+			}
 		}
-		g.pf("    { \"%s\", %du, %du, %d, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },\n",
-			f.Name, fl.Offset, fl.Size, kind)
+		element := "NULL"
+		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && !f.Type.Pointer {
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+				element = fmt.Sprintf("+[]() { return &%s; }", blockInfoSymbol(owner, ref.Name))
+			}
+		}
+		g.pf("    { \"%s\", %du, %du, %d, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, %s },\n",
+			f.Name, fl.Offset, fl.Size, kind, element)
 	}
 	g.pf("};\n\n")
-	g.pf("const TableBlockInfo %s_block_info = { \"%s\", BuildVersion, %du, %du, %d, %s_block_fields };\n\n",
-		strings.ToLower(name), name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields), strings.ToLower(name))
-	g.pf("} // namespace\n\n")
-	g.pf("const TableBlockInfo * %sBlock::Type() { return &%s_block_info; }\n\n", name, strings.ToLower(name))
+	g.pf("const TableBlockInfo %s = { \"%s\", BuildVersion, %du, %du, %d, %s_fields };\n\n",
+		symbol, name, ml.Size, ml.Align, len(ml.Fields), symbol)
+}
+
+// blockDescriptorRecords is every record one block's descriptors reach, sorted.
+func blockDescriptorRecords(b *ir.BlockUnit, bl *ir.BlockLayout) []string {
+	seen := map[string]bool{}
+	var out []string
+	var walk func(name string)
+	walk = func(name string) {
+		if seen[name] {
+			return
+		}
+		ml := b.Layout(name)
+		if ml == nil {
+			return
+		}
+		seen[name] = true
+		out = append(out, name)
+		for _, fl := range ml.Fields {
+			if fl.Field.Type.Kind == ir.TNamed && !fl.Field.Type.Pointer {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+					walk(ref.Name)
+				}
+			}
+		}
+	}
+	for _, a := range bl.Arrays {
+		walk(a.ElemName)
+	}
+	for _, fl := range bl.Projection.Fields {
+		if ir.BlockOutOfLine(fl.Field) {
+			continue
+		}
+		if fl.Field.Type.Kind == ir.TNamed && !fl.Field.Type.Pointer {
+			if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+				walk(ref.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// blockInfoSymbol names one record's descriptor inside its owner's anonymous
+// namespace. The empty record is the owner's own projection.
+func blockInfoSymbol(owner, record string) string {
+	if record == "" {
+		return strings.ToLower(owner) + "_block_projection"
+	}
+	return strings.ToLower(owner) + "_block_row_" + strings.ToLower(record)
 }

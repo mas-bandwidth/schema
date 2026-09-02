@@ -27,7 +27,7 @@ package cstable
 
 import (
 	"fmt"
-
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -516,28 +516,103 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 func (g *blockGen) emitBlockDescriptors(bl *ir.BlockLayout) {
 	name := bl.Table.Name
 	g.hf("    // this table's block descriptors: constant data, so a reflective read\n")
-	g.hf("    // costs a lookup and not a parse.\n")
-	g.hf("    private static readonly TableBlockFieldInfo[] fields = new TableBlockFieldInfo[]\n    {\n")
-	for _, fl := range bl.Projection.Fields {
+	g.hf("    // costs a lookup and not a parse. The row layouts hang off the element\n")
+	g.hf("    // column rather than taking names of their own, so a walker reaches every\n")
+	g.hf("    // record through the graph.\n")
+	records := blockDescriptorRecords(g.blocks, bl)
+	for _, r := range records {
+		g.emitBlockRecordDescriptor(name, r, g.blocks.Layout(r), nil)
+	}
+	g.emitBlockRecordDescriptor(name, "", &bl.Projection, bl)
+	g.hf("    public static TableBlockInfo Type { get { return %s; } }\n", blockInfoSymbol(name, ""))
+}
+
+func (g *blockGen) emitBlockRecordDescriptor(owner, record string, ml *ir.MemberLayout, bl *ir.BlockLayout) {
+	if ml == nil {
+		return
+	}
+	symbol := blockInfoSymbol(owner, record)
+	name := record
+	if bl != nil {
+		name = bl.Table.Name
+	}
+	g.hf("    private static readonly TableBlockInfo %s = new TableBlockInfo\n    {\n", symbol)
+	g.hf("        Name = %q, BuildVersion = Schema.BuildVersion, Size = %d, Align = %d, NumFields = %d,\n",
+		name, ml.Size, ml.Align, len(ml.Fields))
+	g.hf("        Fields = new TableBlockFieldInfo[]\n        {\n")
+	for _, fl := range ml.Fields {
 		f := fl.Field
 		kind := tableScalarKind(f)
 		if f.Type.Kind == ir.TBytes {
 			kind = tkArray
 		}
-		if a := bl.ArrayByName(f.Name); a != nil {
-			g.hf("        new TableBlockFieldInfo { Name = %q, Offset = %d, Size = %d, Kind = %d, OutOfLine = true, OffsetOfOffset = %d, CountOffset = %d, StrideOffset = %d, Stride = %d, ElementRef = delegate { return Schema.%sTableType(); } },\n",
-				f.Name, fl.Offset, fl.Size, kind, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride, a.ElemName)
+		if bl != nil {
+			if a := bl.ArrayByName(f.Name); a != nil {
+				g.hf("            new TableBlockFieldInfo { Name = %q, Offset = %d, Size = %d, Kind = %d, OutOfLine = true, OffsetOfOffset = %d, CountOffset = %d, StrideOffset = %d, Stride = %d, ElementRef = delegate { return %s; } },\n",
+					f.Name, fl.Offset, fl.Size, kind, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride,
+					blockInfoSymbol(owner, a.ElemName))
+				continue
+			}
+		}
+		element := "null"
+		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && !f.Type.Pointer {
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+				element = fmt.Sprintf("delegate { return %s; }", blockInfoSymbol(owner, ref.Name))
+			}
+		}
+		g.hf("            new TableBlockFieldInfo { Name = %q, Offset = %d, Size = %d, Kind = %d, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = %s },\n",
+			f.Name, fl.Offset, fl.Size, kind, element)
+	}
+	g.hf("        },\n    };\n\n")
+}
+
+// blockDescriptorRecords is every record one block's descriptors reach, sorted.
+func blockDescriptorRecords(b *ir.BlockUnit, bl *ir.BlockLayout) []string {
+	seen := map[string]bool{}
+	var out []string
+	var walk func(name string)
+	walk = func(name string) {
+		if seen[name] {
+			return
+		}
+		ml := b.Layout(name)
+		if ml == nil {
+			return
+		}
+		seen[name] = true
+		out = append(out, name)
+		for _, fl := range ml.Fields {
+			if fl.Field.Type.Kind == ir.TNamed && !fl.Field.Type.Pointer {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+					walk(ref.Name)
+				}
+			}
+		}
+	}
+	for _, a := range bl.Arrays {
+		walk(a.ElemName)
+	}
+	for _, fl := range bl.Projection.Fields {
+		if ir.BlockOutOfLine(fl.Field) {
 			continue
 		}
-		g.hf("        new TableBlockFieldInfo { Name = %q, Offset = %d, Size = %d, Kind = %d, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },\n",
-			f.Name, fl.Offset, fl.Size, kind)
+		if fl.Field.Type.Kind == ir.TNamed && !fl.Field.Type.Pointer {
+			if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+				walk(ref.Name)
+			}
+		}
 	}
-	g.hf("    };\n\n")
-	g.hf("    private static readonly TableBlockInfo info = new TableBlockInfo\n    {\n")
-	g.hf("        Name = %q, BuildVersion = Schema.BuildVersion, ProjectionSize = %d, ProjectionAlign = %d, NumFields = %d, Fields = fields,\n",
-		name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields))
-	g.hf("    };\n\n")
-	g.hf("    public static TableBlockInfo Type { get { return info; } }\n")
+	sort.Strings(out)
+	return out
+}
+
+// blockInfoSymbol names one record's descriptor inside its owner's block type.
+// The empty record is the owner's own projection.
+func blockInfoSymbol(owner, record string) string {
+	if record == "" {
+		return "blockProjection"
+	}
+	return "blockRow" + record
 }
 
 // blockRuntime is the shared block runtime, emitted once per unit into the
@@ -618,7 +693,7 @@ public unsafe readonly struct TableBlockRows<T> where T : unmanaged
 public sealed class TableBlockFieldInfo
 {
     public string Name;
-    public int Offset;      // the field's offset IN THE PROJECTION, which is a different struct from the by-value one
+    public int Offset;      // the field's offset in the record this descriptor describes
     public int Size;        // its size there
     public byte Kind;       // the table-wire kind, as TableFieldInfo carries it
     public bool OutOfLine;  // an out-of-line array: the three members below are live
@@ -626,19 +701,28 @@ public sealed class TableBlockFieldInfo
     public int CountOffset;    // its Count member, or -1
     public int StrideOffset;   // its Stride member, or -1
     public int Stride;         // THIS BUILD's pitch, to assert against — never to index with (§19.2)
-    public Func<TableTypeInfo> ElementRef;
-    public TableTypeInfo Element
+    // the ELEMENT's or the nested record's own layout, behind a delegate so
+    // the table stays constructible in any order. null when the field is a
+    // scalar. Following it is how a walker DESCENDS: an out-of-line array's
+    // rows, and a nested record's fields, are both reached through this one
+    // column.
+    public Func<TableBlockInfo> ElementRef;
+    public TableBlockInfo Element
     {
         get { return ElementRef == null ? null : ElementRef(); }
     }
 }
 
+// One record's layout as DATA — the whole mechanism behind the block form's
+// read side, and what retires a hand-kept mirror. A block-form table's own
+// descriptor describes its PROJECTION; the element descriptor of each
+// out-of-line array describes that array's ROW, and so on down.
 public sealed class TableBlockInfo
 {
     public string Name;
-    public ulong BuildVersion; // the unit's, not a per-table digest (SPEC-TABLES.md §20)
-    public int ProjectionSize;
-    public int ProjectionAlign;
+    public ulong BuildVersion; // the unit's (SPEC-TABLES.md §20)
+    public int Size;           // the record's own size: a projection's, or a row's
+    public int Align;
     public int NumFields;
     public TableBlockFieldInfo[] Fields;
 }
