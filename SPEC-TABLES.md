@@ -2849,6 +2849,13 @@ the gate; a third language joins it as its backend lands (§15).
 
 ## 13. Rulings, recorded
 
+**THE AIM, 2026-09-02, in the owner's words, and every ruling below is
+measured against it**: *"We aim to build the best cross-language data type
+system for games."* — *"This includes save games, tooling, cooking to runtime
+efficient structures and so on."* It spans the whole use-case list
+(USECASES.md), not the wire alone: the tolerant wire, the cook and the block
+form are three answers under one aim rather than three products.
+
 Owner rulings, 2026-09-01, in the order given.
 
 - **The model**: "wire itself being evolution tolerant is what I thought
@@ -2995,6 +3002,16 @@ are these rulings, in the owner's words:
   versions."
 - **When it does not run at all**: "or, the game, if cooking is not
   required for speed, would just use the generic table."
+- **The cook is ON the ladder, and the dogfood not using it is not a verdict
+  on it**, 2026-09-02: "We do cook. We just aren't using it in space game
+  right now." The two files the dogfood carries are small enough to stay on
+  the generic wire (below); the cook is built for the catalogue-scale files
+  beside them (§7).
+- **The scale, and when its gate binds**: "We can keep the gigabyte scale
+  stuff for v2, but think about it as we work now." The 1 GB open-time gate
+  belongs to the wire v2 emitter (§7's status, schema#251); the design
+  constraint it comes from — nothing per node at open — is held now, in this
+  section's `Open`.
 - **Which files earn one**: "imagine a huge data file that specifies all
   the meshes used in the game for example, or all the texture files" —
   "that would be a cook"; against "Config.bin and Assets.bin are small

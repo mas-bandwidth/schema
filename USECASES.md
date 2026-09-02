@@ -1,5 +1,9 @@
 # schema — supported use cases
 
+**"We aim to build the best cross-language data type system for games."** —
+*"This includes save games, tooling, cooking to runtime efficient structures
+and so on."*
+
 The use cases schema is designed for. Find your situation in the list, and
 each entry names the **form** that serves it, the **versioning contract**
 that form carries, and the **proof** it has today — a corpus case, a gate,
