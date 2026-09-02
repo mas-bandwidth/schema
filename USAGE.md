@@ -1002,8 +1002,8 @@ builder.Lock();
 ```
 
 Allocating on your own worker is safe concurrently. Writing fields of a node
-another worker allocated is your own synchronization. `Lock`, `Save`, `Cook`
-and `Open` are single-threaded. The reflection descriptors are immutable
+another worker allocated is your own synchronization. `Lock` and `Save`
+are single-threaded. The reflection descriptors are immutable
 constant data, so reading them needs no synchronization at all.
 
 A `<Name>Builder` is about 8 KB (it carries the arena's segment table inline),
@@ -1053,7 +1053,7 @@ table RenderFrame
 
 **Nothing there is new.** Those are ordinary bounded arrays of ordinary fixed
 tables, and `RenderFrame` is an ordinary table — it still has `Measure`,
-`Save` and `Load` over the tolerant wire, and still cooks. **Every fixed table
+`Save` and `Load` over the tolerant wire. **Every fixed table
 also gets a third *form* of the same declaration**: one in which the table's
 own bounded arrays sit out of line at a fixed pitch, and the instance at the
 front of the block carries, per array, where its rows start, how many there
@@ -1172,6 +1172,10 @@ this side allocates: the bytes are yours, from wherever you got them.
 
 ### The cooked form: point at a file instead of parsing it
 
+*Specified, not built — the cook lands with the flat node encoding
+(SPEC-TABLES.md §7, schema#251). Variable-length tables ride the tolerant wire
+today. What follows is the design you will get.*
+
 The wire is generic — it allocates, walks and parses, and any build reads any
 data. When you want a big file to start instantly, cook it: the locked region
 written verbatim behind a small header, laid out exactly as the runtime reads
@@ -1203,26 +1207,17 @@ is the only runtime entry point there is: a cook is your build's own
 accelerator, and a file that is not your build's returns NULL and you load the
 wire.
 
-*What the C++ backend emits today is wire v1's cook, and it differs: `Open`
-matches the header and then walks the region, the header carries one 32-bit
-length rather than two 64-bit ones, and no attribution part is written — so
-`schema cook-check` has nothing to read. The emitter moves to the surface
-above with the flat node encoding (SPEC-TABLES.md §7, schema#251).*
-
 If you have a cooked file whose provenance you doubt — one that crossed a
 machine boundary, or one you are diagnosing — check it with the tool:
-`schema cook-check` — *specified, not yet built* — scans the attribution the
-cook carries beside its data and verifies every reference and every count
-against it, without following one reference or decoding one value. That is a
-person's decision, made once, not a flag on a load in the hot path.
+`schema cook-check` scans the attribution the cook carries beside its data and
+verifies every reference and every count against it, without following one
+reference or decoding one value. That is a person's decision, made once, not a
+flag on a load in the hot path.
 
 A FIXED table cooks too, and its cook is the same idea with nothing in it:
 one struct behind the header, so you memcpy it or point at it where it lies —
 no region, no node table, no attribution, and the build version is the whole
-of the check. *That one is law and not yet code: the emitter gives `Cook`,
-`CookMeasure` and `Open` to VARIABLE-LENGTH tables only, and only in a unit
-that declares one, so a fixed table has no cook surface today — it lands with
-the same emitter (SPEC-TABLES.md §7, schema#251).*
+of the check.
 
 ### The build version: what a cooked asset is stored under
 
