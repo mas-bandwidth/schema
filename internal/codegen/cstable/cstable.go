@@ -359,7 +359,7 @@ func (g *tableGen) assemble() []byte {
 func indent4(s string) string {
 	s = strings.TrimRight(s, "\n")
 	var b strings.Builder
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if line == "" {
 			b.WriteString("\n")
 			continue

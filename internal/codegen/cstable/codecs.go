@@ -909,14 +909,13 @@ func tableFieldTypeName(f *ir.Field) string {
 
 // unionArmLambda renders a descriptor lambda over a union's tag values: 0 is
 // the empty arm, [1, N] the declared arms in tag order.
-func unionArmLambda(un *ir.Union, result string, arm func(ir.UnionVariant) string, unknown, none string) string {
+func unionArmLambda(un *ir.Union, arm func(ir.UnionVariant) string, unknown, none string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "delegate(ulong v) { switch (v) { case 0: return %s;", none)
 	for i, v := range un.Variants {
 		fmt.Fprintf(&b, " case %d: return %s;", i+1, arm(v))
 	}
 	fmt.Fprintf(&b, " default: return %s; } }", unknown)
-	_ = result
 	return b.String()
 }
 
@@ -943,7 +942,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	} else {
 		g.pf("    info.Fields = new TableFieldInfo[]\n    {\n")
 		for _, f := range st.Fields {
-			g.emitTableFieldDescriptor(st, f, guards[f.Name])
+			g.emitTableFieldDescriptor(f, guards[f.Name])
 		}
 		g.pf("    };\n")
 	}
@@ -951,7 +950,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	g.pf("    return info;\n}\n\n")
 }
 
-func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard string) {
+func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	id := ir.TableFieldId(f)
 	kind := tableScalarKind(f)
 	if f.Type.Kind == ir.TBytes {
@@ -999,10 +998,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	case *ir.Union:
 		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
 			enumMax = fmt.Sprintf("%d", len(ref.Variants))
-			enumName = unionArmLambda(ref, "string", func(v ir.UnionVariant) string {
+			enumName = unionArmLambda(ref, func(v ir.UnionVariant) string {
 				return fmt.Sprintf("%q", v.Name)
 			}, "\"???\"", "\"None\"")
-			variantId = unionArmLambda(ref, "ushort", func(v ir.UnionVariant) string {
+			variantId = unionArmLambda(ref, func(v ir.UnionVariant) string {
 				return fmt.Sprintf("(ushort)0x%04x", ir.VariantId(v.Name))
 			}, "(ushort)0", "(ushort)0")
 		}
@@ -1011,5 +1010,4 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	g.pf("        new TableFieldInfo { Name = \"%s\", TypeName = \"%s\", Id = 0x%04x, Kind = %d, IsArray = %v, Counted = %v, ArrayBound = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, Guard = \"%s\", TableRef = %s },\n",
 		f.Name, tableFieldTypeName(f), id, kind, isArray, counted, bound,
 		hasRange, rangeMin, rangeMax, enumMax, enumName, variantId, guard, tableRef)
-	_ = st
 }
