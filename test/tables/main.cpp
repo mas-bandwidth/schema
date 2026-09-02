@@ -2787,6 +2787,241 @@ static void test_optional_and_keyed_reflection()
     CHECK( tally->key_type_name == NULL && tally->key_name == NULL && tally->key_id == NULL );
 }
 
+// ---- the SHARED GOLDEN WIRE (SPEC-TABLES.md §3, the cross-language gate) ----
+//
+// C++ is the reference writer: these instances' encodings are pinned into
+// testdata/wire/tables/<name>.bin, and every other table backend byte-compares
+// its own Save of THE SAME instance against them, then loads these very bytes.
+// A break here under an unchanged schema is stop-the-line, never a quiet
+// re-pin — SCHEMA_UPDATE_WIRE_GOLDENS=1 rewrites them deliberately
+// (make update-goldens).
+
+static void pin_table_golden( const char * name, const uint8_t * data, int64_t bytes )
+{
+    char path[256];
+    snprintf( path, sizeof( path ), "testdata/wire/tables/%s.bin", name );
+    if ( std::getenv( "SCHEMA_UPDATE_WIRE_GOLDENS" ) )
+    {
+        FILE * f = fopen( path, "wb" );
+        if ( f == NULL )
+        {
+            printf( "FAIL cannot write %s\n", path );
+            failures++;
+            return;
+        }
+        fwrite( data, 1, (size_t) bytes, f );
+        fclose( f );
+        return;
+    }
+    FILE * f = fopen( path, "rb" );
+    if ( f == NULL )
+    {
+        printf( "FAIL missing table wire golden %s (run: make update-goldens)\n", path );
+        failures++;
+        return;
+    }
+    static uint8_t expected[1u << 20];
+    size_t n = fread( expected, 1, sizeof( expected ), f );
+    fclose( f );
+    if ( (int64_t) n != bytes || memcmp( expected, data, n ) != 0 )
+    {
+        printf( "FAIL table wire golden %s: %lld bytes written, %lld pinned\n",
+                name, (long long) bytes, (long long) n );
+        failures++;
+    }
+}
+
+// The pinned instances, built here and mirrored VALUE FOR VALUE by every port
+// (test/cs-tables/src/Program.cs is the C# twin). Keep the two in step: a
+// divergence in the instance is a divergence in the gate.
+
+static void build_golden_root( tabledemo::RootConfig & root )
+{
+    set_string( root.version_note, root.version_note_length, "golden-v1" );
+
+    root.weapons_count = 2;
+    root.weapons[0].damage = 40.5f;
+    root.weapons[0].speed = 250.0f;
+    root.weapons[0].penetration = 7;
+    root.weapons[0].channel = 45;
+    root.weapons[0].homing = true;
+    root.weapons[0].effect.type = tabledemo::EffectType::Buff;
+    root.weapons[0].effect.buff.multiplier = 3.25f;
+    root.weapons[1].effect.type = tabledemo::EffectType::Debuff;
+    root.weapons[1].effect.debuff.amount = 42;
+
+    root.profiles_count = 1;
+    tabledemo::ProfileConfig & p = root.profiles[0];
+    set_string( p.name, p.name_length, "player one" );
+    p.icon[0] = 1; p.icon[1] = 2; p.icon[2] = 250; p.icon_length = 3;
+    p.experience = 777;
+    p.tilt = -12;
+    p.heading = -30000;
+    p.timestamp = -5000000000ll;
+    p.badge = 200;
+    p.port = 40000;
+    p.epoch = 0x1122334455667788ull;
+    p.precision = 2.5;
+    p.ratings[2] = 0.5f;
+    p.has_loadout = true;
+    p.loadout.grade = tabledemo::Grade::Gold;
+    p.loadout.grades_count = 2;
+    p.loadout.grades[0] = tabledemo::Grade::Bronze;
+    p.loadout.grades[1] = tabledemo::Grade::Gold;
+    p.loadout.podium[0] = tabledemo::Grade::Gold;
+    p.loadout.podium[2] = tabledemo::Grade::Silver;
+    p.loadout.perks = tabledemo::Perks_Cloaked | tabledemo::Perks_Turbo;
+    p.loadout.primary.penetration = 7;
+    p.loadout.backups[0].damage = 1.0f;
+    p.loadout.attachments_count = 2;
+    p.loadout.attachments[0].slot = 3;
+    p.loadout.attachments[0].power = 2.0f;
+    p.loadout.attachments[1].slot = 5;
+}
+
+static void build_golden_loadout( tabledemo::LoadoutConfig & loadout )
+{
+    loadout.grade = tabledemo::Grade::Bronze;
+    loadout.grades_count = 3;
+    loadout.grades[0] = tabledemo::Grade::Gold;
+    loadout.grades[1] = tabledemo::Grade::Silver;
+    loadout.grades[2] = tabledemo::Grade::Bronze;
+    loadout.podium[1] = tabledemo::Grade::Bronze;
+    loadout.perks = tabledemo::Perks_Shielded;
+    loadout.primary.damage = 12.5f;
+    loadout.primary.homing = true;
+    loadout.primary.effect.type = tabledemo::EffectType::Buff;
+    loadout.primary.effect.buff.multiplier = 0.5f;
+    loadout.backups[1].channel = 63;
+    loadout.attachments_count = 1;
+    loadout.attachments[0].slot = 6;
+    loadout.attachments[0].power = 0.25f;
+}
+
+static void build_golden_wide( tabledemo::WideBlob & blob )
+{
+    blob.label_length = 70000;
+    for ( int32_t i = 0; i < 70000; i++ ) { blob.label[i] = (char) ( 'a' + ( i % 26 ) ); }
+    blob.label[70000] = 0;
+    blob.payload_length = 100;
+    for ( int32_t i = 0; i < 100; i++ ) { blob.payload[i] = (uint8_t) ( i * 7 + 3 ); }
+    blob.samples_count = 70000;
+    for ( int32_t i = 0; i < 70000; i++ ) { blob.samples[i] = (uint16_t) ( i * 37 + 11 ); }
+}
+
+static void build_golden_v1( tblv1::Cfg & cfg )
+{
+    cfg.a = 9;
+    cfg.b = 8.5f;
+    cfg.mode = tblv1::Mode::Alpha;
+    set_string( cfg.name, cfg.name_length, "aged" );
+    cfg.inner.factor = 1.25f;
+    cfg.items_count = 3;
+    cfg.items[0] = 1; cfg.items[1] = 20; cfg.items[2] = 255;
+    cfg.grade = tblv1::Grade::Gold;
+    cfg.grades_count = 2;
+    cfg.grades[0] = tblv1::Grade::Gold;
+    cfg.grades[1] = tblv1::Grade::Bronze;
+    cfg.podium[0] = tblv1::Grade::Bronze;
+    cfg.podium[2] = tblv1::Grade::Gold;
+    cfg.slots_count = 4;
+    cfg.slots[0] = 11; cfg.slots[1] = 22; cfg.slots[2] = 33; cfg.slots[3] = 44;
+    cfg.tally[0] = 5; cfg.tally[2] = 7;
+    cfg.effect.type = tblv1::EffectType::Ward;
+    cfg.effect.ward.charge = 0.75f;
+}
+
+static void build_golden_v2( tblv2::Cfg & cfg )
+{
+    cfg.a = 7.5f;
+    cfg.c = false;
+    cfg.mode = tblv2::Mode::Alpha;
+    set_string( cfg.title, cfg.title_length, "fresh" );
+    cfg.inner.factor = 9.5f;
+    cfg.inner.gain = 4.0f;
+    cfg.items_count = 2;
+    cfg.items[0] = 10; cfg.items[1] = 200;
+    cfg.grade = tblv2::Grade::Gold;
+    cfg.grades_count = 3;
+    cfg.grades[0] = tblv2::Grade::Silver;
+    cfg.grades[1] = tblv2::Grade::Gold;
+    cfg.grades[2] = tblv2::Grade::Bronze;
+    cfg.podium[1] = tblv2::Grade::Silver;
+    cfg.slots_count = 3;
+    cfg.slots[0] = 7; cfg.slots[1] = 8; cfg.slots[2] = 9;
+    cfg.tally[1] = 3; cfg.tally[3] = 9;
+    cfg.effect.type = tblv2::EffectType::Hex;
+    cfg.effect.hex.level = 6;
+}
+
+static void test_golden_wire()
+{
+    static uint8_t buffer[1u << 20];
+
+    {
+        static tabledemo::RootConfig root;
+        build_golden_root( root );
+        int64_t need = tabledemo::RootConfigMeasure( root );
+        int64_t wrote = tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == need );
+        pin_table_golden( "root_full", buffer, wrote );
+    }
+    {
+        static tabledemo::RootConfig root; // untouched: everything elides
+        int64_t wrote = tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) );
+        CHECK( wrote == 2 );
+        pin_table_golden( "root_default", buffer, wrote );
+    }
+    {
+        // the ELISION shape: non-default fields around an all-default nested
+        // table inside a taken guard. Its bytes are what pin the "all-default
+        // nested elides" decision across languages — nothing else in this set
+        // carries an all-default nesting.
+        static tabledemo::ProfileConfig profile;
+        profile.experience = 1;
+        profile.has_loadout = true; // loadout itself stays all-default: elides
+        int64_t wrote_elide = tabledemo::ProfileConfigSave( profile, buffer, sizeof( buffer ) );
+        CHECK( wrote_elide > 0 && wrote_elide == tabledemo::ProfileConfigMeasure( profile ) );
+        pin_table_golden( "profile_elide", buffer, wrote_elide );
+    }
+    {
+        static tabledemo::LoadoutConfig loadout;
+        build_golden_loadout( loadout );
+        int64_t wrote = tabledemo::LoadoutConfigSave( loadout, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tabledemo::LoadoutConfigMeasure( loadout ) );
+        pin_table_golden( "loadout_full", buffer, wrote );
+    }
+    {
+        static tabledemo::WideBlob blob;
+        build_golden_wide( blob );
+        int64_t wrote = tabledemo::WideBlobSave( blob, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tabledemo::WideBlobMeasure( blob ) );
+        pin_table_golden( "wide_blob", buffer, wrote );
+    }
+    {
+        static tabledemo::ArchiveConfig archive;
+        build_golden_root( archive.root );
+        archive.count = 5;
+        int64_t wrote = tabledemo::ArchiveConfigSave( archive, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tabledemo::ArchiveConfigMeasure( archive ) );
+        pin_table_golden( "archive", buffer, wrote );
+    }
+    {
+        static tblv1::Cfg cfg;
+        build_golden_v1( cfg );
+        int64_t wrote = tblv1::CfgSave( cfg, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tblv1::CfgMeasure( cfg ) );
+        pin_table_golden( "v1_cfg", buffer, wrote );
+    }
+    {
+        static tblv2::Cfg cfg;
+        build_golden_v2( cfg );
+        int64_t wrote = tblv2::CfgSave( cfg, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tblv2::CfgMeasure( cfg ) );
+        pin_table_golden( "v2_cfg", buffer, wrote );
+    }
+}
+
 // ---- the TEXT form (SPEC-TABLES.md §16) ------------------------------------
 //
 // ONE walk over the reflection descriptors, so these tests are about the
@@ -4426,8 +4661,213 @@ static void test_json_pinned_keyed_and_optional()
     }
 }
 
+// ---- the SEAM instances: `?T` (§2.3) and `[E]T` (§2.4) ----
+//
+// Built here and mirrored VALUE FOR VALUE by every port. The C# twin lives in
+// test/cs-tables/src/Program.cs; a divergence in the instance is a divergence
+// in the gate.
+
+static void build_golden_keyed( tabledemo::KeyedConfig & cfg )
+{
+    tabledemo::TeamConfig & red = cfg.teams[tabledemo::Team::Red];
+    red.spawn_count = 8;
+    set_string( red.banner, red.banner_length, "red" );
+    tabledemo::TeamConfig & green = cfg.teams[tabledemo::Team::Green];
+    green.spawn_count = 2;
+    set_string( green.banner, green.banner_length, "green" );
+    // Blue's slot stays entirely default: a default slot ELIDES (§3.2)
+
+    tabledemo::HullConfig & gunship = cfg.hulls[tabledemo::Hull::Gunship];
+    gunship.health = 250.0f;
+    gunship.mass = 3.5f;
+    tabledemo::TurretConfig & cannon = gunship.turrets[tabledemo::Weapon::Cannon];
+    cannon.damage = 40.0f;
+    cannon.gunner_present = true;              // present, and entirely DEFAULT: it still rides
+    tabledemo::TurretConfig & mine = gunship.turrets[tabledemo::Weapon::Mine];
+    mine.damage = 5.0f;
+    mine.cooldown = 9.0f;
+    mine.gunner_present = true;
+    mine.gunner.reaction = 0.75f;
+    mine.gunner.tracking = true;
+
+    tabledemo::HullConfig & freighter = cfg.hulls[tabledemo::Hull::Freighter];
+    freighter.mass = 12.0f;                    // turrets all default: the keyed array elides whole
+
+    cfg.scores.per_team[1] = 10;               // a `type`'s keyed field: plain array storage,
+    cfg.scores.per_team[3] = 30;               // keyed BODY on this wire
+}
+
+static void build_golden_v1_seams( tblv1::Cfg & cfg )
+{
+    cfg.a = 3;
+    cfg.bank.slots[1].power = 11;              // Alpha
+    set_string( cfg.bank.slots[1].label, cfg.bank.slots[1].label_length, "a1" );
+    cfg.bank.slots[2].power = 22;              // Beta — ordinal 2 in V1, 3 in V2
+    cfg.bank.slots[3].power = 33;              // Gamma — REMOVED in V2
+    // Delta's slot stays default: it elides
+    cfg.tokens.slots[1] = 101;
+    cfg.tokens.slots[2] = 102;
+    cfg.tokens.slots[4] = 104;                 // Delta
+    cfg.ranks.slots[1] = tblv1::Grade::Gold;
+    cfg.ranks.slots[3] = tblv1::Grade::Bronze;
+    cfg.ledger[0] = 7; cfg.ledger[2] = 9;      // POSITIONAL in V1, KEYED in V2: kind 14 vs 16
+    cfg.extra_present = true;
+    cfg.extra.factor = 6.25f;
+    cfg.tier_present = true;
+    cfg.tier = 41;
+    cfg.mark_present = true;
+    cfg.mark = tblv1::Grade::Gold;
+}
+
+static void build_golden_v2_seams( tblv2::Cfg & cfg )
+{
+    cfg.a = 1.5f;
+    cfg.bank.slots[1].power = 11;              // Alpha
+    set_string( cfg.bank.slots[1].label, cfg.bank.slots[1].label_length, "a1" );
+    cfg.bank.slots[2].power = 44;              // Omega — INSERTED in V2; V1 cannot name it
+    cfg.bank.slots[3].power = 22;              // Beta, slid from ordinal 2 to 3
+    cfg.bank.slots[5].power = 55;              // Sigma — appended; V1 cannot name it
+    cfg.tokens.slots[1] = 101;
+    cfg.tokens.slots[3] = 102;
+    cfg.ranks.slots[1] = tblv2::Grade::Gold;
+    cfg.ledger.slots[1] = 7; cfg.ledger.slots[3] = 9; // KEYED in V2
+    cfg.extra_present = true;
+    cfg.extra.factor = 6.25f;
+    cfg.tier_present = false;                  // absent: nothing rides
+    cfg.mark_present = true;
+    cfg.mark = tblv2::Grade::Gold;
+}
+
+// the three-way T / *T / ?T set (§2.3, §3.1): one framing, three spellings.
+// Byte-identical for content that is not entirely default; DIFFERENT at the
+// empty end, and that asymmetry is pinned too.
+static void build_golden_chain_value( tblp1::Chain & chain )
+{
+    set_string( chain.name, chain.name_length, "chain" );
+    chain.link.value = 7;
+    set_string( chain.link.tag, chain.link.tag_length, "tip" );
+}
+
+static void test_golden_seams()
+{
+    static uint8_t buffer[1u << 20];
+
+    {
+        static tabledemo::KeyedConfig cfg;
+        build_golden_keyed( cfg );
+        int64_t wrote = tabledemo::KeyedConfigSave( cfg, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tabledemo::KeyedConfigMeasure( cfg ) );
+        pin_table_golden( "keyed_config", buffer, wrote );
+    }
+    {
+        static tabledemo::KeyedConfig cfg; // every slot default: every keyed array elides
+        int64_t wrote = tabledemo::KeyedConfigSave( cfg, buffer, sizeof( buffer ) );
+        CHECK( wrote == 2 );
+        pin_table_golden( "keyed_default", buffer, wrote );
+    }
+    {
+        static tblv1::Cfg cfg;
+        build_golden_v1_seams( cfg );
+        int64_t wrote = tblv1::CfgSave( cfg, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tblv1::CfgMeasure( cfg ) );
+        pin_table_golden( "v1_seams", buffer, wrote );
+    }
+    {
+        static tblv2::Cfg cfg;
+        build_golden_v2_seams( cfg );
+        int64_t wrote = tblv2::CfgSave( cfg, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == tblv2::CfgMeasure( cfg ) );
+        pin_table_golden( "v2_seams", buffer, wrote );
+    }
+
+    // the SAME BYTES across the generation step, both directions, with the
+    // counts pinned here and in the C# leg: two Gamma slots V2 cannot name,
+    // Omega and Sigma V1 cannot, and `a` and `ledger` changing kind each way
+    // (ledger is positional in V1 and KEYED in V2 — different kinds, so a
+    // reported edit rather than a quiet one, SPEC-TABLES.md §3.2)
+    {
+        static tblv1::Cfg v1;
+        build_golden_v1_seams( v1 );
+        int64_t v1_bytes = tblv1::CfgSave( v1, buffer, sizeof( buffer ) );
+        tblv2::TableReport forward;
+        static tblv2::Cfg new_reader;
+        CHECK( tblv2::CfgLoad( new_reader, buffer, v1_bytes, &forward ) );
+        CHECK( !forward.malformed && forward.unknown == 2 && forward.kind_mismatch == 2 && forward.clamped == 0 );
+        CHECK( new_reader.bank.slots[(int32_t) tblv2::Slot::Beta].power == 22 ); // by NAME, not by ordinal
+        CHECK( new_reader.bank.slots[(int32_t) tblv2::Slot::Omega].power == 0 );
+
+        static tblv2::Cfg v2;
+        build_golden_v2_seams( v2 );
+        int64_t v2_bytes = tblv2::CfgSave( v2, buffer, sizeof( buffer ) );
+        tblv1::TableReport back;
+        static tblv1::Cfg old_reader;
+        CHECK( tblv1::CfgLoad( old_reader, buffer, v2_bytes, &back ) );
+        CHECK( !back.malformed && back.unknown == 2 && back.kind_mismatch == 2 );
+        CHECK( old_reader.bank.slots[(int32_t) tblv1::Slot::Beta].power == 22 );
+        CHECK( old_reader.bank.slots[(int32_t) tblv1::Slot::Gamma].power == 0 );
+    }
+
+    // the three spellings over NON-DEFAULT content: byte-identical
+    {
+        tblp1::Chain value;
+        build_golden_chain_value( value );
+        int64_t wrote = tblp1::ChainSave( value, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 );
+        pin_table_golden( "chain_value", buffer, wrote );
+
+        tblp3::Chain optional;
+        set_string( optional.name, optional.name_length, "chain" );
+        optional.link_present = true;
+        optional.link.value = 7;
+        set_string( optional.link.tag, optional.link.tag_length, "tip" );
+        static uint8_t other[4096];
+        int64_t w_opt = tblp3::ChainSave( optional, other, sizeof( other ) );
+        CHECK( w_opt == wrote && memcmp( buffer, other, (size_t) wrote ) == 0 );
+        pin_table_golden( "chain_optional", other, w_opt );
+
+        tblp2::ChainBuilder builder;
+        tblp2::Chain * root = builder.GetRoot();
+        set_string( root->name, root->name_length, "chain" );
+        tblp2::TableSlot<tblp2::Link> node = builder.Alloc<tblp2::Link>();
+        node->value = 7;
+        set_string( node->tag, node->tag_length, "tip" );
+        root->link = node;
+        CHECK( builder.Lock() );
+        int64_t w_ptr = tblp2::ChainSave( builder, other, sizeof( other ) );
+        CHECK( w_ptr == wrote && memcmp( buffer, other, (size_t) wrote ) == 0 );
+        pin_table_golden( "chain_pointer", other, w_ptr );
+    }
+
+    // and the ASYMMETRY at the empty end: a by-value nesting at its defaults
+    // writes nothing, while a PRESENT optional and a non-null pointer write
+    // their body anyway (§2.3, §3.1)
+    {
+        tblp1::Chain value; // link entirely default: elides
+        int64_t w_value = tblp1::ChainSave( value, buffer, sizeof( buffer ) );
+        CHECK( w_value == 2 );
+        pin_table_golden( "chain_value_empty", buffer, w_value );
+
+        tblp3::Chain optional;
+        optional.link_present = true; // present and all-default: it RIDES
+        static uint8_t other[4096];
+        int64_t w_opt = tblp3::ChainSave( optional, other, sizeof( other ) );
+        CHECK( w_opt > w_value );
+        pin_table_golden( "chain_optional_empty", other, w_opt );
+
+        tblp2::ChainBuilder builder;
+        tblp2::Chain * root = builder.GetRoot();
+        root->link = builder.Alloc<tblp2::Link>(); // non-null and all-default: it RIDES
+        CHECK( builder.Lock() );
+        int64_t w_ptr = tblp2::ChainSave( builder, other, sizeof( other ) );
+        CHECK( w_ptr == w_opt && memcmp( other, other, (size_t) w_ptr ) == 0 );
+        pin_table_golden( "chain_pointer_empty", other, w_ptr );
+    }
+}
+
 int main()
 {
+    test_golden_wire();
+    test_golden_seams();
     test_round_trip();
     test_exact_capacity();
     test_storage_invariants();

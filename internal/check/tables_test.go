@@ -550,3 +550,73 @@ func TestTableVariantIds(t *testing.T) {
 		}
 	}
 }
+
+// TestTableFileDag is SPEC-TABLES.md §11's cross-file DAG rule, held in the
+// FRONT END so every target refuses the same units. C++ makes the consequence
+// concrete — the generated <A>Table.h and <B>Table.h would have to include
+// each other — but a unit legal under one target and illegal under another is
+// the trap the rule exists to prevent, so the check does not live in a
+// backend. Nothing downstream can disagree with it: no Generator runs until
+// check.Unit succeeds.
+func TestTableFileDag(t *testing.T) {
+	t.Run("a two-file cycle is refused, naming the closing declaration", func(t *testing.T) {
+		errs := runUnit(t, map[string]string{
+			"A.schema": "package p\ntable AlphaHolder { b Beta }\ntable Alpha { v int32 }\n",
+			"B.schema": "package p\ntable Beta { a Alpha }\n",
+		})
+		if len(errs) == 0 {
+			t.Fatal("a cross-file table reference cycle was accepted")
+		}
+		for _, e := range errs {
+			if strings.Contains(e.Error(), "cross-file table reference cycle") &&
+				strings.Contains(e.Error(), "Beta closes") {
+				return
+			}
+		}
+		t.Fatalf("no diagnostic names the cycle and its closing declaration: %v", errs)
+	})
+
+	t.Run("a cycle closed through a union arm is refused", func(t *testing.T) {
+		errs := runUnit(t, map[string]string{
+			"A.schema": "package p\ntable Holder { b Beta }\ntype Leaf { v int32 }\n",
+			"B.schema": "package p\nunion Pick\n{\n    leaf Leaf\n}\ntable Beta { p Pick }\n",
+		})
+		if len(errs) == 0 {
+			t.Fatal("a cycle closed through a union arm was accepted")
+		}
+		for _, e := range errs {
+			if strings.Contains(e.Error(), "cross-file table reference cycle") {
+				return
+			}
+		}
+		t.Fatalf("no diagnostic names the cycle: %v", errs)
+	})
+
+	// the controls: only edges that LEAVE a file are graphed, so an acyclic
+	// cross-file graph and same-file pointer recursion both stay legal
+	t.Run("an acyclic cross-file graph is legal", func(t *testing.T) {
+		if errs := runUnit(t, map[string]string{
+			"A.schema": "package p\ntable Holder { b Beta }\n",
+			"B.schema": "package p\ntable Beta { v int32 }\n",
+		}); len(errs) > 0 {
+			t.Fatalf("an acyclic cross-file table graph must be legal: %v", errs)
+		}
+	})
+
+	t.Run("same-file recursion through a pointer stays legal", func(t *testing.T) {
+		if errs := runUnit(t, map[string]string{
+			"A.schema": "package p\ntable Node { v int32\n  next *Node }\n",
+		}); len(errs) > 0 {
+			t.Fatalf("same-file pointer recursion must stay legal: %v", errs)
+		}
+	})
+
+	t.Run("a table-free unit is not graphed at all", func(t *testing.T) {
+		if errs := runUnit(t, map[string]string{
+			"A.schema": "package p\ntype Holder { b Beta }\n",
+			"B.schema": "package p\ntype Beta { v int32 }\n",
+		}); len(errs) > 0 {
+			t.Fatalf("a table-free unit must not be graphed: %v", errs)
+		}
+	})
+}

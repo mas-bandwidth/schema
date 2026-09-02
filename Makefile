@@ -267,6 +267,50 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 		-Ibuild/json-sabotage test/tables/json_negative_main.cpp -o build/schema_test_json_negative
 	./build/schema_test_json_negative
 
+# The same corpus through the C# table backend (SPEC-TABLES.md, schema#262):
+# the tables corpus plus the evolution pair, generated at build time into
+# build/ — test-only, never part of the committed generated/ tree. The full
+# unit is generated (packet .cs + <Base>Table.cs), because a table's closure
+# decodes into the packet emitter's own classes.
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+	@mkdir -p build/tables-generated-cs
+	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
+	./bin/schema generate --lang cs --out build/tables-generated-cs/v1 test/tables/V1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/v2 test/tables/V2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/p1 test/tables/P1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/p3 test/tables/P3.schema
+	@touch $@
+
+# The C# twin of the C++ "no serialize include path" build: a generated
+# <Base>Table.cs must stand alone on the BCL, so nothing in it may name the
+# serialize runtime. (C# has no include paths to withhold, so the property is
+# gated by inspection rather than by the compiler.)
+.PHONY: tables-cs-standalone
+tables-cs-standalone: build/tables-generated-cs/.stamp
+	@n=$$(ls build/tables-generated-cs/*/*Table.cs 2>/dev/null | wc -l | tr -d ' '); \
+		if [ "$$n" -lt 8 ]; then \
+			echo "STANDALONE GATE FAILED: found $$n generated Table sources, expected 8 — the glob, not the property, is what broke"; exit 1; \
+		fi
+	@for f in build/tables-generated-cs/*/*Table.cs; do \
+		if grep -n "Serialize" $$f; then \
+			echo "STANDALONE GATE FAILED: the serialize runtime leaked into $$f"; exit 1; \
+		fi; \
+	done
+	@echo "tables C# standalone gate: generated Table sources name no runtime"
+
+# The C# VARIABLE-CLASS REFUSAL (SPEC-TABLES.md §2.2): the C# backend emits the
+# fixed class, and a pointered unit is refused BY NAME rather than emitted with
+# its pointered tables missing.
+.PHONY: tables-cs-refuses-pointers
+tables-cs-refuses-pointers: bin/schema
+	@mkdir -p build
+	@if ./bin/schema generate --lang cs --out build/tables-cs-refusal tables/pointers > build/tables-cs-refusal.log 2>&1; then \
+		echo "REFUSAL GATE FAILED: the C# backend generated a pointered unit"; exit 1; \
+	fi
+	@grep -q "variable class is a named follow-on" build/tables-cs-refusal.log || \
+		{ echo "REFUSAL GATE FAILED: the refusal does not name the follow-on"; cat build/tables-cs-refusal.log; exit 1; }
+	@echo "tables C# refusal gate: a pointered unit is refused by name"
+
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
@@ -426,13 +470,16 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-negative-control
+	$(MAKE) tables-cs-standalone
+	$(MAKE) tables-cs-refuses-pointers
+	cd test/cs-tables && dotnet run
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c
@@ -470,10 +517,11 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench
-	@mkdir -p testdata/golden testdata/wire
+update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_tables
+	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	go test ./...

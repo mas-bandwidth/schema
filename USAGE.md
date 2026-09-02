@@ -579,7 +579,8 @@ allocates, a fixed table WITH a union may allocate for the arm in a language
 that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
-A table lives on its own wire — evolution-tolerant TLV, C++ only today. Field
+A table lives on its own wire — evolution-tolerant TLV, carried by C++ and by
+C# (the fixed class; C#'s pointer surface and text form are follow-ons). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
@@ -658,6 +659,57 @@ if ( report.unknown || report.kind_mismatch || report.clamped )
 
 Values at their defaults stay off the wire entirely — an all-default table
 saves as 2 bytes and loads back complete.
+
+The C# surface is the same three functions, name first, on the unit's `Schema`
+class, over spans the caller owns. Storage is a sealed class with public
+fields — every buffer allocated at construction, so `Load` allocates nothing
+and overlays in place after restoring the declared defaults:
+
+```csharp
+using Example;
+
+ShipConfig ship = new ShipConfig();
+ship.Health = 250.0f;
+ship.SettingsPresent = true;          // ?T: presence decides whether it rides
+
+long size = Schema.ShipConfigMeasure(ship);       // exact, writes nothing
+byte[] buffer = new byte[size];                    // or any storage you own
+Schema.ShipConfigSave(ship, buffer);               // returns size, or -1
+
+TableReport report = new TableReport();
+ShipConfig loaded = new ShipConfig();
+if (!Schema.ShipConfigLoad(loaded, buffer, report))
+{
+    // framing damage: report.Malformed is set, the good prefix is kept
+}
+if (report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0)
+{
+    // the data came from a different schema generation — loaded is still
+    // fully usable; log the counts so drift is visible
+}
+```
+
+The bytes are the same bytes: a shared golden corpus pins C++'s encoding of a
+set of instances and the C# leg byte-compares its own `Save` against it, then
+loads those very files. `string(N)` and `bytes(N)` are a `byte[N]` beside an
+`int` used length, arrays a `T[N]` beside an `int` used count, `?T` a value
+beside a `<Name>Present` bool, and a union is its tag beside one pre-allocated
+arm — the same spelling the packet backend uses, because a table's closure
+decodes into the packet backend's own classes.
+
+An enum-keyed array is a `TableKeyed<T>` holding `E.Max + 1` slots. **C#
+expresses neither half of the C++ accessor pair**: there is no compile-time
+key (C# generics take no non-type parameter, so `Slot<Key>()` has no spelling)
+and no non-boxing generic enum-to-int conversion, so the indexer takes the
+slot index and the caller writes the cast — `fleet.Ships[(int)ShipType.Bomber]`.
+The `None` refusal survives as a runtime guard on that indexer, and unlike
+C++'s `assert` it is **not** compiled out in release. Generated code walks
+`.Slots` directly and never pays for the guard.
+
+`<Name>TableType()` returns the reflection descriptor: field names, wire ids
+and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
+an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId` — where `KeyId(0)` is
+`0`, the reserved id that marks slot 0 as `None`'s and never valid.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every

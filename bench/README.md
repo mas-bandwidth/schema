@@ -295,6 +295,22 @@ A runner is a standalone program in `bench/<lang>/` that:
 If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
 with the reason.
 
+## Decision probes (not legs)
+
+`bench/tools/cs-union-form` is a **one-off decision probe**, not a
+bench-standard leg: it emits no CSV row, `run.sh` does not know about it,
+`make test` does not run it, and it measures no `bench/corpus/` shape. It
+backs one recorded language decision — which C# spelling a table union takes,
+schema#262 — with numbers anyone can reproduce (`dotnet run -c Release` in
+that directory) instead of with an anecdote. Its own README states the
+sitting and states plainly that nothing in it may be divided against a bench
+CSV row.
+
+A probe is the right shape when the question is about a LANGUAGE (two
+storage forms of the same data) rather than about the wire. A question about
+the wire belongs in a leg, under the standard — the tables leg the table work
+owes is schema#270, and no probe closes it.
+
 ## The shape gate
 
 `make shape-gate` (CI job `shape-gate`, `bench/tools/shapegate`) enforces the
