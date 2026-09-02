@@ -50,4 +50,6 @@ classes, which a table's closure requires. **B ships.**
 These are ONE MACHINE'S numbers from a probe, not a certification run under
 `bench/BENCH-STANDARD.md` — nothing here may be divided against a bench CSV
 row. What the standard's contract does hold for is the tables bench leg that
-schema#262 names as a gate item, and that leg is filed separately.
+schema#262 names as a gate item — a fixed table beside its equivalent type on
+the ledger. That leg is schema#270, and this probe does not close it: it
+measures two storage forms against each other, not a table against its type.

@@ -308,7 +308,8 @@ CSV row.
 
 A probe is the right shape when the question is about a LANGUAGE (two
 storage forms of the same data) rather than about the wire. A question about
-the wire belongs in a leg, under the standard.
+the wire belongs in a leg, under the standard — the tables leg the table work
+owes is schema#270, and no probe closes it.
 
 ## The shape gate
 
