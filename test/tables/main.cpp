@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "TablesTable.h"
+#include "KeyedTable.h"
 #include "NestedTable.h"
 #include "WideTable.h"
 #include "V1Table.h"
@@ -20,6 +21,7 @@
 #include "MarksTable.h"
 #include "P1Table.h"
 #include "P2Table.h"
+#include "P3Table.h"
 
 static int failures = 0;
 
@@ -2051,6 +2053,371 @@ static void test_cross_file_pointer_unit()
     free( file );
 }
 
+// ---- optional fields: `?T` (SPEC-TABLES.md §2.3) ----
+// ---- PRESENCE decides whether the field rides, never content. ----
+
+static void test_optional_round_trip()
+{
+    uint8_t wire[1024];
+
+    // ABSENT: nothing rides at all, and a fresh load says absent with the
+    // value at its declared defaults
+    tblv1::Cfg none;
+    int64_t bytes = tblv1::CfgSave( none, wire, sizeof( wire ) );
+    CHECK( bytes == 2 ); // the terminator alone: every field is default or absent
+
+    tblv1::Cfg out;
+    out.tier_present = true;              // junk the prefill must erase
+    out.tier = 99;
+    tblv1::TableReport absent_report;
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &absent_report ) );
+    CHECK( !absent_report.malformed && absent_report.unknown == 0 );
+    CHECK( !out.extra_present && !out.tier_present && !out.mark_present );
+    CHECK( out.extra.factor == 2.5f );    // absent reads as the declared default
+    CHECK( out.tier == 0 );
+    CHECK( out.mark == tblv1::Grade::None );
+
+    // PRESENT with content
+    tblv1::Cfg set;
+    set.extra_present = true;
+    set.extra.factor = 8.5f;
+    set.tier_present = true;
+    set.tier = 42;
+    set.mark_present = true;
+    set.mark = tblv1::Grade::Gold;
+    bytes = tblv1::CfgSave( set, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( set ) );
+
+    tblv1::TableReport set_report;
+    tblv1::Cfg back;
+    CHECK( tblv1::CfgLoad( back, wire, bytes, &set_report ) );
+    CHECK( !set_report.malformed && set_report.unknown == 0 && set_report.kind_mismatch == 0 );
+    CHECK( back.extra_present && back.extra.factor == 8.5f );
+    CHECK( back.tier_present && back.tier == 42 );
+    CHECK( back.mark_present && back.mark == tblv1::Grade::Gold );
+
+    // PRESENT and entirely default — the case content-based elision would
+    // lose. Presence is not content: the field rides with nothing to say, and
+    // it reads back present.
+    tblv1::Cfg empty_present;
+    empty_present.extra_present = true;   // factor stays 2.5, its declared default
+    empty_present.tier_present = true;    // value stays 0
+    empty_present.mark_present = true;    // value stays None
+    int64_t need = tblv1::CfgMeasure( empty_present );
+    CHECK( need > 2 );
+    bytes = tblv1::CfgSave( empty_present, wire, sizeof( wire ) );
+    CHECK( bytes == need );
+
+    tblv1::TableReport empty_report;
+    tblv1::Cfg empty_back;
+    CHECK( tblv1::CfgLoad( empty_back, wire, bytes, &empty_report ) );
+    CHECK( !empty_report.malformed && empty_report.unknown == 0 );
+    CHECK( empty_back.extra_present );    // <- the assertion elision would break
+    CHECK( empty_back.tier_present );
+    CHECK( empty_back.mark_present );
+    CHECK( empty_back.extra.factor == 2.5f );
+    CHECK( empty_back.tier == 0 );
+    CHECK( empty_back.mark == tblv1::Grade::None );
+
+    check_exact_capacity( empty_present, tblv1::CfgMeasure, tblv1::CfgSave );
+    check_exact_capacity( set, tblv1::CfgMeasure, tblv1::CfgSave );
+}
+
+// ---- ?T, *T and a plain nesting are ONE framing: the three-way evolution
+// ---- (SPEC-TABLES.md §2.3, §3.1). P1 nests by value, P2 points, P3 marks
+// ---- optional, and every pair reads both directions.
+
+static void test_optional_three_way_evolution()
+{
+    uint8_t wire[512];
+    uint8_t other[512];
+
+    // the bytes themselves: the same field, written three ways, is the same
+    // field on the wire
+    tblp1::Chain by_value;
+    set_string( by_value.name, by_value.name_length, "one" );
+    by_value.link.value = 66;
+    int64_t w_value = tblp1::ChainSave( by_value, wire, sizeof( wire ) );
+    CHECK( w_value > 0 && w_value == tblp1::ChainMeasure( by_value ) );
+
+    tblp3::Chain optional;
+    set_string( optional.name, optional.name_length, "one" );
+    optional.link_present = true;
+    optional.link.value = 66;
+    int64_t w_opt = tblp3::ChainSave( optional, other, sizeof( other ) );
+    CHECK( w_opt == w_value );
+    CHECK( memcmp( wire, other, (size_t) w_value ) == 0 );
+
+    tblp2::ChainBuilder builder;
+    tblp2::Chain * root = builder.GetRoot();
+    set_string( root->name, root->name_length, "one" );
+    tblp2::TableSlot<tblp2::Link> node = builder.Alloc<tblp2::Link>();
+    node->value = 66;
+    root->link = node;
+    int64_t w_ptr = tblp2::ChainSave( builder, other, sizeof( other ) );
+    CHECK( w_ptr == w_value );
+    CHECK( memcmp( wire, other, (size_t) w_value ) == 0 );
+
+    // ?T -> by value: the optional's body decodes as a nesting
+    int64_t wrote = tblp3::ChainSave( optional, wire, sizeof( wire ) );
+    tblp1::Chain into_value;
+    tblp1::TableReport r1;
+    CHECK( tblp1::ChainLoad( into_value, wire, wrote, &r1 ) );
+    CHECK( !r1.malformed && r1.unknown == 0 && r1.kind_mismatch == 0 );
+    CHECK( into_value.link.value == 66 && strcmp( into_value.name, "one" ) == 0 );
+
+    // ?T -> *T: the same body allocates one node
+    int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    tblp2::TableReport r2;
+    const tblp2::Chain * into_pointer = tblp2::ChainLoad( region, region_need, wire, wrote, &r2 );
+    CHECK( into_pointer != NULL && !r2.malformed && r2.unknown == 0 );
+    const tblp2::Link * link = tblp2::LinkAt( into_pointer->link );
+    CHECK( link != NULL && link->value == 66 );
+    free( region );
+
+    // by value -> ?T: a nested body that rode lands PRESENT
+    wrote = tblp1::ChainSave( by_value, wire, sizeof( wire ) );
+    tblp3::Chain from_value;
+    tblp3::TableReport r3;
+    CHECK( tblp3::ChainLoad( from_value, wire, wrote, &r3 ) );
+    CHECK( !r3.malformed && r3.unknown == 0 && r3.kind_mismatch == 0 );
+    CHECK( from_value.link_present && from_value.link.value == 66 );
+
+    // *T -> ?T: a non-null pointee lands PRESENT
+    wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
+    tblp3::Chain from_pointer;
+    tblp3::TableReport r4;
+    CHECK( tblp3::ChainLoad( from_pointer, wire, wrote, &r4 ) );
+    CHECK( !r4.malformed && r4.unknown == 0 );
+    CHECK( from_pointer.link_present && from_pointer.link.value == 66 );
+
+    // a NULL pointer and an ABSENT optional are the same absence
+    tblp2::ChainBuilder bare;
+    set_string( bare.GetRoot()->name, bare.GetRoot()->name_length, "one" );
+    wrote = tblp2::ChainSave( bare, wire, sizeof( wire ) );
+    tblp3::Chain from_null;
+    tblp3::TableReport r5;
+    CHECK( tblp3::ChainLoad( from_null, wire, wrote, &r5 ) );
+    CHECK( !r5.malformed && !from_null.link_present );
+
+    // and a PRESENT all-default optional reads back as a non-null pointer to
+    // an empty node: presence survives the trip in both languages
+    tblp3::Chain empty_present;
+    set_string( empty_present.name, empty_present.name_length, "one" );
+    empty_present.link_present = true;
+    wrote = tblp3::ChainSave( empty_present, wire, sizeof( wire ) );
+    region_need = tblp2::ChainLoadMeasure( wire, wrote );
+    region = (uint8_t *) malloc( (size_t) region_need );
+    tblp2::TableReport r6;
+    const tblp2::Chain * empty_pointer = tblp2::ChainLoad( region, region_need, wire, wrote, &r6 );
+    CHECK( empty_pointer != NULL );
+    CHECK( tblp2::LinkAt( empty_pointer->link ) != NULL ); // NOT null: presence rode
+    free( region );
+}
+
+// ---- enum-keyed arrays: `[E]T` (SPEC-TABLES.md §2.4, §3.2) ----
+
+static void test_keyed_round_trip()
+{
+    tabledemo::KeyedConfig cfg;
+    tabledemo::TeamConfig & blue = cfg.teams[int32_t( tabledemo::Team::Blue )];
+    blue.spawn_count = 8;
+    set_string( blue.banner, blue.banner_length, "blue" );
+
+    tabledemo::HullConfig & gunship = cfg.hulls[int32_t( tabledemo::Hull::Gunship )];
+    gunship.health = 400.0f;
+    tabledemo::TurretConfig & missile = gunship.turrets[int32_t( tabledemo::Weapon::Missile )];
+    missile.damage = 75.0f;
+    missile.gunner_present = true;
+    missile.gunner.reaction = 0.05f;
+
+    cfg.scores.per_team[int32_t( tabledemo::Team::Red )] = 1200;
+
+    uint8_t wire[8192];
+    int64_t bytes = tabledemo::KeyedConfigSave( cfg, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tabledemo::KeyedConfigMeasure( cfg ) );
+    check_exact_capacity( cfg, tabledemo::KeyedConfigMeasure, tabledemo::KeyedConfigSave );
+
+    tabledemo::TableReport report;
+    tabledemo::KeyedConfig back;
+    CHECK( tabledemo::KeyedConfigLoad( back, wire, bytes, &report ) );
+    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
+
+    CHECK( back.teams[int32_t( tabledemo::Team::Blue )].spawn_count == 8 );
+    CHECK( strcmp( back.teams[int32_t( tabledemo::Team::Blue )].banner, "blue" ) == 0 );
+    // a slot nobody set never rode, and reads as its declared default
+    CHECK( back.teams[int32_t( tabledemo::Team::Red )].spawn_count == 4 );
+    CHECK( back.teams[int32_t( tabledemo::Team::None )].spawn_count == 4 );
+    CHECK( back.hulls[int32_t( tabledemo::Hull::Gunship )].health == 400.0f );
+    CHECK( back.hulls[int32_t( tabledemo::Hull::Interceptor )].health == 100.0f );
+    // keyed arrays nest, and an optional inside one survives the trip
+    const tabledemo::TurretConfig & back_missile =
+        back.hulls[int32_t( tabledemo::Hull::Gunship )].turrets[int32_t( tabledemo::Weapon::Missile )];
+    CHECK( back_missile.damage == 75.0f );
+    CHECK( back_missile.gunner_present && back_missile.gunner.reaction == 0.05f );
+    CHECK( !back.hulls[int32_t( tabledemo::Hull::Gunship )]
+                .turrets[int32_t( tabledemo::Weapon::Cannon )].gunner_present );
+    // a `type`'s keyed array rides keyed too
+    CHECK( back.scores.per_team[int32_t( tabledemo::Team::Red )] == 1200 );
+    CHECK( back.scores.per_team[int32_t( tabledemo::Team::Blue )] == 0 );
+
+    // an all-default keyed array elides whole
+    tabledemo::KeyedConfig empty;
+    CHECK( tabledemo::KeyedConfigMeasure( empty ) == 2 );
+}
+
+// ---- the edit that breaks a positional slot array: V2 REMOVES Gamma and
+// ---- INSERTS Omega in the middle, so Beta slides from ordinal 2 to 3. Every
+// ---- surviving slot lands by NAME, in both directions.
+
+static void test_keyed_evolution_old_data()
+{
+    tblv1::Cfg v1;
+    v1.bank[int32_t( tblv1::Slot::Alpha )].power = 10;
+    v1.bank[int32_t( tblv1::Slot::Beta )].power = 20;   // ordinal 2 here, 3 in V2
+    v1.bank[int32_t( tblv1::Slot::Gamma )].power = 30;  // V2 has no name for it
+    v1.bank[int32_t( tblv1::Slot::Delta )].power = 40;
+    set_string( v1.bank[int32_t( tblv1::Slot::Beta )].label,
+                v1.bank[int32_t( tblv1::Slot::Beta )].label_length, "b" );
+    v1.tokens[int32_t( tblv1::Slot::Beta )] = 7;
+    v1.ranks[int32_t( tblv1::Slot::Beta )] = tblv1::Grade::Gold;
+
+    uint8_t wire[2048];
+    int64_t bytes = tblv1::CfgSave( v1, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( v1 ) );
+    check_exact_capacity( v1, tblv1::CfgMeasure, tblv1::CfgSave );
+
+    tblv2::TableReport report;
+    tblv2::Cfg out;
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.malformed && report.kind_mismatch == 0 );
+    CHECK( report.unknown == 1 ); // Gamma's slot: a key this reader cannot name
+
+    CHECK( out.bank[int32_t( tblv2::Slot::Alpha )].power == 10 );
+    CHECK( out.bank[int32_t( tblv2::Slot::Beta )].power == 20 ); // <- moved 2 -> 3
+    CHECK( strcmp( out.bank[int32_t( tblv2::Slot::Beta )].label, "b" ) == 0 );
+    // Omega holds ordinal 2 in V2: under a positional encoding Beta's slot
+    // would land here, silently
+    CHECK( out.bank[int32_t( tblv2::Slot::Omega )].power == 0 );
+    CHECK( out.bank[int32_t( tblv2::Slot::Delta )].power == 40 );
+    CHECK( out.bank[int32_t( tblv2::Slot::Sigma )].power == 0 ); // a slot V1 never had
+    CHECK( out.bank[int32_t( tblv2::Slot::None )].power == 0 );
+    CHECK( out.tokens[int32_t( tblv2::Slot::Beta )] == 7 );
+    CHECK( out.tokens[int32_t( tblv2::Slot::Omega )] == 0 );
+    CHECK( out.ranks[int32_t( tblv2::Slot::Beta )] == tblv2::Grade::Gold );
+    CHECK( out.ranks[int32_t( tblv2::Slot::Omega )] == tblv2::Grade::None );
+}
+
+static void test_keyed_evolution_new_data()
+{
+    tblv2::Cfg v2;
+    v2.bank[int32_t( tblv2::Slot::Alpha )].power = 1;
+    v2.bank[int32_t( tblv2::Slot::Omega )].power = 2; // V1 has no name for it
+    v2.bank[int32_t( tblv2::Slot::Beta )].power = 3;  // ordinal 3 here, 2 in V1
+    v2.bank[int32_t( tblv2::Slot::Delta )].power = 4;
+    v2.bank[int32_t( tblv2::Slot::Sigma )].power = 5; // nor for it
+    v2.tokens[int32_t( tblv2::Slot::Sigma )] = 9;
+
+    uint8_t wire[2048];
+    int64_t bytes = tblv2::CfgSave( v2, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv2::CfgMeasure( v2 ) );
+
+    tblv1::TableReport report;
+    tblv1::Cfg out;
+    CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.malformed && report.kind_mismatch == 0 );
+    CHECK( report.unknown == 3 ); // Omega and Sigma in bank, Sigma in tokens
+
+    CHECK( out.bank[int32_t( tblv1::Slot::Alpha )].power == 1 );
+    CHECK( out.bank[int32_t( tblv1::Slot::Beta )].power == 3 );  // <- moved 3 -> 2
+    CHECK( out.bank[int32_t( tblv1::Slot::Gamma )].power == 0 ); // removed in V2
+    CHECK( out.bank[int32_t( tblv1::Slot::Delta )].power == 4 );
+    CHECK( out.tokens[int32_t( tblv1::Slot::Beta )] == 0 );
+}
+
+// ---- #261: a repeated enum-ARRAY id whose second occurrence carries an
+// ---- element no build names must RESET the slot — the prefill cannot stand
+// ---- in, because an earlier occurrence already wrote it.
+
+static void test_repeated_id_unnameable_enum_element()
+{
+    const tblv1::TableFieldInfo * grades = v1_field( tblv1::CfgTableType(), "grades" );
+    CHECK( grades != NULL );
+
+    // occurrence one: two nameable variants, written by the generator itself
+    tblv1::Cfg src;
+    src.grades_count = 2;
+    src.grades[0] = tblv1::Grade::Gold;
+    src.grades[1] = tblv1::Grade::Bronze;
+
+    uint8_t wire[512];
+    int64_t saved = tblv1::CfgSave( src, wire, sizeof( wire ) );
+    CHECK( saved > 2 );
+
+    // occurrence two, spliced over the terminator: the same id, two element
+    // ids no build names
+    int n = (int) ( saved - 2 );
+    le16( wire + n, grades->id ); n += 2;
+    wire[n++] = 14;                        // kArray
+    le32( wire + n, 5 + 2 + 2 ); n += 4;   // body: element kind, count, two u16s
+    wire[n++] = 7;                         // element kind kU16
+    le32( wire + n, 2 ); n += 4;
+    le16( wire + n, 0xBEEF ); n += 2;
+    le16( wire + n, 0xBEEF ); n += 2;
+    le16( wire + n, 0 ); n += 2;           // the table terminator
+
+    tblv1::TableReport report;
+    tblv1::Cfg out;
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( !report.malformed );
+    CHECK( report.unknown == 2 ); // two element ids this reader cannot name
+    // the LAST occurrence wins, and an element with no name lands on None —
+    // never on the variant the FIRST occurrence decoded into that slot
+    CHECK( out.grades_count == 2 );
+    CHECK( out.grades[0] == tblv1::Grade::None );
+    CHECK( out.grades[1] == tblv1::Grade::None );
+}
+
+// ---- reflection: an optional's presence companion, and a keyed array's key
+
+static void test_optional_and_keyed_reflection()
+{
+    const tblv1::TableTypeInfo * cfg = tblv1::CfgTableType();
+
+    const tblv1::TableFieldInfo * extra = v1_field( cfg, "extra" );
+    CHECK( extra != NULL );
+    CHECK( extra->optional );
+    CHECK( extra->present_offset == (uint32_t) offsetof( tblv1::Cfg, extra_present ) );
+    CHECK( extra->kind == 13 ); // a table body: the framing *T and a nesting use
+    const tblv1::TableFieldInfo * tier = v1_field( cfg, "tier" );
+    CHECK( tier != NULL && tier->optional && tier->kind == 4 );
+    const tblv1::TableFieldInfo * grade = v1_field( cfg, "grade" );
+    CHECK( grade != NULL && !grade->optional && grade->present_offset == 0xffffffffu );
+
+    const tblv1::TableFieldInfo * bank = v1_field( cfg, "bank" );
+    CHECK( bank != NULL );
+    CHECK( bank->is_array && !bank->counted );
+    CHECK( bank->array_bound == 5 );  // Slot.Max + 1: None's slot plus four
+    CHECK( bank->count_offset == 0xffffffffu ); // every slot exists: no count
+    CHECK( bank->key_type_name != NULL && strcmp( bank->key_type_name, "Slot" ) == 0 );
+    CHECK( bank->key_name != NULL && strcmp( bank->key_name( 2 ), "Beta" ) == 0 );
+    CHECK( bank->key_id != NULL && bank->key_id( 2 ) == field_id( "Beta" ) );
+    CHECK( bank->key_id( 0 ) == 0 ); // None is the reserved id
+
+    // an enum-keyed array of enums carries BOTH vocabularies: the key's and
+    // the element's
+    const tblv1::TableFieldInfo * ranks = v1_field( cfg, "ranks" );
+    CHECK( ranks != NULL && ranks->key_type_name != NULL );
+    CHECK( ranks->enum_name != NULL && strcmp( ranks->enum_name( 2 ), "Gold" ) == 0 );
+    CHECK( strcmp( ranks->key_name( 1 ), "Alpha" ) == 0 );
+
+    // a POSITIONAL fixed array names no key — the contrast the feature exists for
+    const tblv1::TableFieldInfo * tally = v1_field( cfg, "tally" );
+    CHECK( tally != NULL && tally->is_array );
+    CHECK( tally->key_type_name == NULL && tally->key_name == NULL && tally->key_id == NULL );
+}
+
 int main()
 {
     test_round_trip();
@@ -2066,7 +2433,14 @@ int main()
     test_evolution_union_insert_old_data();
     test_evolution_union_insert_new_data();
     test_repeated_id_unnameable_variant();
+    test_repeated_id_unnameable_enum_element();
     test_evolution_array_bounds();
+    test_optional_round_trip();
+    test_optional_three_way_evolution();
+    test_keyed_round_trip();
+    test_keyed_evolution_old_data();
+    test_keyed_evolution_new_data();
+    test_optional_and_keyed_reflection();
     test_unnameable_enum_refused();
     test_unnameable_enum_element_read();
     test_flags_are_positional();

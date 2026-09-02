@@ -12,6 +12,11 @@ enum Mode { Alpha, Beta }
 
 enum Grade { Bronze, Silver, Gold }
 
+// Gamma REMOVED, Omega INSERTED in the middle, Sigma appended: Alpha holds
+// ordinal 1, Beta slides from 2 to 3, Delta keeps 4, and Sigma is a slot V1
+// has no name for at all.
+enum Slot { Alpha, Omega, Beta, Delta, Sigma }
+
 type Inner
 {
     factor float32 = 2.5
@@ -40,6 +45,12 @@ union Effect
     ward  Ward
 }
 
+table Cell
+{
+    power int32 = 0 | min = 0, max = 1000
+    label string(8)
+}
+
 table Cfg
 {
     a      float32 = 5.0
@@ -54,4 +65,10 @@ table Cfg
     slots  [..MaxSlots]int32
     tally  [Grade.Max + 1]int32
     effect Effect
+    bank   [Slot]Cell
+    tokens [Slot]int32
+    ranks  [Slot]Grade
+    extra  ?Inner
+    tier   ?int32
+    mark   ?Grade
 }

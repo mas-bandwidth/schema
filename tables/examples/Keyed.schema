@@ -1,0 +1,55 @@
+// Keyed.schema — the expressiveness case for enum-keyed arrays and optional
+// fields (SPEC-TABLES.md §2.3, §2.4). A game's config bin is an enum-keyed
+// COLLECTION: one record per team, one per hull, one per weapon. This is that
+// shape as language — every slot addressed by the variant that owns it, and
+// every slot riding under that variant's NAME, so inserting a hull in the
+// middle next season moves nothing.
+package tabledemo
+
+enum Team { Red, Blue, Green }
+
+enum Hull { Interceptor, Gunship, Freighter }
+
+enum Weapon { Cannon, Missile, Mine }
+
+table TeamConfig
+{
+    spawn_count int32 = 4  | min = 0, max = 64
+    banner      string(16)
+}
+
+table GunnerConfig
+{
+    reaction float32 = 0.2
+    tracking bool
+}
+
+table TurretConfig
+{
+    damage   float32 = 10.0
+    cooldown float32 = 0.5
+    gunner   ?GunnerConfig // an optional section: present or absent, no pointer
+}
+
+table HullConfig
+{
+    health  float32 = 100.0
+    mass    float32 = 1.0
+    turrets [Weapon]TurretConfig // keyed arrays nest: one turret per weapon
+}
+
+// a plain `type` may spell a keyed array too. On the TYPE wire `[Team]int32`
+// is exactly `[Team.Max + 1]int32` — positional, bitpacked, and the two
+// spellings share one protocol id. On the table wire its slots ride keyed:
+// one construct, two wires, the rule every kind follows.
+type ScoreBoard
+{
+    per_team [Team]int32 | min = 0, max = 100000
+}
+
+table KeyedConfig
+{
+    teams  [Team]TeamConfig
+    hulls  [Hull]HullConfig
+    scores ScoreBoard
+}
