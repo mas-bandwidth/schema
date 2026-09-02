@@ -1490,13 +1490,13 @@ static void test_builder_workers()
             graphdemo::TableWorker worker = threaded.Worker();
             graphdemo::TableSlot<graphdemo::ListNode> first = worker.Alloc<graphdemo::ListNode>();
             first->value = t;
-            graphdemo::ListNode * tail = first;
+            graphdemo::ListNode * last = first;
             for ( int i = 1; i < per_thread; i++ )
             {
                 graphdemo::TableSlot<graphdemo::ListNode> node = worker.Alloc<graphdemo::ListNode>();
                 node->value = t * 1000000 + i;
-                tail->next = node;
-                tail = node;
+                last->next = node;
+                last = node;
             }
             heads[t] = first.ref;
         } );
