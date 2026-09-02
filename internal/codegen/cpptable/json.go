@@ -964,7 +964,9 @@ inline int64_t TableJsonTokenInteger( const char * token, int32_t length, bool i
     }
     if ( !is_signed )
     {
-        if ( negative ) { *saturated = true; return 0; }
+        // -0 IS zero, and clamping it would report an event that did not
+        // happen; only a real negative magnitude is out of range here
+        if ( negative ) { *saturated = magnitude != 0; return 0; }
         if ( over ) { *saturated = true; return (int64_t) UINT64_MAX; }
         *saturated = false;
         return (int64_t) magnitude;

@@ -2779,6 +2779,8 @@ static void test_optional_and_keyed_reflection()
     const tblv1::TableFieldInfo * tally = v1_field( cfg, "tally" );
     CHECK( tally != NULL && tally->is_array );
     CHECK( tally->key_type_name == NULL && tally->key_name == NULL && tally->key_id == NULL );
+}
+
 // ---- the TEXT form (SPEC-TABLES.md §16) ------------------------------------
 //
 // ONE walk over the reflection descriptors, so these tests are about the
@@ -3915,6 +3917,24 @@ static void test_json_no_infinity_reaches_storage()
             printf( "FAIL json overflow (%s): the instance can no longer be written\n", row.what );
             failures++;
         }
+    }
+
+    // -0 IS zero for an unsigned field, and reports nothing: a clamp count
+    // is an event, and that event did not happen
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"experience\": -0, \"precision\": -0 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.experience == 0 && report.clamped == 0 && report.kind_mismatch == 0 );
+    }
+    {
+        // ... while a real negative for an unsigned field does clamp, and says so
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"experience\": -5 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.experience == 0 && report.clamped == 1 );
     }
 
     // ... and a magnitude that DOES fit still lands exactly
