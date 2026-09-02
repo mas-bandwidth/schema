@@ -315,6 +315,11 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 	switch prev.Kind {
 	case scanner.LParen, scanner.Dot, scanner.DotDot, scanner.Not:
 		return false
+	case scanner.Question:
+		// the OPTIONAL prefix binds to the type it qualifies — `settings
+		// ?GunnerSettings`, never `settings ? GunnerSettings`
+		// (SPEC-TABLES.md §2.3)
+		return false
 	case scanner.Star:
 		// the POINTER star binds to the type it targets — `next *Node`, never
 		// `next * Node` (SPEC-TABLES.md). A star in TYPE POSITION (directly
@@ -594,6 +599,13 @@ func fpBlock(b *strings.Builder, blk *ast.Block) {
 }
 
 func fpScalar(t ast.ScalarType) string {
+	if t.Optional {
+		// `?T` is a different field from `T`: presence rides beside the value
+		// (SPEC-TABLES.md §2.3), so the marker belongs in the fingerprint
+		inner := t
+		inner.Optional = false
+		return "?" + fpScalar(inner)
+	}
 	switch t.Kind {
 	case ast.ScalarInt:
 		sign := "uint"

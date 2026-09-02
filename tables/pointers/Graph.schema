@@ -64,6 +64,20 @@ table Scene
     meta     Meta
 }
 
+enum Tier { Low, High }
+
+// the two TABLE-BODY constructs in the VARIABLE class: an enum-keyed array of
+// variable tables, and an optional fixed table. Every pointer-era walk has to
+// know both framings — the region pre-pass reads a keyed element's length past
+// its variant id, and Pack and OpenWalk descend into every slot.
+table Depot
+{
+    name  string(12)
+    banks [Tier]Layer
+    spare ?Meta
+    head  *ListNode
+}
+
 // CROSS-FILE, and all three kinds at once: a plain type and a FIXED table
 // from Parts.schema — a file that declares NO variable table — plus a VARIABLE
 // table from Marks.schema, nested by value and pointed at from here. The Open

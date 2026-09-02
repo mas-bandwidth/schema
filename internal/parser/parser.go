@@ -448,10 +448,22 @@ func (p *parser) parseItem() ast.Item {
 	case scanner.Ident:
 		p.advance()
 		f := &ast.Field{Name: t.Text, Pos: t.Pos}
+		// `settings ?GunnerSettings` — the OPTIONAL prefix (SPEC-TABLES.md
+		// §2.3). It binds to the whole field type, so it precedes an array
+		// bound too; what may carry it is the CHECKER's business (a table
+		// body, and not a pointer, an array, a string or bytes), so the
+		// grammar accepts the spelling and the diagnostic names the real
+		// problem.
+		optional := false
+		if p.kind() == scanner.Question {
+			p.advance()
+			optional = true
+		}
 		if p.kind() == scanner.LBrack {
 			f.Array = p.parseArrayBound()
 		}
 		f.Type = p.parseScalar()
+		f.Type.Optional = optional
 		if p.kind() == scanner.Assign {
 			// optional specified default: `invulnerable bool = true | local`
 			// — the default DEFINES the fresh value, so it precedes the

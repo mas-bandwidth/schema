@@ -42,6 +42,10 @@ const (
 	tkTable  = 13
 	tkArray  = 14
 	tkUnion  = 15
+	// an ENUM-KEYED array body is its OWN kind (SPEC-TABLES.md §3.2): the
+	// positional array body and the keyed one are incompatible, so a reader
+	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
+	tkKeyed = 16
 )
 
 func tableScalarKind(f *ir.Field) int {
@@ -129,6 +133,8 @@ type tableGen struct {
 	unit           *ir.Unit
 	file           *ir.File
 	anyVariable    bool            // the unit declares at least one variable-length table
+	anyKeyed       bool            // the unit declares at least one enum-keyed array
+	owner          *ir.Struct      // the closure member whose codec is being emitted
 	variable       map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
 	targets        map[string]bool // tables some pointer targets (ir.PointerTargets)
 	body           strings.Builder
@@ -176,10 +182,86 @@ func formatFloat(v float64, single bool) string {
 	return s
 }
 
+// unitHasKeyedArray reports whether any closure member declares an enum-keyed
+// array, which is what decides whether the unit's Table.h carries the keyed
+// storage type and its <cassert>.
+func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
+	for name := range closure {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.KeyEnum != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tableKeyedStorage is the storage type behind `ships [ShipType]ShipConfig`
+// (SPEC-TABLES.md §2.4). Emitted only into a unit that declares a keyed array,
+// so a unit without one is byte-identical to what it was.
+//
+// Its layout IS `T slots[N]` — one non-static member, no virtuals, everything
+// public — so it stays trivially copyable and standard-layout and a table
+// holding one stays relocatable (§9).
+const tableKeyedStorage = `
+// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
+// own value, so ships[ShipType::Bomber] reads as itself.
+//
+// SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
+// the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR —
+// a compile error through Slot<Key>(), whose static_assert names it, and an
+// assert through operator[], which cannot see a runtime key any earlier —
+// and that assert is a DEBUG guard, compiled out by -DNDEBUG, so Slot<Key>()
+// is the form that still holds in release. The slot exists because memory is
+// cheap and the bias is not: a slot's index IS its variant's value, with
+// nothing to add or subtract anywhere.
+template <typename T, typename E, int32_t N>
+struct TableKeyed
+{
+    T slots[N] = {};
+
+    T & operator[]( E key )
+    {
+        assert( key != E::None ); // slot 0 is None's, and None is the null key
+        return slots[ (int32_t) key ];
+    }
+    const T & operator[]( E key ) const
+    {
+        assert( key != E::None );
+        return slots[ (int32_t) key ];
+    }
+
+    // the compile-time form: a key known at compile time is checked at compile
+    // time, which is the only place a None index can be refused outright
+    template <E Key> T & Slot()
+    {
+        static_assert( Key != E::None, "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
+        return slots[ (int32_t) Key ];
+    }
+    template <E Key> const T & Slot() const
+    {
+        static_assert( Key != E::None, "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
+        return slots[ (int32_t) Key ];
+    }
+};
+
+`
+
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
-func tablePrimitives(pkg string, anyVariable bool) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
+	keyedStorage := ""
+	if anyKeyed {
+		keyedStorage = tableKeyedStorage
+	}
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
@@ -224,10 +306,12 @@ struct TableFieldInfo
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     bool is_array;          // fixed or counted array (bytes included)` + pointerFieldMember + `
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
+    bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
     uint32_t offset;        // offsetof the storage member
     uint32_t elem_size;     // sizeof the member (element size for arrays)
     uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
+    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
@@ -240,6 +324,14 @@ struct TableFieldInfo
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind. Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
+    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // variant of key_type_name, indexed by the variant's value, and its slots
+    // ride under variant ids rather than positions. key_name and key_id are
+    // the key's vocabulary — walk [0, array_bound) to print slots by name.
+    // NULL on every other field.
+    const char * key_type_name;
+    const char * (*key_name)( uint64_t value );
+    uint16_t (*key_id)( uint64_t value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 
@@ -303,7 +395,7 @@ struct TableReader
             case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: return has( 4 ) ? ( offset += 4, true ) : false;
             case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
-            case 12: case 13: case 14:
+            case 12: case 13: case 14: case 16:
             {
                 if ( !has( 4 ) ) return false;
                 uint32_t n = get32();
@@ -322,7 +414,7 @@ struct TableReader
     }
 };
 
-inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
+` + keyedStorage + `inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
@@ -347,9 +439,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	variable := ir.VariableTables(u)
 	targets := ir.PointerTargets(u)
 	anyVariable := len(variable) > 0
+	anyKeyed := unitHasKeyedArray(u, closure)
 	out := map[string][]byte{}
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, variable: variable, targets: targets,
+		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, variable: variable, targets: targets,
 			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -369,6 +462,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 			g.emitCodecDeclarations(members)
 			for _, st := range members {
+				g.owner = st
 				g.emitTableMeasure(st)
 				g.emitTableWrite(st)
 				g.emitTableSave(st)
@@ -398,6 +492,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 			g.pf("\n")
 			for _, st := range members {
+				g.owner = st
 				g.emitTableDescriptor(st)
 			}
 		} else {
@@ -415,6 +510,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			// for neither header (SPEC-TABLES.md §2, the zero-cost gate)
 			h.WriteString("#include <cstdlib> // the arena's segments (the AUTHORING path may allocate)\n")
 			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
+		}
+		if anyKeyed {
+			// ENUM-KEYED arrays only: indexing one by None is an error, and an
+			// assert is where a runtime key can first be caught (SPEC-TABLES.md §2.4)
+			h.WriteString("#include <cassert> // the keyed accessor's None refusal\n")
 		}
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 		names := make([]string, 0, len(g.includes))
@@ -434,7 +534,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package))

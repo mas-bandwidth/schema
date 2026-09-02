@@ -199,7 +199,7 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # The tables corpus (SPEC-TABLES.md): the tabledemo unit plus the
 # two-generation evolution pair (tblv1/tblv2), generated at build time into
 # build/ — test-only, never part of the committed generated/ tree.
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated
 	./bin/schema generate --lang cpp --out build/tables-generated/examples tables/examples
 	./bin/schema generate --lang cpp --out build/tables-generated/pointers tables/pointers
@@ -207,6 +207,7 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 	./bin/schema generate --lang cpp --out build/tables-generated/v2 test/tables/V2.schema
 	./bin/schema generate --lang cpp --out build/tables-generated/p1 test/tables/P1.schema
 	./bin/schema generate --lang cpp --out build/tables-generated/p2 test/tables/P2.schema
+	./bin/schema generate --lang cpp --out build/tables-generated/p3 test/tables/P3.schema
 	@touch $@
 
 # The ZERO-COST GATE (SPEC-TABLES.md): a table with no pointer in its by-value
@@ -218,7 +219,8 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 .PHONY: tables-zero-cost
 tables-zero-cost: build/tables-generated/.stamp
 	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
-	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h; do \
+	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
+	          build/tables-generated/p3/*Table.h; do \
 		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|LayoutId|OpenWalk|PackMeasure|LoadMeasure|Cook|Open\\(" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
@@ -232,7 +234,7 @@ build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread \
 		-Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables \
 		-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
-		-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p2 \
+		-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p2 -Ibuild/tables-generated/p3 \
 		test/tables/main.cpp -o $@
 
 build/schema_test_random: generated/cpp/.stamp test/random_main.cpp
@@ -479,6 +481,7 @@ check: bin/schema
 	./bin/schema check test/tables/V2.schema
 	./bin/schema check test/tables/P1.schema
 	./bin/schema check test/tables/P2.schema
+	./bin/schema check test/tables/P3.schema
 	./bin/schema check bench/corpus/Bench.schema
 	./bin/schema check bench/corpus/RealWorld.schema
 
@@ -497,6 +500,7 @@ fmt: bin/schema
 	./bin/schema fmt test/tables/V2.schema
 	./bin/schema fmt test/tables/P1.schema
 	./bin/schema fmt test/tables/P2.schema
+	./bin/schema fmt test/tables/P3.schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
 

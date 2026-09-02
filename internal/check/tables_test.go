@@ -118,6 +118,45 @@ func TestTableRefusals(t *testing.T) {
 		{name: "a table named after the arena member", want: "collides with a member of the generated",
 			src: "package t\ntable arena { x int32 }\n"},
 
+		// ---- optional fields, `?T` (SPEC-TABLES.md §2.3, §11) ----
+		{name: "an optional in a type body is refused by name", want: "optionals are a TABLE construct",
+			src: "package t\ntype P { tier ?int32 }\n"},
+		{name: "an optional pointer is refused by name", want: "a pointer is ALREADY optional",
+			src: "package t\ntable Node { x int32 }\ntable Tab { head ?*Node }\n"},
+		{name: "an optional array is a named follow-on", want: "? on an ARRAY is a named follow-on",
+			src: "package t\ntable Tab { xs ?[..4]int32 }\n"},
+		{name: "an optional string is a named follow-on", want: "? on string(N) is a named follow-on",
+			src: "package t\ntable Tab { s ?string(8) }\n"},
+		{name: "an optional bytes is a named follow-on", want: "? on bytes(N) is a named follow-on",
+			src: "package t\ntable Tab { b ?bytes(8) }\n"},
+		{name: "an optional union is refused by name", want: "a union is ALREADY optional",
+			src: "package t\ntype A { x int32 }\nunion U { a A }\ntable Tab { u ?U }\n"},
+		{name: "an optional takes no specified default", want: "an optional field takes no specified default",
+			src: "package t\ntable Tab { tier ?int32 = 5 }\n"},
+		{name: "a field colliding with an optional's presence companion", want: "the generated presence companion",
+			src: "package t\ntype Inner { x int32 }\ntable Tab {\n    settings ?Inner\n    settings_present bool\n}\n"},
+
+		// ---- enum-keyed arrays, `[E]T` (SPEC-TABLES.md §2.4, §11) ----
+		{name: "a keyed array bound naming flags is refused by name", want: "names a `flags` declaration",
+			src: "package t\nflags F { A, B }\ntable Tab { xs [F]int32 }\n"},
+		{name: "a bounded enum-keyed array is refused by name", want: "a bounded enum-keyed array is refused",
+			src: "package t\nenum E { A, B }\ntable Tab { xs [..E]int32 }\n"},
+		{name: "a ranged enum-keyed array is refused by name", want: "a bounded enum-keyed array is refused",
+			src: "package t\nenum E { A, B }\ntable Tab { xs [1..E]int32 }\n"},
+		{name: "a keyed array of pointers stays a named follow-on", want: "an array of pointers is a named follow-on",
+			src: "package t\nenum E { A, B }\ntable Node { x int32 }\ntable Tab { kids [E]*Node }\n"},
+		{name: "an optional keyed array is refused as an array", want: "? on an ARRAY is a named follow-on",
+			src: "package t\nenum E { A, B }\ntable Tab { xs ?[E]int32 }\n"},
+		// a KEY is a closure vocabulary: it rides under a variant hash exactly
+		// as a value does, so both §5 refusals are owed to it even when the
+		// enum reaches the closure ONLY as a key
+		{name: "headroom on an enum reaching a closure only as a key", want: "reserves values above the declared variants",
+			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
+		{name: "an id collision on an enum reaching a closure only as a key", want: "collide on table-wire id",
+			src: "package t\nenum E { Agj, Atj }\ntable Tab { s [E]int32 }\n"},
+		{name: "the key refusal names the keying field as the reaching edge", want: "field s, which keys an array by E, reaches it",
+			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
+
 		{name: "a pointer to an undeclared table", want: "undefined type",
 			src: "package t\ntable Tab { head *Ghost }\n"},
 		{name: "by-value recursion stays refused with pointers in the language",
@@ -170,6 +209,45 @@ type Packet
 }
 `
 
+// TestKeyedSpellingIsTheSameTypeWire: on the TYPE wire `[E]T` IS `[E.Max +
+// 1]T` — positional, bitpacked, one slot per variant plus None's. The two
+// spellings must project identically and carry one protocol id, or a keyed
+// array would be a packet-wire edit dressed as a table-wire feature.
+func TestKeyedSpellingIsTheSameTypeWire(t *testing.T) {
+	const keyed = `package probe
+
+enum Kind { Alpha, Beta }
+
+type Board
+{
+    per_kind [Kind]int32
+}
+`
+	const spelled = `package probe
+
+enum Kind { Alpha, Beta }
+
+type Board
+{
+    per_kind [Kind.Max + 1]int32
+}
+`
+	a := buildUnit(t, keyed)
+	b := buildUnit(t, spelled)
+	if ir.WireProjection(a) != ir.WireProjection(b) {
+		t.Fatalf("[E]T and [E.Max + 1]T project differently:\n--- [E]T ---\n%s\n--- [E.Max + 1]T ---\n%s",
+			ir.WireProjection(a), ir.WireProjection(b))
+	}
+	if a.ProtocolId != b.ProtocolId {
+		t.Fatalf("[E]T and [E.Max + 1]T carry different protocol ids %#x != %#x", a.ProtocolId, b.ProtocolId)
+	}
+	// and the resolved bound is the slot count: None's slot plus one per variant
+	f := a.Structs["Board"].Fields[0]
+	if f.Array != ir.ArrayFixed || f.ArrayBound != 3 || f.KeyEnum != "Kind" {
+		t.Fatalf("keyed field resolved wrong: array=%v bound=%d key=%q", f.Array, f.ArrayBound, f.KeyEnum)
+	}
+}
+
 // TestTablesMoveNoProtocolId is the independence requirement: packets and
 // tables version independently, so ADDING a table (and everything in its
 // closure that was already there) moves neither the projection nor the id —
@@ -190,9 +268,22 @@ table Config
     comment string(32)
 }
 `
+	// the table-body constructs are table-wire only: an optional field and an
+	// enum-keyed array move no packet byte either
+	keyedTable := tablelessSrc + `
+table Config
+{
+    scale   float32 = 2.0
+    points  [..8]Point
+    comment string(32)
+    slots   [Kind]Point
+    origin  ?Point
+}
+`
 	base := buildUnit(t, tablelessSrc)
 	added := buildUnit(t, withTable)
 	edited := buildUnit(t, editedTable)
+	keyed := buildUnit(t, keyedTable)
 
 	if ir.WireProjection(base) != ir.WireProjection(added) {
 		t.Fatalf("adding a table changed the wire projection:\n--- without ---\n%s\n--- with ---\n%s",
@@ -203,6 +294,13 @@ table Config
 	}
 	if added.ProtocolId != edited.ProtocolId {
 		t.Fatalf("editing a table moved the protocol id %#x -> %#x", added.ProtocolId, edited.ProtocolId)
+	}
+	if ir.WireProjection(base) != ir.WireProjection(keyed) {
+		t.Fatalf("an optional field or a keyed array changed the wire projection:\n--- without ---\n%s\n--- with ---\n%s",
+			ir.WireProjection(base), ir.WireProjection(keyed))
+	}
+	if base.ProtocolId != keyed.ProtocolId {
+		t.Fatalf("an optional field or a keyed array moved the protocol id %#x -> %#x", base.ProtocolId, keyed.ProtocolId)
 	}
 }
 
