@@ -236,3 +236,28 @@ func TestBuildVersionOffsetTermIsLoadBearing(t *testing.T) {
 		t.Errorf("the sabotaged projection was expected to be BLIND to the reorder, and was not:\n%s", got)
 	}
 }
+
+// A RAISED MAXIMUM moves the build version, and this test exists to make that
+// visible rather than to bless it.
+//
+// §19.3 excluded a declared maximum from the block form's OWN digest so that
+// raising one stayed absorbable: a maximum moves the offset_ofs written into
+// an instance and moves no offset a consumer reads AT, because a consumer
+// takes every offset_of from the instance. The owner's ruling since replaced
+// that per-table digest with the unit's BUILD VERSION, and a bound is a layout
+// fact of the by-value struct (§20.1 group 2: "an array's bound changed"), so
+// it moves. The consequence is stated plainly here: under one build version a
+// raised maximum is a refusal at Open like any other edit, and both sides are
+// regenerated. It is pinned so the day that answer changes, this test says so.
+func TestRaisingAMaximumMovesTheBuildVersion(t *testing.T) {
+	u := loadRender(t)
+	baseline := ir.BuildVersion(u)
+	for _, f := range u.Tables["RenderFrame"].Fields {
+		if f.Name == "ships" {
+			f.ArrayBound *= 2
+		}
+	}
+	if ir.BuildVersion(u) == baseline {
+		t.Error("raising a maximum left the build version where it was — the layout projection carries the bound, and this test is the record of that")
+	}
+}
