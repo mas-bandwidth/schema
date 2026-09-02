@@ -45,7 +45,7 @@ const (
 	corpusDir    = "../../examples"
 	corpus128Dir = "../../examples128"
 	// the tables corpora: the only ones that declare tables, and so the only
-	// ones the tables baseline has anything to say about
+	// ones the tables baseline has anything to say about.
 	tablesDir         = "../../tables/examples"
 	tablesPointersDir = "../../tables/pointers"
 )

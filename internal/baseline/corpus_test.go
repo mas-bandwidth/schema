@@ -13,7 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
 )
 
-// the tables corpora, from this package's directory
+// the tables corpora, from this package's directory.
 var corpora = []string{"../../tables/examples", "../../tables/pointers"}
 
 // TestCorpusBaselinesAreCurrent regenerates each committed baseline and
