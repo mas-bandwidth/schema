@@ -1226,8 +1226,14 @@ union's arms. It carries no per-variant wire id, because a mask's variants
 ride by position and have none (§4); a null id function beside a non-null
 name function is what identifies a flags field.
 
-**An enum-keyed array's slot 0 is marked invalid** (§2.4), so a walker
-enumerating slots skips it rather than printing a `None` row.
+**An enum-keyed array's slot 0 is marked invalid** (§2.4), and the
+descriptor says so in the column a walker is already reading:
+**`key_id( 0 )` is `0`**, the reserved id no declared name can fold to
+(§5), with `key_name( 0 )` reading `"None"` beside it. So a walker
+enumerating `[0, array_bound)` skips the slot whose key id is 0 rather than
+printing a `None` row, and it needs no rule about slot indices to do it —
+the same reserved id that keeps `None` off the wire keeps it out of a
+listing.
 
 **A `*bytes` or `*string` field** carries its used-length companion's
 offset beside the reference, so a walker reads the blob's extent the way
@@ -1323,8 +1329,13 @@ lockstep redeploy by a table edit. This independence is held by test.
 - **Enum-keyed arrays** (§2.4): a bound naming a `flags` declaration (a mask
   names no single slot); a bounded keyed array, `[..E]` or `[A..E]` (a keyed
   array is complete by construction); an element that is a pointer, as for
-  any array (§15). A slot value no variant names is a SAVE failure, not a
-  silent `None` (§3.2).
+  any array (§15); an index of `E::None`, which names no slot — refused at
+  compile time through the constant accessor (`Slot<Key>()`) and asserted
+  through `operator[]( E )`; and, on the KEY ENUM itself because a key is a
+  reaching edge into the table closure, `| max = K` headroom and variant id
+  collisions, each diagnostic naming the keying field that pulled the enum
+  in. A slot value no variant names is a SAVE failure, not a silent `None`
+  (§3.2).
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   specified default on one; an array of them (§15); `?` on one, because a
   null reference already IS absence.
