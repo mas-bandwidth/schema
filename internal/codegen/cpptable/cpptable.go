@@ -286,6 +286,10 @@ struct TableReport
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
+    // a key the TEXT form saw twice: last wins, and the repeat is counted
+    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // id twice is legal input whose last occurrence wins, silently (§3).
+    int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
@@ -532,6 +536,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.owner = st
 				g.emitTableDescriptor(st)
 			}
+			// the TEXT form's surface (SPEC-TABLES.md §16), emitted AFTER the
+			// descriptors it names: three thin wrappers per fixed-size member
+			// over the one generic walk. No per-table codec, which is the
+			// property that makes the text form schema's rather than a
+			// packer's — and the gate that holds it.
+			g.pf("// ---- the text form (SPEC-TABLES.md §16) ----\n\n")
+			for _, st := range members {
+				g.emitJsonSurface(st)
+			}
 		} else {
 			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
@@ -542,10 +555,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		h.WriteString("// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
 		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <new> // in-place prefill (placement new): no giant stack temporaries\n#include <type_traits> // the enforced relocatability asserts\n")
+		// the TEXT form (SPEC-TABLES.md §16) rides in every table header, as
+		// the reflection surface does — it is one generic walk over those same
+		// descriptors, and a closure that carries the descriptors carries the
+		// walk. Number conversion is its only runtime dependency.
+		h.WriteString("#include <cstdio> // the text form: number formatting\n#include <cstdlib> // the text form: exact number conversion\n#include <clocale> // the text form: the runtime's decimal point\n")
 		if anyVariable {
 			// VARIABLE-LENGTH tables only: a unit of pointer-free tables pays
 			// for neither header (SPEC-TABLES.md §2, the zero-cost gate)
-			h.WriteString("#include <cstdlib> // the arena's segments (the AUTHORING path may allocate)\n")
 			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
 		}
 		if anyKeyed {
@@ -572,6 +589,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		h.WriteString("\n")
 		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed))
+		h.WriteString("\n")
+		h.WriteString(tableJsonWalk(u.Package))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package))
