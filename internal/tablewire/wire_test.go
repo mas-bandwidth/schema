@@ -193,9 +193,12 @@ func TestKeyedUnderArrayKindIsAMismatch(t *testing.T) {
 	}
 }
 
-// A variable-length root is refused by name: its text form reads through a
-// builder, a named follow-on (§16.2, §15).
-func TestVariableRootIsRefused(t *testing.T) {
+// A variable-length root is the WIRE's business and not the TEXT form's: the
+// engine encodes and decodes one under §3.1's flat node table, and the refusal
+// that remains is `RefuseVariable`'s — the text form of a pointered table reads
+// through its builder, a named follow-on (§16.2, §15), which is why `schema
+// pack` still refuses one by name.
+func TestVariableRootRidesTheWireAndTheTextFormStillRefusesIt(t *testing.T) {
 	c := compiler.New()
 	paths, err := compiler.GatherPaths([]string{"../../tables/pointers"})
 	if err != nil {
@@ -211,8 +214,21 @@ func TestVariableRootIsRefused(t *testing.T) {
 		if !variable[name] {
 			continue
 		}
-		if _, err := tablewire.Encode(m, m.New(m.Lookup(name))); err == nil {
-			t.Fatalf("%s is variable-length and should have been refused", name)
+		if err := tablewire.RefuseVariable(m, m.Lookup(name)); err == nil {
+			t.Fatalf("%s is variable-length: the TEXT form must still refuse it", name)
+		}
+		// an empty pointered root reaches no node, so it writes none of them
+		// and its bytes are the root body alone
+		wire, err := tablewire.Encode(m, m.New(m.Lookup(name)))
+		if err != nil {
+			t.Fatalf("%s: the wire engine refused a variable-length root: %v", name, err)
+		}
+		var r tabletext.Report
+		if _, err := tablewire.Decode(m, m.New(m.Lookup(name)), wire, &r); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !r.Silent() {
+			t.Fatalf("%s: an empty pointered root did not read back clean: %+v", name, r)
 		}
 		return
 	}

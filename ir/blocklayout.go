@@ -331,6 +331,76 @@ func BlockOutOfLine(f *Field) bool {
 	return isStruct
 }
 
+// RecordLayout is one closure record's C ABI layout — the model §20.3 commits
+// the compiler to for EVERY record in a unit's table closure, not only the ones
+// a block form reaches: each field at its own alignment, the record's alignment
+// the greatest of its fields', the size rounded up to it.
+//
+// It is what a COOK's region is laid out by (§7): a cooked node is this record
+// at these offsets, so the one model that C++'s static_asserts, C#'s generated
+// checks and the build version's `record` lines all come from is the one model
+// the cook's bytes come from too. A second walk here would be a second ABI.
+func RecordLayout(u *Unit, st *Struct) *MemberLayout { return layoutRecord(u, st) }
+
+// RegionAlignFloor is the floor on a COOK's region alignment (SPEC-TABLES.md
+// §7): the alignment a region actually needs is the greatest alignment of any
+// record in it, which for a region of byte-only records would be 1, and the
+// floor holds it at eight so the attribution part that follows the data is
+// aligned for its own `u64` pairs without a second padding rule.
+const RegionAlignFloor = int64(8)
+
+// RegionAlignOf is a region's alignment given the alignments of the records in
+// it: the greatest of them, never below the floor.
+func RegionAlignOf(aligns ...int64) int64 {
+	a := RegionAlignFloor
+	for _, v := range aligns {
+		if v > a {
+			a = v
+		}
+	}
+	return a
+}
+
+// FieldPieces is one field's contiguous storage members in order, as the
+// generated record declares them: a `string(N)` is a `char[N+1]` buffer AND an
+// int32 used length, a counted array is its elements AND an int32 count, an
+// optional adds a presence bool. A cook writes a region PIECE BY PIECE rather
+// than copying a struct, because the byte order is settled at cook time (§7)
+// and a swap has to know where every scalar begins.
+func FieldPieces(u *Unit, f *Field, fieldOffset int64) []BlockFieldPiece {
+	return BlockFieldPieceOffsets(u, f, fieldOffset, false)
+}
+
+// UnionLayout is a generated union's own layout: the tag at offset 0 at its own
+// alignment, the arms overlaid at the greatest arm alignment, the whole rounded
+// up. It is the layout [RecordLayout] already folds into a union-typed field's
+// size, exposed so a cook can write the SET arm at the arm offset and zero the
+// rest of the extent (§7).
+func UnionLayout(u *Unit, un *Union) (size, align, tag, armOffset int64) {
+	tag = int64(StorageBitsFor(un.Max)) / 8
+	size, align = tag, tag
+	var armAlign, armSize int64 = 1, 0
+	for _, v := range un.Variants {
+		arm := memberStruct(u, v.Type)
+		if arm == nil {
+			continue
+		}
+		ml := layoutRecord(u, arm)
+		if ml.Align > armAlign {
+			armAlign = ml.Align
+		}
+		if ml.Size > armSize {
+			armSize = ml.Size
+		}
+	}
+	if armAlign > align {
+		align = armAlign
+	}
+	armOffset = alignUp(tag, armAlign)
+	size = alignUp(armOffset+armSize, align)
+	return size, align, tag, armOffset
+}
+
 func memberStruct(u *Unit, name string) *Struct {
 	if st := u.Tables[name]; st != nil {
 		return st
