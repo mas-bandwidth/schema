@@ -68,6 +68,7 @@ table Cfg
     bank   [Slot]Cell
     tokens [Slot]int32
     ranks  [Slot]Grade
+    ledger [Grade]int32
     extra  ?Inner
     tier   ?int32
     mark   ?Grade

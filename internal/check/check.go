@@ -1103,9 +1103,10 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 		switch {
 		case out.KeyEnum != "":
-			// one slot per variant plus None's: the bound IS E.Max + 1, the
-			// same count the `[E.Max + 1]T` spelling resolves to, so the two
-			// spellings share one projection and one protocol id
+			// one slot per named variant, plus None's — which is never valid,
+			// because None is the null key (SPEC-TABLES.md §2.4). The bound is
+			// E.Max + 1, the same count `[E.Max + 1]T` resolves to, so the two
+			// spellings share one projection and one protocol id.
 			out.Array = ir.ArrayFixed
 			out.ArrayBound = out.KeyEnumRef.Max + 1
 			out.ArrayExpr = f.Array.Hi
@@ -1813,6 +1814,16 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 			what = "table"
 		}
 		for _, f := range st.Fields {
+			// an enum-keyed array reaches its KEY enum without naming it as a
+			// field type, and the key rides under a variant hash exactly as a
+			// value does (SPEC-TABLES.md §3.2) — so the key is a closure
+			// vocabulary, and both §5 refusals are owed to it
+			if f.KeyEnumRef != nil {
+				if _, seen := enums[f.KeyEnum]; !seen {
+					enums[f.KeyEnum] = f.KeyEnumRef
+					reachedBy[f.KeyEnum] = fmt.Sprintf("%s %s's field %s keys an array by it", what, name, f.Name)
+				}
+			}
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}

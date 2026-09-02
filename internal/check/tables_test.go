@@ -147,6 +147,15 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\nenum E { A, B }\ntable Node { x int32 }\ntable Tab { kids [E]*Node }\n"},
 		{name: "an optional keyed array is refused as an array", want: "? on an ARRAY is a named follow-on",
 			src: "package t\nenum E { A, B }\ntable Tab { xs ?[E]int32 }\n"},
+		// a KEY is a closure vocabulary: it rides under a variant hash exactly
+		// as a value does, so both §5 refusals are owed to it even when the
+		// enum reaches the closure ONLY as a key
+		{name: "headroom on an enum reaching a closure only as a key", want: "reserves values above the declared variants",
+			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
+		{name: "an id collision on an enum reaching a closure only as a key", want: "collide on table-wire id",
+			src: "package t\nenum E { Agj, Atj }\ntable Tab { s [E]int32 }\n"},
+		{name: "the key refusal names the keying field as the reaching edge", want: "keys an array by it",
+			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
 
 		{name: "a pointer to an undeclared table", want: "undefined type",
 			src: "package t\ntable Tab { head *Ghost }\n"},

@@ -199,6 +199,7 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 		return
 	}
 	for _, st := range g.varMembers(members) {
+		g.owner = st
 		g.emitPackMeasure(st)
 		g.emitPack(st)
 		g.emitLoadMeasureBody(st)
@@ -206,6 +207,7 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 	// every member THIS FILE declares, whether or not this file declares a
 	// variable table: a sibling file's table may nest one of these by value
 	for _, st := range members {
+		g.owner = st
 		g.emitOpenWalk(st)
 	}
 	for _, st := range members {
@@ -264,7 +266,7 @@ func (g *tableGen) emitVariableByValueWalk(f *ir.Field, body func(expr string)) 
 		g.pf("    }\n")
 	default:
 		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
-		body(fmt.Sprintf("value.%s[i]", f.Name))
+		body(g.arrayBase("value.", f) + "[i]")
 		g.pf("    }\n")
 	}
 }
@@ -324,7 +326,7 @@ func (g *tableGen) emitVariableByValueWalkPack(f *ir.Field) {
 		g.pf("    }\n")
 	default:
 		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
-		call(fmt.Sprintf("src.%s[i]", f.Name), fmt.Sprintf("dst.%s[i]", f.Name))
+		call(g.arrayBase("src.", f)+"[i]", g.arrayBase("dst.", f)+"[i]")
 		g.pf("    }\n")
 	}
 }
@@ -372,6 +374,9 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 		wireKind := tkTable
 		if f.Array != ir.ArrayNone {
 			wireKind = tkArray
+		}
+		if f.KeyEnum != "" {
+			wireKind = tkKeyed // a keyed body is its own kind (SPEC-TABLES.md §3.2)
 		}
 		g.pf("            case 0x%04x: // %s (%s nested by value)\n            {\n", ir.TableFieldId(f), f.Name, t)
 		g.pf("                if ( kind != %d ) { if ( !r.skip( kind ) ) { return bytes; } break; }\n", wireKind)
@@ -522,7 +527,7 @@ func (g *tableGen) emitOpenWalk(st *ir.Struct) {
 			g.pf("    {\n        if ( !%sOpenWalk( &node->%s[i], base, bytes, watermark, depth ) ) { return false; }\n    }\n", t, f.Name)
 		default:
 			g.pf("    for ( int32_t i = 0; i < %d; i++ )\n", f.ArrayBound)
-			g.pf("    {\n        if ( !%sOpenWalk( &node->%s[i], base, bytes, watermark, depth ) ) { return false; }\n    }\n", t, f.Name)
+			g.pf("    {\n        if ( !%sOpenWalk( &%s[i], base, bytes, watermark, depth ) ) { return false; }\n    }\n", t, g.arrayBase("node->", f))
 		}
 	}
 	for _, f := range unions {

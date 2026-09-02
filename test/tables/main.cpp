@@ -2192,6 +2192,36 @@ static void test_optional_three_way_evolution()
     CHECK( !r4.malformed && r4.unknown == 0 );
     CHECK( from_pointer.link_present && from_pointer.link.value == 66 );
 
+    // ---- and where the three DIVERGE, which is at all-default. A by-value T
+    // ---- has no presence bit, so it cannot tell "absent" from "present with
+    // ---- nothing to say" and it ELIDES; ?T and *T both ride. Forced, and the
+    // ---- one asymmetry of the three-way promise (SPEC-TABLES.md §2.3).
+    tblp1::Chain bare_value;
+    set_string( bare_value.name, bare_value.name_length, "one" );
+    int64_t w_bare_value = tblp1::ChainSave( bare_value, wire, sizeof( wire ) );
+
+    tblp3::Chain bare_optional;
+    set_string( bare_optional.name, bare_optional.name_length, "one" );
+    bare_optional.link_present = true;              // present, and entirely default
+    int64_t w_bare_optional = tblp3::ChainSave( bare_optional, other, sizeof( other ) );
+    CHECK( w_bare_optional > w_bare_value );        // presence costs the nine bytes
+
+    tblp2::ChainBuilder bare_builder;
+    set_string( bare_builder.GetRoot()->name, bare_builder.GetRoot()->name_length, "one" );
+    bare_builder.GetRoot()->link = bare_builder.Alloc<tblp2::Link>(); // non-null, all-default
+    static uint8_t third[512];
+    int64_t w_bare_pointer = tblp2::ChainSave( bare_builder, third, sizeof( third ) );
+    CHECK( w_bare_pointer == w_bare_optional );     // ?T and *T still agree exactly
+    CHECK( memcmp( other, third, (size_t) w_bare_optional ) == 0 );
+
+    // and the by-value writer's bytes read back as ABSENT, with a clean report:
+    // nothing was lost, the elision IS the meaning
+    tblp3::Chain from_bare;
+    tblp3::TableReport r7;
+    CHECK( tblp3::ChainLoad( from_bare, wire, w_bare_value, &r7 ) );
+    CHECK( !r7.malformed && r7.unknown == 0 && r7.kind_mismatch == 0 );
+    CHECK( !from_bare.link_present );
+
     // a NULL pointer and an ABSENT optional are the same absence
     tblp2::ChainBuilder bare;
     set_string( bare.GetRoot()->name, bare.GetRoot()->name_length, "one" );
@@ -2221,17 +2251,20 @@ static void test_optional_three_way_evolution()
 static void test_keyed_round_trip()
 {
     tabledemo::KeyedConfig cfg;
-    tabledemo::TeamConfig & blue = cfg.teams[int32_t( tabledemo::Team::Blue )];
+    tabledemo::TeamConfig & blue = cfg.teams[tabledemo::Team::Blue];
     blue.spawn_count = 8;
     set_string( blue.banner, blue.banner_length, "blue" );
 
-    tabledemo::HullConfig & gunship = cfg.hulls[int32_t( tabledemo::Hull::Gunship )];
+    tabledemo::HullConfig & gunship = cfg.hulls[tabledemo::Hull::Gunship];
     gunship.health = 400.0f;
-    tabledemo::TurretConfig & missile = gunship.turrets[int32_t( tabledemo::Weapon::Missile )];
+    tabledemo::TurretConfig & missile = gunship.turrets[tabledemo::Weapon::Missile];
     missile.damage = 75.0f;
     missile.gunner_present = true;
     missile.gunner.reaction = 0.05f;
 
+    // ScoreBoard is a `type`, so its keyed field keeps its PACKET storage — a
+    // raw array indexed by the value, with no keyed accessor. The WIRE is
+    // keyed either way (SPEC-TABLES.md §2.4).
     cfg.scores.per_team[int32_t( tabledemo::Team::Red )] = 1200;
 
     uint8_t wire[8192];
@@ -2244,20 +2277,22 @@ static void test_keyed_round_trip()
     CHECK( tabledemo::KeyedConfigLoad( back, wire, bytes, &report ) );
     CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
 
-    CHECK( back.teams[int32_t( tabledemo::Team::Blue )].spawn_count == 8 );
-    CHECK( strcmp( back.teams[int32_t( tabledemo::Team::Blue )].banner, "blue" ) == 0 );
+    CHECK( back.teams[tabledemo::Team::Blue].spawn_count == 8 );
+    CHECK( strcmp( back.teams[tabledemo::Team::Blue].banner, "blue" ) == 0 );
     // a slot nobody set never rode, and reads as its declared default
-    CHECK( back.teams[int32_t( tabledemo::Team::Red )].spawn_count == 4 );
-    CHECK( back.teams[int32_t( tabledemo::Team::None )].spawn_count == 4 );
-    CHECK( back.hulls[int32_t( tabledemo::Hull::Gunship )].health == 400.0f );
-    CHECK( back.hulls[int32_t( tabledemo::Hull::Interceptor )].health == 100.0f );
+    CHECK( back.teams[tabledemo::Team::Red].spawn_count == 4 );
+    // slot 0 is None's: it never rides and the accessor refuses to name it,
+    // so it stays at the declared defaults forever
+    CHECK( back.teams.slots[0].spawn_count == 4 );
+    CHECK( back.hulls[tabledemo::Hull::Gunship].health == 400.0f );
+    CHECK( back.hulls[tabledemo::Hull::Interceptor].health == 100.0f );
     // keyed arrays nest, and an optional inside one survives the trip
     const tabledemo::TurretConfig & back_missile =
-        back.hulls[int32_t( tabledemo::Hull::Gunship )].turrets[int32_t( tabledemo::Weapon::Missile )];
+        back.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile];
     CHECK( back_missile.damage == 75.0f );
     CHECK( back_missile.gunner_present && back_missile.gunner.reaction == 0.05f );
-    CHECK( !back.hulls[int32_t( tabledemo::Hull::Gunship )]
-                .turrets[int32_t( tabledemo::Weapon::Cannon )].gunner_present );
+    CHECK( !back.hulls[tabledemo::Hull::Gunship]
+                .turrets[tabledemo::Weapon::Cannon].gunner_present );
     // a `type`'s keyed array rides keyed too
     CHECK( back.scores.per_team[int32_t( tabledemo::Team::Red )] == 1200 );
     CHECK( back.scores.per_team[int32_t( tabledemo::Team::Blue )] == 0 );
@@ -2274,14 +2309,14 @@ static void test_keyed_round_trip()
 static void test_keyed_evolution_old_data()
 {
     tblv1::Cfg v1;
-    v1.bank[int32_t( tblv1::Slot::Alpha )].power = 10;
-    v1.bank[int32_t( tblv1::Slot::Beta )].power = 20;   // ordinal 2 here, 3 in V2
-    v1.bank[int32_t( tblv1::Slot::Gamma )].power = 30;  // V2 has no name for it
-    v1.bank[int32_t( tblv1::Slot::Delta )].power = 40;
-    set_string( v1.bank[int32_t( tblv1::Slot::Beta )].label,
-                v1.bank[int32_t( tblv1::Slot::Beta )].label_length, "b" );
-    v1.tokens[int32_t( tblv1::Slot::Beta )] = 7;
-    v1.ranks[int32_t( tblv1::Slot::Beta )] = tblv1::Grade::Gold;
+    v1.bank[tblv1::Slot::Alpha].power = 10;
+    v1.bank[tblv1::Slot::Beta].power = 20;   // ordinal 2 here, 3 in V2
+    v1.bank[tblv1::Slot::Gamma].power = 30;  // V2 has no name for it
+    v1.bank[tblv1::Slot::Delta].power = 40;
+    set_string( v1.bank[tblv1::Slot::Beta].label,
+                v1.bank[tblv1::Slot::Beta].label_length, "b" );
+    v1.tokens[tblv1::Slot::Beta] = 7;
+    v1.ranks[tblv1::Slot::Beta] = tblv1::Grade::Gold;
 
     uint8_t wire[2048];
     int64_t bytes = tblv1::CfgSave( v1, wire, sizeof( wire ) );
@@ -2294,30 +2329,30 @@ static void test_keyed_evolution_old_data()
     CHECK( !report.malformed && report.kind_mismatch == 0 );
     CHECK( report.unknown == 1 ); // Gamma's slot: a key this reader cannot name
 
-    CHECK( out.bank[int32_t( tblv2::Slot::Alpha )].power == 10 );
-    CHECK( out.bank[int32_t( tblv2::Slot::Beta )].power == 20 ); // <- moved 2 -> 3
-    CHECK( strcmp( out.bank[int32_t( tblv2::Slot::Beta )].label, "b" ) == 0 );
+    CHECK( out.bank[tblv2::Slot::Alpha].power == 10 );
+    CHECK( out.bank[tblv2::Slot::Beta].power == 20 ); // <- moved 2 -> 3
+    CHECK( strcmp( out.bank[tblv2::Slot::Beta].label, "b" ) == 0 );
     // Omega holds ordinal 2 in V2: under a positional encoding Beta's slot
     // would land here, silently
-    CHECK( out.bank[int32_t( tblv2::Slot::Omega )].power == 0 );
-    CHECK( out.bank[int32_t( tblv2::Slot::Delta )].power == 40 );
-    CHECK( out.bank[int32_t( tblv2::Slot::Sigma )].power == 0 ); // a slot V1 never had
-    CHECK( out.bank[int32_t( tblv2::Slot::None )].power == 0 );
-    CHECK( out.tokens[int32_t( tblv2::Slot::Beta )] == 7 );
-    CHECK( out.tokens[int32_t( tblv2::Slot::Omega )] == 0 );
-    CHECK( out.ranks[int32_t( tblv2::Slot::Beta )] == tblv2::Grade::Gold );
-    CHECK( out.ranks[int32_t( tblv2::Slot::Omega )] == tblv2::Grade::None );
+    CHECK( out.bank[tblv2::Slot::Omega].power == 0 );
+    CHECK( out.bank[tblv2::Slot::Delta].power == 40 );
+    CHECK( out.bank[tblv2::Slot::Sigma].power == 0 ); // a slot V1 never had
+    CHECK( out.bank.slots[0].power == 0 ); // slot 0 is None's: never written, never named
+    CHECK( out.tokens[tblv2::Slot::Beta] == 7 );
+    CHECK( out.tokens[tblv2::Slot::Omega] == 0 );
+    CHECK( out.ranks[tblv2::Slot::Beta] == tblv2::Grade::Gold );
+    CHECK( out.ranks[tblv2::Slot::Omega] == tblv2::Grade::None );
 }
 
 static void test_keyed_evolution_new_data()
 {
     tblv2::Cfg v2;
-    v2.bank[int32_t( tblv2::Slot::Alpha )].power = 1;
-    v2.bank[int32_t( tblv2::Slot::Omega )].power = 2; // V1 has no name for it
-    v2.bank[int32_t( tblv2::Slot::Beta )].power = 3;  // ordinal 3 here, 2 in V1
-    v2.bank[int32_t( tblv2::Slot::Delta )].power = 4;
-    v2.bank[int32_t( tblv2::Slot::Sigma )].power = 5; // nor for it
-    v2.tokens[int32_t( tblv2::Slot::Sigma )] = 9;
+    v2.bank[tblv2::Slot::Alpha].power = 1;
+    v2.bank[tblv2::Slot::Omega].power = 2; // V1 has no name for it
+    v2.bank[tblv2::Slot::Beta].power = 3;  // ordinal 3 here, 2 in V1
+    v2.bank[tblv2::Slot::Delta].power = 4;
+    v2.bank[tblv2::Slot::Sigma].power = 5; // nor for it
+    v2.tokens[tblv2::Slot::Sigma] = 9;
 
     uint8_t wire[2048];
     int64_t bytes = tblv2::CfgSave( v2, wire, sizeof( wire ) );
@@ -2329,11 +2364,91 @@ static void test_keyed_evolution_new_data()
     CHECK( !report.malformed && report.kind_mismatch == 0 );
     CHECK( report.unknown == 3 ); // Omega and Sigma in bank, Sigma in tokens
 
-    CHECK( out.bank[int32_t( tblv1::Slot::Alpha )].power == 1 );
-    CHECK( out.bank[int32_t( tblv1::Slot::Beta )].power == 3 );  // <- moved 3 -> 2
-    CHECK( out.bank[int32_t( tblv1::Slot::Gamma )].power == 0 ); // removed in V2
-    CHECK( out.bank[int32_t( tblv1::Slot::Delta )].power == 4 );
-    CHECK( out.tokens[int32_t( tblv1::Slot::Beta )] == 0 );
+    CHECK( out.bank[tblv1::Slot::Alpha].power == 1 );
+    CHECK( out.bank[tblv1::Slot::Beta].power == 3 );  // <- moved 3 -> 2
+    CHECK( out.bank[tblv1::Slot::Gamma].power == 0 ); // removed in V2
+    CHECK( out.bank[tblv1::Slot::Delta].power == 4 );
+    CHECK( out.tokens[tblv1::Slot::Beta] == 0 );
+}
+
+// ---- a POSITIONAL array and a KEYED one are different KINDS, so the edit
+// ---- between them is reported, never misdecoded. V1 spells `ledger` as
+// ---- [Grade.Max + 1]int32 and V2 spells the same field [Grade]int32: two
+// ---- incompatible bodies under one field id, and the kind byte is what keeps
+// ---- them apart (SPEC-TABLES.md §3.2).
+
+static void test_keyed_versus_positional_is_a_kind_mismatch()
+{
+    uint8_t wire[1024];
+
+    // POSITIONAL writer -> KEYED reader
+    tblv1::Cfg positional;
+    positional.ledger[1] = 5;
+    positional.ledger[2] = 7;
+    int64_t bytes = tblv1::CfgSave( positional, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( positional ) );
+
+    tblv2::TableReport to_keyed;
+    tblv2::Cfg keyed_out;
+    CHECK( tblv2::CfgLoad( keyed_out, wire, bytes, &to_keyed ) );
+    CHECK( !to_keyed.malformed && to_keyed.unknown == 0 );
+    CHECK( to_keyed.kind_mismatch == 1 );  // seen, counted, skipped
+    for ( int32_t i = 0; i < 4; i++ )      // and NEVER decoded as slots
+    {
+        CHECK( keyed_out.ledger.slots[i] == 0 );
+    }
+
+    // KEYED writer -> POSITIONAL reader
+    tblv2::Cfg keyed;
+    keyed.ledger[tblv2::Grade::Gold] = 9;
+    bytes = tblv2::CfgSave( keyed, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv2::CfgMeasure( keyed ) );
+    CHECK( wire[2] == 16 );                // the keyed body's own kind
+
+    tblv1::TableReport to_positional;
+    tblv1::Cfg positional_out;
+    CHECK( tblv1::CfgLoad( positional_out, wire, bytes, &to_positional ) );
+    CHECK( !to_positional.malformed && to_positional.unknown == 0 );
+    CHECK( to_positional.kind_mismatch == 1 );
+    for ( int32_t i = 0; i < 3; i++ )
+    {
+        CHECK( positional_out.ledger[i] == 0 );
+    }
+}
+
+// ---- a stored key of 0 is DAMAGE, not an unknown name: None is the null key
+// ---- and slot 0 is never valid (SPEC-TABLES.md §3.2).
+
+static void test_keyed_none_key_is_malformed()
+{
+    const tblv1::TableFieldInfo * tokens = v1_field( tblv1::CfgTableType(), "tokens" );
+    CHECK( tokens != NULL );
+
+    // one good slot, written by the generator itself
+    tblv1::Cfg src;
+    src.tokens[tblv1::Slot::Beta] = 7;
+    uint8_t wire[512];
+    int64_t saved = tblv1::CfgSave( src, wire, sizeof( wire ) );
+    CHECK( saved > 2 );
+
+    // a second occurrence carrying ONE pair whose key is 0
+    int n = (int) ( saved - 2 );
+    le16( wire + n, tokens->id ); n += 2;
+    wire[n++] = 16;                          // the keyed kind
+    le32( wire + n, 5 + 2 + 4 + 4 ); n += 4; // element kind, count, one pair
+    wire[n++] = 4;                           // element kind kI32
+    le32( wire + n, 1 ); n += 4;
+    le16( wire + n, 0 ); n += 2;             // THE NULL KEY
+    le32( wire + n, 4 ); n += 4;
+    le32( wire + n, 99 ); n += 4;
+    le16( wire + n, 0 ); n += 2;             // the table terminator
+
+    tblv1::TableReport report;
+    tblv1::Cfg out;
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( report.malformed );               // damage, not an unknown name
+    CHECK( report.unknown == 0 );
+    CHECK( out.tokens.slots[0] == 0 );       // and slot 0 was never written
 }
 
 // ---- #261: a repeated enum-ARRAY id whose second occurrence carries an
@@ -2395,7 +2510,7 @@ static void test_keyed_and_optional_in_a_variable_table()
     // pointee is a node the region has to hold
     for ( int32_t tier = int32_t( graphdemo::Tier::Low ); tier <= int32_t( graphdemo::Tier::High ); tier++ )
     {
-        graphdemo::Layer & layer = root->banks[tier];
+        graphdemo::Layer & layer = root->banks.slots[tier];
         layer.depth = tier * 3;
         graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
         node->value = 100 + tier;
@@ -2420,14 +2535,15 @@ static void test_keyed_and_optional_in_a_variable_table()
     CHECK( loaded->spare_present && loaded->spare.build == 7 );
     for ( int32_t tier = int32_t( graphdemo::Tier::Low ); tier <= int32_t( graphdemo::Tier::High ); tier++ )
     {
-        const graphdemo::Layer & layer = loaded->banks[tier];
+        const graphdemo::Layer & layer = loaded->banks.slots[tier];
         CHECK( layer.depth == tier * 3 );
         const graphdemo::ListNode * node = graphdemo::ListNodeAt( layer.head );
         CHECK( node != NULL && node->value == 100 + tier );
     }
-    // None's slot was never set: it defaults, and its pointer is null
-    CHECK( loaded->banks[int32_t( graphdemo::Tier::None )].depth == 0 );
-    CHECK( graphdemo::ListNodeAt( loaded->banks[int32_t( graphdemo::Tier::None )].head ) == NULL );
+    // slot 0 is None's and is never valid: nothing ever wrote it, nothing
+    // ever rode for it, and the accessor refuses to name it
+    CHECK( loaded->banks.slots[0].depth == 0 );
+    CHECK( graphdemo::ListNodeAt( loaded->banks.slots[0].head ) == NULL );
 
     // and the cooked form: Pack lays every slot's pointee out, OpenWalk
     // validates them, and the round trip is byte-stable
@@ -2436,12 +2552,117 @@ static void test_keyed_and_optional_in_a_variable_table()
     CHECK( graphdemo::DepotCook( builder, cooked, cook_need ) == cook_need );
     const graphdemo::Depot * opened = graphdemo::DepotOpen( cooked, cook_need );
     CHECK( opened != NULL );
-    CHECK( graphdemo::ListNodeAt( opened->banks[int32_t( graphdemo::Tier::High )].head )->value == 102 );
+    CHECK( graphdemo::ListNodeAt( opened->banks[graphdemo::Tier::High].head )->value == 102 );
     CHECK( opened->spare_present );
     CHECK( graphdemo::DepotSave( opened, wire, sizeof( wire ) ) == wrote );
 
     free( cooked );
     free( region );
+}
+
+// ---- the same ground, RANDOMISED. One pinned shape proves the walks agree
+// ---- on one shape; this sweeps which slots ride, how long each slot's chain
+// ---- is, the string lengths and the optional's presence, and asserts the
+// ---- five properties every shape owes: measure == save, LoadMeasure sizes a
+// ---- region Load fits, every field survives, Cook -> Open agrees, and a
+// ---- re-save is byte-stable. (Against the pre-fix region pre-pass this fails
+// ---- in the thousands; the single pinned shape caught it too, but only just.)
+
+static uint32_t oracle_rand( uint32_t & state )
+{
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+}
+
+static void test_keyed_variable_oracle()
+{
+    static uint8_t wire[16384];
+    static uint8_t again[16384];
+    uint32_t state = 0x1234567u;
+    const int before = failures; // this sweep reports ITS OWN first failure, not one inherited
+    const int kIterations = 30000;
+
+    for ( int iteration = 0; iteration < kIterations; iteration++ )
+    {
+        graphdemo::DepotBuilder builder;
+        graphdemo::Depot * root = builder.GetRoot();
+
+        char name[16];
+        int32_t name_len = (int32_t) ( oracle_rand( state ) % 13 );
+        for ( int32_t i = 0; i < name_len; i++ ) name[i] = (char) ( 'a' + oracle_rand( state ) % 26 );
+        name[name_len] = 0;
+        set_string( root->name, root->name_length, name );
+
+        root->spare_present = ( oracle_rand( state ) & 1 ) != 0;
+        if ( root->spare_present ) root->spare.build = (int32_t) ( oracle_rand( state ) % 1001 );
+
+        int32_t depths[8] = {};
+        int32_t chains[8] = {};
+        for ( int32_t slot = 1; slot < 3; slot++ ) // slot 0 is None's: never touched
+        {
+            if ( ( oracle_rand( state ) & 1 ) == 0 ) continue; // this slot stays default
+            graphdemo::Layer & layer = root->banks.slots[slot];
+            depths[slot] = (int32_t) ( oracle_rand( state ) % 65 );
+            layer.depth = depths[slot];
+            chains[slot] = (int32_t) ( oracle_rand( state ) % 4 );
+            graphdemo::TableSlot<graphdemo::ListNode> head;
+            graphdemo::ListNode * previous = NULL;
+            for ( int32_t link = 0; link < chains[slot]; link++ )
+            {
+                graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+                node->value = slot * 1000 + link;
+                if ( previous == NULL ) head = node; else previous->next = node;
+                previous = &*node;
+            }
+            if ( chains[slot] > 0 ) layer.head = head;
+        }
+        CHECK( builder.Lock() );
+
+        int64_t need = graphdemo::DepotMeasure( builder );
+        CHECK( need > 0 && need <= (int64_t) sizeof( wire ) );
+        CHECK( graphdemo::DepotSave( builder, wire, need ) == need ); // measure == save, exact capacity
+
+        int64_t region_need = graphdemo::DepotLoadMeasure( wire, need );
+        CHECK( region_need > 0 );
+        uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+        graphdemo::TableReport report;
+        const graphdemo::Depot * loaded = graphdemo::DepotLoad( region, region_need, wire, need, &report );
+        CHECK( loaded != NULL );
+        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
+        CHECK( strcmp( loaded->name, name ) == 0 );
+        CHECK( loaded->spare_present == root->spare_present );
+        for ( int32_t slot = 1; slot < 3; slot++ )
+        {
+            CHECK( loaded->banks.slots[slot].depth == depths[slot] );
+            const graphdemo::ListNode * node = graphdemo::ListNodeAt( loaded->banks.slots[slot].head );
+            for ( int32_t link = 0; link < chains[slot]; link++ )
+            {
+                CHECK( node != NULL && node->value == slot * 1000 + link );
+                if ( node == NULL ) break;
+                node = graphdemo::ListNodeAt( node->next );
+            }
+            CHECK( node == NULL ); // and no more than the chain that was built
+        }
+
+        // a re-save out of the loaded root is byte-stable
+        CHECK( graphdemo::DepotSave( loaded, again, sizeof( again ) ) == need );
+        CHECK( memcmp( wire, again, (size_t) need ) == 0 );
+
+        // and the cooked form agrees with the wire one
+        int64_t cook_need = graphdemo::DepotCookMeasure( builder );
+        uint8_t * cooked = (uint8_t *) malloc( (size_t) cook_need );
+        CHECK( graphdemo::DepotCook( builder, cooked, cook_need ) == cook_need );
+        const graphdemo::Depot * opened = graphdemo::DepotOpen( cooked, cook_need );
+        CHECK( opened != NULL );
+        CHECK( graphdemo::DepotSave( opened, again, sizeof( again ) ) == need );
+        CHECK( memcmp( wire, again, (size_t) need ) == 0 );
+
+        free( cooked );
+        free( region );
+        if ( failures > before ) return; // one shape is enough to name; do not print 30000
+    }
 }
 
 // ---- reflection: an optional's presence companion, and a keyed array's key
@@ -2466,9 +2687,19 @@ static void test_optional_and_keyed_reflection()
     CHECK( bank->array_bound == 5 );  // Slot.Max + 1: None's slot plus four
     CHECK( bank->count_offset == 0xffffffffu ); // every slot exists: no count
     CHECK( bank->key_type_name != NULL && strcmp( bank->key_type_name, "Slot" ) == 0 );
+    // key_name and key_id take the SLOT INDEX, which IS the variant's value:
+    // slot 2 is Beta's in V1, and a walker steps [0, array_bound) with no
+    // arithmetic of its own (SPEC-TABLES.md §8)
     CHECK( bank->key_name != NULL && strcmp( bank->key_name( 2 ), "Beta" ) == 0 );
     CHECK( bank->key_id != NULL && bank->key_id( 2 ) == field_id( "Beta" ) );
-    CHECK( bank->key_id( 0 ) == 0 ); // None is the reserved id
+    // SLOT 0 IS MARKED INVALID by the one id no declared name can hold: it is
+    // None's slot, it never rides, and indexing it is an error
+    CHECK( bank->key_id( 0 ) == 0 );
+    CHECK( strcmp( bank->key_name( 0 ), "None" ) == 0 );
+    for ( int32_t slot = 1; slot < bank->array_bound; slot++ )
+    {
+        CHECK( bank->key_id( (uint64_t) slot ) != 0 ); // every other slot is nameable
+    }
 
     // an enum-keyed array of enums carries BOTH vocabularies: the key's and
     // the element's
@@ -2505,8 +2736,11 @@ int main()
     test_keyed_round_trip();
     test_keyed_evolution_old_data();
     test_keyed_evolution_new_data();
+    test_keyed_versus_positional_is_a_kind_mismatch();
+    test_keyed_none_key_is_malformed();
     test_optional_and_keyed_reflection();
     test_keyed_and_optional_in_a_variable_table();
+    test_keyed_variable_oracle();
     test_unnameable_enum_refused();
     test_unnameable_enum_element_read();
     test_flags_are_positional();

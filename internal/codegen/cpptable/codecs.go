@@ -150,12 +150,13 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		g.pf("    uint8_t %s[%d] = {}; // bytes(%d): fixed buffer, used length beside it\n", f.Name, f.Type.Size, f.Type.Size)
 		g.pf("    int32_t %s_length = 0;\n", f.Name)
 	case f.KeyEnum != "":
-		// one slot per variant, indexed by the enum value itself: slot 0 is
-		// None's, and `ships[int( ShipType::Bomber )]` just works. Every slot
-		// exists, so there is no count companion (SPEC-TABLES.md §2.4).
+		// one slot per variant, indexed by the variant's own value, so
+		// `ships[ShipType::Bomber]` reads as itself. Slot 0 is None's and is
+		// never valid — the accessor refuses it. Every named slot exists, so
+		// there is no count companion (SPEC-TABLES.md §2.4).
 		g.noteRef(f.KeyEnum)
-		g.pf("    %s %s[%d] = {}; // [%s]: one slot per variant, indexed by the value (%s.Max + 1)\n",
-			typ, f.Name, f.ArrayBound, f.KeyEnum, f.KeyEnum)
+		g.pf("    TableKeyed<%s, %s, %d> %s; // [%s]: one slot per variant, indexed by the value\n",
+			typ, f.KeyEnum, f.ArrayBound, f.Name, f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s %s[%d] = {};\n", typ, f.Name, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
@@ -177,6 +178,32 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 }
 
 // ---- enum identity on the table wire (SPEC-TABLES.md §5) ----
+
+// keyedSlots renders a keyed array's RAW slot storage, the form the codecs
+// index by slot number rather than by variant.
+//
+// A TABLE's keyed field is a TableKeyed<>, whose slots sit behind `.slots`; a
+// closure `type`'s field is its PACKET storage — a plain array — because a
+// type's struct is a raw struct emitted by the packet backend, and nothing on
+// this wire changes that (SPEC-TABLES.md §2.4). Both are `E.Max + 1` elements
+// indexed by the variant's value, so only the spelling differs.
+func (g *tableGen) keyedSlots(owner string, f *ir.Field) string {
+	if g.owner != nil && g.owner.IsTable {
+		return owner + f.Name + ".slots"
+	}
+	return owner + f.Name
+}
+
+// arrayBase renders the indexable storage of any array field: a keyed one's
+// raw slots, and every other one's plain array. `access` is the owner
+// expression WITH its member operator — "value.", "src.", "node->".
+func (g *tableGen) arrayBase(access string, f *ir.Field) string {
+	name := access + f.Name
+	if f.KeyEnum != "" && g.owner != nil && g.owner.IsTable {
+		return name + ".slots"
+	}
+	return name
+}
 
 // enumRef returns the enum a field's values come from, or nil.
 func enumRef(f *ir.Field) *ir.Enum {
@@ -358,7 +385,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// default elides like any default, and an empty array elides whole.
 		g.pf("    {\n")
 		g.pf("        int64_t pairs_%s = 0, body_%s = 0;\n", f.Name, f.Name)
-		g.pf("        for ( int32_t i = 0; i < %d; i++ ) // [%s]\n        {\n", f.ArrayBound, f.KeyEnum)
+		g.pf("        for ( int32_t i = 1; i < %d; i++ ) // [%s]: slot 0 is None's and never rides\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return -1;")
 		if kind == tkTable {
 			g.pf("            pairs_%s++; body_%s += 2 + 4 + elem_bytes; // key, length, body\n", f.Name, f.Name)
@@ -453,7 +480,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 // `elem_bytes` holds the measured body, so measure and save decide elision on
 // the same number.
 func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) {
-	expr := fmt.Sprintf("value.%s[i]", f.Name)
+	expr := g.keyedSlots("value.", f) + "[i]"
 	switch {
 	case kind == tkTable:
 		g.pf("%sint64_t elem_bytes = %s;\n", ind, g.measureCall(f.Type.Name, expr, depthSame))
@@ -562,22 +589,28 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// before the header rides, and so measure and save agree byte for byte.
 		g.pf("    {\n")
 		g.pf("        uint32_t pairs_%s = 0;\n", f.Name)
-		g.pf("        for ( int32_t i = 0; i < %d; i++ ) // [%s]\n        {\n", f.ArrayBound, f.KeyEnum)
+		g.pf("        for ( int32_t i = 1; i < %d; i++ ) // [%s]: slot 0 is None's and never rides\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return false;")
 		g.pf("            pairs_%s++;\n", f.Name)
 		g.pf("        }\n")
 		g.pf("        if ( pairs_%s > 0 )\n        {\n", f.Name)
-		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s (keyed by %s)\n", id, tkArray, f.Name, f.KeyEnum)
+		g.pf("            // KIND 16, not 14: a keyed body and a positional one are\n")
+		g.pf("            // incompatible, so a reader of the other kind must see a kind\n")
+		g.pf("            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)\n")
+		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s (keyed by %s)\n", id, tkKeyed, f.Name, f.KeyEnum)
 		g.pf("            int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
 		g.pf("            w.put8( %d ); w.put32( pairs_%s );\n", kind, f.Name)
-		g.pf("            for ( int32_t i = 0; i < %d; i++ )\n            {\n", f.ArrayBound)
+		g.pf("            // ASCENDING BY VARIANT ORDINAL, which is slot order — this\n")
+		g.pf("            // writer's choice, and a reader must not rely on it: every\n")
+		g.pf("            // slot is found by its key (SPEC-TABLES.md §3.2)\n")
+		g.pf("            for ( int32_t i = 1; i < %d; i++ )\n            {\n", f.ArrayBound)
 		g.emitKeyedSlotRides(f, kind, "                ", "return false;")
 		g.pf("                w.put16( key_id ); // the slot's VARIANT id, not its position\n")
 		g.pf("                int64_t elem_len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
 		if kind == tkTable {
-			g.pf("                if ( !%s ) return false;\n", g.saveCall(f.Type.Name, fmt.Sprintf("value.%s[i]", f.Name), depthSame))
+			g.pf("                if ( !%s ) return false;\n", g.saveCall(f.Type.Name, g.keyedSlots("value.", f)+"[i]", depthSame))
 		} else {
-			g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "                ")
+			g.emitTableWriteElement(f, kind, g.keyedSlots("value.", f)+"[i]", "                ")
 		}
 		g.pf("                w.patch32( elem_len_at_%s, uint32_t( w.offset - elem_len_at_%s - 4 ) );\n", f.Name, f.Name)
 		g.pf("            }\n")
@@ -757,6 +790,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
 				wireKind = tkArray
 			}
+			if f.KeyEnum != "" {
+				// a KEYED body is its own kind, so the positional-to-keyed edit
+				// (and its reverse) reads as a kind mismatch and is counted,
+				// never decoded as the other body (SPEC-TABLES.md §3.2)
+				wireKind = tkKeyed
+			}
 			if f.Type.Kind == ir.TBytes {
 				kind = tkU8 // bytes travel as an array of u8 elements
 			}
@@ -820,12 +859,17 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s        if ( !sub.has( 4 ) ) { r.report->malformed = true; break; }\n", ind)
 		g.pf("%s        uint32_t elem_len = sub.get32();\n", ind)
 		g.pf("%s        if ( !sub.has( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
+		g.pf("%s        if ( key == 0 )\n%s        {\n", ind, ind)
+		g.pf("%s            // None is the NULL KEY: slot 0 is never valid, so a stored\n", ind)
+		g.pf("%s            // key of 0 is damage, not an unknown name (SPEC-TABLES.md §3.2)\n", ind)
+		g.pf("%s            r.report->malformed = true;\n", ind)
+		g.pf("%s            sub.offset += elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
 		g.pf("%s        %s slot = %s::None;\n", ind, f.KeyEnum, f.KeyEnum)
 		g.pf("%s        if ( !TableEnumValue( key, slot ) )\n%s        {\n", ind, ind)
 		g.pf("%s            r.report->unknown++; // a slot this reader cannot name\n", ind)
 		g.pf("%s            sub.offset += elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
 		g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, elem_len, r.report );\n", ind, ind)
-		slot := fmt.Sprintf("value.%s[int32_t( slot )]", f.Name)
+		slot := g.keyedSlots("value.", f) + "[int32_t( slot )]"
 		if kind == tkTable {
 			g.pf("%s            %s;\n", ind, g.loadCall(f.Type.Name, "elem", slot, depthSame))
 		} else {
@@ -1115,6 +1159,11 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			elemSize := fmt.Sprintf("(uint32_t) sizeof( %s{}.%s )", st.Name, f.Name)
 			if isArray {
 				elemSize = fmt.Sprintf("(uint32_t) sizeof( %s{}.%s[0] )", st.Name, f.Name)
+			}
+			if f.KeyEnum != "" {
+				// a keyed field's storage is the keyed type; its SLOTS are what
+				// a walker steps through, and offset already names slot 0
+				elemSize = fmt.Sprintf("(uint32_t) sizeof( %s )", g.keyedSlots(st.Name+"{}.", f)+"[0]")
 			}
 
 			countOffset := "0xffffffffu"
