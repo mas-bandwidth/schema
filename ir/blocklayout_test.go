@@ -197,7 +197,7 @@ func TestBuildVersionSurvivesAWasRename(t *testing.T) {
 func TestBuildVersionOffsetTermIsLoadBearing(t *testing.T) {
 	strip := func(projection string) string {
 		var out []string
-		for _, line := range strings.Split(projection, "\n") {
+		for line := range strings.SplitSeq(projection, "\n") {
 			if line == "" {
 				continue
 			}

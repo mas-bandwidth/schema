@@ -535,11 +535,7 @@ func elementPiece(u *Unit, f *Field) storagePiece {
 // BlockArrayStart is where one out-of-line array begins, given the array
 // starts before it: aligned to max( 64, alignof( element ) ) (§19.1).
 func BlockArrayStart(offset, elemAlign int64) int64 {
-	a := int64(BlockAlign)
-	if elemAlign > a {
-		a = elemAlign
-	}
-	return alignUp(offset, a)
+	return alignUp(offset, max(int64(BlockAlign), elemAlign))
 }
 
 // BlockExtent lays a block out from its counts — the same walk the generated
