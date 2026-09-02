@@ -3026,6 +3026,28 @@ static void test_json_dialect()
     CHECK( tabledemo::AttachmentFromJson( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
     CHECK( value.slot == 2 && duplicate.duplicate == 2 );
 
+    // the wire imposes no encoding on a string (SPEC-TABLES.md §3), so the
+    // text must not either: a stray lead byte rides as its own byte and does
+    // NOT swallow the character after it — including the closing quote
+    {
+        tabledemo::ProfileConfig stray;
+        char text[64];
+        int n = snprintf( text, sizeof( text ), "{ \"name\": \"ab\xc3\" }" );
+        CHECK( n > 0 );
+        tabledemo::TableReport raw;
+        CHECK( tabledemo::ProfileConfigFromJson( stray, text, n, &raw ) );
+        CHECK( stray.name_length == 3 && (unsigned char) stray.name[2] == 0xc3 );
+        CHECK( !raw.malformed );
+
+        // and it round-trips: the writer emits the byte, the reader takes it
+        int64_t size = tabledemo::ProfileConfigToJsonMeasure( stray );
+        std::vector<char> out( (size_t) size );
+        CHECK( tabledemo::ProfileConfigToJson( stray, out.data(), size ) == size );
+        tabledemo::ProfileConfig back;
+        CHECK( tabledemo::ProfileConfigFromJson( back, out.data(), size, &raw ) );
+        CHECK( back.name_length == 3 && (unsigned char) back.name[2] == 0xc3 );
+    }
+
     // string escapes both ways, including a surrogate pair
     tabledemo::ProfileConfig profile;
     const char * escapes = "{ \"name\": \"a\\\"b\\\\c\\nd\\u00e9e\\ud83d\\ude00\" }";

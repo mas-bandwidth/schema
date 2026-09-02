@@ -741,18 +741,23 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         else
         {
             // a UTF-8 sequence read WHOLE, so the clamp below can only land
-            // between code points
+            // between code points. Only bytes that ACTUALLY look like
+            // continuations are taken: the wire imposes no encoding (§3), so
+            // a string may legitimately hold a stray lead byte, and one at
+            // the end of a text must not swallow the closing quote.
             unsigned char lead = (unsigned char) c;
             int32_t want = 1;
             if ( ( lead & 0xe0 ) == 0xc0 ) { want = 2; }
             else if ( ( lead & 0xf0 ) == 0xe0 ) { want = 3; }
             else if ( ( lead & 0xf8 ) == 0xf0 ) { want = 4; }
-            for ( int32_t i = 0; i < want; i++ )
+            unit[0] = c;
+            in.pos++;
+            unit_length = 1;
+            while ( unit_length < want && in.pos < in.size &&
+                    ( (unsigned char) in.text[in.pos] & 0xc0 ) == 0x80 )
             {
-                if ( in.pos >= in.size ) { in.bad = true; return false; }
-                unit[i] = in.text[in.pos++];
+                unit[unit_length++] = in.text[in.pos++];
             }
-            unit_length = want;
         }
         if ( out != NULL )
         {
