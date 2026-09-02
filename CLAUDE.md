@@ -144,6 +144,27 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   compile time"). The union arm-zeroing shape (zero at arm selection, not
   whole-union memset at construction — the memset measured 60.6% of batch-read
   self-cycles) is pinned by the stale-leak test.
+- **The tables JSON walk, header vs translation unit — the paired before/after**
+  (schema#283, owner: *"It would be best if it were written to a corresponding cpp
+  file so it doesn't need to be included every time."*). Same instrument as the
+  union/variant row above — one empty TU including a single generated table
+  header, arm64 clang, arms interleaved in one sitting, n=15 after warmup:
+
+  | arm | min | median |
+  |---|---|---|
+  | before the walk existed | 0.0478 s | 0.0493 s |
+  | walk inline in the header | 0.0538 s | 0.0559 s |
+  | walk in `<Base>Table.cpp` | 0.0485 s | 0.0498 s |
+
+  **−9.8% against the inline form, and +1.5% against the pre-walk tree** — the
+  walker's share is gone and the header is back where it started; the header
+  itself went 3656 → 1986 lines. Three sittings agreed (−10.8%, −9.9%, −9.8%),
+  two of which had one contaminated arm (spreads to 83%) and were discarded
+  whole rather than averaged. An independent reviewer reproduced it at −10.3% /
+  −10.7% across two sittings, with the inline form at +12.9–13.4% over pre-walk,
+  which is what §13.5's "+11% to +15%" records as the cost that motivated the
+  ruling. The AFTER half lives here because a number is a ledger entry, not a
+  spec sentence.
 - **Build system**: plain Makefile for now, graduating to CMake as needed (Glenn,
   2026-08-05).
 

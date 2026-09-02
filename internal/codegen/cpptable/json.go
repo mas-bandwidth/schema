@@ -21,7 +21,20 @@ import (
 // between them is a strict byte comparison across every header of the corpus.
 func tableJsonWalk(pkg string) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_JSON"
-	return "#ifndef " + guard + "\n#define " + guard + "\n\nnamespace " + pkg + " {\n\n" +
+	// The include guard is LOAD-BEARING in a .cpp, which is not where a reader
+	// expects to find one — hence the comment riding with it. It is what lets
+	// several same-package .cpp files be concatenated into one translation
+	// unit, the unity build a game project reaches for, without redefining
+	// every walker function. The comment sits OUTSIDE the walk's markers, with
+	// the guard and the namespace, so the package name never enters the region
+	// the generic-walk gate compares.
+	return "// The guard is not vestigial. Several " + pkg + " Table.cpp files may be\n" +
+		"// concatenated into ONE translation unit — a unity build — and without it\n" +
+		"// each would redefine the walk. It is also why the walk's functions may be\n" +
+		"// weak (vague linkage) across separate objects: ODR requires their\n" +
+		"// definitions to be token-identical, and the generic-walk gate is what\n" +
+		"// proves that, byte for byte, across every generated .cpp.\n" +
+		"#ifndef " + guard + "\n#define " + guard + "\n\nnamespace " + pkg + " {\n\n" +
 		tableJsonWalkSource +
 		"\n} // namespace " + pkg + "\n\n#endif // " + guard + "\n"
 }
