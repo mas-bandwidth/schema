@@ -190,6 +190,17 @@ grows into space already paid for.
 Whether the id travels on the wire (a connect token, a `const` field, out of
 band) is the application's choice — netcode-style stacks already carry one.
 
+**The protocol id is the type wire's id and NOTHING else, and the boundary
+is worth stating from this side too.** `table` declarations (SPEC-TABLES.md)
+never enter the projection, so no table edit can move this id and no table
+edit forces a lockstep redeploy. What a table edit moves instead is the unit's
+BUILD VERSION (SPEC-TABLES.md §20) — the design's OTHER id, one digest over
+every fact a cooked asset's bytes depend on, this id among them, and the key
+a cooked asset is stored under. So a type edit moves both ids and a table edit
+moves only that one. Peers connect on equal protocol ids and may differ in
+build version; a build version never gates a connection, and it is derived
+from this projection rather than carried in it.
+
 ## 4. The language
 
 ### 4.1 Lexical structure

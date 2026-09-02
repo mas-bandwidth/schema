@@ -13,7 +13,7 @@ below:
 |---|---|---|
 | **the type wire** (SPEC.md) | bitpacked, positional, generated in nine languages | same-or-refuse by protocol id |
 | **the table wire** (SPEC-TABLES.md §3) | neutral bytes, ids and kinds and lengths | tolerant, every difference reported |
-| **the cook** (SPEC-TABLES.md §7) | a table's region written for one build, memory-mapped and pointed at | one exact layout id |
+| **the cook** (SPEC-TABLES.md §7) | a table's region written for one build, memory-mapped and pointed at | one exact build version |
 | **the block form** (SPEC-TABLES.md §19) | a fixed table's rows laid out of line at a fixed pitch, both sides generated | one exact layout, asserted at compile time in both languages |
 
 Entries 1–8 are the owner's list. Entries 9 and 10 are additions from the
@@ -93,24 +93,27 @@ layout; the game memory-maps it and points at it with minimal fix-up.
   for one. The pair is the rule: a huge mesh or texture catalogue is a cook;
   a config small enough that its load time does not matter stays the wire
   and keeps the tolerance that comes with it.
-- **Contract** — the wire's tolerance for the record; **one exact layout
-  id** for the cook. The layout id is a 64-bit digest over the schema's
-  packed-layout facts and this build's own `sizeof` and `offsetof`, keyed by
-  wire id, so schema drift and ABI drift both refuse. `Open` checks the
-  magic, the byte order, the id, the two part lengths and the base alignment
-  — that is the whole check — and returns NULL on any mismatch, leaving the
-  caller to fall back to a wire load, which carries every version.
-  `OpenValidated` is the other entry point, taken by name, for a file whose
-  provenance the caller does not trust.
+- **Contract** — the wire's tolerance for the record; **one exact build
+  version** for the cook (§20). The build version is a compiler-settled
+  64-bit digest over every fact a cook's bytes depend on — the type wire's
+  protocol id, every record's layout keyed by wire id, kind and referent, the
+  facts that decide what a load PUTS in a slot, and the target's byte order —
+  so schema drift refuses at `Open` and ABI drift is meant to fail the build
+  (§20.3). `Open` checks the magic, the byte order, the build version, every
+  reserved word zero, the two part lengths and the base alignment — that is
+  the whole check, and it is the runtime's only entry point — returning NULL
+  on any mismatch and leaving the caller to fall back to a wire load, which
+  carries every version. Validating a file whose provenance the caller does
+  not trust is `schema cook-check`, a tool over the same descriptors.
 - **Proof** — the wire half is **proven**: `Config.bin` and `Assets.bin` are
   each one fixed root table down to the leaves, the corpus carries a
   config-format example holding gate 1 (§12), the C# backend reads the same
   bytes the C++ tools write, and the dogfood is **space#443**. The cook half
-  is proven in the C++ corpus — `CookMeasure`, `Cook`, `Open` and
-  `OpenValidated` round-trip over the pointer unit under `make` — but
-  addressing a cooked artifact by **(asset hash, build version)** is
-  designed and not yet built: the build version is **#292**, and the
-  variable class's flat node encoding (§3.1) is spec with its emitter
+  is proven in the C++ corpus for what exists — `CookMeasure`, `Cook` and
+  `Open` round-trip over the pointer unit under `make` — while addressing a
+  cooked artifact by **(asset hash, build version)** is designed and not yet
+  built: the build version is **#292**, `schema cook-check` is not built, and
+  the variable class's flat node encoding (§3.1) is spec with its emitter
   tracked by **#251**.
 
 ## 5. Render data written and read across two languages at runtime
@@ -129,15 +132,18 @@ sixty times a second or better.
   (§19.3). The compiler derives every offset and size, C++ asserts them with
   `static_assert` and C# with a blittable `Sequential` struct plus generated
   padding fields and a generated size and offset check, so neither side can
-  drift silently. `BlockOpen` matches the build version;
-  `BlockOpenCompatible` drops that one check by name and nothing else, for a
-  consumer deliberately older than its producer. The block carries no field
-  ids, no lengths, no elision and no read report — §4's counters do not
-  exist here, because none of the events they count can occur.
-- **Proof** — designed, not yet built. §12.1 states the gate: both sides
-  generated, the multi-threaded fill held by a refuser, and at least the
-  speed of the hand-written scatter it replaces. **#288** tracks the gate;
-  **#287** tracks the C# blittable struct form the consumer needs.
+  drift silently. `BlockOpen` matches the **build version** (§20) and is the
+  only entry point there is: a block is same-build, so an edit that moves the
+  version refuses and both sides regenerate. The block carries no field ids,
+  no lengths, no elision and no read report — §4's counters do not exist here,
+  because none of the events they count can occur.
+- **Proof** — designed, not yet built, and the layout asserts above are the
+  largest missing piece: the tree carries no `sizeof`/`offsetof`
+  `static_assert` and the C# fixed class is not blittable yet (§20.3). §12.1
+  states the gate: both sides generated, the multi-threaded fill held by a
+  refuser, and the speed of the hand-written scatter it replaces.
+  **#288** tracks the gate; **#287** tracks the C# blittable struct form the
+  consumer needs.
 
 ## 6. JSON parsed and packed into tables
 

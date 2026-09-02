@@ -70,6 +70,42 @@ one language and read every frame in another — so it is the hottest path
 tables have, and the fastest-correct mission bites hardest there. §12.1 is
 the gate that decides whether it earns its place.
 
+**THREE FAST PATHS, and one deliberately slower one** — the owner's framing:
+*"notice how we now have fast paths for three things? types, cooked tables,
+and fast write/read tables like render data."* Each is fast for its own
+reason, and the reasons do not transfer:
+
+- **Types (SPEC.md)** — same build on both ends, so the bytes ARE the struct
+  under a hardcoded bitpacked wire and one protocol id. Nothing is negotiated
+  because nothing may differ.
+- **Cooked tables (§7)** — the work is done OFFLINE and once: tooling builds,
+  cooks, and endian-fixes for a known target, and the game memory-maps the
+  result and points at it. The reader does no parse because the writer
+  already did every part of it.
+- **The block form (§19)** — both sides GENERATED against one layout the
+  compiler settled, so the producer goes wide with nothing to synchronise and
+  the consumer indexes rows at a pitch it reads. Nothing is discovered at
+  frame time because everything was decided at build time.
+
+**And the tolerant wire (§3) is slower on purpose**, because it is the one
+form that CROSSES VERSIONS: ids, kinds, lengths and a read report are what
+let any reader read any data, years apart, and every one of them is a byte
+the three fast paths do not spend. That is the trade this document exists to
+make, and it is why the fast paths are accelerators BESIDE the wire rather
+than replacements for it.
+
+**And one path is generic on purpose and may allocate** — the reflection
+surface (§8): the field walk, the text form (§16), the packer (§17), a
+viewer. In the owner's words: *"we also have the flexibility of the
+reflection based stuff that is more generic and does allocations if we want
+it for tooling, editor, whatever where perf and allocations aren't such a
+big deal."* It buys REACH — walk any declaration by name without knowing its
+type — and it pays in speed and in allocation, which is the right trade
+where a tool or an editor is the caller and the wrong one anywhere the
+three fast paths run. **That is the ladder whole**: three fast paths, one
+slower path that crosses versions, one generic path that trades speed for
+reach.
+
 ## What allocates, and what never does
 
 - **A type never allocates**, in any backend, on any path. This rung does
@@ -83,12 +119,22 @@ the gate that decides whether it earns its place.
   allocated on read and write — and a backend with a native union (C++)
   allocates nothing for the same declaration.
 - **The variable-length class allocates by nature**, and assuming
-  otherwise is foolish: the arena on build, the region on load. C++ keeps
-  the caller-owned form — `LoadMeasure` sizes the region and the caller
-  supplies it, `Builder` grows storage the caller owns — which is
-  allocation with the caller holding the pointer, not its absence. Other
-  backends allocate inside their runtime and say so. No port contorts
-  itself toward zero allocation for a variable-length table.
+  otherwise is foolish: the arena on build, the region on load. It allocates
+  through a **caller-provided allocator with malloc semantics** — C and C++
+  take the allocator; other languages take their platform's default — and it
+  allocates **at BUILD time, in bulk, never per record on the fill path**: a
+  worker carves its nodes out of a slab the arena already holds (§6.4), so
+  going wide costs no allocation and no lock per node. C++ keeps the
+  caller-owned form — `LoadMeasure` sizes the region and the caller supplies
+  it, `Builder` grows storage the caller owns — which is allocation with the
+  caller holding the pointer, not its absence. Other backends allocate inside
+  their runtime and say so. No port contorts itself toward zero allocation
+  for a variable-length table.
+- **EVERY READ PATH ALLOCATES NOTHING**, in every class, on every form. A
+  load fills caller-owned storage, a region is caller-owned, `Open` and
+  `BlockOpen` point at bytes the caller already has, and the reflection walk
+  reads in place. The allocation in this document is a BUILDING cost, and
+  building is TOOLING's path — the game points at the cook (§7).
 
 **Backend status: C++, and C# for the FIXED class.** C++ carries both classes;
 C# carries the fixed class (§6.1) — optionals, enum-keyed arrays and all — and
@@ -1657,24 +1703,45 @@ SceneCook( builder, buffer, data, attribution );   // write it
 const Scene * scene = SceneOpen( bytes, size );    // point at it, or NULL
 ```
 
-**The pipeline.** `schema pack` writes the WIRE, and the wire is the
-format of record (§17). A cook is produced beside it, next to the build
-that will read it — on the machine or on a distributed cook farm — for
-exactly the layouts that build knows. A game loads its own cooked assets
-and never a foreign one; tooling reads and writes the generic wire,
-because the generic form is the one that carries every version. And if
-load time does not demand the accelerator, the game just uses the generic
-table: cooking is a choice made per asset, never a requirement of the
+**The pipeline, in the owner's words**: *"the optimized path is still
+available, it is tooling does the build, then cooks to the rad binary format.
+and the game just points at it and works."* — *"(plus endian fixups)"* —
+*"this is the way."* `schema pack` writes the WIRE, and the wire is the format
+of record (§17). A cook is produced beside it, next to the build that will
+read it — on the machine or on a distributed cook farm — for exactly the
+layouts that build knows. **TOOLING BUILDS; THE GAME POINTS.** A game loads
+its own cooked assets and never a foreign one; tooling reads and writes the
+generic wire, because the generic form is the one that carries every version.
+And if load time does not demand the accelerator, the game just uses the
+generic table: cooking is a choice made per asset, never a requirement of the
 format.
 
+**The endian fix-up is part of the COOK, and it stays.** A cook is produced in
+the byte order of the build it is cooked for, so the fixing happens where the
+target is known — offline, once, on the writing side — and never on the
+reading side, which is what makes `Open` a match and a point rather than a
+pass over the region (below). The byte order is a fact of the build version
+(§20.1), so a cook for a foreign order is not this build's file and refuses.
+
 **A cooked artifact is CONTENT-ADDRESSED by a pair — the hash of its source
-asset, and the cooked-version hash, which is this build's table protocol id
-and on this page is the LAYOUT ID (below)** — and that pair is the key the
-runtime searches for, the key a distributed build cache produces under and
-serves from. It is why the cooking side is a build cost rather than a
-runtime one: the work happens offline, once per (asset, layout), and the
-game does a lookup. That is the fact the performance ladder cites when it
-calls the wire and the cook read-hot and write-cold.
+asset, and the unit's BUILD VERSION (§20)** — and that pair is the tuple the
+runtime searches for, the tuple a distributed build cache produces under and
+serves from. It is why the cooking side is a build cost rather than a runtime
+one: the work happens offline, once per (asset, build version), and the game
+does a lookup. That is the fact the performance ladder cites when it calls the
+wire and the cook read-hot and write-cold.
+
+**The ASSET HASH is the hash of the WIRE FILE the cook was produced from.**
+The wire is the format of record and a cook is produced beside one (below,
+§17), so naming the wire file is what makes the pair well defined: a
+pipeline that ran a text tree through `schema pack` and then cooked in one
+step still keys on the bytes the cook actually read, and an edit upstream of
+those bytes reaches the key through them.
+
+**The build version both ADDRESSES a cooked artifact and REFUSES one**: it is
+what the store is indexed by, and it is what `Open` checks out of the header.
+There is no second VERSION id — the design has two in total, the protocol id
+for the type wire and this one for everything cooked or blocked (§20).
 
 The example pair is the whole rule. A huge data file naming every mesh in
 the game, or every texture — that is a cook. A configuration file small
@@ -1682,18 +1749,20 @@ enough that the cost of loading it does not matter is the wire, and stays
 the wire, and keeps the flexibility that comes with it.
 
 - **The header build-locks it**: a magic (which is also the byte-order
-  check), a LAYOUT ID, and the lengths of the two parts below. The
-  reserved words are reserved: a non-zero one means a writer used a form
-  this build does not understand, and `Open` refuses rather than ignoring
-  it.
+  check), the unit's BUILD VERSION (§20), and the lengths of the two parts
+  below. The reserved words are reserved: a non-zero one means a writer used
+  a form this build does not understand, and `Open` refuses rather than
+  ignoring it.
 
   A cooked file never crosses builds, so most of the header's shape is
   the implementation's business. **Three widths are not**, because each
   one decides something semantic:
   - **The magic is read BYTEWISE, before anything else**, since it is
     what establishes the byte order every other header field is written
-    in.
-  - **The LAYOUT ID is 64 bits.** Under the rule below a matching id
+    in. It is also what separates a cook from a BLOCK (§19): the two
+    accelerators carry the same build version and different magics, and a
+    form's identity belongs in its magic rather than in a second digest.
+  - **The BUILD VERSION is 64 bits.** Under the rule below a matching id
     means `Open` checks nothing further, so the id is the sole guard
     between a runtime and a foreign region; it is sized like a digest,
     not like a version counter.
@@ -1702,57 +1771,64 @@ the wire, and keeps the flexibility that comes with it.
     ceiling §3.1 just removed — on exactly the huge mesh or texture
     catalogue a cook exists for.
 
-  The layout id is a compile-time digest mixing the schema's
-  packed-layout facts with this build's own `sizeof` AND `offsetof` for
-  every type and field in the closure, so schema drift and ABI drift both
-  refuse — `sizeof` alone cannot see a member that moved inside an
-  unchanged total, and the packed form is read by offset. It is the
-  region form's twin of the protocol id.
+  The build version is a compiler-settled digest over every fact a cook's
+  bytes depend on: the type wire's protocol id, every record's layout as the
+  compiler's own C ABI model computes it, and the facts that decide what a
+  load PUTS in those slots (§20). It KEYS A FIELD BY ITS WIRE ID, not its
+  source name — the identity `was` preserves (§5), because a `was` rename
+  moves no byte and must not invalidate every cooked file in existence.
+  Reordering two same-shaped fields does move bytes, and it moves which id
+  sits at which offset, so it still refuses. Both directions are held by test.
 
-  **It keys a field by its WIRE ID, not its source name.** That is the
-  identity `was` preserves (§5), and a `was` rename moves no byte — so it
-  must not invalidate every cooked file in existence. Reordering two
-  same-shaped fields does move bytes, and it moves which id sits at which
-  offset, so it still refuses. Both directions are held by test.
+  **ABI drift is a BUILD ERROR, not a refusal here.** The compiler computes
+  the layout and both backends assert it, so a compiler that lays a record
+  out differently fails to build, naming the type and the field (§20.3). That
+  is what lets the id be settled from the schema alone, which is what tooling
+  needs: a cook is produced before any game binary exists.
 
-  A format that rarely changes therefore keeps its id across builds by
-  construction: the id follows wire ids and offsets, so a layout nothing
-  touched does not move, and a mesh catalogue cooked last year opens
-  against this year's build if nothing in its closure changed.
+  **The id is UNIT-WIDE, so a cook outlives only what the unit does.** A mesh
+  catalogue is re-cooked when any table in its unit moves, not only when its
+  own closure does. That is the model rather than a cost — the work is
+  offline and a build cache exists to absorb it (§20.6) — and it is the price
+  of two ids in the whole design instead of three.
+
 - **A cooked file is TWO PARTS, and the header locates both.** The DATA
   comes first, at the region's alignment: it is `Lock`'s region written
   verbatim, the root at its base, and it is what the runtime points at.
   The ATTRIBUTION follows it: the node directory of §6.3, which says
-  where every node starts and what type it is. Nothing that reads the
-  structure touches the attribution, so a shipped build need not carry it
-  at all — the header records its length as zero and the file is just
-  data.
+  where every node starts and what type it is. **Nothing that READS the
+  structure touches it** — it is written beside the data for the TOOL
+  (`schema cook-check`, below — **not built**), so a build that ships no
+  tooling need not carry it at all: the header records its length as zero and
+  the file is just data.
 - **`Open` checks the header and points, and this is the WHOLE check**,
-  because nothing else is checked at all: the magic, the byte order it
-  establishes, the layout id, the two part lengths against the `size` the
-  caller passed — a truncated file refuses — and the alignment of the
-  base. On a match the bytes ARE what this build wrote, in this build's
-  layout and this build's byte order, so there is nothing to validate and
-  nothing to fix up: `Open` returns the root. That is the runtime path
-  and it is the default. On any failure it returns NULL and the caller
-  falls back to a wire load, which is the path that carries every
-  version.
-- **`OpenValidated` is the other entry point, and it is named rather than
-  implied.** It takes a cooked file whose provenance the caller does not
-  trust, or one a tool is diagnosing, and checks the data against the
-  attribution before returning anything. There is no SILENT bypass
-  anywhere: a caller either gets the layout-id guarantee, or asks for the
-  check by name. A file with no attribution part cannot be checked, so
-  `OpenValidated` refuses it and says which part is missing. **A cook
-  that arrived from somewhere else is where it earns its keep**: the
-  pipeline above contemplates a distributed cook farm, and a file that
-  crossed a machine boundary carries a matching layout id and nothing
-  else — a caller that wants more than the id's word takes the check by
-  name.
+  because nothing else is checked at all: **the magic, the byte order it
+  establishes, the build version, every RESERVED word zero, the two part
+  lengths against the `size` the caller passed — a truncated file refuses —
+  and the alignment of the base.** That is the enumeration, and it is stated
+  once: §11 and §20.6 cite it rather than repeat it. On a match the bytes ARE
+  what this build wrote, in this build's layout and this build's byte order,
+  so there is nothing to validate and nothing to fix up: `Open` returns the
+  root. That is the runtime path and there is no other. On any failure it
+  returns NULL and the caller falls back to a wire load, which is the path
+  that carries every version.
+
+- **`Open` is the RUNTIME's only entry point.** There is no second one: a
+  build either wrote a file or it did not, and the build version is what says
+  which. A cook is an accelerator for a build's own assets, and a runtime
+  that wanted to reason about a foreign one has already left the fast path.
+- **Validating an untrusted cook is a TOOL, not a runtime surface**:
+  `schema cook-check` (**not built**), over the same reflection descriptors
+  (§8) the runtime already carries, checking the DATA against the ATTRIBUTION.
+  That is where the case lives — a file whose provenance a person doubts, or
+  one a tool is diagnosing — and it is a person's decision to run it, not a
+  parameter on a load. A file with no attribution part cannot be checked, so
+  the command refuses it and says which part is missing. The ATTRIBUTION is
+  written beside the data for exactly this reader.
 - **The check is a SCAN of the attribution, not a traversal of the
   graph.** Two passes, in order:
   1. **The directory itself**, linearly and with no state: it lies inside
-     the file, every type id names a table this build has, the
+     the file, every type id names a table the unit has, the
      materialized offsets ascend, each is aligned for its own type, and
      each node's storage fits before the next entry. A sentinel entry
      (§6.3) refuses here — a cooked file is an accelerator and cannot
@@ -1774,6 +1850,7 @@ the wire, and keeps the flexibility that comes with it.
   the root can reach. The cost is `O(R + P log N)` — linear in the
   region, plus one search per pointer slot — with no allocation and no
   per-node state, and it terminates on every input.
+
 - **Pack order and checking are INDEPENDENT.** The region is packed in
   pre-order (§6.3) because that is the order the wire numbers nodes in
   and one order is simpler than two, but nothing in the check reads that
@@ -1790,22 +1867,23 @@ the wire, and keeps the flexibility that comes with it.
   A fixed-size table is one struct (§6.1), so its cooked form is the
   struct's bytes behind the header: memcpy it, or point at it where it
   lies. There is no region, no node table and no attribution, and the
-  layout id is the whole of the check.
+  build version is the whole of the check.
 - **Every refusal is loud and the fallback is a real wire load**: wrong
-  magic or byte order, a layout id this build did not produce, a
-  truncated file, an unaligned base — and, under `OpenValidated`, an
-  attribution part that is missing, leaves the file, carries a sentinel
-  entry, names a type this build does not have, does not ascend, or
-  overlaps a node with the next; a reference that leaves the region, that
-  the directory does not name, or that it names as another type; a
-  misaligned reference; a buffer outside its node's extent; a count
-  companion outside its declared bound.
+  magic or byte order, a build version this build did not produce, a
+  truncated file, a non-zero reserved word, an unaligned base. **And `schema cook-check`'s refusals are
+  the tool's, not the runtime's**: an attribution part that is missing,
+  leaves the file, carries a sentinel entry, names a type the unit does not
+  have, does not ascend, or overlaps a node with the next; a reference that
+  leaves the region, that the directory does not name, or that it names as
+  another type; a misaligned reference; a buffer outside its node's extent;
+  a count companion outside its declared bound.
+
 - **Alignment.** The header pads the data part to the region's alignment,
   so a base the allocator or `mmap` gave you is already aligned; `mmap`
   gives page alignment for free.
 - **Endianness is part of the COOK, not of `Open`.** A cook is produced
   in the byte order of the build it is cooked for — the cook knows its
-  target — so a matching layout id already means a matching byte order
+  target — so a matching build version already means a matching byte order
   and `Open` never fixes anything up. Cooking for a foreign target is
   where a byte swap would live if one is ever wanted (§15); a cooked file
   whose recorded order is not this build's is simply not this build's
@@ -1817,13 +1895,16 @@ for it. Here the tolerant wire stays the format of record and the cooked
 form is a build-locked accelerator beside it, produced only where load
 time asks for one. The two-form split is the design.
 
-**A COOK and a BLOCK are different accelerators and must not share a layout
-id.** Both are build-locked projections of one declaration, but they lay it
-out differently — a cook writes the by-value form verbatim, a block writes
-the projection with its rows out of line (§2.7) — so one id covering both
-would let a runtime accept one where the other was written. Each carries its
-own id, computed over its own facts, and neither is checked against the
-other's.
+**A COOK and a BLOCK are different accelerators and a runtime must never
+accept one where the other was written.** Both are build-locked projections
+of one declaration, but they lay it out differently — a cook writes the
+by-value form verbatim, a block writes the projection with its rows out of
+line (§2.7). **What separates them is the MAGIC**, which each form has its
+own of and which is read bytewise before anything else. They share the BUILD
+VERSION, because a build version answers "which build?" and not "which
+form?", and the projection carries both forms' facts (§20.2): a block's
+`slot` lines sit beside its record's `field` lines, so an edit to either
+moves the one id.
 
 **And prior art gets one MEASURED sentence, from the case §19 exists for.**
 The render data this document's second gate is held to (§12) was built with
@@ -2393,6 +2474,12 @@ editing or deleting a table moves no `ProtocolId` and no generated `type`
 byte: peers whose hardcoded wire did not change are never forced into a
 lockstep redeploy by a table edit. This independence is held by test.
 
+**A table edit moves the BUILD VERSION instead** (§20) — the id a cooked
+asset is addressed by — and the two directions are the whole of the
+relationship: a table edit moves the build version and never the protocol id;
+a type edit moves both. Peers connect on the protocol id alone and may differ
+in build version (§20.5).
+
 ## 11. Refused by name
 
 - `table` bodies containing `fixed`/`ufixed` or the 128-bit family (§2 —
@@ -2497,35 +2584,37 @@ lockstep redeploy by a table edit. This independence is held by test.
   region loaded correctly and reads correctly, but a cooked file is an
   accelerator and cannot carry a hole. `Cook` returns failure naming the
   index.
-- **A cooked file this build cannot point at** (§7): wrong magic or byte
-  order, a foreign layout id, truncation, or an unaligned base. `Open`
-  returns NULL; the caller falls back to a wire load. Under
-  `OpenValidated` the attribution's own refusals join it: a missing or
-  out-of-file attribution part, a sentinel entry, a type this build does
-  not have, a directory that does not ascend or overlaps a node with the
-  next, a reference that leaves the region or that the directory does not
-  name or names as another type, a misaligned reference, a buffer outside
+- **A cooked file this build cannot point at**: any of the six checks §7's
+  `Open` enumerates failing — the magic, the byte order, the build version, a
+  non-zero reserved word, either part length, the base's alignment. `Open`
+  returns NULL; the caller falls back to a wire load. `schema cook-check`
+  (§7 — **not built**) adds the attribution's own refusals, and they are the
+  TOOL's: a missing or out-of-file attribution part, a sentinel entry, a type
+  the unit does not have, a directory that does not ascend or overlaps a node
+  with the next, a reference that leaves the region or that the directory does
+  not name or names as another type, a misaligned reference, a buffer outside
   its node's extent, or a count companion outside its declared bound.
+
 - **A declaration colliding with a generated table spelling.** Tables and
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **36 suffixes**, and a declaration spelling one of them is
+  each of these **32 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
   At  Root  Emplace  Pack  PackMeasure  OpenWalk
-  Cook  CookMeasure  Open  OpenValidated  LayoutId  TableFields  TableInfo
+  Cook  CookMeasure  Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
-  BlockOpenCompatible  BlockBuildVersion  Counts
+  Counts
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
-  free yesterday must not become a collision tomorrow. The nine block
+  free yesterday must not become a collision tomorrow. The seven block
   spellings are claimed on the same terms and for a stronger reason: every
   fixed table has a block form (§2.7), so every fixed table claims them.
 
@@ -2642,7 +2731,7 @@ times a second, and faster than it simulates, because rendering need not
 wait for a tick — must be expressible as declared tables with nothing left
 over, with BOTH sides generated: a C++ producer writing the block, and a C#
 consumer POINTING at it and reading rows in place. The bar is not that it
-works. The bar is that it is at least as fast as the hand-written scatter it
+works. The bar is that it is as fast as the hand-written scatter it
 replaces, on both sides, and that nothing about the declaration made it
 slower.
 
@@ -2661,7 +2750,7 @@ Every layout fact — the projection's own offsets, each row's size, each
 pitch — is settled by the compiler and asserted into both generated sides
 (§19.3). Nothing is negotiated, discovered or checked at frame time: the
 producer writes at known offsets, the consumer points at known offsets, and
-the contract lives in generated asserts and a build-time digest rather than
+the contract lives in generated asserts and the build version rather than
 in a runtime check on the hot path. A cook does the same thing for an asset
 at load time; the block form does it for a frame, every frame.
 
@@ -2706,11 +2795,13 @@ compiler must be what says so.
 **the per-frame C++ WRITE and the per-frame C# READ**, generated form
 against the hand-written scatter and the hand mirror, paired in one sitting
 under the bench rules this repo already runs under — gated goldens first,
-medians paired, contaminated runs discarded whole. The generated form clears
-the gate only when neither number is slower. A regression on either is a
-defect to explain or close, not a trade to license: this is the
-fastest-correct mission applied to the rung the block form sits on, and the
-rung is the top one tables have.
+medians paired, contaminated runs discarded whole. **The bar is SAME SPEED,
+or not significantly slower**, and it is stated that way deliberately: a
+generated form that lands inside the noise of the hand-written one has
+cleared it, and a measurable regression on either number is a defect to
+explain or close, not a trade to license. This is the fastest-correct mission
+applied to the rung the block form sits on, and the rung is the top one
+tables have.
 
 **Its PROVENANCE, recorded because it explains two older requirements.**
 §9's relocatability and §6.4's multi-threaded, lock-free builder were
@@ -2881,7 +2972,7 @@ are these rulings, in the owner's words:
 - **The version rule**: "cooked data at a specific version should just
   load. It should probably only be loadable at that specific version", "or
   a subset of versions AT MOST", "consider an asset format that rarely
-  changes over time." Exact layout-id match is what §7 states; the
+  changes over time." Exact build-version match is what §7 states; the
   declared compatible set is the only widening contemplated, and it is a
   named follow-on (§15).
 - **Where the per-node bookkeeping lives**: "Can we keep the overhead and
@@ -2982,10 +3073,9 @@ Owner rulings, 2026-09-02, in the order given.
   in a distributed build cache sort of way... this is how it is usually
   done)". The ladder reads that as read-hot and write-cold, and §7 carries
   the addressing fact it rests on.
-- **How a cooked artifact is addressed** (§7): "so the hash of the asset and
-  the cooked version is the asset the runtime searches for" — "asset hash,
-  cooked version hash." / "(as in, build version, schema table protocol id
-  effectively...)".
+- **How a cooked artifact is addressed** — the rulings that opened the build
+  version are recorded together in §13.8, and §20 is the section they
+  produced.
 - **What C++ and C# each actually need**: "The way we currently read render
   data header in C++ and C# is just a builder issue in C++ and a reflection
   issue in C#." §19.1 is the builder half and §19.2 the reflective half, and
@@ -3053,6 +3143,45 @@ Owner rulings, 2026-09-02, in the order given.
   editor sentence above asks for — so the attribute, the three-valued flag,
   the reserved word they needed, and every refusal they brought with them
   went out together (§8.4, §14).
+
+### 13.8 The build version, ruled
+
+Owner rulings, 2026-09-02, in the order given. §20 is the section they
+produced.
+
+- **How a cooked artifact is addressed**: "so the hash of the asset and the
+  cooked version is the asset the runtime searches for." — "asset hash,
+  cooked version hash." / "(as in, build version, schema table protocol id
+  effectively...)".
+- **The concept, named as new**: "so this is a new concept. some sort of
+  'build version' that depends both on wire protocol id, and protocol id for
+  current set of tables, as they would cook."
+- **The invariant**: "Any cook binary divergence = new build version."
+- **The name**: "call it 'build version'"
+- **The trick, and it is the line the whole section turns on**: "now, the
+  trick is, protocol id remains as schema and types only" — §10's
+  independence, restated from the other side.
+- **The connect gate**: "we will only let a client connect/disconnect with
+  same protocol id as server" / "but it COULD potentially have different
+  table versions" (§20.5).
+- **And what carries the difference**: "and versioning would be expected to
+  save us." The protocol id refuses where nothing could save two peers; where
+  tables cross builds the tolerant wire (§4) is expected to, and the baseline
+  (§18) is what keeps that expectation honest.
+- **What the rule is FOR**: "so actual assets, like meshes, textures and
+  whatever." / "they are cooked to some build version, and can only be
+  loaded by a binary with that same build version"
+- **The tuple, and the ONLY meaning the name carries**: "consider the case of
+  tooling generating data from the same source assets, it needs to generate
+  and write asset X to a specific build version Y, thus the uniqueness tuple
+  in the data store cache of cooked assets is indexed by (X,Y) tuple. this is
+  the only meaning of build version that I had in mind, something that could
+  be Y." / "or that the game uses to *IDENTIFY* a cooked asset in a
+  distributed data store." / "during development." Tooling writes `(X, Y)`
+  before any game binary exists and the game asks for `(X, Y)`, which is why
+  Y is compiler-settled (§20).
+- **And the whole design's id count**: "yes on protocol id and build version"
+  — two ids, and §20 states them as the two.
 
 ## 14. Design notes: the models weighed
 
@@ -3323,17 +3452,18 @@ have added one are priced here.
   drops any array whose pitch differs. Shipping headroom costs that consumer
   its fast path in exchange for a property the owner has already called
   possibly obsolete. §15 holds it as a follow-on with the reason.
-- **An exact id, plus a NAMED compatible entry point — TAKEN, because an
-  append-tolerant id is impossible.** A single number cannot be verified
+- **ONE exact id and ONE entry point — TAKEN, because a block is
+  same-build.** A tolerant second entry point was weighed and dropped: both
+  sides of a block are generated from one declaration by one compiler run, so
+  a consumer older than its producer is half a shipped build rather than a
+  case to absorb, and a refusal is the honest answer to it. The id could not
+  have been made tolerant in any case — a single number cannot be verified
   against a PREFIX of the facts that produced it: a consumer that knows fewer
   fields cannot recompute the producer's number, and any fold that ignored
   the difference would ignore a real break too. So the block's id is exact —
-  the build version (§19.3) — and the tolerant path is a
-  second entry point a caller asks for BY NAME — §7's `Open` /
-  `OpenValidated` shape, for the same reason: no silent bypass, ever. What
-  that path checks is a `<=` on the pitch and never an equality against the
-  consumer's own constant, which is the difference between absorbing a grown
-  row and refusing one (§19.4).
+  the build version (§19.3), like a cooked file's (§7) — and there is nothing
+  beside it. What a cook and a block both keep is one surface each and no
+  silent bypass anywhere.
 
 **The view's shape** (§8). Four models were weighed against the owner's
 picture of it — an editor that inspects everything in the schema built:
@@ -3379,20 +3509,22 @@ repeating node-table field cost BYTES and nothing else — the record scan
 is linear either way, and a wider id compares no slower than a narrow
 one. The directory scan replaced a traversal with a scan of the same
 asymptotic class and a smaller constant, and it moved off the runtime
-path entirely (§7): a matching layout id points, and checks nothing.
+path entirely (§7): a matching build version points, and checks nothing.
 Where a cost is real it is stated with its number (§6.3) rather than
 deferred, and the optimization work that follows real profiles is not
 pre-empted here.
 
 ## 15. Named follow-ons
 
-- **A DECLARED COMPATIBLE SET of layout ids for the cooked form.** §7
-  loads a cooked file at exactly one layout id. The owner's "or a subset
+- **A DECLARED COMPATIBLE SET of build versions for the cooked form.** §7
+  loads a cooked file at exactly one build version. The owner's "or a subset
   of versions AT MOST" is the only widening ever contemplated: a build
-  declaring the ids it will accept, so an asset format that rarely
-  changes need not be re-cooked for a build whose layout did not move.
-  Everything about it is a decision — who declares the set, what proves
-  two layouts interchangeable — and none of that is decided here.
+  declaring the ids it will accept, so an asset format that rarely changes
+  need not be re-cooked for a build whose facts did not move. It matters
+  more under a UNIT-wide id than it would have under a narrower one, because
+  a catalogue is re-cooked when any table in its unit moves (§7).
+  Everything about it is a decision — who declares the set, what proves two
+  versions interchangeable — and none of that is decided here.
 - **Per-language backends beyond C++ and C#** (the refusal in §11 names this).
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12), and the FIXED class is what that
@@ -3419,10 +3551,14 @@ pre-empted here.
   presence bit beside the array's own count.
 - **Cross-endian COOKING**: producing a cook for a target whose byte order
   is not the cooking machine's, by swapping as the region is written. The
-  swap belongs at cook time because a cook is made for a known target
-  (§7), and the descriptors already carry the kinds and offsets it would
-  need. `Open` never swaps: a recorded order that is not this build's
-  means the file is not this build's, and it refuses.
+  ENDIAN FIX-UP ITSELF IS NOT DEFERRED — it is part of the cook and §7 states
+  it — and what is deferred is producing one for a FOREIGN target. The swap
+  belongs at cook time because a cook is made for a known target (§7), and
+  the descriptors already carry the kinds and offsets it would need. `Open`
+  never swaps: a recorded order that is not this build's means the file is
+  not this build's, and it refuses. A big-endian target is held by an
+  emulated CI leg rather than by argument (schema#303).
+
 - **A hash-guarded fallback loader** — open the cooked form, else load
   the wire — as a convenience helper.
 - **DECLARED STRIDE HEADROOM in the block form** — `| stride = N` on an
@@ -3436,12 +3572,11 @@ pre-empted here.
   both render data C++ and C# side now, it's less of a concern."* The case it
   exists for has zero declared strides today, and the one consumer that
   exists loses its cast path on any pitch that is not `sizeof` (§14).
-  **And §19.4's compatible path already absorbs the edit it was for**: a row
-  that grows moves its DERIVED pitch too, and a consumer checking
-  `its sizeof <= the pitch it reads` reads its own prefix at the new pitch
-  correctly. What headroom would add on top of that is a pitch that does not
-  move at all, which matters only to something outside the block that has
-  assumed one. Landing it is an attribute, its refusals, and the §18 row.
+  **And a row that grows moves its DERIVED pitch anyway**, which moves the
+  build version, which refuses at `BlockOpen` (§19.4) — so what headroom
+  would add is a pitch that does not move at all, and under one same-build id
+  that matters only to something OUTSIDE the block which has assumed one.
+  Landing it is an attribute, its refusals, and the §18 row.
 - **A SHARED BOUND across several out-of-line arrays.** `BlockMaxBytes` sums
   each array's declared maximum, and several arrays commonly draw from one
   pool — so the sum is loose by construction and reserves extent that can
@@ -4148,8 +4283,8 @@ had. One declaration, three projections of it.
 | form | contract | who reads it | cost |
 |---|---|---|---|
 | the wire (§3) | any version, tolerant, reported | anything, years apart | ids, kinds, lengths, a report |
-| the cook (§7) | one layout id, pointed at | a build at the cooked version | a cook, from a builder |
-| **the block (§19)** | **one layout, both sides generated, pointed at** | **a consumer generated from the same schema** | **rows at a fixed pitch** |
+| the cook (§7) | one build version, pointed at | a build at that version | a cook, from a builder |
+| **the block (§19)** | **one build version, both sides generated, pointed at** | **a consumer generated from the same schema** | **rows at a fixed pitch** |
 
 **What a block does NOT carry, in full**, because a reader coming from the
 wire will look for all of it: no field ids, no kind bytes, no lengths, no
@@ -4172,7 +4307,7 @@ table unit emits `<Base>Block.h` and `<Base>Block.cpp` beside its
 `<Base>Table.h` and `<Base>Table.cpp` (§13.5), and `<Base>Block.cs` for C#.
 The Block header carries the whole surface — the projection struct, the
 generated layout asserts (§19.3), the builder API (§19.1), and the
-`BlockOpen` / `BlockOpenCompatible` declarations (§19.2) — and the Block
+`BlockOpen` declaration (§19.2) — and the Block
 translation unit carries their definitions. **The Table headers carry nothing
 of it.** A consumer that uses the form includes the Block header and links the
 Block unit; a consumer that does not includes nothing and compiles nothing for
@@ -4248,7 +4383,7 @@ out when both are asked of one table.
 
 - **The PROJECTION at offset 0** (above). It opens with a generated PROLOGUE
   of two `uint64`s — `magic`, a constant identifying a schema block and the
-  byte-order check with it, and `build_version`, the id §19.3 names — and
+  byte-order check with it, and `build_version`, the unit's id (§20) — and
   the table's own fields follow, each at its natural offset, with every
   out-of-line array's storage replaced in place by its sixteen-byte
   `(offset_of, count, stride)`. The prologue is generated, as an optional's
@@ -4492,56 +4627,61 @@ the other's — both are checked against the compiler's own model, which is the
 only way a two-language contract can be held by a compiler that generates
 both halves.
 
-**The prologue carries the BUILD VERSION, not a per-table digest** (#292).
-There are two ids in the design — the protocol id for the wire's shape, and
-the build version for artifacts a build points at — and the block uses the
-second: `Begin` stamps this build's version into the prologue and `BlockOpen`
-checks it against its own. The LAYOUT is held by the asserts above, at compile
-time, on both sides; the build version is what says the two halves came out of
-one build. A producer and a consumer generated together match by
-construction, and one pair from two different builds does not.
+**The id in the prologue IS the unit's BUILD VERSION** (§20), and it is not a
+digest of its own. §20's cook projection carries a block's facts beside every
+other record's: the projection's own fields with their offsets and sizes, each
+out-of-line array's element and pitch, and every row field's offset, size and
+kind — the `block` and `slot` lines of §20.2. A cook and a block share the id
+and differ in their MAGIC, which is where a form's identity belongs (§7).
 
-**A declared MAXIMUM moves nothing a consumer reads AT.** It sizes the storage
-and moves the `offset_of`s written into the instance, and a consumer takes
-every `offset_of` from the instance (§19.2) rather than from a constant. So a
-build whose rows and fields did not move is read correctly by a consumer from
-an earlier build on the compatible path (§19.4), and a port that asserted a
-maximum on either side would break that with nothing to catch it. The rule for
-what belongs: a fact both sides must AGREE on is asserted; a fact a consumer
-READS is not.
+**A declared MAXIMUM moves NO `slot` line**, and for the block's own facts
+that is exactly right: a maximum sizes the storage and moves the `offset_of`s
+written into the instance, and it moves no offset a consumer reads AT, because
+a consumer takes every `offset_of` from the instance (§19.2). A triple is
+sixteen bytes whatever the maximum is. **But it is a `bound=` on the table's
+own `field` line, and the by-value `record` lines move with it**, because
+raising a maximum grows the inline array's storage and every later field's
+offset — and those lines are what a COOK of that table is opened against. So
+the build version moves, and `BlockOpen` refuses the edit like any other
+(§19.4).
 
-**What the contract sees, and what it does not.** It sees layout: a moved
-offset, a changed size, a different pitch. It does not see MEANING — a field
-whose units, frame of reference or interpretation changed while its offset
-and width did not moves nothing here, because no layout fact moved. A semantic
-version is therefore an ordinary field an author declares and owns, and
-neither the asserts nor the build version replaces or covers it.
+**What the id sees, and what it does not.** It sees layout and it sees
+meaning — the facts that decide what a load puts in a slot are §20's group 3.
+It does not see INTENT: a field whose units, frame of reference or
+interpretation changed while its offset, width, kind and declared range did
+not moves nothing, because no stated fact moved. A semantic version is
+therefore an ordinary field an author declares and owns, and the id neither
+replaces nor covers it.
 
 ### 19.4 Evolution
 
-**Three edits are absorbed** — but not by the same entry point, and which one
-matters:
+**A block is SAME-BUILD, and that is the whole of its evolution story.**
+Both sides are generated from one declaration by one compiler run, and the
+build version says whether the bytes in hand came from it. There is ONE
+entry point — `BlockOpen`, checking the magic, the byte order it
+establishes, the build version, the extent against the `bytes` the caller
+passed, the base's alignment, and each array's `offset_of` and extent inside
+the block. A match points; anything else refuses.
 
-1. **A field appended at the END of a block-form table** — a scalar, or a new
-   out-of-line array. Every earlier offset is unchanged; a consumer built
-   before the edit reads its own prefix of the projection at the same places,
-   and the arrays it knows are at the `offset_of`s the producer actually
-   wrote.
+**So every edit that moves the build version refuses at open, and both sides
+regenerate.** That is not a gap in a tolerance story, it is the absence of
+one: a producer and a consumer generated together cannot be at different
+versions unless someone shipped half a build, and a refusal is what should
+happen then. The three edits worth naming, because a reader coming from §4's
+tolerant wire will look for them:
+
+1. **A field appended at the END of a table with a block form** — a scalar, or a
+   new out-of-line array. Every earlier offset is unchanged, but the id moves
+   (a new offset and size), so `BlockOpen` refuses.
 2. **A field appended at the END of a row type.** The row grows and so does
-   its derived pitch — and because a consumer indexes at the pitch it READ,
-   its shorter row type lands correctly on every row.
+   its derived pitch; the id moves (a changed row size and pitch), so
+   `BlockOpen` refuses.
 3. **A declared maximum raised.** The storage grows and the `offset_of`s
-   move; the consumer reads them out of the instance.
-
-**All three are absorbed on the COMPATIBLE path and none on the default one**,
-and that follows from what the two entry points check. `BlockOpen` is the
-SAME-BUILD check: the build version an older consumer carries is not the one
-the producer stamped, whatever the edit was, so it refuses. Absorbing an edit
-is therefore always a caller asking for the weaker check by name, which is
-§14's "no silent bypass" holding: what makes these three absorbable is not
-that they escape an id, but that `BlockOpenCompatible`'s own checks — the
-extent, the alignment, each array's `offset_of` and extent, and this build's
-`sizeof( element ) <= the stride it read` — all pass for them.
+   move; the consumer reads them, so nothing it reads AT has moved and its
+   own `slot` facts are unchanged. **The id moves anyway**, because the
+   table's by-value layout moved and the id covers a cook of that
+   table too (§19.3, §20.4) — so `BlockOpen` refuses like the other two, and
+   the three are one rule instead of three cases.
 
 **Everything else is a break, and the GENERATED ASSERTS refuse it** (§19.3):
 a field inserted before the end, reordered, removed or retyped, in the table
@@ -4551,34 +4691,15 @@ byte the other side reads at, and a block has nothing that could report it —
 which is why the refusal is at compile time and loud, and why the baseline
 (§18) carries none of it.
 
-**And the runtime has ONE more entry point, taken by name.**
-`<Table>BlockOpenCompatible` checks **everything `BlockOpen` checks except
-the build version** — the magic, the byte order, the extent, the alignment,
-and each array's `offset_of` and extent inside the block — and then, per
-array it knows, **this build's `sizeof( element ) <= the stride it read from
-the instance`**. Never an equality, and never against its own pitch constant: a
-producer whose rows have grown writes a larger pitch, and it is precisely
-that case this entry point exists to absorb.
-
-**It drops the id check and NOTHING ELSE**, which is the only defensible
-shape: the bounds checks read the instance's own numbers against the extent
-the caller passed and need no layout agreement at all, so there is no reason
-to do fewer of them on the path that by definition takes bytes from a build
-this one does not match. A tolerant entry point that also trusted more would
-be the wrong trade in both directions.
-
-It is the tolerant path made available to a caller who deliberately runs a
-consumer older than its producer: a transitional deploy, a hot reload, a tool
-built against last week's schema. **There is no silent bypass** — a caller
-either gets the build version's guarantee from `BlockOpen`, or asks for the
-weaker one by name, exactly as §7 splits `Open` from `OpenValidated`. A
-single number cannot be checked against a prefix of the facts that produced
-it, and pretending otherwise is what the second entry point exists to avoid
-(§14).
+**The STRIDE still rides in the instance, and it still must be read from
+there** (§19.2). It is not a tolerance mechanism — the id already settled
+that both sides are one build — it is what keeps the consumer's indexing a
+fact of the data rather than a constant it compiled in, which is the
+difference between a form and a convention.
 
 ### 19.5 Held by test
 
-- **A dogfood-shaped block-form table in the corpus** — a root of several
+- **A dogfood-shaped table with a block form in the corpus** — a root of several
   bounded arrays over fixed-size row types with a nested `type` apiece —
   compiled, built and read by every backend that carries the form.
 - **A REAL multi-threaded fill.** N workers fill disjoint index ranges of
@@ -4611,11 +4732,13 @@ it, and pretending otherwise is what the second entry point exists to avoid
   wrong one and pass.
 - **The refusal battery**: one fixture per §11 block refusal, each with its
   negative control.
-- **The evolution battery** (§19.4), against the generated asserts and the
-  two entry points rather than against a baseline: a field inserted in the
-  middle fails the build, a field appended at the end of the table and one
-  appended at the end of a row each open under `BlockOpenCompatible` and not
-  under `BlockOpen`, and a maximum raised opens under both.
+- **The evolution battery** (§19.4), against the generated asserts and the one
+  entry point rather than against a baseline: a field inserted in the middle
+  fails the build; a field appended at the end of the table, a field appended
+  at the end of a row, and a maximum raised each move the build version and
+  each REFUSE at `BlockOpen`, which is the same rule three times and is what
+  same-build means.
+
 - **The zero-cost gate** (§19): the Table headers are byte-identical with the
   Block files generated and with them absent, and the build fails if one
   symbol of the block machinery appears in a Table header.
@@ -4631,3 +4754,526 @@ it, and pretending otherwise is what the second entry point exists to avoid
 its rows are fixed tables, the facts about its rows are fields of the table
 that holds them, and every one of those is a struct with a wire beside it.
 Nothing here is a new kind of thing: **it's tables all the way down.**
+
+## 20. The build version
+
+**Tooling cooks asset X to build version Y, and `(X, Y)` is the tuple a
+distributed store is indexed by** — written by the tools that produce a cook,
+asked for by the game that loads one. That is what the build version is for,
+and everything below follows from it.
+
+**The invariant is one sentence: any divergence in the bytes a cook would
+produce is a new build version.**
+
+**There are TWO UNIT-WIDE VERSION IDS in this design and no others** — the
+per-node type id §6.3 writes into a directory is an identity, not a version.
+The PROTOCOL ID is the type wire's, and it is the connect gate (SPEC.md §3):
+same-or-refuse, tables never in it. The BUILD VERSION is everything cooked or
+blocked: the cooked header carries it (§7), the block form's prologue carries
+it (§19), and the store is keyed by it. **A table edit moves the build version
+and never the protocol id; a type edit moves both.**
+
+**It is COMPILER-SETTLED, and that is the property the tuple rests on.**
+Tooling cooks before any game binary exists, so Y has to be knowable from the
+schema alone. The compiler owns every fact in it, including the layout: it
+computes each record's layout from its own C ABI model — the model §19.3
+states and both backends MUST assert against (§20.3) — and emits the id as one
+constant. A build whose compiler lays a record out differently is meant to
+fail to BUILD, loudly, naming the type and the field; those asserts are owed
+and not yet emitted, which §20.3 states in full.
+
+**Backend status: specified, unimplemented.** No backend emits `BuildVersion`,
+`schema build-version` does not exist, and `schema cook-check` (§7) does not
+either. Five emitter obligations stand against this section, stated so a port
+inherits them rather than discovering them, largest first:
+
+1. **The C# fixed class is not blittable.** §20.3's contract needs
+   `StructLayout(Sequential, Pack = 1, Size = N)` storage with generated
+   padding fields; the C# backend states today that *"a C# field has no
+   offsetof and a C# class has no meaningful sizeof"*, which is the shape that
+   has to change. This is the largest item by a distance.
+2. **Neither backend asserts the compiler's layout model.** C++ emits one
+   `is_standard_layout` assert and no `sizeof`/`offsetof` assertion; the
+   `offsetof` it does emit POPULATES descriptors from the target compiler's
+   answers, which is the opposite direction. Until these land, §20.3's
+   guarantee is specified and not held.
+3. **The build version is 64 bits** and the C++ emitter's existing id constant
+   is 32.
+4. **It is a constant of the UNIT**, and the existing per-table id constants
+   retire into it.
+5. **§7's cooked header takes 64-bit part LENGTHS — both of them** — where the
+   C++ runtime writes one 32-bit length, which reimposes at cook time the
+   ceiling §3.1 removed.
+
+### 20.1 What it digests
+
+Three groups, and the grouping IS the definition — a cook's bytes depend on
+the type wire, on what the region looks like, and on what a load puts in it.
+
+1. **THE TYPE WIRE: the unit's protocol id** (SPEC.md §3.1). Types nest in
+   tables BY VALUE and their bytes are written into the region verbatim, so
+   the wire-shape projection rides in whole, already reviewed, as one id.
+2. **THE LAYOUT of every record in the unit's table closure** — each record's
+   `sizeof` and `alignof`, and per field its WIRE ID, kind, offset, size, the
+   DECLARATION it names, its array class, bound and key, an out-of-line
+   array's pitch, and a presence companion (§20.2). Keyed by wire id and not
+   by source name, because a `was` rename moves no byte and must not
+   invalidate a cooked file. **Kind is a fact in its own right**: a `uint32`
+   retyped to `float32` moves no offset, no size and no wire id, and a load
+   that kind-mismatches leaves the slot at its default (§4) — different bytes
+   under an id that had not moved. **And so is the REFERENT**: a kind number
+   says a record is nested and not WHICH one, so two same-shaped records are
+   interchangeable to a digest that stops there, and the nested body then
+   decodes under different field ids. Every referent has a name on its line.
+
+3. **THE MEANING: what a wire load PUTS in those slots.** A cook is produced
+   from a builder that a load filled, so a fact that changes what a load
+   produces changes the cook's bytes while moving no offset at all. **Four
+   kinds of declaration do it**:
+   - every field's **specified default** — an elided field means the reader's
+     declared default (§3), so the same bytes materialize a different value;
+   - every field's **effective declared RANGE** — a `min`/`max`, a compressed
+     float's declared range and resolution, and the `[0, 2^N − 1]` a `bits(N)`
+     field declares by its width (§8). §4 clamps an out-of-range value to the
+     READER's bounds and counts it, so tightening a range changes what a load
+     stores while the offset, the size, the storage kind and the wire id all
+     stay put — *"the bound is not part of identity"* (§4) is precisely why
+     nothing else sees it;
+   - every `enum`'s **variant order and names** — an enum rides as the hash of
+     its VARIANT NAME (§3) and a slot stores the ORDINAL, so a rename makes a
+     stored variant unknown and a reorder lands it on a different ordinal;
+   - every `union`'s **arm order and names** — the same two facts one level
+     up: the wire resolves an arm by name hash and the slot stores its tag.
+
+**And the BYTE ORDER**, one line, because a cook is produced in the byte order
+of the build it is cooked for (§7): two builds alike in every other fact
+produce different cook bytes, and a tuple that addresses two different
+artifacts is a defect in the tuple. It is a generation input, `little` for
+every target schema generates for today; a big-endian cook is the cross-endian
+question §15 owns.
+
+**The set is closed, and the table below is the proof.** Every
+declaration-side fact this language has appears in it exactly once, assigned
+to the group that carries it or to `none` with the reason it carries nothing.
+A meaning fact is one that changes a stored VALUE while moving no offset, no
+size and no wire id; there is no fourth kind of such fact.
+
+**Every fact below has a TOKEN that carries it** (§20.2), and that is the rule
+the table is held to: a fact with no token is a promise the digest does not
+keep, so it belongs in `none` with its reason or the token belongs on the line.
+
+| declaration-side fact | carried by | the token, or the reason there is none |
+|---|---|---|
+| `package` | wire | the `protocol` line — it is in the wire-shape projection (SPEC.md §3.1) |
+| every fact of a `type` declaration's wire | wire | the `protocol` line, in full |
+| a record's NAME | layout | the `record` line |
+| a field's name | layout | `field <id>`, through its wire id |
+| a `was` alias | layout | none needed: it holds the wire id fixed, so the rename pair moves no line |
+| a field's kind, storage width, declaration order | layout | `kind=`, `size=`, and the `offset=`s the order produces |
+| the DECLARATION a field or its element names | layout | `type=` / `enum=` / `union=` — the name, not just the kind number |
+| a union arm's payload type | layout + wire | `payload=` on the `arm` line, and the type's own facts through the protocol id |
+| array class and bound; string/`bytes` capacity | layout | `array=`, `bound=`, and the `size=` they produce |
+| a keyed array's KEY enum | layout | `key=` — its slots ride by that enum's variant-name hashes (§3.2) |
+| an out-of-line array's pitch | layout | `stride=` on the `slot` line |
+| `?T` presence companion | layout | `optional=true`, and the `size=`/`offset=`s the companion moves |
+| `*T` reference slot | layout | kind `17` with `type=` naming the pointee |
+| a `flags` field's storage width | layout | `size=` |
+| a specified DEFAULT | **meaning** | `default=` — an elided field materializes it (§3) |
+| a declared `min`/`max`; a compressed float's range; `bits(N)`'s implied range | **meaning** | `min=` / `max=` — §4 clamps a load to the reader's bounds |
+| a compressed float's RESOLUTION | **meaning** | `step=` |
+| an `enum`'s variant order and names | **meaning** | the `variant` lines — the wire carries a name hash, the slot the stored value (§3) |
+| a `union`'s arm order and names | **meaning** | the `arm` lines, the same one level up |
+| a `flags`' variant order and names, and WHICH flags declaration a field names | none | a mask rides raw and a load copies it VERBATIM — no masking rule, no report counter (§3, §4). A reorder changes what the bits MEAN and not one cook byte; §4.1's discipline and §18's baseline are its guard. Hence no `flags=` token |
+| `cpp_native` / `cpp_include` | none | SPEC.md §6.1 guarantees layout identity by DERIVATION — the native type is the one the emitted struct would have had — so there is nothing for a token to distinguish |
+| an `if` GUARD added or removed | none | a load finds a field by its id whatever branch encloses it, with every counter zero (§4.1). The cost is on the next WRITE, which is §18's case and not a cook's |
+| the `json` key (§16.4) | none | a cook is produced from the WIRE file, whose hash is the tuple's other half (§7) |
+| a `const` declaration | none of its own | its value flows into a bound (layout) or a default or range (meaning) and is EVALUATED into that token |
+| a type tag | none | it claims meaning no generated byte depends on (SPEC.md §3.1) |
+| comments, whitespace, file names, file layout, declaration ORDER ACROSS records | none | none of it reaches the projection |
+| a `tables.baseline`, its history, a `--reason` | none | a record of what an edit may do, not a fact a byte depends on |
+
+**The closure is TRANSITIVE** — every table, `type`, `enum` and `union` the
+unit's tables reach, at any depth, including an enum-keyed array's KEY. A
+declared `type` is a record here exactly as a table is, because on the table
+wire *"an arm's body is a table body whether the arm names a declared `type`
+or a `table`"* (§3), and because *"fixed tables and types are semantically the
+same (structs)"* (§13.6). A unit that declares no table has a projection of
+its header lines alone.
+
+### 20.2 The cook projection, and the id taken over it
+
+**The build version is the low 64 bits of SHA-256 — the final eight bytes,
+interpreted big-endian — over the unit's COOK PROJECTION**, which is exactly
+how the protocol id is taken over the wire-shape projection (SPEC.md §3.1),
+for exactly its reason: what an id depends on has to be printable, readable
+and diffable, and a fact missing from it has to be a review question rather
+than an implementation detail. **One id, one instrument, one text** —
+`schema build-version --facts` prints it.
+
+**The projection is ASCII, every line terminated by one `\n`, no blank
+lines.** Tokens are separated by exactly one space; a nested line is indented
+four spaces. Ids are four lowercase hex digits; sizes, offsets and bounds are
+decimal; and every value is the schemafmt-canonical text of the EVALUATED
+value (§18.1) — what a constant now produces, never how it was spelled.
+
+```
+schema-build-version <N>
+protocol <16 lowercase hex>
+byteorder little|big
+```
+
+Then the records, SORTED BY NAME byte-wise over UTF-8, each followed by its
+fields in DECLARATION ORDER — which is a layout fact, and the offsets on the
+lines are what it produces:
+
+```
+record <Name> sizeof=<n> alignof=<n>
+    field <id> kind=<n> offset=<n> size=<n>
+        [ type=<Name> | enum=<Name> | union=<Name> ]
+        [ elem=<n> ] [ array=fixed|bounded|keyed ] [ bound=<n> ] [ key=<Name> ]
+        [ stride=<n> ] [ optional=true ]
+        [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
+```
+
+**The optional tokens appear in that order and only where the fact exists**,
+and they are one line on the wire — the display above is wrapped for reading.
+The REFERENT tokens are the load-bearing half and they mirror §18.1's, for
+§18.1's stated reason — *"a field that names a declaration records WHICH KIND
+of declaration it names"*:
+
+- **`type=` / `enum=` / `union=`** name the declaration this field, or its
+  ARRAY ELEMENT, refers to. Without them a retype between two same-shaped
+  records moves nothing: `Buff { multiplier float32 }` and
+  `Debuff { amount int32 }` are both `sizeof=4 alignof=4`, so a field swapped
+  from one to the other keeps its kind, size, offset and wire id while the
+  nested body decodes under different field ids. The kind number says a
+  record is nested; the name says WHICH.
+- **`key=`** names a keyed array's KEY enum, because its slots ride by that
+  enum's variant-name hashes (§3.2): `[Difficulty]int32` and `[Team]int32` are
+  the same kind, the same element and the same four slots at the same offsets,
+  and they are not the same data.
+- **`array=` and `bound=`** name the array's CLASS and its evaluated extent,
+  so a fixed array and a bounded one of the same width are distinguishable and
+  a moved bound is visible beside the `size` it produced.
+- **`optional=true`** marks a presence companion, which is a slot the other
+  side reads.
+- **There is deliberately NO `flags=` token.** A flags field's referent is not
+  a cook fact: the slot holds a raw mask, a load copies it verbatim, and
+  swapping one flags declaration for a same-width other changes no byte
+  (§20.1). Its WIDTH is carried by `size=` like any other field's.
+- **A plain integer with no declared bound carries no `min=`/`max=`**; a
+  `bits(N)` field carries the range it declares by its width, `min=0
+  max=<2^N − 1>` (§8).
+
+**A variable-length table is a record like any other.** Its node is a struct
+(§6.1) with a `sizeof` and an `alignof`, and a pointer field is a kind `17`
+slot whose `type=` names the pointee — so a pointered unit projects exactly as
+a fixed one does, and nothing about the arena or the region appears here.
+
+Every record with a block form (§19) is followed by its PROJECTION, whose
+slots are the other side's contract:
+
+```
+block <Name> sizeof=<n> alignof=<n>
+    slot <id> offset=<n> size=<n>[ out_of_line stride=<n>]
+```
+
+Then the enums and then the unions, each set sorted by name, variants and arms
+in declaration order:
+
+```
+enum <Name>
+    variant <stored value> <name>
+union <Name>
+    arm <stored tag> <name> payload=<Name>
+```
+
+**The number is the STORED VALUE, not a positional index**, because what group
+3 captures is what a slot holds: `None = 0` is implicit on both (SPEC.md
+§4.2), it is never listed, and declared variants and arms therefore start at
+`1`. An arm carries its `payload=` for the same reason a field carries
+`type=`: two arms of the same shape are not the same arm.
+
+**There is no `flags` line and no `flags=` token** (§20.1): a flags field has
+a `field` line like any other, and neither its declaration's identity nor its
+variants are facts a cook's bytes depend on.
+
+**The first line is the projection's own FORM VERSION**, and it is the COOK
+FORM's too. Bump `N` when this rendering changes, and bump it when the cook's
+own form changes — the region's pack order (§6.3), the node directory's
+encoding, the header's shape. Those are compiler and runtime facts rather than
+declaration facts, and without a version for them a cook's bytes could diverge
+with the id unmoved, which the invariant does not permit.
+
+**Worked, so a second implementation reproduces the number.** Take:
+
+```
+package demo
+
+enum Grade { Bronze, Silver, Gold }
+
+table ShipConfig
+{
+    damage float32 = 21.0
+    speed  float32 = 500.0 | was = "velocity"
+    armor  uint8 | min = 0, max = 100
+    grade  Grade = Silver
+}
+```
+
+Every number below derives from a rule on a page; none of it is declared.
+
+- **Wire ids** are `fold16(fnv1a32(name))` over the EFFECTIVE name (§5), so
+  `speed` keys on `velocity`: `damage` `15a9`, `velocity` `2e46`, `armor`
+  `7c9d`, `grade` `d272`.
+- **Kinds** are §3's closed set: `10` f32, `6` u8, and an enum rides as u16 —
+  kind `7` — whatever its declaration-side storage.
+- **`Grade`'s STORAGE is `uint8`**, and it is derived rather than chosen:
+  `None = 0` is implicit, the three declared variants pack from 1, `max`
+  derives as the count, and *"enum storage derives from the enum's own max —
+  the smallest unsigned integer that fits"* (SPEC.md §4.2). `max = 3` fits in
+  a byte.
+- **The layout** is the C ABI's natural one (§20.3): `damage` at 0 and
+  `speed` at 4, both four wide; `armor` at 8, one wide; `grade` at 9, one
+  wide; the record's alignment the greatest of its fields' — 4 — and its size
+  10 rounded up to it. `sizeof=12 alignof=4`.
+- **The variants' numbers are STORED VALUES**, so they run 1, 2, 3 and `None`
+  is not listed.
+
+With the protocol id `0x0123456789abcdef` and a little-endian target, the
+whole projection is:
+
+```
+schema-build-version 1
+protocol 0123456789abcdef
+byteorder little
+record ShipConfig sizeof=12 alignof=4
+    field 15a9 kind=10 offset=0 size=4 default=21.0
+    field 2e46 kind=10 offset=4 size=4 default=500.0
+    field 7c9d kind=6 offset=8 size=1 min=0 max=100
+    field d272 kind=7 offset=9 size=1 enum=Grade default=Silver
+enum Grade
+    variant 1 Bronze
+    variant 2 Silver
+    variant 3 Gold
+```
+
+and the build version is **`0x7402a36de22d9728`**. The same unit with no table
+at all — its three header lines, that same protocol id, and nothing else — is
+**`0x49947af3382f914e`**, deliberately not equal to the protocol id, so no
+caller can substitute one for the other by accident.
+
+
+### 20.3 The compiler computes the layout; the backends must assert it
+
+**§19.3's model, unit-wide.** A record's layout is the C ABI's natural one:
+each field at its own alignment, the struct's alignment the greatest of its
+fields', the size rounded up to it. The compiler derives every offset and size
+from the declaration and folds them into the build version, and each backend
+OWES code asserting that ITS OWN compiler agrees — C++ `static_assert`s on
+`sizeof` and `offsetof`, C# blittable storage (`StructLayout(Sequential,
+Pack = 1, Size = N)`) with generated padding and a once-run layout check
+(§19.3 states both in full). **A disagreement is a BUILD ERROR on the side
+that disagrees**, naming the type, the field, the expected offset and the one
+its compiler produced.
+
+**Those asserts are the block form's obligation and they are NOT in the tree
+today.** The C++ backend emits one layout assert (`is_standard_layout`) and no
+`sizeof`/`offsetof` assertion of the compiler's model, and the C# fixed class
+is not blittable at all. Until both land, this section's guarantee is a
+specification and not a property of any build: **two builds whose ABIs differ
+would share a build version and cook different bytes, with nothing to say
+so.** The model is not self-evidently right either — on 32-bit System V
+`alignof(uint64_t)` is 4, not 8 — which is precisely why it is asserted rather
+than assumed, and why "it never reaches a cook" is a claim the asserts make
+true rather than one the model makes true on its own.
+
+**That is what replaces an ABI term in the id.** ABI drift as a runtime
+refusal — a cooked file that opens as NULL and degrades to a wire load nobody
+sees — becomes a build failure, which is louder, earlier and cheaper, and it
+is the only way Y can be settled before a binary exists. The price is stated
+rather than hidden: the compiler's layout model is committed to **every
+cookable closure**, not only to blocks and rows, so a platform the model gets
+wrong fails to build instead of degrading.
+
+
+### 20.4 What moves it, and what does not
+
+**It MOVES on:**
+
+- any edit that moves the unit's protocol id — every fact SPEC.md §3.1
+  includes. **A type edit moves both ids**, and that is the whole of the
+  overlap between them;
+- **a record added, removed or renamed**, and an enum or union likewise;
+- any edit that moves an offset, a size, an alignment, a KIND or a field's
+  effective WIRE ID: a field added, removed, retyped or reordered; a string or
+  `bytes` capacity changed; a field moved between `T`, `?T` and `*T`; a nested
+  record changing shape; a field renamed WITHOUT `was`;
+- **any edit that changes WHICH declaration a field names**, even between two
+  of identical shape: a nested record swapped for a same-`sizeof` other, an
+  enum-keyed array's KEY enum swapped, an enum field retyped to the raw
+  integer it rides as, a union arm's payload swapped. Each keeps the kind, the
+  size, the offset and the wire id and changes what the bytes MEAN, and each
+  moves a `type=`, `enum=`, `union=`, `key=` or `payload=` token;
+- **a declared MAXIMUM raised or lowered.** It is a `bound=` on the field
+  line, and the inline storage it sizes moves with it: the array field's
+  `size` grows, every later field's `offset` moves and the record's `sizeof`
+  moves with them. It could not be excluded even if a block would rather it
+  were — a build that read another's cook under a larger declared maximum
+  would read past the region — and under one same-build entry point per form
+  there is nothing for the exclusion to buy: `BlockOpen` refuses this edit
+  exactly as it refuses an appended field (§19.4), and both sides regenerate.
+  The block's own `slot` lines still do not move, because a triple is sixteen
+  bytes whatever the maximum is;
+
+- **a specified default changed, added or removed**, and **a declared range
+  tightened, loosened, added or removed** — group 3, and the reason group 3
+  exists;
+- **an `enum` variant inserted, removed, reordered or renamed**; a `union` arm
+  inserted, removed, reordered or renamed;
+- **the target's BYTE ORDER**;
+- a `ProjectionVersion` bump, or a bump of the cook projection's own form
+  version (§20.2).
+
+**It does NOT move on:**
+
+- comments, whitespace, file names, file layout, and declaration order ACROSS
+  records — the projection sorts records by name, so only order WITHIN a
+  record is a fact, and it is a fact because it produces the offsets;
+- **a `was` rename** — a layout line carries the wire id, so the rename pair
+  moves nothing, which is §7's stated obligation: a `was` rename must not
+  invalidate every cooked file in existence;
+- **any `flags` edit — a variant renamed, inserted, removed or reordered.** A
+  mask rides as raw bits and a load copies it verbatim: the page states no
+  mask-to-width rule and §4's report has no counter for a bit outside the
+  declared set, so no cook byte moves. What a reorder changes is what the bits
+  MEAN, which is §4.1's silent class, answered by its discipline (append at
+  the end) and by §18's baseline refusing the edit at compile time. Putting it
+  in the id would be over-refusal on a fact no cook's bytes depend on. (The
+  field's storage WIDTH is a different thing and it is a layout fact.);
+- **a GUARD added or removed** around an existing field. A load finds a field
+  by its id whatever branch now encloses it, with every counter zero (§4.1);
+  the cost lands on the next WRITE, which is the baseline's case and not a
+  cook's. A reader who has just read §4.1 will look for this row, so it is
+  here;
+- **the `json` key** (§16.4) and anything else the TEXT form owns. A cook is
+  produced from the WIRE file, and §7 defines the tuple's other half as that
+  file's hash;
+- **baseline-only facts** (§18): whether a `tables.baseline` exists at all,
+  its recorded history, a `--reason`, its rendering version. §18 is untouched
+  by this section and untouched by the build version;
+- **a `flags` field's REFERENT** — swapping one flags declaration for a
+  same-width other. There is no `flags=` token, and that is deliberate: the
+  slot holds a raw mask and a load copies it verbatim, so no cook byte moves
+  (§20.1);
+
+- **adding a target LANGUAGE**, which changes no fact the compiler folds.
+
+### 20.5 The connect gate is the protocol id, and nothing else
+
+**Peers connect on equal protocol ids; they may differ in build version.**
+The type wire is same-or-refuse because nothing could save two peers whose
+hardcoded bits disagree. Tables between the same two peers ride the tolerant
+wire (§4), where any reader reads any data and the differences are reported —
+so a build-version difference is not a connection question, and §10's
+independence is the reason: a table edit never forces a lockstep redeploy.
+
+**Cooked assets are LOCAL, on both sides.** Each peer loads assets cooked to
+its own build version, out of its own store, and neither ever sees the
+other's. Nothing about a cook crosses a connection; what crosses builds is the
+asset's WIRE form, through tooling, which is the form that carries every
+version.
+
+### 20.6 The tuple
+
+**`(asset hash, build version)` and nothing finer.** Tooling produces a cook
+under it, the store is indexed by it, and the game asks for it. §7 defines the
+asset hash as the hash of the WIRE file the cook was produced from, which is
+what makes the pair well defined.
+
+**A new build version is a new cook, and that is the model rather than a
+cost.** The work is offline and the store absorbs it: a build cache exists to
+make re-cooking cheap, which is why the cooking side is a build cost and not a
+runtime one (§7). Nothing finer than the unit is keyed, and nothing needs to
+be — a finer key buys a smaller re-cook and pays for it with a second id, and
+this design has two ids in total.
+
+**The cooked header carries the build version, and `Open` is a match** — the
+six-item check §7 states, in one place, with the build version among them. On
+a match the bytes ARE what a build at this version wrote, so there is nothing
+to validate and nothing to fix up (§7). A hit in the store under the right
+tuple therefore cannot be refused by `Open`, save on a corrupt or truncated
+file, where it returns NULL and the caller falls back to a wire load — the
+path that carries every version.
+
+**The block form carries the same id in its prologue** (§19.1), and `BlockOpen`
+checks it the same way. A cook and a block are still different accelerators
+and a runtime still cannot accept one where the other was written: what
+separates them is the MAGIC, which is where a form's identity belongs, and not
+a second digest.
+
+### 20.7 The surface
+
+- **`schema build-version <unit>`** prints the build version.
+- **`schema build-version --facts <unit>`** prints the cook projection of
+  §20.2, in the tradition of `schema projection`: the facts are printable,
+  readable and diffable, or a fact missing from them is invisible.
+- **Every backend emits one constant** beside `ProtocolId` — `BuildVersion` /
+  `BUILD_VERSION`, in that backend's own naming convention (SPEC.md §6.1),
+  as a literal, because the compiler settled it.
+- **It never enters a projection, and nothing derived from it does.** The
+  wire-shape projection (SPEC.md §3.1) and §20.2's cook projection are
+  INPUTS; the tables baseline (§18) is independent of it in both directions.
+  A derived id that fed back into what derives it would be a cycle, and the
+  protocol id in particular must stay the type wire's alone.
+- **`schema id` is unchanged**, in every respect. It prints the protocol id,
+  it depends on the wire-shape projection and nothing else, and no table fact
+  reaches it.
+
+### 20.8 Held by test
+
+- **The independence pair, both directions** (§10's test, extended): a table
+  edit moves the build version and does not move the protocol id; a type edit
+  moves both. The second is the one that must never regress.
+- **The meaning group's negative controls**, each isolating a fact no layout
+  line sees: a specified default changed; **a declared range tightened**; **a
+  `bits(N)` narrowed within one storage width** — the case where the implied
+  range moves and the storage kind, the size and the wire id do not; an `enum`
+  variant renamed; two `enum` variants swapped; **a `union` arm RENAMED** —
+  the rename and not a reorder, because SPEC.md §3.1 already puts union
+  variant ORDER in the protocol id, so a reorder would pass through group 1
+  with group 3's union fact deleted.
+- **The layout group's own controls**: a field's KIND changed with its width
+  unmoved; a field's offset moved with the record's `sizeof` unmoved; **a
+  declared maximum raised** — which moves it, and whose §19.4 consequence is
+  tested there.
+- **The REFERENT controls, each a same-shape swap that every other fact
+  survives** — these are the ones a digest without `type=`/`enum=`/`union=`/
+  `key=`/`payload=` passes in silence: a field retyped between two records of
+  identical `sizeof` and `alignof`; a keyed array's KEY enum swapped for
+  another of the same variant count; an enum field retyped to the raw integer
+  it rides as; a union arm's payload swapped for a same-shaped record. Each
+  must move the build version with kind, size, offset and wire id all
+  unchanged.
+
+- **The exclusions, each with the edit that proves it**: a `was` rename moves
+  nothing; **a `flags` variant REORDERED moves nothing** — the row the
+  discipline of §4.1 and the baseline of §18 own instead; a `flags` variant
+  renamed moves nothing; **a flags field's REFERENT swapped for a same-width
+  other moves nothing** — the negative control for the missing `flags=` token;
+  a guard added or removed moves nothing; a `json` key changed moves nothing;
+  a comment, a file split and a reorder of two records' declarations move
+  nothing.
+
+- **The inclusions the sort order could hide**: a record renamed, added or
+  removed moves it; the target byte order moves it.
+- **The worked example of §20.2 is a golden**, projection text and digest
+  both, so a port reproduces the text and not only the number.
+- **Goldens over the corpus** (SPEC.md §7.2 gate 2's sibling): `schema
+  build-version` pinned as an exact value per unit, and the `--facts` text
+  pinned beside it, so any change to how it is computed breaks every pinned
+  value loudly.
+- **The layout model is held by its asserts, not by agreement**: perturb one
+  field's offset in the compiler's model and BOTH backends go red; that is
+  §19.3's test obligation, now owed for every record in the closure and not
+  only for blocks and rows.
