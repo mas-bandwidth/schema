@@ -258,7 +258,7 @@ placement and the formatter normalizes to it:
 
 ```
 File        = { Declaration } .
-Declaration = Package | Const | Enum | Flags | TypeDecl | Union .
+Declaration = Package | Const | Enum | Flags | TypeDecl | TableDecl | Union .
 Flags       = "flags" ident ( VariantList
             | AttrSection NL VariantList ) NL .                // "flags" contextual, §4.2;
                                                                    // a qualified declaration's
@@ -276,6 +276,8 @@ VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; tr
 TypeDecl    = "type" ident ( Block
             | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
+TableDecl   = "table" ident Block NL .                  // the TABLE wire, SPEC-TABLES.md —
+                                                        // a type body, plus pointers and `was`
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -299,6 +301,10 @@ Scalar      = IntType
                                                                  // the Q format is the type's SHAPE,
                                                                  // so it is positional like bits(N)
             | "ufixed" "(" IntExpr "," IntExpr ")"               // the unsigned sibling (§4.3)
+            | "*" ident                                          // a POINTER to a table
+                                                                 // (SPEC-TABLES.md §2.1);
+                                                                 // TABLE BODIES ONLY — a type
+                                                                 // body refuses one by name
             | ident .                                            // a declared type or enum
 IntType     = "int8" | "int16" | "int32" | "int64"
             | "uint8" | "uint16" | "uint32" | "uint64" .
@@ -511,7 +517,15 @@ sequence    uint16
   takes `min`/`max`/`resolution` (all three together — §4.3: this IS the
   compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
   §4.3); enum declarations take `max`; type declarations take a tag and the
-  `cpp_native`/`cpp_include` pair (below).
+  `cpp_native`/`cpp_include` pair (below); a field of a **table** body takes
+  `was` (below).
+- **`was = "old_name"` — the rename attribute, table bodies only**
+  (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
+  bare rename would orphan every byte ever written under the old one; `was`
+  keeps the old identity through the rename: `speed float32 | was =
+  "velocity"`. It takes the old name as a QUOTED STRING. On a `type` field it
+  is refused by name — renaming a `type` field is free, because the packet
+  wire is positional (§3.1).
 
 ### Type tags — types are the user's; meaning is claimed later
 
