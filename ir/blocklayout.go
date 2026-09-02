@@ -378,7 +378,7 @@ func FieldPieces(u *Unit, f *Field, fieldOffset int64) []BlockFieldPiece {
 // rest of the extent (§7).
 func UnionLayout(u *Unit, un *Union) (size, align, tag, armOffset int64) {
 	tag = int64(StorageBitsFor(un.Max)) / 8
-	size, align = tag, tag
+	align = tag
 	var armAlign, armSize int64 = 1, 0
 	for _, v := range un.Variants {
 		arm := memberStruct(u, v.Type)

@@ -556,6 +556,83 @@ tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-
 tables-block-fuzz-maximum-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp
 	$(call block_fuzz_sabotage,maximum)
 
+# THE COOK'S NEGATIVE CONTROL (SPEC-TABLES.md §7.5). The hostile battery in
+# internal/tablecook is a Go test and rides `go test ./...`; what a battery
+# cannot prove about itself is that it would go RED, so this removes PASS ONE
+# — `cook-check`'s directory scan — and requires it to.
+#
+# The sabotage is one inserted `return nil` at the top of checkDirectory, which
+# is unambiguous in a way a deleted range is not, and it reaches the build
+# through `go test -overlay`, so no tracked file is edited and the sabotage
+# cannot survive the target that made it.
+.PHONY: tables-cook-fuzz-negative-control
+tables-cook-fuzz-negative-control:
+	@rm -rf build/cook-fuzz-control && mkdir -p build/cook-fuzz-control
+	@sed 's|^func checkDirectory(m \*tabletext.Model, h Header, dir \[\]DirectoryEntry) error {$$|&\n\treturn nil // NEGATIVE CONTROL|' \
+		internal/tablecook/check.go > build/cook-fuzz-control/check.go.txt
+	@cmp -s internal/tablecook/check.go build/cook-fuzz-control/check.go.txt && \
+		{ echo "NEGATIVE CONTROL: the cook-check sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/cook-fuzz-control/check.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cook-fuzz-control/overlay.json
+	@if SEED=$(SEED) N=$(N) go test -count=1 -overlay=build/cook-fuzz-control/overlay.json \
+			-run 'TestCookCheck' ./internal/tablecook/ > build/cook-fuzz-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the cook battery stayed green with the directory scan removed"; \
+		exit 1; \
+	fi
+	@grep -q "FAILED" build/cook-fuzz-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the battery went red, but not on the bar"; cat build/cook-fuzz-control/log; exit 1; }
+	@grep -m1 "FAILED" build/cook-fuzz-control/log
+
+# THE SCALE FIXTURES (SPEC-TABLES.md §7.5). `test/cookgen` writes a synthetic
+# region streaming, in O(1) memory, so the OPEN-COST gate the emitter owes —
+# open time flat across 1 MB, 100 MB and 1 GB — has inputs the C++ worker can
+# regenerate rather than a gigabyte in the tree.
+#
+# CI runs the first two, under the two-minute rule. THE GIGABYTE IS RUN BY
+# HAND (`make tables-cook-scale-1gb`): it writes a 1.6 GB file, which is not
+# something a CI runner's disk should meet on every push. What runs here is
+# the TOOL's own scan, which is O(R + P log N) and not the O(1) the runtime
+# owes; this target's job is to produce the fixtures and prove they check.
+COOKGEN_UNIT := tables/pointers
+.PHONY: tables-cook-scale
+tables-cook-scale: bin/schema
+	@mkdir -p build/cook
+	go build -o build/cookgen ./test/cookgen
+	./build/cookgen --bytes 1048576   --out build/cook/1mb.cook
+	./build/cookgen --bytes 1048576   --byte-order big --out build/cook/1mb-be.cook
+	./build/cookgen --bytes 104857600 --out build/cook/100mb.cook
+	./bin/schema cook-check --verbose build/cook/1mb.cook    $(COOKGEN_UNIT)
+	./bin/schema cook-check --verbose build/cook/1mb-be.cook $(COOKGEN_UNIT)
+	./bin/schema cook-check --verbose build/cook/100mb.cook  $(COOKGEN_UNIT)
+
+.PHONY: tables-cook-scale-1gb
+tables-cook-scale-1gb: bin/schema
+	@mkdir -p build/cook
+	go build -o build/cookgen ./test/cookgen
+	./build/cookgen --bytes 1073741824 --out build/cook/1gb.cook
+	./bin/schema cook-check --verbose build/cook/1gb.cook $(COOKGEN_UNIT)
+
+# THE COOK ROUND TRIP THROUGH THE CLI (SPEC-TABLES.md §7.5). The Go tests hold
+# the engine; this holds the three COMMANDS and their flags, over a pinned pack
+# tree, in both byte orders and with the attribution written both ways.
+.PHONY: tables-cook-cli
+tables-cook-cli: bin/schema
+	@rm -rf build/cook-cli && mkdir -p build/cook-cli
+	./bin/schema pack --root PackConfig --out build/cook-cli/orig.bin tables/pack/pinned/PackConfig tables/examples
+	./bin/schema cook --root PackConfig --in tables/pack/pinned/PackConfig --out build/cook-cli/tree.cook --verbose tables/examples
+	./bin/schema cook-check --root PackConfig --verbose build/cook-cli/tree.cook tables/examples
+	./bin/schema uncook --root PackConfig --in build/cook-cli/tree.cook --out build/cook-cli/tree.bin tables/examples
+	cmp build/cook-cli/orig.bin build/cook-cli/tree.bin
+	./bin/schema cook --root PackConfig --in build/cook-cli/orig.bin --out build/cook-cli/be.cook \
+		--byte-order big --attribution build/cook-cli/be.attrib --verbose tables/examples
+	@if ./bin/schema cook-check build/cook-cli/be.cook tables/examples 2>/dev/null; then \
+		echo "FAILED: a cook carrying data alone was checked anyway"; exit 1; \
+	fi
+	./bin/schema cook-check --root PackConfig --attribution build/cook-cli/be.attrib --verbose build/cook-cli/be.cook tables/examples
+	./bin/schema uncook --root PackConfig --in build/cook-cli/be.cook --attribution build/cook-cli/be.attrib \
+		--out build/cook-cli/be.bin tables/examples
+	cmp build/cook-cli/orig.bin build/cook-cli/be.bin
+
 # THE BLOCK ZERO-COST GATE (SPEC-TABLES.md §2.2, §19), in its two halves.
 #
 # The first asks "did any block symbol leak into a Table source?" — a grep.
@@ -980,6 +1057,43 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_block_endian bu
 	./build/schema_test_block_endian accept build/block-host.bin
 	./build/schema_test_block_endian refuse build/block-target.bin
 	@echo "big-endian leg: a block does not cross the byte order either — the magic refuses it and the prologue's word names the order that wrote it"
+	$(MAKE) tables-cook-endian
+
+# THE COOK IS THE HOST'S BUSINESS IN NEITHER DIRECTION (SPEC-TABLES.md §7).
+# The byte order is settled AT COOK TIME for the TARGET build, so what a cook
+# holds must depend on `--byte-order` and on nothing else — least of all on the
+# order of the machine that ran the tool. Every host this repo builds on is
+# little-endian, so that is an assertion on a page until a big-endian host runs
+# the same command: a cooker that reached for host order anywhere would have
+# produced byte-identical files on every other leg in this file.
+#
+# Go cross-compiles, so the target binary is one env var and the pinned
+# emulator is already installed for the legs above. The gate is BYTE IDENTITY
+# ACROSS HOSTS, both orders, over a fixed root and a pointered one: four files
+# from this host and four from s390x, compared pairwise.
+.PHONY: tables-cook-endian
+tables-cook-endian: bin/schema
+	@rm -rf build/cook-endian && mkdir -p build/cook-endian
+	GOOS=linux GOARCH=s390x go build -o build/cook-endian/schema-be ./cmd/schema
+	GOOS=linux GOARCH=s390x go build -o build/cook-endian/cookgen-be ./test/cookgen
+	go build -o build/cook-endian/cookgen ./test/cookgen
+	./bin/schema pack --root PackConfig --out build/cook-endian/fixed.bin tables/pack/pinned/PackConfig tables/examples
+	@for order in little big; do \
+		./bin/schema cook --root PackConfig --in build/cook-endian/fixed.bin \
+			--out build/cook-endian/host-$$order.cook --byte-order $$order tables/examples || exit 1; \
+		$(BE_RUN) ./build/cook-endian/schema-be cook --root PackConfig --in build/cook-endian/fixed.bin \
+			--out build/cook-endian/target-$$order.cook --byte-order $$order tables/examples || exit 1; \
+		cmp build/cook-endian/host-$$order.cook build/cook-endian/target-$$order.cook || \
+			{ echo "FAILED: a $$order-endian cook differs between a little-endian host and a big-endian one"; exit 1; }; \
+		./build/cook-endian/cookgen --bytes 65536 --byte-order $$order --out build/cook-endian/host-gen-$$order.cook || exit 1; \
+		$(BE_RUN) ./build/cook-endian/cookgen-be --bytes 65536 --byte-order $$order --out build/cook-endian/target-gen-$$order.cook || exit 1; \
+		cmp build/cook-endian/host-gen-$$order.cook build/cook-endian/target-gen-$$order.cook || \
+			{ echo "FAILED: a $$order-endian synthetic region differs between hosts"; exit 1; }; \
+		$(BE_RUN) ./build/cook-endian/schema-be cook-check --root PackConfig \
+			build/cook-endian/host-$$order.cook tables/examples || exit 1; \
+		./bin/schema cook-check --root PackConfig build/cook-endian/target-$$order.cook tables/examples || exit 1; \
+	done
+	@echo "big-endian leg: a cook's bytes are the TARGET's order and never the host's, and either host checks either file"
 
 # Its NEGATIVE CONTROL. Put ONE of the wire's byte-order-neutral stores back to
 # a host-order copy — put16, which writes every field id, every enum value and
@@ -1324,6 +1438,9 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-block-fuzz
 	$(MAKE) tables-block-fuzz-extent-negative-control
 	$(MAKE) tables-block-fuzz-maximum-negative-control
+	$(MAKE) tables-cook-cli
+	$(MAKE) tables-cook-scale
+	$(MAKE) tables-cook-fuzz-negative-control
 	$(MAKE) tables-block-zero-cost
 	$(MAKE) tables-block-build-version
 	$(MAKE) tables-block-fill-refuser

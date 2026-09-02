@@ -205,8 +205,8 @@ func ReadHeader(file []byte, build uint64) (Header, error) {
 	}
 	// THE MAGIC IS READ BYTEWISE, BEFORE ANYTHING ELSE, since it is what
 	// establishes the byte order every other header field is written in
-	var ord order = binary.LittleEndian
-	wrote := ByteOrderLittle
+	var ord order
+	var wrote uint64
 	switch {
 	case binary.LittleEndian.Uint64(file) == Magic:
 		ord, wrote = binary.LittleEndian, ByteOrderLittle

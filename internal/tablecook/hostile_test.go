@@ -52,6 +52,11 @@ func hostileN() int {
 // bar runs one mutated file through the bar and reports what it did, so a
 // battery can assert that its DIRECTED cases actually landed on a refusal
 // rather than quietly producing a valid file again.
+// EVERY read of the forged bytes happens inside this function, under the
+// recover — including working out which root the file claims. A battery that
+// reached into a forgery to decide what to do with it would have a hole in it
+// exactly where the check it is watching has one, which is what the negative
+// control found.
 func bar(t *testing.T, m *tabletext.Model, root string, file []byte) (refused bool) {
 	t.Helper()
 	original := append([]byte(nil), file...)
@@ -64,10 +69,16 @@ func bar(t *testing.T, m *tabletext.Model, root string, file []byte) (refused bo
 			refused = true
 		}
 	}()
-	if _, err := tablecook.Check(m, file); err != nil {
+	res, err := tablecook.Check(m, file)
+	if err != nil {
 		return true
 	}
-	// it opened and checked: now it must BE WHOLE
+	// it opened and checked: now it must BE WHOLE. The root the file CLAIMS is
+	// what it is read back as — a check that passed has already proved the
+	// directory's first entry names a table this unit has.
+	if res.Root != "" {
+		root = res.Root
+	}
 	inst, err := tablecook.Uncook(m, m.Lookup(root), file)
 	if err != nil {
 		t.Errorf("FAILED: cook-check accepted a file that then failed to uncook: %v", err)
@@ -249,21 +260,7 @@ func TestCookCheckHostileBattery(t *testing.T) {
 				binary.LittleEndian.PutUint64(f[at:], boundary[rng.Intn(len(boundary))])
 			}
 		}
-		root := "Scene"
-		if _, err := tablecook.Check(m, f); err == nil {
-			// it checked, so it must name a root this model can uncook
-			h, err := tablecook.ReadHeader(f, ir.BuildVersion(u))
-			if err == nil {
-				if dir, err := h.Directory(f); err == nil && len(dir) > 0 {
-					for _, name := range m.Roots() {
-						if ir.TableTypeId(name) == dir[0].TypeId {
-							root = name
-						}
-					}
-				}
-			}
-		}
-		if bar(t, m, root, f) {
+		if bar(t, m, "Scene", f) {
 			refusals++
 		}
 	}

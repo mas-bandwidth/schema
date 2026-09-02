@@ -1176,9 +1176,11 @@ this side allocates: the bytes are yours, from wherever you got them.
 
 ### The cooked form: point at a file instead of parsing it
 
-*Specified, not built — the cook lands with the flat node encoding
-(SPEC-TABLES.md §7, schema#251). Variable-length tables ride the tolerant wire
-today. What follows is the design you will get.*
+*The TOOL is built and the generated runtime is not (SPEC-TABLES.md §7,
+schema#251). `schema cook`, `schema cook-check` and `schema uncook` produce,
+validate and read back cooked files today, in either byte order. The `Open` in
+the C++ below is the design you will get; a game still rides the tolerant
+wire.*
 
 The wire is generic — it allocates, walks and parses, and any build reads any
 data. When you want a big file to start instantly, cook it: the locked region
@@ -1220,16 +1222,44 @@ flag on a load in the hot path.
 
 A FIXED table cooks too, and its cook is the same idea with nothing in it:
 one struct behind the header, so you memcpy it or point at it where it lies —
-no region, no node table, no attribution, and the build version is the whole
-of the check.
+no node table and no graph, and the build version is the whole of what `Open`
+checks. Its attribution part still names that one node, so `cook-check` can
+bound its string lengths and array counts, which are as forgeable in one
+struct as in a graph.
+
+**The three commands, today.** They run over the same declarations the
+compiler already read, and the input may be a wire file or the directory tree
+`schema pack` reads (§17), so one command covers build-then-cook:
+
+```sh
+# a config tree straight to a cook, for this build, in this build's order
+schema cook --root Scene --in config/ --out Scene.cook --verbose .
+
+# ...or from a wire file, for a big-endian target
+schema cook --root Scene --in Scene.bin --out Scene.cook --byte-order big .
+
+# validate one whose provenance you doubt — offline, once, on purpose
+schema cook-check --root Scene --verbose Scene.cook .
+
+# and back to the wire, which is what proves the cook lost nothing
+schema uncook --root Scene --in Scene.cook --out back.bin .
+```
+
+`--verbose` on a cook prints the header facts you key a store by — the build
+version, the byte order, the root, the node count and the two part sizes. And
+because the attribution is SEPARABLE, `--attribution <file>` writes the
+directory beside the cook instead of inside it: the cook then carries data
+alone for a build that ships no tooling, and `cook-check --attribution <file>`
+puts the two back together when you want to check one.
 
 ### The build version: what a cooked asset is stored under
 
 *Live for the BLOCK form: `schema build-version [--facts]` prints the id and
 the projection it digests, both pinned as goldens, and the C++ and C# block
-backends emit `BuildVersion` and stamp it into every block's prologue — what
-is still owed, the constant beside `ProtocolId` in every backend and the cook
-itself, is SPEC-TABLES.md §20's status list.*
+backends emit `BuildVersion` and stamp it into every block's prologue. `schema
+cook` stamps the same id into every cooked header and `cook-check` reads it
+back — what is still owed, the constant beside `ProtocolId` in every backend
+and the generated `Open` that checks it, is SPEC-TABLES.md §20's status list.*
 
 A cook is only ever produced for one build, so something has to name which
 build. That is the **build version**: one digest over everything a cook's
