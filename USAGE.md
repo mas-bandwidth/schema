@@ -553,10 +553,11 @@ find out, once, at connect time, instead of paying for it on every packet.
 ## Tables: data that outlives builds
 
 Packets are for the network: exact-match, bit-packed, same protocol id or
-refuse. **Tables are for data** — tools→game pipelines, editors that walk
-properties by name, save/load to memory or disk — where the writer and the
-reader are routinely DIFFERENT builds and both must cope. Declare one with
-`table`; the body grammar is the type body's:
+refuse. **Tables are for data that outlives the build that wrote it** —
+tools→game pipelines, editors that walk properties by name, save games, tool
+output, save/load to memory or disk — where the writer and the reader are
+routinely DIFFERENT builds and both must cope. Declare one with `table`; the
+body grammar is the type body's:
 
 ```
 table ShipConfig
@@ -567,6 +568,16 @@ table ShipConfig
     name        string(32)
 }
 ```
+
+**What it costs.** Tables are less performant than types, and that is the
+trade: a type is a raw struct with a bit-packed same-build wire, a FIXED-size
+table is a raw struct with a tolerant byte codec around it and runs as close
+to its equivalent type as that wire allows, and the variable-length class
+(pointers, an arena, a region) pays for what it buys. Allocation follows the
+same ladder: types never allocate, a fixed table with no union never
+allocates, a fixed table WITH a union may allocate for the arm in a language
+that has no native union, and a variable-length table allocates by nature —
+in C++ the caller owns it.
 
 A table lives on its own wire — evolution-tolerant TLV, C++ only today. Field
 identity is a hash of the field NAME, so any reader takes any data, both
@@ -686,6 +697,136 @@ schema deliberately does not prescribe one. Tables may also reference plain
 A `type` cannot reference a table (packets stay exact-match), and a table
 cannot nest itself.
 
+### Optional fields: `settings ?GunnerSettings`
+
+A `?` before the type makes a field PRESENT or ABSENT. Storage is the value
+plus a generated `<field>_present` bool, so the table stays a fixed-size
+struct — no pointer, no allocation:
+
+```
+table ShipConfig
+{
+    health   float32 = 100.0
+    settings ?GunnerSettings
+    tier     ?int32            // scalars too
+}
+```
+
+```cpp
+ShipConfig ship;
+ship.settings_present = true;          // absent until you say so
+ship.settings.sensitivity = 0.4f;
+```
+
+**Presence decides whether it rides, not content.** An absent optional is not
+written; a present one always is, even at its defaults — so "absent" and
+"present with nothing to say" stay two different values, and a reader that
+sees the field sets `_present` whatever it contains.
+
+The framing is the ordinary field's, which makes `?T`, `*T` and a plain `T`
+nesting **three spellings of one field**: for any value that is not entirely
+default, move a field among the three and no byte changes, in either
+direction. The one difference is at the empty end — a plain `T` holding
+nothing but defaults writes nothing, while a present `?T` and a non-null `*T`
+write a body — and no direction misdecodes: an absent field reads as the
+declared default, as null, or as absent, each of which is right.
+
+`?` goes on nested tables and types, enums, flags and scalars. It is refused
+on a pointer (already optional), a union (`None` is its absence), and on
+arrays, strings and `bytes` — those already carry a count or length whose
+zero is emptiness; wrap one in a table and make that optional. An optional
+takes no specified default: presence is its only default.
+
+### Enum-keyed arrays: `ships [ShipType]ShipConfig`
+
+An array bound that names a declared ENUM gives you exactly one slot per
+variant, indexed by the variant:
+
+```
+enum ShipType { Fighter, Bomber, Scout }
+
+table Fleet
+{
+    ships [ShipType]ShipConfig   // one slot per variant, indexed by the variant
+}
+```
+
+```cpp
+Fleet fleet;
+fleet.ships[ShipType::Bomber].health = 400.0f;   // runtime key: asserts
+fleet.ships.Slot<ShipType::Scout>().health = 90; // constant key: static_asserts
+```
+
+Storage is a generated keyed-array type wrapping a plain `ShipConfig[ShipType.Max
++ 1]` — no count companion, because every slot exists — so the memory is the
+array you would have written by hand, with the two accessors above on top of
+it. **Slot 0 exists and is never valid**: `None` is the enum's
+null, so it keys nothing and only `ShipType.Max` slots ever hold data. The
+slot is kept so indexing stays unbiased, and reaching it is an error —
+a compile-time refusal on a constant index, an assert otherwise.
+
+**What changes is the wire: the slots ride by NAME.** Each
+present slot carries its variant's id, so inserting a variant in the middle,
+removing one, or reordering them leaves every surviving slot in its own home:
+
+```
+enum ShipType { Fighter, Bomber, Scout }           // v1
+enum ShipType { Fighter, Heavy, Bomber, Scout }    // v2 — every stored Bomber
+                                                   // slot still loads as Bomber
+```
+
+Under the positional spelling every slot after the insert would shift one
+place, silently. A slot the writer left at its default is elided; a slot this
+reader has no name for is skipped and counted `unknown`; a slot the writer
+never sent keeps its declared default. A `None` key never rides at all.
+
+In a `type` body the same spelling is exactly `[E.Max + 1]T` — positional and
+bitpacked, the packet wire as always, with the same protocol id either way —
+and there the storage is a **plain array**: `per_team [Team]int32` in a `type`
+is `int32_t per_team[4]`, no accessor and no `None` guard, because there is no
+key to check. Only the table wire keys the slots.
+
+Note that the runtime assert goes away under `NDEBUG`, so `Slot<Key>()` is the
+form that still catches a `None` in a release build. And a key enum counts as
+part of the table closure: it rides by variant name, so `| max` headroom and
+colliding variant names are refused for it too, with the diagnostic naming the
+field that keys on it.
+
+**On the TABLE wire the two spellings are different encodings**, and changing
+a table field from one to the other is a wire break, not a refactor: the keyed
+body has its own wire kind, so an old file read under the new spelling is
+reported as a kind mismatch rather than decoded with keys taken for values.
+A committed baseline refuses the edit outright.
+
+### Messages: a union whose arms are tables
+
+Inside a table closure a union's arm may name a `table`, which is what makes
+a tool message set evolve safely:
+
+```
+table OpenDocument  { path string(256), line uint32 }
+table SaveDocument  { path string(256), force bool   }
+
+union ToolBody
+{
+    open OpenDocument
+    save SaveDocument
+}
+
+table ToolMessage
+{
+    sequence uint32
+    body     ToolBody
+}
+```
+
+Arms ride under their name hash, so adding a message is adding an arm; a
+reader that lacks it reads the union empty, skips the body by its length and
+counts `unknown`; arms may be removed and reordered freely. Unlike a
+`type`-only payload, a message may carry a nested table or a whole
+collection. A union declared for the packet wire still takes `type` payloads
+only — types stay value semantics.
+
 ### Pointers: `next *Node`
 
 Types are value semantics. Tables ALLOW pointer semantics, because a generic
@@ -710,17 +851,13 @@ never a type body. Arrays of pointers, and a specified default on a pointer,
 are refused by name.
 
 **Do not reach for a pointer to make a field optional.** Every field on this
-wire is already optional — absence is the reader's default. The spelling for
-an optional SECTION is a guarded field:
+wire is already optional — absence is the reader's default — and a section
+that is present or absent as a unit is spelled `?T`:
 
 ```
 table Scene
 {
-    has_settings bool
-    if has_settings
-    {
-        settings Settings   // off the wire entirely when the guard is false
-    }
+    settings ?Settings   // off the wire entirely when it is absent
 }
 ```
 
@@ -788,9 +925,44 @@ const Scene * scene = SceneLoad( region, need, wire, wire_size, &report );
 ```
 
 On the wire a pointer rides as its pointee's table body — framing identical
-to a by-value nesting, so a field may change between the two and no byte
-moves. Null pointers are simply absent. **Wire v1 is a tree**: two pointers
-to one node write two bodies and load as two nodes.
+to a by-value nesting AND to an optional (`?T`), so a field may change among
+the three and no byte moves for any non-default value (at the empty end they
+differ: a by-value `T` at its defaults elides, a non-null pointer does not).
+Null pointers are simply absent. **Wire v1 is a tree**: two pointers to one
+node write two bodies and load as two nodes.
+
+### Byte buffers: `data *bytes`
+
+`bytes(N)` is N bytes of inline storage in every instance. `*bytes` is a
+pointer to a buffer that has no bound and takes exactly the size you give it
+— which is how an image or an asset lives inside a table:
+
+```
+table Asset
+{
+    format AssetFormat
+    data   *bytes        // sized per node, not per declaration
+    label  *string       // the sibling
+}
+```
+
+```cpp
+Asset * asset = builder.Alloc<Asset>();
+asset->data = builder.AllocBytes( png_bytes );
+memcpy( BytesAt( asset->data ), png, png_bytes );
+```
+
+In a million-node table a `bytes(65536)` field costs 64 KB a node whether it
+is used or not; a `*bytes` costs the reference plus what each node holds.
+Like any pointer it makes the holder variable-length. On the wire it is
+framed exactly as `bytes(N)` is, so a field that outgrows its inline bound
+moves to a blob and no byte changes for any non-empty value — the same empty-end
+asymmetry as above: an empty `bytes(N)` elides, a non-null zero-length `*bytes`
+writes an empty payload.
+
+Two sentences that go together: **a tolerant wire load COPIES the blob** — a
+gigabyte on the wire path is a gigabyte read — and **the cooked path is the
+zero-copy one**, where a pointer into a mapped file IS the asset.
 
 ### The cooked form: point at a file instead of parsing it
 
@@ -842,6 +1014,97 @@ Old files that carry `velocity` load into `speed`; new files keep writing the
 old id. The compiler refuses `was` naming the field's own current name, and
 refuses any two fields of one table whose effective ids collide.
 
+### The tables baseline: catching the edits the wire cannot report
+
+Think of a save game. A player's file was written two years ago by a build
+nobody has any more, and today's build has to read it. Almost every schema
+edit since is safe by construction — fields came and went, an enum grew,
+bounds moved — and the wire reports whatever it cannot use. **Exactly two
+edits are different**: they change what an OLD file MEANS, and nothing on the
+wire can tell you.
+
+```
+table ShipConfig
+{
+    damage float32 = 21.0    // v1 elided this: absence MEANS 21.0
+}
+
+table ShipConfig
+{
+    damage float32 = 25.0    // v2: every stored save now reads 25.0 out of
+}                            // the same bytes, and no report event fires
+```
+
+`flags` has the same shape of hazard one level down: bits carry no names, so
+inserting a variant silently remaps every stored mask.
+
+Commit a baseline and the compiler remembers for you:
+
+```
+$ schema tables-baseline --update --reason "first baseline before 1.0 ships" configs/
+$ ls configs/
+ShipConfig.schema   tables.baseline
+```
+
+`tables.baseline` is a text projection of the unit's whole table closure —
+one fact per line, made to be read in a diff — and from then on `schema
+check`, and so `schema generate`, diffs against it:
+
+```
+$ schema check configs/
+configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — this
+edit changes what data already written MEANS, and no reader can report it; if you
+mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
+schema: 1 error(s)
+```
+
+Sometimes you mean it. The override is one command and it is never silent:
+
+```
+$ schema tables-baseline --update --reason "damage rebalanced in 2.0; saves from 1.x read the new value" configs/
+```
+
+That appends to the file's own history — which is what someone reads years
+later when an old save loads wrong:
+
+```
+## history
+### 2026-09-02 — first baseline before 1.0 ships
+- baseline created over 1 table — data written BEFORE this point is not covered by it
+
+### 2026-11-14 — damage rebalanced in 2.0; saves from 1.x read the new value
+- ShipConfig.damage: specified default 21.0 -> 25.0 [refuse]
+```
+
+`--update` without `--reason` is refused: an intentional break gets declared
+or it does not happen.
+
+**What refuses, what warns, what passes.** Refused: a specified default
+changed, added or removed; a flags variant inserted, removed, reordered or
+renamed in place; a field's wire kind or an array's ELEMENT kind changed; an
+array changed between the keyed and positional spellings, or a keyed array's
+key enum swapped; a field pointed at a different enum, flags, union or table
+that cannot stand in for the old one — or at none at all, like an enum-typed
+field respelled as its raw `uint16`, which the runtime cannot report because
+both ride as kind 7. **"Stand in" means every identity survives AND, for a
+table, the facts under the shared field ids are unchanged**: a twin
+declaration carrying the same id under a different default is refused,
+because every stored body's elided value would quietly change meaning.
+Warned, because the read report already counts what is lost: a bound or a
+string capacity shrunk, an enum variant or a union arm removed, a declaration
+renamed or otherwise no longer covered. Passed in silence, because the wire
+absorbs it: fields added, removed, reordered or renamed under `was`; variants
+added anywhere; flags variants APPENDED; bounds grown.
+
+Renaming a declaration never raises a verdict of its own: it warns, saying
+which declaration carries the old one's contents on, and the contents keep
+being judged by their own walk — so a dropped variant draws the same warning
+whether or not its enum was renamed in the same edit.
+
+The whole thing is opt-in — no `tables.baseline`, no check — and the first
+one you write covers only what comes after it: data written before it existed
+was written against a shape nobody recorded.
+
 ### Going wide
 
 Every nested table on the wire is length-prefixed, so building a large file
@@ -874,8 +1137,11 @@ Every closure type gets a reflection descriptor — name, wire id and kind,
 storage offset, array bounds and count companions, declared ranges, branch
 guards, and for an enum or union field the whole vocabulary: `[0, enum_max]`
 indexed, `enum_name` for each name and `variant_id` for the wire id it rides
-under. Enough to write a generic editor, printer or differ with no RTTI and
-no schema files at runtime:
+under. An optional field carries `optional` and `present_offset`, the
+presence companion's offset, so a walker can read and set presence; an
+enum-keyed array carries `key_type_name`, `key_name` and `key_id`, so it can
+print `ships[Bomber]` instead of `ships[2]`. Enough to write a generic
+editor, printer or differ with no RTTI and no schema files at runtime:
 
 ```cpp
 const TableTypeInfo * type = ShipConfigTableType();
@@ -904,6 +1170,63 @@ a unit that declares them, by name. What stays off the table wire: `fixed`,
 (bit-position constructs — the table wire has no bit positions). Extents have
 no wire ceiling: string and bytes byte lengths and array counts ride in
 uint32, so the only limit is the language's own int32 storage cap.
+
+### The text form: JSON in and out of one table
+
+The same descriptors drive a JSON text form, so every table reads from and
+writes to text with no per-table codec:
+
+```cpp
+TableReport report;
+ShipConfig ship;
+ShipConfigFromJson( ship, text, text_bytes, &report );   // fills ONE instance
+
+int64_t size = ShipConfigToJsonMeasure( ship );          // exact, writes nothing
+ShipConfigToJson( ship, buffer, size );
+```
+
+`FromJson` places what the text mentions and leaves the rest at its declared
+defaults, exactly as an absent field on the wire does; unknown keys, wrong
+JSON types and out-of-range numbers land in the same report the wire uses,
+plus one counter the wire never raises — `duplicate`, for a key the text gave
+twice. `ToJson` writes every field, defaults included — a text is for people —
+and it is pretty-printed: one entry per line, two-space indent.
+
+The mapping is the obvious one: enums and flags by variant NAME, a union as
+an object with one key, an enum-keyed array as an object keyed by variant
+name, a `?T` optional present exactly when its key is present, `*bytes` as
+base64. **JSON has one number type**, so `2`, `2.0` and `1e3` all read into an
+integer field; a genuinely fractional value there is a kind mismatch, and a
+token that is not a JSON number at all — `1-2`, `1.2.3` — is malformed rather
+than quietly clamped. Trailing commas are accepted on read and never written.
+A field can meet an existing text with `| json = "type"`, which changes no
+byte on the wire.
+
+**The writer refuses rather than lie**: `ToJson` returns -1 for an enum value
+or a set flags bit no variant names, an invalid union tag, or a non-finite
+float. The text it does emit is always valid JSON and valid UTF-8.
+
+### Packing a directory into a table
+
+`schema pack` builds ONE table instance from a directory tree that mirrors
+the root table, and writes the root's wire bytes:
+
+```
+$ schema pack --root Config --out Config.bin configs/
+$ schema unpack --root Config --in Config.bin configs/
+```
+
+A directory named after a field holds that field's value; an enum-keyed array
+takes one `<Variant>.json` per variant (there is no `None.json` — `None` keys
+no slot); a bounded array takes files in name order; anything can collapse to
+a single `<field>.json`. The output is the table's wire bytes and **nothing
+else** — no magic, no hash, no protocol id. If you want an envelope, write
+your own few lines around them. `unpack` is the inverse, and `unpack` → `pack`
+is byte-stable.
+
+`pack` reads the texts with its own engine inside the compiler rather than by
+calling generated code — the compiler is a Go program — so the tree carries a
+second implementation of the same wire, held to the backends by goldens.
 
 ---
 

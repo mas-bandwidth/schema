@@ -265,7 +265,11 @@ Flags       = "flags" ident ( VariantList
                                                                    // body opens on the NEXT line
 Union       = "union" ident UnionBlock NL .                        // "union" contextual, §4.8
 UnionBlock  = "{" { UnionVariant } "}" .
-UnionVariant = ident ident NL .                                    // variant name, then its payload type
+UnionVariant = ident ident NL .                                    // variant name, then its payload type.
+                                                                   // A payload naming a TABLE is legal
+                                                                   // inside a table closure only
+                                                                   // (SPEC-TABLES.md §2.6); on the type
+                                                                   // wire a payload is a declared `type`
 Package     = "package" ident NL .
 Const       = "const" ident [ ConstType ] "=" ConstExpr NL .
 ConstType   = IntType | "float32" | "float64" .
@@ -289,7 +293,12 @@ ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
-Type        = [ "[" Bound "]" ] Scalar .                         // array bound is a PREFIX, Go's order
+Type        = [ "?" ] [ "[" Bound "]" ] Scalar .                 // array bound is a PREFIX, Go's order.
+                                                                 // "?" is the OPTIONAL prefix
+                                                                 // (SPEC-TABLES.md §2.3): the value plus
+                                                                 // a generated presence bool. TABLE
+                                                                 // BODIES ONLY — a type body refuses one
+                                                                 // by name, as it does a pointer
 Scalar      = IntType
             | "int128" | "uint128"                               // 128-bit integers (§4.3);
                                                                  // field types only, not ConstType
@@ -301,15 +310,23 @@ Scalar      = IntType
                                                                  // the Q format is the type's SHAPE,
                                                                  // so it is positional like bits(N)
             | "ufixed" "(" IntExpr "," IntExpr ")"               // the unsigned sibling (§4.3)
-            | "*" ident                                          // a POINTER to a table
-                                                                 // (SPEC-TABLES.md §2.1);
+            | "*" ( ident | "bytes" | "string" )                 // a POINTER to a table
+                                                                 // (SPEC-TABLES.md §2.1), or to an
+                                                                 // unbounded byte or string buffer
+                                                                 // at its used size (§2.5);
                                                                  // TABLE BODIES ONLY — a type
                                                                  // body refuses one by name
             | ident .                                            // a declared type or enum
 IntType     = "int8" | "int16" | "int32" | "int64"
             | "uint8" | "uint16" | "uint32" | "uint64" .
 Bound       = IntExpr | ".." IntExpr | IntExpr ".." IntExpr .       // [N] exact; [..N] = [0..N],
-                                                                    // "up to N"; [A..B] = count in [A, B]
+                                                                    // "up to N"; [A..B] = count in [A, B].
+                                                                    // An exact bound NAMING A DECLARED
+                                                                    // ENUM is an ENUM-KEYED array: exactly
+                                                                    // E.Max + 1 slots, indexed by the
+                                                                    // variant, of which slot 0 (None) is
+                                                                    // never valid (SPEC-TABLES.md §2.4).
+                                                                    // On this wire it IS [E.Max + 1]T
 
 AttrSection = "|" Attr { "," Attr } .                            // runs to END OF LINE: the newline
                                                                  // or a // comment terminates it —
