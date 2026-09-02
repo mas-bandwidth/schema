@@ -621,6 +621,57 @@ static void test_repeated_id_unnameable_variant()
     CHECK( out.grade == tblv1::Grade::None );
 }
 
+// ---- an array's BOUND is not wire identity (SPEC-TABLES.md §4). V2 shrinks
+// ---- MaxSlots 6 -> 3, and tally is sized [Grade.Max + 1], which GROWS 3 -> 4
+// ---- when Grade gains a variant. The storage struct changes size; the table
+// ---- on the wire does not, because identity is the field name hash and kind.
+
+static void test_evolution_array_bounds()
+{
+    // WRITER'S BOUND LARGER: the count exceeds the reader's, so the reader
+    // keeps the bounded PREFIX and counts clamped — not malformed, which is
+    // reserved for a count the BODY cannot cover
+    tblv1::Cfg wide;
+    wide.slots_count = 6;                                    // v2's bound is 3
+    for ( int32_t i = 0; i < 6; i++ ) wide.slots[i] = 100 + i;
+    for ( int32_t i = 0; i < 3; i++ ) wide.tally[i] = 10 + i; // v2's tally is [4]
+
+    uint8_t wire[1024];
+    int64_t bytes = tblv1::CfgSave( wide, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( wide ) );
+
+    tblv2::TableReport report;
+    tblv2::Cfg out;
+    CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
+    CHECK( !report.malformed );          // a shrunk bound is not framing damage
+    CHECK( report.clamped == 1 );        // slots: 6 offered, 3 kept
+    CHECK( out.slots_count == 3 );
+    CHECK( out.slots[0] == 100 && out.slots[1] == 101 && out.slots[2] == 102 );
+    // tally GREW in v2: the count is short of the bound, so the tail defaults
+    CHECK( out.tally[0] == 10 && out.tally[1] == 11 && out.tally[2] == 12 );
+    CHECK( out.tally[3] == 0 );
+
+    // WRITER'S BOUND SMALLER, the other direction: nothing clamps, and the
+    // reader's extra capacity holds its declared defaults
+    tblv2::Cfg narrow;
+    narrow.slots_count = 3;
+    for ( int32_t i = 0; i < 3; i++ ) narrow.slots[i] = 200 + i;
+    for ( int32_t i = 0; i < 4; i++ ) narrow.tally[i] = 20 + i; // v1's tally is [3]
+
+    bytes = tblv2::CfgSave( narrow, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv2::CfgMeasure( narrow ) );
+
+    tblv1::TableReport report2;
+    tblv1::Cfg out2;
+    CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.malformed );
+    CHECK( report2.clamped == 1 );       // tally: 4 offered, v1 keeps 3
+    CHECK( out2.slots_count == 3 );      // under v1's bound of 6: no clamp
+    CHECK( out2.slots[0] == 200 && out2.slots[2] == 202 );
+    CHECK( out2.slots[3] == 0 && out2.slots[5] == 0 ); // the unwritten tail
+    CHECK( out2.tally[0] == 20 && out2.tally[1] == 21 && out2.tally[2] == 22 );
+}
+
 // a value no variant names has no wire identity: measure and save refuse it,
 // exactly as they refuse an out-of-range union tag — in a scalar field, and in
 // EITHER array shape, where the check runs per element
@@ -2015,6 +2066,7 @@ int main()
     test_evolution_union_insert_old_data();
     test_evolution_union_insert_new_data();
     test_repeated_id_unnameable_variant();
+    test_evolution_array_bounds();
     test_unnameable_enum_refused();
     test_unnameable_enum_element_read();
     test_flags_are_positional();

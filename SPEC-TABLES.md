@@ -308,7 +308,20 @@ tolerance is the versioning model:
   the same counter an unknown field id uses, because it is the same event:
   the writer named something this reader cannot name.
 - **Kind mismatch** (a field changed type between builds): skipped, never
-  misdecoded, counted.
+  misdecoded, counted. The kinds are a coarser vocabulary than the
+  declaration side, so this catches a change of KIND, not every change of
+  type: an enum field and a plain `uint16` field are both kind `7`, so an
+  edit between the two is not a kind mismatch — the raw value is read as a
+  variant hash, and lands on `None` unless it happens to name one.
+- **A changed array BOUND** (a literal, a constant, or an `E.Max + 1`
+  expression that moved): the array still loads, and the bound is not part
+  of identity — a field is its name hash and its kind, and neither carries
+  an extent. A count past the READER's bound keeps the bounded prefix and
+  counts **clamped**; a count short of it fills what the writer sent and
+  leaves the reader's tail at its declared defaults. `malformed` is
+  reserved for a count the BODY cannot cover, which is framing damage and a
+  different thing. The storage struct's size changes with the constant; the
+  bytes do not.
 - **Out-of-range value** (bounds tightened since the writer): clamped to
   the reader's declared bounds, counted.
 - **Framing damage**: decode stops the damaged nesting level, keeps what

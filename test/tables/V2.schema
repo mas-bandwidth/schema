@@ -6,6 +6,8 @@
 // (SPEC-TABLES.md).
 package tblv2
 
+const MaxSlots = 3
+
 enum Mode { Alpha, Beta }
 
 enum Grade { Bronze, Silver, Gold }
@@ -43,11 +45,13 @@ table Cfg
     a      float32 = 5.0
     c      bool = true
     mode   Mode = Beta
-    title  string(32)    | was = "name"
+    title  string(32)           | was = "name"
     inner  Inner
-    items  [..8]int32    | min = 0, max = 255
+    items  [..8]int32           | min = 0, max = 255
     grade  Grade
     grades [..4]Grade
     podium [3]Grade
+    slots  [..MaxSlots]int32
+    tally  [Grade.Max + 1]int32
     effect Effect
 }

@@ -576,6 +576,15 @@ out-of-range values are clamped. Every such event is counted in a report;
 only structural damage stops a load. Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
+**An array's BOUND is not part of that identity either.** Resize a bounded
+array — a literal, a constant, or an `E.Max + 1` expression that moved when
+the enum grew — and files written under the old bound still load: a count
+past your bound keeps the bounded prefix and counts `clamped`, a count short
+of it leaves your tail at its declared defaults. (`malformed` means something
+else: a count the body cannot cover.) The storage struct's size and extent
+change with the constant; the table on the wire does not, because identity is
+the field name hash and the kind.
+
 **Enum variants and union arms ride by name too.** An enum value on the wire
 is the hash of its variant's name and a union body opens with the hash of its
 arm's name, so you can insert a variant in the MIDDLE and every stored value

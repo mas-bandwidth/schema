@@ -7,6 +7,11 @@
 // the ordinal and not the protocol id.
 package tblv1
 
+// a bounded array's BOUND is not wire identity: V2 shrinks MaxSlots from 6
+// to 3, and tally is sized off Grade.Max + 1, which grows when Grade does.
+// Both directions still load (SPEC-TABLES.md §4).
+const MaxSlots = 6
+
 enum Mode { Alpha, Beta }
 
 // Grade gains Silver in the MIDDLE in V2: under ordinals Gold would slide
@@ -38,14 +43,16 @@ union Effect
 
 table Cfg
 {
-    a      int32 = 5     | min = 0, max = 1000
+    a      int32 = 5            | min = 0, max = 1000
     b      float32 = 1.5
     mode   Mode = Beta
     name   string(32)
     inner  Inner
-    items  [..8]int32    | min = 0, max = 255
+    items  [..8]int32           | min = 0, max = 255
     grade  Grade
     grades [..4]Grade
     podium [3]Grade
+    slots  [..MaxSlots]int32
+    tally  [Grade.Max + 1]int32
     effect Effect
 }
