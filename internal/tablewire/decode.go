@@ -21,12 +21,13 @@ import (
 // error is framing damage past the point the walk could continue, and the
 // instance keeps what it decoded.
 func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
-	if err := RefuseVariable(m, inst.Def); err != nil {
-		report.Malformed = true
-		return false, err
+	if !ir.VariableTables(m.Unit)[inst.Def.Name] {
+		// a value-only table has no pointer, therefore no node table, therefore
+		// exactly the bytes §3 already describes
+		r := &wireReader{buf: data, report: report, m: m}
+		return r.body(inst), nil
 	}
-	r := &wireReader{buf: data, report: report, m: m}
-	return r.body(inst), nil
+	return decodeVariable(m, inst, data, report)
 }
 
 type wireReader struct {
@@ -34,6 +35,7 @@ type wireReader struct {
 	off    int
 	report *tabletext.Report
 	m      *tabletext.Model
+	st     *decodeState // the save's numbering, shared by every sub-reader
 }
 
 func (r *wireReader) has(n int) bool { return n >= 0 && r.off+n <= len(r.buf) }
@@ -63,7 +65,7 @@ func (r *wireReader) u64() uint64 {
 }
 
 func (r *wireReader) sub(n int) *wireReader {
-	s := &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m}
+	s := &wireReader{buf: r.buf[r.off : r.off+n], report: r.report, m: r.m, st: r.st}
 	return s
 }
 
@@ -74,7 +76,8 @@ func (r *wireReader) skip(kind uint8) bool {
 	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8,
 		ir.TableKindI16, ir.TableKindU16,
 		ir.TableKindI32, ir.TableKindU32, ir.TableKindF32,
-		ir.TableKindI64, ir.TableKindU64, ir.TableKindF64:
+		ir.TableKindI64, ir.TableKindU64, ir.TableKindF64,
+		ir.TableKindPointer:
 		w := tabletext.KindWidth(int(kind))
 		if !r.has(w) {
 			return false
@@ -113,11 +116,15 @@ func (r *wireReader) skip(kind uint8) bool {
 
 // wireKind is the kind byte a field's payload rides under. It is
 // ir.TableFieldKind with the one case that function does not see: a POINTER
-// field rides as a nested table body, which is what makes `T`, `?T` and `*T`
-// one field on the wire (SPEC-TABLES.md §3.1).
+// field rides as a NODE INDEX under its own kind `17`, because a body that may
+// be named twice cannot also sit inline at one of its names (SPEC-TABLES.md
+// §3.1). `*T` and a by-value `T` are therefore no longer one framing: `T` and
+// `?T` share kind `13`, and an edit between a pointer and either of the others
+// — or between a pointer and a plain `uint32` — is §4's kind mismatch, counted
+// and never misdecoded.
 func wireKind(f *ir.Field) int {
 	if f.Type.Pointer {
-		return ir.TableKindTable
+		return ir.TableKindPointer
 	}
 	if f.Type.Kind == ir.TBytes {
 		return ir.TableKindArray
@@ -144,6 +151,17 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 			return false
 		}
 		kind := r.u8()
+		if id == ir.NodeTableFieldId && r.st != nil {
+			// the reserved id is this reader's OWN (§3.1), read before any body
+			// and not a field of the table: it is stepped over here, and never
+			// counted unknown. A reader that cannot name it counts one per
+			// transport field, which is the case §4's counter describes.
+			if !r.skip(kind) {
+				r.report.Malformed = true
+				return false
+			}
+			continue
+		}
 		i, known := index[id]
 		if !known {
 			r.report.Unknown++
@@ -176,6 +194,17 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 func (r *wireReader) field(fv *tabletext.Field) bool {
 	f := fv.Def
 	switch {
+	case f.Type.Pointer:
+		// A pointer field's payload is a NUMBER: it is bounds-checked and
+		// stored, never followed. There is no traversal on the load path, and
+		// therefore no traversal bound — no depth cap, no visited set, no
+		// ordering rule on the indices (SPEC-TABLES.md §3.1).
+		if !r.has(4) {
+			r.report.Malformed = true
+			return false
+		}
+		r.resolve(fv, r.u32())
+		return true
 	case f.KeyEnum != "":
 		return r.keyed(fv)
 	case f.Type.Kind == ir.TString:

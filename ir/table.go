@@ -26,6 +26,41 @@ func FieldId(name string) uint16 {
 // rebound keeps free of every declared name.
 func VariantId(name string) uint16 { return FieldId(name) }
 
+// TableTypeId is a node record's TYPE ID (SPEC-TABLES.md §3.1): the target
+// table's NAME under fnv1a64, with a result of 0 rebounding to 1.
+//
+// Sixty-four bits because a table name is the one vocabulary scoped to a WHOLE
+// unit closure rather than to a single table or enum, so its collision
+// population is the largest on the wire; two tables in one closure whose ids
+// collide are still a compile error naming both (§11). It is the id a node
+// RECORD carries on the wire and the id a region's node directory carries
+// beside every offset (§6.3), so the wire and the cook name a node's type with
+// one number.
+func TableTypeId(name string) uint64 {
+	h := uint64(0xCBF29CE484222325)
+	for i := 0; i < len(name); i++ {
+		h ^= uint64(name[i])
+		h *= 0x00000100000001B3
+	}
+	if h == 0 {
+		h = 1
+	}
+	return h
+}
+
+// NodeTableFieldId is the RESERVED field id the node table rides under
+// (SPEC-TABLES.md §3.1). §5's fold reaches it and ordinary names land there, so
+// the compiler refuses a field name — or a `was` — whose id does (§11).
+const NodeTableFieldId = uint16(0xFFFF)
+
+// NodeIndexNull, NodeIndexRoot are the two node indices that name no record:
+// `0` is null and `1` is the ROOT, the body that hosts the node table. Record
+// `k` (1-based) is node index `k + 1` (SPEC-TABLES.md §3.1).
+const (
+	NodeIndexNull = uint32(0)
+	NodeIndexRoot = uint32(1)
+)
+
 // TableFieldId is a field's EFFECTIVE table-wire id: the hash of its
 // `was = "old_name"` alias when one is declared — so wire identity survives
 // the rename — and of its own name otherwise.

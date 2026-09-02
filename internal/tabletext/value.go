@@ -56,6 +56,17 @@ type Cell struct {
 	F   float64   // f32 / f64, held at double width as the descriptors do
 	Str []byte    // string / bytes payload, at its used extent
 	Tab *Instance // a nested table or type, or a union arm's payload
+
+	// Node is a `*T` POINTER field's referent (SPEC-TABLES.md §2.1, §3.1), and
+	// nil is NULL — a pointer takes no specified default, so null is the only
+	// thing an absence could mean. It is deliberately not Tab: a pointee is a
+	// NODE with an identity, written once however many slots name it, while Tab
+	// is a by-value nesting that belongs to the field that holds it. The node
+	// INDEX is never carried here; it is re-derived from the graph by the
+	// depth-first pre-order walk both the wire and a region number by (§3.1),
+	// which is what makes measure and save agree without passing anything
+	// between them.
+	Node *Instance
 }
 
 // Field is one field's storage in an [Instance] — the value, the companions
@@ -277,6 +288,11 @@ func KindWidth(kind int) int {
 	case ir.TableKindI16, ir.TableKindU16:
 		return 2
 	case ir.TableKindI32, ir.TableKindU32, ir.TableKindF32:
+		return 4
+	case ir.TableKindPointer:
+		// a POINTER INDEX is four bytes, and it is one row in the fixed-width
+		// skip rule — which is the whole of what spending a distinct kind costs
+		// (SPEC-TABLES.md §3, §3.1)
 		return 4
 	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64:
 		return 8

@@ -75,7 +75,7 @@ struct TableFieldInfo
     uint16_t id;            // table-wire field id (name hash; the was alias's hash after a rename)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     bool is_array;          // fixed or counted array (bytes included)
-    bool is_pointer;        // a *T pointer field: storage is a 4-byte TableRef; the target is a table
+    bool is_pointer;        // a *T pointer field: storage is an 8-byte TableRef; the target is a table
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
@@ -340,12 +340,21 @@ static const int32_t kTableMaxDepth = 128;
 //                   so a deref is one add, needs no base pointer, and a whole
 //                   region relocates by memcpy with zero fix-up
 //
-// 0 is null in both. Region deltas are always POSITIVE: a region is packed by
-// a depth-first walk, so a child always sits after the slot that names it —
-// which is what makes a packed region cycle-free by construction.
+// 0 is null in both, and a slot can never name the node that contains it, so
+// zero names nothing real in either form.
+//
+// A REGION DELTA HAS NO REQUIRED SIGN (§6.3). A region is packed depth-first,
+// so a node's FIRST reference points forward; every LATER reference to that
+// same node points BACK at the one body it already has, which is exactly what
+// makes one node one node in a region. Sharing and a back-reference are the
+// same fact, and nothing validates a reference by its sign.
+//
+// IT IS EIGHT BYTES, SIGNED, so ONE REGION REACHES EVERYTHING (§6.3, §7): a
+// four-byte slot bounded a region at 2 GiB, and the scale a cook exists for is
+// *"100mbs or many gigabytes of data in Assets.bin"*.
 struct TableRef
 {
-    uint32_t value = 0;
+    int64_t value = 0;
     bool null() const { return value == 0; }
 };
 
@@ -559,25 +568,25 @@ inline void MarkerReset( Marker & value )
 // Tally is a pointer target.
 inline const Tally * TallyAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Tally *) ( (const uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (const Tally *) ( (const uint8_t *) &ref + ref.value ) : NULL;
 }
 inline Tally * TallyAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Tally *) ( (uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (Tally *) ( (uint8_t *) &ref + ref.value ) : NULL;
 }
 inline const Tally * TallyAt( const TableRegionCtx &, const TableRef & ref ) { return TallyAt( ref ); }
 inline const Tally * TallyAt( const TableArenaCtx & ctx, const TableRef & ref )
 {
-    return ref.value != 0 ? (const Tally *) TableArenaAt( *ctx.arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const Tally *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;
 }
 // while the builder is mutable, resolve against the arena itself
 inline Tally * TallyAt( TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (Tally *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (Tally *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 inline const Tally * TallyAt( const TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (const Tally *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const Tally *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 // bump one Tally into the caller's exact region; the slot comes out self-relative
 inline Tally * TallyEmplace( TableRegionSink & sink, TableRef & slot )
@@ -586,7 +595,7 @@ inline Tally * TallyEmplace( TableRegionSink & sink, TableRef & slot )
     if ( at + (int64_t) sizeof( Tally ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( Tally ) );
     Tally * node = new ( sink.base + at ) Tally{};
-    slot.value = (uint32_t) ( ( sink.base + at ) - (uint8_t *) &slot );
+    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
 // allocate one Tally in the arena; the slot holds the arena offset
@@ -600,25 +609,25 @@ inline Tally * TallyEmplace( TableWorker & worker, TableRef & slot )
 // Marker is a pointer target.
 inline const Marker * MarkerAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Marker *) ( (const uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (const Marker *) ( (const uint8_t *) &ref + ref.value ) : NULL;
 }
 inline Marker * MarkerAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Marker *) ( (uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (Marker *) ( (uint8_t *) &ref + ref.value ) : NULL;
 }
 inline const Marker * MarkerAt( const TableRegionCtx &, const TableRef & ref ) { return MarkerAt( ref ); }
 inline const Marker * MarkerAt( const TableArenaCtx & ctx, const TableRef & ref )
 {
-    return ref.value != 0 ? (const Marker *) TableArenaAt( *ctx.arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const Marker *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;
 }
 // while the builder is mutable, resolve against the arena itself
 inline Marker * MarkerAt( TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (Marker *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (Marker *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 inline const Marker * MarkerAt( const TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (const Marker *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const Marker *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 // bump one Marker into the caller's exact region; the slot comes out self-relative
 inline Marker * MarkerEmplace( TableRegionSink & sink, TableRef & slot )
@@ -627,7 +636,7 @@ inline Marker * MarkerEmplace( TableRegionSink & sink, TableRef & slot )
     if ( at + (int64_t) sizeof( Marker ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
     Marker * node = new ( sink.base + at ) Marker{};
-    slot.value = (uint32_t) ( ( sink.base + at ) - (uint8_t *) &slot );
+    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
 // allocate one Marker in the arena; the slot holds the arena offset
@@ -924,7 +933,7 @@ inline bool MarkerPack( const Ctx & ctx, const Marker & src, Marker & dst, uint8
             if ( at + (int64_t) sizeof( Tally ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( Tally ) );
             Tally * child = new ( base + at ) Tally{};
-            dst.note.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.note );
+            dst.note.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.note );
             if ( !TallyPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -1011,7 +1020,7 @@ struct MarkerBuilder
     // name it shares, and `table Root` is this spec's own canonical
     // example. The checker refuses a table named after any member here,
     // so the remaining spellings cannot collide either.
-    Marker * GetRoot() { return arena.locked ? NULL : (Marker *) TableArenaAt( arena, root_ref.value ); }
+    Marker * GetRoot() { return arena.locked ? NULL : (Marker *) TableArenaAt( arena, (uint32_t) root_ref.value ); }
     bool Locked() const { return arena.locked; }
     const Marker * AsConst() const { return (const Marker *) region; }
     const uint8_t * Region() const { return region; }
@@ -1029,7 +1038,7 @@ inline bool MarkerBuilder::Lock()
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
-    const Marker & root = *(const Marker *) TableArenaAt( arena, root_ref.value );
+    const Marker & root = *(const Marker *) TableArenaAt( arena, (uint32_t) root_ref.value );
     int64_t below = MarkerPackMeasure( ctx, root, 1 );
     if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Marker ) ) + below;
@@ -1072,7 +1081,7 @@ inline int64_t MarkerMeasure( const MarkerBuilder & builder )
     if ( builder.region != NULL ) { return MarkerMeasure( builder.AsConst() ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return MarkerMeasureBody( ctx, *(const Marker *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
+    return MarkerMeasureBody( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );
 }
 
 inline int64_t MarkerSave( const MarkerBuilder & builder, uint8_t * buffer, int64_t capacity )
@@ -1081,7 +1090,7 @@ inline int64_t MarkerSave( const MarkerBuilder & builder, uint8_t * buffer, int6
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     TableWriter w( buffer, capacity );
-    if ( !MarkerSaveBody( ctx, w, *(const Marker *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 ) ) { return -1; }
+    if ( !MarkerSaveBody( ctx, w, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }
     return w.offset;
 }
 
@@ -1134,7 +1143,7 @@ inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire, in
 // memcpy'd, mmap'd, shared across processes, and walked through
 // descriptor offsets. A failure here means a pointer, virtual or
 // non-trivial member crept into generated storage.
-// A pointer FIELD is a TableRef — four bytes and no address — so the
+// A pointer FIELD is a TableRef — eight bytes and no address — so the
 // property holds in BOTH forms: a fixed-size table is one relocatable
 // struct, and a packed region is one relocatable block whose references
 // are self-relative and therefore survive a plain memcpy.

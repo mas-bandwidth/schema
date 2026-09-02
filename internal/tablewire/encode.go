@@ -21,10 +21,30 @@ import (
 // §17.2): no magic, no content hash, no protocol id, no length prefix around
 // the whole.
 func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
-	if err := RefuseVariable(m, inst.Def); err != nil {
+	g, err := Number(m, inst)
+	if err != nil {
 		return nil, err
 	}
-	return encodeBody(m, inst)
+	e := &encoder{m: m, g: g}
+	body, err := encodeBody(e, inst)
+	if err != nil {
+		return nil, err
+	}
+	if len(g.Records()) == 0 {
+		// a root that reaches no nodes writes none of them, like every other
+		// empty thing (§3) — and a VALUE-ONLY table moves not one byte for any
+		// of this (§3.1)
+		return body, nil
+	}
+	return e.appendNodeTable(body, g)
+}
+
+// encoder is one save's context: the closure the walks run over, and the
+// NUMBERING every pointer slot resolves through. The numbering is derived once
+// per save from the graph and never carried on the instance (§3.1).
+type encoder struct {
+	m *tabletext.Model
+	g *NodeGraph
 }
 
 // There is no Measure here on purpose. §9's measure/save split exists so a
@@ -72,7 +92,7 @@ func (w *buf) width(n int, v uint64) {
 
 // encodeBody is one table body: its fields in declaration order, then the u16
 // zero terminator.
-func encodeBody(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
+func encodeBody(e *encoder, inst *tabletext.Instance) ([]byte, error) {
 	w := &buf{}
 	guards := tabletext.Guards(inst.Def)
 	for i := range inst.Fields {
@@ -80,7 +100,7 @@ func encodeBody(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 		if terms, guarded := guards[fv.Def.Name]; guarded && !inst.GuardHolds(terms) {
 			continue
 		}
-		if err := encodeField(m, w, inst, fv); err != nil {
+		if err := encodeField(e, w, inst, fv); err != nil {
 			return nil, err
 		}
 	}
@@ -88,13 +108,26 @@ func encodeBody(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 	return w.b, nil
 }
 
-func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *tabletext.Field) error {
+func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Field) error {
 	f := fv.Def
 	id := ir.TableFieldId(f)
 	kind := ir.TableScalarKind(f)
 
 	if f.Type.Pointer {
-		return fmt.Errorf("field %s is a pointer — the pack engine holds fixed-size roots only (SPEC-TABLES.md §16.2)", f.Name)
+		// A pointer to a table rides as `id (u16), kind = 17, index (u32)`
+		// (SPEC-TABLES.md §3.1). NULL IS INDEX 0, AND NULL IS ELIDED: absence
+		// and null are one value, because a pointer takes no specified default.
+		// A non-null pointer ALWAYS rides, even when its node's body is
+		// entirely default, or null and "points at an empty node" would be one
+		// value on the wire.
+		index := e.g.Index(fv.Cell.Node)
+		if index == ir.NodeIndexNull {
+			return nil
+		}
+		w.u16(id)
+		w.u8(uint8(ir.TableKindPointer))
+		w.u32(index)
+		return nil
 	}
 
 	switch {
@@ -107,7 +140,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		}
 		switch {
 		case kind == ir.TableKindTable:
-			body, err := encodeBody(m, subInstance(m, f, &fv.Cell))
+			body, err := encodeBody(e, subInstance(e, f, &fv.Cell))
 			if err != nil {
 				return err
 			}
@@ -126,14 +159,14 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		default:
 			w.u16(id)
 			w.u8(uint8(kind))
-			if err := encodeElement(m, w, f, kind, &fv.Cell); err != nil {
+			if err := encodeElement(e, w, f, kind, &fv.Cell); err != nil {
 				return err
 			}
 		}
 		return nil
 
 	case f.KeyEnum != "":
-		return encodeKeyed(m, w, fv, id, kind)
+		return encodeKeyed(e, w, fv, id, kind)
 
 	case f.Type.Kind == ir.TString:
 		if fv.Count == 0 {
@@ -161,19 +194,19 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		if fv.Count == 0 {
 			return nil
 		}
-		return encodeArray(m, w, fv, id, kind, fv.Count)
+		return encodeArray(e, w, fv, id, kind, fv.Count)
 
 	case f.Array == ir.ArrayFixed && kind == ir.TableKindTable:
 		// a fixed array of tables always rides — position is identity there,
 		// so no element-default compare can elide one
-		return encodeArray(m, w, fv, id, kind, int(f.ArrayBound))
+		return encodeArray(e, w, fv, id, kind, int(f.ArrayBound))
 
 	case f.Array == ir.ArrayFixed:
 		// a fixed array is positional; an all-default array elides entirely,
 		// parity with the reader's prefill
 		allDefault := true
 		for i := 0; i < int(f.ArrayBound); i++ {
-			if !cellIsDefault(m, f, &fv.Elems[i]) {
+			if !cellIsDefault(e, f, &fv.Elems[i]) {
 				allDefault = false
 				break
 			}
@@ -181,7 +214,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		if allDefault {
 			return nil
 		}
-		return encodeArray(m, w, fv, id, kind, int(f.ArrayBound))
+		return encodeArray(e, w, fv, id, kind, int(f.ArrayBound))
 
 	case kind == ir.TableKindUnion:
 		un := tabletext.UnionOf(f)
@@ -194,9 +227,9 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		arm := un.Variants[fv.Cell.U-1]
 		payload := fv.Cell.Tab
 		if payload == nil {
-			payload = m.New(arm.Ref)
+			payload = e.m.New(arm.Ref)
 		}
-		body, err := encodeBody(m, payload)
+		body, err := encodeBody(e, payload)
 		if err != nil {
 			return err
 		}
@@ -210,7 +243,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		return nil
 
 	case kind == ir.TableKindTable:
-		body, err := encodeBody(m, subInstance(m, f, &fv.Cell))
+		body, err := encodeBody(e, subInstance(e, f, &fv.Cell))
 		if err != nil {
 			return err
 		}
@@ -224,7 +257,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		return nil
 
 	case tabletext.EnumOf(f) != nil:
-		if cellIsDefault(m, f, &fv.Cell) {
+		if cellIsDefault(e, f, &fv.Cell) {
 			return nil
 		}
 		vid, err := variantWireId(tabletext.EnumOf(f), fv.Cell.U, f.Name)
@@ -237,23 +270,23 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		return nil
 
 	default:
-		if cellIsDefault(m, f, &fv.Cell) {
+		if cellIsDefault(e, f, &fv.Cell) {
 			return nil
 		}
 		w.u16(id)
 		w.u8(uint8(kind))
-		return encodeElement(m, w, f, kind, &fv.Cell)
+		return encodeElement(e, w, f, kind, &fv.Cell)
 	}
 }
 
 // encodeArray writes a positional array body: kind 14, then the element kind,
 // the count, and the elements.
-func encodeArray(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kind, count int) error {
+func encodeArray(e *encoder, w *buf, fv *tabletext.Field, id uint16, kind, count int) error {
 	body := &buf{}
 	body.u8(uint8(kind))
 	body.u32(uint32(count))
 	for i := range count {
-		if err := encodeElement(m, body, fv.Def, kind, &fv.Elems[i]); err != nil {
+		if err := encodeElement(e, body, fv.Def, kind, &fv.Elems[i]); err != nil {
 			return err
 		}
 	}
@@ -269,7 +302,7 @@ func encodeArray(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kin
 // ascending by variant ordinal. A slot holding its default elides exactly as a
 // defaulted field does, an array with no present slot is not written at all,
 // and None — slot 0 — never rides.
-func encodeKeyed(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kind int) error {
+func encodeKeyed(e *encoder, w *buf, fv *tabletext.Field, id uint16, kind int) error {
 	f := fv.Def
 	body := &buf{}
 	pairs := uint32(0)
@@ -277,7 +310,7 @@ func encodeKeyed(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kin
 		cell := &fv.Elems[slot]
 		var elem []byte
 		if kind == ir.TableKindTable {
-			b, err := encodeBody(m, subInstance(m, f, cell))
+			b, err := encodeBody(e, subInstance(e, f, cell))
 			if err != nil {
 				return err
 			}
@@ -286,11 +319,11 @@ func encodeKeyed(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kin
 			}
 			elem = b
 		} else {
-			if cellIsDefault(m, f, cell) {
+			if cellIsDefault(e, f, cell) {
 				continue // a default slot elides
 			}
 			eb := &buf{}
-			if err := encodeElement(m, eb, f, kind, cell); err != nil {
+			if err := encodeElement(e, eb, f, kind, cell); err != nil {
 				return err
 			}
 			elem = eb.b
@@ -324,7 +357,7 @@ func encodeKeyed(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kin
 // encodeElement writes one element at its kind's own framing: a table element
 // carries its own length, a scalar rides at its fixed width, and an enum rides
 // as the u16 hash of its variant name.
-func encodeElement(m *tabletext.Model, w *buf, f *ir.Field, kind int, cell *tabletext.Cell) error {
+func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Cell) error {
 	if e := tabletext.EnumOf(f); e != nil {
 		vid, err := variantWireId(e, cell.U, f.Name)
 		if err != nil {
@@ -345,7 +378,7 @@ func encodeElement(m *tabletext.Model, w *buf, f *ir.Field, kind int, cell *tabl
 	case ir.TableKindF64:
 		w.u64(math.Float64bits(cell.F))
 	case ir.TableKindTable:
-		body, err := encodeBody(m, subInstance(m, f, cell))
+		body, err := encodeBody(e, subInstance(e, f, cell))
 		if err != nil {
 			return err
 		}
@@ -359,11 +392,11 @@ func encodeElement(m *tabletext.Model, w *buf, f *ir.Field, kind int, cell *tabl
 
 // subInstance is a nested table or type's instance, materialized at its
 // declared defaults when nothing placed one.
-func subInstance(m *tabletext.Model, f *ir.Field, cell *tabletext.Cell) *tabletext.Instance {
+func subInstance(e *encoder, f *ir.Field, cell *tabletext.Cell) *tabletext.Instance {
 	if cell.Tab != nil {
 		return cell.Tab
 	}
-	return m.New(tabletext.StructOf(f))
+	return e.m.New(tabletext.StructOf(f))
 }
 
 // variantWireId is an enum value's wire identity: the hash of its VARIANT
@@ -383,8 +416,8 @@ func variantWireId(e *ir.Enum, value uint64, field string) (uint16, error) {
 // cellIsDefault is the writer's elision test: a field holding its declared
 // default is not written at all, which is why old readers and new writers meet
 // cleanly (§3).
-func cellIsDefault(m *tabletext.Model, f *ir.Field, cell *tabletext.Cell) bool {
-	def := m.FieldDefaultCell(f)
+func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
+	def := e.m.FieldDefaultCell(f)
 	switch {
 	case f.Type.Kind == ir.TBool:
 		return cell.B == def.B

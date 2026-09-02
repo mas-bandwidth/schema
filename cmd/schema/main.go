@@ -9,6 +9,9 @@
 //	schema fmt        [dir|files...]                 canonicalize schema files in place
 //	schema pack       --root T --out F <dir>         a directory tree becomes one table's wire bytes
 //	schema unpack     --root T --in  F <dir>         the wire bytes become the tree again
+//	schema cook       --root T --in F --out C        the wire becomes the cooked form (§7)
+//	schema cook-check <file.cook>                    validate an untrusted cook, offline
+//	schema uncook     --root T --in C --out F        the cook becomes the wire again
 //	schema version                                   print the build identity
 //
 // Every command here is a few lines over the public API in
@@ -249,10 +252,172 @@ func main() {
 		if verbose {
 			fmt.Printf("unpacked %s into %s\n", *in, dir)
 		}
+	case "cook":
+		// SPEC-TABLES.md §7: the wire in, the COOKED FORM out — the header, the
+		// region written verbatim with the root at its base, and the node
+		// directory beside it for the tool. TOOLING BUILDS; THE GAME POINTS.
+		fs := flag.NewFlagSet("cook", flag.ExitOnError)
+		root := fs.String("root", "", "the root `table` the bytes carry")
+		in := fs.String("in", "", "the wire file to cook, or a directory tree to pack and then cook")
+		out := fs.String("out", "", "file to write the cook to")
+		byteOrder := fs.String("byte-order", "little", "the byte order the cook is produced in: little or big")
+		attribution := fs.String("attribution", "", "write the attribution part to this file instead of into the cook, which then carries data alone")
+		tolerate := fs.Bool("tolerate", false, "exit 0 even when the wire report is not silent")
+		fs.BoolVar(&verbose, "verbose", false, "print the cook's header facts and the wire report")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		if *root == "" || *in == "" || *out == "" {
+			fatalf("cook needs --root <Table>, --in <file|dir> and --out <file>")
+		}
+		var opts compiler.CookOptions
+		switch *byteOrder {
+		case "little":
+		case "big":
+			opts.Big = true
+		default:
+			fatalf("--byte-order takes little or big, not %q", *byteOrder)
+		}
+		unit := loadTree(c, fs.Args())
+		wire := cookInput(c, unit, *root, *in, verbose, *tolerate)
+		bytes, cooked, report, err := c.Cook(unit, *root, wire, opts)
+		if err != nil {
+			fail(err)
+		}
+		reportLine(report, verbose, *tolerate)
+		if *attribution != "" {
+			// the attribution is SEPARABLE (§6.3): a caller may place the two
+			// parts together or apart, and a build that ships no tooling need
+			// not carry the directory at all — the header then records its
+			// length as zero and the file is just data (§7)
+			data, side, err := compiler.CookSplitAttribution(bytes)
+			if err != nil {
+				fail(err)
+			}
+			if err := writeAtomic(*attribution, side); err != nil {
+				fatalf("%v", err)
+			}
+			bytes = data
+		}
+		if err := writeAtomic(*out, bytes); err != nil {
+			fatalf("%v", err)
+		}
+		if verbose {
+			fmt.Printf("cooked %s: %d bytes, build version 0x%016x, %s-endian, root %s, %d nodes, %d data bytes, %d attribution bytes\n",
+				*out, len(bytes), cooked.BuildVersion, cooked.ByteOrder, cooked.Root, cooked.Nodes, cooked.DataBytes, cooked.AttribBytes)
+			if *attribution != "" {
+				fmt.Printf("wrote %s: %d attribution bytes, and the cook carries data alone\n", *attribution, cooked.AttribBytes)
+			}
+		}
+	case "cook-check":
+		// THE OFFLINE VALIDATOR (§7): a person's decision to run, never a
+		// parameter on a load. The runtime keeps one `Open` — match the header
+		// and point — and this is where a doubted file is checked, DATA against
+		// ATTRIBUTION, following no reference and decoding no value.
+		fs := flag.NewFlagSet("cook-check", flag.ExitOnError)
+		root := fs.String("root", "", "the root `table` the cook must carry")
+		attribution := fs.String("attribution", "", "read the attribution part from this file, for a cook that carries data alone")
+		fs.BoolVar(&verbose, "verbose", false, "print what the check proved")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		args := fs.Args()
+		if len(args) == 0 {
+			fatalf("cook-check needs the cooked file")
+		}
+		file, err := os.ReadFile(args[0])
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if *attribution != "" {
+			side, err := os.ReadFile(*attribution)
+			if err != nil {
+				fatalf("%v", err)
+			}
+			if file, err = compiler.CookJoinAttribution(file, side); err != nil {
+				fail(err)
+			}
+		}
+		rest := args[1:]
+		if len(rest) == 0 {
+			rest = []string{"."}
+		}
+		unit := loadTree(c, rest)
+		res, err := c.CookCheck(unit, *root, file)
+		if err != nil {
+			fail(err)
+		}
+		if verbose {
+			fmt.Printf("ok: build version 0x%016x, %s-endian, root %s, %d nodes, %d data bytes, %d attribution bytes, %d reference slots\n",
+				res.BuildVersion, res.ByteOrder, res.Root, res.Nodes, res.DataBytes, res.AttribBytes, res.Pointers)
+		}
+	case "uncook":
+		// The cook back onto the TOLERANT WIRE, which is the format of record
+		// (§7). It is the round-trip proof and a tool's path; a runtime points
+		// at a cook where it lies and never does this.
+		fs := flag.NewFlagSet("uncook", flag.ExitOnError)
+		root := fs.String("root", "", "the root `table` the cook carries")
+		in := fs.String("in", "", "the cooked file")
+		out := fs.String("out", "", "file to write the root's wire bytes to")
+		attribution := fs.String("attribution", "", "read the attribution part from this file, for a cook that carries data alone")
+		fs.BoolVar(&verbose, "verbose", false, "name the file written")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		if *root == "" || *in == "" || *out == "" {
+			fatalf("uncook needs --root <Table>, --in <file> and --out <file>")
+		}
+		file, err := os.ReadFile(*in)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if *attribution != "" {
+			side, err := os.ReadFile(*attribution)
+			if err != nil {
+				fatalf("%v", err)
+			}
+			if file, err = compiler.CookJoinAttribution(file, side); err != nil {
+				fail(err)
+			}
+		}
+		unit := loadTree(c, fs.Args())
+		wire, err := c.Uncook(unit, *root, file)
+		if err != nil {
+			fail(err)
+		}
+		if err := writeAtomic(*out, wire); err != nil {
+			fatalf("%v", err)
+		}
+		if verbose {
+			fmt.Printf("uncooked %s into %s: %d wire bytes\n", *in, *out, len(wire))
+		}
 	default:
 		usage()
 		os.Exit(2)
 	}
+}
+
+// cookInput is `cook --in`: a wire file, or a DIRECTORY TREE, which is packed
+// first through the existing engine (§17) so one command covers the pipeline
+// the owner describes — tooling does the build, then cooks to the rad binary
+// format, and the game just points at it and works.
+func cookInput(c *compiler.Compiler, unit *ir.Unit, root, in string, verbose, tolerate bool) []byte {
+	info, err := os.Stat(in)
+	if err != nil {
+		fatalf("%v", err)
+	}
+	if !info.IsDir() {
+		wire, err := os.ReadFile(in)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		return wire
+	}
+	wire, skipped, report, err := c.Pack(unit, root, in)
+	if err != nil {
+		fail(err)
+	}
+	reportLine(report, verbose, tolerate)
+	if verbose {
+		for _, name := range skipped {
+			fmt.Printf("passed over %s: a hidden file that is not JSON\n", name)
+		}
+	}
+	return wire
 }
 
 // packTree splits pack's positional arguments: the FIRST is the tree, and
@@ -347,6 +512,9 @@ func usage() {
   schema fmt        [--verbose] [dir|files...]
   schema pack       --root <Table> --out <file> [--tolerate] [--verbose] <tree-dir> [dir|files...]
   schema unpack     --root <Table> --in  <file> [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
+  schema cook       --root <Table> --in  <file|tree-dir> --out <file> [--byte-order little|big] [--attribution <file>] [--tolerate] [--verbose] [dir|files...]
+  schema cook-check [--root <Table>] [--attribution <file>] [--verbose] <file.cook> [dir|files...]
+  schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
 
 Every command formats the unit's schema files in place before processing them

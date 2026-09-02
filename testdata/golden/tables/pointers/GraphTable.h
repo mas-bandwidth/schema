@@ -78,7 +78,7 @@ struct TableFieldInfo
     uint16_t id;            // table-wire field id (name hash; the was alias's hash after a rename)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     bool is_array;          // fixed or counted array (bytes included)
-    bool is_pointer;        // a *T pointer field: storage is a 4-byte TableRef; the target is a table
+    bool is_pointer;        // a *T pointer field: storage is an 8-byte TableRef; the target is a table
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
@@ -343,12 +343,21 @@ static const int32_t kTableMaxDepth = 128;
 //                   so a deref is one add, needs no base pointer, and a whole
 //                   region relocates by memcpy with zero fix-up
 //
-// 0 is null in both. Region deltas are always POSITIVE: a region is packed by
-// a depth-first walk, so a child always sits after the slot that names it —
-// which is what makes a packed region cycle-free by construction.
+// 0 is null in both, and a slot can never name the node that contains it, so
+// zero names nothing real in either form.
+//
+// A REGION DELTA HAS NO REQUIRED SIGN (§6.3). A region is packed depth-first,
+// so a node's FIRST reference points forward; every LATER reference to that
+// same node points BACK at the one body it already has, which is exactly what
+// makes one node one node in a region. Sharing and a back-reference are the
+// same fact, and nothing validates a reference by its sign.
+//
+// IT IS EIGHT BYTES, SIGNED, so ONE REGION REACHES EVERYTHING (§6.3, §7): a
+// four-byte slot bounded a region at 2 GiB, and the scale a cook exists for is
+// *"100mbs or many gigabytes of data in Assets.bin"*.
 struct TableRef
 {
-    uint32_t value = 0;
+    int64_t value = 0;
     bool null() const { return value == 0; }
 };
 
@@ -723,25 +732,25 @@ inline void AlbumReset( Album & value )
 // Settings is a pointer target.
 inline const Settings * SettingsAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Settings *) ( (const uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (const Settings *) ( (const uint8_t *) &ref + ref.value ) : NULL;
 }
 inline Settings * SettingsAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Settings *) ( (uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (Settings *) ( (uint8_t *) &ref + ref.value ) : NULL;
 }
 inline const Settings * SettingsAt( const TableRegionCtx &, const TableRef & ref ) { return SettingsAt( ref ); }
 inline const Settings * SettingsAt( const TableArenaCtx & ctx, const TableRef & ref )
 {
-    return ref.value != 0 ? (const Settings *) TableArenaAt( *ctx.arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const Settings *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;
 }
 // while the builder is mutable, resolve against the arena itself
 inline Settings * SettingsAt( TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (Settings *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (Settings *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 inline const Settings * SettingsAt( const TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (const Settings *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const Settings *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 // bump one Settings into the caller's exact region; the slot comes out self-relative
 inline Settings * SettingsEmplace( TableRegionSink & sink, TableRef & slot )
@@ -750,7 +759,7 @@ inline Settings * SettingsEmplace( TableRegionSink & sink, TableRef & slot )
     if ( at + (int64_t) sizeof( Settings ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
     Settings * node = new ( sink.base + at ) Settings{};
-    slot.value = (uint32_t) ( ( sink.base + at ) - (uint8_t *) &slot );
+    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
 // allocate one Settings in the arena; the slot holds the arena offset
@@ -764,25 +773,25 @@ inline Settings * SettingsEmplace( TableWorker & worker, TableRef & slot )
 // ListNode is a pointer target.
 inline const ListNode * ListNodeAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const ListNode *) ( (const uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (const ListNode *) ( (const uint8_t *) &ref + ref.value ) : NULL;
 }
 inline ListNode * ListNodeAt( TableRef & ref )
 {
-    return ref.value != 0 ? (ListNode *) ( (uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (ListNode *) ( (uint8_t *) &ref + ref.value ) : NULL;
 }
 inline const ListNode * ListNodeAt( const TableRegionCtx &, const TableRef & ref ) { return ListNodeAt( ref ); }
 inline const ListNode * ListNodeAt( const TableArenaCtx & ctx, const TableRef & ref )
 {
-    return ref.value != 0 ? (const ListNode *) TableArenaAt( *ctx.arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const ListNode *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;
 }
 // while the builder is mutable, resolve against the arena itself
 inline ListNode * ListNodeAt( TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (ListNode *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (ListNode *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 inline const ListNode * ListNodeAt( const TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (const ListNode *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const ListNode *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 // bump one ListNode into the caller's exact region; the slot comes out self-relative
 inline ListNode * ListNodeEmplace( TableRegionSink & sink, TableRef & slot )
@@ -791,7 +800,7 @@ inline ListNode * ListNodeEmplace( TableRegionSink & sink, TableRef & slot )
     if ( at + (int64_t) sizeof( ListNode ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
     ListNode * node = new ( sink.base + at ) ListNode{};
-    slot.value = (uint32_t) ( ( sink.base + at ) - (uint8_t *) &slot );
+    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
 // allocate one ListNode in the arena; the slot holds the arena offset
@@ -805,25 +814,25 @@ inline ListNode * ListNodeEmplace( TableWorker & worker, TableRef & slot )
 // TreeNode is a pointer target.
 inline const TreeNode * TreeNodeAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const TreeNode *) ( (const uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (const TreeNode *) ( (const uint8_t *) &ref + ref.value ) : NULL;
 }
 inline TreeNode * TreeNodeAt( TableRef & ref )
 {
-    return ref.value != 0 ? (TreeNode *) ( (uint8_t *) &ref + (int32_t) ref.value ) : NULL;
+    return ref.value != 0 ? (TreeNode *) ( (uint8_t *) &ref + ref.value ) : NULL;
 }
 inline const TreeNode * TreeNodeAt( const TableRegionCtx &, const TableRef & ref ) { return TreeNodeAt( ref ); }
 inline const TreeNode * TreeNodeAt( const TableArenaCtx & ctx, const TableRef & ref )
 {
-    return ref.value != 0 ? (const TreeNode *) TableArenaAt( *ctx.arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const TreeNode *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;
 }
 // while the builder is mutable, resolve against the arena itself
 inline TreeNode * TreeNodeAt( TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (TreeNode *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (TreeNode *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 inline const TreeNode * TreeNodeAt( const TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (const TreeNode *) TableArenaAt( arena, ref.value ) : NULL;
+    return ref.value != 0 ? (const TreeNode *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
 // bump one TreeNode into the caller's exact region; the slot comes out self-relative
 inline TreeNode * TreeNodeEmplace( TableRegionSink & sink, TableRef & slot )
@@ -832,7 +841,7 @@ inline TreeNode * TreeNodeEmplace( TableRegionSink & sink, TableRef & slot )
     if ( at + (int64_t) sizeof( TreeNode ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
     TreeNode * node = new ( sink.base + at ) TreeNode{};
-    slot.value = (uint32_t) ( ( sink.base + at ) - (uint8_t *) &slot );
+    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
 // allocate one TreeNode in the arena; the slot holds the arena offset
@@ -2574,7 +2583,7 @@ inline bool ListNodePack( const Ctx & ctx, const ListNode & src, ListNode & dst,
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
             ListNode * child = new ( base + at ) ListNode{};
-            dst.next.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.next );
+            dst.next.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.next );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -2669,7 +2678,7 @@ inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst,
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
             TreeNode * child = new ( base + at ) TreeNode{};
-            dst.left.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.left );
+            dst.left.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.left );
             if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -2682,7 +2691,7 @@ inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst,
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
             TreeNode * child = new ( base + at ) TreeNode{};
-            dst.right.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.right );
+            dst.right.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.right );
             if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -2783,7 +2792,7 @@ inline bool LayerPack( const Ctx & ctx, const Layer & src, Layer & dst, uint8_t 
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
             ListNode * child = new ( base + at ) ListNode{};
-            dst.head.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.head );
+            dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -2907,7 +2916,7 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
             ListNode * child = new ( base + at ) ListNode{};
-            dst.head.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.head );
+            dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -2920,7 +2929,7 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
             TreeNode * child = new ( base + at ) TreeNode{};
-            dst.tree.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.tree );
+            dst.tree.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.tree );
             if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -2933,7 +2942,7 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
             if ( at + (int64_t) sizeof( Settings ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
             Settings * child = new ( base + at ) Settings{};
-            dst.settings.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.settings );
+            dst.settings.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.settings );
             if ( !SettingsPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -2946,7 +2955,7 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
             ListNode * child = new ( base + at ) ListNode{};
-            dst.alias.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.alias );
+            dst.alias.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.alias );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -3129,7 +3138,7 @@ inline bool DepotPack( const Ctx & ctx, const Depot & src, Depot & dst, uint8_t 
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
             ListNode * child = new ( base + at ) ListNode{};
-            dst.head.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.head );
+            dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -3260,7 +3269,7 @@ inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t 
             if ( at + (int64_t) sizeof( Marker ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
             Marker * child = new ( base + at ) Marker{};
-            dst.pin.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.pin );
+            dst.pin.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.pin );
             if ( !MarkerPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -3273,7 +3282,7 @@ inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t 
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
             ListNode * child = new ( base + at ) ListNode{};
-            dst.head.value = (uint32_t) ( ( base + at ) - (const uint8_t *) &dst.head );
+            dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
@@ -3392,7 +3401,7 @@ struct ListNodeBuilder
     // name it shares, and `table Root` is this spec's own canonical
     // example. The checker refuses a table named after any member here,
     // so the remaining spellings cannot collide either.
-    ListNode * GetRoot() { return arena.locked ? NULL : (ListNode *) TableArenaAt( arena, root_ref.value ); }
+    ListNode * GetRoot() { return arena.locked ? NULL : (ListNode *) TableArenaAt( arena, (uint32_t) root_ref.value ); }
     bool Locked() const { return arena.locked; }
     const ListNode * AsConst() const { return (const ListNode *) region; }
     const uint8_t * Region() const { return region; }
@@ -3410,7 +3419,7 @@ inline bool ListNodeBuilder::Lock()
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
-    const ListNode & root = *(const ListNode *) TableArenaAt( arena, root_ref.value );
+    const ListNode & root = *(const ListNode *) TableArenaAt( arena, (uint32_t) root_ref.value );
     int64_t below = ListNodePackMeasure( ctx, root, 1 );
     if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( ListNode ) ) + below;
@@ -3453,7 +3462,7 @@ inline int64_t ListNodeMeasure( const ListNodeBuilder & builder )
     if ( builder.region != NULL ) { return ListNodeMeasure( builder.AsConst() ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return ListNodeMeasureBody( ctx, *(const ListNode *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
+    return ListNodeMeasureBody( ctx, *(const ListNode *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );
 }
 
 inline int64_t ListNodeSave( const ListNodeBuilder & builder, uint8_t * buffer, int64_t capacity )
@@ -3462,7 +3471,7 @@ inline int64_t ListNodeSave( const ListNodeBuilder & builder, uint8_t * buffer, 
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     TableWriter w( buffer, capacity );
-    if ( !ListNodeSaveBody( ctx, w, *(const ListNode *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 ) ) { return -1; }
+    if ( !ListNodeSaveBody( ctx, w, *(const ListNode *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }
     return w.offset;
 }
 
@@ -3550,7 +3559,7 @@ struct TreeNodeBuilder
     // name it shares, and `table Root` is this spec's own canonical
     // example. The checker refuses a table named after any member here,
     // so the remaining spellings cannot collide either.
-    TreeNode * GetRoot() { return arena.locked ? NULL : (TreeNode *) TableArenaAt( arena, root_ref.value ); }
+    TreeNode * GetRoot() { return arena.locked ? NULL : (TreeNode *) TableArenaAt( arena, (uint32_t) root_ref.value ); }
     bool Locked() const { return arena.locked; }
     const TreeNode * AsConst() const { return (const TreeNode *) region; }
     const uint8_t * Region() const { return region; }
@@ -3568,7 +3577,7 @@ inline bool TreeNodeBuilder::Lock()
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
-    const TreeNode & root = *(const TreeNode *) TableArenaAt( arena, root_ref.value );
+    const TreeNode & root = *(const TreeNode *) TableArenaAt( arena, (uint32_t) root_ref.value );
     int64_t below = TreeNodePackMeasure( ctx, root, 1 );
     if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + below;
@@ -3611,7 +3620,7 @@ inline int64_t TreeNodeMeasure( const TreeNodeBuilder & builder )
     if ( builder.region != NULL ) { return TreeNodeMeasure( builder.AsConst() ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return TreeNodeMeasureBody( ctx, *(const TreeNode *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
+    return TreeNodeMeasureBody( ctx, *(const TreeNode *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );
 }
 
 inline int64_t TreeNodeSave( const TreeNodeBuilder & builder, uint8_t * buffer, int64_t capacity )
@@ -3620,7 +3629,7 @@ inline int64_t TreeNodeSave( const TreeNodeBuilder & builder, uint8_t * buffer, 
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     TableWriter w( buffer, capacity );
-    if ( !TreeNodeSaveBody( ctx, w, *(const TreeNode *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 ) ) { return -1; }
+    if ( !TreeNodeSaveBody( ctx, w, *(const TreeNode *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }
     return w.offset;
 }
 
@@ -3708,7 +3717,7 @@ struct LayerBuilder
     // name it shares, and `table Root` is this spec's own canonical
     // example. The checker refuses a table named after any member here,
     // so the remaining spellings cannot collide either.
-    Layer * GetRoot() { return arena.locked ? NULL : (Layer *) TableArenaAt( arena, root_ref.value ); }
+    Layer * GetRoot() { return arena.locked ? NULL : (Layer *) TableArenaAt( arena, (uint32_t) root_ref.value ); }
     bool Locked() const { return arena.locked; }
     const Layer * AsConst() const { return (const Layer *) region; }
     const uint8_t * Region() const { return region; }
@@ -3726,7 +3735,7 @@ inline bool LayerBuilder::Lock()
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
-    const Layer & root = *(const Layer *) TableArenaAt( arena, root_ref.value );
+    const Layer & root = *(const Layer *) TableArenaAt( arena, (uint32_t) root_ref.value );
     int64_t below = LayerPackMeasure( ctx, root, 1 );
     if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Layer ) ) + below;
@@ -3769,7 +3778,7 @@ inline int64_t LayerMeasure( const LayerBuilder & builder )
     if ( builder.region != NULL ) { return LayerMeasure( builder.AsConst() ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return LayerMeasureBody( ctx, *(const Layer *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
+    return LayerMeasureBody( ctx, *(const Layer *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );
 }
 
 inline int64_t LayerSave( const LayerBuilder & builder, uint8_t * buffer, int64_t capacity )
@@ -3778,7 +3787,7 @@ inline int64_t LayerSave( const LayerBuilder & builder, uint8_t * buffer, int64_
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     TableWriter w( buffer, capacity );
-    if ( !LayerSaveBody( ctx, w, *(const Layer *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 ) ) { return -1; }
+    if ( !LayerSaveBody( ctx, w, *(const Layer *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }
     return w.offset;
 }
 
@@ -3866,7 +3875,7 @@ struct SceneBuilder
     // name it shares, and `table Root` is this spec's own canonical
     // example. The checker refuses a table named after any member here,
     // so the remaining spellings cannot collide either.
-    Scene * GetRoot() { return arena.locked ? NULL : (Scene *) TableArenaAt( arena, root_ref.value ); }
+    Scene * GetRoot() { return arena.locked ? NULL : (Scene *) TableArenaAt( arena, (uint32_t) root_ref.value ); }
     bool Locked() const { return arena.locked; }
     const Scene * AsConst() const { return (const Scene *) region; }
     const uint8_t * Region() const { return region; }
@@ -3884,7 +3893,7 @@ inline bool SceneBuilder::Lock()
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
-    const Scene & root = *(const Scene *) TableArenaAt( arena, root_ref.value );
+    const Scene & root = *(const Scene *) TableArenaAt( arena, (uint32_t) root_ref.value );
     int64_t below = ScenePackMeasure( ctx, root, 1 );
     if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Scene ) ) + below;
@@ -3927,7 +3936,7 @@ inline int64_t SceneMeasure( const SceneBuilder & builder )
     if ( builder.region != NULL ) { return SceneMeasure( builder.AsConst() ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return SceneMeasureBody( ctx, *(const Scene *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
+    return SceneMeasureBody( ctx, *(const Scene *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );
 }
 
 inline int64_t SceneSave( const SceneBuilder & builder, uint8_t * buffer, int64_t capacity )
@@ -3936,7 +3945,7 @@ inline int64_t SceneSave( const SceneBuilder & builder, uint8_t * buffer, int64_
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     TableWriter w( buffer, capacity );
-    if ( !SceneSaveBody( ctx, w, *(const Scene *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 ) ) { return -1; }
+    if ( !SceneSaveBody( ctx, w, *(const Scene *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }
     return w.offset;
 }
 
@@ -4024,7 +4033,7 @@ struct DepotBuilder
     // name it shares, and `table Root` is this spec's own canonical
     // example. The checker refuses a table named after any member here,
     // so the remaining spellings cannot collide either.
-    Depot * GetRoot() { return arena.locked ? NULL : (Depot *) TableArenaAt( arena, root_ref.value ); }
+    Depot * GetRoot() { return arena.locked ? NULL : (Depot *) TableArenaAt( arena, (uint32_t) root_ref.value ); }
     bool Locked() const { return arena.locked; }
     const Depot * AsConst() const { return (const Depot *) region; }
     const uint8_t * Region() const { return region; }
@@ -4042,7 +4051,7 @@ inline bool DepotBuilder::Lock()
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
-    const Depot & root = *(const Depot *) TableArenaAt( arena, root_ref.value );
+    const Depot & root = *(const Depot *) TableArenaAt( arena, (uint32_t) root_ref.value );
     int64_t below = DepotPackMeasure( ctx, root, 1 );
     if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Depot ) ) + below;
@@ -4085,7 +4094,7 @@ inline int64_t DepotMeasure( const DepotBuilder & builder )
     if ( builder.region != NULL ) { return DepotMeasure( builder.AsConst() ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return DepotMeasureBody( ctx, *(const Depot *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
+    return DepotMeasureBody( ctx, *(const Depot *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );
 }
 
 inline int64_t DepotSave( const DepotBuilder & builder, uint8_t * buffer, int64_t capacity )
@@ -4094,7 +4103,7 @@ inline int64_t DepotSave( const DepotBuilder & builder, uint8_t * buffer, int64_
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     TableWriter w( buffer, capacity );
-    if ( !DepotSaveBody( ctx, w, *(const Depot *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 ) ) { return -1; }
+    if ( !DepotSaveBody( ctx, w, *(const Depot *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }
     return w.offset;
 }
 
@@ -4182,7 +4191,7 @@ struct AlbumBuilder
     // name it shares, and `table Root` is this spec's own canonical
     // example. The checker refuses a table named after any member here,
     // so the remaining spellings cannot collide either.
-    Album * GetRoot() { return arena.locked ? NULL : (Album *) TableArenaAt( arena, root_ref.value ); }
+    Album * GetRoot() { return arena.locked ? NULL : (Album *) TableArenaAt( arena, (uint32_t) root_ref.value ); }
     bool Locked() const { return arena.locked; }
     const Album * AsConst() const { return (const Album *) region; }
     const uint8_t * Region() const { return region; }
@@ -4200,7 +4209,7 @@ inline bool AlbumBuilder::Lock()
     if ( arena.locked ) { return region != NULL; }
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
-    const Album & root = *(const Album *) TableArenaAt( arena, root_ref.value );
+    const Album & root = *(const Album *) TableArenaAt( arena, (uint32_t) root_ref.value );
     int64_t below = AlbumPackMeasure( ctx, root, 1 );
     if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Album ) ) + below;
@@ -4243,7 +4252,7 @@ inline int64_t AlbumMeasure( const AlbumBuilder & builder )
     if ( builder.region != NULL ) { return AlbumMeasure( builder.AsConst() ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return AlbumMeasureBody( ctx, *(const Album *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 );
+    return AlbumMeasureBody( ctx, *(const Album *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );
 }
 
 inline int64_t AlbumSave( const AlbumBuilder & builder, uint8_t * buffer, int64_t capacity )
@@ -4252,7 +4261,7 @@ inline int64_t AlbumSave( const AlbumBuilder & builder, uint8_t * buffer, int64_
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
     TableWriter w( buffer, capacity );
-    if ( !AlbumSaveBody( ctx, w, *(const Album *) TableArenaAt( builder.arena, builder.root_ref.value ), 1 ) ) { return -1; }
+    if ( !AlbumSaveBody( ctx, w, *(const Album *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }
     return w.offset;
 }
 
@@ -4305,7 +4314,7 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire, int6
 // memcpy'd, mmap'd, shared across processes, and walked through
 // descriptor offsets. A failure here means a pointer, virtual or
 // non-trivial member crept into generated storage.
-// A pointer FIELD is a TableRef — four bytes and no address — so the
+// A pointer FIELD is a TableRef — eight bytes and no address — so the
 // property holds in BOTH forms: a fixed-size table is one relocatable
 // struct, and a packed region is one relocatable block whose references
 // are self-relative and therefore survive a plain memcpy.

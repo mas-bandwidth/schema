@@ -1648,8 +1648,23 @@ static void test_pointer_reflection()
     // a pointer field's id is its name's hash, exactly as any other field's
     CHECK( head->id == field_id( "head" ) );
 
-    // relocatability holds with pointers in the struct: the slot is four bytes
-    CHECK( sizeof( graphdemo::TableRef ) == 4 );
+    // Relocatability holds with pointers in the struct, and THE SLOT IS EIGHT
+    // BYTES AT EIGHT (SPEC-TABLES.md §6.3, ruled 2026-09-03). In a region it
+    // holds a SELF-RELATIVE byte delta, so its width is what bounds one
+    // region's reach: at four bytes that was 2 GiB, which is a ceiling a mesh
+    // or texture catalogue is exactly the thing to meet. It is SIGNED because
+    // a shared node's later references point BACK at the one body it has.
+    CHECK( sizeof( graphdemo::TableRef ) == 8 );
+    CHECK( alignof( graphdemo::TableRef ) == 8 );
+    CHECK( graphdemo::TableRef().value == 0 ); // null in both encodings
+    {
+        graphdemo::TableRef back;
+        back.value = -16;
+        CHECK( back.value < 0 ); // a back-reference is an ordinary value here
+    }
+    // and the STORAGE the compiler's layout model computes is the storage the
+    // compiler emitted — the pointer field's offset is what a cook writes at
+    CHECK( offsetof( graphdemo::Layer, head ) % 8 == 0 );
 }
 
 

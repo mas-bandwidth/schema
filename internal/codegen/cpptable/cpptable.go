@@ -254,7 +254,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 	// always emitted, to the byte (SPEC-TABLES.md §2, the zero-cost gate)
 	pointerFieldMember, pointerTypeMember := "", ""
 	if anyVariable {
-		pointerFieldMember = "\n    bool is_pointer;        // a *T pointer field: storage is a 4-byte TableRef; the target is a table"
+		pointerFieldMember = "\n    bool is_pointer;        // a *T pointer field: storage is an 8-byte TableRef; the target is a table"
 		pointerTypeMember = "\n    // the DERIVED mode (SPEC-TABLES.md): false = fixed-size, a plain\n" +
 			"    // relocatable struct; true = variable-length, built through a Builder\n" +
 			"    // and read through a region root. Nobody declares it; the compiler\n" +

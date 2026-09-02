@@ -811,9 +811,12 @@ moves not one byte of a value-only table: a fixed-size table has no
 pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
-**Backend status for this section: spec ahead of the emitter.** This
-section is the landed law; no backend writes it yet. What a reader of
-today's generated code finds instead is the earlier NESTED form: the C++
+**Backend status for this section: the TOOL writes it and no BACKEND does.**
+`schema pack`'s engine — the compiler-side encoder and decoder this repo runs
+as tooling (§17.1) — writes and reads the flat node table exactly as stated
+here, which is what lets `schema cook` produce a region from a wire (§7). What
+a reader of today's generated code finds instead is the earlier NESTED form:
+the C++
 table backend — the only one that accepts a pointered unit, since C# refuses
 one by name (§11) — writes a pointer field's pointee inline as a nested
 table body under kind `13`, not as a `u32` index under kind `17`. Kind `17`
@@ -953,6 +956,12 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   where a small one reports a single unknown, and neither number is a
   count of things the schemas disagree about. A tool reporting evolution
   differences should read the count that way.
+  **A reader that CAN name it counts nothing**, and that is not a special
+  case in the counter but a fact about what the field is: `0xFFFF` is not a
+  field of the table, it is the transport the numbering rides in, and a
+  reader holding the numbering has already consumed it before it decodes a
+  body. An `unknown` here means "a build without kind `17`", which is
+  exactly the difference §4 exists to report.
 
 **A node record.**
 
@@ -1604,7 +1613,7 @@ the reference is null.
 
 ### 6.3 Two reference encodings, one slot
 
-A pointer's four-byte slot means different things in the two forms, and
+A pointer's eight-byte slot means different things in the two forms, and
 the form in hand always says which:
 
 - **In the arena**, it is the node's arena offset.
@@ -1622,6 +1631,34 @@ FIRST reference points forward; every later reference to that node points
 BACK at the one body it already has, which is what makes one node one
 node in a region as well as on the wire. Sharing and a back-reference are
 the same fact, and nothing validates a reference by its sign (§7).
+
+**NULL IN A REGION IS A DELTA OF ZERO.** A slot can never hold the address
+of the node that contains it — a node starts at its own offset and the slot
+sits somewhere at or after it, and a reference to the node it lives in
+would name the node's START, never the slot — so zero names no node and is
+free to mean null. It is the same value null takes on the wire, where index
+`0` is null (§3.1), so the two encodings agree on their one reserved value
+and a walk that meets a zero does the same thing on both sides.
+
+**THE SLOT IS EIGHT BYTES AND SIGNED, so ONE REGION REACHES EVERYTHING.**
+Every delta runs from a slot to a node inside the same region, so a slot as
+wide as the offsets it subtracts can express every reference any region can
+hold: there is no reach to check, no refusal to write and no case to get
+wrong. It is what the scale §7 is built for asks for — *"Assume we have say,
+100mbs or many gigabytes of data in Assets.bin at some point."* — and a
+four-byte slot would have bounded ONE REGION at `2 GiB`, which is a ceiling in
+exactly the place a mesh or texture catalogue meets it (§13.4).
+
+**The cost, stated.** Eight bytes a reference instead of four, in every
+VARIABLE-LENGTH record, whether the structure needs the reach or not; and the
+edit moves every record that holds a pointer, so every affected unit's BUILD
+VERSION moves and every cooked file in existence is re-cooked. Pre-release
+that is a regeneration, and it is the whole of the price. A value-only table
+still pays nothing at all: it has no pointer, therefore no slot (§3.1).
+**A cook's PART LENGTHS are 64 bits for the same reason** (§7), because the
+FILE is not the region: a part length has to frame whatever a form puts beside
+the data, and a 32-bit field there would reimpose at cook time the aggregate
+ceiling §3.1 removed.
 
 **A region carries a NODE DIRECTORY**, and it is the wire's numbering
 made resident: a trailer of one entry per numbered node, in index order,
@@ -1648,11 +1685,12 @@ separately, so a caller may place them together or apart and may release
 the attribution once `Load` returns. `Cook` writes them as two parts for
 the same reason (§7).
 
-**Backend status: the node directory is not written (schema#251).** A C++
-region carries its data and nothing beside it — `Lock` packs the bodies and
-`Load` resolves indices without a resident directory — so the attribution a
-validating tool reads has no writer. It lands with §3.1's flat node table and
-the cook (§7).
+**Backend status: the TOOL writes the directory and no BACKEND does
+(schema#251).** `schema cook` writes it as the cooked file's attribution part
+and `schema cook-check` reads it, so the form below has a writer and a reader
+in the compiler. A C++ region still carries its data and nothing beside it —
+`Lock` packs the bodies and `Load` resolves indices without a resident
+directory — and that half lands with the emitter.
 
 **The price, stated.** Twelve bytes a node on the wire (an 8-byte type id
 and a 4-byte length per record) and sixteen a node of attribution, which
@@ -1754,8 +1792,13 @@ SceneCook( builder, buffer, data, attribution );   // write it
 const Scene * scene = SceneOpen( bytes, size );    // point at it, or NULL
 ```
 
-**Backend status: the cook is not built (schema#251).** Variable-length tables
-ride the tolerant wire.
+**Backend status: the TOOL is built and the EMITTERS are not (schema#251).**
+`schema cook`, `schema cook-check` and `schema uncook` produce, validate and
+read back the form below, in both byte orders, over the same IR the emitters
+consume — and `wire → cook → wire` is byte-identical over the corpus, which is
+what proves the accelerator loses no fact. No generated runtime carries `Cook`,
+`CookMeasure` or `Open` yet: a game still rides the tolerant wire, and the four
+spellings stay claimed ahead of their emitter (§11).
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -1932,8 +1975,18 @@ the wire, and keeps the flexibility that comes with it.
 - **The cook of a FIXED root table is the same idea with nothing in it.**
   A fixed-size table is one struct (§6.1), so its cooked form is the
   struct's bytes behind the header: memcpy it, or point at it where it
-  lies. There is no region, no node table and no attribution, and the
-  build version is the whole of the check.
+  lies. There is no node table and no graph, and the build version is the
+  whole of what `Open` checks — which is the whole of what `Open` checks
+  for any cook.
+  **It is ONE REGION OF ONE NODE and not a second shape**, and the
+  attribution part names that node like any other: sixteen bytes, the root
+  at offset zero. One shape is what lets `schema cook-check` bound a fixed
+  root's COUNT COMPANIONS — a `string(N)` used length, a bounded array's
+  count, the companions of anything it nests by value — which are exactly as
+  forgeable in one struct as in a graph, and which nothing else would check.
+  A build that wants the bytes alone omits the attribution part the way any
+  cook does (below): the header records its length as zero and the file is
+  just data.
 - **Every refusal is loud and the fallback is a real wire load**: wrong
   magic or byte order, a build version this build did not produce, a
   truncated file, a non-zero reserved word, an unaligned base. **And `schema cook-check`'s refusals are
@@ -1981,6 +2034,298 @@ shaped against: a per-frame producer that has to go wide cannot afford a
 builder with a serialization point in it, whatever the read side costs. A
 cook does not answer it either — a cook is produced from a builder by a
 single-threaded `Lock` (§6.2), which is exactly the shape that lost.
+
+### 7.1 The file, byte for byte
+
+A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
+order. Every word of the header is a `u64` written in the byte order the
+cook was produced in, and the header is 64 bytes:
+
+| at | word | what it is |
+|---|---|---|
+| 0 | `magic` | `0x4B4F4F434D484353` — read BYTEWISE, before anything else |
+| 8 | `build_version` | the unit's id (§20) |
+| 16 | `byte_order` | `1` little, `2` big — the order that WROTE the file |
+| 24 | `data_length` | the region's bytes |
+| 32 | `attribution_length` | the directory's bytes, or `0` |
+| 40 | `alignment` | the region's alignment |
+| 48 | `reserved` | zero |
+| 56 | `reserved` | zero |
+
+- **The MAGIC's value is `0x4B4F4F434D484353`**, which is `SCHMCOOK` read as
+  ASCII in the byte order a little-endian store produces — the same shape
+  §19.1's `SCHMABLK` takes, so a hex dump of a little-endian cook is legible
+  and the two accelerators sit in one vocabulary. It is stored in the
+  PRODUCER's order: a consumer reads back this build's constant, or that
+  constant byte-reversed, which identifies a cook of the other order, or
+  something that is not a cook. **A consumer written from this page needs the
+  constant, not a description of one.**
+- **The `byte_order` word does the OTHER job**, exactly as a block's does
+  (§19.1): the magic is what REFUSES a foreign order and this word is what
+  RECORDS which order wrote it, so a refusal names the order rather than
+  inferring it and a tool dumping a cook reads the fact. A file whose magic
+  matched and whose order word did not is corrupt, and there is no reading
+  that recovers it. The BUILD VERSION cannot do either job: §20.1 digests
+  `byteorder` as a GENERATION input, `little` for every target schema
+  generates for today, so two builds of one schema for two orders emit the
+  same id.
+- **`alignment` is the REGION's alignment**: the greatest `alignof` of any
+  record in it, never below EIGHT. The floor is what puts the attribution
+  part on an eight-byte boundary without a second padding rule, since a
+  region of byte-only records would otherwise align at one.
+- **The DATA part begins at `align_up( 64, alignment )`**, which is 64 for
+  every unit this language can declare — the largest alignment it has is 16.
+  It is DERIVED and not a header field, because a fact a reader computes is a
+  fact two writers cannot disagree about, and because `Open` must stay O(1)
+  whatever it is. A mapped file's page alignment covers the base for free.
+- **`data_length` is ROUNDED UP to `alignment`**, so the attribution part
+  begins at `data_offset + data_length` and needs no rule of its own. The
+  bytes between the last node and that rounding are zero, like every other
+  byte no field covers (§7.2).
+- **`attribution_length` is `16 × nodes`, or zero.** The directory carries no
+  count of its own: the node count is the length divided by sixteen, and a
+  length that is not a whole number of entries refuses. A cook that carries
+  data alone records zero here, and `schema cook-check` refuses it saying
+  which part is missing.
+- **The whole file is `data_offset + data_length + attribution_length`**, and
+  a `size` that is not exactly that refuses — a truncated file and a file with
+  trailing bytes are the same refusal.
+- **The two RESERVED words are reserved**: a non-zero one means a writer used
+  a form this build does not understand, and `Open` refuses rather than
+  ignoring it.
+
+**The ATTRIBUTION part is the node directory of §6.3 and nothing else**: one
+entry per numbered node, in index order, each `offset (u64), type id (u64)`,
+position `i` describing node index `i + 1`, so position `0` is the root at
+offset `0`. A node's extent runs to the next entry's offset, and the LAST
+node's runs to `data_length`. The parts are SEPARABLE: a tool may write the
+attribution beside the cook rather than inside it, and rejoining is the
+length word and a concatenation, because a split moves nothing else.
+
+### 7.2 The region, byte for byte
+
+The data part is `Lock`'s region written verbatim (§6.3). **Nodes are laid
+out in the DEPTH-FIRST PRE-ORDER §3.1 numbers them in**, the root at offset
+`0`, each starting at `align_up( offset, alignof )` for its own type, with
+zero slack between them.
+
+**A record's layout is §20.3's model and no other**: each field at its own
+alignment, the record's alignment the greatest of its fields', the size
+rounded up to it. The compiler computes it, both backends assert it, and a
+cook's bytes come from the same computation as the build version's `record`
+lines — a second walk here would be a second ABI.
+
+**A field is laid out as its STORAGE PIECES, each aligned on its own**, which
+is what a generated record declares and what a port that padded only BETWEEN
+fields would get wrong:
+
+| declaration | pieces, in order |
+|---|---|
+| a scalar, an enum, a `flags` | the value at its storage width |
+| `string(N)` | `char[N + 1]`, then `int32` used length |
+| `bytes(N)` | `uint8[N]`, then `int32` used length |
+| `[N]T` | `N` elements at the element's `sizeof` |
+| `[..N]T` | `N` elements, then `int32` used count |
+| `[E]T` | `E.Max + 1` elements, slot `0` included |
+| `*T` | `int64` self-relative delta, eight bytes at eight |
+| `?T` | the value's own pieces, then `bool` present |
+
+- **An ENUM slot holds the ORDINAL**, at the enum's own derived storage width
+  (SPEC.md §4.2) — not the wire's variant-name hash. What group 3 of the build
+  version captures is what a slot HOLDS (§20.1), and the two vocabularies meet
+  in the enum's own values.
+- **An ENUM-KEYED array's slots are POSITIONAL in a region**, indexed by the
+  enum value itself: slot `v` is variant `v`'s, and slot `0` is `None`'s,
+  which names no record, is never read through the iteration surface (§2.4)
+  and holds the element's value-initialized bytes. The wire rides the same
+  array BY NAME (§3.2); a region rides it by position, and the cook is where
+  the two are reconciled.
+- **A UNION is a TAG beside its arms**: the tag at the union's own base at its
+  storage width, the arms overlaid at `align_up( tag width, greatest arm
+  alignment )`, the whole rounded to the union's alignment. **Only the SET
+  arm's bytes are written**; every other byte of the extent is zero, which is
+  the arm-zeroing shape §13.2 already pins, taken to a region.
+- **A COUNTED array writes all `N` slots.** The storage is allocate-max, and a
+  slot past the live count holds the VALUE-INITIALIZED element — zero for a
+  scalar, the element type's own declared defaults for a record. That is what
+  `T x[N] = {}` produces and what a wire load leaves there (§6.1), so a cook
+  of a loaded wire and a cook of a built structure agree.
+- **A `*T` SLOT IS EIGHT BYTES AT EIGHT**, holding the signed self-relative
+  delta of §6.3, and **NULL IS ZERO**. It is as wide as the offsets it is the
+  difference of, so a region of any size expresses every reference it holds and
+  a cook has no reach to refuse.
+
+**EVERY BYTE NO FIELD COVERS IS ZERO** — interior padding, a record's trailing
+padding, a string's or `bytes`' unused tail, the bytes of a union outside its
+set arm, and the slack between the last node and the rounded `data_length`.
+It is not tidiness: a cooked artifact is CONTENT-ADDRESSED by (asset hash,
+build version) (§7), so two cooks of one wire have to be one artifact, and one
+uninitialized pad byte would make them two.
+
+### 7.3 A cook, worked to the byte
+
+Every number below derives from a rule on this page; none of it is declared.
+
+```
+package demo
+
+table Palette { id int32 }
+table Node    { value int32  next *Node }
+table Scene   { name string(4)  head *Node  palette *Palette }
+```
+
+with `scene.name = "hi"`, `scene.head = A`, `A.next = B`, `A.value = 1`,
+`B.value = 2`, and `scene.palette = P` with `P.id = 7`.
+
+- **The layouts** are §20.3's: `Palette` is `sizeof=4 alignof=4`; `Node` is
+  `value` at 0 and `next` — an eight-byte slot, so eight-aligned — at 8,
+  `sizeof=16 alignof=8`; `Scene` is `name`'s `char[5]` at 0 and its `int32`
+  length at 8 — the buffer aligns at one and the length at four — then `head`
+  at 16 and `palette` at 24, `sizeof=32 alignof=8`. `schema build-version
+  --facts` prints those same numbers, and the id over them is
+  `0x4efe97313c704bb5`.
+- **The numbering** is §3.1's walk: the root is 1; `head` reaches A, so A is
+  2; descending A, `next` reaches B, so B is 3; then `palette` reaches P, so
+  P is 4.
+- **The offsets** follow: `Scene` at 0, A at 32, B at 48, P at 64. The
+  region's extent is 68, its alignment `max( 8, 8 ) = 8`, and 68 rounds to 72.
+- **The deltas** are self-relative: `head`'s slot is at 16 and A is at 32, so
+  it holds 16; `palette`'s slot is at 24 and P is at 64, so it holds 40;
+  `A.next`'s slot is at 40 and B is at 48, so it holds 8; `B.next` is null, so
+  it holds 0.
+- **The directory** is four entries: `(0, Scene)`, `(32, Node)`, `(48, Node)`,
+  `(64, Palette)`, and the type ids are `fnv1a64` over the table's name (§3.1).
+- **The file** is `64 + 72 + 64 = 200` bytes.
+
+```
+0000  53 43 48 4d 43 4f 4f 4b   magic "SCHMCOOK"
+0008  b5 4b 70 3c 31 97 fe 4e   build_version 0x4efe97313c704bb5
+0010  01 00 00 00 00 00 00 00   byte_order = 1 (little)
+0018  48 00 00 00 00 00 00 00   data_length = 72
+0020  40 00 00 00 00 00 00 00   attribution_length = 64
+0028  08 00 00 00 00 00 00 00   alignment = 8
+0030  00 00 00 00 00 00 00 00   reserved
+0038  00 00 00 00 00 00 00 00   reserved
+
+0040  68 69 00 00 00            Scene.name  char[5] = "hi", zero tail
+0045  00 00 00                  padding to the length's alignment
+0048  02 00 00 00               Scene.name  used length = 2
+004c  00 00 00 00               padding to the reference slot's alignment
+0050  10 00 00 00 00 00 00 00   Scene.head     delta +16 -> node 2 at 32
+0058  28 00 00 00 00 00 00 00   Scene.palette  delta +40 -> node 4 at 64
+0060  01 00 00 00               A.value = 1
+0064  00 00 00 00               padding to the reference slot's alignment
+0068  08 00 00 00 00 00 00 00   A.next  delta +8 -> node 3 at 48
+0070  02 00 00 00               B.value = 2
+0074  00 00 00 00               padding
+0078  00 00 00 00 00 00 00 00   B.next  = 0, and zero is null
+0080  07 00 00 00               P.id = 7
+0084  00 00 00 00               the region ends at 68 and rounds to 72
+
+0088  00 00 00 00 00 00 00 00   node 1: offset 0
+0090  13 f2 b5 3a 62 31 9a 4a   node 1: type id, Scene
+0098  20 00 00 00 00 00 00 00   node 2: offset 32
+00a0  8d b6 f6 d2 c6 1c bd 66   node 2: type id, Node
+00a8  30 00 00 00 00 00 00 00   node 3: offset 48
+00b0  8d b6 f6 d2 c6 1c bd 66   node 3: type id, Node
+00b8  40 00 00 00 00 00 00 00   node 4: offset 64
+00c0  e0 ad 84 20 6e 53 af c8   node 4: type id, Palette
+```
+
+**The BIG-ENDIAN cook of the same structure is the same 168 bytes with every
+scalar reversed in place** — the header's words, the region's lengths, counts,
+deltas and values, and the directory's pairs — and nothing else moves: no
+offset, no size, no node order, and the same directory read in its own order.
+The magic's first eight bytes then read `4b 4f 4f 43 4d 48 43 53`, which is
+what tells a little-endian consumer it is holding a foreign file.
+
+### 7.4 What the check reads, and what it does not
+
+§7's two passes are stated above; this is what each one touches.
+
+**Pass one, the directory, needs no field of the region at all.** It refuses a
+sentinel entry, a type id no table has, a first entry that is not the root at
+offset zero, an offset below the previous node's end, an offset not aligned
+for its own type, and a node whose `sizeof` does not fit before the next entry
+or before `data_length`. Because every entry is then known aligned and inside
+the region, PASS TWO NEEDS NO BOUNDS CHECK OF ITS OWN for a reference that
+lands on a directory entry — which is the economy §6.3 buys by making the
+directory's offsets the padded starts.
+
+**Pass two reads exactly three things**, and it decodes no payload and follows
+no reference:
+
+1. **Every `*T` slot.** A delta of zero is null. Any other resolves to
+   `slot + delta`, which must be an offset the directory NAMES — one binary
+   search, which is the `P log N` — and the entry's type id must be the one
+   the declaration requires.
+2. **Every COUNT COMPANION**, against its declared bound: a `string(N)` or
+   `bytes(N)` used length, and a bounded array's used count. A NEGATIVE one
+   refuses too, because an extent is never negative and a walker handed one
+   indexes backwards out of the region. The companions of fixed-size tables
+   and plain types NESTED BY VALUE are in scope, because they bound a walker
+   just as a table's do.
+3. **Every UNION TAG.** It is the one field VALUE the scan reads, and it is
+   read because it is a DISCRIMINANT rather than a payload: a scan that
+   skipped it would either check no arm — leaving every reference and every
+   companion inside one unchecked — or check bytes no runtime will ever read
+   as an arm. It is bounds-checked against the union's arm count for the same
+   reason a companion is: a tag past the last arm steers a walker into storage
+   no declaration describes.
+
+**Nothing else is read.** Not a scalar, not a string's bytes, not an enum's
+ordinal, not a `flags` mask — none of them can steer a walker, so none of them
+is the check's business, and a value outside a declared RANGE is not a
+forgery: §4 clamps a range on the wire, and a cook of a build's own data has
+already been through that.
+
+**A cook this build wrote always passes**, which is what makes the check
+usable as a gate rather than only as a diagnostic: the writer refuses a
+partial region and a delta it cannot express, so the file it produces satisfies
+every clause above by construction.
+
+### 7.5 Held by test
+
+- **THE ROUND TRIP, and it is the gate**: `wire → cook → wire`,
+  byte-identical, in BOTH byte orders, over every pointered graph in the
+  corpus — aliasing, a back-reference, a chain, a tree, a variable table
+  nested by value, a bounded array of them, an enum-keyed array of them, an
+  optional, and a null in every pointer-shaped slot — and over every pinned
+  `schema pack` tree for the FIXED class. The wire is the format of record, so
+  a fact the accelerator cannot give back is a fact it lost.
+- **The BUILD VERSION stamped in the header equals `schema build-version`**,
+  and a cook opened against any other id refuses. There is no second version
+  id (§20).
+- **A BIG-ENDIAN cook byte-swaps every scalar**, proved three ways rather than
+  by the writer's own claim: the two files are the same length and differ; each
+  header word is the other's byte reversal, except the `byte_order` word, whose
+  VALUE differs; and a named scalar field, at the offset the compiler's layout
+  model puts it, reads `03 00 00 00` in one and `00 00 00 03` in the other.
+  The big-endian file then opens, and its directory is entry-for-entry the
+  little-endian one's.
+- **A HOSTILE BATTERY over `cook-check`**, on §19.5's shape: valid cooks in
+  both orders, mutated by seeded byte flips, by boundary-value overwrites at
+  every `u32` and `u64` the format has, and by one DIRECTED edit per refusal
+  this section names — a forged magic, each reserved word, a foreign build
+  version, an order word the magic contradicts, truncation, extension, each
+  part length, a non-power-of-two alignment, the sentinel, an unknown type id,
+  a directory that does not ascend, a root off the base, an overlap, a node
+  past the region, a misaligned entry, a reference that names no entry, one
+  that leaves the region, one the directory names as another type, and each
+  count companion past its bound and below zero. The bar is **REFUSE, OR
+  ACCEPT AND BE WHOLE**: an accepted file must uncook and re-cook into a file
+  that checks, and NOTHING MAY PANIC — an out-of-range read inside the check is
+  the failure it exists to prevent.
+- **Its NEGATIVE CONTROL**: pass one, the directory scan, removed from
+  `cook-check` through a build overlay, and the battery must go red. A checker
+  whose battery has never gone red is watching nothing.
+- **THE SCALE FIXTURES**: a synthetic region generator writes a 1 MB, a 100 MB
+  and a 1 GB cook, streaming, so the open-cost gate the emitter owes — open
+  time FLAT across the three — has inputs a person regenerates rather than a
+  gigabyte in the tree. CI runs the first two under the two-minute rule; the
+  gigabyte is run by hand. **The gate itself belongs to the RUNTIME and not to
+  this tool**: `Open` is what has to be O(1), and a tool that walks a directory
+  is measuring its own scan.
 
 ## 8. Reflection: the view
 
@@ -3091,6 +3436,18 @@ are these rulings, in the owner's words:
   data so we can separate if needed. We may not need at runtime in a
   shipped build for example (it is read only and not mutable)."
 - **On sizing the wire's ids**: "u64 now", and "u64 now, why fuck around."
+- **THE REGION REFERENCE SLOT IS EIGHT BYTES**, 2026-09-03: "move now." The
+  slot had been four, which bounded ONE REGION at `2 GiB` — a self-relative
+  delta cannot reach further than the width it is stored in — and the ruling
+  applies the two facts already on this page to it: the sizing rule above,
+  "u64 now, why fuck around", and the scale the cook exists for, "Assume we
+  have say, 100mbs or many gigabytes of data in Assets.bin at some point."
+  A ceiling that a mesh or texture catalogue is exactly the thing to meet is
+  not a ceiling to keep pre-release. **The cost is stated rather than
+  discovered** (§6.3): eight bytes a reference in every variable-length
+  record, needed or not, and every affected unit's BUILD VERSION moves, so
+  every cooked file is re-cooked — which pre-release is a regeneration. A
+  value-only table pays nothing: no pointer, no slot.
 - **On optimizing ahead of evidence**: "we can worry about optimization
   later, unless there are specific decisions we need to make now that will
   knowingly make things slower."
@@ -5071,9 +5428,11 @@ C# BLOCK backends emit the constant and stamp it into every block's prologue
    so the generated check runs once at type initialization and throws naming
    the type, the field, the offset it found and the offset the C++ side
    asserts. Loud and early, but not at compile time.
-4. **The COOK carries none of it.** The cook is not built (§7, schema#251),
-   so there is no cooked header to stamp the id into and no `schema
-   cook-check` to read it back.
+4. **The COOK carries it in the TOOL and not in a runtime.** `schema cook`
+   stamps the id into the cooked header and `schema cook-check` reads it back,
+   both held to `schema build-version` by test (§7, §20.8). What is still owed
+   is the generated `Open` that checks it — no backend emits one (§7,
+   schema#251).
 
 ### 20.1 What it digests
 
