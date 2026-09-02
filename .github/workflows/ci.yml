@@ -176,6 +176,63 @@ jobs:
       - name: fuzz seeds
         run: go test ./internal/fuzz/
 
+  # DOGFOOD BIG-ENDIAN (issue #303). SPEC-TABLES.md §3 says the wire is
+  # little-endian and byte-oriented throughout; §7 says a cook is produced in
+  # the byte order of the build it is cooked for, and that Open refuses any
+  # other. Every host this repo has built on is little-endian, so both rules
+  # were assertions on a page: a generated codec that reached for HOST order
+  # anywhere would have passed every other leg in this file, and the goldens
+  # would have said nothing.
+  #
+  # This leg builds the tables battery for s390x — big-endian, and the target
+  # both qemu-user and the Ubuntu gcc cross packages support best — and runs it
+  # under emulation, plus a cross-endian cook pair the host and the target hand
+  # to each other. Its negative control puts one byte-order-neutral store back
+  # to a host-order copy and proves the leg goes red on the target while
+  # staying green here, which is the whole argument for having it.
+  #
+  # It runs on PRs: it is an iteration gate, not a certification one — it
+  # answers a question about the code in the diff, not about the compiler that
+  # built it — and it fits the budget.
+  #
+  # THE PINS. The runner image is named rather than `-latest`, because package
+  # versions are only meaningful against one archive; the cross compiler and
+  # the emulator are then installed by EXACT version, so this leg proves the
+  # same thing next month as today. Bumping either is a deliberate one-line
+  # edit, the same act as the golangci-lint pin below, and the versions come
+  # from the policy the failing install prints. The step after the install
+  # records the resolved closure both pins pull in.
+  big-endian:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: the pinned cross toolchain and emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1 \
+            qemu-user=1:8.2.2+ds-0ubuntu1.18
+
+      - name: what the pins resolved to
+        run: |
+          s390x-linux-gnu-g++-13 --version | head -1
+          qemu-s390x --version | head -1
+          dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
+
+      # The battery on the target, then the control that proves it can fail.
+      # BE_CXX names the pinned compiler: the exact-version package installs
+      # the SUFFIXED driver, and the Makefile's unsuffixed default is for a
+      # workstation that installed the metapackage.
+      - name: the big-endian leg, and its negative control
+        run: make tables-big-endian-negative BE_CXX=s390x-linux-gnu-g++-13
+
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job so the legs run concurrently instead of
   # serially (they were ~9 minutes end to end in one job; the longest single

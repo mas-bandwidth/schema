@@ -199,16 +199,28 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # The tables corpus (SPEC-TABLES.md): the tabledemo unit plus the
 # two-generation evolution pair (tblv1/tblv2), generated at build time into
 # build/ — test-only, never part of the committed generated/ tree.
+#
+# The generate step and the include path are parameterised by generator binary
+# and output root, because the big-endian negative control below regenerates
+# the WHOLE corpus from a sabotaged emitter: a second copy of these lists would
+# be a second corpus, and the gate would stop covering what the leg covers.
+define tables_generate
+	$(1) generate --lang cpp --out $(2)/examples tables/examples
+	$(1) generate --lang cpp --out $(2)/pointers tables/pointers
+	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
+	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
+	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
+	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema
+	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema
+	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema
+endef
+
+tables_includes = -I$(1)/examples -I$(1)/pointers -Itest/tables \
+	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys
+
 build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated
-	./bin/schema generate --lang cpp --out build/tables-generated/examples tables/examples
-	./bin/schema generate --lang cpp --out build/tables-generated/pointers tables/pointers
-	./bin/schema generate --lang cpp --out build/tables-generated/v1 test/tables/V1.schema
-	./bin/schema generate --lang cpp --out build/tables-generated/v2 test/tables/V2.schema
-	./bin/schema generate --lang cpp --out build/tables-generated/p1 test/tables/P1.schema
-	./bin/schema generate --lang cpp --out build/tables-generated/p2 test/tables/P2.schema
-	./bin/schema generate --lang cpp --out build/tables-generated/p3 test/tables/P3.schema
-	./bin/schema generate --lang cpp --out build/tables-generated/jsonkeys test/tables/JsonKeys.schema
+	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
 
 # The ZERO-COST GATE (SPEC-TABLES.md): a table with no pointer in its by-value
@@ -333,10 +345,7 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 #
 # TABLES_INCLUDES is shared with the sanitized twin below, so the two builds
 # can never drift into covering different code.
-TABLES_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/pointers -Itest/tables \
-	-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
-	-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p2 -Ibuild/tables-generated/p3 \
-	-Ibuild/tables-generated/jsonkeys
+TABLES_INCLUDES := $(call tables_includes,build/tables-generated)
 TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread
 
 # The text form's runtime is a generated TRANSLATION UNIT now, not header
@@ -368,6 +377,90 @@ build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 		-fno-omit-frame-pointer -g $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+
+# ---- the BIG-ENDIAN leg (SPEC-TABLES.md §3 and §7) -------------------------
+#
+# The wire is little-endian and byte-oriented (§3), and a cook is produced in
+# the byte order of the build it is cooked for (§7). Both were rules on a page:
+# every host this repo builds on is little-endian, so nothing ever read a
+# golden the other way round. This leg builds the tables battery for a
+# BIG-ENDIAN target and runs it under an emulator, which turns the two rules
+# into gates — the goldens a little-endian host wrote are loaded, re-written
+# and byte-compared by a big-endian reader, and a cook that crosses the byte
+# order is proven to refuse rather than to garble.
+#
+# The toolchain is not a system binary and is not assumed: CI installs an
+# exact pinned version (.github/workflows/ci.yml) and these two variables name
+# what it installed, so the leg runs anywhere the same pair is on PATH.
+BE_CXX ?= s390x-linux-gnu-g++
+BE_RUN ?= qemu-s390x
+
+# Same flags and includes as the plain leg, shared through the same variables
+# for the same reason the sanitized twin shares them (#278): a twin that
+# covers different code is not a twin. -static so the runner needs no sysroot
+# and the emulator invocation is just the binary.
+build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp
+	@mkdir -p build
+	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+
+# The cross-endian COOK driver, built BOTH ways: the rule it holds — a cook
+# does not cross a byte order — needs two builds and a file between them, which
+# is the one part of §7 no single-process test can reach.
+build/schema_test_cook_endian: build/tables-generated/.stamp test/tables/cook_endian_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/cook_endian_main.cpp -o $@
+
+build/schema_test_cook_endian_be: build/tables-generated/.stamp test/tables/cook_endian_main.cpp
+	@mkdir -p build
+	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/cook_endian_main.cpp -o $@
+
+.PHONY: tables-big-endian
+tables-big-endian: build/schema_test_tables_be build/schema_test_cook_endian build/schema_test_cook_endian_be
+	$(BE_RUN) ./build/schema_test_tables_be
+	./build/schema_test_cook_endian write build/cook-host.bin
+	$(BE_RUN) ./build/schema_test_cook_endian_be write build/cook-target.bin
+	$(BE_RUN) ./build/schema_test_cook_endian_be accept build/cook-target.bin
+	$(BE_RUN) ./build/schema_test_cook_endian_be refuse build/cook-host.bin
+	./build/schema_test_cook_endian accept build/cook-host.bin
+	./build/schema_test_cook_endian refuse build/cook-target.bin
+	@echo "big-endian leg: the wire crosses the byte order, the cook refuses to"
+
+# Its NEGATIVE CONTROL. Put ONE of the wire's byte-order-neutral stores back to
+# a host-order copy — put16, which writes every field id, every enum value and
+# every union arm id — and the leg must go RED on the big-endian target. The
+# same sabotage stays GREEN on this little-endian host, and that pair is the
+# whole argument for the leg: this is precisely the defect class no
+# little-endian CI can see.
+#
+# The sabotaged emitter reaches the compiler through `go build -overlay`, so no
+# tracked file is ever written to: an interrupt cannot leave a sabotaged
+# working tree, and a parallel `make -j` cannot compile the sabotage into
+# something else.
+.PHONY: tables-big-endian-negative
+tables-big-endian-negative: tables-big-endian
+	@mkdir -p build
+	@sed 's|void put16( uint16_t v ) { uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }|void put16( uint16_t v ) { raw( \&v, 2 ); } // SABOTAGED: host order|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
+	@cmp -s build/cpptable-host-order.gotext internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-host-order.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-overlay.json
+	@go build -overlay=build/cpptable-overlay.json -o build/schema-host-order ./cmd/schema
+	@rm -rf build/tables-host-order && mkdir -p build/tables-host-order
+	$(call tables_generate,./build/schema-host-order,build/tables-host-order)
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) \
+		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order
+	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) \
+		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order_be
+	@./build/schema_test_tables_host_order > /dev/null || \
+		{ echo "NEGATIVE CONTROL FAILED: a host-order put16 is visible on a little-endian host — this host is not little-endian, or the sabotage is not the one described"; exit 1; }
+	@echo "negative control: a host-order put16 leaves the LITTLE-ENDIAN leg green"
+	@if $(BE_RUN) ./build/schema_test_tables_host_order_be > build/host-order-be.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a host-order put16 left the BIG-ENDIAN leg green"; exit 1; \
+	fi
+	@grep -q "table wire golden" build/host-order-be.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the big-endian leg went red, but not on a wire golden"; cat build/host-order-be.log; exit 1; }
+	@echo "negative control: the same put16 turns the BIG-ENDIAN leg red, on the wire goldens"
 
 # The PACK GOLDEN (SPEC-TABLES.md §17.4, issue #257). `schema pack` carries an
 # IR-driven engine in Go — the compiler cannot run the code it emits — so the
