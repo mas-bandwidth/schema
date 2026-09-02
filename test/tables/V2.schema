@@ -47,5 +47,7 @@ table Cfg
     inner  Inner
     items  [..8]int32    | min = 0, max = 255
     grade  Grade
+    grades [..4]Grade
+    podium [3]Grade
     effect Effect
 }

@@ -225,6 +225,18 @@ static void test_exact_capacity()
     loadout.grade = tabledemo::Grade::Gold;
     check_exact_capacity( loadout, tabledemo::LoadoutConfigMeasure, tabledemo::LoadoutConfigSave );
 
+    // enum ARRAYS, both shapes: a counted one and a fixed one, each riding
+    // u16 variant hashes per element (SPEC-TABLES.md §3)
+    tabledemo::LoadoutConfig enums;
+    enums.grades_count = 3;
+    enums.grades[0] = tabledemo::Grade::Bronze;
+    enums.grades[1] = tabledemo::Grade::None;   // None is a legal element: it rides as 0
+    enums.grades[2] = tabledemo::Grade::Gold;
+    enums.podium[0] = tabledemo::Grade::Gold;
+    enums.podium[1] = tabledemo::Grade::Silver;
+    enums.podium[2] = tabledemo::Grade::Bronze;
+    check_exact_capacity( enums, tabledemo::LoadoutConfigMeasure, tabledemo::LoadoutConfigSave );
+
     // the v2 evolution shape
     tblv2::Cfg v2;
     v2.a = 1.0f;
@@ -442,6 +454,28 @@ static void test_evolution_enum_insert_old_data()
     CHECK( tblv2::CfgLoad( out, wire, bytes, &report ) );
     CHECK( !report.malformed && report.unknown == 0 && report.clamped == 0 );
     CHECK( out.grade == tblv2::Grade::Gold ); // NOT Silver, which holds ordinal 2 in V2
+
+    // and the same inside an enum ARRAY, both shapes: elements carry variant
+    // hashes one by one, so a middle insert leaves every stored element alone
+    tblv1::Cfg arrays;
+    arrays.grades_count = 2;
+    arrays.grades[0] = tblv1::Grade::Gold;
+    arrays.grades[1] = tblv1::Grade::Bronze;
+    arrays.podium[0] = tblv1::Grade::Bronze;
+    arrays.podium[1] = tblv1::Grade::Gold;
+    arrays.podium[2] = tblv1::Grade::None;
+    bytes = tblv1::CfgSave( arrays, wire, sizeof( wire ) );
+    CHECK( bytes > 0 && bytes == tblv1::CfgMeasure( arrays ) );
+
+    tblv2::TableReport report2;
+    tblv2::Cfg out2;
+    CHECK( tblv2::CfgLoad( out2, wire, bytes, &report2 ) );
+    CHECK( !report2.malformed && report2.unknown == 0 && report2.clamped == 0 );
+    CHECK( out2.grades_count == 2 );
+    CHECK( out2.grades[0] == tblv2::Grade::Gold && out2.grades[1] == tblv2::Grade::Bronze );
+    CHECK( out2.podium[0] == tblv2::Grade::Bronze );
+    CHECK( out2.podium[1] == tblv2::Grade::Gold );
+    CHECK( out2.podium[2] == tblv2::Grade::None );
 }
 
 static void test_evolution_enum_insert_new_data()
@@ -469,6 +503,20 @@ static void test_evolution_enum_insert_new_data()
     CHECK( tblv1::CfgLoad( out2, wire, bytes, &report2 ) );
     CHECK( !report2.malformed && report2.unknown == 0 );
     CHECK( out2.grade == tblv1::Grade::Gold );
+
+    // the array direction: one element V1 knows, one it does not
+    tblv2::Cfg arrays;
+    arrays.grades_count = 2;
+    arrays.grades[0] = tblv2::Grade::Gold;   // V1 names it
+    arrays.grades[1] = tblv2::Grade::Silver; // V1 does not
+    bytes = tblv2::CfgSave( arrays, wire, sizeof( wire ) );
+    tblv1::TableReport report3;
+    tblv1::Cfg out3;
+    CHECK( tblv1::CfgLoad( out3, wire, bytes, &report3 ) );
+    CHECK( !report3.malformed && report3.unknown == 1 );
+    CHECK( out3.grades_count == 2 );
+    CHECK( out3.grades[0] == tblv1::Grade::Gold );
+    CHECK( out3.grades[1] == tblv1::Grade::None );
 }
 
 static void test_evolution_union_insert_old_data()
@@ -574,7 +622,8 @@ static void test_repeated_id_unnameable_variant()
 }
 
 // a value no variant names has no wire identity: measure and save refuse it,
-// exactly as they refuse an out-of-range union tag
+// exactly as they refuse an out-of-range union tag — in a scalar field, and in
+// EITHER array shape, where the check runs per element
 static void test_unnameable_enum_refused()
 {
     uint8_t buffer[256];
@@ -582,6 +631,52 @@ static void test_unnameable_enum_refused()
     cfg.grade = (tblv1::Grade) 9;
     CHECK( tblv1::CfgMeasure( cfg ) == -1 );
     CHECK( tblv1::CfgSave( cfg, buffer, sizeof( buffer ) ) == -1 );
+
+    // a counted array: only the elements BELOW the count are examined
+    tblv1::Cfg counted;
+    counted.grades_count = 2;
+    counted.grades[0] = tblv1::Grade::Gold;
+    counted.grades[1] = (tblv1::Grade) 9;
+    CHECK( tblv1::CfgMeasure( counted ) == -1 );
+    CHECK( tblv1::CfgSave( counted, buffer, sizeof( buffer ) ) == -1 );
+    counted.grades_count = 1; // the bad element is now above the count
+    CHECK( tblv1::CfgMeasure( counted ) > 0 );
+
+    // a fixed array: every element rides, so every element is examined — but
+    // only when the array is not all-default, which cannot hold a bad value
+    tblv1::Cfg fixed;
+    fixed.podium[2] = (tblv1::Grade) 9;
+    CHECK( tblv1::CfgMeasure( fixed ) == -1 );
+    CHECK( tblv1::CfgSave( fixed, buffer, sizeof( buffer ) ) == -1 );
+}
+
+// the READ side of an enum array: an element id this build cannot name lands
+// on None and counts, and its neighbours decode normally
+static void test_unnameable_enum_element_read()
+{
+    const tblv1::TableFieldInfo * grades = v1_field( tblv1::CfgTableType(), "grades" );
+    CHECK( grades != NULL && grades->kind == 7 && grades->is_array );
+
+    uint8_t wire[32];
+    int n = 0;
+    le16( wire + n, grades->id ); n += 2;
+    wire[n++] = 14;                    // kArray
+    le32( wire + n, 5 + 6 ); n += 4;   // header + three u16 elements
+    wire[n++] = 7;                     // elem_kind kU16
+    le32( wire + n, 3 ); n += 4;
+    le16( wire + n, field_id( "Gold" ) ); n += 2;
+    le16( wire + n, 0xBEEF ); n += 2;  // an element id no build names
+    le16( wire + n, field_id( "Bronze" ) ); n += 2;
+    le16( wire + n, 0 ); n += 2;       // terminator
+
+    tblv1::TableReport report;
+    tblv1::Cfg out;
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( !report.malformed && report.unknown == 1 );
+    CHECK( out.grades_count == 3 );
+    CHECK( out.grades[0] == tblv1::Grade::Gold );
+    CHECK( out.grades[1] == tblv1::Grade::None );   // never a neighbour's variant
+    CHECK( out.grades[2] == tblv1::Grade::Bronze ); // and the element after it decodes
 }
 
 // ---- FLAGS STAY POSITIONAL: a mask is a set of bits, and a bit has no cheap
@@ -1921,6 +2016,7 @@ int main()
     test_evolution_union_insert_new_data();
     test_repeated_id_unnameable_variant();
     test_unnameable_enum_refused();
+    test_unnameable_enum_element_read();
     test_flags_are_positional();
     test_wide_extents();
     test_clamping();

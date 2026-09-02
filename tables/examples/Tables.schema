@@ -57,6 +57,8 @@ table WeaponConfig
 table LoadoutConfig
 {
     grade       Grade = Silver
+    grades      [..4]Grade
+    podium      [3]Grade
     perks       Perks
     primary     WeaponConfig
     backups     [2]WeaponConfig
