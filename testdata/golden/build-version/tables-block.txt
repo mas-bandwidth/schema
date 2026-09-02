@@ -1,7 +1,8 @@
-0x92b8887e8391446a
+0xb34bc386659d9873
 schema-build-version 1
 protocol 7a706bf2ea47d94b
 byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
 record PaddedFrame sizeof=4648 alignof=8
     field 866f kind=6 offset=0 size=1
     field 0dc6 kind=9 offset=8 size=8

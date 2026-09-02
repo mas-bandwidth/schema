@@ -347,6 +347,15 @@ func (g *blockGen) emitLayoutCheck() {
 	}
 	for _, bl := range g.blocks.Tables {
 		g.emitRecordCheck(bl.Table.Name, &bl.Projection, true)
+		// and each array's PITCH CONSTANT, against this runtime's own sizeof.
+		// Without this the constant is emitted and never read, so perturbing
+		// it on one side only — which is §19.5's named negative control —
+		// could not turn anything red here.
+		for _, a := range bl.Arrays {
+			g.rf("        Size(\"%sBlock.%sStride\", (int) %sBlock.%sStride, Unsafe.SizeOf<%s.Block.%s>());\n",
+				bl.Table.Name, ir.GoExportName(a.Field.Name), bl.Table.Name, ir.GoExportName(a.Field.Name),
+				capitalize(g.unit.Package), a.ElemName)
+		}
 	}
 	g.rf("    }\n\n")
 	g.rf("    private static void Size(string what, int got, int want)\n    {\n")
@@ -463,7 +472,8 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.hf("    // Open checks once and points, and this is the WHOLE check (SPEC-TABLES.md\n")
 	g.hf("    // §19.2): the magic read bytewise, the BYTE ORDER the prologue carries\n")
 	g.hf("    // against this build's own, the BUILD VERSION against this build's own,\n")
-	g.hf("    // each array's offset_of and extent inside the block, the used extent\n")
+	g.hf("    // each array's pitch, its offset_of, its COUNT against the declared\n")
+	g.hf("    // maximum and its extent inside the block, the used extent\n")
 	g.hf("    // against the bytes the caller passed, and the base's alignment. On a\n")
 	g.hf("    // match the bytes are what a build with this layout wrote, so there is\n")
 	g.hf("    // nothing to validate and nothing to fix up. On any failure it returns\n")
@@ -496,6 +506,11 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.hf("            long count = projection->%s.Count;\n", field)
 		g.hf("            long stride = projection->%s.Stride;\n", field)
 		g.hf("            if (stride != Unsafe.SizeOf<Block.%s>()) { return false; }\n", a.ElemName)
+		g.hf("            // past the DECLARED MAXIMUM: Begin refuses this on the producer\n")
+		g.hf("            // side and Open refuses it here, because a consumer that sizes\n")
+		g.hf("            // anything by the maximum would overflow on a count the maximum\n")
+		g.hf("            // does not bound\n")
+		g.hf("            if (count > %sMax) { return false; }\n", field)
 		g.hf("            if (offsetOf < %d || (offsetOf %% %d) != 0) { return false; }\n", bl.Projection.Size, alignment)
 		g.hf("            long end = offsetOf + count * stride;\n")
 		g.hf("            if (end < offsetOf || end > bytes) { return false; }\n")

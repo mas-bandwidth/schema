@@ -409,8 +409,15 @@ static void reflective_walk( const RenderFrameBlock & block, const RenderFrameCo
 
 int main( int argc, char ** argv )
 {
-    (void) argc;
-    (void) argv;
+    // --race is the NEGATIVE CONTROL for the ThreadSanitizer leg, and nothing
+    // else uses it: every worker fills the WHOLE of every array instead of its
+    // own disjoint share, so the workers write the same rows and TSan must say
+    // so. Without it a green TSan run proves only that the leg ran.
+    bool race = false;
+    for ( int i = 1; i < argc; i++ )
+    {
+        if ( strcmp( argv[i], "--race" ) == 0 ) { race = true; }
+    }
 
     // ---- gate: the layout, from the counts, to the digit (§19.1) ----
 
@@ -486,8 +493,11 @@ int main( int argc, char ** argv )
         workers.reserve( num_workers );
         for ( int w = 0; w < num_workers; w++ )
         {
-            workers.push_back( std::thread( [&wide, &counts, w]() {
-                fill_block( wide, counts, w, num_workers );
+            workers.push_back( std::thread( [&wide, &counts, w, race]() {
+                // disjoint index ranges, by ownership — or, under --race, the
+                // whole array from every worker, which is the control
+                if ( race ) { fill_block( wide, counts, 0, 1 ); }
+                else { fill_block( wide, counts, w, num_workers ); }
             } ) );
         }
         for ( size_t i = 0; i < workers.size(); i++ ) { workers[i].join(); }
@@ -557,6 +567,107 @@ int main( int argc, char ** argv )
     check( RenderFrameBlockBegin( block, storage, counts ), "Begin re-lays the good block" );
     block.projection->version = RenderVersion;
     fill_block( block, counts, 0, 1 );
+
+    // ---- gate: THE FORGERY BATTERY (§19.2's WHOLE check) ----
+    //
+    // Ten forgeries, one per fact BlockOpen checks, each a single word of an
+    // otherwise valid block. A reader who wrote this battery independently
+    // found that nine of ten refused and the tenth — a count past the DECLARED
+    // MAXIMUM — opened, on both backends: Begin refuses it on the producer
+    // side and Open did not refuse it here, so a consumer sizing anything by
+    // the maximum would have overflowed. It is the tenth row below now.
+    //
+    // The battery runs under the sanitized twin as well, where a forgery that
+    // got past the check would read outside the block and the leg would say so.
+    {
+        const int64_t bytes = RenderFrameBlockBytes( block );
+        RenderFrameBlock forged;
+        int refused = 0;
+        const int forgeries = 10;
+
+        // 1. a foreign magic
+        {
+            const uint64_t saved = block.projection->magic;
+            block.projection->magic = 0;
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->magic = saved;
+        }
+        // 2. a block of the other byte order, identified by a byte-swapped magic
+        {
+            const uint64_t saved = block.projection->magic;
+            block.projection->magic = table_block_byteswap64( saved );
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->magic = saved;
+        }
+        // 3. a build this one does not match
+        {
+            const uint64_t saved = block.projection->build_version;
+            block.projection->build_version = saved ^ 1;
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->build_version = saved;
+        }
+        // 4. the other byte order, recorded in the prologue's own word
+        {
+            const uint64_t saved = block.projection->byte_order;
+            block.projection->byte_order = saved == 1 ? 2 : 1;
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->byte_order = saved;
+        }
+        // 5. an array start that is not aligned for its element
+        {
+            const uint64_t saved = block.projection->ships.offset_of;
+            block.projection->ships.offset_of = saved + 1;
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->ships.offset_of = saved;
+        }
+        // 6. an array start inside the projection
+        {
+            const uint64_t saved = block.projection->ships.offset_of;
+            block.projection->ships.offset_of = 0;
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->ships.offset_of = saved;
+        }
+        // 7. an array that leaves the block
+        {
+            const uint64_t saved = block.projection->ships.offset_of;
+            block.projection->ships.offset_of = (uint64_t) RenderFrameBlockMaxBytes;
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->ships.offset_of = saved;
+        }
+        // 8. a pitch that is not this build's own
+        {
+            const uint32_t saved = block.projection->ships.stride;
+            block.projection->ships.stride = saved + 8;
+            refused += !RenderFrameBlockOpen( forged, storage.base, bytes );
+            block.projection->ships.stride = saved;
+        }
+        // 9. a count whose rows leave the extent the caller passed. It is
+        //    UNDER the declared maximum on purpose, so the extent check is
+        //    what refuses it and not row 10's.
+        {
+            const uint32_t saved = block.projection->ships.count;
+            block.projection->ships.count = 4000;
+            refused += !RenderFrameBlockOpen( forged, storage.base, 200000 );
+            block.projection->ships.count = saved;
+        }
+        // 10. a count past the DECLARED MAXIMUM, inside a roomy extent — the
+        //     one the reader found open. `bytes` here is the whole storage, so
+        //     nothing about the extent refuses it: only the maximum does.
+        {
+            const uint32_t saved = block.projection->ships.count;
+            block.projection->ships.count = (uint32_t) ( RenderFrameBlock::ShipsMax + 904 );
+            refused += !RenderFrameBlockOpen( forged, storage.base, RenderFrameBlockMaxBytes );
+            block.projection->ships.count = saved;
+        }
+
+        if ( refused != forgeries )
+        {
+            printf( "FAILED: the forgery battery refused %d of %d (SPEC-TABLES.md §19.2's WHOLE check)\n", refused, forgeries );
+            failures++;
+        }
+        check( forged.base == NULL, "a refused forgery points at nothing, rather than at rows it cannot read" );
+        check( RenderFrameBlockOpen( forged, storage.base, bytes ), "and the restored block opens again" );
+    }
 
     // ---- gate: BlockOpen's WHOLE check (§19.2) ----
 

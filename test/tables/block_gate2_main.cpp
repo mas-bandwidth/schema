@@ -228,7 +228,26 @@ static void fill_rows( Row * rows, int count, int seed, void ( *fn )( Row &, int
 
 // ---- arm one: the hand-written scatter ----
 
-static uint64_t hand_frame( uint8_t * base, int seed )
+// A cheap digest over one row of each section, so the SINK depends on the row
+// STORES and not only on the extent. The 18x artifact this harness found once
+// was exactly a dead-store elimination, and a sink that takes the extent alone
+// cannot see one: an arm whose rows were all removed would still return the
+// same number. Reading four rows costs nothing against 7,421 written.
+static uint64_t row_digest( const uint8_t * base, uint64_t offset, size_t stride, int count )
+{
+    if ( count <= 0 ) { return 0; }
+    uint64_t h = 0;
+    const int probes[4] = { 0, count / 3, count / 2, count - 1 };
+    for ( int p = 0; p < 4; p++ )
+    {
+        uint64_t word = 0;
+        memcpy( &word, base + offset + (size_t) probes[p] * stride, 8 );
+        h = h * 1099511628211ull + word;
+    }
+    return h;
+}
+
+static uint64_t hand_frame( uint8_t * base, int seed, uint64_t * extent = NULL )
 {
     const uint64_t camera_offset = hand_align( sizeof( HandHeader ) );
     const uint64_t ship_offset = hand_align( camera_offset + kCameras * sizeof( RenderCamera ) );
@@ -262,12 +281,18 @@ static uint64_t hand_frame( uint8_t * base, int seed )
     header->cosmetic_props = hand_section( cosmetic_offset, kCosmeticProps, sizeof( RenderCosmeticProp ) );
     header->lasers = hand_section( laser_offset, kLasers, sizeof( RenderLaser ) );
     header->explosions = hand_section( explosion_offset, kExplosions, sizeof( RenderExplosion ) );
-    return hand_align( end_offset );
+    // the extent AND the rows, so a dead-store elimination cannot hide. The
+    // EXTENT itself goes out by reference, because the golden gate opens with
+    // it and a digest mixed into the return value is not a length.
+    if ( extent ) { *extent = hand_align( end_offset ); }
+    return hand_align( end_offset )
+         + row_digest( base, ship_offset, sizeof( RenderShip ), kShips )
+         + row_digest( base, static_offset, sizeof( RenderStaticProp ), kStaticProps );
 }
 
 // ---- arm two: the generated block ----
 
-static uint64_t generated_frame( RenderFrameBlockStorage & storage, int seed )
+static uint64_t generated_frame( RenderFrameBlockStorage & storage, int seed, uint64_t * extent = NULL )
 {
     RenderFrameCounts counts = {};
     counts.cameras = kCameras;
@@ -294,7 +319,10 @@ static uint64_t generated_frame( RenderFrameBlockStorage & storage, int seed )
     fill_rows( (RenderLaser *) RenderFrameLasers( block ), kLasers, seed, fill_laser );
     fill_rows( (RenderExplosion *) RenderFrameExplosions( block ), kExplosions, seed, fill_explosion );
 
-    return (uint64_t) RenderFrameBlockBytes( block );
+    if ( extent ) { *extent = (uint64_t) RenderFrameBlockBytes( block ); }
+    return (uint64_t) RenderFrameBlockBytes( block )
+         + row_digest( block.base, block.projection->ships.offset_of, sizeof( RenderShip ), kShips )
+         + row_digest( block.base, block.projection->static_props.offset_of, sizeof( RenderStaticProp ), kStaticProps );
 }
 
 static double median( std::vector<double> & samples )
@@ -329,11 +357,12 @@ int main( int argc, char ** argv )
     // THE GOLDEN GATE, FIRST: the two arms must agree on every byte of every
     // row before any clock starts. A runner that does not agree REFUSES to
     // bench — timing something that disagrees measures nothing.
-    const uint64_t hand_bytes = hand_frame( hand_storage.base, 0 );
-    const uint64_t generated_bytes = generated_frame( generated_storage, 0 );
-    if ( hand_bytes != generated_bytes )
+    uint64_t hand_extent = 0, generated_extent = 0;
+    const uint64_t hand_bytes = hand_frame( hand_storage.base, 0, &hand_extent );
+    const uint64_t generated_bytes = generated_frame( generated_storage, 0, &generated_extent );
+    if ( hand_extent != generated_extent || hand_bytes != generated_bytes )
     {
-        printf( "REFUSING TO BENCH: the two arms disagree on the extent (%llu hand, %llu generated)\n",
+        printf( "REFUSING TO BENCH: the two arms disagree on the extent or the rows (%llu hand, %llu generated)\n",
                 (unsigned long long) hand_bytes, (unsigned long long) generated_bytes );
         return 1;
     }
@@ -344,7 +373,7 @@ int main( int argc, char ** argv )
         const HandHeader * header = (const HandHeader *) hand_storage.base;
         const HandSection * sections = &header->cameras;
         RenderFrameBlock block;
-        if ( !RenderFrameBlockOpen( block, generated_storage.base, (int64_t) generated_bytes ) )
+        if ( !RenderFrameBlockOpen( block, generated_storage.base, (int64_t) generated_extent ) )
         {
             printf( "REFUSING TO BENCH: the generated block does not open\n" );
             return 1;
@@ -380,7 +409,7 @@ int main( int argc, char ** argv )
             printf( "REFUSING TO BENCH: cannot write build/block_gate2.bin\n" );
             return 1;
         }
-        fwrite( generated_storage.base, 1, (size_t) generated_bytes, f );
+        fwrite( generated_storage.base, 1, (size_t) generated_extent, f );
         fclose( f );
     }
 

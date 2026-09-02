@@ -36,6 +36,13 @@ static class Program
         }
     }
 
+    static ulong ByteSwap(ulong v)
+    {
+        return (v >> 56) | ((v >> 40) & 0xff00UL) | ((v >> 24) & 0xff0000UL) | ((v >> 8) & 0xff000000UL)
+             | ((v << 8) & 0xff00000000UL) | ((v << 24) & 0xff0000000000UL) | ((v << 40) & 0xff000000000000UL)
+             | (v << 56);
+    }
+
     static string FindGolden(string name)
     {
         string[] candidates =
@@ -161,7 +168,14 @@ static class Program
 
             CheckDescriptors(block);
 
-            // ---- the refusals, from this side ----
+            // ---- THE FORGERY BATTERY, this side (§19.2's WHOLE check) ----
+            //
+            // The C++ leg's ten, run against the same bytes by the consumer,
+            // because a check the producer's language holds and the consumer's
+            // does not is not a check on the boundary. The tenth — a count past
+            // the DECLARED MAXIMUM — is the one a cold reader found OPEN on
+            // both backends, with ShipsSpan.Length reading 5000 against a
+            // maximum of 4096.
 
             RenderFrameBlock refused;
             Check(!RenderFrameBlock.Open(out refused, IntPtr.Zero, bytes.Length), "Open refuses a null pointer");
@@ -170,16 +184,54 @@ static class Program
             Check(!RenderFrameBlock.Open(out refused, pointer + 8, bytes.Length), "Open refuses an unaligned base");
 
             byte* at = (byte*) pointer;
+            int forgeries = 0;
+            int refusals = 0;
+
+            ulong magic = *(ulong*) at;
+            *(ulong*) at = 0UL;
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
+            *(ulong*) at = ByteSwap(magic);
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
+            *(ulong*) at = magic;
+
             ulong version = *(ulong*) (at + 8);
             *(ulong*) (at + 8) = version ^ 1;
-            Check(!RenderFrameBlock.Open(out refused, pointer, bytes.Length),
-                "Open refuses a block from a build this one does not match — there is ONE entry point, and a mismatch is a refusal");
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
             *(ulong*) (at + 8) = version;
 
             ulong order = *(ulong*) (at + 16);
             *(ulong*) (at + 16) = order == 1UL ? 2UL : 1UL;
-            Check(!RenderFrameBlock.Open(out refused, pointer, bytes.Length), "Open refuses a block of the other byte order");
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
             *(ulong*) (at + 16) = order;
+
+            // the ships triple: offset_of at 40, count at 48, stride at 52
+            ulong* offsetOf = (ulong*) (at + (int) RenderFrameBlock.ShipsProjectionOffset);
+            uint* count = (uint*) (at + (int) RenderFrameBlock.ShipsProjectionOffset + 8);
+            uint* stride = (uint*) (at + (int) RenderFrameBlock.ShipsProjectionOffset + 12);
+
+            ulong savedOffset = *offsetOf;
+            *offsetOf = savedOffset + 1;
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
+            *offsetOf = 0UL;
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
+            *offsetOf = (ulong) RenderFrameBlock.ShipsMax * 88UL;
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
+            *offsetOf = savedOffset;
+
+            uint savedStride = *stride;
+            *stride = savedStride + 8;
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
+            *stride = savedStride;
+
+            uint savedCount = *count;
+            *count = 4000; // under the maximum: the EXTENT is what refuses it
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, bytes.Length) ? 0 : 1;
+            *count = (uint) (RenderFrameBlock.ShipsMax + 904); // past the DECLARED MAXIMUM
+            forgeries++; refusals += RenderFrameBlock.Open(out refused, pointer, long.MaxValue / 2) ? 0 : 1;
+            *count = savedCount;
+
+            Check(forgeries == 10, "the battery is the C++ leg's ten");
+            Check(refusals == forgeries, "every forgery is refused: " + refusals + " of " + forgeries + " (SPEC-TABLES.md §19.2)");
 
             Check(RenderFrameBlock.Open(out refused, pointer, bytes.Length), "and the restored block opens again");
         }

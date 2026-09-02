@@ -1753,8 +1753,8 @@ func (c *checker) checkTables() {
 		// naming both, whether the collision comes from a `json` attribute
 		// or from an attribute meeting a plain field name.
 		// The BLOCK FORM's generated PROLOGUE (SPEC-TABLES.md §19.1): every
-		// fixed table's block projection opens with `magic` and
-		// `build_version`, generated exactly as an optional's `_present`
+		// fixed table's block projection opens with `magic`,
+		// `build_version` and `byte_order`, generated exactly as an optional's `_present`
 		// companion is — so a field may not be named after either half. The
 		// claim is on EVERY table, not only the ones that have the form
 		// today: a table gains and loses the form as its closure gains and
@@ -2700,7 +2700,7 @@ var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
 	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
 	"At", "Root", "Emplace", "Pack", "PackMeasure", "OpenWalk",
-	"Cook", "CookMeasure", "Open", "OpenValidated", "LayoutId", "TableFields", "TableInfo",
+	"Cook", "CookMeasure", "Open", "LayoutId", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 }

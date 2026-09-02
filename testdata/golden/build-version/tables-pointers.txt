@@ -1,7 +1,8 @@
-0x4362623e096e9d0e
+0x40e82dc861c4fcd3
 schema-build-version 1
 protocol 79242c6a555d3a60
 byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
 record Album sizeof=76 alignof=4
     field 30df kind=12 offset=0 size=24 bound=16
     field 82b9 kind=13 offset=24 size=3 type=Colour

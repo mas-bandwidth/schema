@@ -398,7 +398,7 @@ func layoutRecord(u *Unit, st *Struct) *MemberLayout {
 // (offset_of u64, count u32, stride u32) triple (SPEC-TABLES.md §2.7).
 func layoutProjection(u *Unit, st *Struct) MemberLayout {
 	ml := MemberLayout{Name: st.Name}
-	// the prologue: two uint64s
+	// the prologue: three uint64s (magic, build_version, byte_order)
 	offset := int64(BlockPrologueBytes)
 	maxAlign := int64(8)
 	for _, f := range st.Fields {

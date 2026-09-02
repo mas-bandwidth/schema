@@ -2650,19 +2650,24 @@ in build version (§20.5).
   nothing and is tracked for removal as schema#310, page and checker moving
   together.
 
-  **The BLOCK FORM claims seven more, and the checker does not claim them
-  yet** (§19's status: no backend emits the form). They are law on the same
-  terms and for a stronger reason — every fixed table has a block form
-  (§2.7), so every fixed table claims them:
+  **The BLOCK FORM claims seven more, and the checker claims them.** They are
+  law on the same terms and for a stronger reason — every fixed table has a
+  block form (§2.7), so every fixed table claims them:
 
   ```
   Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
   Counts
   ```
 
-  Claiming them is owed with the form (schema#287) and belongs BEFORE its
-  emitters, for exactly the reason the set exists: a name free today must not
-  become a collision the day the form lands.
+  **A table also claims TWO PER OUT-OF-LINE ARRAY**, because its row
+  accessors are named after its fields: `<Table>` followed by the PascalCase
+  of the field's name hands back that field's rows, and the same name with
+  `Span` appended is the contiguous view (§19.2) — so `RenderFrame` with a
+  `ships` array claims `RenderFrameShips` AND `RenderFrameShipsSpan`, and a
+  declaration spelling either is refused naming both. That part of the set
+  moves with the declaration, which is why it is a rule here rather than a
+  list. A language whose accessors are members spells the same two names on
+  the block type and claims nothing at file scope for them.
 
   **THE DESCRIPTOR SURFACE'S CLAIMS ARE UNCONDITIONAL — every declaration,
   every unit, tables or not.** Every unit emits a view file and that file
@@ -4410,9 +4415,13 @@ and a wall of asserts per table — so its declarations move out with it.
 
 **The zero-cost gate, and it is a gate rather than a hope** (§2.2): **the
 Table headers are BYTE-IDENTICAL with or without the Block files existing**,
-and the Block files cost nothing unless they are included. The build fails if
-one symbol of the block machinery — a storage type, a `Begin`, an `Open`, a
-row accessor, a layout constant — appears in a Table header. The descriptor
+and the Block files cost nothing unless they are included. It is held in two
+halves, because they answer different questions: the build fails if one symbol
+of the block machinery — a storage type, a `Begin`, an `Open`, a row accessor,
+a layout constant — appears in a Table source, AND every Table source is
+byte-compared against a pin the PRE-BLOCK compiler wrote, so the identity is
+measured against a build that could not emit a Block file at all rather than
+against the emitter's own output. The descriptor
 COLUMNS (§8) the block form reads are not machinery and ride in every unit as
 every other column does, because they describe the language.
 
@@ -4484,6 +4493,11 @@ out when both are asked of one table.
   prologue is generated, as an optional's presence companion is, and a field
   may not be named after any of the three (§11).
 
+  **The magic's value is `0x4b4c42414d484353`**, which is `SCHMABLK` read as
+  ASCII in the byte order a little-endian store produces, so a hex dump of a
+  block is legible. A consumer written from this page needs the constant, not
+  a description of one.
+
   **What each of the three does, stated because two of them look like one.**
   The MAGIC is what REFUSES a foreign byte order: read bytewise it either is
   this build's constant, or is that constant byte-reversed — which identifies
@@ -4521,6 +4535,30 @@ boundary — not one per row — because ranges are contiguous runs, and it is
 stated rather than implied so nobody reads the alignment as a promise it does
 not make.
 
+**The STORAGE COMES FROM THE CALLER'S ALLOCATOR, and it is asked EXACTLY
+ONCE.** `<Table>BlockStorage` is a handle, not a buffer: `Create` takes an
+alloc/free function pair plus an opaque context — malloc semantics, the
+estate's usual shape — allocates `<Table>BlockMaxBytes + 63` bytes through it,
+and aligns the 64-byte base inside them, because a malloc guarantee is not a
+cache line's. `Destroy` releases through the same pair.
+
+```cpp
+struct TableBlockAllocator
+{
+    void * ( *alloc )( void * context, int64_t bytes );
+    void ( *free )( void * context, void * pointer );
+    void * context;
+};
+```
+
+**One call, at BUILD time, per storage — never at frame time and never per
+row.** `Begin` asks for nothing; the accessors ask for nothing; the fill asks
+for nothing. That is the whole of what the refuser (below) claims, and stating
+the allocator here is what makes the claim checkable rather than a slogan
+about a form that "allocates nothing" — it allocates once, and the caller
+holds the pointer. `TableBlockDefaultAllocator()` is the malloc/free pair, for
+a caller with none of its own; nothing in the generated surface reaches for it.
+
 **The block's STORAGE is sized from the declared maxima** —
 `<Table>BlockMaxBytes`, a compile-time constant over the projection plus every
 out-of-line array at its declared `[..N]`. That is the allocate-max law: one
@@ -4538,6 +4576,8 @@ starts:
 
 ```cpp
 RenderFrameBlockStorage storage;              // the allocation: max-sized, 64-aligned
+if ( !storage.Create( TableBlockDefaultAllocator() ) )
+    return;                                   // ONE call to the caller's allocator, at build time
 
 RenderFrameCounts counts = {};                // gathered before Begin, which is single-threaded
 counts.ships  = numShips;
@@ -4644,16 +4684,31 @@ picks by what it is doing: reflection to walk anything, the struct to read
 one thing fast.
 
 ```csharp
-if ( !RenderFrame.BlockOpen( out RenderFrameBlock block, pointer, bytes ) )
-    return;                                   // and the caller falls back, or reports
+using Row = Demo.Block;   // the BLITTABLE records; the unit's own namespace
+                          // holds a sealed CLASS of each of these names, which
+                          // is the table wire's storage and not a block's row
 
-ulong version = block.Projection.version;     // the table's own declared fields
+if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
+    return;               // and the caller falls back, or reports
 
-foreach ( ref readonly RenderShip ship in block.Ships )
+ulong version = block.Projection.Version;     // the table's own declared fields
+
+foreach ( ref readonly Row.RenderShip ship in block.Ships )
     Draw( ship );
 
-ReadOnlySpan<RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is sizeof
+ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is sizeof
 ```
+
+**Three spellings a reader has to have, because a consumer written from this
+page alone needs all three.** `Open` is a static on the block type, taking the
+destination first (§6.1) and then an `IntPtr` and a `long` — a block is memory
+another language wrote, so the C# side takes a pointer and a length and the
+generated source is `unsafe`. The ROWS are `[StructLayout(Sequential, Pack = 1,
+Size = N)]` STRUCTS in the unit's `.Block` namespace, never the sealed classes
+of the same names in the unit's own namespace: those are the table wire's
+storage, and binding one here is the mistake this paragraph exists to stop. A
+field's C# member is the PascalCase of its schema name, as everywhere else in
+that backend.
 
 - **`BlockOpen` checks once and points, and this is the WHOLE check**: the
   magic read bytewise, the byte order it establishes, the build version
@@ -4731,7 +4786,12 @@ struct is the ROW and the instance carries the PITCH; the iterator puts them
 together (§19.2).
 
 **A disagreement is a BUILD ERROR on the side that disagrees**, naming the
-type, the field, the expected offset and the one its compiler produced.
+type, the field, the expected offset and the one its compiler produced — with
+one honest exception: **C# has no `static_assert`**, so its generated check
+runs ONCE at type initialization and THROWS, naming the same four things. It
+is loud and it is early — before any block is opened — but it is a first-use
+failure and not a compile-time one, and a port should not read "build error"
+as a promise C# can keep.
 Neither side can drift silently, and neither side's layout is inferred from
 the other's — both are checked against the compiler's own model, which is the
 only way a two-language contract can be held by a compiler that generates
@@ -4814,8 +4874,11 @@ difference between a form and a convention.
   compiled, built and read by every backend that carries the form.
 - **A REAL multi-threaded fill.** N workers fill disjoint index ranges of
   every array; the resulting block is byte-identical to a serial fill of the
-  same data over the rows each count covers. Run under the sanitizer leg,
-  where a race in the fill is what the leg exists to find. **Beside it, the
+  same data over the rows each count covers. Run under the THREAD sanitizer leg, which is
+  the one that can see a race — an address sanitizer cannot, and neither can
+  byte-identity between a serial fill and a deterministic wide one. That leg
+  carries its own negative control: every worker filling the WHOLE of every
+  array instead of its own share must turn it red. **Beside it, the
   conformance refuser** (§19.1): the build fails if the generated fill path
   contains an allocation, a lock or an atomic. That is the whole of what the
   refuser claims — the generated surface is `Begin` plus accessors, and
@@ -4892,25 +4955,29 @@ constant. A build whose compiler lays a record out differently is meant to
 fail to BUILD, loudly, naming the type and the field; those asserts are owed
 and not yet emitted, which §20.3 states in full.
 
-**Backend status: specified, unimplemented.** No backend emits `BuildVersion`,
-`schema build-version` does not exist, and `schema cook-check` (§7) does not
-either. Five emitter obligations stand against this section, stated so a port
-inherits them rather than discovering them, largest first:
+**Backend status: the id and its projection are LIVE; the cook is not.**
+`schema build-version` prints the id and `schema build-version --facts` prints
+the projection of §20.2, both pinned as goldens over the corpus. The C++ and
+C# BLOCK backends emit the constant and stamp it into every block's prologue
+(§19.1), and `BlockOpen` compares it. What remains owed, largest first:
 
-1. **The C# fixed class is not blittable.** §20.3's contract needs
-   `StructLayout(Sequential, Pack = 1, Size = N)` storage with generated
-   padding fields; the C# backend states today that *"a C# field has no
-   offsetof and a C# class has no meaningful sizeof"*, which is the shape that
-   has to change. This is the largest item by a distance.
-2. **Neither backend asserts the compiler's layout model.** C++ emits one
-   `is_standard_layout` assert and no `sizeof`/`offsetof` assertion; the
-   `offsetof` it does emit POPULATES descriptors from the target compiler's
-   answers, which is the opposite direction. Until these land, §20.3's
-   guarantee is specified and not held.
-3. **The build version is 64 bits** and the C++ emitter's existing id constant
-   is 32.
-4. **It is a constant of the UNIT**, and the existing per-table id constants
-   retire into it.
+1. **The constant rides in the BLOCK sources only.** §20.7 asks for one
+   beside `ProtocolId` in every backend; today the two block backends emit it
+   into `<Base>Block.h` / `<Base>Block.cs`, and the seven backends that carry
+   no table emit none. The cooked side has no constant at all.
+2. **The layout asserts cover the BLOCK CLOSURE, not every cookable record.**
+   C++ `static_assert`s each block projection's and each row type's `sizeof`,
+   `alignof` and every field `offsetof`, and C# asserts the same facts under
+   the managed model in a once-run check — but only for the records the block
+   form reaches. §20.3 commits the model to every record in the unit's table
+   closure, and a record no block reaches is asserted by neither side.
+3. **The C# check is a THROW at first use, not a build error.** §20.3 asks
+   for a build error on the side that disagrees; C# has no `static_assert`,
+   so the generated check runs once at type initialization and throws naming
+   the type, the field, the offset it found and the offset the C++ side
+   asserts. Loud and early, but not at compile time.
+4. **`schema cook-check` (§7) does not exist**, and no cooked header carries
+   the build version yet.
 5. **§7's cooked header takes 64-bit part LENGTHS — both of them** — where the
    C++ runtime writes one 32-bit length, which reimposes at cook time the
    ceiling §3.1 removed.
@@ -5011,7 +5078,8 @@ declared `type` is a record here exactly as a table is, because on the table
 wire *"an arm's body is a table body whether the arm names a declared `type`
 or a `table`"* (§3), and because *"fixed tables and types are semantically the
 same (structs)"* (§13.6). A unit that declares no table has a projection of
-its header lines alone.
+its header lines alone — which still carries the block form's prologue shape,
+because that is a fact of the BUILD (§20.2).
 
 ### 20.2 The cook projection, and the id taken over it
 
@@ -5033,7 +5101,18 @@ value (§18.1) — what a constant now produces, never how it was spelled.
 schema-build-version <N>
 protocol <16 lowercase hex>
 byteorder little|big
+block prologue=<word>:<width>[,<word>:<width>]...
 ```
+
+**The `block` header line is the BLOCK FORM's own shape, and it rides
+UNCONDITIONALLY** — in a unit with no block-form table, and in one whose
+tables have no out-of-line array at all. It has to: nothing selects the form,
+every fixed table has one (§2.7), and a table whose arrays are all inline has
+a projection that is PURE PROLOGUE, so its shape appears in no `block` record
+line below. Two builds either side of a change to the prologue would otherwise
+share an id and write incompatible blocks, which the invariant does not
+permit. The words are NAMED and WIDTHED rather than counted, so the line moves
+when the shape moves and there is no counter for anyone to forget.
 
 Then the records, SORTED BY NAME byte-wise over UTF-8, each followed by its
 fields in DECLARATION ORDER — which is a layout fact, and the offsets on the
@@ -5083,8 +5162,11 @@ of declaration it names"*:
 slot whose `type=` names the pointee — so a pointered unit projects exactly as
 a fixed one does, and nothing about the arena or the region appears here.
 
-Every record with a block form (§19) is followed by its PROJECTION, whose
-slots are the other side's contract:
+Every record whose block form LAYS AN ARRAY OUT OF LINE (§19) is followed by
+its PROJECTION, whose slots are the other side's contract. A record whose
+arrays are all inline has a projection that is the prologue and its own
+by-value layout, both of which the header line and the `record` line above
+already carry, and it contributes no `block` line:
 
 ```
 block <Name> sizeof=<n> alignof=<n>
@@ -5160,6 +5242,7 @@ whole projection is:
 schema-build-version 1
 protocol 0123456789abcdef
 byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
 record ShipConfig sizeof=12 alignof=4
     field 15a9 kind=10 offset=0 size=4 default=21.0
     field 2e46 kind=10 offset=4 size=4 default=500.0
@@ -5171,9 +5254,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0x7402a36de22d9728`**. The same unit with no table
-at all — its three header lines, that same protocol id, and nothing else — is
-**`0x49947af3382f914e`**, deliberately not equal to the protocol id, so no
+and the build version is **`0xc211ce2f3414aa7c`**. `ShipConfig` gets no
+`block` line: it declares no bounded array, so its block form lays nothing out
+of line and its projection is the prologue the header already carries plus the
+`record` line's own layout. The same unit with no table at all — its four
+header lines, that same protocol id, and nothing else — is
+**`0xe2eeb510ec9621cb`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 
@@ -5190,13 +5276,16 @@ Pack = 1, Size = N)`) with generated padding and a once-run layout check
 that disagrees**, naming the type, the field, the expected offset and the one
 its compiler produced.
 
-**Those asserts are the block form's obligation and they are NOT in the tree
-today.** The C++ backend emits one layout assert (`is_standard_layout`) and no
-`sizeof`/`offsetof` assertion of the compiler's model, and the C# fixed class
-is not blittable at all. Until both land, this section's guarantee is a
-specification and not a property of any build: **two builds whose ABIs differ
-would share a build version and cook different bytes, with nothing to say
-so.** The model is not self-evidently right either — on 32-bit System V
+**Those asserts are in the tree for the BLOCK CLOSURE and nowhere else.** C++
+`static_assert`s each block projection's and each row type's `sizeof`,
+`alignof` and every field `offsetof`; C# emits blittable storage with
+generated padding and asserts the same facts under the managed model in a
+once-run check that THROWS rather than failing the build, because C# has no
+`static_assert`. What neither side asserts is a record no block form reaches —
+so for those, and for the cooked path generally, this section's guarantee is
+still a specification and not a property of any build: **two builds whose ABIs
+differ there would share a build version and cook different bytes, with
+nothing to say so.** The model is not self-evidently right either — on 32-bit System V
 `alignof(uint64_t)` is 4, not 8 — which is precisely why it is asserted rather
 than assumed, and why "it never reaches a cook" is a claim the asserts make
 true rather than one the model makes true on its own.

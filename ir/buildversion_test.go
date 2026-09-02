@@ -47,6 +47,7 @@ table ShipConfig
 const workedProjection = `schema-build-version 1
 protocol 0123456789abcdef
 byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
 record ShipConfig sizeof=12 alignof=4
     field 15a9 kind=10 offset=0 size=4 default=21.0
     field 2e46 kind=10 offset=4 size=4 default=500.0
@@ -68,8 +69,8 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 	if got != workedProjection {
 		t.Errorf("the cook projection is not the page's (SPEC-TABLES.md §20.2).\n--- got ---\n%s\n--- want ---\n%s", got, workedProjection)
 	}
-	if v := ir.BuildVersion(u); v != 0x7402a36de22d9728 {
-		t.Errorf("build version = 0x%016x, want 0x7402a36de22d9728 (SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0xc211ce2f3414aa7c {
+		t.Errorf("build version = 0x%016x, want 0xc211ce2f3414aa7c (SPEC-TABLES.md §20.2)", v)
 	}
 }
 
@@ -79,12 +80,13 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 func TestCookProjectionOfATablelessUnit(t *testing.T) {
 	u := unitFrom(t, "package demo\n\ntype Point\n{\n    x float32\n}\n")
 	u.ProtocolId = 0x0123456789abcdef
-	want := "schema-build-version 1\nprotocol 0123456789abcdef\nbyteorder little\n"
+	want := "schema-build-version 1\nprotocol 0123456789abcdef\nbyteorder little\n" +
+		"block prologue=magic:8,build_version:8,byte_order:8\n"
 	if got := ir.CookProjection(u); got != want {
 		t.Errorf("a table-free unit projects its header lines alone.\n--- got ---\n%s", got)
 	}
-	if v := ir.BuildVersion(u); v != 0x49947af3382f914e {
-		t.Errorf("build version = 0x%016x, want 0x49947af3382f914e (SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0xe2eeb510ec9621cb {
+		t.Errorf("build version = 0x%016x, want 0xe2eeb510ec9621cb (SPEC-TABLES.md §20.2)", v)
 	}
 	if v := ir.BuildVersion(u); v == u.ProtocolId {
 		t.Error("the two ids are equal — one could be substituted for the other by accident")

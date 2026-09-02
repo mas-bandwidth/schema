@@ -1,4 +1,5 @@
-0xb8aed7379d9e0626
+0x5e721c9c357ba985
 schema-build-version 1
 protocol a388f75ddc741965
 byteorder little
+block prologue=magic:8,build_version:8,byte_order:8

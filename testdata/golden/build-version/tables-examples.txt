@@ -1,7 +1,8 @@
-0x2500934549f29bb7
+0x324fda67cd7d76ef
 schema-build-version 1
 protocol 12cf1828bc593ac7
 byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
 record ArchiveConfig sizeof=1488 alignof=8
     field 2eb8 kind=13 offset=0 size=1480 type=RootConfig
     field e445 kind=4 offset=1480 size=4 default=1 min=0 max=100

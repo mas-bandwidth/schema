@@ -33,6 +33,17 @@ import (
 // those a cook's bytes could diverge with the id unmoved.
 const BuildVersionForm = 1
 
+// blockPrologueFacts renders the block projection's generated prologue as the
+// digest sees it: each word in order, named, with its width in bytes.
+func blockPrologueFacts() string {
+	words := []string{"magic", "build_version", "byte_order"}
+	out := make([]string, 0, len(words))
+	for _, w := range words {
+		out = append(out, w+":8")
+	}
+	return strings.Join(out, ",")
+}
+
 // TableKindPointer is a `*T` reference slot's wire kind (SPEC-TABLES.md §3.1):
 // a pointer rides as a u32 index into the node table, and §20.2 renders it as
 // kind 17 with `type=` naming the pointee.
@@ -60,6 +71,18 @@ func CookProjection(u *Unit) string {
 	// other fact produce different cook bytes. It is `little` for every target
 	// schema generates for today; a big-endian cook is §15's question.
 	b.WriteString("byteorder little\n")
+	// THE BLOCK FORM'S PROLOGUE, unconditionally and in the HEADER (§19.1,
+	// §20.2). It is a fact of the BUILD rather than of any one declaration:
+	// nothing selects the form, every fixed table has one, and a table whose
+	// arrays are all inline has a projection that is PURE PROLOGUE — so a unit
+	// with no out-of-line array anywhere carries the prologue's shape in no
+	// `block` line and would otherwise share an id across a change to it. Two
+	// builds either side of such a change write incompatible blocks, which the
+	// invariant does not permit.
+	//
+	// The words are named and widthed rather than counted, so the line moves
+	// when the shape does and there is no counter for anyone to forget.
+	fmt.Fprintf(&b, "block prologue=%s\n", blockPrologueFacts())
 
 	closure := TableClosure(u)
 	if len(closure) == 0 {

@@ -64,7 +64,11 @@ BEAM_PATH ?= $(CURDIR)/dist/otp-29.0.5/bin:$(CURDIR)/dist/elixir-1.20.4/bin
 ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
 MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
 
-GO_SOURCES   := $(shell find cmd internal -name '*.go') go.mod
+# cmd, internal, AND the public API packages: ir/ and compiler/ are compiled
+# into bin/schema like any other source, and leaving them out made an edit to
+# the layout model or the build version silently NOT rebuild the compiler every
+# gate below then measures.
+GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
@@ -350,6 +354,30 @@ build/schema_test_block_asan: build/tables-generated/.stamp test/tables/block_ma
 	$(CXX) $(BLOCK_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 		-fno-omit-frame-pointer -g $(BLOCK_INCLUDES) test/tables/block_main.cpp $(BLOCK_SOURCES) -o $@
 
+# The THREADSANITIZER twin. §19.5 says the multi-threaded fill runs "under the
+# sanitizer leg, where a race in the fill is what the leg exists to find" — and
+# ASan is not that leg: it finds no races, and byte-identity between a serial
+# fill and a DETERMINISTIC four-worker fill finds none either. This is the leg
+# that can. It costs under a second, so it rides beside the other two rather
+# than waiting for a nightly.
+build/schema_test_block_tsan: build/tables-generated/.stamp test/tables/block_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) -fsanitize=thread -fno-sanitize-recover=all -g \
+		$(BLOCK_INCLUDES) test/tables/block_main.cpp $(BLOCK_SOURCES) -o $@
+
+# Its NEGATIVE CONTROL, because a green TSan run otherwise proves only that the
+# leg ran: --race makes every worker fill the WHOLE of every array instead of
+# its own disjoint share, and the leg must go red on the write-write race that
+# creates.
+.PHONY: tables-block-race-negative-control
+tables-block-race-negative-control: build/schema_test_block_tsan
+	@if ./build/schema_test_block_tsan --race > build/block-race.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: ThreadSanitizer did not see overlapping workers writing one row"; exit 1; \
+	fi
+	@grep -q "ThreadSanitizer: data race" build/block-race.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on a data race"; tail -20 build/block-race.log; exit 1; }
+	@echo "block race negative control: overlapping workers turn the ThreadSanitizer leg red"
+
 # THE TWO-LANGUAGE GATE (SPEC-TABLES.md §19.5, §12.1): a C++ producer writes a
 # block and pins its bytes; a C# consumer opens those very bytes and compares
 # every field of every row, twice — through the generated blittable struct and
@@ -357,15 +385,26 @@ build/schema_test_block_asan: build/tables-generated/.stamp test/tables/block_ma
 # code on both sides, so the pair proves the two agree on the BYTES and not
 # merely on the constants.
 .PHONY: tables-block
-tables-block: build/schema_test_block build/schema_test_block_asan build/tables-generated-cs/.stamp
+tables-block: build/schema_test_block build/schema_test_block_asan build/schema_test_block_tsan build/tables-generated-cs/.stamp
 	./build/schema_test_block
 	./build/schema_test_block_asan
+	./build/schema_test_block_tsan
 	cd test/cs-block && dotnet run
 
-# THE BLOCK ZERO-COST GATE (SPEC-TABLES.md §2.2, §19). Nothing declares the
-# block form and it lives entirely on the side: a unit's <Base>Table.h and
-# <Base>Table.cs must carry NOT ONE SYMBOL of it, so a consumer that never
-# reads a block pays nothing — not a type, not a constant, not an include.
+# THE BLOCK ZERO-COST GATE (SPEC-TABLES.md §2.2, §19), in its two halves.
+#
+# The first asks "did any block symbol leak into a Table source?" — a grep.
+# The second is the property §19 actually states, and it is the stronger one:
+# **the Table sources are BYTE-IDENTICAL with or without the Block files
+# existing.** The pins under testdata/golden/tables/ were written by the
+# PRE-BLOCK compiler (schema at f55e711, before this branch's emitters), so
+# the comparison is against a build that could not emit a Block file at all
+# rather than against this branch's own output. That is what makes it a proof
+# rather than a restatement.
+#
+# They are ordinary goldens from here on: `make update-goldens` re-pins them
+# when a TABLE emitter legitimately changes, and a move under an unchanged
+# emitter is stop-the-line, exactly as it is for every other golden.
 .PHONY: tables-block-zero-cost
 tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
@@ -375,6 +414,27 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 		fi; \
 	done
 	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
+	@n=0; d=0; \
+	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
+	         testdata/golden/tables/block/*Table.* ; do \
+		dir=$$(basename $$(dirname $$f)); \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
+	for f in testdata/golden/tables/examples-cs/*Table.cs; do \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated-cs/examples/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
+	for f in testdata/golden/tables/block-cs/*Table.cs; do \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated-cs/block/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
+	if [ "$$d" != "0" ]; then exit 1; fi; \
+	if [ "$$n" -lt 30 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 30 — the glob, not the property, is what broke"; exit 1; fi; \
+	echo "block zero-cost gate: $$n Table sources byte-identical to the pins the PRE-BLOCK compiler wrote"
 
 # THE BUILD VERSION IS ONE NUMBER (SPEC-TABLES.md §20.7): the constant each
 # backend emits, and the number `schema build-version` prints, are the same
@@ -406,11 +466,17 @@ tables-block-fill-refuser: build/tables-generated/.stamp
 	@for f in build/tables-generated/*/*Block.h; do \
 		out=build/block-fill/$$(echo $$f | tr / _); \
 		awk '/---- block fill path: begin ----/,/---- block fill path: end ----/' $$f > $$out; \
+		regions=$$(grep -c "block fill path: begin ----" $$f || true); \
+		ends=$$(grep -c "block fill path: end ----" $$f || true); \
+		begins=$$(grep -c "^inline bool .*BlockBegin(" $$f || true); \
+		lines=$$(wc -l < $$out | tr -d ' '); \
+		if [ "$$regions" != "$$ends" ] || [ "$$regions" != "$$begins" ]; then \
+			echo "FILL REFUSER FAILED: $$f has $$regions begin markers, $$ends end markers and $$begins Begin functions — the markers, not the property, are what broke"; exit 1; \
+		fi; \
+		if [ "$$lines" -lt $$(( 40 * $$regions )) ]; then \
+			echo "FILL REFUSER FAILED: $$f extracted $$lines lines for $$regions fill paths — the markers, not the property, are what broke"; exit 1; \
+		fi; \
 	done
-	@n=$$(cat build/block-fill/* | wc -l | tr -d ' '); \
-		if [ "$$n" -lt 100 ]; then \
-			echo "FILL REFUSER FAILED: found $$n lines of fill path — the markers, not the property, are what broke"; exit 1; \
-		fi
 	@if grep -nE "$(BLOCK_FORBIDDEN)" build/block-fill/*; then \
 		echo "FILL REFUSER FAILED: the generated fill path allocates, locks or takes an atomic (SPEC-TABLES.md §19.1)"; exit 1; \
 	fi
@@ -455,6 +521,67 @@ tables-block-padding-negative-control: build/tables-generated-cs/.stamp
 	@grep -q "schema block layout" build/block-padding-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the failure was not the layout check"; cat build/block-padding-sabotage.log; exit 1; }
 	@echo "block padding negative control: deleting the generated padding fields turns the layout check red"
+
+# §19.5's FIRST named negative control: "perturb one row type's pitch constant
+# on one side only and the two-language test goes red". The constant is the C#
+# side's ShipsStride, which the generated layout check asserts against this
+# runtime's own sizeof — so a constant that drifted from the row it describes
+# is caught where the drift would matter, and the control proves the assert is
+# not inert.
+.PHONY: tables-block-pitch-negative-control
+tables-block-pitch-negative-control: build/tables-generated-cs/.stamp
+	@rm -rf build/block-pitch-sabotage && cp -R build/tables-generated-cs/block build/block-pitch-sabotage
+	@sed -i.bak 's|public const long ShipsStride = 88;|public const long ShipsStride = 96; // SABOTAGED|' \
+		build/block-pitch-sabotage/RenderBlock.cs
+	@grep -q "SABOTAGED" build/block-pitch-sabotage/RenderBlock.cs || \
+		{ echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@rm -f build/block-pitch-sabotage/*.bak
+	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-pitch-sabotage ) \
+		> build/block-pitch-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C# side accepted a pitch constant that is not its row's sizeof"; \
+		cat build/block-pitch-sabotage.log; exit 1; \
+	fi
+	@grep -q "ShipsStride" build/block-pitch-sabotage.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the pitch constant"; cat build/block-pitch-sabotage.log; exit 1; }
+	@echo "block pitch negative control: a pitch constant perturbed on ONE side turns the C# layout check red"
+
+# §19.5's SECOND named negative control: "perturb one field's offset in the
+# compiler's layout model and the generated asserts go red on both backends".
+# This one reaches past the emitters into ir.layoutRecord, so it proves the
+# thing the other controls cannot: that the asserts check the COMPILER's model
+# rather than restating whatever the target compiler already said.
+#
+# The sabotaged compiler reaches the build through `go build -overlay`, so no
+# tracked file is ever written to — the same mechanism the big-endian negative
+# control uses, and for the same reason.
+.PHONY: tables-block-layout-model-negative-control
+tables-block-layout-model-negative-control: bin/schema
+	@mkdir -p build
+	@sed 's|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start, Size: offset - start, Align: fieldAlign})|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start + 8, Size: offset - start, Align: fieldAlign}) // SABOTAGED: one field, moved|' \
+		ir/blocklayout.go > build/blocklayout-moved.gotext
+	@cmp -s build/blocklayout-moved.gotext ir/blocklayout.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/ir/blocklayout.go":"%s/build/blocklayout-moved.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/blocklayout-overlay.json
+	@go build -overlay=build/blocklayout-overlay.json -o build/schema-layout-moved ./cmd/schema
+	@rm -rf build/block-model-sabotage && mkdir -p build/block-model-sabotage/cpp build/block-model-sabotage/cs
+	@./build/schema-layout-moved generate --lang cpp --out build/block-model-sabotage/cpp tables/block
+	@./build/schema-layout-moved generate --lang cs --out build/block-model-sabotage/cs tables/block
+	@if $(CXX) $(BLOCK_CXXFLAGS) -fsyntax-only -Ibuild/block-model-sabotage/cpp \
+		build/block-model-sabotage/cpp/RenderBlock.cpp > build/block-model-cpp.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: C++ accepted a moved offset from the compiler's model"; exit 1; \
+	fi
+	@grep -q "static_assert" build/block-model-cpp.log || \
+		{ echo "NEGATIVE CONTROL FAILED: C++ went red, but not on a layout static_assert"; cat build/block-model-cpp.log; exit 1; }
+	@echo "block layout-model negative control (C++): a moved offset in the compiler's model turns the static_asserts red"
+	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-model-sabotage/cs ) \
+		> build/block-model-cs.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: C# accepted a moved offset from the compiler's model"; \
+		cat build/block-model-cs.log; exit 1; \
+	fi
+	@grep -q "schema block layout" build/block-model-cs.log || \
+		{ echo "NEGATIVE CONTROL FAILED: C# went red, but not on the layout check"; cat build/block-model-cs.log; exit 1; }
+	@echo "block layout-model negative control (C#): the same moved offset turns the once-run layout check red"
 
 # GATE 2 (SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
 # part of `make test` on purpose — a correctness suite whose verdict depends on
@@ -975,6 +1102,9 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-block-fill-refuser
 	$(MAKE) tables-block-fill-refuser-negative-control
 	$(MAKE) tables-block-padding-negative-control
+	$(MAKE) tables-block-pitch-negative-control
+	$(MAKE) tables-block-layout-model-negative-control
+	$(MAKE) tables-block-race-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative
 	$(MAKE) tables-hostile-values
@@ -1022,6 +1152,13 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
+	@for d in examples pointers block; do \
+		mkdir -p testdata/golden/tables/$$d; \
+		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
+	done
+	@mkdir -p testdata/golden/tables/examples-cs testdata/golden/tables/block-cs
+	@cp build/tables-generated-cs/examples/*Table.cs testdata/golden/tables/examples-cs/
+	@cp build/tables-generated-cs/block/*Table.cs testdata/golden/tables/block-cs/
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	go test ./...
