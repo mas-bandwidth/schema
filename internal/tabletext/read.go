@@ -493,26 +493,29 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 			switch shape := in.valueShape(); {
 			case shape == 'z' && TakesNull(fv.Def):
 				// `null` is the absence, not a value: a `?T` reads it as
-				// ABSENT and a pointer as null (SPEC-TABLES.md §16.2)
+				// ABSENT and a pointer as null (SPEC-TABLES.md §16.2). It is
+				// the ONE key that puts a field back at its defaults, so a
+				// repeated key whose last occurrence is null cannot leave an
+				// earlier value standing.
 				if !in.literal("null") {
 					return false
 				}
 				in.m.reset(fv)
-			case shape != Shape(fv.Def):
-				// the wrong JSON type for the kind: skipped, never coerced
-				in.report.KindMismatch++
-				if !in.skipValue(depth + 1) {
+			default:
+				if shape != Shape(fv.Def) {
+					// the wrong JSON type for the kind: skipped, never coerced
+					in.report.KindMismatch++
+					if !in.skipValue(depth + 1) {
+						return false
+					}
+				} else if !in.readField(fv, depth) {
 					return false
 				}
-			default:
 				// PRESENCE of the KEY is presence (SPEC-TABLES.md §16.2):
 				// reaching this line is the key being there, whatever the
-				// value turns out to be. A last-wins repeat re-places the
-				// value and leaves presence set.
-				in.m.reset(fv)
-				if !in.readField(fv, depth) {
-					return false
-				}
+				// value turned out to be — a value the walk would not place
+				// still makes the field present, because it is the KEY that
+				// says so. Only `null`, handled above, is the absence.
 				if fv.Def.Type.Optional {
 					fv.Present = true
 				}
@@ -557,6 +560,11 @@ func (in *reader) readField(fv *Field, depth int) bool {
 	case f.Array != ir.ArrayNone:
 		return in.readArray(fv, depth)
 	}
+	// a SCALAR is not re-established: it is written only when a value is
+	// actually placed, so a repeated key whose repeat the walk refuses leaves
+	// the first occurrence's value standing (SPEC-TABLES.md §16.2 — a value
+	// with the wrong shape is skipped, never coerced, and re-establishment is
+	// tied to placing)
 	return in.readScalar(&fv.Cell, f, depth)
 }
 
@@ -570,6 +578,10 @@ func (in *reader) readBase64(fv *Field) bool {
 		return false
 	}
 	in.pos++
+	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value,
+	// and six-bits-at-a-time decoding cannot overlay one
+	fv.Cell.Str = nil
+	fv.Count = 0
 	bound := int(fv.Def.Type.Size)
 	if fv.Def.Type.Pointer {
 		bound = -1 // a *bytes has no bound to clamp against
@@ -632,6 +644,14 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// an ARRAY re-establishes before placing: a fixed array writes every slot,
+	// so a second, shorter occurrence overlaying a prefix would leave the
+	// first occurrence's tail standing (SPEC-TABLES.md §16.2, last-wins as a
+	// WHOLE value)
+	for i := range fv.Elems {
+		fv.Elems[i] = in.m.elementZero(f)
+	}
+	fv.Count = 0
 	placed := 0
 	shape := ElementShape(f)
 	bound := int(f.ArrayBound)
@@ -688,11 +708,12 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 // unknown key is skipped and counted, and `"None"` is such a key because slot 0
 // names nothing (§2.4).
 //
-// A repeated SLOT key is last-wins and is NOT counted, which is the generated
-// walk's behaviour and therefore this one's: §16.2's `duplicate` counter is
-// stated among the rules for a TABLE object's keys, and the keyed row states
-// its own. Two implementations reporting differently on one text is the thing
-// the goldens exist to prevent, so the reference decides it.
+// A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate key
+// like any other, last-wins and counted (§16.2). The count is taken on the
+// RESOLVED SLOT and before the shape check, so a repeat the walk then refuses
+// is still a repeat; a key that names no slot — an unknown variant, or `"None"`
+// — is `unknown` EACH TIME and is never a duplicate, because there is no slot
+// for it to be a repeat of.
 func (in *reader) readKeyed(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '{' {
@@ -700,7 +721,16 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// every slot back to its declared defaults ONCE, so a key the text omits
+	// keeps them and a repeated field key cannot leave an earlier occurrence's
+	// slots standing. Per-KEY the slot is not re-established: a repeated slot
+	// key whose repeat the walk refuses leaves the first value, exactly as a
+	// repeated scalar field key does.
+	for i := range fv.Elems {
+		fv.Elems[i] = in.m.elementZero(f)
+	}
 	shape := ElementShape(f)
+	seen := map[int]bool{}
 	for {
 		c := in.peek()
 		if c == '}' {
@@ -721,6 +751,12 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		}
 		in.pos++
 		slot := KeyedValueSlot(f, EnumValue(f.KeyEnumRef, string(key)))
+		if slot >= 0 {
+			if seen[slot] {
+				in.report.Duplicate++
+			}
+			seen[slot] = true
+		}
 		switch {
 		case slot < 0:
 			in.report.Unknown++ // a key this enum cannot name
@@ -733,7 +769,6 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 				return false
 			}
 		default:
-			fv.Elems[slot] = in.m.elementZero(f)
 			if !in.readScalar(&fv.Elems[slot], f, depth+1) {
 				return false
 			}
@@ -821,7 +856,18 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 // §16.1's invariant is that a text which reads clean writes back
 // (SPEC-TABLES.md §16.2, §16.3).
 func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool) bool {
-	value, err := strconv.ParseFloat(token, 64)
+	// ONE correctly-rounded conversion, at the field's OWN width: a float32
+	// field converts with bitSize 32, which is what `strtof` is, and reading
+	// through a float64 first would round twice. The two roundings part
+	// company across a whole band — a decimal between FLT_MAX and the float32
+	// rounding midpoint that lands ON the midpoint as a double — and again at
+	// the subnormal end, where the double rounds to zero and the single does
+	// not. The page's rule is exact conversion at both float widths (§16.2).
+	bits := 64
+	if single {
+		bits = 32
+	}
+	value, err := strconv.ParseFloat(token, bits)
 	if err != nil && !errors.Is(err, strconv.ErrRange) {
 		in.bad = true
 		return false

@@ -12,45 +12,69 @@
 # `bits(N)` failed before it existed.
 
 array-past-bound           RootConfig  packs 0,0,2,0,false
-bits-at-max                RootConfig  packs 0,0,0,0,false
-bits-over-range            RootConfig  packs 0,0,1,0,false
-bytes-not-base64           RootConfig  packs 0,1,0,0,false
-bytes-overlong             RootConfig  packs 0,0,1,0,false
-comment-refused            RootConfig  refused
-dup-key                    RootConfig  packs 0,0,0,1,false
-enum-unknown-name          RootConfig  packs 1,0,0,0,false
-flags-unknown-name         RootConfig  packs 1,0,0,0,false
-guard-key-after-fields     RootConfig  packs 0,0,0,0,false
-keyed-duplicate-slot       PackConfig  packs 0,0,0,0,false
-keyed-none-key             PackConfig  packs 1,0,0,0,false
-keyed-unknown-key          PackConfig  packs 1,0,0,0,false
-keyed-wrong-shape          PackConfig  packs 0,1,0,0,false
-null-optional              PackConfig  packs 0,0,0,0,false
-null-scalar                PackConfig  packs 0,1,0,0,false
-num-bare-minus             RootConfig  refused
-num-double-dot             RootConfig  refused
-num-double-minus           RootConfig  refused
-num-float32-overflow       RootConfig  packs 0,1,0,0,false
-num-float64-overflow       RootConfig  packs 0,1,0,0,false
-num-fraction               RootConfig  packs 0,1,0,0,false
-num-int-overflow           RootConfig  packs 0,0,2,0,false
-num-int64-min              RootConfig  packs 0,0,0,0,false
-num-integral-forms         RootConfig  packs 0,0,0,0,false
-num-leading-plus           RootConfig  refused
-num-leading-zero           RootConfig  refused
-num-negative-unsigned      RootConfig  packs 0,0,1,0,false
-num-negative-zero          RootConfig  packs 0,0,0,0,false
-num-no-exp-digits          RootConfig  refused
-num-no-int                 RootConfig  refused
-num-three-part             RootConfig  refused
-num-trailing-dot           RootConfig  refused
-num-trailing-plus          RootConfig  refused
-num-two-exponents          RootConfig  refused
-optional-present-empty     PackConfig  packs 0,0,0,0,false
-str-clamp-boundary         RootConfig  packs 0,0,1,0,false
-str-lone-lead-surrogate    RootConfig  packs 0,0,0,0,false
-str-lone-trail-surrogate   RootConfig  packs 0,0,0,0,false
-str-surrogate-pair         RootConfig  packs 0,0,0,0,false
-union-two-keys             RootConfig  refused
-union-unknown-arm          RootConfig  packs 1,0,0,0,false
-unknown-key                RootConfig  packs 1,0,0,0,false
+array-past-bound             RootConfig  packs 0,0,2,0,false
+base64-empty                 RootConfig  packs 0,0,0,0,false
+base64-unpadded              RootConfig  packs 0,0,0,0,false
+bits-at-max                  RootConfig  packs 0,0,0,0,false
+bits-over-range              RootConfig  packs 0,0,1,0,false
+bytes-not-base64             RootConfig  packs 0,1,0,0,false
+bytes-overlong               RootConfig  packs 0,0,1,0,false
+comment-refused              RootConfig  refused
+dup-key-array                RootConfig  packs 0,0,0,1,false
+dup-key-placeable            RootConfig  packs 0,0,0,1,false
+dup-key-rejected-element     RootConfig  packs 0,1,0,1,false
+dup-key-rejected-float       RootConfig  packs 0,1,0,1,false
+dup-key-rejected-keyed       PackConfig  packs 0,1,0,1,false
+dup-key-rejected-nested      RootConfig  packs 0,1,0,1,false
+dup-key-rejected-scalar      RootConfig  packs 0,1,0,1,false
+dup-key-table                RootConfig  packs 0,0,0,1,false
+dup-key-union                RootConfig  packs 0,0,0,1,false
+dup-key-wrong-shape          RootConfig  packs 0,1,0,1,false
+dup-key                      RootConfig  packs 0,0,0,1,false
+enum-unknown-name            RootConfig  packs 1,0,0,0,false
+flags-unknown-name           RootConfig  packs 1,0,0,0,false
+guard-key-after-fields       RootConfig  packs 0,0,0,0,false
+json-key-declared-name       PackConfig  packs 1,0,0,0,false
+keyed-duplicate-mixed        PackConfig  packs 2,0,0,1,false
+keyed-duplicate-none         PackConfig  packs 2,0,0,0,false
+keyed-duplicate-slot         PackConfig  packs 0,0,0,1,false
+keyed-duplicate-unknown      PackConfig  packs 2,0,0,0,false
+keyed-none-key               PackConfig  packs 1,0,0,0,false
+keyed-unknown-key            PackConfig  packs 1,0,0,0,false
+keyed-wrong-shape            PackConfig  packs 0,1,0,0,false
+nesting-past-depth-cap       RootConfig  refused
+null-optional                PackConfig  packs 0,0,0,0,false
+null-scalar                  PackConfig  packs 0,1,0,0,false
+num-bare-minus               RootConfig  refused
+num-double-dot               RootConfig  refused
+num-double-minus             RootConfig  refused
+num-float32-midpoint         RootConfig  packs 0,1,0,0,false
+num-float32-overflow         RootConfig  packs 0,1,0,0,false
+num-float32-subnormal        RootConfig  packs 0,0,0,0,false
+num-float32-upper-band       RootConfig  packs 0,0,0,0,false
+num-float64-overflow         RootConfig  packs 0,1,0,0,false
+num-fraction                 RootConfig  packs 0,1,0,0,false
+num-int-overflow             RootConfig  packs 0,0,2,0,false
+num-int64-min                RootConfig  packs 0,0,0,0,false
+num-integral-forms           RootConfig  packs 0,0,0,0,false
+num-leading-plus             RootConfig  refused
+num-leading-zero             RootConfig  refused
+num-negative-unsigned        RootConfig  packs 0,0,1,0,false
+num-negative-zero            RootConfig  packs 0,0,0,0,false
+num-no-exp-digits            RootConfig  refused
+num-no-int                   RootConfig  refused
+num-three-part               RootConfig  refused
+num-trailing-dot             RootConfig  refused
+num-trailing-plus            RootConfig  refused
+num-two-exponents            RootConfig  refused
+optional-present-empty       PackConfig  packs 0,0,0,0,false
+optional-wrong-shape         PackConfig  packs 0,1,0,0,false
+str-clamp-boundary           RootConfig  packs 0,0,1,0,false
+str-illformed-at-bound       RootConfig  packs 0,0,0,0,false
+str-lone-lead-surrogate      RootConfig  packs 0,0,0,0,false
+str-lone-trail-surrogate     RootConfig  packs 0,0,0,0,false
+str-surrogate-pair           RootConfig  packs 0,0,0,0,false
+trailing-commas              RootConfig  packs 0,0,0,0,false
+union-two-keys               RootConfig  refused
+union-unknown-arm            RootConfig  packs 1,0,0,0,false
+unknown-key                  RootConfig  packs 1,0,0,0,false

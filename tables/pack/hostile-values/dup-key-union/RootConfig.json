@@ -1,0 +1,1 @@
+{ "weapons": [ { "effect": { "buff": { "multiplier": 3.0 } }, "effect": { "debuff": { "amount": 4 } } } ] }

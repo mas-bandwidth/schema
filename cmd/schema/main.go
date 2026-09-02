@@ -190,7 +190,12 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		if err := os.WriteFile(*out, bytes, 0o644); err != nil {
+		// the report decides the exit code, and a run that exits nonzero must
+		// leave NO output behind: a `.bin` newer than its prerequisites makes
+		// the next `make` skip the rule and the failure vanish. The gate runs
+		// first, and the file lands atomically after it.
+		reportLine(report, verbose, *tolerate)
+		if err := writeAtomic(*out, bytes); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -199,7 +204,6 @@ func main() {
 				fmt.Printf("passed over %s: a hidden file that is not JSON\n", name)
 			}
 		}
-		reportLine(report, verbose, *tolerate)
 	case "unpack":
 		fs := flag.NewFlagSet("unpack", flag.ExitOnError)
 		root := fs.String("root", "", "the root `table` the bytes carry")
@@ -225,10 +229,10 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
+		reportLine(report, verbose, *tolerate)
 		if verbose {
 			fmt.Printf("unpacked %s into %s\n", *in, dir)
 		}
-		reportLine(report, verbose, *tolerate)
 	default:
 		usage()
 		os.Exit(2)
@@ -260,6 +264,37 @@ func loadTree(c *compiler.Compiler, args []string) *ir.Unit {
 	c.FormatInPlace = false
 	defer func() { c.FormatInPlace = format }()
 	return loadUnit(c, args)
+}
+
+// writeAtomic writes through a temporary beside the destination and renames it
+// into place, so a run that never reaches this line leaves nothing at all and a
+// half-written file is never observable.
+func writeAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	// the temporary is removed on every failing path, so a refused run leaves
+	// the directory exactly as it found it
+	write := func() error {
+		if _, err := tmp.Write(data); err != nil {
+			_ = tmp.Close()
+			return err
+		}
+		if err := tmp.Close(); err != nil {
+			return err
+		}
+		if err := os.Chmod(name, 0o644); err != nil {
+			return err
+		}
+		return os.Rename(name, path)
+	}
+	if err := write(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return nil
 }
 
 // reportLine prints what a pack or unpack counted and decides the exit code. A

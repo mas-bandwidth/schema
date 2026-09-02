@@ -500,3 +500,47 @@ func TestUnpackOneFile(t *testing.T) {
 		})
 	}
 }
+
+// §17.3: the prune covers the ROOT'S WHOLE SHAPE, not just the shape being
+// written, so unpacking either form over the other leaves a tree `pack`
+// accepts. Without it the tool writes a tree its own sibling verb refuses
+// ("a root is one file or one tree of fields, never both").
+func TestUnpackPrunesAcrossShapes(t *testing.T) {
+	c, u := corpus(t)
+	for _, tree := range trees {
+		t.Run(tree.root, func(t *testing.T) {
+			wire, _, _, err := c.Pack(u, tree.root, tree.dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, order := range []struct {
+				name  string
+				first func(*ir.Unit, string, []byte, string) (compiler.TableReport, error)
+				then  func(*ir.Unit, string, []byte, string) (compiler.TableReport, error)
+			}{
+				{"expanded then one-file", c.Unpack, c.UnpackOneFile},
+				{"one-file then expanded", c.UnpackOneFile, c.Unpack},
+			} {
+				t.Run(order.name, func(t *testing.T) {
+					work := t.TempDir()
+					if _, err := order.first(u, tree.root, wire, work); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := order.then(u, tree.root, wire, work); err != nil {
+						t.Fatal(err)
+					}
+					again, _, report, err := c.Pack(u, tree.root, work)
+					if err != nil {
+						t.Fatalf("the tree the second unpack left is one pack refuses:\n%v", err)
+					}
+					if !report.Silent() {
+						t.Fatalf("expected silence, got %+v", report)
+					}
+					if !bytes.Equal(wire, again) {
+						t.Fatal("switching shapes moved bytes")
+					}
+				})
+			}
+		})
+	}
+}

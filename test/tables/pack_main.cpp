@@ -339,6 +339,7 @@ static void root_golden( const char * path, const char * text_path )
     CHECK( report.unknown == 0 );
     CHECK( report.kind_mismatch == 0 );
     CHECK( report.clamped == 0 );
+    CHECK( report.duplicate == 0 );
     CHECK( !report.malformed );
 
     // the value that comes back saves to the same bytes, which is the whole
@@ -390,6 +391,7 @@ int main( int argc, char ** argv )
     CHECK( report.unknown == 0 );
     CHECK( report.kind_mismatch == 0 );
     CHECK( report.clamped == 0 );
+    CHECK( report.duplicate == 0 );
     CHECK( !report.malformed );
 
     // 3. and the value that comes back is the one that went in

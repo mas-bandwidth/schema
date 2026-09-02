@@ -378,10 +378,24 @@ build/tables-pack-root.bin: bin/schema $(PACK_TREE)
 	@mkdir -p build
 	./bin/schema pack --root RootConfig --out $@ tables/pack/root tables/examples
 
+# PACK_INCLUDES is shared with the sanitized twins below, so a build and its
+# twin can never drift into covering different code (#278's rule).
+PACK_INCLUDES := -Ibuild/tables-generated/examples
+PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
+PACK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+
 build/schema_test_pack: build/tables-generated/.stamp test/tables/pack_main.cpp
 	@mkdir -p build
-	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
-		-Ibuild/tables-generated/examples test/tables/pack_main.cpp -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) test/tables/pack_main.cpp -o $@
+
+# The SANITIZED twins (#278, applied to this PR's drivers). Both read file
+# sizes off disk and size their own buffers from them, and both compare
+# byte ranges whose lengths came out of a file or a manifest — bounds and
+# lifetime questions -Werror cannot see, and exactly the class #278 stood the
+# tables leg up against. -fno-sanitize-recover=all is what makes it a GATE.
+build/schema_test_pack_asan: build/tables-generated/.stamp test/tables/pack_main.cpp
+	@mkdir -p build
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) test/tables/pack_main.cpp -o $@
 
 # §17.1's THIRD golden needs the engine's own text of each root, so unpack
 # writes the one-file form beside the bins and the driver compares ToJson to it.
@@ -393,8 +407,10 @@ build/pack-text/.stamp: bin/schema build/tables-pack.bin build/tables-pack-root.
 	@touch $@
 
 .PHONY: tables-pack
-tables-pack: build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin build/pack-text/.stamp
+tables-pack: build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/pack-text/.stamp
 	./build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin \
+		build/pack-text/PackConfig.json build/pack-text/RootConfig.json
+	./build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin \
 		build/pack-text/PackConfig.json build/pack-text/RootConfig.json
 
 # The HOSTILE-VALUE gate (SPEC-TABLES.md §16.2, §16.3, §17.5). One tree per rule
@@ -419,12 +435,17 @@ build/hostile-values/.stamp: bin/schema $(HOSTILE_TREES)
 
 build/schema_test_hostile: build/tables-generated/.stamp test/tables/hostile_main.cpp
 	@mkdir -p build
-	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
-		-Ibuild/tables-generated/examples test/tables/hostile_main.cpp -o $@
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_INCLUDES) test/tables/hostile_main.cpp -o $@
+
+build/schema_test_hostile_asan: build/tables-generated/.stamp test/tables/hostile_main.cpp
+	@mkdir -p build
+	$(CXX) $(PACK_CXXFLAGS) $(PACK_SANITIZE) $(PACK_INCLUDES) test/tables/hostile_main.cpp -o $@
 
 .PHONY: tables-hostile-values
-tables-hostile-values: build/schema_test_hostile build/hostile-values/.stamp
+tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp
 	./build/schema_test_hostile tables/pack/hostile-values/cases.txt \
+		tables/pack/hostile-values build/hostile-values
+	./build/schema_test_hostile_asan tables/pack/hostile-values/cases.txt \
 		tables/pack/hostile-values build/hostile-values
 
 # Its NEGATIVE CONTROL: relax ONE rule of the number grammar — accept a leading
@@ -627,7 +648,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/pack-text/.stamp build/schema_test_hostile build/hostile-values/.stamp build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables

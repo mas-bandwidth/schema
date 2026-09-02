@@ -155,11 +155,13 @@ static void check_case( const char * name, const char * text, long text_size,
         failures++;
         return;
     }
-    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 || report.malformed )
+    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
+         report.duplicate != 0 || report.malformed )
     {
-        printf( "FAIL %s: the backend's Load reports unknown=%d kind_mismatch=%d clamped=%d malformed=%d "
-                "for bytes the engine called clean\n",
-                name, report.unknown, report.kind_mismatch, report.clamped, (int) report.malformed );
+        printf( "FAIL %s: the backend's Load reports unknown=%d kind_mismatch=%d clamped=%d duplicate=%d "
+                "malformed=%d for bytes the engine called clean\n",
+                name, report.unknown, report.kind_mismatch, report.clamped,
+                report.duplicate, (int) report.malformed );
         failures++;
         return;
     }

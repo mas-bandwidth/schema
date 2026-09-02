@@ -25,13 +25,18 @@ import (
 // one-file shortcut. An absent `?T` and a guarded-out field write no file at
 // all, because omission is how a tree says absence.
 //
-// It also PRUNES: an entry that names a field of the table it just wrote, and
-// that it did not write this time, is removed. Without that, unpacking a newer
-// `.bin` over yesterday's tree would leave the file an absent optional used to
-// have standing beside the new one, and `unpack` -> `pack` would not be
-// byte-stable into any directory that already held a tree — which is the only
-// directory the verb is ever pointed at. An entry that names NO field is left
-// exactly where it is: it is not this tool's, and `pack` refuses it by name.
+// It also PRUNES, and it prunes for THE ROOT'S WHOLE SHAPE rather than for the
+// shape it happens to be writing: every `<field>.json`, every `<field>/`
+// directory AND the `<Root>.json` that names the root itself is removed unless
+// this run wrote it. Both halves matter. Without the first, unpacking a newer
+// `.bin` over yesterday's tree leaves the file an absent optional used to have
+// standing beside the new one. Without the second, switching between the
+// expanded shape and `--one-file` in one directory leaves BOTH — and `pack`
+// refuses that tree by name ("a root is one file or one tree of fields, never
+// both"), so the tool would be writing a tree its own sibling verb rejects.
+//
+// An entry that names NO part of the root is left exactly where it is: it is
+// not this tool's, and `pack` names it if it does not belong.
 func Unpack(m *tabletext.Model, root string, wire []byte, dir string) (tabletext.Report, error) {
 	return unpack(m, root, wire, dir, false)
 }
@@ -65,21 +70,29 @@ func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bo
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return report, err
 	}
+	// what the ROOT's shape owns at this level, whichever shape is written:
+	// every field key, and the root's own name
+	owned := map[string]bool{root: true}
+	for i := range st.Fields {
+		owned[ir.TableFieldJsonKey(st.Fields[i])] = true
+	}
 	if oneFile {
 		text, err := m.Write(inst)
 		if err != nil {
 			return report, err
 		}
-		return report, os.WriteFile(filepath.Join(dir, root+".json"), append(text, '\n'), 0o644)
+		name := root + ".json"
+		if err := os.WriteFile(filepath.Join(dir, name), append(text, '\n'), 0o644); err != nil {
+			return report, err
+		}
+		return report, prune(dir, owned, map[string]bool{name: true})
 	}
 	guards := tabletext.Guards(st)
 	written := map[string]bool{}
-	owned := map[string]bool{}
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
 		f := fv.Def
 		key := ir.TableFieldJsonKey(f)
-		owned[key] = true
 		if terms, guarded := guards[f.Name]; guarded && !inst.GuardHolds(terms) {
 			continue
 		}

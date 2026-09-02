@@ -2,6 +2,7 @@ package tabletext_test
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -181,22 +182,6 @@ func TestEnumKeyedObject(t *testing.T) {
 		t.Fatalf("an absent key should keep the slot's default, got %d", got)
 	}
 	_ = m
-}
-
-// §16.2: a repeated keyed SLOT key is last-wins and is NOT counted — the
-// generated walk's behaviour, and the counter §16.2 raises for a TABLE
-// object's keys. Two implementations reporting differently on one text is what
-// the goldens exist to prevent, so the reference decides it.
-func TestEnumKeyedDuplicateSlot(t *testing.T) {
-	_, inst, r := read(t, "PackConfig", `{ "thresholds": { "Hard": 100, "Hard": 300 } }`)
-	if !r.Silent() {
-		t.Fatalf("a repeated slot key is silent here, got %+v", r)
-	}
-	fv := field(t, inst, "thresholds")
-	hard := tabletext.KeyedValueSlot(fv.Def, tabletext.EnumValue(fv.Def.KeyEnumRef, "Hard"))
-	if fv.Elems[hard].U != 300 {
-		t.Fatal("the last occurrence did not win")
-	}
 }
 
 // §16.3: `json = "key"` is honoured on the way in and on the way out, and the
@@ -622,5 +607,127 @@ func TestIllFormedByteCostsOneLap(t *testing.T) {
 	}
 	if third := lap(t, m, m.Lookup("GlobalSettings"), second); !bytes.Equal(second, third) {
 		t.Fatal("the text form did not settle after one lap")
+	}
+}
+
+// §16.2: RE-ESTABLISHMENT HAPPENS ON PLACEMENT. A repeated key whose repeat the
+// walk refuses at the VALUE level — a fraction in an integer field, a magnitude
+// no float of that width holds, a token that is not JSON at all — leaves the
+// first occurrence's value standing. Only a value actually placed replaces one.
+func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
+	cases := []struct {
+		table, text, key string
+		want             uint64
+	}{
+		{"ProfileConfig", `{ "tilt": 100, "tilt": 5e-324 }`, "tilt", 100},
+		{"ProfileConfig", `{ "experience": 5, "experience": 2.5 }`, "experience", 5},
+		{"ProfileConfig", `{ "badge": 9, "badge": 1e309 }`, "badge", 9},
+		{"WeaponConfig", `{ "penetration": 3, "penetration": 1.5 }`, "penetration", 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.text, func(t *testing.T) {
+			_, inst, r := read(t, tc.table, tc.text)
+			if r.KindMismatch != 1 || r.Duplicate != 1 {
+				t.Fatalf("expected one kind_mismatch and one duplicate, got %+v", r)
+			}
+			if got := field(t, inst, tc.key).Cell.U; got != tc.want {
+				t.Fatalf("the refused repeat wiped the first value: got %d, want %d", got, tc.want)
+			}
+		})
+	}
+	// a keyed SLOT is the same rule one level down
+	_, inst, r := read(t, "PackConfig", `{ "thresholds": { "Hard": 64, "Hard": 0.1 } }`)
+	if r.KindMismatch != 1 || r.Duplicate != 1 {
+		t.Fatalf("expected one kind_mismatch and one duplicate, got %+v", r)
+	}
+	fv := field(t, inst, "thresholds")
+	hard := KeyedSlot(t, fv, "Hard")
+	if fv.Elems[hard].U != 64 {
+		t.Fatalf("the refused repeat wiped the slot: got %d", fv.Elems[hard].U)
+	}
+	// and a repeat that IS placeable replaces, as last-wins requires
+	_, inst, r = read(t, "ProfileConfig", `{ "tilt": 100, "tilt": 7 }`)
+	if r.Duplicate != 1 || r.KindMismatch != 0 {
+		t.Fatalf("expected one duplicate and no mismatch, got %+v", r)
+	}
+	if got := field(t, inst, "tilt").Cell.U; got != 7 {
+		t.Fatalf("last-wins did not: got %d", got)
+	}
+}
+
+// KeyedSlot resolves a variant name to its slot for a keyed field.
+func KeyedSlot(t *testing.T, fv *tabletext.Field, name string) int {
+	t.Helper()
+	slot := tabletext.KeyedValueSlot(fv.Def, tabletext.EnumValue(fv.Def.KeyEnumRef, name))
+	if slot < 0 {
+		t.Fatalf("%s names no slot of %s", name, fv.Def.KeyEnum)
+	}
+	return slot
+}
+
+// §16.2 with #282: a KEYED OBJECT'S KEYS ARE KEYS. A variant named twice is a
+// duplicate, counted on the RESOLVED slot and before the shape check — so a
+// repeat the walk then refuses is still a repeat. A key that names NO slot (an
+// unknown variant, or `"None"`) is `unknown` each time and never a duplicate.
+func TestKeyedObjectDuplicateRule(t *testing.T) {
+	_, _, r := read(t, "PackConfig", `{ "thresholds": { "Hard": 1, "Hard": 2 } }`)
+	if r.Duplicate != 1 || r.Unknown != 0 {
+		t.Fatalf("a repeated slot is one duplicate, got %+v", r)
+	}
+	_, _, r = read(t, "PackConfig", `{ "ships": { "Frigate": {}, "Frigate": {} } }`)
+	if r.Unknown != 2 || r.Duplicate != 0 {
+		t.Fatalf("a repeated key naming no slot is unknown each time, got %+v", r)
+	}
+	_, _, r = read(t, "PackConfig", `{ "ships": { "None": {}, "None": {} } }`)
+	if r.Unknown != 2 || r.Duplicate != 0 {
+		t.Fatalf("None names no slot, so it is unknown each time, got %+v", r)
+	}
+	_, _, r = read(t, "PackConfig", `{ "ships": { "Scout": {}, "Frigate": {}, "Scout": {}, "Frigate": {} } }`)
+	if r.Unknown != 2 || r.Duplicate != 1 {
+		t.Fatalf("mixed: two unknown, one duplicate, got %+v", r)
+	}
+}
+
+// §16.2: PRESENCE OF THE KEY IS THE PRESENCE — a `?T` given a value the walk
+// will not place is still PRESENT, because it is the key that says so. Only
+// `null` is the absence.
+func TestOptionalPresentWhateverTheValue(t *testing.T) {
+	_, inst, r := read(t, "ShipEntry", `{ "gunner": 5 }`)
+	if r.KindMismatch != 1 {
+		t.Fatalf("expected one kind_mismatch, got %+v", r)
+	}
+	if !field(t, inst, "gunner").Present {
+		t.Fatal("the key was there, so the field is present whatever its value")
+	}
+}
+
+// §16.2: one correctly-rounded conversion at the field's OWN width. Reading a
+// float32 through a float64 first rounds twice, and the two roundings part
+// company at both ends of the range.
+func TestFloat32SingleRounding(t *testing.T) {
+	cases := []struct {
+		token string
+		want  float32
+		mis   int
+	}{
+		{"340282356779733661637539395458142568447", math.MaxFloat32, 0},
+		{"-340282356779733661637539395458142568440", -math.MaxFloat32, 0},
+		{"340282356779733661637539395458142568448", 0, 1}, // the midpoint: no float32 holds it
+		{"7.0064923216240853547e-46", math.SmallestNonzeroFloat32, 0},
+		{"-7.0064923216240853547e-46", -math.SmallestNonzeroFloat32, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.token, func(t *testing.T) {
+			_, inst, r := read(t, "ProfileConfig", `{ "ratings": [ `+tc.token+`, 0.0, 0.0, 0.0 ] }`)
+			if r.KindMismatch != tc.mis {
+				t.Fatalf("expected %d kind_mismatch, got %+v", tc.mis, r)
+			}
+			if tc.mis > 0 {
+				return
+			}
+			if got := float32(field(t, inst, "ratings").Elems[0].F); got != tc.want {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
