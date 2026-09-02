@@ -892,6 +892,7 @@ check: bin/schema
 	./bin/schema check examples128
 	./bin/schema check tables/examples
 	./bin/schema check tables/pointers
+	./bin/schema check tables/block
 	./bin/schema check test/tables/V1.schema
 	./bin/schema check test/tables/V2.schema
 	./bin/schema check test/tables/P1.schema
@@ -911,6 +912,7 @@ fmt: bin/schema
 	./bin/schema fmt examples128
 	./bin/schema fmt tables/examples
 	./bin/schema fmt tables/pointers
+	./bin/schema fmt tables/block
 	./bin/schema fmt test/tables/V1.schema
 	./bin/schema fmt test/tables/V2.schema
 	./bin/schema fmt test/tables/P1.schema

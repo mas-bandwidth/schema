@@ -103,6 +103,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.resolveBodies()
 	c.checkCycles()
 	c.checkTables()
+	c.checkBlockForm()
 	c.checkTableFileDag()
 	c.checkClaimedNames()
 	c.checkTargetNames()
@@ -762,6 +763,14 @@ func (c *checker) resolveBodies() {
 							continue
 						}
 						st.CppInclude = lit.Value
+					case "block":
+						// the block form is a form a fixed TABLE takes: a
+						// type has no table wire for it to sit beside, and
+						// the marker's whole meaning is "a third projection
+						// of this table" (SPEC-TABLES.md §2.7, §11)
+						c.errf(a.Pos, "type %s | block: the block form is a form a `table` takes — a type has no table wire for a third projection to sit beside; declare %s as a table (SPEC-TABLES.md §2.7, §11)", d.Name, d.Name)
+					case "stride":
+						c.errf(a.Pos, "stride is not declarable in this version: a block-form row's pitch is its `sizeof` by construction, and declared headroom is a named follow-on (SPEC-TABLES.md §2.7, §11, §15)")
 					default:
 						if a.Value != nil {
 							c.errf(a.Pos, "a type tag is a bare identifier (SPEC §4.2 Type tags)")
@@ -778,7 +787,28 @@ func (c *checker) resolveBodies() {
 				// tables share the struct shape but live beside the packet
 				// decls, never among them (SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
-				c.tables[d.Name] = &ir.Struct{Name: d.Name, IsTable: true}
+				tbl := &ir.Struct{Name: d.Name, IsTable: true}
+				for _, a := range d.Attrs {
+					switch a.Key {
+					case "block":
+						// the BLOCK FORM's marker (SPEC-TABLES.md §2.7): a
+						// valueless qualifier selecting a third projection of
+						// the same declaration. It declares nothing.
+						if a.Value != nil {
+							c.errf(a.Pos, "block is a valueless marker: write `table %s | block` (SPEC-TABLES.md §2.7)", d.Name)
+							continue
+						}
+						tbl.Block = true
+					case "stride":
+						// refused by name rather than accepted-and-ignored,
+						// because an inert attribute is a lie about the
+						// declaration (SPEC-TABLES.md §11)
+						c.errf(a.Pos, "stride is not declarable in this version: a block-form row's pitch is its `sizeof` by construction, and declared headroom is a named follow-on (SPEC-TABLES.md §2.7, §11, §15)")
+					default:
+						c.errf(a.Pos, "unknown qualifier %q on a table — a table declaration takes `block` only (SPEC-TABLES.md §2.7)", a.Key)
+					}
+				}
+				c.tables[d.Name] = tbl
 			case *ast.UnionDecl:
 				// the shell first, so fields can reference the union in any
 				// order; variants resolve in the second pass below. Max and
@@ -1364,6 +1394,11 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 			// refused by name: rounding is not an attribute — it is the one
 			// fixed-point rule, half away from zero, everywhere (SPEC §4.3)
 			c.errf(a.Pos, "round is not part of the language — rounding is the one fixed-point rule: half away from zero, everywhere (SPEC §4.3)")
+		case "stride":
+			// refused by name rather than accepted-and-ignored: a block-form
+			// row's pitch is its `sizeof` by construction, and an inert
+			// attribute is a lie about the declaration (SPEC-TABLES.md §11)
+			c.errf(a.Pos, "field %s | stride: a block-form row's pitch is its `sizeof` by construction and no declaration adjusts it in this version; declared headroom is a named follow-on (SPEC-TABLES.md §2.7, §11, §15)", f.Name)
 		default:
 			c.errf(a.Pos, "unknown attribute %q — the vocabulary is typed and closed per compiler version (SPEC §4.2)", a.Key)
 		}
@@ -2630,6 +2665,23 @@ func (c *checker) checkClaimedNames() {
 			// a table generates its storage struct plus the Table codec and
 			// descriptor family — no packet-wire symbols (SPEC-TABLES.md)
 			c.addTableSymbols(add, name, d.DeclPos())
+			// A BLOCK-FORM table claims two more per out-of-line array,
+			// because its row accessors are named after its fields: <Table>
+			// followed by the PascalCase of the field's name hands back that
+			// field's rows, and the same name with `Span` appended is the
+			// contiguous view (§11, §19.2). This part of the set moves with
+			// the declaration, which is why §11 states it as a rule.
+			if st := c.tables[name]; st != nil && st.Block {
+				why := fmt.Sprintf("%s's generated block row accessors (SPEC-TABLES.md §11, §19.2)", name)
+				for _, f := range st.Fields {
+					if !ir.BlockOutOfLine(f) {
+						continue
+					}
+					accessor := name + ir.GoExportName(f.Name)
+					add(accessor, why, d.DeclPos())
+					add(accessor+"Span", why, d.DeclPos())
+				}
+			}
 		}
 	}
 }
@@ -2658,12 +2710,17 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // claimed for EVERY closure member, not only pointer-bearing ones: a table
 // gains or loses pointers as an edit, and a name that was free yesterday must
 // not become a collision tomorrow (SPEC-TABLES.md).
+// The BLOCK spellings are claimed on the same terms and for the same reason:
+// a table gains `| block` as an edit, so a name that was free yesterday must
+// not become a collision tomorrow (§11).
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
 	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
 	"At", "Root", "Emplace", "Pack", "PackMeasure", "OpenWalk",
-	"Cook", "CookMeasure", "Open", "LayoutId", "TableFields", "TableInfo",
+	"Cook", "CookMeasure", "Open", "OpenValidated", "LayoutId", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
+	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen",
+	"BlockOpenCompatible", "BlockLayoutId", "Counts",
 }
 
 // tableBuilderMembers are the member names of a generated <Name>Builder. A

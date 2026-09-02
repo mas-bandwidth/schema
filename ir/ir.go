@@ -114,6 +114,14 @@ type Struct struct {
 	Name    string
 	IsTable bool     // declared with `table`: a table-wire root
 	Tags    []string // inert in v1 (SPEC §4.2)
+
+	// Block marks a table declared `| block` (SPEC-TABLES.md §2.7): the table
+	// has a THIRD projection beside its wire (§3) and its cook (§7), one in
+	// which its own bounded arrays are laid out of line at a fixed pitch so a
+	// consumer in another language points at their rows (§19). It declares no
+	// construct, changes no field and moves no wire byte — the marker selects
+	// a FORM, and a form is not a mode (§2.2).
+	Block bool
 	// C++ native type mapping (SPEC §4.2, Native type mapping): when set,
 	// generated C++ declares fields of this type as ::CppNative (a hand type
 	// deriving from the generated basis struct — same layout, plus behavior)

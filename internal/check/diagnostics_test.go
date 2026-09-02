@@ -166,8 +166,12 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T { x ufixed(64, 0) | min = 0, max = 18446744073709551615 }\n"},
 		{name: "ufixed default below its unsigned range", want: "outside its range",
 			src: "package t\ntype T { x ufixed(16, 16) = -1.0 | min = 0, max = 5 }\n"},
-		{name: "a table declaration takes no qualification", want: "takes no qualification",
+		// a table declaration takes ONE qualifier — `block`, the block form's
+		// marker (SPEC-TABLES.md §2.7). Anything else is named.
+		{name: "an unknown qualifier on a table", want: "a table declaration takes `block` only",
 			src: "package t\ntable T | pinned\n{\n    x int32\n}\n"},
+		{name: "block is a valueless marker", want: "block is a valueless marker",
+			src: "package t\ntable T | block = 4\n{\n    x int32\n}\n"},
 		{name: "message is not part of the language", want: "messages are not part of the language",
 			src: "package t\nmessage M { x uint8 }\n"},
 		{name: "object is not part of the language", want: "objects are not part of the language",

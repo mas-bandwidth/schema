@@ -57,7 +57,11 @@ type TypeDecl struct {
 type TableDecl struct {
 	Name string
 	Pos  Pos
-	Body *Block
+	// Attrs is the declaration's | qualification section. A table takes one
+	// qualifier today: `block`, the BLOCK FORM's marker (SPEC §4.2,
+	// SPEC-TABLES.md §2.7).
+	Attrs []Attr
+	Body  *Block
 }
 
 // UnionDecl is a first-class one-of type (SPEC §4.8): an implicit None row,
