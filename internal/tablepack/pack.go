@@ -259,8 +259,8 @@ func entryKey(e os.DirEntry) (string, bool) {
 	if e.IsDir() {
 		return name, true
 	}
-	if strings.HasSuffix(name, ".json") {
-		return strings.TrimSuffix(name, ".json"), true
+	if key, ok := strings.CutSuffix(name, ".json"); ok {
+		return key, true
 	}
 	return "", false
 }

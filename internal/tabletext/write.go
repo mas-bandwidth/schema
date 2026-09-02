@@ -27,7 +27,7 @@ func (w *writer) raw(s string) { w.b.WriteString(s) }
 func (w *writer) put(c byte)   { w.b.WriteByte(c) }
 func (w *writer) line(depth int) {
 	w.b.WriteByte('\n')
-	for i := 0; i < depth; i++ {
+	for range depth {
 		w.b.WriteString("  ")
 	}
 }
@@ -198,7 +198,7 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		}
 		w.put('[')
 		first := true
-		for bit := 0; bit < 64; bit++ {
+		for bit := range 64 {
 			if bits&(uint64(1)<<uint(bit)) == 0 {
 				continue
 			}

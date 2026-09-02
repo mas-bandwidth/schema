@@ -338,7 +338,7 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		return true
 	}
 	sub := r.sub(end - r.off)
-	for i := 0; i < count; i++ {
+	for range count {
 		if !sub.has(2) {
 			r.report.Malformed = true
 			break

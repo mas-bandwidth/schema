@@ -265,7 +265,7 @@ func encodeArray(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kin
 	body := &buf{}
 	body.u8(uint8(kind))
 	body.u32(uint32(count))
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if err := encodeElement(m, body, fv.Def, kind, &fv.Elems[i]); err != nil {
 			return err
 		}

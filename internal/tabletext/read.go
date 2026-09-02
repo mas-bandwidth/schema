@@ -149,7 +149,7 @@ func (in *reader) hex4() int {
 		return -1
 	}
 	value := 0
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		c := in.text[in.pos+i]
 		var digit int
 		switch {
@@ -524,7 +524,7 @@ func (in *reader) readBase64(fv *Field) bool {
 			continue
 		}
 		at := -1
-		for i := 0; i < len(alphabet); i++ {
+		for i := range len(alphabet) {
 			if alphabet[i] == c {
 				at = i
 				break
