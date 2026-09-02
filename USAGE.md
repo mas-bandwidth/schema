@@ -1221,8 +1221,11 @@ of the check.
 
 ### The build version: what a cooked asset is stored under
 
-*Specified, not yet implemented — no backend emits this constant and
-`schema build-version` does not exist yet (SPEC-TABLES.md §20).*
+*Live for the BLOCK form: `schema build-version [--facts]` prints the id and
+the projection it digests, both pinned as goldens, and the C++ and C# block
+backends emit `BuildVersion` and stamp it into every block's prologue — what
+is still owed, the constant beside `ProtocolId` in every backend and the cook
+itself, is SPEC-TABLES.md §20's status list.*
 
 A cook is only ever produced for one build, so something has to name which
 build. That is the **build version**: one digest over everything a cook's
@@ -1232,14 +1235,13 @@ computes it, and the declaration facts that decide what a load puts in a slot
 order) — plus the target's byte order.
 
 ```
-$ schema build-version tables/examples/
-package tabledemo
-build version 0x................
+$ schema build-version tables/block/
+0xb34bc386659d9873
 ```
 
 ```cpp
-// generated, beside ProtocolId
-printf( "%016llx\n", (unsigned long long) tabledemo::BuildVersion );
+// generated into <Base>Block.h, and stamped into every block's prologue
+printf( "%016llx\n", (unsigned long long) blockdemo::BuildVersion );
 ```
 
 Your tools cook asset X to build version Y and write `(X, Y)` into the store;
