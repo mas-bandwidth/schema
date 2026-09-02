@@ -41,9 +41,6 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	if blocks == nil {
 		return out, nil
 	}
-	if err := refuseBlockNamespaceCollision(u); err != nil {
-		return nil, err
-	}
 	// THE BLOCK HOME is the first file, by basename, that declares a table
 	// WITH a block form — never the protocol id's home, which may declare no
 	// table at all (a unit whose constants live in their own file is the
@@ -81,22 +78,6 @@ func blockHome(u *ir.Unit, blocks *ir.BlockUnit) string {
 	return ""
 }
 
-// refuseBlockNamespaceCollision is the one refusal this backend's block half
-// adds, and it is C#'s alone: the blittable structs live in the nested
-// namespace <Pkg>.Block, so a declaration named `Block` would put a TYPE and a
-// NAMESPACE at the same name and the generated C# would not compile. Refused
-// by name rather than emitted broken (SPEC-TABLES.md §11's rule, applied to a
-// spelling this port introduces).
-func refuseBlockNamespaceCollision(u *ir.Unit) error {
-	for _, name := range []string{"Block"} {
-		if u.Tables[name] != nil || u.Structs[name] != nil || u.Enums[name] != nil || u.Flags[name] != nil || u.Unions[name] != nil {
-			return fmt.Errorf("declaration %s collides with the C# block form's namespace: the blittable block structs are emitted into %s.Block, so a type of that name would be both a type and a namespace and the generated C# would not compile — rename the declaration (SPEC-TABLES.md §19.2, §11)",
-				name, capitalize(u.Package))
-		}
-	}
-	return nil
-}
-
 type blockGen struct {
 	unit    *ir.Unit
 	file    *ir.File
@@ -104,7 +85,7 @@ type blockGen struct {
 	home    bool
 	runtime strings.Builder // the shared runtime, home file only
 	handles strings.Builder // namespace <Pkg>: the block handles
-	structs strings.Builder // namespace <Pkg>.Block: the blittable records
+	structs strings.Builder // the blittable records, in the package namespace
 }
 
 func (g *blockGen) rf(format string, args ...any) { fmt.Fprintf(&g.runtime, format, args...) }
@@ -166,27 +147,27 @@ func (g *blockGen) assemble() []byte {
 	h.WriteString("using System.Runtime.InteropServices;\n\n")
 	fmt.Fprintf(&h, "namespace %s\n{\n\n", capitalize(g.unit.Package))
 	h.WriteString(indent4(g.runtime.String()))
+	if g.structs.Len() > 0 {
+		var b strings.Builder
+		b.WriteString("// The BLITTABLE records: one per record the block form touches, laid out to\n")
+		b.WriteString("// the C ABI with GENERATED PADDING FIELDS wherever the layout has interior\n")
+		b.WriteString("// padding and a Size that pins the trailing padding — both are needed\n")
+		b.WriteString("// (SPEC-TABLES.md §19.3). Explicit padding is chosen over LayoutKind.Explicit\n")
+		b.WriteString("// because Sequential is the form every blittable path handles best, and over\n")
+		b.WriteString("// relying on a padding-free field order because that is discipline, and\n")
+		b.WriteString("// discipline is what this form exists to delete.\n")
+		b.WriteString("//\n")
+		b.WriteString("// They take a CLAIMED SUFFIX in the unit's own namespace — <Name>Row for a\n")
+		b.WriteString("// row and <Table>BlockProjection for a projection — because the namespace\n")
+		b.WriteString("// already holds a sealed CLASS of each declaration's name, which is the\n")
+		b.WriteString("// table wire's storage, and one declaration cannot be two types.\n")
+		h.WriteString(indent4(b.String()))
+		h.WriteString(indent4(g.structs.String()))
+	}
 	if g.handles.Len() > 0 {
 		h.WriteString(indent4(g.handles.String()))
 	}
 	h.WriteString("\n}\n")
-	if g.structs.Len() > 0 {
-		h.WriteString("\n")
-		h.WriteString("// The BLITTABLE records: one per record the block form touches, laid out to\n")
-		h.WriteString("// the C ABI with GENERATED PADDING FIELDS wherever the layout has interior\n")
-		h.WriteString("// padding and a Size that pins the trailing padding — both are needed\n")
-		h.WriteString("// (SPEC-TABLES.md §19.3). Explicit padding is chosen over LayoutKind.Explicit\n")
-		h.WriteString("// because Sequential is the form every blittable path handles best, and over\n")
-		h.WriteString("// relying on a padding-free field order because that is discipline, and\n")
-		h.WriteString("// discipline is what this form exists to delete.\n")
-		h.WriteString("//\n")
-		h.WriteString("// They sit in their own namespace because the unit's own namespace already\n")
-		h.WriteString("// holds a sealed CLASS of each of these names — the table wire's storage —\n")
-		h.WriteString("// and one declaration cannot be two types.\n")
-		fmt.Fprintf(&h, "namespace %s.Block\n{\n\n", capitalize(g.unit.Package))
-		h.WriteString(indent4(g.structs.String()))
-		h.WriteString("\n}\n")
-	}
 	return []byte(h.String())
 }
 
@@ -197,10 +178,11 @@ func (g *blockGen) emitBlittable(name string) {
 	if ml == nil {
 		return
 	}
-	g.sf("// %s — a block row, or a record one nests by value.\n", name)
+	g.sf("// %s — a block row, or a record one nests by value. `Row` is a CLAIMED\n", name)
+	g.sf("// suffix (SPEC-TABLES.md §11), so no declaration in the unit can take it.\n")
 	g.sf("[StructLayout(LayoutKind.Sequential, Pack = 1, Size = %d)]\n", ml.Size)
-	g.sf("public unsafe struct %s\n{\n", name)
-	g.emitBlittableFields(ml, 0)
+	g.sf("public unsafe struct %sRow\n{\n", name)
+	g.emitBlittableFields(ml, 0, false)
 	g.sf("}\n\n")
 }
 
@@ -211,56 +193,104 @@ func (g *blockGen) emitProjection(bl *ir.BlockLayout) {
 	g.sf("// out-of-line array, the triple that says where its rows are. It is a record\n")
 	g.sf("// like any other and follows the same C ABI rule (SPEC-TABLES.md §19.3).\n")
 	g.sf("//\n")
-	g.sf("// It is a SEPARATE record from the row of the same name: a table can be both\n")
-	g.sf("// a block root and another block's row, and the two differ by the prologue.\n")
+	g.sf("// It is a SEPARATE record from <Table>Row: a table can be both a block root\n")
+	g.sf("// and another block's row, and the two differ by the prologue.\n")
 	g.sf("[StructLayout(LayoutKind.Sequential, Pack = 1, Size = %d)]\n", bl.Projection.Size)
-	g.sf("public unsafe struct %sProjection\n{\n", name)
+	g.sf("public unsafe struct %sBlockProjection\n{\n", name)
 	g.sf("    public ulong Magic;        // generated: identifies a schema block\n")
 	g.sf("    public ulong BuildVersion; // generated: the unit's build version (SPEC-TABLES.md §20)\n")
 	g.sf("    public ulong ByteOrder;    // generated: 1 little, 2 big\n")
-	g.emitBlittableFields(&bl.Projection, ir.BlockPrologueBytes)
+	g.emitBlittableFields(&bl.Projection, ir.BlockPrologueBytes, true)
 	g.sf("}\n\n")
 }
 
 // emitBlittableFields walks one record's computed layout and emits its fields
 // with generated padding between them.
-func (g *blockGen) emitBlittableFields(ml *ir.MemberLayout, at int64) {
-	pad := func(to int64) {
-		for at < to {
-			g.sf("    private byte _pad%d;\n", at)
-			at++
-		}
-	}
+//
+// `projection` is the whole of what decides whether a bounded array becomes a
+// TRIPLE or stays INLINE, and it is load-bearing (SPEC-TABLES.md §2.7): DEPTH
+// ONE, BOUNDED ONLY — only the block-form TABLE'S OWN bounded arrays of
+// structs are laid out of line, and every array at any depth inside a row or
+// inside a record a row nests is inline storage exactly where it always was.
+// Emitting a triple for one of those puts sixteen bytes where the C++ side put
+// the whole array, and every field after it lands somewhere else.
+func (g *blockGen) emitBlittableFields(ml *ir.MemberLayout, at int64, projection bool) {
+	w := &blockWriter{g: g, at: at}
 	for _, fl := range ml.Fields {
-		pad(fl.Offset)
-		g.emitBlittableField(fl.Field)
-		at = fl.Offset + fl.Size
+		// Pad to each PIECE of the field, not only to the field: a field's own
+		// storage can carry interior padding — a `string(N)` buffer followed by
+		// its int32 length is the ordinary case — and padding only between
+		// fields slides every field after it.
+		w.pieces = ir.BlockFieldPieceOffsets(g.unit, fl.Field, fl.Offset, projection)
+		w.piece = 0
+		g.emitBlittableField(fl.Field, projection, w)
 	}
-	pad(ml.Size) // the trailing padding is pinned by Size too, and stating it costs nothing
+	w.pad(ml.Size) // the trailing padding is pinned by Size too, and stating it costs nothing
 }
 
-func (g *blockGen) emitBlittableField(f *ir.Field) {
+// blockWriter lays a record out piece by piece, padding to the offset the
+// compiler's model gives each one and advancing past the bytes it takes. It
+// exists because a field is not always one piece (§19.3).
+type blockWriter struct {
+	g      *blockGen
+	at     int64
+	pieces []ir.BlockFieldPiece
+	piece  int
+}
+
+func (w *blockWriter) pad(to int64) {
+	for w.at < to {
+		w.g.sf("    private byte _pad%d;\n", w.at)
+		w.at++
+	}
+}
+
+// next pads to the next piece's offset and accounts for the bytes it takes;
+// the caller emits the piece's own spelling between the two.
+func (w *blockWriter) next() {
+	if w.piece >= len(w.pieces) {
+		return
+	}
+	p := w.pieces[w.piece]
+	w.pad(p.Offset)
+	w.at = p.Offset + p.Size
+	w.piece++
+}
+
+// emitBlittableField emits one field's pieces, padding to each piece's own
+// offset — the model's answer for where every piece starts (§19.3).
+func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWriter) {
 	name := ir.GoExportName(f.Name)
-	if ir.BlockOutOfLine(f) {
+	next := w.next
+	if projection && ir.BlockOutOfLine(f) {
+		next()
 		g.sf("    public TableBlockTriple %s; // [..%d]%s, laid out of line\n", name, f.ArrayBound, f.Type.Name)
 		return
 	}
 	switch {
 	case f.Type.Kind == ir.TString:
+		next()
 		g.sf("    public fixed byte %s[%d]; // string(%d): max length, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
+		next()
 		g.sf("    public int %sLength;\n", name)
 	case f.Type.Kind == ir.TBytes:
+		next()
 		g.sf("    public fixed byte %s[%d]; // bytes(%d): fixed buffer, used length beside it\n", name, f.Type.Size, f.Type.Size)
+		next()
 		g.sf("    public int %sLength;\n", name)
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed, f.Array == ir.ArrayCounted:
+		next()
 		g.emitBlittableArray(f, name)
 		if f.Array == ir.ArrayCounted {
+			next()
 			g.sf("    public int %sCount;\n", name)
 		}
 	default:
+		next()
 		g.sf("    public %s %s;\n", g.blittableType(f.Type), name)
 	}
 	if f.Type.Optional {
+		next()
 		g.sf("    public bool %sPresent; // ?%s: one byte, in the managed model as in C++\n", name, f.Type.Name)
 	}
 }
@@ -339,7 +369,7 @@ func (g *blockGen) blittableType(t ir.FieldType) string {
 		case *ir.Flags:
 			return "ulong"
 		case *ir.Struct:
-			return t.Name
+			return t.Name + "Row"
 		}
 	}
 	return "byte"
@@ -363,7 +393,11 @@ func (g *blockGen) emitLayoutCheck() {
 	g.rf("// Neither side's layout is inferred from the other's: both are checked\n")
 	g.rf("// against their own runtime's model, which is the only way a two-language\n")
 	g.rf("// contract can be held by a compiler that generates both halves.\n")
-	g.rf("internal static unsafe class TableBlockLayout\n{\n")
+	// PUBLIC, not internal: a consumer's own test leg calls Verify() to hold
+	// §19.3's contract at start-up rather than waiting for the first Open to
+	// throw in a game, and a check nobody outside the assembly can call is a
+	// check nobody calls.
+	g.rf("public static unsafe class TableBlockLayout\n{\n")
 	g.rf("    private static bool checked_;\n\n")
 	g.rf("    internal static void Verify()\n    {\n")
 	g.rf("        if (checked_) { return; }\n")
@@ -378,9 +412,9 @@ func (g *blockGen) emitLayoutCheck() {
 		// it on one side only — which is §19.5's named negative control —
 		// could not turn anything red here.
 		for _, a := range bl.Arrays {
-			g.rf("        Size(\"%sBlock.%sStride\", (int) %sBlock.%sStride, Unsafe.SizeOf<%s.Block.%s>());\n",
+			g.rf("        Size(\"%sBlock.%sStride\", (int) %sBlock.%sStride, Unsafe.SizeOf<%sRow>());\n",
 				bl.Table.Name, ir.GoExportName(a.Field.Name), bl.Table.Name, ir.GoExportName(a.Field.Name),
-				capitalize(g.unit.Package), a.ElemName)
+				a.ElemName)
 		}
 	}
 	g.rf("    }\n\n")
@@ -403,9 +437,9 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 	if ml == nil {
 		return
 	}
-	spelled := capitalize(g.unit.Package) + ".Block." + name
+	spelled := name + "Row"
 	if projection {
-		spelled += "Projection"
+		spelled = name + "BlockProjection"
 	}
 	g.rf("        {\n")
 	g.rf("            %s probe = default;\n", spelled)
@@ -418,7 +452,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 	}
 	for _, fl := range ml.Fields {
 		g.rf("            Offset(\"%s.%s\", (byte*) %s - at, %d);\n", spelled, ir.GoExportName(fl.Field.Name),
-			g.blockFieldAddress(fl.Field), fl.Offset)
+			g.blockFieldAddress(fl.Field, projection), fl.Offset)
 	}
 	g.rf("        }\n")
 }
@@ -426,12 +460,17 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 // blockFieldAddress spells the address of one field of the stack probe. A
 // fixed-size buffer has no address of its own — its FIRST element does, and
 // that is the same byte.
-func (g *blockGen) blockFieldAddress(f *ir.Field) string {
+// blockFieldAddress spells the address of one field of the stack probe. It
+// takes `projection` for the same reason emitBlittableFields does: a bounded
+// array of structs is a TRIPLE in a projection and INLINE everywhere else, and
+// the two have different addresses to take (SPEC-TABLES.md §2.7).
+func (g *blockGen) blockFieldAddress(f *ir.Field, projection bool) string {
 	name := ir.GoExportName(f.Name)
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		return "probe." + name // a fixed-size buffer IS a pointer in unsafe context
 	}
-	if !ir.BlockOutOfLine(f) && (f.KeyEnum != "" || f.Array != ir.ArrayNone) {
+	inline := !projection || !ir.BlockOutOfLine(f)
+	if inline && (f.KeyEnum != "" || f.Array != ir.ArrayNone) {
 		if csFixedBufferPrimitive(g.blittableType(f.Type)) {
 			return "probe." + name
 		}
@@ -459,10 +498,16 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("        // the layout contract, run once before any static member of this type\n")
 	g.hf("        TableBlockLayout.Verify();\n")
 	g.hf("    }\n\n")
+	g.hf("    // The storage a PRODUCER of this block allocates, sized from the declared\n")
+	g.hf("    // maxima (SPEC-TABLES.md §19.1). A C# consumer does not allocate a block —\n")
+	g.hf("    // the bytes are handed to it — but it caps by this: a playback buffer, a\n")
+	g.hf("    // recording, a scratch copy all size from the generated constant rather\n")
+	g.hf("    // than from a number a person wrote down beside it.\n")
+	g.hf("    public const long BlockMaxBytes = %d;\n\n", bl.MaxBytes)
 	g.hf("    public byte* Base { get { return basePointer; } }\n")
 	g.hf("    public long Bytes { get { return bytes; } }\n\n")
 	g.hf("    // the table's own declared fields, read where they lie\n")
-	g.hf("    public ref readonly Block.%sProjection Projection { get { return ref *(Block.%sProjection*) basePointer; } }\n\n", name, name)
+	g.hf("    public ref readonly %sBlockProjection Projection { get { return ref *(%sBlockProjection*) basePointer; } }\n\n", name, name)
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.hf("    // %s: the constants this build asserts against. A consumer INDEXES with\n", a.Field.Name)
@@ -472,18 +517,18 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 		g.hf("    public const long %sProjectionOffset = %d;\n\n", field, a.TripleOffset)
 		g.hf("    // ITERATED, not indexed by hand: the accessor yields a reference to each\n")
 		g.hf("    // row where it lies, at the pitch the INSTANCE gives, for count rows.\n")
-		g.hf("    public TableBlockRows<Block.%s> %s\n    {\n", a.ElemName, field)
+		g.hf("    public TableBlockRows<%sRow> %s\n    {\n", a.ElemName, field)
 		g.hf("        get\n        {\n")
-		g.hf("            Block.%sProjection* p = (Block.%sProjection*) basePointer;\n", name, name)
-		g.hf("            return new TableBlockRows<Block.%s>(basePointer + p->%s.OffsetOf, (int) p->%s.Count, (int) p->%s.Stride);\n",
+		g.hf("            %sBlockProjection* p = (%sBlockProjection*) basePointer;\n", name, name)
+		g.hf("            return new TableBlockRows<%sRow>(basePointer + p->%s.OffsetOf, (int) p->%s.Count, (int) p->%s.Stride);\n",
 			a.ElemName, field, field, field)
 		g.hf("        }\n    }\n\n")
 		g.hf("    // and the CONTIGUOUS view, available because the pitch IS sizeof (§2.7),\n")
 		g.hf("    // which is how the per-frame fast path is actually written.\n")
-		g.hf("    public ReadOnlySpan<Block.%s> %sSpan\n    {\n", a.ElemName, field)
+		g.hf("    public ReadOnlySpan<%sRow> %sSpan\n    {\n", a.ElemName, field)
 		g.hf("        get\n        {\n")
-		g.hf("            Block.%sProjection* p = (Block.%sProjection*) basePointer;\n", name, name)
-		g.hf("            return new ReadOnlySpan<Block.%s>(basePointer + p->%s.OffsetOf, (int) p->%s.Count);\n",
+		g.hf("            %sBlockProjection* p = (%sBlockProjection*) basePointer;\n", name, name)
+		g.hf("            return new ReadOnlySpan<%sRow>(basePointer + p->%s.OffsetOf, (int) p->%s.Count);\n",
 			a.ElemName, field, field)
 		g.hf("        }\n    }\n\n")
 	}
@@ -519,7 +564,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.hf("        if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { return false; }\n")
 	g.hf("        if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { return false; }\n")
 	g.hf("        if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { return false; }\n")
-	g.hf("        Block.%sProjection* projection = (Block.%sProjection*) at;\n", name, name)
+	g.hf("        %sBlockProjection* projection = (%sBlockProjection*) at;\n", name, name)
 	g.hf("        long used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
@@ -531,7 +576,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.hf("            long offsetOf = (long) projection->%s.OffsetOf;\n", field)
 		g.hf("            long count = projection->%s.Count;\n", field)
 		g.hf("            long stride = projection->%s.Stride;\n", field)
-		g.hf("            if (stride != Unsafe.SizeOf<Block.%s>()) { return false; }\n", a.ElemName)
+		g.hf("            if (stride != Unsafe.SizeOf<%sRow>()) { return false; }\n", a.ElemName)
 		g.hf("            // past the DECLARED MAXIMUM: Begin refuses this on the producer\n")
 		g.hf("            // side and Open refuses it here, because a consumer that sizes\n")
 		g.hf("            // anything by the maximum would overflow on a count the maximum\n")
@@ -596,7 +641,11 @@ func (g *blockGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 			}
 		}
 		element := "null"
-		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && !f.Type.Pointer {
+		// A field that NAMES a record carries that record's layout, whether it
+		// holds one or an array of them: an INLINE array of records is part of
+		// a row, and a walker descending one reaches its element through this
+		// same column. Only the pointer class has no layout to name.
+		if f.Type.Kind == ir.TNamed && !f.Type.Pointer {
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
 				element = fmt.Sprintf("delegate { return %s; }", blockInfoSymbol(owner, ref.Name))
 			}

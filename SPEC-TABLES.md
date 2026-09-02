@@ -2650,14 +2650,20 @@ in build version (§20.5).
   nothing and is tracked for removal as schema#310, page and checker moving
   together.
 
-  **The BLOCK FORM claims seven more, and the checker claims them.** They are
+  **The BLOCK FORM claims nine more, and the checker claims them.** They are
   law on the same terms and for a stronger reason — every fixed table has a
   block form (§2.7), so every fixed table claims them:
 
   ```
   Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
-  Counts
+  Counts  Row  BlockProjection
   ```
+
+  **`Row` and `BlockProjection` are the C# BLITTABLE records' names** (§19.2),
+  and they are claimed for the reason the rest of this list exists rather than
+  planted in a namespace of their own: a generated namespace named by a common
+  noun collides with declarations in OTHER units of the same assembly, which a
+  compiler that sees one unit cannot refuse.
 
   **A table also claims TWO PER OUT-OF-LINE ARRAY**, because its row
   accessors are named after its fields: `<Table>` followed by the PascalCase
@@ -4440,7 +4446,10 @@ declaration does not spell:**
   declaration order, each at its own pitch, subject to the element rule below.
   Everything else stays exactly where it is: a fixed `[N]T`, an enum-keyed
   `[E]T`, and **every
-  array at any depth inside an element**. An element is one flat record or it
+  array at any depth inside an element** — which is a rule about the EMITTERS
+  as much as about the form: a backend that projects a bounded array inside a
+  nested record writes sixteen bytes where the other side wrote the whole
+  array, and lands every field after it somewhere else. An element is one flat record or it
   is not a record another language can point at, and one level is what makes
   "which arrays move" answerable by reading one declaration.
 - **THE INSTANCE IS WHAT MOVES, not the schema.** The block form generates
@@ -4694,20 +4703,32 @@ picks by what it is doing: reflection to walk anything, the struct to read
 one thing fast.
 
 ```csharp
-using Row = Demo.Block;   // the BLITTABLE records; the unit's own namespace
-                          // holds a sealed CLASS of each of these names, which
-                          // is the table wire's storage and not a block's row
-
 if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
     return;               // and the caller falls back, or reports
 
 ulong version = block.Projection.Version;     // the table's own declared fields
 
-foreach ( ref readonly Row.RenderShip ship in block.Ships )
+foreach ( ref readonly RenderShipRow ship in block.Ships )
     Draw( ship );
 
-ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is sizeof
+ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;   // contiguous: the pitch is sizeof
 ```
+
+**THE BLITTABLE RECORDS TAKE A CLAIMED SUFFIX, NEVER A NAMESPACE OF THEIR
+OWN.** A row is `<Name>Row` and a projection is `<Table>BlockProjection`, in
+the unit's own namespace, both claimed in §11 like every other generated
+spelling — so a declaration that would collide is refused at the source, which
+is the doctrine the whole generated surface already follows.
+
+**A generated NAMESPACE named by a common noun is a collision class no refusal
+can close, and that is the reason.** A nested `<Pkg>.Block` reads well until a
+unit declares a `Block` — and `Block` is a common noun a game will have. Worse,
+the collision is not even the DECLARING unit's to see: C# compiles many units
+into one assembly, so a `Block` in ANOTHER unit of the same package namespace
+collides with the namespace this unit planted, and a compiler that checks one
+unit at a time cannot refuse what it cannot see. A claimed suffix has neither
+problem: it collides only inside the unit that declares it, which is exactly
+where §11's claim reaches.
 
 **WHERE THE C# SURFACE IS EMITTED, because C# has no include guard and the
 answer is not "beside the declaration".** A unit's shared block runtime — the
@@ -4729,11 +4750,10 @@ page alone needs all three.** `Open` is a static on the block type, taking the
 destination first (§6.1) and then an `IntPtr` and a `long` — a block is memory
 another language wrote, so the C# side takes a pointer and a length and the
 generated source is `unsafe`. The ROWS are `[StructLayout(Sequential, Pack = 1,
-Size = N)]` STRUCTS in the unit's `.Block` namespace, never the sealed classes
-of the same names in the unit's own namespace: those are the table wire's
-storage, and binding one here is the mistake this paragraph exists to stop. A
-field's C# member is the PascalCase of its schema name, as everywhere else in
-that backend.
+Size = N)]` STRUCTS named `<Name>Row`, never the sealed CLASS of the bare name
+beside them: that is the table wire's storage, and binding one here is the
+mistake the suffix exists to stop. A field's C# member is the PascalCase of its
+schema name, as everywhere else in that backend.
 
 - **`BlockOpen` checks once and points, and this is the WHOLE check**: the
   magic read bytewise, the byte order it establishes, the build version

@@ -1647,4 +1647,34 @@ int64_t ArmorConfigToJson( const ArmorConfig & value, char * buffer, int64_t cap
     return TableJsonWrite( &value, ArmorConfigTableType(), buffer, capacity );
 }
 
+bool FiringGroupFromJson( FiringGroup & value, const char * text, int64_t bytes, TableReport * report )
+{
+    return TableJsonRead( &value, FiringGroupTableType(), text, bytes, report );
+}
+
+int64_t FiringGroupToJsonMeasure( const FiringGroup & value )
+{
+    return TableJsonWrite( &value, FiringGroupTableType(), NULL, 0 );
+}
+
+int64_t FiringGroupToJson( const FiringGroup & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, FiringGroupTableType(), buffer, capacity );
+}
+
+bool GunnerSettingsFromJson( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report )
+{
+    return TableJsonRead( &value, GunnerSettingsTableType(), text, bytes, report );
+}
+
+int64_t GunnerSettingsToJsonMeasure( const GunnerSettings & value )
+{
+    return TableJsonWrite( &value, GunnerSettingsTableType(), NULL, 0 );
+}
+
+int64_t GunnerSettingsToJson( const GunnerSettings & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, GunnerSettingsTableType(), buffer, capacity );
+}
+
 } // namespace blockhome

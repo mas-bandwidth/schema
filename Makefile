@@ -629,6 +629,44 @@ tables-block-home-negative-control: bin/schema
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on an undefined name"; tail -20 build/blockhome-sabotage.log; exit 1; }
 	@echo "block home negative control: emitting the runtime into the protocol id's home leaves the unit uncompilable"
 
+# DEFECT B's NEGATIVE CONTROL (SPEC-TABLES.md §2.7's DEPTH ONE, BOUNDED ONLY).
+# The dogfood found the C# blittable emitter projecting a bounded array INSIDE
+# a nested record out of line — a sixteen-byte triple where C++ put the whole
+# array, and every field after it somewhere else. Nothing said so until
+# Verify() threw on the first Open, in the game.
+#
+# This puts the defect back — through `go build -overlay`, so no tracked file
+# is written — and requires the gate to go red. The gate has TWO halves and
+# either firing is it working: COMPILING every corpus unit's generated C# is
+# half (a projected array is not the struct the rest of the unit indexes), and
+# running each unit's Verify() is the other (a projected array moves the sizes
+# and offsets). The control reports which one fired.
+.PHONY: tables-block-inline-array-negative-control
+tables-block-inline-array-negative-control: bin/schema
+	@mkdir -p build
+	@sed -e 's|if projection \&\& ir.BlockOutOfLine(f) {|if ir.BlockOutOfLine(f) { // SABOTAGED: project at every depth|' \
+	     -e 's|inline := !projection \|\| !ir.BlockOutOfLine(f)|inline := !ir.BlockOutOfLine(f)|' \
+		internal/codegen/cstable/block.go > build/csblock-depth.gotext
+	@cmp -s build/csblock-depth.gotext internal/codegen/cstable/block.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cstable/block.go":"%s/build/csblock-depth.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/csblock-depth-overlay.json
+	@go build -overlay=build/csblock-depth-overlay.json -o build/schema-depth-sabotaged ./cmd/schema
+	@rm -rf build/blockhome-depth && mkdir -p build/blockhome-depth
+	@./build/schema-depth-sabotaged generate --lang cs --out build/blockhome-depth tables/blockhome
+	@if ( cd test/cs-block && dotnet run -p:BlockHomeGeneratedDir=../../build/blockhome-depth ) \
+		> build/blockhome-depth.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a bounded array projected inside a nested record passed the layout gate"; \
+		cat build/blockhome-depth.log; exit 1; \
+	fi
+	@if grep -q "schema block layout" build/blockhome-depth.log; then \
+		echo "block inline-array negative control: the LAYOUT CHECK went red — a projected array inside a nested record moves the offsets"; \
+	elif grep -qE "CS1061|CS0246|CS0117" build/blockhome-depth.log; then \
+		echo "block inline-array negative control: the COMPILE went red — a projected array is not the struct the rest of the generated unit indexes"; \
+	else \
+		echo "NEGATIVE CONTROL FAILED: it went red, but not on either half of the gate"; tail -20 build/blockhome-depth.log; exit 1; \
+	fi
+
 # GATE 2 (SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
 # part of `make test` on purpose — a correctness suite whose verdict depends on
 # the machine's mood is not a correctness suite, and the estate's bench rules
@@ -1152,6 +1190,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-block-layout-model-negative-control
 	$(MAKE) tables-block-race-negative-control
 	$(MAKE) tables-block-home-negative-control
+	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative
 	$(MAKE) tables-hostile-values

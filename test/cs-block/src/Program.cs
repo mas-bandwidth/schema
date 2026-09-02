@@ -21,7 +21,6 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Blockdemo;
-using Row = Blockdemo.Block;
 
 static class Program
 {
@@ -82,14 +81,14 @@ static class Program
         w = 1.0 - 0.5 * (i % 3);
     }
 
-    static void CheckVec3(in Row.RenderVector3 got, int salt, int i, string what)
+    static void CheckVec3(in RenderVector3Row got, int salt, int i, string what)
     {
         double x, y, z;
         Vec3(salt, i, out x, out y, out z);
         Check(got.X == x && got.Y == y && got.Z == z, what);
     }
 
-    static void CheckQuat(in Row.RenderQuaternion got, int salt, int i, string what)
+    static void CheckQuat(in RenderQuaternionRow got, int salt, int i, string what)
     {
         double x, y, z, w;
         Quat(salt, i, out x, out y, out z, out w);
@@ -143,16 +142,16 @@ static class Program
 
             // ---- the projection's own fields, and the facts about its rows ----
 
-            ref readonly Row.RenderFrameProjection projection = ref block.Projection;
+            ref readonly RenderFrameBlockProjection projection = ref block.Projection;
             Check(projection.Magic == Schema.TableBlockMagic, "the prologue's magic");
             Check(projection.BuildVersion == Schema.BuildVersion, "the prologue's build version is this build's own");
             Check(projection.ByteOrder == Schema.TableBlockByteOrder, "the prologue's byte order is this build's own");
             Check(projection.Version == 1, "the table's own declared field, read where it lies");
 
             Check(projection.Ships.Count == Ships, "the ships triple's count");
-            Check(projection.Ships.Stride == Unsafe.SizeOf<Row.RenderShip>(),
+            Check(projection.Ships.Stride == Unsafe.SizeOf<RenderShipRow>(),
                 "the ships triple's stride is this build's own sizeof — the pitch IS sizeof (§2.7)");
-            Check(projection.Ships.OffsetOf >= (ulong) Unsafe.SizeOf<Row.RenderFrameProjection>(),
+            Check(projection.Ships.OffsetOf >= (ulong) Unsafe.SizeOf<RenderFrameBlockProjection>(),
                 "the ships array starts past the projection");
             Check(projection.Cameras.Count == Cameras && projection.Turrets.Count == Turrets &&
                   projection.Missiles.Count == Missiles && projection.DynamicProps.Count == DynamicProps &&
@@ -242,6 +241,7 @@ static class Program
 
         CheckPadded();
         Check(BlockHomeGate.Run(), "the block home unit's C# surface is emitted and reachable");
+        Check(LayoutGate.Run(), "every corpus unit's block layout agrees with the compiler's model (SPEC-TABLES.md §19.3)");
 
         // GATE 2's C# half (SPEC-TABLES.md §12.1), run only when asked: it is a
         // MEASUREMENT, and a measurement in a correctness leg would make the
@@ -297,21 +297,21 @@ static class Program
             {
                 return;
             }
-            Check(Unsafe.SizeOf<Row.PaddedRow>() == 72, "a padded row is 72 bytes in the managed model, as it is in C++");
+            Check(Unsafe.SizeOf<PaddedRowRow>() == 72, "a padded row is 72 bytes in the managed model, as it is in C++");
 
-            ref readonly Row.PaddedFrameProjection projection = ref block.Projection;
+            ref readonly PaddedFrameBlockProjection projection = ref block.Projection;
             Check(projection.Marker == 7, "the projection's scalar before the hole");
             Check(projection.Stamp == 0x0123456789abcdefUL, "the projection's scalar after it");
             Check(projection.BlobLength == 12, "the projection's inline bytes length");
 
             int i = 0;
-            foreach (ref readonly Row.PaddedRow row in block.Rows)
+            foreach (ref readonly PaddedRowRow row in block.Rows)
             {
                 Check(row.Tag == (byte) (10 + i), "padded row tag, before seven bytes of hole");
                 Check(row.Value == 0.5 * i + 100.0, "padded row value, after them");
                 Check(row.Flag == ((i % 2) == 0), "padded row flag");
                 Check(row.Id == (uint) (i * 1000 + 3), "padded row id, after three more");
-                fixed (Row.PaddedRow* p = &row)
+                fixed (PaddedRowRow* p = &row)
                 {
                     string label = Marshal.PtrToStringAnsi(new IntPtr(p->Label), row.LabelLength);
                     Check(label == "row-" + i, "padded row label — an inline string buffer");
@@ -347,7 +347,7 @@ static class Program
     {
         {
             int i = 0;
-            foreach (ref readonly Row.RenderCamera camera in block.Cameras)
+            foreach (ref readonly RenderCameraRow camera in block.Cameras)
             {
                 CheckVec3(in camera.Position, 1, i, "camera position");
                 CheckQuat(in camera.Rotation, 1, i, "camera rotation");
@@ -361,7 +361,7 @@ static class Program
         }
         {
             int i = 0;
-            foreach (ref readonly Row.RenderShip ship in block.Ships)
+            foreach (ref readonly RenderShipRow ship in block.Ships)
             {
                 CheckVec3(in ship.Position, 2, i, "ship position");
                 CheckQuat(in ship.Rotation, 2, i, "ship rotation");
@@ -381,17 +381,17 @@ static class Program
                 i++;
             }
             Check(i == Ships, "the ships accessor yields count rows");
-            Check(Unsafe.SizeOf<Row.RenderShip>() == 88, "a ship row is 88 bytes in the managed model, as it is in C++");
+            Check(Unsafe.SizeOf<RenderShipRow>() == 88, "a ship row is 88 bytes in the managed model, as it is in C++");
         }
         {
-            ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;
+            ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;
             Check(ships.Length == Ships, "the contiguous view carries the same count");
             Check(ships.Length == 0 || ships[Ships - 1].ObjectId == (uint) ((Ships - 1) * 3 + 11),
                 "and the contiguous view lands the same values as the iterator");
         }
         {
             int i = 0;
-            foreach (ref readonly Row.RenderTurret turret in block.Turrets)
+            foreach (ref readonly RenderTurretRow turret in block.Turrets)
             {
                 CheckQuat(in turret.Rotation, 3, i, "turret rotation");
                 Check(turret.Flags == (ulong) (i * 17), "turret flags");
@@ -408,7 +408,7 @@ static class Program
         }
         {
             int i = 0;
-            foreach (ref readonly Row.RenderMissile missile in block.Missiles)
+            foreach (ref readonly RenderMissileRow missile in block.Missiles)
             {
                 CheckVec3(in missile.Position, 4, i, "missile position");
                 CheckQuat(in missile.Rotation, 4, i, "missile rotation");
@@ -423,7 +423,7 @@ static class Program
         }
         {
             int i = 0;
-            foreach (ref readonly Row.RenderDynamicProp prop in block.DynamicProps)
+            foreach (ref readonly RenderDynamicPropRow prop in block.DynamicProps)
             {
                 CheckVec3(in prop.Position, 5, i, "dynamic prop position");
                 Check(prop.Flags == (ulong) (i * 29), "dynamic prop flags");
@@ -437,7 +437,7 @@ static class Program
         }
         {
             int i = 0;
-            foreach (ref readonly Row.RenderStaticProp prop in block.StaticProps)
+            foreach (ref readonly RenderStaticPropRow prop in block.StaticProps)
             {
                 CheckVec3(in prop.Position, 6, i, "static prop position");
                 Check(prop.Scale == 0.5 + 0.25 * (i % 7), "static prop scale");
@@ -451,7 +451,7 @@ static class Program
         }
         {
             int i = 0;
-            foreach (ref readonly Row.RenderCosmeticProp prop in block.CosmeticProps)
+            foreach (ref readonly RenderCosmeticPropRow prop in block.CosmeticProps)
             {
                 CheckVec3(in prop.Position, 7, i, "cosmetic prop position");
                 Check(prop.Scale == 0.25 + 0.125 * (i % 5), "cosmetic prop scale");
@@ -466,7 +466,7 @@ static class Program
         }
         {
             int i = 0;
-            foreach (ref readonly Row.RenderLaser laser in block.Lasers)
+            foreach (ref readonly RenderLaserRow laser in block.Lasers)
             {
                 CheckVec3(in laser.Start, 8, i, "laser start");
                 CheckVec3(in laser.Finish, 9, i, "laser finish");
@@ -480,7 +480,7 @@ static class Program
         }
         {
             int i = 0;
-            foreach (ref readonly Row.RenderExplosion explosion in block.Explosions)
+            foreach (ref readonly RenderExplosionRow explosion in block.Explosions)
             {
                 CheckVec3(in explosion.Position, 10, i, "explosion position");
                 Check(explosion.T == 0.0625 * (i % 16), "explosion t");
@@ -508,7 +508,7 @@ static class Program
         TableBlockInfo info = RenderFrameBlock.Type;
         Check(info.Name == "RenderFrame", "the block descriptor names its table");
         Check(info.BuildVersion == Schema.BuildVersion, "the block descriptor carries the unit's build version");
-        Check(info.Size == Unsafe.SizeOf<Row.RenderFrameProjection>(), "the block descriptor's size is the projection's own");
+        Check(info.Size == Unsafe.SizeOf<RenderFrameBlockProjection>(), "the block descriptor's size is the projection's own");
 
         byte* at = block.Base;
         int outOfLine = 0;
@@ -549,7 +549,7 @@ static class Program
             }
             Check(hasLock.Size == 1, "a bool row field is ONE byte in the descriptors too (§19.3)");
 
-            ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;
+            ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;
             int mismatches = 0;
             for (uint r = 0; r < count; r++)
             {

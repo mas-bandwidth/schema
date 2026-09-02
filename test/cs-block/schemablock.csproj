@@ -42,6 +42,12 @@
          that does not compile at all, and this project is where that is
          caught. -->
     <Compile Include="$(BlockHomeGeneratedDir)/*.cs" />
+    <!-- EVERY corpus unit the C# backend emits a block form for, so §19.3's
+         layout contract is a GENERATION-TIME gate and not only a throw the
+         first time somebody opens a block. Compiling is half of it — a
+         projected array where an inline one belongs does not compile the same
+         — and src/LayoutGate.cs runs each unit's Verify() for the other half. -->
+    <Compile Include="../../build/tables-generated-cs/examples/*.cs" Exclude="../../build/tables-generated-cs/examples/*Table.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>

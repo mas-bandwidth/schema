@@ -1116,17 +1116,17 @@ yours to own.
 **Reading it is one check and then pointers:**
 
 ```csharp
-using Row = MyPackage.Block;                  // the blittable records live here
-
 if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
     return;
 
-foreach ( ref readonly Row.RenderShip ship in block.Ships )
+// the blittable records are <Name>Row in the unit's own namespace — a claimed
+// suffix, so nothing you declare can take it
+foreach ( ref readonly RenderShipRow ship in block.Ships )
     Draw( ship );
 
 // and the fast path a per-frame job takes: one contiguous reinterpret, at
 // pitch == sizeof, with nothing per row
-ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;
+ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;
 ```
 
 `Open` verifies the magic, the byte order, the build version, the base's

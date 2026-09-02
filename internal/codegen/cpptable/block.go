@@ -746,7 +746,11 @@ func (g *tableGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 			}
 		}
 		element := "NULL"
-		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && !f.Type.Pointer {
+		// A field that NAMES a record carries that record's layout, whether it
+		// holds one or an array of them: an INLINE array of records is part of
+		// a row, and a walker descending one reaches its element through this
+		// same column. Only the pointer class has no layout to name.
+		if f.Type.Kind == ir.TNamed && !f.Type.Pointer {
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
 				element = fmt.Sprintf("+[]() { return &%s; }", blockInfoSymbol(owner, ref.Name))
 			}
