@@ -224,10 +224,12 @@ struct TableFieldInfo
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     bool is_array;          // fixed or counted array (bytes included)` + pointerFieldMember + `
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
+    bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
     uint32_t offset;        // offsetof the storage member
     uint32_t elem_size;     // sizeof the member (element size for arrays)
     uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
+    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
@@ -240,6 +242,14 @@ struct TableFieldInfo
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind. Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
+    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // variant of key_type_name, indexed by the variant's value, and its slots
+    // ride under variant ids rather than positions. key_name and key_id are
+    // the key's vocabulary — walk [0, array_bound) to print slots by name.
+    // NULL on every other field.
+    const char * key_type_name;
+    const char * (*key_name)( uint64_t value );
+    uint16_t (*key_id)( uint64_t value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 

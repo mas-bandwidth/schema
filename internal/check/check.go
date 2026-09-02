@@ -1080,6 +1080,14 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 	}
 
+	// the OPTIONAL prefix (SPEC-TABLES.md §2.3)
+	if f.Type.Optional {
+		if !c.checkOptionalSpelling(f, out, inTable) {
+			return nil
+		}
+		out.Type.Optional = true
+	}
+
 	// array bound
 	if f.Array != nil {
 		switch out.Type.Kind {
@@ -1087,36 +1095,52 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			c.errf(f.Pos, "an array of %s is not supported in v1 — wrap the element in a type", scalarName(out.Type.Kind))
 			return nil
 		}
-		hi, ok := c.evalInt(f.Array.Hi)
-		if !ok {
+		// an ENUM-KEYED array: the bound NAMES a declared enum rather than
+		// evaluating to a count — `ships [ShipType]ShipConfig`, one slot per
+		// variant, indexed by the variant (SPEC-TABLES.md §2.4)
+		if !c.resolveKeyBound(f, out) {
 			return nil
 		}
-		if !hi.IsInt64() || hi.Int64() < 1 {
-			c.errf(f.Pos, "array bound %s below 1 (SPEC §4.6)", hi)
-			return nil
-		}
-		if hi.Int64() > math.MaxInt32 {
-			c.errf(f.Pos, "array bound %s above %d — counts live in int32 storage (SPEC §4.3, §6.1)", hi, math.MaxInt32)
-			return nil
-		}
-		out.ArrayBound = hi.Int64()
-		out.ArrayExpr = f.Array.Hi
-		switch f.Array.Kind {
-		case ast.ArrayFixed:
+		switch {
+		case out.KeyEnum != "":
+			// one slot per variant plus None's: the bound IS E.Max + 1, the
+			// same count the `[E.Max + 1]T` spelling resolves to, so the two
+			// spellings share one projection and one protocol id
 			out.Array = ir.ArrayFixed
-		case ast.ArrayUpTo:
-			out.Array = ir.ArrayCounted
-		case ast.ArrayRange:
-			out.Array = ir.ArrayCounted
-			lo, ok := c.evalInt(f.Array.Lo)
+			out.ArrayBound = out.KeyEnumRef.Max + 1
+			out.ArrayExpr = f.Array.Hi
+		default:
+			hi, ok := c.evalInt(f.Array.Hi)
 			if !ok {
 				return nil
 			}
-			if lo.Sign() < 0 || !lo.IsInt64() || lo.Int64() >= hi.Int64() {
-				c.errf(f.Pos, "array count range [%s..%s] requires 0 <= Min < N (SPEC §4.6)", lo, hi)
+			if !hi.IsInt64() || hi.Int64() < 1 {
+				c.errf(f.Pos, "array bound %s below 1 (SPEC §4.6)", hi)
 				return nil
 			}
-			out.ArrayMin = lo.Int64()
+			if hi.Int64() > math.MaxInt32 {
+				c.errf(f.Pos, "array bound %s above %d — counts live in int32 storage (SPEC §4.3, §6.1)", hi, math.MaxInt32)
+				return nil
+			}
+			out.ArrayBound = hi.Int64()
+			out.ArrayExpr = f.Array.Hi
+			switch f.Array.Kind {
+			case ast.ArrayFixed:
+				out.Array = ir.ArrayFixed
+			case ast.ArrayUpTo:
+				out.Array = ir.ArrayCounted
+			case ast.ArrayRange:
+				out.Array = ir.ArrayCounted
+				lo, ok := c.evalInt(f.Array.Lo)
+				if !ok {
+					return nil
+				}
+				if lo.Sign() < 0 || !lo.IsInt64() || lo.Int64() >= hi.Int64() {
+					c.errf(f.Pos, "array count range [%s..%s] requires 0 <= Min < N (SPEC §4.6)", lo, hi)
+					return nil
+				}
+				out.ArrayMin = lo.Int64()
+			}
 		}
 	}
 
@@ -1871,6 +1895,117 @@ func (c *checker) checkPointerSpelling(f *ast.Field, inTable bool, d ast.Decl) b
 	return true
 }
 
+// checkOptionalSpelling enforces the `?T` spelling's rules, each refused by
+// name (SPEC-TABLES.md §11). An optional is a table-body construct: it costs
+// one presence bool beside the value, and PRESENCE — not content — decides
+// whether the field rides.
+func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable bool) bool {
+	spelling := "?" + scalarSpelling(f.Type)
+	if !inTable {
+		c.errf(f.Type.Pos, "field %s: %s is an OPTIONAL field, and optionals are a TABLE construct — a `type`'s wire is positional and every field always rides, so there is no absence to express; drop the ?, or move the declaring type to a `table` (SPEC-TABLES.md §2.3)",
+			f.Name, spelling)
+		return false
+	}
+	if f.Type.Pointer {
+		c.errf(f.Type.Pos, "field %s: %s marks a pointer optional, and a pointer is ALREADY optional — null is its absence, and it rides exactly as an absent optional does; drop the ? (SPEC-TABLES.md §2.3)",
+			f.Name, spelling)
+		return false
+	}
+	if f.Array != nil {
+		c.errf(f.Type.Pos, "field %s: ? on an ARRAY is a named follow-on — a counted array's count already carries emptiness, and a fixed array's slots are all present by construction; wrap the array in a table and make that optional (SPEC-TABLES.md §15)", f.Name)
+		return false
+	}
+	switch out.Type.Kind {
+	case ir.TString, ir.TBytes:
+		c.errf(f.Type.Pos, "field %s: ? on %s is a named follow-on — the generated length companion already carries emptiness, and a second presence bit beside it would be two answers to one question; wrap it in a table and make that optional (SPEC-TABLES.md §15)",
+			f.Name, scalarName(out.Type.Kind))
+		return false
+	}
+	if _, isUnion := out.Type.Ref.(*ir.Union); isUnion {
+		c.errf(f.Type.Pos, "field %s: %s marks a union optional, and a union is ALREADY optional — its None arm IS the absence, and an empty union elides exactly as an absent optional does; drop the ? (SPEC-TABLES.md §2.3)",
+			f.Name, spelling)
+		return false
+	}
+	if f.Default != nil {
+		c.errf(f.Pos, "field %s: an optional field takes no specified default — PRESENCE is the only default an optional has, and an absent optional reads as absent with its value at the type's own zero (SPEC-TABLES.md §2.3)", f.Name)
+		return false
+	}
+	return true
+}
+
+// resolveKeyBound recognises the ENUM-KEYED array bound — a `[Name]T` whose
+// Name is a declared ENUM rather than a constant (SPEC-TABLES.md §2.4). The
+// two spellings never overlap, because an enum is declared: `[Name]` naming a
+// const is the fixed array it has always been, and `[Name]` naming an enum is
+// one slot per variant, keyed by the variant. Returns false when the bound is
+// refused.
+func (c *checker) resolveKeyBound(f *ast.Field, out *ir.Field) bool {
+	name, pos, ok := boundIdent(f.Array)
+	if !ok {
+		return true
+	}
+	switch c.astDecls[name].(type) {
+	case *ast.FlagsDecl:
+		c.errf(pos, "field %s: [%s] names a `flags` declaration, and a keyed array is keyed by a VARIANT — a mask holds any set of bits at once, so it names no single slot; key the array by an enum, or size it with a constant (SPEC-TABLES.md §2.4)",
+			f.Name, name)
+		return false
+	case *ast.EnumDecl:
+	default:
+		return true // a const name, or an undefined one evalInt diagnoses
+	}
+	if f.Array.Kind != ast.ArrayFixed {
+		c.errf(pos, "field %s: a bounded enum-keyed array is refused — [%s] is COMPLETE by construction, one slot per variant, so [..%s] and [A..%s] name a count that cannot vary; spell it [%s] (SPEC-TABLES.md §2.4)",
+			f.Name, name, name, name, name)
+		return false
+	}
+	en := c.enums[name]
+	if en == nil {
+		return true // the enum failed its own checks; it was already diagnosed
+	}
+	out.KeyEnum = name
+	out.KeyEnumRef = en
+	return true
+}
+
+// boundIdent reports the bare declaration name an array bound spells, if it
+// spells one: `[E]`, and the two bounded forms whose either end names one, so
+// `[..E]` is refused by name rather than by "undefined constant".
+func boundIdent(b *ast.ArrayBound) (string, ast.Pos, bool) {
+	for _, e := range []ast.Expr{b.Hi, b.Lo} {
+		if id, isIdent := e.(*ast.IdentExpr); isIdent {
+			return id.Name, id.Pos, true
+		}
+	}
+	return "", ast.Pos{}, false
+}
+
+// scalarSpelling renders a field type as the author wrote it, for a
+// diagnostic that quotes the spelling back.
+func scalarSpelling(t ast.ScalarType) string {
+	switch t.Kind {
+	case ast.ScalarNamed:
+		if t.Pointer {
+			return "*" + t.Name
+		}
+		return t.Name
+	case ast.ScalarBool:
+		return "bool"
+	case ast.ScalarFloat32:
+		return "float32"
+	case ast.ScalarFloat64:
+		return "float64"
+	case ast.ScalarInt:
+		return intTypeName(t.Signed, t.Width)
+	case ast.ScalarBits:
+		return "bits(N)"
+	case ast.ScalarString:
+		return "string(N)"
+	case ast.ScalarBytes:
+		return "bytes(N)"
+	}
+	return "the field type"
+}
+
 // declKindName names a declaration's kind for a diagnostic.
 func declKindName(d ast.Decl) string {
 	switch d.(type) {
@@ -2093,6 +2228,11 @@ func (c *checker) checkTargetNames() {
 						}
 						if item.Array != nil && item.Array.Kind != ast.ArrayFixed {
 							register(item.Pos, item.Name, goExportName(item.Name)+"Count", "the generated count companion")
+						}
+						// an optional's presence bool is storage too, and it
+						// claims its name (SPEC-TABLES.md §2.3)
+						if item.Type.Optional {
+							register(item.Pos, item.Name, goExportName(item.Name)+"Present", "the generated presence companion")
 						}
 					case *ast.IfItem:
 						walkBlock(item.Then, owner, export)

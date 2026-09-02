@@ -31,7 +31,8 @@ const (
 	Comma
 	Colon
 	Assign // =
-	Not    // !
+	Not      // !
+	Question // ? — the OPTIONAL type prefix in a table body (SPEC-TABLES.md §2.3)
 	Dot    // .
 	DotDot // ..
 	LessEq // <= — retired spelling; scanned so the parser can refuse it by name (SPEC §4.3)
@@ -322,6 +323,8 @@ func (s *state) next() Token {
 				return Token{Assign, "=", p}
 			case '!':
 				return Token{Not, "!", p}
+			case '?':
+				return Token{Question, "?", p}
 			case '+':
 				return Token{Plus, "+", p}
 			case '-':

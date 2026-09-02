@@ -149,7 +149,12 @@ type ScalarType struct {
 	// table rather than a by-value nesting (SPEC-TABLES.md). Types remain
 	// value semantics; tables allow pointer semantics.
 	Pointer bool
-	Name    string // ScalarNamed
+	// Optional marks the `?T` spelling: an OPTIONAL by-value field, present
+	// or absent, with a generated presence companion beside the value
+	// (SPEC-TABLES.md §2.3). Table bodies only; the checker refuses every
+	// other placement by name.
+	Optional bool
+	Name     string // ScalarNamed
 	Pos     Pos
 }
 
