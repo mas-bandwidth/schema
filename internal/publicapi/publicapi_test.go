@@ -44,6 +44,10 @@ import (
 const (
 	corpusDir    = "../../examples"
 	corpus128Dir = "../../examples128"
+	// the tables corpora: the only ones that declare tables, and so the only
+	// ones the tables baseline has anything to say about
+	tablesDir         = "../../tables/examples"
+	tablesPointersDir = "../../tables/pointers"
 )
 
 // repoRoot is the module root, absolute — the external module replaces the
@@ -133,6 +137,18 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 		}
 		if out := run(t, inRepo, "check", corpus); out != "" {
 			t.Errorf("check %s: success is silent by default, printed %q", corpus, out)
+		}
+	}
+
+	// the tables baseline (SPEC-TABLES.md §16) reads a corpus with tables in
+	// it, so it runs over the tables corpora rather than the packet ones.
+	// Printing only: --update writes to the input tree, and this test measures
+	// the API, not the filesystem.
+	for _, corpus := range []string{tablesDir, tablesPointersDir} {
+		want := run(t, inRepo, "tables-baseline", corpus)
+		got := run(t, external, "tables-baseline", corpus)
+		if got != want {
+			t.Errorf("tables-baseline %s diverged\n in-repo: %q\nexternal: %q", corpus, want, got)
 		}
 	}
 
