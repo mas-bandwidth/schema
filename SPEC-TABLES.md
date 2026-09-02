@@ -2024,11 +2024,12 @@ lockstep redeploy by a table edit. This independence is held by test.
     backend (status, above), refused with §19 cited and never emitted with
     the block surface missing.
 
-  **What is NOT refused, and it is worth saying because the earlier shape of
-  this feature refused it**: a block-form table nested by value, pointed at,
-  used as an array element or named as a union arm's payload. Its BY-VALUE
-  form is an ordinary fixed table and behaves like one everywhere; only its
-  block form requires a base, exactly as a cooked file's does.
+  **What is NOT refused, and it is worth stating because the block form's own
+  need for a base invites the opposite guess**: a block-form table nested by
+  value, pointed at, used as an array element or named as a union arm's
+  payload. Its BY-VALUE form is an ordinary fixed table and behaves like one
+  everywhere; only its block form requires a base, exactly as a cooked file's
+  does.
 - **A `table` union arm outside a table closure** (§2.6) — a union declared
   for the type wire takes `type` payloads only, because types are value
   semantics.
