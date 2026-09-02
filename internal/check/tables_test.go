@@ -63,10 +63,12 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntype Inner { x fixed(16, 16) | min = 0, max = 5 }\ntable Tab { inner Inner }\n"},
 		{name: "uint128 has no table-wire kind", want: "has no table-wire kind",
 			src: "package t\ntable Tab { x uint128 }\n"},
-		{name: "string past the uint16 length", want: "table-wire lengths ride in uint16",
-			src: "package t\ntable Tab { s string(70000) }\n"},
-		{name: "array bound past the uint16 count", want: "table-wire counts ride in uint16",
-			src: "package t\ntable Tab { xs [..70000]int32 }\n"},
+		{name: "enum variants colliding on a table-wire id", want: "collide on table-wire id",
+			src: "package t\nenum E { costarring, liquid }\ntable Tab { e E }\n"},
+		{name: "union arms colliding on a table-wire id", want: "collide on table-wire id",
+			src: "package t\ntype A { x int32 }\ntype B { y int32 }\nunion U\n{\n    costarring A\n    liquid B\n}\ntable Tab { u U }\n"},
+		{name: "enum headroom has no name to ride under", want: "headroom value has no NAME",
+			src: "package t\nenum E | max = 8\n{ A, B }\ntable Tab { e E }\n"},
 		{name: "an array of unions in a closure", want: "an array of unions may not sit on a table-closure path",
 			src: "package t\ntype P { x int32 }\nunion U\n{\n    p P\n}\ntable Tab { us [..4]U }\n"},
 		{name: "a declaration colliding with the table runtime", want: "generated TABLE-wire runtime",
@@ -346,5 +348,40 @@ func TestCanonicalRootTableNameIsLegal(t *testing.T) {
 	}
 	if !ir.VariableTables(u)["Root"] {
 		t.Error("table Root did not derive VARIABLE-LENGTH")
+	}
+}
+
+// TestTableWideExtents: the table wire carries u32 lengths and u32 counts, so
+// an extent past 65535 is ordinary — the ceiling is the language's own int32
+// storage cap, not a wire ceiling (SPEC-TABLES.md §2.2, §3).
+func TestTableWideExtents(t *testing.T) {
+	cases := map[string]string{
+		"a string past 65535":       "package t\ntable Tab { s string(70000) }\n",
+		"bytes past 65535":          "package t\ntable Tab { b bytes(100000) }\n",
+		"an array count past 65535": "package t\ntable Tab { xs [..70000]int32 }\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
+				t.Fatalf("an extent past 65535 must be legal on the table wire: %v", errs)
+			}
+		})
+	}
+}
+
+// TestTableVariantIds pins the variant/arm id function: variants ride under
+// the SAME fold field names take, so one implementation serves both.
+func TestTableVariantIds(t *testing.T) {
+	for _, name := range []string{"Gold", "buff", "Silver"} {
+		if ir.VariantId(name) != ir.FieldId(name) {
+			t.Errorf("VariantId(%q) diverged from the field-id fold", name)
+		}
+	}
+	// frozen: the variant id is WIRE FORMAT
+	pins := map[string]uint16{"Bronze": 0x3407, "Silver": 0xa3e7, "Gold": 0xda27}
+	for name, want := range pins {
+		if got := ir.VariantId(name); got != want {
+			t.Errorf("VariantId(%q) = %#04x, want %#04x — the table-wire variant id function moved", name, got, want)
+		}
 	}
 }

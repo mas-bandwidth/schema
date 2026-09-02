@@ -1728,24 +1728,10 @@ func (c *checker) checkTables() {
 					name, f.Name, bad, what, name)
 				continue
 			}
-			if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Type.Size > 65535 {
-				spelling := "string"
-				if f.Type.Kind == ir.TBytes {
-					spelling = "bytes"
-				}
-				c.errf(pos, "%s.%s: %s(%d) exceeds 65535, and %s %s is in a table's closure — table-wire lengths ride in uint16 (SPEC-TABLES.md)",
-					name, f.Name, spelling, f.Type.Size, what, name)
-				continue
-			}
-			if f.Array != ir.ArrayNone && f.ArrayBound > 65535 {
-				c.errf(pos, "%s.%s: array bound %d exceeds 65535, and %s %s is in a table's closure — table-wire counts ride in uint16 (SPEC-TABLES.md)",
-					name, f.Name, f.ArrayBound, what, name)
-				continue
-			}
 			if f.Type.Kind == ir.TNamed {
 				if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Array != ir.ArrayNone {
 					// a SCALAR union field rides the table wire as kUnion:
-					// u8 tag, then the selected arm length-prefixed —
+					// a u16 arm id, then the selected arm length-prefixed —
 					// skippable, elidable (None), kind-mismatch-safe. An
 					// ARRAY of unions is the remaining named follow-on.
 					c.errf(pos, "%s.%s: an array of unions may not sit on a table-closure path yet — wrap the union in a type, or ask for the pass (SPEC-TABLES.md)",
@@ -1760,6 +1746,85 @@ func (c *checker) checkTables() {
 				continue
 			}
 			seen[id] = f
+		}
+	}
+	c.checkTableVariantIdentity(names)
+}
+
+// sortedKeys gives a map's keys in a stable order, so diagnostics do not
+// shuffle run to run.
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// checkTableVariantIdentity enforces the table wire's variant identity
+// (SPEC-TABLES.md §5): an enum value rides as the name hash of its variant and
+// a union body opens with the name hash of its arm, so the ids within one
+// enum, and within one union, must be distinct — and a value with no name has
+// no identity to ride under.
+//
+// Scoped to the TABLE CLOSURE. The packet wire identifies a variant by its
+// ordinal and is untouched by any of this: an enum nothing in a table reaches
+// keeps every spelling it ever had.
+func (c *checker) checkTableVariantIdentity(closureNames []string) {
+	enums := map[string]*ir.Enum{}
+	unions := map[string]*ir.Union{}
+	for _, name := range closureNames {
+		st := c.closureMember(name)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Enum:
+				enums[ref.Name] = ref
+			case *ir.Union:
+				unions[ref.Name] = ref
+			}
+		}
+	}
+	pos := func(name string) ast.Pos {
+		if d, ok := c.astDecls[name]; ok {
+			return d.DeclPos()
+		}
+		return ast.Pos{}
+	}
+	for _, name := range sortedKeys(enums) {
+		e := enums[name]
+		if e.Max > int64(len(e.Variants)) {
+			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s is in a table's closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (SPEC-TABLES.md §5)",
+				name, e.Max, name)
+		}
+		seen := map[uint16]string{}
+		for _, v := range e.Variants {
+			id := ir.VariantId(v)
+			if prev, dup := seen[id]; dup {
+				c.errf(pos(name), "enum %s: variants %s and %s collide on table-wire id 0x%04x, and %s is in a table's closure — rename one (SPEC-TABLES.md §5)",
+					name, prev, v, id, name)
+				continue
+			}
+			seen[id] = v
+		}
+	}
+	for _, name := range sortedKeys(unions) {
+		un := unions[name]
+		seen := map[uint16]string{}
+		for _, v := range un.Variants {
+			id := ir.VariantId(v.Name)
+			if prev, dup := seen[id]; dup {
+				c.errf(pos(name), "union %s: arms %s and %s collide on table-wire id 0x%04x, and %s is in a table's closure — rename one (SPEC-TABLES.md §5)",
+					name, prev, v.Name, id, name)
+				continue
+			}
+			seen[id] = v.Name
 		}
 	}
 }
