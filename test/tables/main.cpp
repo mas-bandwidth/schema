@@ -2602,8 +2602,13 @@ static void test_keyed_variable_oracle()
         name[name_len] = 0;
         set_string( root->name, root->name_length, name );
 
-        root->spare_present = ( oracle_rand( state ) & 1 ) != 0;
-        if ( root->spare_present ) root->spare.build = (int32_t) ( oracle_rand( state ) % 1001 );
+        // CAPTURED BEFORE Lock(), exactly as name, depths[] and chains[] are:
+        // Lock() compacts the arena into the region and releases the mutable
+        // life, so `root` dangles from that point on (SPEC-TABLES.md §6.2).
+        // Every value an assertion below compares against has to outlive it.
+        const bool spare_present = ( oracle_rand( state ) & 1 ) != 0;
+        root->spare_present = spare_present;
+        if ( spare_present ) root->spare.build = (int32_t) ( oracle_rand( state ) % 1001 );
 
         int32_t depths[8] = {};
         int32_t chains[8] = {};
@@ -2639,7 +2644,7 @@ static void test_keyed_variable_oracle()
         CHECK( loaded != NULL );
         CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
         CHECK( strcmp( loaded->name, name ) == 0 );
-        CHECK( loaded->spare_present == root->spare_present );
+        CHECK( loaded->spare_present == spare_present );
         for ( int32_t slot = 1; slot < 3; slot++ )
         {
             CHECK( loaded->banks.slots[slot].depth == depths[slot] );
