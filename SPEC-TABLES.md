@@ -1625,6 +1625,11 @@ together.
   with no native union — the ladder above already says what is licensed.
 - **The variable class in a ported backend** — the arena, the region, the
   cooked form and the pointer surface — after that port's fixed class.
+- **The TEXT FORM for the variable class** (§16.1) — a second walker that
+  fills a builder rather than an instance, emitted only in units that
+  declare a pointer, so a pointer-free unit carries nothing for it. The
+  surface is designed and stated; no backend emits it, and a pointered unit
+  is refused by name until one does.
 - **`?` on an array, a string or `bytes`** (§2.3): a presence bit beside an
   existing count or length wants a decision about what the pair means before
   it becomes wire. Wrap the field in a table and make that optional today.
@@ -1693,6 +1698,12 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
+**Backend status for this section: the FIXED class.** No backend implements
+the variable class's text form yet — a pointered unit gets no `FromJson`,
+refused by name with this section cited, never emitted with the function
+missing — and the second walker it needs, emitted only in units that
+declare a pointer, is tracked as schema#275.
+
 - **`FromJson` fills ONE instance from ONE text.** The instance is the
   caller's; the read path allocates nothing beyond it. Fields the text does
   not mention keep their storage defaults (SPEC §4.2: zero, or the
@@ -1731,6 +1742,14 @@ Per kind:
 | `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only |
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer |
+
+**Three of the entries above describe constructs no declaration reaches
+yet**: the `*string` and `*bytes` halves of their rows land with those
+declarations (schema#259), and the `table` union arm named in the union row
+lands with its own (schema#258). They are stated here rather than added
+later because a text mapping is a property of the KIND — each one lands as
+its declaration lands, not as a second decision about text. The `*T`
+pointer row is the variable class's, covered by the status in §16.1.
 
 **Numbers.** JSON has ONE number type, so an integer field accepts any
 token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
