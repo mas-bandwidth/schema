@@ -155,7 +155,7 @@ type ScalarType struct {
 	// other placement by name.
 	Optional bool
 	Name     string // ScalarNamed
-	Pos     Pos
+	Pos      Pos
 }
 
 type ConstField struct {

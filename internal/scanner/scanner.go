@@ -30,13 +30,13 @@ const (
 	RBrack // ]
 	Comma
 	Colon
-	Assign // =
+	Assign   // =
 	Not      // !
 	Question // ? — the OPTIONAL type prefix in a table body (SPEC-TABLES.md §2.3)
-	Dot    // .
-	DotDot // ..
-	LessEq // <= — retired spelling; scanned so the parser can refuse it by name (SPEC §4.3)
-	Pipe   // | — opens a line's qualification section (SPEC §4.2)
+	Dot      // .
+	DotDot   // ..
+	LessEq   // <= — retired spelling; scanned so the parser can refuse it by name (SPEC §4.3)
+	Pipe     // | — opens a line's qualification section (SPEC §4.2)
 	Plus
 	Minus
 	Star
