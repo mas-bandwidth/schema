@@ -21,7 +21,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using Blockhome;
-using HomeRow = Blockhome.Block;
 
 static class BlockHomeGate
 {
@@ -48,15 +47,50 @@ static class BlockHomeGate
 
         // the BLITTABLE RECORD from the type-only file, and the layout the
         // block form asserts for it
-        if (Unsafe.SizeOf<HomeRow.ArmorConfig>() == 0 || Unsafe.SizeOf<HomeRow.ArmorPlate>() == 0)
+        if (Unsafe.SizeOf<ArmorConfigRow>() == 0 || Unsafe.SizeOf<ArmorPlateRow>() == 0)
         {
             Console.WriteLine("FAILED: the block home's records from the type-only file");
             ok = false;
         }
         long stride = PartFrameBlock.PartsStride;
-        if (Unsafe.SizeOf<HomeRow.PartRow>() != stride)
+        if (Unsafe.SizeOf<PartRowRow>() != stride)
         {
             Console.WriteLine("FAILED: the row's size is not the pitch the block declares");
+            ok = false;
+        }
+
+        // `Block` is a COMMON NOUN and the unit declares one: the table wire's
+        // sealed class of that name, in the same namespace the block form's
+        // records live in. A nested <Pkg>.Block namespace made this a CS0101,
+        // and a `Block` in another unit of the same assembly made it one with
+        // nothing the compiler could see. Naming both here is the gate.
+        Block wireBlock = new Block();
+        wireBlock.Width = 3;
+        if (wireBlock.Width != 3)
+        {
+            Console.WriteLine("FAILED: the unit's own `Block` declaration");
+            ok = false;
+        }
+
+        // <Table>BlockMaxBytes: a consumer caps a playback buffer, a recording
+        // or a scratch copy from the GENERATED constant, not from a number
+        // somebody wrote down beside it (SPEC-TABLES.md §19.1).
+        long cap = PartFrameBlock.BlockMaxBytes;
+        if (cap <= Unsafe.SizeOf<PartFrameBlockProjection>())
+        {
+            Console.WriteLine("FAILED: BlockMaxBytes does not cover the projection and its rows");
+            ok = false;
+        }
+
+        // the dogfood's shape: a `type` holding TWO bounded arrays, nested by
+        // value in a row. Both stay INLINE at every depth (§2.7), so the row is
+        // as wide as C++ says and the arrays are addressable in place.
+        long gunner = Unsafe.SizeOf<GunnerSettingsRow>();
+        long group = Unsafe.SizeOf<FiringGroupRow>();
+        if (gunner < group * (32 + 4))
+        {
+            Console.WriteLine("FAILED: a bounded array inside a nested record was not laid out inline — it is " +
+                gunner + " bytes and its two arrays alone are " + (group * (32 + 4)));
             ok = false;
         }
 

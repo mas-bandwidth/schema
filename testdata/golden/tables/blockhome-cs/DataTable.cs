@@ -294,6 +294,342 @@ namespace Blockhome
             return ArmorConfigLoadBody(ref r, value);
         }
 
+        // TableReset(FiringGroup) restores FiringGroup's declared defaults in place, reusing every
+        // buffer the value already owns. The reader calls it before overlaying.
+        public static void TableReset(FiringGroup value)
+        {
+            value.Barrel = 0;
+            value.Cooldown = 0.0f;
+        }
+
+        public static long FiringGroupMeasure(FiringGroup value)
+        {
+            long bytes = 2; // terminator
+            if (value.Barrel != 0) { bytes += 3 + 4; } // barrel
+            if (value.Cooldown != 0.0f) { bytes += 3 + 4; } // cooldown
+            return bytes;
+        }
+
+        public static bool FiringGroupSaveBody(ref TableWriter w, FiringGroup value)
+        {
+            if (value.Barrel != 0)
+            {
+                w.Put16(0x87ed); w.Put8(8); // barrel
+                w.Put32(unchecked((uint)(value.Barrel)));
+            }
+            if (value.Cooldown != 0.0f)
+            {
+                w.Put16(0x2230); w.Put8(10); // cooldown
+                w.Put32(TableFloatToBits(value.Cooldown));
+            }
+            w.Put16(0); // terminator
+            return !w.Overflow;
+        }
+
+        public static long FiringGroupSave(FiringGroup value, Span<byte> buffer)
+        {
+            TableWriter w = new TableWriter(buffer);
+            if (!FiringGroupSaveBody(ref w, value)) { return -1; }
+            return w.Offset; // == FiringGroupMeasure(value)
+        }
+
+        public static bool FiringGroupLoadBody(ref TableReader r, FiringGroup value)
+        {
+            TableReset(value); // restore declared defaults in place, then overlay
+            for (;;)
+            {
+                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
+                ushort fieldId = r.Get16();
+                if (fieldId == 0) { return true; }
+                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
+                byte kind = r.Get8();
+                switch (fieldId)
+                {
+                    case 0x87ed: // barrel
+                    {
+                        if (kind != 8)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                            break;
+                        }
+                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
+                        {
+                            uint decodedV = unchecked((uint)r.Get32());
+                            value.Barrel = decodedV;
+                        }
+                        break;
+                    }
+                    case 0x2230: // cooldown
+                    {
+                        if (kind != 10)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                            break;
+                        }
+                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
+                        value.Cooldown = TableBitsToFloat(r.Get32());
+                        break;
+                    }
+                    default:
+                    {
+                        r.Report.Unknown++;
+                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                        break;
+                    }
+                }
+            }
+        }
+
+        public static bool FiringGroupLoad(FiringGroup value, ReadOnlySpan<byte> bytes, TableReport report)
+        {
+            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
+            return FiringGroupLoadBody(ref r, value);
+        }
+
+        // TableReset(GunnerSettings) restores GunnerSettings's declared defaults in place, reusing every
+        // buffer the value already owns. The reader calls it before overlaying.
+        public static void TableReset(GunnerSettings value)
+        {
+            for (int i = 0; i < value.FiringGroups.Length; i++)
+            {
+                TableReset(value.FiringGroups[i]);
+            }
+            value.FiringGroupsCount = 0;
+            for (int i = 0; i < value.MissileGroups.Length; i++)
+            {
+                TableReset(value.MissileGroups[i]);
+            }
+            value.MissileGroupsCount = 0;
+            value.ReloadSeconds = 0.0f;
+            value.GunnerId = 0;
+        }
+
+        public static long GunnerSettingsMeasure(GunnerSettings value)
+        {
+            long bytes = 2; // terminator
+            if (value.FiringGroupsCount < 0 || value.FiringGroupsCount > 32) { return -1; } // storage invariant
+            if (value.FiringGroupsCount > 0)
+            {
+                bytes += 3 + 4 + 5; // firing_groups
+                for (int i = 0; i < value.FiringGroupsCount; i++)
+                {
+                    long elem = FiringGroupMeasure(value.FiringGroups[i]);
+                    if (elem < 0) { return -1; }
+                    bytes += 4 + elem;
+                }
+            }
+            if (value.MissileGroupsCount < 0 || value.MissileGroupsCount > 4) { return -1; } // storage invariant
+            if (value.MissileGroupsCount > 0)
+            {
+                bytes += 3 + 4 + 5; // missile_groups
+                for (int i = 0; i < value.MissileGroupsCount; i++)
+                {
+                    long elem = FiringGroupMeasure(value.MissileGroups[i]);
+                    if (elem < 0) { return -1; }
+                    bytes += 4 + elem;
+                }
+            }
+            if (value.ReloadSeconds != 0.0f) { bytes += 3 + 4; } // reload_seconds
+            if (value.GunnerId != 0) { bytes += 3 + 4; } // gunner_id
+            return bytes;
+        }
+
+        public static bool GunnerSettingsSaveBody(ref TableWriter w, GunnerSettings value)
+        {
+            if (value.FiringGroupsCount < 0 || value.FiringGroupsCount > 32) { return false; } // storage invariant
+            if (value.FiringGroupsCount > 0)
+            {
+                w.Put16(0xc79d); w.Put8(14); // firing_groups
+                int lenAt = w.Offset; w.Put32(0);
+                w.Put8(13); w.Put32((uint)value.FiringGroupsCount);
+                for (int i = 0; i < value.FiringGroupsCount; i++)
+                {
+                    {
+                        int elemLenAt = w.Offset; w.Put32(0);
+                        if (!FiringGroupSaveBody(ref w, value.FiringGroups[i])) { return false; }
+                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
+                    }
+                }
+                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
+            }
+            if (value.MissileGroupsCount < 0 || value.MissileGroupsCount > 4) { return false; } // storage invariant
+            if (value.MissileGroupsCount > 0)
+            {
+                w.Put16(0x6a31); w.Put8(14); // missile_groups
+                int lenAt = w.Offset; w.Put32(0);
+                w.Put8(13); w.Put32((uint)value.MissileGroupsCount);
+                for (int i = 0; i < value.MissileGroupsCount; i++)
+                {
+                    {
+                        int elemLenAt = w.Offset; w.Put32(0);
+                        if (!FiringGroupSaveBody(ref w, value.MissileGroups[i])) { return false; }
+                        w.Patch32(elemLenAt, (uint)(w.Offset - elemLenAt - 4));
+                    }
+                }
+                w.Patch32(lenAt, (uint)(w.Offset - lenAt - 4));
+            }
+            if (value.ReloadSeconds != 0.0f)
+            {
+                w.Put16(0xd08f); w.Put8(10); // reload_seconds
+                w.Put32(TableFloatToBits(value.ReloadSeconds));
+            }
+            if (value.GunnerId != 0)
+            {
+                w.Put16(0xe0d2); w.Put8(8); // gunner_id
+                w.Put32(unchecked((uint)(value.GunnerId)));
+            }
+            w.Put16(0); // terminator
+            return !w.Overflow;
+        }
+
+        public static long GunnerSettingsSave(GunnerSettings value, Span<byte> buffer)
+        {
+            TableWriter w = new TableWriter(buffer);
+            if (!GunnerSettingsSaveBody(ref w, value)) { return -1; }
+            return w.Offset; // == GunnerSettingsMeasure(value)
+        }
+
+        public static bool GunnerSettingsLoadBody(ref TableReader r, GunnerSettings value)
+        {
+            TableReset(value); // restore declared defaults in place, then overlay
+            for (;;)
+            {
+                if (!r.Has(2)) { r.Report.Malformed = true; return false; }
+                ushort fieldId = r.Get16();
+                if (fieldId == 0) { return true; }
+                if (!r.Has(1)) { r.Report.Malformed = true; return false; }
+                byte kind = r.Get8();
+                switch (fieldId)
+                {
+                    case 0xc79d: // firing_groups
+                    {
+                        if (kind != 14)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                            break;
+                        }
+                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
+                        uint bodyLen = r.Get32();
+                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
+                        int bodyEnd = r.Offset + (int)bodyLen;
+                        if (bodyLen >= 5)
+                        {
+                            byte elemKind = r.Get8();
+                            uint count = r.Get32();
+                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
+                            uint keep = count;
+                            if (keep > 32) { keep = 32; r.Report.Clamped++; }
+                            // elements are BOUNDED by the field body: a count the length
+                            // cannot cover keeps the decoded prefix, flags malformed, and
+                            // the parent continues at the next field — following fields'
+                            // bytes are never fabricated into elements
+                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
+                            uint decoded = 0;
+                            for (uint i = 0; i < keep; i++)
+                            {
+                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
+                                uint elemLen = sub.Get32();
+                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
+                                {
+                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
+                                    FiringGroupLoadBody(ref elem, value.FiringGroups[i]);
+                                }
+                                sub.Offset += (int)elemLen;
+                                decoded = i + 1;
+                            }
+                            value.FiringGroupsCount = (int)decoded;
+                        }
+                        r.Offset = bodyEnd; // excess elements and slack skip via the length
+                        break;
+                    }
+                    case 0x6a31: // missile_groups
+                    {
+                        if (kind != 14)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                            break;
+                        }
+                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
+                        uint bodyLen = r.Get32();
+                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
+                        int bodyEnd = r.Offset + (int)bodyLen;
+                        if (bodyLen >= 5)
+                        {
+                            byte elemKind = r.Get8();
+                            uint count = r.Get32();
+                            if (elemKind != 13) { r.Report.KindMismatch++; r.Offset = bodyEnd; break; }
+                            uint keep = count;
+                            if (keep > 4) { keep = 4; r.Report.Clamped++; }
+                            // elements are BOUNDED by the field body: a count the length
+                            // cannot cover keeps the decoded prefix, flags malformed, and
+                            // the parent continues at the next field — following fields'
+                            // bytes are never fabricated into elements
+                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, bodyEnd - r.Offset), r.Report);
+                            uint decoded = 0;
+                            for (uint i = 0; i < keep; i++)
+                            {
+                                if (!sub.Has(4)) { r.Report.Malformed = true; break; }
+                                uint elemLen = sub.Get32();
+                                if (!sub.Has(elemLen)) { r.Report.Malformed = true; break; }
+                                {
+                                    TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
+                                    FiringGroupLoadBody(ref elem, value.MissileGroups[i]);
+                                }
+                                sub.Offset += (int)elemLen;
+                                decoded = i + 1;
+                            }
+                            value.MissileGroupsCount = (int)decoded;
+                        }
+                        r.Offset = bodyEnd; // excess elements and slack skip via the length
+                        break;
+                    }
+                    case 0xd08f: // reload_seconds
+                    {
+                        if (kind != 10)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                            break;
+                        }
+                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
+                        value.ReloadSeconds = TableBitsToFloat(r.Get32());
+                        break;
+                    }
+                    case 0xe0d2: // gunner_id
+                    {
+                        if (kind != 8)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                            break;
+                        }
+                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
+                        {
+                            uint decodedV = unchecked((uint)r.Get32());
+                            value.GunnerId = decodedV;
+                        }
+                        break;
+                    }
+                    default:
+                    {
+                        r.Report.Unknown++;
+                        if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                        break;
+                    }
+                }
+            }
+        }
+
+        public static bool GunnerSettingsLoad(GunnerSettings value, ReadOnlySpan<byte> bytes, TableReport report)
+        {
+            TableReader r = new TableReader(bytes, report != null ? report : new TableReport());
+            return GunnerSettingsLoadBody(ref r, value);
+        }
+
         // ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo ArmorPlateTableInfo;
@@ -330,6 +666,42 @@ namespace Blockhome
                 new TableFieldInfo { Name = "tier", TypeName = "uint8", Id = 0xe958, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
             };
             ArmorConfigTableInfo = info;
+            return info;
+        }
+
+        private static TableTypeInfo FiringGroupTableInfo;
+        public static TableTypeInfo FiringGroupTableType()
+        {
+            TableTypeInfo info = FiringGroupTableInfo;
+            if (info != null) { return info; }
+            info = new TableTypeInfo();
+            info.Name = "FiringGroup";
+            info.NumFields = 2;
+            info.Fields = new TableFieldInfo[]
+            {
+                new TableFieldInfo { Name = "barrel", TypeName = "uint32", Id = 0x87ed, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "cooldown", TypeName = "float32", Id = 0x2230, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+            };
+            FiringGroupTableInfo = info;
+            return info;
+        }
+
+        private static TableTypeInfo GunnerSettingsTableInfo;
+        public static TableTypeInfo GunnerSettingsTableType()
+        {
+            TableTypeInfo info = GunnerSettingsTableInfo;
+            if (info != null) { return info; }
+            info = new TableTypeInfo();
+            info.Name = "GunnerSettings";
+            info.NumFields = 4;
+            info.Fields = new TableFieldInfo[]
+            {
+                new TableFieldInfo { Name = "firing_groups", TypeName = "FiringGroup", Id = 0xc79d, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); } },
+                new TableFieldInfo { Name = "missile_groups", TypeName = "FiringGroup", Id = 0x6a31, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); } },
+                new TableFieldInfo { Name = "reload_seconds", TypeName = "float32", Id = 0xd08f, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "gunner_id", TypeName = "uint32", Id = 0xe0d2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+            };
+            GunnerSettingsTableInfo = info;
             return info;
         }
     }

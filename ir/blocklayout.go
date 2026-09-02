@@ -428,14 +428,48 @@ func layoutProjection(u *Unit, st *Struct) MemberLayout {
 	return ml
 }
 
+// BlockFieldPieceOffsets is the absolute offset of each contiguous PIECE of
+// one field's storage, given where the field starts.
+//
+// A field is not always one piece: a `string(N)` is a buffer AND an int32 used
+// length, a counted array is its elements AND an int32 count, an optional adds
+// a presence bool. The C ABI aligns each piece on its own, so a field can carry
+// INTERIOR padding — `char[49]` followed by an `int32_t` puts two bytes between
+// them — and a port that lays a record out field by field, padding only BETWEEN
+// fields, silently slides everything after it.
+//
+// The C# blittable emitter walks this rather than deriving it, because the two
+// derivations disagreeing is exactly the defect it exists to prevent (§19.3).
+func BlockFieldPieceOffsets(u *Unit, f *Field, fieldOffset int64, projection bool) []BlockFieldPiece {
+	pieces := fieldPieces(u, f, projection)
+	out := make([]BlockFieldPiece, 0, len(pieces))
+	at := fieldOffset
+	for _, p := range pieces {
+		at = alignUp(at, p.align)
+		out = append(out, BlockFieldPiece{Offset: at, Size: p.size})
+		at += p.size
+	}
+	return out
+}
+
+// BlockFieldPiece is one contiguous member of a field's generated storage:
+// where it starts inside the record, and how many bytes it takes.
+type BlockFieldPiece struct {
+	Offset int64
+	Size   int64
+}
+
 // fieldPieces spells one field's storage as the contiguous pieces the
 // generated record declares, in order. `projection` selects the block form's
 // projection spelling, in which an out-of-line array is its triple.
 func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 	if projection && BlockOutOfLine(f) {
-		// (offset_of u64, count u32, stride u32) — sixteen bytes, no interior
-		// padding, at the field's own position
-		return []storagePiece{{size: 8, align: 8}, {size: 4, align: 4}, {size: 4, align: 4}}
+		// (offset_of u64, count u32, stride u32) — ONE sixteen-byte piece with
+		// no interior padding, at the field's own position. It is one piece and
+		// not three because both backends spell it as one member of a triple
+		// TYPE, and a port that walked three would account for eight bytes
+		// where sixteen were written.
+		return []storagePiece{{size: 16, align: 8}}
 	}
 	var pieces []storagePiece
 	switch {

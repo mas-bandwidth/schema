@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package blockhome — protocol id 0xb08615b7d62a9648 (packets only: tables version by field id, not by protocol id)
+// package blockhome — protocol id 0xa6612e5b3f07080a (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -216,6 +216,12 @@ inline bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & value );
 inline int64_t ArmorConfigMeasure( const ArmorConfig & value );
 inline bool ArmorConfigSaveBody( TableWriter & w, const ArmorConfig & value );
 inline bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & value );
+inline int64_t FiringGroupMeasure( const FiringGroup & value );
+inline bool FiringGroupSaveBody( TableWriter & w, const FiringGroup & value );
+inline bool FiringGroupLoadBody( TableReader & r, FiringGroup & value );
+inline int64_t GunnerSettingsMeasure( const GunnerSettings & value );
+inline bool GunnerSettingsSaveBody( TableWriter & w, const GunnerSettings & value );
+inline bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value );
 
 inline int64_t ArmorPlateMeasure( const ArmorPlate & value )
 {
@@ -472,6 +478,314 @@ inline bool ArmorConfigLoad( ArmorConfig & value, const uint8_t * buffer, int64_
     return ArmorConfigLoadBody( r, value );
 }
 
+inline int64_t FiringGroupMeasure( const FiringGroup & value )
+{
+    int64_t bytes = 2; // terminator
+    if ( value.barrel != 0 ) { bytes += 3 + 4; } // barrel
+    if ( value.cooldown != 0.0f ) { bytes += 3 + 4; } // cooldown
+    return bytes;
+}
+
+inline bool FiringGroupSaveBody( TableWriter & w, const FiringGroup & value )
+{
+    if ( value.barrel != 0 )
+    {
+        w.put16( 0x87ed ); w.put8( 8 ); // barrel
+        w.put32( uint32_t( value.barrel ) );
+    }
+    if ( value.cooldown != 0.0f )
+    {
+        w.put16( 0x2230 ); w.put8( 10 ); // cooldown
+        w.put32( table_float_to_bits( value.cooldown ) );
+    }
+    w.put16( 0 ); // terminator
+    return !w.overflow;
+}
+
+inline int64_t FiringGroupSave( const FiringGroup & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    if ( !FiringGroupSaveBody( w, value ) ) { return -1; }
+    return w.offset; // == FiringGroupMeasure( value )
+}
+
+inline bool FiringGroupLoadBody( TableReader & r, FiringGroup & value )
+{
+    new ( &value ) FiringGroup{}; // prefill declared defaults in place, then overlay
+    for ( ;; )
+    {
+        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
+        uint16_t field_id = r.get16();
+        if ( field_id == 0 ) return true;
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        switch ( field_id )
+        {
+            case 0x87ed: // barrel
+            {
+                if ( kind != 8 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                uint32_t decoded_v = uint32_t( r.get32( ) );
+                value.barrel = decoded_v;
+                break;
+            }
+            case 0x2230: // cooldown
+            {
+                if ( kind != 10 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                value.cooldown = table_bits_to_float( r.get32() );
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+inline bool FiringGroupLoad( FiringGroup & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
+    return FiringGroupLoadBody( r, value );
+}
+
+inline int64_t GunnerSettingsMeasure( const GunnerSettings & value )
+{
+    int64_t bytes = 2; // terminator
+    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return -1; } // storage invariant
+    if ( value.firing_groups_count > 0 )
+    {
+        bytes += 3 + 4 + 5; // firing_groups
+        for ( int32_t i = 0; i < value.firing_groups_count; i++ )
+        {
+            int64_t elem_firing_groups = FiringGroupMeasure( value.firing_groups[i] );
+            if ( elem_firing_groups < 0 ) { return -1; }
+            bytes += 4 + elem_firing_groups;
+        }
+    }
+    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return -1; } // storage invariant
+    if ( value.missile_groups_count > 0 )
+    {
+        bytes += 3 + 4 + 5; // missile_groups
+        for ( int32_t i = 0; i < value.missile_groups_count; i++ )
+        {
+            int64_t elem_missile_groups = FiringGroupMeasure( value.missile_groups[i] );
+            if ( elem_missile_groups < 0 ) { return -1; }
+            bytes += 4 + elem_missile_groups;
+        }
+    }
+    if ( value.reload_seconds != 0.0f ) { bytes += 3 + 4; } // reload_seconds
+    if ( value.gunner_id != 0 ) { bytes += 3 + 4; } // gunner_id
+    return bytes;
+}
+
+inline bool GunnerSettingsSaveBody( TableWriter & w, const GunnerSettings & value )
+{
+    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return false; } // storage invariant
+    if ( value.firing_groups_count > 0 )
+    {
+        w.put16( 0xc79d ); w.put8( 14 ); // firing_groups
+        int64_t len_at_firing_groups = w.offset; w.put32( 0 );
+        w.put8( 13 ); w.put32( uint32_t( value.firing_groups_count ) );
+        for ( int32_t i = 0; i < value.firing_groups_count; i++ )
+        {
+            {
+                int64_t elem_len_at = w.offset; w.put32( 0 );
+                if ( !FiringGroupSaveBody( w, value.firing_groups[i] ) ) return false;
+                w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );
+            }
+        }
+        w.patch32( len_at_firing_groups, uint32_t( w.offset - len_at_firing_groups - 4 ) );
+    }
+    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return false; } // storage invariant
+    if ( value.missile_groups_count > 0 )
+    {
+        w.put16( 0x6a31 ); w.put8( 14 ); // missile_groups
+        int64_t len_at_missile_groups = w.offset; w.put32( 0 );
+        w.put8( 13 ); w.put32( uint32_t( value.missile_groups_count ) );
+        for ( int32_t i = 0; i < value.missile_groups_count; i++ )
+        {
+            {
+                int64_t elem_len_at = w.offset; w.put32( 0 );
+                if ( !FiringGroupSaveBody( w, value.missile_groups[i] ) ) return false;
+                w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );
+            }
+        }
+        w.patch32( len_at_missile_groups, uint32_t( w.offset - len_at_missile_groups - 4 ) );
+    }
+    if ( value.reload_seconds != 0.0f )
+    {
+        w.put16( 0xd08f ); w.put8( 10 ); // reload_seconds
+        w.put32( table_float_to_bits( value.reload_seconds ) );
+    }
+    if ( value.gunner_id != 0 )
+    {
+        w.put16( 0xe0d2 ); w.put8( 8 ); // gunner_id
+        w.put32( uint32_t( value.gunner_id ) );
+    }
+    w.put16( 0 ); // terminator
+    return !w.overflow;
+}
+
+inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffer, int64_t capacity )
+{
+    TableWriter w( buffer, capacity );
+    if ( !GunnerSettingsSaveBody( w, value ) ) { return -1; }
+    return w.offset; // == GunnerSettingsMeasure( value )
+}
+
+inline bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value )
+{
+    new ( &value ) GunnerSettings{}; // prefill declared defaults in place, then overlay
+    for ( ;; )
+    {
+        if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
+        uint16_t field_id = r.get16();
+        if ( field_id == 0 ) return true;
+        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        uint8_t kind = r.get8();
+        switch ( field_id )
+        {
+            case 0xc79d: // firing_groups
+            {
+                if ( kind != 14 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                uint32_t body_len = r.get32();
+                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + body_len;
+                if ( body_len >= 5 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint32_t count = r.get32();
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    uint32_t keep = count;
+                    if ( keep > 32 ) { keep = 32; r.report->clamped++; }
+                    // elements are BOUNDED by the field body: a count the length
+                    // cannot cover keeps the decoded prefix, flags malformed, and
+                    // the parent continues at the next field — following fields'
+                    // bytes are never fabricated into elements
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );
+                    uint32_t decoded = 0;
+                    for ( uint32_t i = 0; i < keep; i++ )
+                    {
+                        if ( !sub.has( 4 ) ) { r.report->malformed = true; break; }
+                        uint32_t elem_len = sub.get32();
+                        if ( !sub.has( elem_len ) ) { r.report->malformed = true; break; }
+                        {
+                            TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
+                            FiringGroupLoadBody( elem, value.firing_groups[i] );
+                        }
+                        sub.offset += elem_len;
+                        decoded = i + 1;
+                    }
+                    value.firing_groups_count = (int32_t) decoded;
+                }
+                r.offset = body_end; // excess elements and slack skip via the length
+                break;
+            }
+            case 0x6a31: // missile_groups
+            {
+                if ( kind != 14 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                uint32_t body_len = r.get32();
+                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + body_len;
+                if ( body_len >= 5 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint32_t count = r.get32();
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    uint32_t keep = count;
+                    if ( keep > 4 ) { keep = 4; r.report->clamped++; }
+                    // elements are BOUNDED by the field body: a count the length
+                    // cannot cover keeps the decoded prefix, flags malformed, and
+                    // the parent continues at the next field — following fields'
+                    // bytes are never fabricated into elements
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );
+                    uint32_t decoded = 0;
+                    for ( uint32_t i = 0; i < keep; i++ )
+                    {
+                        if ( !sub.has( 4 ) ) { r.report->malformed = true; break; }
+                        uint32_t elem_len = sub.get32();
+                        if ( !sub.has( elem_len ) ) { r.report->malformed = true; break; }
+                        {
+                            TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
+                            FiringGroupLoadBody( elem, value.missile_groups[i] );
+                        }
+                        sub.offset += elem_len;
+                        decoded = i + 1;
+                    }
+                    value.missile_groups_count = (int32_t) decoded;
+                }
+                r.offset = body_end; // excess elements and slack skip via the length
+                break;
+            }
+            case 0xd08f: // reload_seconds
+            {
+                if ( kind != 10 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                value.reload_seconds = table_bits_to_float( r.get32() );
+                break;
+            }
+            case 0xe0d2: // gunner_id
+            {
+                if ( kind != 8 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                uint32_t decoded_v = uint32_t( r.get32( ) );
+                value.gunner_id = decoded_v;
+                break;
+            }
+            default:
+            {
+                r.report->unknown++;
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                break;
+            }
+        }
+    }
+}
+
+inline bool GunnerSettingsLoad( GunnerSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    TableReader r( buffer, bytes, report != NULL ? report : &ignored );
+    return GunnerSettingsLoadBody( r, value );
+}
+
 // ---- relocatability, enforced: the wire is a pure length-prefixed
 // stream AND the decoded storage is pointer-free — every closure type
 // must stay trivially copyable and standard-layout, so instances can be
@@ -482,11 +796,17 @@ static_assert( std::is_trivially_copyable<ArmorPlate>::value, "ArmorPlate must s
 static_assert( std::is_standard_layout<ArmorPlate>::value, "ArmorPlate must stay standard-layout for offsetof" );
 static_assert( std::is_trivially_copyable<ArmorConfig>::value, "ArmorConfig must stay relocatable" );
 static_assert( std::is_standard_layout<ArmorConfig>::value, "ArmorConfig must stay standard-layout for offsetof" );
+static_assert( std::is_trivially_copyable<FiringGroup>::value, "FiringGroup must stay relocatable" );
+static_assert( std::is_standard_layout<FiringGroup>::value, "FiringGroup must stay standard-layout for offsetof" );
+static_assert( std::is_trivially_copyable<GunnerSettings>::value, "GunnerSettings must stay relocatable" );
+static_assert( std::is_standard_layout<GunnerSettings>::value, "GunnerSettings must stay standard-layout for offsetof" );
 
 // ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * ArmorPlateTableType();
 inline const TableTypeInfo * ArmorConfigTableType();
+inline const TableTypeInfo * FiringGroupTableType();
+inline const TableTypeInfo * GunnerSettingsTableType();
 
 inline const TableTypeInfo * ArmorPlateTableType()
 {
@@ -511,6 +831,28 @@ inline const TableTypeInfo * ArmorConfigTableType()
     return &info;
 }
 
+inline const TableTypeInfo * FiringGroupTableType()
+{
+    static const TableFieldInfo fields[] = {
+        { "barrel", "barrel", "uint32", 0x87ed, 8, false, false, false, 0, (uint32_t) offsetof( FiringGroup, barrel ), (uint32_t) sizeof( FiringGroup{}.barrel ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "cooldown", "cooldown", "float32", 0x2230, 10, false, false, false, 0, (uint32_t) offsetof( FiringGroup, cooldown ), (uint32_t) sizeof( FiringGroup{}.cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    };
+    static const TableTypeInfo info = { "FiringGroup", (uint32_t) sizeof( FiringGroup ), 2, fields, +[]( void * p ) { new ( p ) FiringGroup{}; } };
+    return &info;
+}
+
+inline const TableTypeInfo * GunnerSettingsTableType()
+{
+    static const TableFieldInfo fields[] = {
+        { "firing_groups", "firing_groups", "FiringGroup", 0xc79d, 13, true, true, false, 32, (uint32_t) offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( GunnerSettings{}.firing_groups[0] ), (uint32_t) offsetof( GunnerSettings, firing_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "missile_groups", "missile_groups", "FiringGroup", 0x6a31, 13, true, true, false, 4, (uint32_t) offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( GunnerSettings{}.missile_groups[0] ), (uint32_t) offsetof( GunnerSettings, missile_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "reload_seconds", "reload_seconds", "float32", 0xd08f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, reload_seconds ), (uint32_t) sizeof( GunnerSettings{}.reload_seconds ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "gunner_id", "gunner_id", "uint32", 0xe0d2, 8, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, gunner_id ), (uint32_t) sizeof( GunnerSettings{}.gunner_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    };
+    static const TableTypeInfo info = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 4, fields, +[]( void * p ) { new ( p ) GunnerSettings{}; } };
+    return &info;
+}
+
 // ---- the text form (SPEC-TABLES.md §16) ----
 
 // ArmorPlate in and out of a JSON text — one instance, one text, the generic
@@ -526,5 +868,19 @@ int64_t ArmorPlateToJson( const ArmorPlate & value, char * buffer, int64_t capac
 bool ArmorConfigFromJson( ArmorConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t ArmorConfigToJsonMeasure( const ArmorConfig & value );
 int64_t ArmorConfigToJson( const ArmorConfig & value, char * buffer, int64_t capacity );
+
+// FiringGroup in and out of a JSON text — one instance, one text, the generic
+// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// DataTable.cpp; link it to use them.
+bool FiringGroupFromJson( FiringGroup & value, const char * text, int64_t bytes, TableReport * report );
+int64_t FiringGroupToJsonMeasure( const FiringGroup & value );
+int64_t FiringGroupToJson( const FiringGroup & value, char * buffer, int64_t capacity );
+
+// GunnerSettings in and out of a JSON text — one instance, one text, the generic
+// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// DataTable.cpp; link it to use them.
+bool GunnerSettingsFromJson( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report );
+int64_t GunnerSettingsToJsonMeasure( const GunnerSettings & value );
+int64_t GunnerSettingsToJson( const GunnerSettings & value, char * buffer, int64_t capacity );
 
 } // namespace blockhome

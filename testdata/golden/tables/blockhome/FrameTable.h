@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package blockhome — protocol id 0xb08615b7d62a9648 (packets only: tables version by field id, not by protocol id)
+// package blockhome — protocol id 0xa6612e5b3f07080a (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -213,6 +213,7 @@ namespace blockhome {
 // member initializers (SPEC-TABLES.md)
 struct PartRow {
     ArmorConfig armor;
+    GunnerSettings gunner;
     uint32_t part_id = 0;
     uint8_t slot = 0;
 };
@@ -242,6 +243,11 @@ inline int64_t PartRowMeasure( const PartRow & value )
         if ( body_armor < 0 ) { return -1; }
         if ( body_armor > 2 ) { bytes += 3 + 4 + body_armor; } // armor: all-default nested elides
     }
+    {
+        int64_t body_gunner = GunnerSettingsMeasure( value.gunner );
+        if ( body_gunner < 0 ) { return -1; }
+        if ( body_gunner > 2 ) { bytes += 3 + 4 + body_gunner; } // gunner: all-default nested elides
+    }
     if ( value.part_id != 0 ) { bytes += 3 + 4; } // part_id
     if ( value.slot != 0 ) { bytes += 3 + 1; } // slot
     return bytes;
@@ -257,6 +263,16 @@ inline bool PartRowSaveBody( TableWriter & w, const PartRow & value )
             w.put16( 0x7c9d ); w.put8( 13 ); // armor
             w.put32( uint32_t( body_armor ) );
             if ( !ArmorConfigSaveBody( w, value.armor ) ) return false;
+        }
+    }
+    {
+        int64_t body_gunner = GunnerSettingsMeasure( value.gunner );
+        if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
+        if ( body_gunner > 2 ) // all-default nested elides
+        {
+            w.put16( 0x2bc9 ); w.put8( 13 ); // gunner
+            w.put32( uint32_t( body_gunner ) );
+            if ( !GunnerSettingsSaveBody( w, value.gunner ) ) return false;
         }
     }
     if ( value.part_id != 0 )
@@ -306,6 +322,24 @@ inline bool PartRowLoadBody( TableReader & r, PartRow & value )
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
                     ArmorConfigLoadBody( sub, value.armor );
+                }
+                r.offset += body_len;
+                break;
+            }
+            case 0x2bc9: // gunner
+            {
+                if ( kind != 13 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                uint32_t body_len = r.get32();
+                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
+                {
+                    TableReader sub( r.buffer + r.offset, body_len, r.report );
+                    GunnerSettingsLoadBody( sub, value.gunner );
                 }
                 r.offset += body_len;
                 break;
@@ -509,10 +543,11 @@ inline const TableTypeInfo * PartRowTableType()
 {
     static const TableFieldInfo fields[] = {
         { "armor", "armor", "ArmorConfig", 0x7c9d, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, armor ), (uint32_t) sizeof( PartRow{}.armor ), 0xffffffffu, 0xffffffffu, ArmorConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "gunner", "gunner", "GunnerSettings", 0x2bc9, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, gunner ), (uint32_t) sizeof( PartRow{}.gunner ), 0xffffffffu, 0xffffffffu, GunnerSettingsTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "part_id", "part_id", "uint32", 0x6deb, 8, false, false, false, 0, (uint32_t) offsetof( PartRow, part_id ), (uint32_t) sizeof( PartRow{}.part_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "slot", "slot", "uint8", 0x37e4, 6, false, false, false, 0, (uint32_t) offsetof( PartRow, slot ), (uint32_t) sizeof( PartRow{}.slot ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "PartRow", (uint32_t) sizeof( PartRow ), 3, fields, +[]( void * p ) { new ( p ) PartRow{}; } };
+    static const TableTypeInfo info = { "PartRow", (uint32_t) sizeof( PartRow ), 4, fields, +[]( void * p ) { new ( p ) PartRow{}; } };
     return &info;
 }
 

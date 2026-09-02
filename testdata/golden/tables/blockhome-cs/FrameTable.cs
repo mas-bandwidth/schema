@@ -16,6 +16,7 @@ namespace Blockhome
     public sealed class PartRow
     {
         public ArmorConfig Armor = new ArmorConfig();
+        public GunnerSettings Gunner = new GunnerSettings();
         public uint PartId;
         public byte Slot;
     }
@@ -47,6 +48,7 @@ namespace Blockhome
         public static void TableReset(PartRow value)
         {
             TableReset(value.Armor);
+            TableReset(value.Gunner);
             value.PartId = 0;
             value.Slot = 0;
         }
@@ -58,6 +60,11 @@ namespace Blockhome
                 long body = ArmorConfigMeasure(value.Armor);
                 if (body < 0) { return -1; }
                 if (body > 2) { bytes += 3 + 4 + body; } // armor: all-default nested elides
+            }
+            {
+                long body = GunnerSettingsMeasure(value.Gunner);
+                if (body < 0) { return -1; }
+                if (body > 2) { bytes += 3 + 4 + body; } // gunner: all-default nested elides
             }
             if (value.PartId != 0) { bytes += 3 + 4; } // part_id
             if (value.Slot != 0) { bytes += 3 + 1; } // slot
@@ -74,6 +81,16 @@ namespace Blockhome
                     w.Put16(0x7c9d); w.Put8(13); // armor
                     w.Put32((uint)body);
                     if (!ArmorConfigSaveBody(ref w, value.Armor)) { return false; }
+                }
+            }
+            {
+                long body = GunnerSettingsMeasure(value.Gunner);
+                if (body < 0) { return false; } // storage invariant, refused as measure refuses it
+                if (body > 2) // all-default nested elides
+                {
+                    w.Put16(0x2bc9); w.Put8(13); // gunner
+                    w.Put32((uint)body);
+                    if (!GunnerSettingsSaveBody(ref w, value.Gunner)) { return false; }
                 }
             }
             if (value.PartId != 0)
@@ -123,6 +140,24 @@ namespace Blockhome
                         {
                             TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
                             ArmorConfigLoadBody(ref sub, value.Armor);
+                        }
+                        r.Offset += (int)bodyLen;
+                        break;
+                    }
+                    case 0x2bc9: // gunner
+                    {
+                        if (kind != 13)
+                        {
+                            r.Report.KindMismatch++;
+                            if (!r.Skip(kind)) { r.Report.Malformed = true; return false; }
+                            break;
+                        }
+                        if (!r.Has(4)) { r.Report.Malformed = true; return false; }
+                        uint bodyLen = r.Get32();
+                        if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
+                        {
+                            TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
+                            GunnerSettingsLoadBody(ref sub, value.Gunner);
                         }
                         r.Offset += (int)bodyLen;
                         break;
@@ -331,10 +366,11 @@ namespace Blockhome
             if (info != null) { return info; }
             info = new TableTypeInfo();
             info.Name = "PartRow";
-            info.NumFields = 3;
+            info.NumFields = 4;
             info.Fields = new TableFieldInfo[]
             {
                 new TableFieldInfo { Name = "armor", TypeName = "ArmorConfig", Id = 0x7c9d, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorConfigTableType(); } },
+                new TableFieldInfo { Name = "gunner", TypeName = "GunnerSettings", Id = 0x2bc9, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); } },
                 new TableFieldInfo { Name = "part_id", TypeName = "uint32", Id = 0x6deb, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "slot", TypeName = "uint8", Id = 0x37e4, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
             };

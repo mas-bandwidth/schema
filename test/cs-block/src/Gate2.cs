@@ -29,7 +29,6 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Blockdemo;
-using Row = Blockdemo.Block;
 
 static class Gate2
 {
@@ -148,20 +147,20 @@ static class Gate2
     {
         double sum = 0.0;
 
-        ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;
+        ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;
         for (int i = 0; i < ships.Length; i++)
         {
             sum += ships[i].Position.X + ships[i].Rotation.W + ships[i].ObjectId + ships[i].Thrust
                  + (byte) ships[i].Team + (ships[i].HasTargetLock ? 1 : 0);
         }
 
-        ReadOnlySpan<Row.RenderTurret> turrets = block.TurretsSpan;
+        ReadOnlySpan<RenderTurretRow> turrets = block.TurretsSpan;
         for (int i = 0; i < turrets.Length; i++)
         {
             sum += turrets[i].Rotation.W + turrets[i].ObjectId + turrets[i].TurretIndex + (byte) turrets[i].Team;
         }
 
-        ReadOnlySpan<Row.RenderStaticProp> props = block.StaticPropsSpan;
+        ReadOnlySpan<RenderStaticPropRow> props = block.StaticPropsSpan;
         for (int i = 0; i < props.Length; i++)
         {
             sum += props[i].Position.X + props[i].Scale + props[i].StaticPropId + (byte) props[i].Team;

@@ -1,6 +1,6 @@
-0x831c4abc9b71036d
+0x3de2d055d5640b6a
 schema-build-version 1
-protocol b08615b7d62a9648
+protocol a6612e5b3f07080a
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record ArmorConfig sizeof=40 alignof=8
@@ -12,13 +12,22 @@ record ArmorPlate sizeof=16 alignof=8
     field c81a kind=11 offset=0 size=8
     field 0284 kind=8 offset=8 size=4
     field 4750 kind=6 offset=12 size=1
-record PartFrame sizeof=1552 alignof=8
+record FiringGroup sizeof=8 alignof=4
+    field 87ed kind=8 offset=0 size=4
+    field 2230 kind=10 offset=4 size=4
+record GunnerSettings sizeof=304 alignof=4
+    field c79d kind=13 offset=0 size=260 type=FiringGroup elem=8 array=bounded bound=32
+    field 6a31 kind=13 offset=260 size=36 type=FiringGroup elem=8 array=bounded bound=4
+    field d08f kind=10 offset=296 size=4
+    field e0d2 kind=8 offset=300 size=4
+record PartFrame sizeof=11280 alignof=8
     field e8e6 kind=9 offset=0 size=8
-    field fc18 kind=13 offset=8 size=1540 type=PartRow elem=48 array=bounded bound=32
+    field fc18 kind=13 offset=8 size=11268 type=PartRow elem=352 array=bounded bound=32
 block PartFrame sizeof=48 alignof=8
     slot e8e6 offset=24 size=8
-    slot fc18 offset=32 size=16 out_of_line stride=48
-record PartRow sizeof=48 alignof=8
+    slot fc18 offset=32 size=16 out_of_line stride=352
+record PartRow sizeof=352 alignof=8
     field 7c9d kind=13 offset=0 size=40 type=ArmorConfig
-    field 6deb kind=8 offset=40 size=4
-    field 37e4 kind=6 offset=44 size=1
+    field 2bc9 kind=13 offset=40 size=304 type=GunnerSettings
+    field 6deb kind=8 offset=344 size=4
+    field 37e4 kind=6 offset=348 size=1

@@ -22,3 +22,36 @@ type ArmorConfig
     rating float32
     tier   uint8
 }
+
+// `Block` is a COMMON NOUN, and a game unit will have one — the dogfood's is a
+// wire message. It is declared here on purpose: the C# backend used to plant a
+// nested `<Pkg>.Block` namespace for its blittable records, so this
+// declaration made the generated unit refuse to compile, and a declaration in
+// ANOTHER unit of the same assembly did the same with nothing this compiler
+// could see. The records take claimed suffixes in the package namespace now
+// (§19.2), and this type is what keeps that true.
+type Block
+{
+    width  uint32
+    height uint32
+}
+
+// The dogfood's shape, and defect B's fixture: a `type` holding TWO bounded
+// arrays, nested by value inside a block row. §2.7 is DEPTH ONE, BOUNDED ONLY
+// — these two arrays stay INLINE wherever this type sits, because only the
+// block-form TABLE'S OWN bounded arrays are laid out of line. A C# emitter
+// that projected them would put a sixteen-byte triple where C++ put the whole
+// array and land every field after it somewhere else.
+type FiringGroup
+{
+    barrel   uint32
+    cooldown float32
+}
+
+type GunnerSettings
+{
+    firing_groups  [..MaxParts]FiringGroup
+    missile_groups [..MaxPlates]FiringGroup
+    reload_seconds float32
+    gunner_id      uint32
+}

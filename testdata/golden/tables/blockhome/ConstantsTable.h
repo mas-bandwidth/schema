@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package blockhome — protocol id 0xb08615b7d62a9648 (packets only: tables version by field id, not by protocol id)
+// package blockhome — protocol id 0xa6612e5b3f07080a (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 

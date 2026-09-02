@@ -2703,6 +2703,12 @@ var tableGeneratedVerbs = []string{
 	"Cook", "CookMeasure", "Open", "LayoutId", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
+	// the C# BLITTABLE records take claimed suffixes in the package namespace
+	// rather than a nested namespace of their own: a generated namespace named
+	// by a common noun is a collision class no refusal can close, because it
+	// collides with declarations in OTHER units of the same assembly and this
+	// compiler sees one unit (SPEC-TABLES.md §19.2).
+	"Row", "BlockProjection",
 }
 
 // tableBuilderMembers are the member names of a generated <Name>Builder. A
