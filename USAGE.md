@@ -1037,9 +1037,6 @@ per node is a table of its own with a `bytes(N)` field, pointed at.
 
 ### The block form: rows another language points at
 
-*Specified, not yet implemented — no backend emits the Block files yet
-(SPEC-TABLES.md §2.7, §19).*
-
 Some data is not a file and not a message. It is a block you rebuild every
 frame and hand to something in another language, which points at it and reads
 it in place. You declare nothing for it:
@@ -1087,7 +1084,12 @@ table has no block form at all: a pointer means no fixed pitch.
 the counts, lay the block out once, then let N workers fill disjoint ranges:
 
 ```cpp
-RenderFrameBlockStorage storage;              // max-sized allocation, made once
+// the storage: one extent, sized from the declared maxima, allocated ONCE
+// through YOUR allocator — an alloc/free pair and a context, malloc semantics.
+// TableBlockDefaultAllocator() is malloc/free, for a caller with none of its own.
+RenderFrameBlockStorage storage;
+if ( !storage.Create( TableBlockDefaultAllocator() ) )
+    return;
 
 RenderFrameCounts counts = {};
 counts.ships = numShips;                      // clamp to the maximum yourself
@@ -1103,6 +1105,8 @@ for ( int i = begin; i < end; i++ )
     ships[i].position = ...;
 
 int64_t bytes = RenderFrameBlockBytes( block );   // the used extent, for the handoff
+
+storage.Destroy();                            // through the same pair, when you are done
 ```
 
 A block stays valid until the next `Begin` on that storage, which invalidates
@@ -1112,17 +1116,29 @@ yours to own.
 **Reading it is one check and then pointers:**
 
 ```csharp
-if ( !RenderFrame.BlockOpen( out RenderFrameBlock block, pointer, bytes ) )
+using Row = MyPackage.Block;                  // the blittable records live here
+
+if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
     return;
 
-foreach ( ref readonly RenderShip ship in block.Ships )
+foreach ( ref readonly Row.RenderShip ship in block.Ships )
     Draw( ship );
+
+// and the fast path a per-frame job takes: one contiguous reinterpret, at
+// pitch == sizeof, with nothing per row
+ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;
 ```
 
-`BlockOpen` verifies the magic, the byte order, the build version and the
-extent, and then you index. A generic consumer does not even need the generated
-struct: the reflection descriptors carry the projection's layout, so a tool
-can walk any block's rows without a type per table.
+`Open` verifies the magic, the byte order, the build version, the base's
+alignment and every array's extent, and then you index. A generic consumer
+does not even need the generated struct: the block descriptors carry the
+projection's layout and each array's element layout beneath it, so a tool can
+walk any block's rows without a type per table.
+
+The generated C# is UNSAFE by nature, not by taste — a block is memory another
+language wrote, and pointing at it without a copy is the whole point — so a
+project that compiles `<Base>Block.cs` sets `AllowUnsafeBlocks`. Nothing on
+this side allocates: the bytes are yours, from wherever you got them.
 
 **Three things to know before you reach for one.**
 
@@ -1137,9 +1153,12 @@ can walk any block's rows without a type per table.
   path: a block is same-build, so there is nothing to absorb and nothing to
   ask for by name. If you want data that outlives the build that wrote it,
   use the wire — which this same table still has.
-- **The allocation is the maximum, once.** `BlockMaxBytes` sums every array's
-  declared maximum; the block is allocated once at that size and never grown.
-  The bytes you hand off are only the frame's.
+- **The allocation is the maximum, once, through YOUR allocator.**
+  `BlockMaxBytes` sums every array's declared maximum; `Create` takes it from
+  the alloc/free pair you hand in, at build time, and the block is never grown
+  and never pooled. The FILL path allocates nothing and locks nothing — that is
+  an obligation on the generated code, not a promise, and the build fails if
+  one appears. The bytes you hand off are only the frame's.
 
 ### The cooked form: point at a file instead of parsing it
 

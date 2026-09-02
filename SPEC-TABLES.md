@@ -143,12 +143,22 @@ follow-on. Every other backend refuses a unit that declares tables at all, by
 name, with this document cited. The remaining per-language backends are named
 follow-ons (§15).
 
-**The BLOCK FORM (§2.7, §19) is specified and unimplemented.** No backend
-emits the Block files yet, so the form is unavailable everywhere: a consumer
-that reaches for it finds nothing to include, which is the same absence a
-variable-length table's block form is (§19). C++ and C# take it together,
-because the form is an ABI between two languages and one language alone
-cannot hold the gate it exists for (§12.1).
+**The BLOCK FORM (§2.7, §19) is live in C++ and C#, together**, because the
+form is an ABI between two languages and one language alone cannot hold the
+gate it exists for (§12.1). C++ emits `<Base>Block.h` (the projection, the
+generated layout asserts, the fill path inline) and `<Base>Block.cpp` (the
+open path and the block descriptors); C# emits `<Base>Block.cs` (the blittable
+records with their generated padding, the layout check, the block handle with
+its span accessors, and the same descriptors). The Table headers carry not one
+symbol of it, and the build fails if one appears.
+
+**What is absent, and by absence rather than by refusal** (§2.7): a
+VARIABLE-LENGTH table has no block form — no fixed pitch anywhere in its
+closure — and neither does a table whose closure carries a UNION, because
+§19.3 pins the C# side to Sequential with generated padding and Sequential
+cannot overlay arms. Each says so in the Block header rather than going
+missing. Every other backend emits no Block file at all, as it emits no Table
+file; those are the same named follow-on (§15).
 
 **The VIEW's type half and unit registry (§8.2–§8.7) are specified and
 unimplemented.** What ships today is §8.1: a table's descriptors, built in,
