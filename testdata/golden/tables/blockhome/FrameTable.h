@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 
 #include "Frame.h"
@@ -226,9 +225,30 @@ struct PartRow {
 // member initializers (SPEC-TABLES.md)
 struct PartFrame {
     uint64_t version = 0;
-    PartRow parts[32] = {}; // used count beside it; count in [0, 32]
+    PartRow parts[32]; // used count beside it; count in [0, 32]
     int32_t parts_count = 0;
 };
+
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void PartRowReset( PartRow & value );
+inline void PartFrameReset( PartFrame & value );
+
+inline void PartRowReset( PartRow & value )
+{
+    ArmorConfigReset( value.armor );
+    GunnerSettingsReset( value.gunner );
+    value.part_id = 0;
+    value.slot = 0;
+}
+
+inline void PartFrameReset( PartFrame & value )
+{
+    value.version = 0;
+    PartRowReset( value.parts[0] );
+    for ( int32_t i = 1; i < 32; i++ ) { value.parts[i] = value.parts[0]; }
+    value.parts_count = 0;
+}
 
 // ---- codecs: measure/save/load per closure member ----
 
@@ -302,7 +322,7 @@ inline int64_t PartRowSave( const PartRow & value, uint8_t * buffer, int64_t cap
 
 inline bool PartRowLoadBody( TableReader & r, PartRow & value )
 {
-    new ( &value ) PartRow{}; // prefill declared defaults in place, then overlay
+    PartRowReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -445,7 +465,7 @@ inline int64_t PartFrameSave( const PartFrame & value, uint8_t * buffer, int64_t
 
 inline bool PartFrameLoadBody( TableReader & r, PartFrame & value )
 {
-    new ( &value ) PartFrame{}; // prefill declared defaults in place, then overlay
+    PartFrameReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -551,7 +571,7 @@ inline const TableTypeInfo * PartRowTableType()
         { "part_id", "part_id", "uint32", 0x6deb, 8, false, false, false, 0, (uint32_t) offsetof( PartRow, part_id ), (uint32_t) sizeof( PartRow::part_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "slot", "slot", "uint8", 0x37e4, 6, false, false, false, 0, (uint32_t) offsetof( PartRow, slot ), (uint32_t) sizeof( PartRow::slot ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "PartRow", (uint32_t) sizeof( PartRow ), 4, fields, +[]( void * p ) { new ( p ) PartRow{}; } };
+    static const TableTypeInfo info = { "PartRow", (uint32_t) sizeof( PartRow ), 4, fields, +[]( void * p ) { PartRowReset( *(PartRow *) p ); } };
     return &info;
 }
 
@@ -561,7 +581,7 @@ inline const TableTypeInfo * PartFrameTableType()
         { "version", "version", "uint64", 0xe8e6, 9, false, false, false, 0, (uint32_t) offsetof( PartFrame, version ), (uint32_t) sizeof( PartFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "parts", "parts", "PartRow", 0xfc18, 13, true, true, false, 32, (uint32_t) offsetof( PartFrame, parts ), (uint32_t) sizeof( PartFrame::parts[0] ), (uint32_t) offsetof( PartFrame, parts_count ), 0xffffffffu, PartRowTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "PartFrame", (uint32_t) sizeof( PartFrame ), 2, fields, +[]( void * p ) { new ( p ) PartFrame{}; } };
+    static const TableTypeInfo info = { "PartFrame", (uint32_t) sizeof( PartFrame ), 2, fields, +[]( void * p ) { PartFrameReset( *(PartFrame *) p ); } };
     return &info;
 }
 

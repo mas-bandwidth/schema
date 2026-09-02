@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 #include <cassert> // the keyed accessor's None refusal
 #include <iterator> // the keyed iterator's traits typedefs
@@ -308,6 +307,20 @@ struct WideBlob {
     int32_t samples_count = 0;
 };
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void WideBlobReset( WideBlob & value );
+
+inline void WideBlobReset( WideBlob & value )
+{
+    memset( value.label, 0, sizeof( value.label ) );
+    value.label_length = 0;
+    memset( value.payload, 0, sizeof( value.payload ) );
+    value.payload_length = 0;
+    memset( value.samples, 0, sizeof( value.samples ) );
+    value.samples_count = 0;
+}
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t WideBlobMeasure( const WideBlob & value );
@@ -371,7 +384,7 @@ inline int64_t WideBlobSave( const WideBlob & value, uint8_t * buffer, int64_t c
 
 inline bool WideBlobLoadBody( TableReader & r, WideBlob & value )
 {
-    new ( &value ) WideBlob{}; // prefill declared defaults in place, then overlay
+    WideBlobReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -511,7 +524,7 @@ inline const TableTypeInfo * WideBlobTableType()
         { "payload", "payload", "bytes", 0x44aa, 6, true, true, false, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( WideBlob::payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "samples", "samples", "uint16", 0xaf9a, 7, true, true, false, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( WideBlob::samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, fields, +[]( void * p ) { new ( p ) WideBlob{}; } };
+    static const TableTypeInfo info = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, fields, +[]( void * p ) { WideBlobReset( *(WideBlob *) p ); } };
     return &info;
 }
 

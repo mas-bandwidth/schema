@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 #include <cassert> // the keyed accessor's None refusal
 #include <iterator> // the keyed iterator's traits typedefs
@@ -305,6 +304,16 @@ struct ArchiveConfig {
     int32_t count = 1;
 };
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void ArchiveConfigReset( ArchiveConfig & value );
+
+inline void ArchiveConfigReset( ArchiveConfig & value )
+{
+    RootConfigReset( value.root );
+    value.count = 1;
+}
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t ArchiveConfigMeasure( const ArchiveConfig & value );
@@ -353,7 +362,7 @@ inline int64_t ArchiveConfigSave( const ArchiveConfig & value, uint8_t * buffer,
 
 inline bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfig & value )
 {
-    new ( &value ) ArchiveConfig{}; // prefill declared defaults in place, then overlay
+    ArchiveConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -432,7 +441,7 @@ inline const TableTypeInfo * ArchiveConfigTableType()
         { "root", "root", "RootConfig", 0x2eb8, 13, false, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, RootConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "count", "count", "int32", 0xe445, 4, false, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
-    static const TableTypeInfo info = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, fields, +[]( void * p ) { new ( p ) ArchiveConfig{}; } };
+    static const TableTypeInfo info = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, fields, +[]( void * p ) { ArchiveConfigReset( *(ArchiveConfig *) p ); } };
     return &info;
 }
 

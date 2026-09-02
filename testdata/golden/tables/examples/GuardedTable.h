@@ -9,9 +9,8 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
+#include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
-#include <new> // in-place prefill (placement new): no giant stack temporaries
 #include <type_traits> // the enforced relocatability asserts
 #include <cassert> // the keyed accessor's None refusal
 #include <iterator> // the keyed iterator's traits typedefs
@@ -321,6 +320,21 @@ struct Patrol {
     int32_t note_length = 0;
 };
 
+// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+
+inline void PatrolReset( Patrol & value );
+
+inline void PatrolReset( Patrol & value )
+{
+    value.active = false;
+    value.speed = 1.0f;
+    value.has_target = false;
+    value.target_id = 0;
+    value.wander = 0.5f;
+    memset( value.note, 0, sizeof( value.note ) );
+    value.note_length = 0;
+}
+
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t PatrolMeasure( const Patrol & value );
@@ -417,7 +431,7 @@ inline int64_t PatrolSave( const Patrol & value, uint8_t * buffer, int64_t capac
 
 inline bool PatrolLoadBody( TableReader & r, Patrol & value )
 {
-    new ( &value ) Patrol{}; // prefill declared defaults in place, then overlay
+    PatrolReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
         if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
@@ -549,7 +563,7 @@ inline const TableTypeInfo * PatrolTableType()
         { "wander", "wander", "float32", 0x832f, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target" },
         { "note", "note", "string", 0x9da7, 12, false, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active" },
     };
-    static const TableTypeInfo info = { "Patrol", (uint32_t) sizeof( Patrol ), 6, fields, +[]( void * p ) { new ( p ) Patrol{}; } };
+    static const TableTypeInfo info = { "Patrol", (uint32_t) sizeof( Patrol ), 6, fields, +[]( void * p ) { PatrolReset( *(Patrol *) p ); } };
     return &info;
 }
 
