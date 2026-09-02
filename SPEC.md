@@ -1314,6 +1314,13 @@ size regression.
 correct at any entry offset; the same type works standalone and nested.
 `MaxBits` covers the worst case.
 
+**Reflection is emitted, never requested.** Every unit gets one view file
+carrying the reflection descriptors of every declaration and the registry
+over them; nothing in the schema asks for it and no flag selects it. A
+project that walks declarations compiles that file; a project that does not
+never includes it and pays nothing for it. The surface it carries, and the
+gates it is held to, are SPEC-TABLES.md §8.
+
 **Output layout.** Each target emits one generated file per schema file —
 `examples/Constants.schema` → `generated/cpp/Constants.h` — so the generated
 tree mirrors the schema tree a person navigates.
@@ -1338,7 +1345,15 @@ tree mirrors the schema tree a person navigates.
   TABLES emits one further pair — `<Base>Table.h` and `<Base>Table.cpp` —
   because the table wire carries a RUNTIME the type wire has no equivalent
   of (SPEC-TABLES.md §6.1, §13.5); it is a table-side file and adds nothing
-  to a table-free unit.
+  to a table-free unit. **Every unit emits one further pair per UNIT** —
+  `<Package>View.h` and `<Package>View.cpp` — carrying the unit registry and
+  the reflection descriptors of every declaration (SPEC-TABLES.md §8.3,
+  §8.5). It is per unit rather than per schema file because the registry is
+  the set of everything the unit declares, and it is named for the package
+  because two units may share one output directory (§3.2). It includes the
+  unit's DATA headers and no wire header, so a tool that walks declarations
+  inherits no serialize runtime — and a project that never walks them never
+  includes the header or compiles the source.
 - **C:** the same data/wire header pair per schema file (`<Base>.h` /
   `<Base>Wire.h`), mirroring the C++ split in C's own types.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
@@ -1348,7 +1363,8 @@ tree mirrors the schema tree a person navigates.
   `lib.rs` declaring and glob re-exporting them.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
-  `namespace <Package>`.
+  `namespace <Package>`. Every unit emits one further file per unit,
+  `<Package>View.cs`, on the same terms as the C++ pair above.
 - **JavaScript:** one ES module per schema file, cross-file `import`s derived
   from actual references; classes whose constructors initialize every member
   in declaration order (specified defaults live in construction; `ZeroX` is

@@ -1329,6 +1329,85 @@ a unit that declares them, by name. What stays off the table wire: `fixed`,
 no wire ceiling: string and bytes byte lengths and array counts ride in
 uint32, so the only limit is the language's own int32 storage cap.
 
+### Inspecting a whole build: the view
+
+*Specified, not yet implemented — no backend emits the view file yet
+(SPEC-TABLES.md §8). The per-table descriptors above are live today.*
+
+The descriptors above answer "what is in this table". The **view** answers
+"what is in this build" — every declaration the schema made, walkable by a
+tool that has the generated code and no schema files at all. Nothing asks
+for it: every unit generates one more pair of files beside the rest,
+
+```
+generated/TabledemoView.h
+generated/TabledemoView.cpp
+```
+
+named for the unit's package, one pair for the whole unit however many
+schema files it has, holding a registry of every type, table, enum, flags,
+union and constant the schema declared. **You pay for it by compiling it.**
+An editor, an inspector or a debug build includes the header and compiles
+the source; a game does neither and carries none of it. There is no flag and
+no marker on a declaration — a tool that inspects a build wants everything
+in it, and the one declaration it needs is the one nobody would have marked.
+
+```cpp
+#include "TabledemoView.h"
+
+const UnitViewInfo * unit = UnitView();
+printf( "package %s  protocol 0x%016llx\n",
+        unit->package, (unsigned long long) unit->protocol_id );
+
+for ( int32_t i = 0; i < unit->num_constants; i++ )
+{
+    const ViewConstant & c = unit->constants[i];
+    if ( c.is_float ) printf( "const %s %s = %g\n", c.type_name, c.name, c.float_value );
+    else              printf( "const %s %s = %lld\n", c.type_name, c.name, (long long) c.int_value );
+}
+
+for ( int32_t i = 0; i < unit->num_enums; i++ )    // flags and unions walk the same way
+{
+    const ViewVocabulary & e = unit->enums[i];
+    printf( "enum %s (max %lld)\n", e.name, (long long) e.max );
+    for ( int32_t v = 0; v < e.num_variants; v++ ) // row 0 is None, then declared order
+        printf( "    %llu %s  id 0x%04x\n",
+                (unsigned long long) e.variants[v].value, e.variants[v].name, e.variants[v].id );
+}
+
+for ( int32_t i = 0; i < unit->num_tables; i++ )   // then unit->types, the same shape
+{
+    const ViewType & entry = unit->tables[i];
+    printf( "table %s  (%s)\n", entry.name, entry.file );
+    const TableTypeInfo * type = entry.type;
+    for ( int32_t f = 0; f < type->num_fields; f++ )
+    {
+        const TableFieldInfo & field = type->fields[f];
+        printf( "    %s %s", field.type_name, field.name );
+        if ( field.is_array )  printf( "[%d]", field.array_bound );
+        if ( field.optional )  printf( " ?" );
+        if ( field.has_range ) printf( "  [%g, %g]", field.range_min, field.range_max );
+        if ( field.table )     printf( "  -> %s", field.table->name ); // recurse
+        printf( "\n" );
+    }
+}
+```
+
+`unit->tables` is every table in the unit and `unit->types` every type —
+both complete, and every entry points at the same `TableTypeInfo` the
+section above walks, so one printer serves both. C# is the same registry
+through `Schema.UnitView()`.
+
+Each set is ordered by declaration name, so a listing does not churn when a
+file is renamed or a declaration moves between files.
+
+What the view does not carry: descriptions, UI hints, semantics for a type
+tag (the tags are listed; their meaning is yours), and the packet wire's bit
+layout. And one field kind is listed but not decodable: `fixed`, `ufixed`,
+`int128` and `uint128` have no table-wire kind, so they arrive with
+`kind == 0` — name, declared spelling, offset and size, enough to show the
+field and not enough to read or write its value generically.
+
 ### The text form: JSON in and out of one table
 
 The same descriptors drive a JSON text form, so every table reads from and
