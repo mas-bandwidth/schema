@@ -4595,6 +4595,16 @@ thousands.
 
 **A refusal NAMES the array, its count and its maximum**, because a producer
 at sixty hertz that silently drops a frame is worse than one that does not.
+
+**AND `Begin` DOES NOT CLAMP. It refuses.** A producer that gathered more rows
+than a declared maximum — a spawn wave past `MaxShips`, a level with more props
+than the bound admits — must clamp AT THE CALL SITE, before it fills the
+`Counts`. Nothing downstream will do it: `Begin` returns false and the frame is
+lost, which is the loud failure, and no accessor silently truncates, which
+would be the quiet one. The declared maximum is a contract the producer keeps
+and `Begin` checks; it is not a policy `Begin` applies. A gather buffer sized
+larger than the bound is the ordinary case and clamping it is one line, and the
+page says so here rather than leaving a caller to find it at sixty hertz.
 Clamping a count to its maximum before `Begin` is the PRODUCER's job, and the
 page says so rather than leaving a caller to discover it: `Begin` is a
 contract check, not a policy. The `Counts` value is filled before `Begin` and
@@ -4698,6 +4708,21 @@ foreach ( ref readonly Row.RenderShip ship in block.Ships )
 
 ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is sizeof
 ```
+
+**WHERE THE C# SURFACE IS EMITTED, because C# has no include guard and the
+answer is not "beside the declaration".** A unit's shared block runtime — the
+triple, the row view, the descriptors, the layout check and the constants — is
+emitted ONCE, into the Block file of the first file that declares a table WITH
+a block form, and every blittable record of the unit is emitted there too. It
+is deliberately NOT the protocol id's home, which in an ordinary unit is a
+constants file that declares no table and therefore gets no Block file at all;
+and a record is deliberately NOT emitted beside its declaration, because a
+record a block form reaches is often declared in a file of `type`s alone, which
+gets no Block file either. Both roads lead to a unit that does not compile,
+with every reference undefined and no diagnostic. One assembly sees every file,
+so "emitted once, anywhere it exists" is the whole requirement. **C++ takes the
+other road for its own reason**: a C++ consumer may include one `<Base>Block.h`
+alone, so its primitives ride in EVERY one behind a `#ifndef` guard.
 
 **Three spellings a reader has to have, because a consumer written from this
 page alone needs all three.** `Open` is a static on the block type, taking the

@@ -273,6 +273,7 @@ func TestGoldenBuildVersion(t *testing.T) {
 		{"tables-examples", "../../tables/examples"},
 		{"tables-pointers", "../../tables/pointers"},
 		{"tables-block", "../../tables/block"},
+		{"tables-blockhome", "../../tables/blockhome"},
 	}
 	for _, unit := range units {
 		t.Run(unit.name, func(t *testing.T) {

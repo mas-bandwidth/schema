@@ -1130,7 +1130,17 @@ ReadOnlySpan<Row.RenderShip> ships = block.ShipsSpan;
 ```
 
 `Open` verifies the magic, the byte order, the build version, the base's
-alignment and every array's extent, and then you index. A generic consumer
+alignment, every array's count against its declared maximum and every array's
+extent, and then you index.
+
+**That alignment check binds the CONSUMER, and it is the one that surprises.**
+A block's base is 64-byte aligned because the producer's storage is; a consumer
+that did not allocate the block has to hand `Open` memory that is aligned too.
+A pinned managed `byte[]` is not — the GC gives you no such guarantee — so a
+C# consumer reading a block out of a file or a socket copies it once into
+aligned native memory (`Marshal.AllocHGlobal` and round the address up, or a
+`NativeArray` with a 64-byte alignment) and passes that pointer. A consumer
+handed a pointer by the producer already has it. A generic consumer
 does not even need the generated struct: the block descriptors carry the
 projection's layout and each array's element layout beneath it, so a tool can
 walk any block's rows without a type per table.

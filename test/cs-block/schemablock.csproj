@@ -29,11 +29,19 @@
          leg at a sabotaged copy of the generated sources and require it to go
          red (SPEC-TABLES.md §19.5's negative-control rule). -->
     <BlockGeneratedDir Condition="'$(BlockGeneratedDir)' == ''">../../build/tables-generated-cs/block</BlockGeneratedDir>
+    <BlockHomeGeneratedDir Condition="'$(BlockHomeGeneratedDir)' == ''">../../build/tables-generated-cs/blockhome</BlockHomeGeneratedDir>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="src/*.cs" />
     <Compile Include="$(BlockGeneratedDir)/*.cs" />
+    <!-- The BLOCK HOME unit (tables/blockhome): its protocol-id home declares
+         no table and one of its files declares only `type`s. Compiling it here
+         IS the gate — a backend that put the shared runtime in the protocol
+         id's home, or a blittable record in its declaring file, emits a unit
+         that does not compile at all, and this project is where that is
+         caught. -->
+    <Compile Include="$(BlockHomeGeneratedDir)/*.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>

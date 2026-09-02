@@ -74,7 +74,7 @@ SCHEMAS128   := $(wildcard examples128/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
 SCHEMAS_TABLES := $(wildcard tables/examples/*.schema)
 SCHEMAS_TABLES_POINTERS := $(wildcard tables/pointers/*.schema)
-SCHEMAS_TABLES_BLOCK := $(wildcard tables/block/*.schema)
+SCHEMAS_TABLES_BLOCK := $(wildcard tables/block/*.schema) $(wildcard tables/blockhome/*.schema)
 
 all: bin/schema
 
@@ -213,6 +213,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/examples tables/examples
 	$(1) generate --lang cpp --out $(2)/pointers tables/pointers
 	$(1) generate --lang cpp --out $(2)/block tables/block
+	$(1) generate --lang cpp --out $(2)/blockhome tables/blockhome
 	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
@@ -221,7 +222,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema
 endef
 
-tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -Itest/tables \
+tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys
 
 build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
@@ -295,6 +296,7 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
 	./bin/schema generate --lang cs --out build/tables-generated-cs/block tables/block
+	./bin/schema generate --lang cs --out build/tables-generated-cs/blockhome tables/blockhome
 	./bin/schema generate --lang cs --out build/tables-generated-cs/v1 test/tables/V1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/v2 test/tables/V2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/p1 test/tables/P1.schema
@@ -416,7 +418,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
 	@n=0; d=0; \
 	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
-	         testdata/golden/tables/block/*Table.* ; do \
+	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* ; do \
 		dir=$$(basename $$(dirname $$f)); \
 		n=$$(( n + 1 )); \
 		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
@@ -432,8 +434,13 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 		cmp -s $$f build/tables-generated-cs/block/$$(basename $$f) || \
 			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
 	done; \
+	for f in testdata/golden/tables/blockhome-cs/*Table.cs; do \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated-cs/blockhome/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
 	if [ "$$d" != "0" ]; then exit 1; fi; \
-	if [ "$$n" -lt 30 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 30 — the glob, not the property, is what broke"; exit 1; fi; \
+	if [ "$$n" -lt 38 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 38 — the glob, not the property, is what broke"; exit 1; fi; \
 	echo "block zero-cost gate: $$n Table sources byte-identical to the pins the PRE-BLOCK compiler wrote"
 
 # THE BUILD VERSION IS ONE NUMBER (SPEC-TABLES.md §20.7): the constant each
@@ -582,6 +589,39 @@ tables-block-layout-model-negative-control: bin/schema
 	@grep -q "schema block layout" build/block-model-cs.log || \
 		{ echo "NEGATIVE CONTROL FAILED: C# went red, but not on the layout check"; cat build/block-model-cs.log; exit 1; }
 	@echo "block layout-model negative control (C#): the same moved offset turns the once-run layout check red"
+
+# THE BLOCK HOME's NEGATIVE CONTROL (SPEC-TABLES.md §19.2's C# surface). The
+# dogfood found two defects with one root cause — a C# backend that emitted per
+# DECLARING FILE and skipped a file with no `table` in it: the unit's shared
+# runtime went to the PROTOCOL ID's home, which declares no table in any real
+# unit, and a blittable record went to its declaring file's Block.cs, which is
+# never written when that file declares only `type`s. Neither produced a
+# diagnostic; both produced a unit that does not compile.
+#
+# tables/blockhome has exactly that shape, and test/cs-block compiles it. This
+# puts the defect back — through `go build -overlay`, so no tracked file is
+# written — and requires the compile to FAIL.
+.PHONY: tables-block-home-negative-control
+tables-block-home-negative-control: bin/schema
+	@mkdir -p build
+	@sed -e 's|home := blockHome(u, blocks)|home := ir.ProtocolIdHome(u) // SABOTAGED|' \
+	     -e 's|if len(f.Tables) == 0 \&\& f.Base != home {|if len(f.Tables) == 0 {|' \
+		internal/codegen/cstable/block.go > build/csblock-declaring-file.gotext
+	@cmp -s build/csblock-declaring-file.gotext internal/codegen/cstable/block.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cstable/block.go":"%s/build/csblock-declaring-file.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/csblock-overlay.json
+	@go build -overlay=build/csblock-overlay.json -o build/schema-csblock-sabotaged ./cmd/schema
+	@rm -rf build/blockhome-sabotage && mkdir -p build/blockhome-sabotage
+	@./build/schema-csblock-sabotaged generate --lang cs --out build/blockhome-sabotage tables/blockhome
+	@if ( cd test/cs-block && dotnet build -v q --nologo -p:BlockHomeGeneratedDir=../../build/blockhome-sabotage ) \
+		> build/blockhome-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the unit compiled with its block runtime emitted into a file nothing writes"; \
+		cat build/blockhome-sabotage.log; exit 1; \
+	fi
+	@grep -qE "CS0103|CS0234|CS0246" build/blockhome-sabotage.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on an undefined name"; tail -20 build/blockhome-sabotage.log; exit 1; }
+	@echo "block home negative control: emitting the runtime into the protocol id's home leaves the unit uncompilable"
 
 # GATE 2 (SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
 # part of `make test` on purpose — a correctness suite whose verdict depends on
@@ -1105,6 +1145,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-block-pitch-negative-control
 	$(MAKE) tables-block-layout-model-negative-control
 	$(MAKE) tables-block-race-negative-control
+	$(MAKE) tables-block-home-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative
 	$(MAKE) tables-hostile-values
@@ -1152,13 +1193,14 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
-	@for d in examples pointers block; do \
+	@for d in examples pointers block blockhome; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done
-	@mkdir -p testdata/golden/tables/examples-cs testdata/golden/tables/block-cs
+	@mkdir -p testdata/golden/tables/examples-cs testdata/golden/tables/block-cs testdata/golden/tables/blockhome-cs
 	@cp build/tables-generated-cs/examples/*Table.cs testdata/golden/tables/examples-cs/
 	@cp build/tables-generated-cs/block/*Table.cs testdata/golden/tables/block-cs/
+	@cp build/tables-generated-cs/blockhome/*Table.cs testdata/golden/tables/blockhome-cs/
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	go test ./...
@@ -1206,6 +1248,7 @@ check: bin/schema
 	./bin/schema check tables/examples
 	./bin/schema check tables/pointers
 	./bin/schema check tables/block
+	./bin/schema check tables/blockhome
 	./bin/schema check test/tables/V1.schema
 	./bin/schema check test/tables/V2.schema
 	./bin/schema check test/tables/P1.schema
@@ -1226,6 +1269,7 @@ fmt: bin/schema
 	./bin/schema fmt tables/examples
 	./bin/schema fmt tables/pointers
 	./bin/schema fmt tables/block
+	./bin/schema fmt tables/blockhome
 	./bin/schema fmt test/tables/V1.schema
 	./bin/schema fmt test/tables/V2.schema
 	./bin/schema fmt test/tables/P1.schema

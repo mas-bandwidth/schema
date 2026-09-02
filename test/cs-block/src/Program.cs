@@ -241,6 +241,7 @@ static class Program
         }
 
         CheckPadded();
+        Check(BlockHomeGate.Run(), "the block home unit's C# surface is emitted and reachable");
 
         // GATE 2's C# half (SPEC-TABLES.md §12.1), run only when asked: it is a
         // MEASUREMENT, and a measurement in a correctness leg would make the

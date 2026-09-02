@@ -44,9 +44,19 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	if err := refuseBlockNamespaceCollision(u); err != nil {
 		return nil, err
 	}
-	home := ir.ProtocolIdHome(u)
+	// THE BLOCK HOME is the first file, by basename, that declares a table
+	// WITH a block form — never the protocol id's home, which may declare no
+	// table at all (a unit whose constants live in their own file is the
+	// ordinary case, and the dogfood is one). The runtime and every blittable
+	// record land there, once per unit.
+	//
+	// C# has no include guard and no per-file visibility: one assembly sees
+	// every file, so "emitted once, anywhere" is the whole requirement. C++
+	// takes the other road — its primitives ride in EVERY <Base>Block.h behind
+	// a `#ifndef` — because a C++ consumer may include one header alone.
+	home := blockHome(u, blocks)
 	for _, f := range u.Files {
-		if len(f.Tables) == 0 {
+		if len(f.Tables) == 0 && f.Base != home {
 			continue
 		}
 		g := &blockGen{unit: u, file: f, blocks: blocks, home: f.Base == home}
@@ -54,6 +64,21 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 		out[f.Base+"Block.cs"] = g.assemble()
 	}
 	return out, nil
+}
+
+// blockHome is the file the unit's shared block runtime and every blittable
+// record are emitted into: the first, by basename, that declares a table with
+// a block form. Empty when the unit has no block form at all, in which case
+// no file needs the runtime.
+func blockHome(u *ir.Unit, blocks *ir.BlockUnit) string {
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if blocks.Block(st.Name) != nil {
+				return f.Base
+			}
+		}
+	}
+	return ""
 }
 
 // refuseBlockNamespaceCollision is the one refusal this backend's block half
@@ -90,13 +115,14 @@ func (g *blockGen) emit() {
 	if g.home {
 		g.rf("%s", blockRuntime(ir.BuildVersion(g.unit)))
 		g.emitLayoutCheck()
-	}
-	// the blittable records THIS file declares
-	for _, name := range g.blocks.Order {
-		if g.unit.DeclFile[name] != g.file.Base {
-			continue
+		// EVERY blittable record of the unit, here and nowhere else. Not the
+		// file that DECLARES the type: a record a block form reaches is often
+		// declared in a file of `type`s alone, which gets no Block.cs of its
+		// own, and a consumer would then reference a struct nothing emitted.
+		// One definition per unit, in a file that exists.
+		for _, name := range g.blocks.Order {
+			g.emitBlittable(name)
 		}
-		g.emitBlittable(name)
 	}
 	// every marked table's PROJECTION is a record too, and it belongs to the
 	// file that declares the table
