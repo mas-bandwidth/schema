@@ -38,6 +38,14 @@ table LoadoutConfig
     field backups id=0x1647 kind=14 elem=13 type=WeaponConfig array=fixed bound=2
     field attachments id=0x44d5 kind=14 elem=13 type=Attachment array=bounded bound=8
 
+table Patrol
+    field active id=0x405a kind=1
+    field speed id=0xbc00 kind=10 default=1.0
+    field has_target id=0xb0a7 kind=1
+    field target_id id=0xdf6a kind=4 default=0
+    field wander id=0x832f kind=10 default=0.5
+    field note id=0x9da7 kind=12 size=8
+
 table ProfileConfig
     field name id=0x30df kind=12 size=32
     field icon id=0xf3b0 kind=14 elem=6 size=16
@@ -115,3 +123,6 @@ union Effect
 ## history
 ### 2026-09-02 — the first baseline over the tables corpus
 - baseline created over 15 tables — data written BEFORE this point is not covered by it
+
+### 2026-09-02 — table Patrol joined the corpus with the text form's guard coverage (#267); the baseline was written before it (#263) and the two landed in sequence
+- no compatibility-affecting edits; the wire absorbs the rest
