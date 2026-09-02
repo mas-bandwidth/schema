@@ -412,6 +412,150 @@ tables-block: build/schema_test_block build/schema_test_block_asan build/schema_
 	./build/schema_test_block_tsan
 	cd test/cs-block && dotnet run
 
+# ---------------------------------------------------------------------------
+# THE FORGERY FUZZER (SPEC-TABLES.md §19.2, §19.5). The hand-written battery in
+# block_main.cpp and Program.cs is eleven forgeries, one per fact BlockOpen
+# checks plus the one this fuzzer found. This is the standing gate beside it:
+# valid blocks from the generated builder, mutated, and one oracle over every
+# mutant — REFUSE, or OPEN and be WHOLE.
+#
+# The mutators are seeded and reproducible: every mutant is a pure function of
+# ( seed, unit, count vector, pass, index ), and a failing case prints the one
+# command that re-runs it alone. Override for a long local run:
+#
+#   make tables-block-fuzz N=5000000 SEED=1234
+#
+# N is the RANDOM budget per unit, spread over its count vectors; the
+# enumerated passes — every named slot x every width x every boundary value,
+# every truncation length, every unaligned base — run whatever N is set to,
+# because they are what actually cover the boundaries and they cost nothing.
+# ---------------------------------------------------------------------------
+
+# N is chosen against the measurement that matters, which is CI's and not this
+# bench's: ubuntu-latest runs the sanitized twin about 3.4x slower than arm64
+# clang here, and the sanitized twin is the whole cost. At N=200000 the target
+# measured 41.6 s there against a 60 s budget, which meets the bar with too
+# little left for a busy runner; at N=100000 it is about 25 s, half the budget.
+#
+#   leg (at N=100000)                    here (arm64)   ubuntu-latest
+#   schema_test_block_fuzz                     1.4 s        ~ 1.8 s
+#   schema_test_block_fuzz_asan                6.0 s        ~ 16 s
+#   test/cs-block -- --fuzz                    2.2 s        ~ 3 s
+#
+# The ENUMERATED passes are what cover the boundaries and they run whatever N
+# is; N buys random mutants on top, and a long run is what the override is for.
+N ?= 100000
+SEED ?= 24845619678
+
+BLOCK_FUZZ_INCLUDES := -Ibuild/tables-generated/block -Ibuild/tables-generated/blockhome
+BLOCK_FUZZ_SOURCES = $$(ls build/tables-generated/block/*Block.cpp build/tables-generated/blockhome/*Block.cpp)
+
+build/schema_test_block_fuzz: build/tables-generated/.stamp test/tables/block_fuzz_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_FUZZ_INCLUDES) test/tables/block_fuzz_main.cpp $(BLOCK_FUZZ_SOURCES) -o $@
+
+# The SANITIZED twin (#277's rule), and here it is the point rather than a
+# companion: the oracle proves a mutant that OPENED stays inside the extent,
+# and only the sanitizer can prove that a mutant BlockOpen refused read nothing
+# outside it on the way to refusing. The region is allocated at exactly the
+# bytes the caller claims, so the redzone begins at the extent's last byte.
+build/schema_test_block_fuzz_asan: build/tables-generated/.stamp test/tables/block_fuzz_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g $(BLOCK_FUZZ_INCLUDES) test/tables/block_fuzz_main.cpp \
+		$(BLOCK_FUZZ_SOURCES) -o $@
+
+# The seed blocks: one valid block per unit per count vector, written by the
+# generated C++ BUILDER, because C# has only the read half of the form.
+build/block-fuzz/.stamp: build/schema_test_block_fuzz
+	@rm -rf build/block-fuzz && mkdir -p build/block-fuzz
+	./build/schema_test_block_fuzz --dump build/block-fuzz
+	@touch $@
+
+.PHONY: tables-block-fuzz
+tables-block-fuzz: build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/block-fuzz/.stamp build/tables-generated-cs/.stamp
+	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz
+	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz_asan
+	cd test/cs-block && SEED=$(SEED) N=$(N) dotnet run -- --fuzz
+
+# The NEGATIVE CONTROLS. A fuzzer that has never gone red proves nothing about
+# the checks it is watching, so each of these REMOVES one of BlockOpen's checks
+# from the EMITTER — from both backends at once — and requires the fuzzer to
+# find it. The emitter is replaced through `go build -overlay`, so no tracked
+# file is edited and the sabotage cannot survive the target that made it.
+#
+# The gate they hold is the ORACLE's independence: it re-derives every bound
+# from the descriptors and from the triples in the instance, so it can disagree
+# with BlockOpen. An oracle that shared BlockOpen's arithmetic would stay green
+# through both of these.
+
+# The sed program that removes each check from each emitter. They live in
+# variables rather than in the $(call) below because a sed address RANGE
+# carries a comma, and make would read it as another argument.
+BLOCK_FUZZ_SED_CPP_extent := /rows > (uint64_t) bytes - offset_of/d; /padding > bytes - used/d
+BLOCK_FUZZ_SED_CS_extent := /rows > (ulong) bytes - offsetOf/d; /padding > bytes - used/d
+BLOCK_FUZZ_SED_CPP_maximum := /count > (uint64_t) %sBlock/,/overflow on a count the maximum does not bound/d
+BLOCK_FUZZ_SED_CS_maximum := /count > (ulong) %sMax/d
+
+# how a sabotage is built: $(1) is its name, and the two sed programs above
+# named by it are what come out of each emitter. The replacement files take a
+# .go.txt suffix on purpose: `go build -overlay` does not care what a
+# replacement is called, and `go test ./...` walks build/ and would otherwise
+# find two packages sitting in one directory.
+define block_fuzz_sabotage
+	@rm -rf build/block-fuzz-$(1) && mkdir -p build/block-fuzz-$(1)
+	@sed '$(BLOCK_FUZZ_SED_CPP_$(1))' internal/codegen/cpptable/block.go > build/block-fuzz-$(1)/cpptable-block.go.txt
+	@sed '$(BLOCK_FUZZ_SED_CS_$(1))' internal/codegen/cstable/block.go > build/block-fuzz-$(1)/cstable-block.go.txt
+	@cmp -s internal/codegen/cpptable/block.go build/block-fuzz-$(1)/cpptable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ emitter sabotage did not apply"; exit 1; } || true
+	@cmp -s internal/codegen/cstable/block.go build/block-fuzz-$(1)/cstable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C# emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/block.go":"%s/build/block-fuzz-$(1)/cpptable-block.go.txt","%s/internal/codegen/cstable/block.go":"%s/build/block-fuzz-$(1)/cstable-block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/block-fuzz-$(1)/overlay.json
+	go build -overlay build/block-fuzz-$(1)/overlay.json -o build/block-fuzz-$(1)/schema ./cmd/schema
+	@rm -rf build/block-fuzz-$(1)/generated
+	./build/block-fuzz-$(1)/schema generate --lang cpp --out build/block-fuzz-$(1)/generated/block tables/block
+	./build/block-fuzz-$(1)/schema generate --lang cpp --out build/block-fuzz-$(1)/generated/blockhome tables/blockhome
+	./build/block-fuzz-$(1)/schema generate --lang cs --out build/block-fuzz-$(1)/generated/block-cs tables/block
+	./build/block-fuzz-$(1)/schema generate --lang cs --out build/block-fuzz-$(1)/generated/blockhome-cs tables/blockhome
+	$(CXX) $(BLOCK_CXXFLAGS) -Ibuild/block-fuzz-$(1)/generated/block -Ibuild/block-fuzz-$(1)/generated/blockhome \
+		test/tables/block_fuzz_main.cpp \
+		$$(ls build/block-fuzz-$(1)/generated/block/*Block.cpp build/block-fuzz-$(1)/generated/blockhome/*Block.cpp) \
+		-o build/block-fuzz-$(1)/fuzz
+	@if SEED=$(SEED) N=$(N) ./build/block-fuzz-$(1)/fuzz > build/block-fuzz-$(1)/cpp.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ fuzzer stayed green with the $(1) check removed from the emitter"; \
+		exit 1; \
+	fi
+	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cpp.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the C++ leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cpp.log; exit 1; }
+	@if ( cd test/cs-block && SEED=$(SEED) N=$(N) dotnet run \
+			-p:BlockGeneratedDir=../../build/block-fuzz-$(1)/generated/block-cs \
+			-p:BlockHomeGeneratedDir=../../build/block-fuzz-$(1)/generated/blockhome-cs -- --fuzz ) \
+			> build/block-fuzz-$(1)/cs.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C# fuzzer stayed green with the $(1) check removed from the emitter"; \
+		exit 1; \
+	fi
+	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cs.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the C# leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cs.log; exit 1; }
+	@grep -m1 "^FAILED" build/block-fuzz-$(1)/cpp.log
+	@grep -m1 "  mutation" build/block-fuzz-$(1)/cpp.log
+	@echo "block fuzz $(1) negative control: removing that check from BOTH emitters turns the fuzzer red on both backends"
+endef
+
+# The EXTENT check: an array's rows must end inside the bytes the caller
+# passed, and the used extent it reports must too. Both spellings go, because
+# either one alone still refuses what the other would have.
+.PHONY: tables-block-fuzz-extent-negative-control
+tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp
+	$(call block_fuzz_sabotage,extent)
+
+# The DECLARED MAXIMUM check: a count past the maximum Begin refuses on the
+# producer side. This is §19.2's tenth forgery, the one a reader found OPEN,
+# and the control is what keeps it closed.
+.PHONY: tables-block-fuzz-maximum-negative-control
+tables-block-fuzz-maximum-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp
+	$(call block_fuzz_sabotage,maximum)
+
 # THE BLOCK ZERO-COST GATE (SPEC-TABLES.md §2.2, §19), in its two halves.
 #
 # The first asks "did any block symbol leak into a Table source?" — a grep.
@@ -1163,7 +1307,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables
@@ -1177,6 +1321,9 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-block
+	$(MAKE) tables-block-fuzz
+	$(MAKE) tables-block-fuzz-extent-negative-control
+	$(MAKE) tables-block-fuzz-maximum-negative-control
 	$(MAKE) tables-block-zero-cost
 	$(MAKE) tables-block-build-version
 	$(MAKE) tables-block-fill-refuser

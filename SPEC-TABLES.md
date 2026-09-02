@@ -4778,12 +4778,17 @@ schema name, as everywhere else in that backend.
 
 - **`BlockOpen` checks once and points, and this is the WHOLE check**: the
   magic read bytewise, the byte order it establishes, the build version
-  against this build's own, the used extent against the `bytes` the caller
-  passed,
-  the base's alignment, and each array's `offset_of` and extent inside the
-  block. On a match the bytes are what a build with this layout wrote, so
-  there is nothing to validate and nothing to fix up. On any failure it
-  returns false and points at nothing — §7's shape, for §7's reason.
+  against this build's own, the base's alignment, each array's PITCH against
+  this build's own, its COUNT against the declared maximum, its `offset_of`
+  and its extent inside the block, and the used extent against the `bytes` the
+  caller passed. A count past the maximum is checked HERE as well as at
+  `Begin`, because a consumer that sizes anything by the maximum overflows on
+  a count the maximum does not bound. **OVERLAP is not refused**: two arrays
+  whose ranges cross both open, because every row of each still lies inside
+  the region and a block has nothing an overlap could corrupt. On a match the
+  bytes are what a build with this layout wrote, so there is nothing to
+  validate and nothing to fix up. On any failure it returns false and points
+  at nothing — §7's shape, for §7's reason.
 - **An array is ITERATED, not indexed by hand.** The accessor yields a
   reference to each row where it lies, at the pitch the instance gives, for
   `count` rows — a range-for in C++, an enumerator in C#, the equivalent per
@@ -4894,10 +4899,10 @@ replaces nor covers it.
 **A block is SAME-BUILD, and that is the whole of its evolution story.**
 Both sides are generated from one declaration by one compiler run, and the
 build version says whether the bytes in hand came from it. There is ONE
-entry point — `BlockOpen`, checking the magic, the byte order it
-establishes, the build version, the extent against the `bytes` the caller
-passed, the base's alignment, and each array's `offset_of` and extent inside
-the block. A match points; anything else refuses.
+entry point — `BlockOpen`, checking §19.2's whole list: the magic, the byte
+order it establishes, the build version, the base's alignment, each array's
+pitch, count, `offset_of` and extent, and the used extent against the `bytes`
+the caller passed. A match points; anything else refuses.
 
 **So every edit that moves the build version refuses at open, and both sides
 regenerate.** That is not a gap in a tolerance story, it is the absence of
@@ -4969,6 +4974,18 @@ difference between a form and a convention.
   C# size and offsets are asserted under the managed model (§19.3) — the case
   where the two C# layout models disagree, pinned so a port cannot pick the
   wrong one and pass.
+- **A FORGERY FUZZER over `BlockOpen`, on both backends, as a standing gate**:
+  valid blocks from the generated builder over several count vectors — zero,
+  mixed and every array at its declared maximum — mutated by seeded byte flips,
+  field overwrites at every boundary value, swapped and overlapped triples,
+  truncated and extended lengths and unaligned bases, and the bar is REFUSE, OR
+  OPEN AND BE WHOLE: a refusal reads no byte outside the extent the caller
+  passed, and an opened block has every row of every array addressable inside
+  it, at this build's pitch, inside its declared maximum, with a full walk that
+  reads every byte of every row. Its own negative controls remove the extent
+  check and the declared-maximum check from the emitters and require it to go
+  red on both backends.
+
 - **The refusal battery**: one fixture per §11 block refusal, each with its
   negative control.
 - **The evolution battery** (§19.4), against the generated asserts and the one
