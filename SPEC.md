@@ -284,8 +284,8 @@ Enum        = "enum" ident ( VariantList
             | AttrSection NL VariantList ) NL .
 VariantList = "{" [ ident { "," ident } [ "," ] ] "}" .            // commas; trailing comma OK
 TypeDecl    = "type" ident ( Block
-            | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
-                                                        // cpp_* pair, §4.2
+            | AttrSection NL Block ) NL .               // qualifiers = the type TAG, the
+                                                        // cpp_* pair and `view`, §4.2
 TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
@@ -542,9 +542,24 @@ sequence    uint16
   vocabulary: integers take `min`/`max` (both together or neither); `float32`
   takes `min`/`max`/`resolution` (all three together — §4.3: this IS the
   compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
-  §4.3); enum declarations take `max`; type declarations take a tag and the
-  `cpp_native`/`cpp_include` pair (below); a field of a **table** body takes
-  `was` (below); and a **table declaration** takes none.
+  §4.3); enum declarations take `max`; type declarations take a tag, the
+  `cpp_native`/`cpp_include` pair (below) and `view` (below); a field of a
+  **table** body takes `was` (below); and a **table declaration** takes
+  none.
+- **`view` — reflection over a type, type declarations only**
+  (SPEC-TABLES.md §8.2). A valueless marker: `type ShipState | view`. It
+  declares nothing and changes no field, no storage and no wire byte — it
+  says the type gets the reflection descriptors a table carries built in, so
+  a tool walks its properties by name at runtime with no schema files on
+  hand, and it appears in the unit's registry (SPEC-TABLES.md §8.3). A type
+  a TABLE reaches has those descriptors already and needs no marker; a
+  marked type pays only in the build that asks for views (`--views`, §6.1),
+  and a game build that asks for none pays nothing for the marker. Refused
+  on a `table` (its view is built in), on an `enum`, `flags`, `union` or
+  `const` declaration (the registry catalogues those unconditionally), and
+  on a field. **It never enters the wire-shape projection** (§3.1): marking
+  a type moves no `ProtocolId`, exactly as a type tag does not, so the same
+  declarations serve an editor build and a game build.
 - **`was = "old_name"` — the rename attribute, table bodies only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
@@ -1314,6 +1329,17 @@ size regression.
 correct at any entry offset; the same type works standalone and nested.
 `MaxBits` covers the worst case.
 
+**Reflection is asked for, per generate request: `--views`.** A generate
+takes `--views declared` (the default: a type marked `| view` gets
+reflection descriptors, and a unit that marks nothing emits no view file),
+`--views all` (every declaration in the unit is viewed — what an editor or a
+debug build asks for), or `--views none` (no view file, whatever the
+declarations say — what a game build asks for). The request is carried as a
+generate option, never in the schema, so the same declarations serve both
+builds and a marker costs a build that did not ask for it nothing. A target
+with no view emitter refuses the request by name rather than ignoring it.
+The surface it emits, and the gates it is held to, are SPEC-TABLES.md §8.
+
 **Output layout.** Each target emits one generated file per schema file —
 `examples/Constants.schema` → `generated/cpp/Constants.h` — so the generated
 tree mirrors the schema tree a person navigates.
@@ -1338,7 +1364,15 @@ tree mirrors the schema tree a person navigates.
   TABLES emits one further pair — `<Base>Table.h` and `<Base>Table.cpp` —
   because the table wire carries a RUNTIME the type wire has no equivalent
   of (SPEC-TABLES.md §6.1, §13.5); it is a table-side file and adds nothing
-  to a table-free unit.
+  to a table-free unit. **A unit that asks for VIEWS emits one further pair
+  per UNIT** — `<Package>View.h` and `<Package>View.cpp` — carrying the unit
+  registry and the reflection descriptors of every type the request views
+  (SPEC-TABLES.md §8.3, §8.5). It is per unit rather than per schema file
+  because the registry is the set of everything the unit declares, and it is
+  named for the package because two units may share one output directory
+  (§3.2). It includes the unit's DATA headers and no wire header, so a tool
+  that walks declarations inherits no serialize runtime; and a unit that
+  asks for no views emits no such file at all.
 - **C:** the same data/wire header pair per schema file (`<Base>.h` /
   `<Base>Wire.h`), mirroring the C++ split in C's own types.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
@@ -1348,7 +1382,8 @@ tree mirrors the schema tree a person navigates.
   `lib.rs` declaring and glob re-exporting them.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
-  `namespace <Package>`.
+  `namespace <Package>`. A unit that asks for views emits one further file
+  per unit, `<Package>View.cs`, on the same terms as the C++ pair above.
 - **JavaScript:** one ES module per schema file, cross-file `import`s derived
   from actual references; classes whose constructors initialize every member
   in declaration order (specified defaults live in construction; `ZeroX` is

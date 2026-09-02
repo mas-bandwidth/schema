@@ -104,6 +104,15 @@ variable-length table's block form is (§19). C++ and C# take it together,
 because the form is an ABI between two languages and one language alone
 cannot hold the gate it exists for (§12.1).
 
+**The VIEW's type half and unit registry (§8.2–§8.7) are specified and
+unimplemented.** What ships today is §8.1: a table's descriptors, built in,
+and the same descriptors for every type a table reaches. No backend emits a
+view file yet, so a declaration carrying `| view` and a request for
+`--views all` are refused by name with §8 cited, never accepted and ignored;
+the default over a unit that marks nothing asks for no view file and is
+unaffected. C++ and C# take it together, because the gate it exists for is
+one listing both backends reproduce.
+
 ## 1. Purpose
 
 - **Users build their own formats.** A table declaration plus nesting is a
@@ -1767,7 +1776,26 @@ builder with a serialization point in it, whatever the read side costs. A
 cook does not answer it either — a cook is produced from a builder by a
 single-threaded `Lock` (§6.2), which is exactly the shape that lost.
 
-## 8. Reflection
+## 8. Reflection: the view
+
+**One vocabulary, one walker, three things it describes.** A TABLE carries
+its descriptors BUILT IN, always — they are what the table runtime, the text
+form (§16) and the block form's read side (§19.2) are written against. A
+TYPE gets the SAME descriptors generated ALONGSIDE it when something asks:
+a `| view` marker on the declaration (§8.2), or a table reaching it. And a
+UNIT gets a REGISTRY (§8.3) — one entry point listing every declaration in
+the build, so a tool that knows the unit and nothing else enumerates the
+types, the tables, the enums, the flags, the unions and the constants, and
+walks each one's properties with no schema files on hand.
+
+The registry and the type views are emitted ON THE SIDE (§8.5): one
+generated file per unit that an editor or a debug build links and a game
+build never compiles. Which of them exists is decided by WHO ASKS (§8.4) —
+a build flag and a declaration marker, never a change to what a table
+carries. Nothing here rides a wire: `| view` moves no protocol id, no
+generated wire byte and no baseline row (§10, §18).
+
+### 8.1 The descriptors
 
 For every table in the unit's closure the generated header carries static
 descriptors: field name, type name, wire id and kind, storage offset and
@@ -1879,6 +1907,277 @@ could not have been written both race-free and recursion-safe, and no
 mutable state anywhere on the surface. This is the surface
 editors and tools build on — walk properties by name, print a value, diff
 two, bind a property grid — with no RTTI and no schema files at runtime.
+
+### 8.2 The type view: `| view`, and what a table reaches
+
+**A type has a view when something asks for one**, and there are three
+askers: the declaration itself, marked `| view` (SPEC §4.2); a TABLE that
+reaches it, as today — a walk must be able to enter a nested type, so every
+type in a table's closure has had a view all along; and the build, asking
+for every declaration at once (§8.4). A type no asker names has no
+descriptor emitted, is absent from the registry, and costs nothing. The
+packet-only path is unchanged by this section.
+
+**The view IS §8.1's surface.** `<Name>TableType()` returns the same
+`TableTypeInfo`, with the same columns, filled by the same rules. There is
+no second vocabulary and no second walker: a printer, a differ or a property
+grid written against §8.1 walks a viewed type without being told it is not a
+table. That is the whole of the answer to "a view on that type" — the view
+of a type is the descriptor surface a table carries, generated for a
+declaration that carries no table wire.
+
+**A view describes; it does not add a wire.** A viewed type gains no codec,
+no `Measure`/`Save`/`Load`, no text form and no baseline row. `| view` says
+what may be inspected, and nothing about what may be written.
+
+**A field with no table-wire kind is DESCRIBED, never refused.**
+`fixed`/`ufixed` and the 128-bit family have no table kind and are refused
+inside a table body (§2, §11) — but a `type` outside every table closure
+declares them freely, and a view over such a type describes them: `kind` is
+`0`, the reserved "no table-wire kind" value; `type_name` carries the
+declared spelling (`fixed(2, 30)`, `uint128`); and the range columns carry
+the declared bounds, which those kinds always have (SPEC §4.3). A build that
+asks for a view over a whole unit never fails because a declaration is
+packet-only — the corpus's fixed-point and 128-bit unit is exactly that
+case, and the view over it is a listing, not a refusal.
+
+**The vocabulary keeps its `Table` spellings** — `TableFieldInfo`,
+`TableTypeInfo`, `<Name>TableType()` — in a unit that declares no table at
+all. They are one surface, and renaming them for the view would fork the
+walker every tool is already written against. A unit whose view exists
+without tables carries the descriptor primitives in the view file behind the
+same include guard the table headers use, so a unit that has both carries
+one definition of them.
+
+### 8.3 The unit registry
+
+**`UnitView()` is the entry point, and it returns constant data.** One
+function per unit, name-first in the unit's own namespace beside
+`ProtocolId` (SPEC §6.1), answering with the set of everything the build
+declared:
+
+```cpp
+struct ViewConstant
+{
+    const char * name;
+    const char * file;       // the declaring schema file's basename
+    const char * type_name;  // declared storage: "int64", "float64", "int32", ...
+    bool is_float;
+    int64_t int_value;       // the folded value; float_value when is_float
+    double float_value;
+};
+
+struct ViewVariant          // one enum variant, one flags bit, one union arm
+{
+    uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
+    const char * name;
+    uint16_t id;            // the table-wire id (§5); 0 for a flags bit
+    const char * payload_name;      // a union arm's payload TYPE name, else NULL
+    const TableTypeInfo * payload;  // that payload's descriptor where it has a
+                                    // view (§8.2), else NULL
+};
+
+struct ViewVocabulary       // an enum, a flags or a union declaration
+{
+    const char * name;
+    const char * file;
+    int64_t max;            // highest value / highest bit index / highest tag
+    int32_t storage_bits;
+    int32_t num_variants;
+    const ViewVariant * variants;
+};
+
+struct ViewType             // a type with a view, or a table
+{
+    const char * name;
+    const char * file;
+    bool table;                     // declared `table`
+    const TableTypeInfo * type;     // §8.1's descriptor: the properties
+    int32_t num_tags;               // the declaration's type tags (SPEC §4.2)
+    const char * const * tags;
+};
+
+struct UnitViewInfo
+{
+    const char * package;
+    uint64_t protocol_id;
+    int32_t num_types;      const ViewType * types;
+    int32_t num_tables;     const ViewType * tables;
+    int32_t num_enums;      const ViewVocabulary * enums;
+    int32_t num_flags;      const ViewVocabulary * flags;
+    int32_t num_unions;     const ViewVocabulary * unions;
+    int32_t num_constants;  const ViewConstant * constants;
+};
+
+const UnitViewInfo * UnitView();
+```
+
+- **TYPES and TABLES are two sets, walked separately**, because they are two
+  wires and a tool acts differently on each: a table can be loaded from a
+  file, a type cannot. `types` holds exactly the types with a view (§8.2);
+  `tables` holds every table in the unit, always, because a table's view is
+  built in. Each entry's `type` is the descriptor §8.1 already specifies —
+  the properties, their kinds, their bounds and their nested descriptors —
+  so walking a declaration's properties is one dereference from the
+  registry.
+- **An ENUM lists its NAMED values in order, beside its `max`.** Row 0 is
+  `None`, the reserved id (§5), then the variants in declared order with the
+  wire id each rides under. A value inside `[0, max]` that no row names is
+  `| max = K` headroom (SPEC §4.2), and a tool that shows such a value
+  unnamed is showing the truth rather than inventing a name for it.
+- **A FLAGS row's `value` is a BIT INDEX and its `id` is 0**, because a
+  mask's variants ride by position and have no per-variant wire id (§4) —
+  the same rule §8.1's columns state, in data rather than in functions.
+- **A UNION lists tag 0, the empty arm, then its arms in declared order**
+  (SPEC §4.8), each with its payload type's NAME always and that payload's
+  descriptor where the payload has a view. Under a build that views
+  everything the descriptor is always there; under a narrower one a NULL
+  descriptor beside a named payload says "declared, not viewed here", and
+  the arm's name, tag and id stay walkable.
+- **A CONSTANT carries its name, its declared storage and its folded
+  value** — the one declaration kind with no runtime surface of its own
+  before this section. An implicitly typed constant reports the storage it
+  folded to (`int64`, `float64`), a declared one reports what it declared
+  (SPEC §4.2).
+- **Every entry names the schema FILE it was declared in**, by basename, as
+  every generated file already names its source (SPEC §6.1) — a tool
+  grouping a build's declarations the way a person navigates them needs no
+  second table to do it.
+- **The order is the schema's own**, within each set: files by basename,
+  then declaration order within a file — the order the generated files are
+  emitted in (SPEC §6.1). A listing produced from the registry is therefore
+  stable across builds and diffable between them, which is what makes
+  §8.7's gate a byte comparison.
+- **It is constant data.** In C++ the whole registry is constant-initialised
+  and `UnitView()` returns its address: a lookup, never a parse, and no
+  mutable state on the surface — the property §8.1 already holds for
+  descriptors, carried up to the unit. In C# the registry is a static
+  instance on `Schema` and a `ViewType`'s descriptor is held behind a
+  factory, exactly as §8.1's `TableRef` is and for the same
+  initialization-order reason; the entry point is `Schema.UnitView()`.
+
+### 8.4 Who asks: `--views`
+
+**Zero cost is resolved by who asks, not by what is declared.** The same
+declarations serve an editor and a game; the generate request decides what
+the build pays for:
+
+- **`--views declared`** — the default. A type marked `| view` gets one, a
+  table's descriptors are built in as they always were, and a unit in which
+  nothing is marked emits no view file at all. This is today's behaviour for
+  every unit that adds no marker.
+- **`--views all`** — every declaration in the unit gets a view: every type,
+  and therefore a registry that reaches everything. An editor or a debug
+  build asks for this, and it is the mode §8.7's gate is held in.
+- **`--views none`** — no view file, whatever the declarations say. A game
+  build asks for this and pays nothing for markers a tools build wanted.
+
+`--views` is a generate option (SPEC §6.1), carried on the request rather
+than in the schema, so a marked declaration never forces cost on a build
+that did not ask. A backend with no view emitter refuses a request for one
+by name with this section cited, and never emits a unit with the registry
+missing (§11) — the same shape every unimplemented surface here takes.
+
+**The zero-cost gate holds, and is stated as a gate** (§2.2): a unit that
+asks for nothing emits NO view file — not an empty one — and not one symbol
+of the registry appears in any other generated file. The build fails if a
+spelling of the view surfaces in a unit that asked for none, exactly as it
+fails on a pointer symbol in a pointer-free unit.
+
+### 8.5 On the side
+
+**The view is one generated file per UNIT, not per schema file** —
+`<Package>View.h` and `<Package>View.cpp` in C++, `<Package>View.cs` in C#,
+the package name spelled as that target spells it in a file name
+(`TabledemoView.h`). The registry is a unit-level fact, the set of
+everything declared, and a per-file split would leave it homeless or force
+one file to reach across the others and back. **The name is the UNIT's
+because two units may generate into one directory** — one package per unit
+(SPEC §3.2), two units side by side in one output tree is a layout the
+corpus itself uses — and a fixed name would collide there while every
+per-schema-file name does not.
+
+- **The header declares, the translation unit holds the data.** The header
+  declares `UnitView()`, the registry's structs and the `<Name>TableType()`
+  of every type the view adds; the `.cpp` holds the definitions. That is
+  §13.5's ruling applied where it applies again —
+  an editor compiles one translation unit, and an including translation unit
+  carries no descriptor table it does not use.
+- **It sits at the LEAF of the unit's include graph.** It includes the
+  unit's data headers `<Base>.h` and its table headers `<Base>Table.h`, and
+  nothing includes it — so it introduces no cross-file cycle (§11), and it
+  pulls no WIRE header: a tool that walks declarations never inherits the
+  serialize runtime it does not use, which is the reason SPEC §6.1 splits
+  data from wire in the first place.
+- **A descriptor a TABLE needs stays where the table is** (§8.1). A table's
+  descriptor names its nested types' descriptors, so a type a table reaches
+  keeps its `<Name>TableType()` in the table header, where a game that loads
+  tables links it and where it is today. The view file adds the types no
+  table reached, plus the registry that lists everything; it duplicates
+  nothing and moves nothing.
+- **The text form's walker stays in `<Base>Table.cpp`** where §13.5 put it.
+  The view file is a second on-the-side file for the same reason and with no
+  relationship to the first: a project compiles either, both or neither.
+
+### 8.6 What the view does not carry
+
+- **No semantics.** A type tag is an identifier the language assigns no
+  meaning (SPEC §4.2); the registry lists a declaration's tags because they
+  are part of what was declared, and claims nothing about them. A claiming
+  pass that gives a tag meaning changes what a consumer does with the
+  listing, never the listing.
+- **No UI hints.** Names, kinds, ids, bounds, extents, offsets, presence
+  companions and key vocabularies — the facts the declaration states, and
+  those alone. No widget, no grouping, no ordering hint, no unit of measure.
+- **No description strings, and no `| doc` attribute.** Doc comments are
+  deferred with their design pinned (SPEC §4.1, §9 q5); when they land the
+  view carries them as one more column. A second spelling for the same text
+  is not introduced ahead of them.
+- **No per-field default VALUE.** A walker that fills a value establishes
+  defaults through the descriptor's `reset` hook (§8.1) — one instance put
+  back at its declared defaults, which is what a filler actually needs and
+  what the wire's read path itself does. A per-field default column would be
+  a second spelling of one fact.
+- **No packet-wire layout.** Bit offsets, field widths and `MaxBits` are the
+  hardcoded wire's business (SPEC §6.1); the descriptors describe
+  DECLARATIONS. A view over the packet encoding itself is a named follow-on
+  (§15).
+- **No build identity beyond the unit's own.** The registry carries the
+  package name and the protocol id, and nothing else about the build that
+  produced it.
+
+### 8.7 Held by test
+
+**The editor gate, and it is a dogfood rather than a thought
+experiment** — the shape §12's gates take. A test program that has the
+generated view file and NOTHING ELSE — no schema files on disk, no
+compiler, no knowledge of a single declaration's name — calls `UnitView()`
+and prints the whole build: every constant with its value, every enum and
+flags and union with its variants in order, every type and every table with
+every property, recursing through each property's nested descriptor. If it
+cannot reach a declaration or a property of one, the view is incomplete and
+the gate says so.
+
+**The corpus gate makes that mechanical.** For every unit in the corpus,
+generated under `--views all`, the listing the generated program prints is
+byte-identical to the listing the compiler produces from its own IR. The
+compiler's listing is the PIN — the IR is what was declared — and every
+backend's program byte-compares against it, so C++ and C# are one view the
+way they are one wire (§16's goldens, applied to reflection). Completeness
+is the count the pin carries: every declaration, every field of every viewed
+type, every variant of every enum, flags and union, and every constant, in
+the schema's own order. How the compiler produces its half is the
+implementation's business — a test that walks the checked unit is enough,
+and nothing in this section asks for a new command.
+
+**A gate that cannot go red proves nothing.** Dropping one declaration, one
+property, one variant or one constant from an emitter's registry turns the
+corpus gate red, and that is established by doing it rather than assumed.
+
+**The zero-cost gate** (§8.4) is held the way §2.2's is: a unit generated
+with `--views none`, and a unit with no marker under the default, emit no
+view file and not one registry symbol anywhere else, and the build fails if
+one appears.
 
 ## 9. Relocatable, and built wide
 
@@ -2008,6 +2307,21 @@ lockstep redeploy by a table edit. This independence is held by test.
   payload. Its BY-VALUE form is an ordinary fixed table and behaves like one
   everywhere; only its block form requires a base, exactly as a cooked file's
   does.
+- **The view** (§8), each refusal naming the declaration at fault:
+  - **`| view` on a `table`** — a table's view is built in (§8.1), and an
+    attribute that changes nothing is a lie about the declaration, exactly
+    as `| stride` is;
+  - **`| view` on an `enum`, `flags`, `union` or `const` declaration** — the
+    registry catalogues every one of them whenever it exists (§8.3): they
+    are unit-level vocabulary, they cost names and values, and a build that
+    could see only some of them would be useless to the editor §8.7's gate
+    describes. There is nothing for a marker to select;
+  - **`| view` on a FIELD** — it qualifies a declaration, not a member; a
+    type is viewed whole or not at all;
+  - **`| view`, or a `--views` request, under a backend that carries no view
+    emitter** — refused with §8 cited and never emitted with the registry
+    missing. A generate option a target cannot honor is an error rather than
+    a silent fallback (SPEC §6.1).
 - **A `table` union arm outside a table closure** (§2.6) — a union declared
   for the type wire takes `type` payloads only, because types are value
   semantics.
@@ -2068,6 +2382,20 @@ lockstep redeploy by a table edit. This independence is held by test.
   free yesterday must not become a collision tomorrow. The nine block
   spellings are claimed on the same terms and for a stronger reason: every
   fixed table has a block form (§2.7), so every fixed table claims them.
+
+  **`TableType` is claimed one step wider still: for EVERY declaration in
+  every unit**, closure member or not. A view gives any type that accessor
+  (§8.2), and `--views all` gives it to every declaration at once — so a
+  name that is legal without views and refused with them would make a
+  GENERATE FLAG change what the language accepts, which no flag may do. The
+  claim is unconditional for the same reason the other 36 are.
+
+  **The view's own unit-scope spellings are refused as declaration names in
+  every unit, always** (§8.3): `UnitView`, `UnitViewInfo`, `ViewType`,
+  `ViewVocabulary`, `ViewVariant` and `ViewConstant`. They belong to the
+  unit rather than to a declaration, so they are claimed once at unit scope,
+  as `ProtocolId` is (SPEC §6.1), and on the same
+  it-must-not-depend-on-a-flag terms as `TableType` above.
 
   **A FIXED TABLE claims two more per out-of-line array, because its
   row accessors are named after its fields.** `<Table>` followed by the
@@ -2797,6 +3125,40 @@ have added one are priced here.
   consumer's own constant, which is the difference between absorbing a grown
   row and refusing one (§19.4).
 
+**The view's shape** (§8). Four models were weighed against the owner's
+picture of it — an editor that inspects everything in the schema built,
+paid for by whoever asks:
+
+1. **A SECOND descriptor vocabulary for types — REJECTED.** A `type` is not
+   a table, so a type-shaped `TypeFieldInfo` beside `TableFieldInfo` looked
+   tidy. It is two vocabularies, therefore two walkers, therefore every
+   printer, differ and property grid written twice — and the JSON walker
+   (§16) and the block form's reflective read (§19.2) are already written
+   against the first one. One surface, filled by the same rules, is what
+   makes a viewed type walkable by code that was never told about views.
+2. **Views always on — REJECTED.** It is the simplest rule and it breaks
+   §2.2's gate at the level above tables: a packet-only unit would carry a
+   descriptor table per declaration, in every game build, for a surface no
+   game build calls. The flag exists so the gate survives contact with a
+   feature whose whole point is completeness.
+3. **A view file per SCHEMA FILE — REJECTED.** It mirrors §6.1's
+   one-file-per-schema-file layout and leaves the registry homeless: the
+   registry is the set of everything the UNIT declares, so it would either
+   live in one arbitrarily chosen file's output or force each file's view to
+   reach into the others and back — the cross-file cycle §11 refuses. A
+   unit-level fact gets a unit-level file.
+4. **A unit-level registry in one on-the-side file, opt-in — THE DESIGN OF
+   RECORD.** One `UnitView()` over constant data, the type views beside it,
+   `<Name>TableType()` unchanged for anything a table already reached, and a
+   file an editor links and a game never compiles.
+
+**Why the marker sits on types and nowhere else.** Enums, flags, unions and
+constants are catalogued unconditionally wherever a registry exists, because
+what they cost is names and values — while a TYPE costs a descriptor table
+per declaration, which is the cost worth a marker. The asymmetry is the
+price list, not a taste, and §11 refuses `| view` on the free kinds rather
+than accepting an attribute that would select nothing.
+
 **No decision here knowingly costs TIME.** The `u64` type id and the
 repeating node-table field cost BYTES and nothing else — the record scan
 is linear either way, and a wider id compares no slower than a narrow
@@ -2894,7 +3256,23 @@ pre-empted here.
 - **Cross-endian blocks.** A block carries its byte order in its magic and
   refuses a foreign one, exactly as a cook does; swapping one would be the
   cook's cross-endian follow-on applied to a flatter shape.
-- A generic dump/diff tool over the reflection surface.
+- **A generic dump/diff tool over the reflection surface** — and the unit
+  registry (§8.3) is what makes it a tool over a whole BUILD rather than one
+  per table: walk the registry, print or compare every declaration, with the
+  instance-level walk of §8.1 underneath it. The listing §8.7's gate already
+  produces is the dump half of it in embryo.
+- **The view in a ported backend** — C++ and C# carry it; every other
+  backend refuses a `--views` request by name (§11) until it emits the same
+  registry against the same pin (§8.7).
+- **DOC STRINGS in the view.** Doc comments are deferred with their design
+  pinned (SPEC §4.1, §9 q5); when they land they become one more descriptor
+  column and one more registry column, and nothing else about §8 moves. No
+  competing `| doc = "..."` attribute is introduced ahead of them.
+- **A view over the PACKET wire's own layout** — bit offsets, field widths
+  and the compressed-float parameters a `type` rides under (SPEC §6.1),
+  beside the declaration facts §8 carries. It is what a packet inspector
+  would want and what a table-shaped descriptor cannot express; the
+  no-table-wire-kind fields of §8.2 are exactly the ones it would fill in.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - Arrays of unions in table bodies.
