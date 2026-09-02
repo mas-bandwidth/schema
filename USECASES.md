@@ -112,9 +112,9 @@ layout; the game memory-maps it and points at it with minimal fix-up.
 - **Proof** — the wire half is **proven**: `Config.bin` and `Assets.bin` are
   each one fixed root table down to the leaves, the corpus carries a
   config-format example holding gate 1 (§12), the C# backend reads the same
-  bytes the C++ tools write, and the dogfood ran a real game's two files
-  through the wire end to end: 803 values came back byte-identical, and every
-  injected bit flip was refused rather than read as data. The cook half
+  bytes the C++ tools write, and the dogfood carries a real game's two files
+  on this wire end to end — 803 values byte-identical, every injected bit
+  flip refused rather than read as data. The cook half
   is proven in the C++ corpus for what exists — `CookMeasure`, `Cook` and
   `Open` round-trip over the pointer unit under `make` — while addressing a
   cooked artifact by **(asset hash, build version)** is designed and not yet

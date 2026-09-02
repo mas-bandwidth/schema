@@ -2544,7 +2544,7 @@ in build version (§20.5).
   the projection's generated prologue (§19.1), as `<field>_present` is an
   optional's generated companion. Claimed on every fixed table, for the
   reason the generated spellings below are: the form is not opted into, so a
-  name that was free yesterday must not become a collision tomorrow.
+  name free today must not become a collision tomorrow.
   **`| stride` is refused as an UNKNOWN ATTRIBUTE**, like any other spelling
   the closed vocabulary does not carry (SPEC.md §4.2), and not by name: the
   pitch is derived and there is no declared stride to reserve a word for
