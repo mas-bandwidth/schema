@@ -54,21 +54,68 @@ table Config
 }
 `
 
-// TestNonCppTargetsRefuseTables: a unit declaring tables is refused by name
-// under every target but cpp — loudly, never by silently dropping the tables.
-func TestNonCppTargetsRefuseTables(t *testing.T) {
+// TestTablelessTargetsRefuseTables: a unit declaring tables is refused by name
+// under every target that carries no table backend — loudly, never by silently
+// dropping the tables. cpp and cs carry one (SPEC-TABLES.md, backend status).
+func TestTablelessTargetsRefuseTables(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, tableSrc)
-	for _, target := range []string{"c", "cs", "dart", "elixir", "go", "java", "js", "rust"} {
+	for _, target := range []string{"c", "dart", "elixir", "go", "java", "js", "rust"} {
 		if _, err := c.Generate(u, target, Options{}); err == nil {
 			t.Errorf("--lang %s accepted a unit with tables — it must refuse by name", target)
-		} else if !strings.Contains(err.Error(), "C++-only") || !strings.Contains(err.Error(), "Config") {
+		} else if !strings.Contains(err.Error(), "C++ and C# only") || !strings.Contains(err.Error(), "Config") {
 			t.Errorf("--lang %s refusal does not name the rule and the tables: %v", target, err)
 		}
 	}
-	// the aliases refuse too
-	if _, err := c.Generate(u, "csharp", Options{}); err == nil {
-		t.Error("--lang csharp accepted a unit with tables")
+}
+
+// TestCsEmitsTableSources: the cs target adds <Base>Table.cs beside the packet
+// sources for a unit with tables, and adds NOTHING for one without — the same
+// contract the cpp target holds, under both spellings of the target name.
+func TestCsEmitsTableSources(t *testing.T) {
+	c := New()
+	for _, target := range []string{"cs", "csharp"} {
+		with, err := c.Generate(unitFromSource(t, tableSrc), target, Options{})
+		if err != nil {
+			t.Fatalf("--lang %s: %v", target, err)
+		}
+		if _, ok := with["ProbeTable.cs"]; !ok {
+			t.Fatalf("--lang %s emitted no ProbeTable.cs for a unit with tables; got %d files", target, len(with))
+		}
+		without, err := c.Generate(unitFromSource(t, packetSrc), target, Options{})
+		if err != nil {
+			t.Fatalf("--lang %s: %v", target, err)
+		}
+		for name := range without {
+			if strings.HasSuffix(name, "Table.cs") {
+				t.Errorf("--lang %s emitted %s for a table-free unit", target, name)
+			}
+		}
+	}
+}
+
+// TestCsRefusesPointeredTables: the C# backend carries the FIXED class, and a
+// unit whose closure declares a pointer is refused BY NAME with the variable
+// class named as the follow-on (SPEC-TABLES.md §11).
+func TestCsRefusesPointeredTables(t *testing.T) {
+	c := New()
+	u := unitFromSource(t, packetSrc+`
+table Node
+{
+    value int32
+    next  *Node
+}
+`)
+	_, err := c.Generate(u, "cs", Options{})
+	if err == nil {
+		t.Fatal("--lang cs accepted a pointered unit — it must refuse by name")
+	}
+	if !strings.Contains(err.Error(), "Node") || !strings.Contains(err.Error(), "variable class is a named follow-on") {
+		t.Errorf("the C# pointer refusal does not name the table and the follow-on: %v", err)
+	}
+	// cpp still carries both classes
+	if _, err := c.Generate(u, "cpp", Options{}); err != nil {
+		t.Errorf("--lang cpp refused a pointered unit: %v", err)
 	}
 }
 

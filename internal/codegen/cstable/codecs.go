@@ -345,10 +345,16 @@ func guardWalk(st *ir.Struct, csharp bool) map[string]string {
 // twin of the C++ reader's placement-new prefill — and it is in place on
 // purpose: reusing the caller's buffers is what keeps the read path free of
 // allocation.
+//
+// The name is VERB-FIRST and overloaded on the value's type, deliberately:
+// SPEC-TABLES.md §11 freezes the 23 name-first suffixes a closure member
+// claims, and a port must not quietly mint a 24th. TableReset joins
+// TableEnumId/TableEnumValue in the verb-first family instead, which claims
+// nothing from a declaration's name.
 func (g *tableGen) emitTableReset(st *ir.Struct) {
-	g.pf("// %sReset restores %s's declared defaults in place, reusing every\n", st.Name, st.Name)
+	g.pf("// TableReset(%s) restores %s's declared defaults in place, reusing every\n", st.Name, st.Name)
 	g.pf("// buffer the value already owns. The reader calls it before overlaying.\n")
-	g.pf("public static void %sReset(%s value)\n{\n", st.Name, st.Name)
+	g.pf("public static void TableReset(%s value)\n{\n", st.Name)
 	if len(st.Fields) == 0 {
 		g.pf("    // empty type: nothing to restore\n")
 	}
@@ -369,7 +375,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
 			g.pf("        value.%s[i].Type = %sType.None;\n", name, f.Type.Name)
 		} else {
-			g.pf("        %sReset(value.%s[i]);\n", f.Type.Name, name)
+			g.pf("        TableReset(value.%s[i]);\n", name)
 		}
 		g.pf("    }\n")
 		if f.Array == ir.ArrayCounted {
@@ -388,7 +394,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 			return
 		}
 		if isClassRef(f.Type) {
-			g.pf("    %sReset(value.%s);\n", f.Type.Name, name)
+			g.pf("    TableReset(value.%s);\n", name)
 			return
 		}
 		g.pf("    value.%s = %s;\n", name, fieldDefaultExpr(f))
@@ -669,7 +675,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("public static bool %sLoadBody(ref TableReader r, %s value)\n{\n", st.Name, st.Name)
-	g.pf("    %sReset(value); // restore declared defaults in place, then overlay\n", st.Name)
+	g.pf("    TableReset(value); // restore declared defaults in place, then overlay\n")
 	g.pf("    for (;;)\n    {\n")
 	g.pf("        if (!r.Has(2)) { r.Report.Malformed = true; return false; }\n")
 	g.pf("        ushort fieldId = r.Get16();\n")
