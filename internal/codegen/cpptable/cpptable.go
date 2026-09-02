@@ -217,9 +217,11 @@ const tableKeyedStorage = `
 // SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
 // the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR —
 // a compile error through Slot<Key>(), whose static_assert names it, and an
-// assert through operator[], which cannot see a runtime key any earlier. The
-// slot exists because memory is cheap and the bias is not: a slot's index IS
-// its variant's value, with nothing to add or subtract anywhere.
+// assert through operator[], which cannot see a runtime key any earlier —
+// and that assert is a DEBUG guard, compiled out by -DNDEBUG, so Slot<Key>()
+// is the form that still holds in release. The slot exists because memory is
+// cheap and the bias is not: a slot's index IS its variant's value, with
+// nothing to add or subtract anywhere.
 template <typename T, typename E, int32_t N>
 struct TableKeyed
 {

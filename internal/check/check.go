@@ -1821,7 +1821,7 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 			if f.KeyEnumRef != nil {
 				if _, seen := enums[f.KeyEnum]; !seen {
 					enums[f.KeyEnum] = f.KeyEnumRef
-					reachedBy[f.KeyEnum] = fmt.Sprintf("%s %s's field %s keys an array by it", what, name, f.Name)
+					reachedBy[f.KeyEnum] = fmt.Sprintf("%s %s's field %s, which keys an array by %s,", what, name, f.Name, f.KeyEnum)
 				}
 			}
 			if f.Type.Kind != ir.TNamed {

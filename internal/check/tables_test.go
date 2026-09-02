@@ -154,7 +154,7 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
 		{name: "an id collision on an enum reaching a closure only as a key", want: "collide on table-wire id",
 			src: "package t\nenum E { Agj, Atj }\ntable Tab { s [E]int32 }\n"},
-		{name: "the key refusal names the keying field as the reaching edge", want: "keys an array by it",
+		{name: "the key refusal names the keying field as the reaching edge", want: "field s, which keys an array by E, reaches it",
 			src: "package t\nenum E | max = 15 { A, B }\ntable Tab { s [E]int32 }\n"},
 
 		{name: "a pointer to an undeclared table", want: "undefined type",
