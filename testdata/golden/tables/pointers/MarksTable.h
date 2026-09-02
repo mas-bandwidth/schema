@@ -1136,13 +1136,13 @@ extern const TableTypeInfo TallyTableInfo;
 extern const TableTypeInfo MarkerTableInfo;
 
 inline const TableFieldInfo TallyTableFields[] = {
-    { "hits", "hits", "int32", 0xb723, 4, false, false, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally{}.hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "hits", "hits", "int32", 0xb723, 4, false, false, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo TallyTableInfo = { "Tally", (uint32_t) sizeof( Tally ), 1, TallyTableFields, +[]( void * p ) { new ( p ) Tally{}; }, false };
 inline const TableTypeInfo * TallyTableType() { return &TallyTableInfo; }
 
 inline const TableFieldInfo MarkerTableFields[] = {
-    { "label", "label", "string", 0xe16a, 12, false, false, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker{}.label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "label", "label", "string", 0xe16a, 12, false, false, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "note", "note", "Tally", 0x9da7, 13, false, true, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo MarkerTableInfo = { "Marker", (uint32_t) sizeof( Marker ), 2, MarkerTableFields, +[]( void * p ) { new ( p ) Marker{}; }, true };

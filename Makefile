@@ -339,7 +339,14 @@ tables-cs-refuses-pointers: bin/schema
 # a consumer compiles those only if it uses the form.
 # ---------------------------------------------------------------------------
 
-BLOCK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread
+# -Wshadow, on all three tables legs (BLOCK here, TABLES and PACK below): the
+# POSIX gate for a class the POSIX legs were blind to. A shadowed local in an
+# emitted function is a warning nobody sees under -Wall -Wextra — gcc and clang
+# say nothing without this flag — and cl refuses it outright at /W4 /WX (C4456),
+# so the estate's Visual C++ requirement made a silent POSIX green into a
+# Windows red (#286). The flag puts the class back under a gate that runs on
+# every PR, on the compilers this bench actually has.
+BLOCK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
 BLOCK_INCLUDES := -Ibuild/tables-generated/block
 BLOCK_SOURCES = $$(ls build/tables-generated/block/*Block.cpp)
 
@@ -743,7 +750,7 @@ tables-keyed-iteration-negative-control: bin/schema
 # TABLES_INCLUDES is shared with the sanitized twin below, so the two builds
 # can never drift into covering different code.
 TABLES_INCLUDES := $(call tables_includes,build/tables-generated)
-TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread
+TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
 
 # The text form's runtime is a generated TRANSLATION UNIT now, not header
 # content (SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
@@ -883,7 +890,7 @@ PACK_INCLUDES := -Ibuild/tables-generated/examples
 # these drivers CALL the text form, so they compile the generated translation
 # unit that holds it (SPEC-TABLES.md §16.1) — the same rule any consumer follows
 PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp)
-PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
+PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off
 PACK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
 build/schema_test_pack: build/tables-generated/.stamp test/tables/pack_main.cpp

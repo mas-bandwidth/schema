@@ -503,9 +503,9 @@ inline const TableTypeInfo * WideBlobTableType();
 inline const TableTypeInfo * WideBlobTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "label", "label", "string", 0xe16a, 12, false, true, false, 70000, (uint32_t) offsetof( WideBlob, label ), (uint32_t) sizeof( WideBlob{}.label ), (uint32_t) offsetof( WideBlob, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "payload", "payload", "bytes", 0x44aa, 6, true, true, false, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( WideBlob{}.payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "samples", "samples", "uint16", 0xaf9a, 7, true, true, false, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( WideBlob{}.samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "label", "label", "string", 0xe16a, 12, false, true, false, 70000, (uint32_t) offsetof( WideBlob, label ), (uint32_t) sizeof( WideBlob::label ), (uint32_t) offsetof( WideBlob, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "payload", "payload", "bytes", 0x44aa, 6, true, true, false, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( WideBlob::payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "samples", "samples", "uint16", 0xaf9a, 7, true, true, false, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( WideBlob::samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, fields, +[]( void * p ) { new ( p ) WideBlob{}; } };
     return &info;

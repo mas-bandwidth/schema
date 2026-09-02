@@ -538,12 +538,12 @@ inline const TableTypeInfo * PatrolTableType();
 inline const TableTypeInfo * PatrolTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "active", "active", "bool", 0x405a, 1, false, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol{}.active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "speed", "speed", "float32", 0xbc00, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol{}.speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active" },
-        { "has_target", "has_target", "bool", 0xb0a7, 1, false, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol{}.has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active" },
-        { "target_id", "target_id", "int32", 0xdf6a, 4, false, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol{}.target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target" },
-        { "wander", "wander", "float32", 0x832f, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol{}.wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target" },
-        { "note", "note", "string", 0x9da7, 12, false, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol{}.note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active" },
+        { "active", "active", "bool", 0x405a, 1, false, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "speed", "speed", "float32", 0xbc00, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active" },
+        { "has_target", "has_target", "bool", 0xb0a7, 1, false, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active" },
+        { "target_id", "target_id", "int32", 0xdf6a, 4, false, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target" },
+        { "wander", "wander", "float32", 0x832f, 10, false, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target" },
+        { "note", "note", "string", 0x9da7, 12, false, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active" },
     };
     static const TableTypeInfo info = { "Patrol", (uint32_t) sizeof( Patrol ), 6, fields, +[]( void * p ) { new ( p ) Patrol{}; } };
     return &info;

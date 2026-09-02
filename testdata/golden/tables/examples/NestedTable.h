@@ -425,8 +425,8 @@ inline const TableTypeInfo * ArchiveConfigTableType();
 inline const TableTypeInfo * ArchiveConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "root", "root", "RootConfig", 0x2eb8, 13, false, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig{}.root ), 0xffffffffu, 0xffffffffu, RootConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "count", "count", "int32", 0xe445, 4, false, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig{}.count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "root", "root", "RootConfig", 0x2eb8, 13, false, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, RootConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "count", "count", "int32", 0xe445, 4, false, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, fields, +[]( void * p ) { new ( p ) ArchiveConfig{}; } };
     return &info;

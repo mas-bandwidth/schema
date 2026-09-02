@@ -763,16 +763,16 @@ extern const TableTypeInfo StampTableInfo;
 extern const TableTypeInfo ColourTableInfo;
 
 inline const TableFieldInfo StampTableFields[] = {
-    { "tag", "tag", "string", 0xbc64, 12, false, false, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp{}.tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "seq", "seq", "int32", 0xc29b, 4, false, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp{}.seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "tag", "tag", "string", 0xbc64, 12, false, false, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "seq", "seq", "int32", 0xc29b, 4, false, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { new ( p ) Stamp{}; }, false };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
 inline const TableFieldInfo ColourTableFields[] = {
-    { "r", "r", "uint8", 0xb019, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour{}.r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "g", "g", "uint8", 0xc40a, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour{}.g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "b", "b", "uint8", 0xcae9, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour{}.b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "r", "r", "uint8", 0xb019, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "g", "g", "uint8", 0xc40a, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "b", "b", "uint8", 0xcae9, 6, false, false, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { new ( p ) Colour{}; }, false };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }
