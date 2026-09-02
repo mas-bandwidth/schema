@@ -71,17 +71,17 @@ func (r *wireReader) sub(n int) *wireReader {
 // nothing else is needed, which is what makes an unknown field survivable (§3).
 func (r *wireReader) skip(kind uint8) bool {
 	switch kind {
-	case tabletext.KindBool, tabletext.KindI8, tabletext.KindU8,
-		tabletext.KindI16, tabletext.KindU16,
-		tabletext.KindI32, tabletext.KindU32, tabletext.KindF32,
-		tabletext.KindI64, tabletext.KindU64, tabletext.KindF64:
+	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8,
+		ir.TableKindI16, ir.TableKindU16,
+		ir.TableKindI32, ir.TableKindU32, ir.TableKindF32,
+		ir.TableKindI64, ir.TableKindU64, ir.TableKindF64:
 		w := tabletext.KindWidth(int(kind))
 		if !r.has(w) {
 			return false
 		}
 		r.off += w
 		return true
-	case tabletext.KindString, tabletext.KindTable, tabletext.KindArray, KindKeyed:
+	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed:
 		if !r.has(4) {
 			return false
 		}
@@ -91,7 +91,7 @@ func (r *wireReader) skip(kind uint8) bool {
 		}
 		r.off += n
 		return true
-	case tabletext.KindUnion:
+	case ir.TableKindUnion:
 		if !r.has(2) {
 			return false
 		}
@@ -111,26 +111,18 @@ func (r *wireReader) skip(kind uint8) bool {
 	return false // a kind outside the closed set is framing damage
 }
 
-// wireKind is the kind byte a field's payload rides under.
+// wireKind is the kind byte a field's payload rides under. It is
+// ir.TableFieldKind with the one case that function does not see: a POINTER
+// field rides as a nested table body, which is what makes `T`, `?T` and `*T`
+// one field on the wire (SPEC-TABLES.md §3.1).
 func wireKind(f *ir.Field) int {
-	switch {
-	case f.Type.Pointer:
-		return tabletext.KindTable
-	case f.KeyEnum != "":
-		return KindKeyed
-	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
-		return tabletext.KindArray
+	if f.Type.Pointer {
+		return ir.TableKindTable
 	}
-	return tabletext.ScalarKind(f)
-}
-
-// elementKind is the kind an array's elements ride under: `bytes(N)` travels
-// as an array of u8, everything else as the field's own scalar kind.
-func elementKind(f *ir.Field) int {
 	if f.Type.Kind == ir.TBytes {
-		return tabletext.KindU8
+		return ir.TableKindArray
 	}
-	return tabletext.ScalarKind(f)
+	return ir.TableFieldKind(f)
 }
 
 func (r *wireReader) body(inst *tabletext.Instance) bool {
@@ -249,7 +241,7 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 	if bodyLen >= 5 {
 		ek := r.u8()
 		count := int(r.u32())
-		if int(ek) != elementKind(f) {
+		if int(ek) != ir.TableElemKind(f) {
 			r.report.KindMismatch++
 			r.off = end
 			return true
@@ -335,7 +327,7 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	}
 	elemKind := r.u8()
 	count := int(r.u32())
-	if elemKind != uint8(elementKind(f)) {
+	if elemKind != uint8(ir.TableElemKind(f)) {
 		r.report.KindMismatch++
 		r.off = end
 		return true
@@ -431,7 +423,7 @@ func (r *wireReader) union(fv *tabletext.Field) bool {
 // outer framing damage (a scalar FIELD stops the decode) or an element's (the
 // prefix is kept and the loop breaks).
 func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) bool {
-	kind := tabletext.ScalarKind(f)
+	kind := ir.TableScalarKind(f)
 	width := tabletext.KindWidth(kind)
 	if !r.has(width) {
 		r.report.Malformed = true
@@ -452,10 +444,10 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 		return true
 	}
 	switch kind {
-	case tabletext.KindBool:
+	case ir.TableKindBool:
 		cell.B = r.u8() != 0
 		return true
-	case tabletext.KindF32:
+	case ir.TableKindF32:
 		v := float64(math.Float32frombits(r.u32()))
 		if f.HasFloatRange {
 			if v < f.FMin {
@@ -468,7 +460,7 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 		}
 		cell.F = float64(float32(v))
 		return true
-	case tabletext.KindF64:
+	case ir.TableKindF64:
 		cell.F = math.Float64frombits(r.u64())
 		return true
 	}

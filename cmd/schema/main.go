@@ -204,6 +204,7 @@ func main() {
 		fs := flag.NewFlagSet("unpack", flag.ExitOnError)
 		root := fs.String("root", "", "the root `table` the bytes carry")
 		in := fs.String("in", "", "file holding the root's wire bytes")
+		oneFile := fs.Bool("one-file", false, "write the root as one <Root>.json instead of a tree of fields")
 		tolerate := fs.Bool("tolerate", false, "exit 0 even when the report is not silent (see below)")
 		fs.BoolVar(&verbose, "verbose", false, "print the read report even when it is silent")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
@@ -216,7 +217,11 @@ func main() {
 			fatalf("%v", err)
 		}
 		unit := loadTree(c, rest)
-		report, err := c.Unpack(unit, *root, wire, dir)
+		unpack := c.Unpack
+		if *oneFile {
+			unpack = c.UnpackOneFile
+		}
+		report, err := unpack(unit, *root, wire, dir)
 		if err != nil {
 			fail(err)
 		}
@@ -289,7 +294,7 @@ func usage() {
   schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
   schema fmt        [--verbose] [dir|files...]
   schema pack       --root <Table> --out <file> [--tolerate] [--verbose] <tree-dir> [dir|files...]
-  schema unpack     --root <Table> --in  <file> [--tolerate] [--verbose] <tree-dir> [dir|files...]
+  schema unpack     --root <Table> --in  <file> [--one-file] [--tolerate] [--verbose] <tree-dir> [dir|files...]
   schema version
 
 Every command formats the unit's schema files in place before processing them

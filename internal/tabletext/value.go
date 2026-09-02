@@ -19,25 +19,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// The neutral wire's closed kind set (SPEC-TABLES.md §3).
-const (
-	KindBool   = 1
-	KindI8     = 2
-	KindI16    = 3
-	KindI32    = 4
-	KindI64    = 5
-	KindU8     = 6
-	KindU16    = 7
-	KindU32    = 8
-	KindU64    = 9
-	KindF32    = 10
-	KindF64    = 11
-	KindString = 12
-	KindTable  = 13
-	KindArray  = 14
-	KindUnion  = 15
-)
-
 // Report is the read report both forms share (SPEC-TABLES.md §4, §16.2):
 // silence — every counter zero and Malformed false — means the data matched
 // this schema exactly.
@@ -284,81 +265,20 @@ func EnumName(e *ir.Enum, value int64) string {
 	return ""
 }
 
-// ScalarKind is a field's neutral wire kind, mirroring the C++ emitter's
-// tableScalarKind exactly (SPEC-TABLES.md §3): an enum rides as u16 carrying
-// its variant's name hash, a flags mask as u64, bytes as an array of u8.
-func ScalarKind(f *ir.Field) int {
-	switch f.Type.Kind {
-	case ir.TBool:
-		return KindBool
-	case ir.TInt:
-		if f.Type.Signed {
-			switch f.Type.Width {
-			case 8:
-				return KindI8
-			case 16:
-				return KindI16
-			case 32:
-				return KindI32
-			default:
-				return KindI64
-			}
-		}
-		switch f.Type.Width {
-		case 8:
-			return KindU8
-		case 16:
-			return KindU16
-		case 32:
-			return KindU32
-		default:
-			return KindU64
-		}
-	case ir.TBits:
-		switch {
-		case f.Type.Width <= 8:
-			return KindU8
-		case f.Type.Width <= 16:
-			return KindU16
-		case f.Type.Width <= 32:
-			return KindU32
-		default:
-			return KindU64
-		}
-	case ir.TFloat32:
-		return KindF32
-	case ir.TFloat64:
-		return KindF64
-	case ir.TString:
-		return KindString
-	case ir.TBytes:
-		return KindArray
-	case ir.TNamed:
-		switch f.Type.Ref.(type) {
-		case *ir.Enum:
-			return KindU16
-		case *ir.Flags:
-			return KindU64
-		case *ir.Struct:
-			return KindTable
-		case *ir.Union:
-			return KindUnion
-		}
-	}
-	return 0
-}
-
 // KindWidth is a fixed-width kind's payload size in bytes; 0 for the framed
-// kinds (string, table, array, union).
+// kinds (string, table, array, union, keyed). The kind vocabulary itself lives
+// in ir (ir.TableKind*, ir.TableScalarKind): two copies of that mapping would
+// be two wires, so this engine reads the same one the emitters do and adds only
+// the width question they answer inline.
 func KindWidth(kind int) int {
 	switch kind {
-	case KindBool, KindI8, KindU8:
+	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8:
 		return 1
-	case KindI16, KindU16:
+	case ir.TableKindI16, ir.TableKindU16:
 		return 2
-	case KindI32, KindU32, KindF32:
+	case ir.TableKindI32, ir.TableKindU32, ir.TableKindF32:
 		return 4
-	case KindI64, KindU64, KindF64:
+	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64:
 		return 8
 	}
 	return 0
@@ -392,7 +312,7 @@ func StorageBytes(f *ir.Field) int {
 		}
 		return 8
 	}
-	return KindWidth(ScalarKind(f))
+	return KindWidth(ir.TableScalarKind(f))
 }
 
 // EnumOf returns the enum a field's values come from, or nil.

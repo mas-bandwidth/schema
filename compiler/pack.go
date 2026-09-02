@@ -86,3 +86,13 @@ func (c *Compiler) Unpack(u *ir.Unit, root string, wire []byte, dir string) (Tab
 	report, err := tablepack.Unpack(tabletext.NewModel(u), root, wire, dir)
 	return publicReport(report), err
 }
+
+// UnpackOneFile writes the root as ONE `<Root>.json` rather than a tree of
+// field files — §17.2's last rule as an output shape, and the same instance
+// through the same writer, so it packs to the same bytes the tree does. One
+// text of the whole root is what a backend's `ToJson` produces, and comparing
+// the two is §17.1's third golden.
+func (c *Compiler) UnpackOneFile(u *ir.Unit, root string, wire []byte, dir string) (TableReport, error) {
+	report, err := tablepack.UnpackOneFile(tabletext.NewModel(u), root, wire, dir)
+	return publicReport(report), err
+}

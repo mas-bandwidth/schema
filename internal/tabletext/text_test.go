@@ -183,11 +183,14 @@ func TestEnumKeyedObject(t *testing.T) {
 	_ = m
 }
 
-// §16.2: a duplicate keyed slot is last-wins, counted.
+// §16.2: a repeated keyed SLOT key is last-wins and is NOT counted — the
+// generated walk's behaviour, and the counter §16.2 raises for a TABLE
+// object's keys. Two implementations reporting differently on one text is what
+// the goldens exist to prevent, so the reference decides it.
 func TestEnumKeyedDuplicateSlot(t *testing.T) {
 	_, inst, r := read(t, "PackConfig", `{ "thresholds": { "Hard": 100, "Hard": 300 } }`)
-	if r.Duplicate != 1 {
-		t.Fatalf("expected one duplicate, got %+v", r)
+	if !r.Silent() {
+		t.Fatalf("a repeated slot key is silent here, got %+v", r)
 	}
 	fv := field(t, inst, "thresholds")
 	hard := tabletext.KeyedValueSlot(fv.Def, tabletext.EnumValue(fv.Def.KeyEnumRef, "Hard"))

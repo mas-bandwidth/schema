@@ -33,6 +33,19 @@ import (
 // directory the verb is ever pointed at. An entry that names NO field is left
 // exactly where it is: it is not this tool's, and `pack` refuses it by name.
 func Unpack(m *tabletext.Model, root string, wire []byte, dir string) (tabletext.Report, error) {
+	return unpack(m, root, wire, dir, false)
+}
+
+// UnpackOneFile writes the root as ONE `<Root>.json` instead of a tree of
+// fields — §17.2's last rule as an output shape. It is the same instance and
+// the same writer, so it packs to the same bytes the expanded tree does; it
+// exists because one text of the whole root is what a backend's `ToJson`
+// produces, and comparing the two is §17.1's third golden.
+func UnpackOneFile(m *tabletext.Model, root string, wire []byte, dir string) (tabletext.Report, error) {
+	return unpack(m, root, wire, dir, true)
+}
+
+func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bool) (tabletext.Report, error) {
 	st := m.Unit.Tables[root]
 	if st == nil {
 		return tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
@@ -51,6 +64,13 @@ func Unpack(m *tabletext.Model, root string, wire []byte, dir string) (tabletext
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return report, err
+	}
+	if oneFile {
+		text, err := m.Write(inst)
+		if err != nil {
+			return report, err
+		}
+		return report, os.WriteFile(filepath.Join(dir, root+".json"), append(text, '\n'), 0o644)
 	}
 	guards := tabletext.Guards(st)
 	written := map[string]bool{}

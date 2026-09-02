@@ -394,8 +394,11 @@ func TestVariableRootRefusedOnBothVerbs(t *testing.T) {
 // root, committed byte for byte. A round trip alone cannot see a vocabulary
 // error — reader and writer share the name function, so a wrong spelling round
 // trips perfectly — and it cannot see the pretty-print contract drift either.
-// This is the file the THIRD golden of §17.1 compares against once a backend
-// emits `ToJson`: the same texts, from the other implementation.
+//
+// §17.1's third golden covers the WHOLE-root text against the backend's
+// `ToJson` (make tables-pack); this covers the shape that has no `ToJson` to
+// compare to, the EXPANDED tree of per-field files, where a field's own text
+// sits at depth 0 rather than nested inside the root's.
 func TestUnpackMatchesThePinnedText(t *testing.T) {
 	c, u := corpus(t)
 	for _, tree := range trees {
@@ -459,4 +462,41 @@ func treeFiles(t *testing.T, root string) map[string][]byte {
 		t.Fatalf("%s holds no files", root)
 	}
 	return out
+}
+
+// §17.2's last rule as an output shape: `unpack --one-file` writes one
+// `<Root>.json`, and it is the same instance through the same writer, so it
+// packs to the bytes the expanded tree does. It is also the text §17.1's third
+// golden hands the backend's `ToJson`.
+func TestUnpackOneFile(t *testing.T) {
+	c, u := corpus(t)
+	for _, tree := range trees {
+		t.Run(tree.root, func(t *testing.T) {
+			wire, _, _, err := c.Pack(u, tree.root, tree.dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out := t.TempDir()
+			if _, err := c.UnpackOneFile(u, tree.root, wire, out); err != nil {
+				t.Fatal(err)
+			}
+			entries, err := os.ReadDir(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || entries[0].Name() != tree.root+".json" {
+				t.Fatalf("--one-file wrote %d entries", len(entries))
+			}
+			again, _, report, err := c.Pack(u, tree.root, out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !report.Silent() {
+				t.Fatalf("the one-file form should read back clean: %+v", report)
+			}
+			if !bytes.Equal(wire, again) {
+				t.Fatal("the one-file form is not the same instance")
+			}
+		})
+	}
 }

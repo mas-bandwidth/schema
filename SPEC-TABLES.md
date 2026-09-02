@@ -2557,9 +2557,10 @@ are what make them one:
 - `schema pack` → a backend's `Load` → that backend's `ToJson` →
   `schema unpack` is byte-stable;
 - every text `schema unpack` writes is byte-identical to the one the
-  backend's `ToJson` writes for the same instance — and until a backend emits
-  one, to a PINNED TEXT committed beside the corpus (§16.5), which is the same
-  comparison with one side written down.
+  backend's `ToJson` writes for the same instance. `unpack --one-file` is what
+  makes that a comparison of two whole texts rather than of a tree against an
+  object: it writes §17.2's last shape, one `<Root>.json`, from the same
+  instance through the same writer.
 
 Every backend that implements the text form inherits that obligation
 against the same corpus, which is what keeps one wire and one text form as
@@ -2595,7 +2596,8 @@ inverse — it writes the tree back out of a `.bin` — which is the tool round
 trip §1 promises, and `unpack` → `pack` is byte-stable.
 
 §17.2 lets a field's value live in a file or in a directory, and `unpack`
-takes the EXPANDED form: one `<field>.json` per field of the root, and one
+takes the EXPANDED form by default (`--one-file` takes the last rule's
+instead: one `<Root>.json`, which is the shape §17.1's third golden compares): one `<field>.json` per field of the root, and one
 `<field>/<Variant>.json` per slot of an enum-keyed array. An absent `?T` and
 a guarded-out field write no file at all, because omission is how a tree says
 absence — **and that is why `unpack` PRUNES**: an entry naming a field of the
@@ -2641,12 +2643,15 @@ implements the form; and the hostile tree above is refused or counted per
 **And a HOSTILE-VALUE corpus beside the hostile tree**: one tree per rule §16
 states — every row of the number grammar, a value past a `bits(N)` width, a
 lone surrogate, a `null` at every kind, a `"None"` key, a duplicate key, a
-union with two keys — each carrying the outcome the rule requires, packed by
-the engine and read back by a backend. A tree that packs carries one further
-invariant: its bytes load CLEAN in that backend and re-save byte-identically,
-because a read this form calls clean must not be one the backend cuts down.
-A corpus of well-formed trees proves the happy path and nothing else, and the
-rules are where the implementations drift apart.
+union with two keys — each carrying the outcome the rule requires. It is a
+TWO-SIDED differential: the same text goes through the packer and through the
+backend's `FromJson`, and their REPORTS must agree counter for counter and
+their WIRE BYTES byte for byte, with a refusal one side refused by both. A
+tree that packs carries one further invariant: its bytes load clean in that
+backend and re-save byte-identically, because a read either implementation
+calls clean must not be one the backend then cuts down. A corpus of
+well-formed trees proves the happy path and nothing else, and the rules are
+where implementations drift apart.
 
 ## 18. The tables baseline
 

@@ -112,7 +112,7 @@ func TestKeyZeroIsMalformed(t *testing.T) {
 	id := ir.TableFieldId(fv.Def)
 	at := -1
 	for i := 0; i+3 <= len(wire); i++ {
-		if binary.LittleEndian.Uint16(wire[i:]) == id && wire[i+2] == tablewire.KindKeyed {
+		if binary.LittleEndian.Uint16(wire[i:]) == id && wire[i+2] == ir.TableKindKeyed {
 			at = i
 			break
 		}
@@ -143,7 +143,7 @@ func TestUnknownFieldIsSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	// an unknown u32 field ahead of the body's own
-	unknown := []byte{0xEE, 0xEE, tabletext.KindU32, 1, 0, 0, 0}
+	unknown := []byte{0xEE, 0xEE, ir.TableKindU32, 1, 0, 0, 0}
 	hostile := append(append([]byte{}, unknown...), wire...)
 
 	back := m.New(m.Lookup("GlobalSettings"))
@@ -173,8 +173,8 @@ func TestKeyedUnderArrayKindIsAMismatch(t *testing.T) {
 	fv, _ := inst.FieldByKey("thresholds")
 	id := ir.TableFieldId(fv.Def)
 	for i := 0; i+3 <= len(wire); i++ {
-		if binary.LittleEndian.Uint16(wire[i:]) == id && wire[i+2] == tablewire.KindKeyed {
-			wire[i+2] = tabletext.KindArray
+		if binary.LittleEndian.Uint16(wire[i:]) == id && wire[i+2] == ir.TableKindKeyed {
+			wire[i+2] = ir.TableKindArray
 			break
 		}
 	}

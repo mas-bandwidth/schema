@@ -383,9 +383,19 @@ build/schema_test_pack: build/tables-generated/.stamp test/tables/pack_main.cpp
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
 		-Ibuild/tables-generated/examples test/tables/pack_main.cpp -o $@
 
+# §17.1's THIRD golden needs the engine's own text of each root, so unpack
+# writes the one-file form beside the bins and the driver compares ToJson to it.
+build/pack-text/.stamp: bin/schema build/tables-pack.bin build/tables-pack-root.bin
+	@rm -rf build/pack-text
+	@mkdir -p build/pack-text
+	./bin/schema unpack --one-file --root PackConfig --in build/tables-pack.bin build/pack-text tables/examples
+	./bin/schema unpack --one-file --root RootConfig --in build/tables-pack-root.bin build/pack-text tables/examples
+	@touch $@
+
 .PHONY: tables-pack
-tables-pack: build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin
-	./build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin
+tables-pack: build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin build/pack-text/.stamp
+	./build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin \
+		build/pack-text/PackConfig.json build/pack-text/RootConfig.json
 
 # The HOSTILE-VALUE gate (SPEC-TABLES.md §16.2, §16.3, §17.5). One tree per rule
 # the text form states — malformed number tokens, a value past a bits(N) width,
@@ -414,7 +424,8 @@ build/schema_test_hostile: build/tables-generated/.stamp test/tables/hostile_mai
 
 .PHONY: tables-hostile-values
 tables-hostile-values: build/schema_test_hostile build/hostile-values/.stamp
-	./build/schema_test_hostile tables/pack/hostile-values/cases.txt build/hostile-values
+	./build/schema_test_hostile tables/pack/hostile-values/cases.txt \
+		tables/pack/hostile-values build/hostile-values
 
 # Its NEGATIVE CONTROL: relax ONE rule of the number grammar — accept a leading
 # `+`, which RFC 8259 does not — and the gate must go red, because a tree the
@@ -462,7 +473,8 @@ tables-pack-negative: tables-pack
 	@go build -overlay=build/sabotage-overlay.json -o build/schema-sabotaged ./cmd/schema
 	@./build/schema-sabotaged pack --root PackConfig --out build/tables-pack-sabotaged.bin \
 		tables/pack/config tables/examples
-	@if ./build/schema_test_pack build/tables-pack-sabotaged.bin build/tables-pack-root.bin > /dev/null 2>&1; then \
+	@if ./build/schema_test_pack build/tables-pack-sabotaged.bin build/tables-pack-root.bin \
+		build/pack-text/PackConfig.json build/pack-text/RootConfig.json > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: eliding a present ?T left the golden green"; exit 1; \
 	fi
 	@echo "pack negative control: eliding a present ?T turns the golden red"
@@ -615,7 +627,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_hostile build/hostile-values/.stamp build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/pack-text/.stamp build/schema_test_hostile build/hostile-values/.stamp build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables

@@ -684,8 +684,15 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 }
 
 // readKeyed places an enum-keyed array: an OBJECT keyed by VARIANT NAME
-// (SPEC-TABLES.md §2.4, §16.2). An absent key keeps that slot's defaults, an
-// unknown key is skipped and counted, a duplicate key is last-wins and counted.
+// (SPEC-TABLES.md §2.4, §16.2). An absent key keeps that slot's defaults; an
+// unknown key is skipped and counted, and `"None"` is such a key because slot 0
+// names nothing (§2.4).
+//
+// A repeated SLOT key is last-wins and is NOT counted, which is the generated
+// walk's behaviour and therefore this one's: §16.2's `duplicate` counter is
+// stated among the rules for a TABLE object's keys, and the keyed row states
+// its own. Two implementations reporting differently on one text is the thing
+// the goldens exist to prevent, so the reference decides it.
 func (in *reader) readKeyed(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '{' {
@@ -693,7 +700,6 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
-	seen := map[int]bool{}
 	shape := ElementShape(f)
 	for {
 		c := in.peek()
@@ -727,10 +733,6 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 				return false
 			}
 		default:
-			if seen[slot] {
-				in.report.Duplicate++
-			}
-			seen[slot] = true
 			fv.Elems[slot] = in.m.elementZero(f)
 			if !in.readScalar(&fv.Elems[slot], f, depth+1) {
 				return false
@@ -799,13 +801,13 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		in.bad = true
 		return false
 	}
-	kind := ScalarKind(f)
-	if kind == KindF32 || kind == KindF64 {
-		return in.placeFloat(cell, f, token, kind == KindF32)
+	kind := ir.TableScalarKind(f)
+	if kind == ir.TableKindF32 || kind == ir.TableKindF64 {
+		return in.placeFloat(cell, f, token, kind == ir.TableKindF32)
 	}
-	if kind == KindU16 || kind == KindU32 || kind == KindU64 ||
-		kind == KindI8 || kind == KindI16 || kind == KindI32 || kind == KindI64 ||
-		kind == KindU8 {
+	if kind == ir.TableKindU16 || kind == ir.TableKindU32 || kind == ir.TableKindU64 ||
+		kind == ir.TableKindI8 || kind == ir.TableKindI16 || kind == ir.TableKindI32 || kind == ir.TableKindI64 ||
+		kind == ir.TableKindU8 {
 		return in.placeInteger(cell, f, token, integral, kind)
 	}
 	in.bad = true
@@ -855,7 +857,7 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 // places — and only a genuinely fractional value is the wrong shape for it
 // (SPEC-TABLES.md §16.2).
 func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral bool, kind int) bool {
-	signed := kind >= KindI8 && kind <= KindI64
+	signed := kind >= ir.TableKindI8 && kind <= ir.TableKindI64
 	var value int64
 	var saturated bool
 	if integral {

@@ -21,7 +21,7 @@ dup-key                    RootConfig  packs 0,0,0,1,false
 enum-unknown-name          RootConfig  packs 1,0,0,0,false
 flags-unknown-name         RootConfig  packs 1,0,0,0,false
 guard-key-after-fields     RootConfig  packs 0,0,0,0,false
-keyed-duplicate-slot       PackConfig  packs 0,0,0,1,false
+keyed-duplicate-slot       PackConfig  packs 0,0,0,0,false
 keyed-none-key             PackConfig  packs 1,0,0,0,false
 keyed-unknown-key          PackConfig  packs 1,0,0,0,false
 keyed-wrong-shape          PackConfig  packs 0,1,0,0,false

@@ -236,19 +236,19 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		w.put(']')
 		return nil
 	}
-	switch ScalarKind(f) {
-	case KindBool:
+	switch ir.TableScalarKind(f) {
+	case ir.TableKindBool:
 		if cell.B {
 			w.raw("true")
 		} else {
 			w.raw("false")
 		}
 		return nil
-	case KindF32:
+	case ir.TableKindF32:
 		return writeFloat(w, cell.F, true)
-	case KindF64:
+	case ir.TableKindF64:
 		return writeFloat(w, cell.F, false)
-	case KindI8, KindI16, KindI32, KindI64:
+	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64:
 		w.raw(strconv.FormatInt(cell.I, 10))
 		return nil
 	default:

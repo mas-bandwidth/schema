@@ -13,6 +13,12 @@
 //      renamed and nothing cut down.
 //   3. The instance that comes back equals the one built by hand, field for
 //      field, so a byte match cannot be a coincidence of two identical bugs.
+//   4. §17.1's THIRD golden: the text `schema unpack --one-file` wrote for that
+//      instance is byte-identical to the one the generated `ToJson` writes.
+//      Two implementations of §16's writer, one text — the gate that catches a
+//      vocabulary error a round trip cannot see (reader and writer share the
+//      name function, so a wrong spelling round-trips perfectly) and the
+//      pretty-print contract drifting.
 //
 // Two roots: PackConfig (tables/pack/config) for the fixed-class collection
 // shape — enum-keyed arrays of records, an optional section, a nested global
@@ -21,7 +27,7 @@
 // a guarded group, `bytes(N)`, `bits(N)`, every integer width, a fixed array
 // of enums and a fixed array of tables.
 //
-// usage: schema_test_pack <PackConfig.bin> <RootConfig.bin>
+// usage: schema_test_pack <PackConfig.bin> <RootConfig.bin> <PackConfig.json> <RootConfig.json>
 
 #include <cstdio>
 #include <cstdlib>
@@ -250,7 +256,66 @@ static void compare_bytes( const char * what, const uint8_t * packed, long packe
     }
 }
 
-static void root_golden( const char * path )
+// compare_text is §17.1's third golden for one root: the engine's text and the
+// backend's, byte for byte.
+template <typename T>
+static void compare_text( const char * what, const T & value, const char * path,
+                          int64_t ( *to_json_measure )( const T & ),
+                          int64_t ( *to_json )( const T &, char *, int64_t ) )
+{
+    long size = 0;
+    uint8_t * expected = slurp( path, size );
+    if ( expected == NULL )
+    {
+        printf( "FAIL %s: cannot read %s\n", what, path );
+        failures++;
+        return;
+    }
+    // schema unpack ends the file with a newline; ToJson writes the text alone
+    while ( size > 0 && expected[size - 1] == '\n' ) { size--; }
+
+    int64_t measured = to_json_measure( value );
+    if ( measured < 0 )
+    {
+        printf( "FAIL %s: ToJsonMeasure refused the instance\n", what );
+        failures++;
+        free( expected );
+        return;
+    }
+    char * text = (char *) malloc( (size_t) measured + 1 );
+    if ( to_json( value, text, measured ) != measured )
+    {
+        printf( "FAIL %s: ToJson disagreed with ToJsonMeasure\n", what );
+        failures++;
+        free( text );
+        free( expected );
+        return;
+    }
+    text[measured] = 0;
+    if ( measured != size )
+    {
+        printf( "FAIL %s: schema unpack wrote %ld text bytes, ToJson wrote %lld\n",
+                what, size, (long long) measured );
+        failures++;
+    }
+    else if ( memcmp( text, expected, (size_t) size ) != 0 )
+    {
+        for ( long i = 0; i < size; i++ )
+        {
+            if ( (uint8_t) text[i] != expected[i] )
+            {
+                printf( "FAIL %s: the two texts differ at %ld: unpack 0x%02x, ToJson 0x%02x\n",
+                        what, i, expected[i], (uint8_t) text[i] );
+                break;
+            }
+        }
+        failures++;
+    }
+    free( text );
+    free( expected );
+}
+
+static void root_golden( const char * path, const char * text_path )
 {
     long packed_size = 0;
     uint8_t * packed = slurp( path, packed_size );
@@ -284,6 +349,9 @@ static void root_golden( const char * path )
     CHECK( RootConfigSave( loaded, resaved, again ) == again );
     compare_bytes( "RootConfig reload", packed, packed_size, resaved, again );
 
+    compare_text<RootConfig>( "RootConfig text", loaded, text_path,
+                              RootConfigToJsonMeasure, RootConfigToJson );
+
     free( resaved );
     free( saved );
     free( packed );
@@ -291,9 +359,9 @@ static void root_golden( const char * path )
 
 int main( int argc, char ** argv )
 {
-    if ( argc < 3 )
+    if ( argc < 5 )
     {
-        printf( "usage: %s <PackConfig.bin> <RootConfig.bin>\n", argv[0] );
+        printf( "usage: %s <PackConfig.bin> <RootConfig.bin> <PackConfig.json> <RootConfig.json>\n", argv[0] );
         return 2;
     }
     long packed_size = 0;
@@ -327,14 +395,18 @@ int main( int argc, char ** argv )
     // 3. and the value that comes back is the one that went in
     CHECK( same_config( config, loaded ) );
 
+    // 4. and the text the engine wrote for it is the text this build writes
+    compare_text<PackConfig>( "PackConfig text", loaded, argv[3],
+                              PackConfigToJsonMeasure, PackConfigToJson );
+
     free( saved );
     free( packed );
 
-    root_golden( argv[2] );
+    root_golden( argv[2], argv[4] );
 
     if ( failures == 0 )
     {
-        printf( "pack golden: schema pack == Save for both roots, report silent\n" );
+        printf( "pack golden: schema pack == Save and schema unpack == ToJson for both roots\n" );
         return 0;
     }
     printf( "pack golden: %d failure(s)\n", failures );

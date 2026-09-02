@@ -17,15 +17,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// KindKeyed is the enum-keyed array's OWN wire kind (SPEC-TABLES.md §3.2). Its
-// body opens as an array's does — `element kind (u8)`, then a u32 count — but
-// the count counts SLOTS PRESENT and each element is a `(variant id u16, L u32,
-// element)` pair, ascending by variant ordinal, defaults elided per slot, and
-// None's slot never riding. A positional array stays kind 14, so the two
-// incompatible layouts are told apart by the kind byte alone and the
-// `[E]T` <-> `[E.Max + 1]T` edit is an ordinary kind mismatch.
-const KindKeyed = 16
-
 // Encode is the root instance's wire bytes and nothing else (SPEC-TABLES.md
 // §17.2): no magic, no content hash, no protocol id, no length prefix around
 // the whole.
@@ -100,7 +91,7 @@ func encodeBody(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *tabletext.Field) error {
 	f := fv.Def
 	id := ir.TableFieldId(f)
-	kind := tabletext.ScalarKind(f)
+	kind := ir.TableScalarKind(f)
 
 	if f.Type.Pointer {
 		return fmt.Errorf("field %s is a pointer — the pack engine holds fixed-size roots only (SPEC-TABLES.md §16.2)", f.Name)
@@ -115,13 +106,13 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 			return nil
 		}
 		switch {
-		case kind == tabletext.KindTable:
+		case kind == ir.TableKindTable:
 			body, err := encodeBody(m, subInstance(m, f, &fv.Cell))
 			if err != nil {
 				return err
 			}
 			w.u16(id)
-			w.u8(uint8(tabletext.KindTable))
+			w.u8(uint8(ir.TableKindTable))
 			w.u32(uint32(len(body)))
 			w.raw(body)
 		case tabletext.EnumOf(f) != nil:
@@ -149,7 +140,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 			return nil
 		}
 		w.u16(id)
-		w.u8(uint8(tabletext.KindString))
+		w.u8(uint8(ir.TableKindString))
 		w.u32(uint32(len(fv.Cell.Str)))
 		w.raw(fv.Cell.Str)
 		return nil
@@ -159,9 +150,9 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 			return nil
 		}
 		w.u16(id)
-		w.u8(uint8(tabletext.KindArray))
+		w.u8(uint8(ir.TableKindArray))
 		w.u32(uint32(5 + len(fv.Cell.Str)))
-		w.u8(uint8(tabletext.KindU8)) // bytes ride as an array of u8 (§2.5)
+		w.u8(uint8(ir.TableKindU8)) // bytes ride as an array of u8 (§2.5)
 		w.u32(uint32(len(fv.Cell.Str)))
 		w.raw(fv.Cell.Str)
 		return nil
@@ -172,7 +163,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		}
 		return encodeArray(m, w, fv, id, kind, fv.Count)
 
-	case f.Array == ir.ArrayFixed && kind == tabletext.KindTable:
+	case f.Array == ir.ArrayFixed && kind == ir.TableKindTable:
 		// a fixed array of tables always rides — position is identity there,
 		// so no element-default compare can elide one
 		return encodeArray(m, w, fv, id, kind, int(f.ArrayBound))
@@ -192,7 +183,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		}
 		return encodeArray(m, w, fv, id, kind, int(f.ArrayBound))
 
-	case kind == tabletext.KindUnion:
+	case kind == ir.TableKindUnion:
 		un := tabletext.UnionOf(f)
 		if fv.Cell.U == 0 {
 			return nil // None elides — TLV absence is the None
@@ -210,7 +201,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 			return err
 		}
 		w.u16(id)
-		w.u8(uint8(tabletext.KindUnion))
+		w.u8(uint8(ir.TableKindUnion))
 		// the ARM ID is the hash of the arm's NAME (§5), so arms may be added
 		// anywhere, removed and reordered
 		w.u16(ir.VariantId(arm.Name))
@@ -218,7 +209,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 		w.raw(body)
 		return nil
 
-	case kind == tabletext.KindTable:
+	case kind == ir.TableKindTable:
 		body, err := encodeBody(m, subInstance(m, f, &fv.Cell))
 		if err != nil {
 			return err
@@ -227,7 +218,7 @@ func encodeField(m *tabletext.Model, w *buf, inst *tabletext.Instance, fv *table
 			return nil // an all-default nested table elides
 		}
 		w.u16(id)
-		w.u8(uint8(tabletext.KindTable))
+		w.u8(uint8(ir.TableKindTable))
 		w.u32(uint32(len(body)))
 		w.raw(body)
 		return nil
@@ -267,7 +258,7 @@ func encodeArray(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kin
 		}
 	}
 	w.u16(id)
-	w.u8(uint8(tabletext.KindArray))
+	w.u8(uint8(ir.TableKindArray))
 	w.u32(uint32(len(body.b)))
 	w.raw(body.b)
 	return nil
@@ -285,7 +276,7 @@ func encodeKeyed(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kin
 	for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
 		cell := &fv.Elems[slot]
 		var elem []byte
-		if kind == tabletext.KindTable {
+		if kind == ir.TableKindTable {
 			b, err := encodeBody(m, subInstance(m, f, cell))
 			if err != nil {
 				return err
@@ -322,7 +313,7 @@ func encodeKeyed(m *tabletext.Model, w *buf, fv *tabletext.Field, id uint16, kin
 		return nil
 	}
 	w.u16(id)
-	w.u8(KindKeyed)
+	w.u8(ir.TableKindKeyed)
 	w.u32(uint32(5 + len(body.b)))
 	w.u8(uint8(kind))
 	w.u32(pairs)
@@ -343,17 +334,17 @@ func encodeElement(m *tabletext.Model, w *buf, f *ir.Field, kind int, cell *tabl
 		return nil
 	}
 	switch kind {
-	case tabletext.KindBool:
+	case ir.TableKindBool:
 		if cell.B {
 			w.u8(1)
 		} else {
 			w.u8(0)
 		}
-	case tabletext.KindF32:
+	case ir.TableKindF32:
 		w.u32(math.Float32bits(float32(cell.F)))
-	case tabletext.KindF64:
+	case ir.TableKindF64:
 		w.u64(math.Float64bits(cell.F))
-	case tabletext.KindTable:
+	case ir.TableKindTable:
 		body, err := encodeBody(m, subInstance(m, f, cell))
 		if err != nil {
 			return err

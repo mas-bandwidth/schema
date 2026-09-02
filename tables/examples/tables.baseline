@@ -15,9 +15,20 @@ table Buff
 table Debuff
     field amount id=0x39cc kind=4 default=0
 
+table GlobalSettings
+    field tick_rate id=0x1953 kind=8 default=60
+    field difficulty id=0xd53f kind=7 enum=Difficulty default=Normal
+    field build_note id=0xb2d4 kind=12 size=48
+    field spawn_delays id=0x7c01 kind=14 elem=10 array=fixed bound=3
+
 table GunnerConfig
     field reaction id=0x900f kind=10 default=0.2
     field tracking id=0x53d5 kind=1
+
+table GunnerSettings
+    field reaction id=0x900f kind=10 default=0.2
+    field tracking id=0x53d5 kind=1
+    field callsign id=0x74dc kind=12 size=24
 
 table HullConfig
     field health id=0x8617 kind=10 default=100.0
@@ -37,6 +48,13 @@ table LoadoutConfig
     field primary id=0x05f7 kind=13 type=WeaponConfig
     field backups id=0x1647 kind=14 elem=13 type=WeaponConfig array=fixed bound=2
     field attachments id=0x44d5 kind=14 elem=13 type=Attachment array=bounded bound=8
+
+table PackConfig
+    field version id=0xe8e6 kind=8 default=1
+    field global id=0x1b51 kind=13 type=GlobalSettings
+    field ships id=0x2d39 kind=16 elem=13 type=ShipEntry array=keyed bound=4 key=ShipType
+    field thresholds id=0xb2eb kind=16 elem=4 array=keyed bound=4 key=Difficulty
+    field reserves id=0x049d kind=14 elem=13 type=ShipEntry array=bounded bound=3
 
 table Patrol
     field active id=0x405a kind=1
@@ -69,6 +87,13 @@ table RootConfig
 table ScoreBoard
     field per_team id=0x443f kind=16 elem=4 array=keyed bound=4 key=Team
 
+table ShipEntry
+    field display_name id=0xcb8b kind=12 size=32
+    field health id=0x8617 kind=10 default=100.0
+    field mass id=0xe7a6 kind=10 default=1.0
+    field hardpoints id=0xc4b2 kind=14 elem=4 array=bounded bound=4
+    field gunner id=0x2bc9 kind=13 type=GunnerSettings optional=true
+
 table TeamConfig
     field spawn_count id=0x3668 kind=4 default=4
     field banner id=0x80e4 kind=12 size=16
@@ -91,6 +116,11 @@ table WideBlob
     field payload id=0x44aa kind=14 elem=6 size=70000
     field samples id=0xaf9a kind=14 elem=7 array=bounded bound=70000
 
+enum Difficulty
+    variant Easy id=0x7d08
+    variant Normal id=0x7fac
+    variant Hard id=0xc313
+
 enum Grade
     variant Bronze id=0x3407
     variant Silver id=0xa3e7
@@ -100,6 +130,11 @@ enum Hull
     variant Interceptor id=0xf0f0
     variant Gunship id=0xb534
     variant Freighter id=0xb617
+
+enum ShipType
+    variant Fighter id=0x412b
+    variant Bomber id=0xb7ce
+    variant Scout id=0xd97a
 
 enum Team
     variant Red id=0xbb03
@@ -125,4 +160,7 @@ union Effect
 - baseline created over 15 tables — data written BEFORE this point is not covered by it
 
 ### 2026-09-02 — table Patrol joined the corpus with the text form's guard coverage (#267); the baseline was written before it (#263) and the two landed in sequence
+- no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-02 — schema pack's corpus root (#257): Pack.schema adds PackConfig and its closure — new declarations only, so nothing already written moves
 - no compatibility-affecting edits; the wire absorbs the rest

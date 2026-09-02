@@ -1277,7 +1277,8 @@ your own few lines around them. `unpack` is the inverse, and `unpack` → `pack`
 is byte-stable.
 
 `unpack` writes the expanded shape — one `<field>.json` per field of the root
-and one `<field>/<Variant>.json` per keyed slot — and PRUNES the files it owns
+and one `<field>/<Variant>.json` per keyed slot, or one `<Root>.json` with
+`--one-file` — and PRUNES the files it owns
 and did not write, so a stale value cannot survive into a newer tree. Neither
 verb writes to your `.schema` sources, and both exit nonzero when the read
 report is not silent; `--tolerate` accepts it, `--verbose` prints it either way
