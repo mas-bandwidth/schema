@@ -1,0 +1,24 @@
+// Data.schema — `type` declarations and NOT ONE TABLE.
+//
+// `ArmorConfig` is reachable from a block form's out-of-line array, declared
+// in a file that gets no Block.cs of its own. A backend that emitted a
+// blittable record into its DECLARING file's Block.cs would reference a struct
+// nothing ever wrote. Records are emitted into the block home instead, once
+// per unit (§19.2).
+
+package blockhome
+
+type ArmorPlate
+{
+    thickness float64
+    material  uint32
+    layer     uint8
+}
+
+type ArmorConfig
+{
+    front  ArmorPlate
+    rear   ArmorPlate
+    rating float32
+    tier   uint8
+}

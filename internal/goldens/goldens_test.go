@@ -252,3 +252,50 @@ func pinDir(t *testing.T, dir string, files map[string][]byte) {
 		}
 	}
 }
+
+// TestGoldenBuildVersion pins the BUILD VERSION and the COOK PROJECTION it
+// hashes, per unit (SPEC-TABLES.md §20.8). The number is what a distributed
+// store's tuple is keyed by and what a block's prologue carries, so a change
+// to how it is computed has to break every pinned value loudly — and the TEXT
+// is pinned beside it, so a port reproduces the projection and not only the
+// number.
+//
+// A unit that declares no table is pinned too: its projection is its three
+// header lines alone, which is the case a reader has to be able to check by
+// eye.
+func TestGoldenBuildVersion(t *testing.T) {
+	units := []struct {
+		name string
+		dir  string
+	}{
+		{"examples", corpusDir},
+		{"examples128", corpus128Dir},
+		{"tables-examples", "../../tables/examples"},
+		{"tables-pointers", "../../tables/pointers"},
+		{"tables-block", "../../tables/block"},
+		{"tables-blockhome", "../../tables/blockhome"},
+	}
+	for _, unit := range units {
+		t.Run(unit.name, func(t *testing.T) {
+			u := loadCorpusDir(t, unit.dir)
+			got := fmt.Sprintf("0x%016x\n%s", ir.BuildVersion(u), ir.CookProjection(u))
+			path := filepath.Join(goldenDir, "build-version", unit.name+".txt")
+			if *update {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			want, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("missing golden build version (run: make update-goldens): %v", err)
+			}
+			if got != string(want) {
+				t.Errorf("the build version or its cook projection moved for %s — if the schema files changed this is expected once (re-pin deliberately); if they did not, §20.2's procedure changed and that is stop-the-line", unit.name)
+			}
+		})
+	}
+}

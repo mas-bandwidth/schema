@@ -1,0 +1,184 @@
+// Render.schema — the BLOCK FORM's dogfood corpus (SPEC-TABLES.md §19).
+//
+// This is the per-frame render data a simulation hands its host engine sixty
+// or more times a second: one root of nine bounded arrays over
+// fixed-size row types, each row a flat record of scalars and two nested
+// `type`s. It is the shape §12.1's gate is held to, and its numbers are the
+// ones §19.1 works: with the counts in that table the arrays start at
+// 192 / 320 / 26752 / 84352 / 92992 / 95872 / 495872 / 559872 / 572672 and
+// the used extent is 577,472, and with every array at its declared maximum
+// the storage is 7,879,488 bytes.
+//
+// Field order is largest-alignment-first, so the natural C ABI layout has zero
+// interior padding and the generated C# mirrors are padding-free too. That is
+// a property of THIS declaration, not a requirement: the layout contract
+// generates whatever padding a different order would need (§19.3).
+//
+// RenderShip carries two `bool`s beside its scalars on purpose — the case
+// where C#'s two layout models disagree (§19.3, §19.5), pinned so a port
+// cannot pick the marshalling model and pass.
+
+package blockdemo
+
+const RenderVersion = 1
+
+const MaxCameras       = 1
+const MaxShips         = 4096
+const MaxTurrets       = 1024
+const MaxMissiles      = 4096
+const MaxDynamicProps  = 4096
+const MaxStaticProps   = 20000
+const MaxCosmeticProps = 8192
+const MaxLasers        = 32000
+const MaxExplosions    = 32000
+
+enum Team { Red, Blue, Green, Gold }
+
+enum ShipType { Fighter, Bomber, Freighter }
+
+enum MissileType { Seeker, Dumb }
+
+enum PropType { Rock, Station, Beacon }
+
+enum LaserType { Pulse, Beam }
+
+enum ExplosionType { Small, Large }
+
+flags ShipFlags { FiringLaser, Boosting, Braking, Aiming }
+
+type RenderVector3
+{
+    x float64
+    y float64
+    z float64
+}
+
+type RenderQuaternion
+{
+    x float64
+    y float64
+    z float64
+    w float64 = 1.0
+}
+
+// The root. Nothing here is new, and nothing declares the block form: a scalar
+// and nine ordinary bounded arrays of ordinary fixed tables. Every fixed table
+// has a block form — a THIRD projection beside its wire (§3) and its cook (§7)
+// — emitted on the side in RenderBlock.h / RenderBlock.cs.
+table RenderFrame
+{
+    version        uint64
+    cameras        [..MaxCameras]RenderCamera
+    ships          [..MaxShips]RenderShip
+    turrets        [..MaxTurrets]RenderTurret
+    missiles       [..MaxMissiles]RenderMissile
+    dynamic_props  [..MaxDynamicProps]RenderDynamicProp
+    static_props   [..MaxStaticProps]RenderStaticProp
+    cosmetic_props [..MaxCosmeticProps]RenderCosmeticProp
+    lasers         [..MaxLasers]RenderLaser
+    explosions     [..MaxExplosions]RenderExplosion
+}
+
+table RenderCamera
+{
+    position         RenderVector3
+    rotation         RenderQuaternion
+    camera_id        uint32
+    camera_type      uint32
+    target_object_id uint32
+    fov              float32
+}
+
+table RenderShip
+{
+    position          RenderVector3
+    rotation          RenderQuaternion
+    flags             ShipFlags
+    object_id         uint32
+    target_object_id  uint32
+    thrust            float32
+    object_sequence   uint8
+    ship_type         ShipType
+    team              Team
+    has_target_lock   bool
+    predicted_explode bool
+}
+
+table RenderTurret
+{
+    rotation         RenderQuaternion
+    flags            uint64
+    object_id        uint32
+    parent_object_id uint32
+    turret_index     uint32
+    target_object_id uint32
+    object_sequence  uint8
+    team             Team
+    has_target_lock  bool
+}
+
+table RenderMissile
+{
+    position        RenderVector3
+    rotation        RenderQuaternion
+    flags           uint64
+    object_id       uint32
+    object_sequence uint8
+    missile_type    MissileType
+    team            Team
+}
+
+table RenderDynamicProp
+{
+    position        RenderVector3
+    rotation        RenderQuaternion
+    flags           uint64
+    object_id       uint32
+    object_sequence uint8
+    prop_type       PropType
+    team            Team
+}
+
+table RenderStaticProp
+{
+    position       RenderVector3
+    rotation       RenderQuaternion
+    scale          float64
+    flags          uint64
+    static_prop_id uint32
+    prop_type      PropType
+    team           Team
+}
+
+table RenderCosmeticProp
+{
+    position         RenderVector3
+    rotation         RenderQuaternion
+    scale            float64
+    flags            uint64
+    cosmetic_prop_id uint32
+    prop_sequence    uint8
+    prop_type        PropType
+    team             Team
+}
+
+table RenderLaser
+{
+    start      RenderVector3
+    finish     RenderVector3
+    t          float64
+    laser_id   uint32
+    laser_type LaserType
+    team       Team
+}
+
+table RenderExplosion
+{
+    position         RenderVector3
+    rotation         RenderQuaternion
+    t                float64
+    explosion_id     uint32
+    parent_object_id uint32
+    explosion_type   ExplosionType
+    team             Team
+}

@@ -1,0 +1,43 @@
+// Padded.schema — the block form's PADDING and INLINE-STORAGE corpus
+// (SPEC-TABLES.md §19.3).
+//
+// Render.schema declares its fields largest-alignment-first, so its natural C
+// ABI layout has ZERO interior padding — which is a property of that
+// declaration, not a requirement of the form. This file declares the opposite
+// on purpose: field orders that leave holes, so the C# side's GENERATED
+// PADDING FIELDS are exercised rather than assumed, and so the negative
+// control that deletes them has something to go red on.
+//
+// It also carries the inline storage classes the block form leaves exactly
+// where they are (§2.7, depth one, bounded only): a fixed `[N]T`, an
+// enum-keyed `[E]T`, a string, bytes, and an optional's presence companion.
+// None of those moves out of line; all of them sit in the projection or in a
+// row at their natural offsets, and both sides assert every one.
+
+package blockdemo
+
+const MaxPaddedRows = 64
+
+// A row with holes in it. tag/value leaves seven bytes; flag/id leaves three.
+table PaddedRow
+{
+    tag     uint8
+    value   float64
+    flag    bool
+    id      uint32
+    label   string(15)
+    slots   [4]uint16
+    teams   [Team]uint8
+    counter ?int32
+}
+
+// The frame: a scalar that leaves a hole before the triple, so the PROJECTION
+// itself carries generated padding too — the table at the front of a block is
+// a record like any other (§19.3).
+table PaddedFrame
+{
+    marker uint8
+    stamp  uint64
+    rows   [..MaxPaddedRows]PaddedRow
+    blob   bytes(12)
+}

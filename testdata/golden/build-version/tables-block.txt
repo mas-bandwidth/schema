@@ -1,0 +1,154 @@
+0xb34bc386659d9873
+schema-build-version 1
+protocol 7a706bf2ea47d94b
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record PaddedFrame sizeof=4648 alignof=8
+    field 866f kind=6 offset=0 size=1
+    field 0dc6 kind=9 offset=8 size=8
+    field 99af kind=13 offset=16 size=4612 type=PaddedRow elem=72 array=bounded bound=64
+    field d316 kind=14 offset=4628 size=16 bound=12
+block PaddedFrame sizeof=72 alignof=8
+    slot 866f offset=24 size=1
+    slot 0dc6 offset=32 size=8
+    slot 99af offset=40 size=16 out_of_line stride=72
+    slot d316 offset=56 size=16
+record PaddedRow sizeof=72 alignof=8
+    field bc64 kind=6 offset=0 size=1
+    field 9194 kind=11 offset=8 size=8
+    field 153d kind=1 offset=16 size=1
+    field 5dd8 kind=8 offset=20 size=4
+    field e16a kind=12 offset=24 size=20 bound=15
+    field f4d8 kind=7 offset=44 size=8 elem=2 array=fixed bound=4
+    field 9ae1 kind=6 offset=52 size=5 elem=1 array=keyed bound=5 key=Team
+    field 428f kind=4 offset=60 size=5 optional=true
+record RenderCamera sizeof=72 alignof=8
+    field dd45 kind=13 offset=0 size=24 type=RenderVector3
+    field 60f3 kind=13 offset=24 size=32 type=RenderQuaternion
+    field 25bd kind=8 offset=56 size=4
+    field 9920 kind=8 offset=60 size=4
+    field 38dc kind=8 offset=64 size=4
+    field 392f kind=10 offset=68 size=4
+record RenderCosmeticProp sizeof=80 alignof=8
+    field dd45 kind=13 offset=0 size=24 type=RenderVector3
+    field 60f3 kind=13 offset=24 size=32 type=RenderQuaternion
+    field 9ee6 kind=11 offset=56 size=8
+    field e64b kind=9 offset=64 size=8
+    field 0843 kind=8 offset=72 size=4
+    field 3069 kind=6 offset=76 size=1
+    field e338 kind=7 offset=77 size=1 enum=PropType
+    field dff1 kind=7 offset=78 size=1 enum=Team
+record RenderDynamicProp sizeof=72 alignof=8
+    field dd45 kind=13 offset=0 size=24 type=RenderVector3
+    field 60f3 kind=13 offset=24 size=32 type=RenderQuaternion
+    field e64b kind=9 offset=56 size=8
+    field dc71 kind=8 offset=64 size=4
+    field 57ee kind=6 offset=68 size=1
+    field e338 kind=7 offset=69 size=1 enum=PropType
+    field dff1 kind=7 offset=70 size=1 enum=Team
+record RenderExplosion sizeof=80 alignof=8
+    field dd45 kind=13 offset=0 size=24 type=RenderVector3
+    field 60f3 kind=13 offset=24 size=32 type=RenderQuaternion
+    field ccaf kind=11 offset=56 size=8
+    field 5be0 kind=8 offset=64 size=4
+    field eeb6 kind=8 offset=68 size=4
+    field 98fa kind=7 offset=72 size=1 enum=ExplosionType
+    field dff1 kind=7 offset=73 size=1 enum=Team
+record RenderFrame sizeof=7879320 alignof=8
+    field e8e6 kind=9 offset=0 size=8
+    field 8b0e kind=13 offset=8 size=76 type=RenderCamera elem=72 array=bounded bound=1
+    field 2d39 kind=13 offset=88 size=360452 type=RenderShip elem=88 array=bounded bound=4096
+    field 48ad kind=13 offset=360544 size=65540 type=RenderTurret elem=64 array=bounded bound=1024
+    field a532 kind=13 offset=426088 size=294916 type=RenderMissile elem=72 array=bounded bound=4096
+    field 810b kind=13 offset=721008 size=294916 type=RenderDynamicProp elem=72 array=bounded bound=4096
+    field 55a9 kind=13 offset=1015928 size=1600004 type=RenderStaticProp elem=80 array=bounded bound=20000
+    field 1142 kind=13 offset=2615936 size=655364 type=RenderCosmeticProp elem=80 array=bounded bound=8192
+    field 411a kind=13 offset=3271304 size=2048004 type=RenderLaser elem=64 array=bounded bound=32000
+    field 6bfb kind=13 offset=5319312 size=2560004 type=RenderExplosion elem=80 array=bounded bound=32000
+block RenderFrame sizeof=176 alignof=8
+    slot e8e6 offset=24 size=8
+    slot 8b0e offset=32 size=16 out_of_line stride=72
+    slot 2d39 offset=48 size=16 out_of_line stride=88
+    slot 48ad offset=64 size=16 out_of_line stride=64
+    slot a532 offset=80 size=16 out_of_line stride=72
+    slot 810b offset=96 size=16 out_of_line stride=72
+    slot 55a9 offset=112 size=16 out_of_line stride=80
+    slot 1142 offset=128 size=16 out_of_line stride=80
+    slot 411a offset=144 size=16 out_of_line stride=64
+    slot 6bfb offset=160 size=16 out_of_line stride=80
+record RenderLaser sizeof=64 alignof=8
+    field 61f4 kind=13 offset=0 size=24 type=RenderVector3
+    field 2d84 kind=13 offset=24 size=24 type=RenderVector3
+    field ccaf kind=11 offset=48 size=8
+    field c5ca kind=8 offset=56 size=4
+    field c46a kind=7 offset=60 size=1 enum=LaserType
+    field dff1 kind=7 offset=61 size=1 enum=Team
+record RenderMissile sizeof=72 alignof=8
+    field dd45 kind=13 offset=0 size=24 type=RenderVector3
+    field 60f3 kind=13 offset=24 size=32 type=RenderQuaternion
+    field e64b kind=9 offset=56 size=8
+    field dc71 kind=8 offset=64 size=4
+    field 57ee kind=6 offset=68 size=1
+    field 423a kind=7 offset=69 size=1 enum=MissileType
+    field dff1 kind=7 offset=70 size=1 enum=Team
+record RenderQuaternion sizeof=32 alignof=8
+    field ad8b kind=11 offset=0 size=8
+    field b2f8 kind=11 offset=8 size=8
+    field aca1 kind=11 offset=16 size=8
+    field cd3a kind=11 offset=24 size=8 default=1.0
+record RenderShip sizeof=88 alignof=8
+    field dd45 kind=13 offset=0 size=24 type=RenderVector3
+    field 60f3 kind=13 offset=24 size=32 type=RenderQuaternion
+    field e64b kind=9 offset=56 size=8
+    field dc71 kind=8 offset=64 size=4
+    field 38dc kind=8 offset=68 size=4
+    field 9e51 kind=10 offset=72 size=4
+    field 57ee kind=6 offset=76 size=1
+    field 38e9 kind=7 offset=77 size=1 enum=ShipType
+    field dff1 kind=7 offset=78 size=1 enum=Team
+    field f223 kind=1 offset=79 size=1
+    field 88bd kind=1 offset=80 size=1
+record RenderStaticProp sizeof=80 alignof=8
+    field dd45 kind=13 offset=0 size=24 type=RenderVector3
+    field 60f3 kind=13 offset=24 size=32 type=RenderQuaternion
+    field 9ee6 kind=11 offset=56 size=8
+    field e64b kind=9 offset=64 size=8
+    field 0f74 kind=8 offset=72 size=4
+    field e338 kind=7 offset=76 size=1 enum=PropType
+    field dff1 kind=7 offset=77 size=1 enum=Team
+record RenderTurret sizeof=64 alignof=8
+    field 60f3 kind=13 offset=0 size=32 type=RenderQuaternion
+    field e64b kind=9 offset=32 size=8
+    field dc71 kind=8 offset=40 size=4
+    field eeb6 kind=8 offset=44 size=4
+    field ae10 kind=8 offset=48 size=4
+    field 38dc kind=8 offset=52 size=4
+    field 57ee kind=6 offset=56 size=1
+    field dff1 kind=7 offset=57 size=1 enum=Team
+    field f223 kind=1 offset=58 size=1
+record RenderVector3 sizeof=24 alignof=8
+    field ad8b kind=11 offset=0 size=8
+    field b2f8 kind=11 offset=8 size=8
+    field aca1 kind=11 offset=16 size=8
+enum ExplosionType
+    variant 1 Small
+    variant 2 Large
+enum LaserType
+    variant 1 Pulse
+    variant 2 Beam
+enum MissileType
+    variant 1 Seeker
+    variant 2 Dumb
+enum PropType
+    variant 1 Rock
+    variant 2 Station
+    variant 3 Beacon
+enum ShipType
+    variant 1 Fighter
+    variant 2 Bomber
+    variant 3 Freighter
+enum Team
+    variant 1 Red
+    variant 2 Blue
+    variant 3 Green
+    variant 4 Gold

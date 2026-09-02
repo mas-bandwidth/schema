@@ -4,6 +4,7 @@
 //	schema generate   --lang cpp --out <dir> [dir]   emit generated code
 //	schema id         [dir|files...]                 print the protocol id
 //	schema projection [dir|files...]                 print the wire shape the id hashes
+//	schema build-version [--facts] [dir|files...]    print the build version, or the cook projection it hashes
 //	schema tables-baseline [--update --reason "..."]  print or move the tables baseline
 //	schema fmt        [dir|files...]                 canonicalize schema files in place
 //	schema pack       --root T --out F <dir>         a directory tree becomes one table's wire bytes
@@ -76,6 +77,21 @@ func main() {
 		// and that is a review question, not an implementation detail.
 		unit := loadUnit(c, os.Args[2:])
 		fmt.Print(ir.WireProjection(unit))
+	case "build-version":
+		// THE BUILD VERSION (SPEC-TABLES.md §20.7): everything cooked or
+		// blocked is keyed by it, and the store's tuple is (asset hash, build
+		// version). --facts prints the COOK PROJECTION it hashes, in the
+		// tradition of `schema projection`: the facts are printable, readable
+		// and diffable, or a fact missing from them is invisible.
+		fs := flag.NewFlagSet("build-version", flag.ExitOnError)
+		facts := fs.Bool("facts", false, "print the cook projection the build version hashes")
+		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		unit := loadUnit(c, fs.Args())
+		if *facts {
+			fmt.Print(ir.CookProjection(unit))
+			break
+		}
+		fmt.Printf("0x%016x\n", ir.BuildVersion(unit))
 	case "tables-baseline":
 		// The TABLES BASELINE (SPEC-TABLES.md §18). Printing is the default:
 		// the same canonical projection the committed file holds, so a
@@ -326,6 +342,7 @@ func usage() {
   schema generate   [--lang c|cpp|cs|dart|elixir|go|java|js|rust] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
+  schema build-version [--facts] [dir|files...]
   schema tables-baseline [--update --reason "..."] [--verbose] [dir|files...]
   schema fmt        [--verbose] [dir|files...]
   schema pack       --root <Table> --out <file> [--tolerate] [--verbose] <tree-dir> [dir|files...]

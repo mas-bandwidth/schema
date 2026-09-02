@@ -1752,6 +1752,23 @@ func (c *checker) checkTables() {
 		// object, exactly as colliding ids are on the wire — refused once,
 		// naming both, whether the collision comes from a `json` attribute
 		// or from an attribute meeting a plain field name.
+		// The BLOCK FORM's generated PROLOGUE (SPEC-TABLES.md §19.1): every
+		// fixed table's block projection opens with `magic`,
+		// `build_version` and `byte_order`, generated exactly as an optional's `_present`
+		// companion is — so a field may not be named after either half. The
+		// claim is on EVERY table, not only the ones that have the form
+		// today: a table gains and loses the form as its closure gains and
+		// loses a pointer, and a name that was free yesterday must not become
+		// a collision tomorrow (§11).
+		if st.IsTable {
+			for _, f := range st.Fields {
+				if f.Name == "magic" || f.Name == "build_version" || f.Name == "byte_order" {
+					c.errf(pos, "table %s: field %s collides with the block form's generated prologue — `magic`, `build_version` and `byte_order` open every block projection, as `<field>_present` is generated beside an optional's value; rename the field (SPEC-TABLES.md §19.1, §11)",
+						name, f.Name)
+				}
+			}
+		}
+
 		seenKey := map[string]*ir.Field{}
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
@@ -2630,6 +2647,23 @@ func (c *checker) checkClaimedNames() {
 			// a table generates its storage struct plus the Table codec and
 			// descriptor family — no packet-wire symbols (SPEC-TABLES.md)
 			c.addTableSymbols(add, name, d.DeclPos())
+			// A BLOCK-FORM table claims two more per out-of-line array,
+			// because its row accessors are named after its fields: <Table>
+			// followed by the PascalCase of the field's name hands back that
+			// field's rows, and the same name with `Span` appended is the
+			// contiguous view (§11, §19.2). This part of the set moves with
+			// the declaration, which is why §11 states it as a rule.
+			if st := c.tables[name]; st != nil {
+				why := fmt.Sprintf("%s's generated block row accessors (SPEC-TABLES.md §11, §19.2)", name)
+				for _, f := range st.Fields {
+					if !ir.BlockOutOfLine(f) {
+						continue
+					}
+					accessor := name + ir.GoExportName(f.Name)
+					add(accessor, why, d.DeclPos())
+					add(accessor+"Span", why, d.DeclPos())
+				}
+			}
 		}
 	}
 }
@@ -2658,12 +2692,17 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // claimed for EVERY closure member, not only pointer-bearing ones: a table
 // gains or loses pointers as an edit, and a name that was free yesterday must
 // not become a collision tomorrow (SPEC-TABLES.md).
+// The BLOCK spellings are claimed on the same terms: nothing declares the
+// block form, every fixed table has one, and a table gains and loses the form
+// as its closure gains and loses a pointer — so a name that was free yesterday
+// must not become a collision tomorrow (§11).
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
 	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
 	"At", "Root", "Emplace", "Pack", "PackMeasure", "OpenWalk",
 	"Cook", "CookMeasure", "Open", "LayoutId", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
+	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 }
 
 // tableBuilderMembers are the member names of a generated <Name>Builder. A

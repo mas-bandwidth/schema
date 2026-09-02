@@ -1,0 +1,17 @@
+// Constants.schema — the PROTOCOL ID's home, and it declares no table.
+//
+// This is the ordinary shape of a real unit and it is what the dogfood has:
+// the constants live in their own file, that file sorts first, and
+// `ir.ProtocolIdHome` therefore names a file with no `table` in it. A C#
+// backend that emitted the unit's shared block runtime into the PROTOCOL ID's
+// home would emit it into a file it never writes, and nothing in the unit's
+// block output would compile — every reference to the runtime undefined.
+//
+// The runtime goes to the BLOCK HOME instead: the first file that declares a
+// table with a block form (§19.2). This file is here to make that a corpus
+// fact rather than a claim.
+
+package blockhome
+
+const MaxParts  = 32
+const MaxPlates = 4

@@ -69,10 +69,14 @@ func tablePut(width int) string { return fmt.Sprintf("put%d", width*8) }
 func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
 
 type tableGen struct {
-	unit           *ir.Unit
-	file           *ir.File
-	anyVariable    bool            // the unit declares at least one variable-length table
-	anyKeyed       bool            // the unit declares at least one enum-keyed array
+	unit        *ir.Unit
+	file        *ir.File
+	anyVariable bool // the unit declares at least one variable-length table
+	anyKeyed    bool // the unit declares at least one enum-keyed array
+	// blocks is the unit's BLOCK FORM surface (SPEC-TABLES.md §19), nil when
+	// no table is marked `| block`. Nil is what makes the zero-cost gate
+	// answerable by asking one question (§2.2).
+	blocks         *ir.BlockUnit
 	owner          *ir.Struct      // the closure member whose codec is being emitted
 	variable       map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
 	targets        map[string]bool // tables some pointer targets (ir.PointerTargets)
@@ -460,9 +464,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	targets := ir.PointerTargets(u)
 	anyVariable := len(variable) > 0
 	anyKeyed := unitHasKeyedArray(u, closure)
-	out := map[string][]byte{}
+	blocks := ir.Blocks(u)
+
+	// The BLOCK FORM (SPEC-TABLES.md §19) is emitted ON THE SIDE, into
+	// <Base>Block.h and <Base>Block.cpp: nothing declares it, every fixed
+	// table has one, and a consumer includes and compiles it only if it uses
+	// the form. The Table header below carries not one symbol of it.
+	out := generateBlockFiles(u, blocks, variable, targets)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, variable: variable, targets: targets,
+		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -603,7 +613,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			c.WriteString("#include <clocale> // the text form: the runtime's decimal point\n\n")
 			c.WriteString(tableJsonWalk(u.Package))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
-			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, variable: variable, targets: targets,
+			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, blocks: blocks, variable: variable, targets: targets,
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
 			for _, st := range members {
 				cg.emitJsonDefinitions(st)

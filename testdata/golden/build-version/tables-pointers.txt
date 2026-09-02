@@ -1,0 +1,59 @@
+0x40e82dc861c4fcd3
+schema-build-version 1
+protocol 79242c6a555d3a60
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record Album sizeof=76 alignof=4
+    field 30df kind=12 offset=0 size=24 bound=16
+    field 82b9 kind=13 offset=24 size=3 type=Colour
+    field 0dc6 kind=13 offset=28 size=20 type=Stamp
+    field 866f kind=13 offset=48 size=20 type=Marker
+    field 69d5 kind=17 offset=68 size=4 type=Marker
+    field 79aa kind=17 offset=72 size=4 type=ListNode
+record Colour sizeof=3 alignof=1
+    field b019 kind=6 offset=0 size=1
+    field c40a kind=6 offset=1 size=1
+    field cae9 kind=6 offset=2 size=1
+record Depot sizeof=72 alignof=4
+    field 30df kind=12 offset=0 size=20 bound=12
+    field 7f34 kind=13 offset=20 size=24 type=Layer elem=8 array=keyed bound=3 key=Tier
+    field 3a4f kind=13 offset=44 size=21 type=Meta optional=true
+    field 79aa kind=17 offset=68 size=4 type=ListNode
+record Layer sizeof=8 alignof=4
+    field 609f kind=4 offset=0 size=4 default=0 min=0 max=64
+    field 79aa kind=17 offset=4 size=4 type=ListNode
+record ListNode sizeof=28 alignof=4
+    field 9194 kind=4 offset=0 size=4
+    field 30df kind=12 offset=4 size=20 bound=12
+    field d15e kind=17 offset=24 size=4 type=ListNode
+record Marker sizeof=20 alignof=4
+    field e16a kind=12 offset=0 size=16 bound=8
+    field 9da7 kind=17 offset=16 size=4 type=Tally
+record Meta sizeof=20 alignof=4
+    field 3138 kind=4 offset=0 size=4 default=1 min=0 max=1000
+    field bc64 kind=12 offset=4 size=16 bound=8
+record Scene sizeof=116 alignof=4
+    field 30df kind=12 offset=0 size=32 bound=24
+    field e8e6 kind=4 offset=32 size=4 default=1 min=0 max=99
+    field 79aa kind=17 offset=36 size=4 type=ListNode
+    field 595e kind=17 offset=40 size=4 type=TreeNode
+    field 130e kind=17 offset=44 size=4 type=Settings
+    field fc71 kind=17 offset=48 size=4 type=ListNode
+    field 5bdf kind=13 offset=52 size=8 type=Layer
+    field 1ee8 kind=13 offset=60 size=36 type=Layer elem=8 array=bounded bound=4
+    field cea6 kind=13 offset=96 size=20 type=Meta
+record Settings sizeof=28 alignof=4
+    field caf3 kind=4 offset=0 size=4 default=2 min=0 max=4
+    field e16a kind=12 offset=4 size=24 bound=16
+record Stamp sizeof=20 alignof=4
+    field bc64 kind=12 offset=0 size=16 bound=8
+    field c29b kind=4 offset=16 size=4 default=0 min=0 max=1000
+record Tally sizeof=4 alignof=4
+    field b723 kind=4 offset=0 size=4 default=0 min=0 max=10000
+record TreeNode sizeof=28 alignof=4
+    field e16a kind=12 offset=0 size=20 bound=12
+    field fe3a kind=17 offset=20 size=4 type=TreeNode
+    field 5506 kind=17 offset=24 size=4 type=TreeNode
+enum Tier
+    variant 1 Low
+    variant 2 High

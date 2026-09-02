@@ -110,3 +110,23 @@ paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
 # ---------------------------------------------------------------------------
 
 timing internal/baseline/file.go 1 the history entry's calendar date — a day written into a text log, no interval measured (prose)
+
+# ---------------------------------------------------------------------------
+# GATE 2 — the spec's own MEASURED gate (SPEC-TABLES.md §12.1).
+#
+# The one-benchmark rule is about the SERIALIZE benchmark: nine hand-written
+# approximations of one measurement, drifting apart. These two files measure
+# something else entirely and measure it once, in one place, on both sides of
+# one boundary — the block form's per-frame C++ WRITE and per-frame C# READ,
+# each against the hand-written form it replaces, which is the bar §12.1 sets
+# and the evidence that decides whether tables earn the render data at all.
+#
+# They are not `make test`; they are `make tables-block-gate2`, run under the
+# bench rules (gated goldens first — each half refuses to bench on a mismatch
+# — arms interleaved in one sitting, medians paired). The shapes they name are
+# the block corpus's, not bench/corpus's, so the NAMES check does not fire;
+# only the clock does, and the clock is the point.
+# ---------------------------------------------------------------------------
+
+timing test/tables/block_gate2_main.cpp 6 gate 2's C++ half (§12.1): the per-frame write, generated against the hand-written scatter
+timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame read, generated against the hand mirror

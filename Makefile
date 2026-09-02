@@ -64,12 +64,17 @@ BEAM_PATH ?= $(CURDIR)/dist/otp-29.0.5/bin:$(CURDIR)/dist/elixir-1.20.4/bin
 ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
 MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
 
-GO_SOURCES   := $(shell find cmd internal -name '*.go') go.mod
+# cmd, internal, AND the public API packages: ir/ and compiler/ are compiled
+# into bin/schema like any other source, and leaving them out made an edit to
+# the layout model or the build version silently NOT rebuild the compiler every
+# gate below then measures.
+GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
 SCHEMAS_TABLES := $(wildcard tables/examples/*.schema)
 SCHEMAS_TABLES_POINTERS := $(wildcard tables/pointers/*.schema)
+SCHEMAS_TABLES_BLOCK := $(wildcard tables/block/*.schema) $(wildcard tables/blockhome/*.schema)
 
 all: bin/schema
 
@@ -207,6 +212,8 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 define tables_generate
 	$(1) generate --lang cpp --out $(2)/examples tables/examples
 	$(1) generate --lang cpp --out $(2)/pointers tables/pointers
+	$(1) generate --lang cpp --out $(2)/block tables/block
+	$(1) generate --lang cpp --out $(2)/blockhome tables/blockhome
 	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
@@ -215,10 +222,10 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema
 endef
 
-tables_includes = -I$(1)/examples -I$(1)/pointers -Itest/tables \
+tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -285,9 +292,11 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 # build/ — test-only, never part of the committed generated/ tree. The full
 # unit is generated (packet .cs + <Base>Table.cs), because a table's closure
 # decodes into the packet emitter's own classes.
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
+	./bin/schema generate --lang cs --out build/tables-generated-cs/block tables/block
+	./bin/schema generate --lang cs --out build/tables-generated-cs/blockhome tables/blockhome
 	./bin/schema generate --lang cs --out build/tables-generated-cs/v1 test/tables/V1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/v2 test/tables/V2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/p1 test/tables/P1.schema
@@ -323,6 +332,320 @@ tables-cs-refuses-pointers: bin/schema
 	@grep -q "variable class is a named follow-on" build/tables-cs-refusal.log || \
 		{ echo "REFUSAL GATE FAILED: the refusal does not name the follow-on"; cat build/tables-cs-refusal.log; exit 1; }
 	@echo "tables C# refusal gate: a pointered unit is refused by name"
+
+# ---------------------------------------------------------------------------
+# The BLOCK FORM (SPEC-TABLES.md §19). Nothing declares it: every fixed table
+# has one, emitted on the side into <Base>Block.h/.cpp and <Base>Block.cs, and
+# a consumer compiles those only if it uses the form.
+# ---------------------------------------------------------------------------
+
+BLOCK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -pthread
+BLOCK_INCLUDES := -Ibuild/tables-generated/block
+BLOCK_SOURCES = $$(ls build/tables-generated/block/*Block.cpp)
+
+build/schema_test_block: build/tables-generated/.stamp test/tables/block_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) test/tables/block_main.cpp $(BLOCK_SOURCES) -o $@
+
+# The SANITIZED twin (#277's rule). The block form is where a multi-threaded
+# fill over disjoint index ranges lives, and a race in that fill is precisely
+# what a sanitizer leg exists to find — -Werror cannot see one.
+# -fno-sanitize-recover=all is what makes it a GATE.
+build/schema_test_block_asan: build/tables-generated/.stamp test/tables/block_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g $(BLOCK_INCLUDES) test/tables/block_main.cpp $(BLOCK_SOURCES) -o $@
+
+# The THREADSANITIZER twin. §19.5 says the multi-threaded fill runs "under the
+# sanitizer leg, where a race in the fill is what the leg exists to find" — and
+# ASan is not that leg: it finds no races, and byte-identity between a serial
+# fill and a DETERMINISTIC four-worker fill finds none either. This is the leg
+# that can. It costs under a second, so it rides beside the other two rather
+# than waiting for a nightly.
+build/schema_test_block_tsan: build/tables-generated/.stamp test/tables/block_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) -fsanitize=thread -fno-sanitize-recover=all -g \
+		$(BLOCK_INCLUDES) test/tables/block_main.cpp $(BLOCK_SOURCES) -o $@
+
+# Its NEGATIVE CONTROL, because a green TSan run otherwise proves only that the
+# leg ran: --race has every worker write ONE row, after a start barrier, many
+# times, and the leg must go red on the write-write race that creates.
+#
+# Overlapping RANGES would be a race too, and that is what this control did at
+# first — but whether a sanitizer observes one then depends on how the machine
+# happened to schedule four threads over seven thousand rows, and it passed on
+# this bench and failed on CI's. Contending on one address from threads that
+# start together is the same defect made certain, which is what a control has
+# to be.
+.PHONY: tables-block-race-negative-control
+tables-block-race-negative-control: build/schema_test_block_tsan
+	@if ./build/schema_test_block_tsan --race > build/block-race.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: ThreadSanitizer did not see overlapping workers writing one row"; exit 1; \
+	fi
+	@grep -q "ThreadSanitizer: data race" build/block-race.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on a data race"; tail -20 build/block-race.log; exit 1; }
+	@echo "block race negative control: overlapping workers turn the ThreadSanitizer leg red"
+
+# THE TWO-LANGUAGE GATE (SPEC-TABLES.md §19.5, §12.1): a C++ producer writes a
+# block and pins its bytes; a C# consumer opens those very bytes and compares
+# every field of every row, twice — through the generated blittable struct and
+# through the block descriptors. Sizes and offsets are asserted by GENERATED
+# code on both sides, so the pair proves the two agree on the BYTES and not
+# merely on the constants.
+.PHONY: tables-block
+tables-block: build/schema_test_block build/schema_test_block_asan build/schema_test_block_tsan build/tables-generated-cs/.stamp
+	./build/schema_test_block
+	./build/schema_test_block_asan
+	./build/schema_test_block_tsan
+	cd test/cs-block && dotnet run
+
+# THE BLOCK ZERO-COST GATE (SPEC-TABLES.md §2.2, §19), in its two halves.
+#
+# The first asks "did any block symbol leak into a Table source?" — a grep.
+# The second is the property §19 actually states, and it is the stronger one:
+# **the Table sources are BYTE-IDENTICAL with or without the Block files
+# existing.** The pins under testdata/golden/tables/ were written by the
+# PRE-BLOCK compiler (schema at f55e711, before this branch's emitters), so
+# the comparison is against a build that could not emit a Block file at all
+# rather than against this branch's own output. That is what makes it a proof
+# rather than a restatement.
+#
+# They are ordinary goldens from here on: `make update-goldens` re-pins them
+# when a TABLE emitter legitimately changes, and a move under an unchanged
+# emitter is stop-the-line, exactly as it is for every other golden.
+.PHONY: tables-block-zero-cost
+tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp
+	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
+	          build/tables-generated-cs/*/*Table.cs; do \
+		if grep -nE "TableBlock|[A-Za-z0-9_]Block|BuildVersion" $$f; then \
+			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
+		fi; \
+	done
+	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
+	@n=0; d=0; \
+	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
+	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* ; do \
+		dir=$$(basename $$(dirname $$f)); \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
+	for f in testdata/golden/tables/examples-cs/*Table.cs; do \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated-cs/examples/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
+	for f in testdata/golden/tables/block-cs/*Table.cs; do \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated-cs/block/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
+	for f in testdata/golden/tables/blockhome-cs/*Table.cs; do \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated-cs/blockhome/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
+	if [ "$$d" != "0" ]; then exit 1; fi; \
+	if [ "$$n" -lt 38 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 38 — the glob, not the property, is what broke"; exit 1; fi; \
+	echo "block zero-cost gate: $$n Table sources byte-identical to the pins the PRE-BLOCK compiler wrote"
+
+# THE BUILD VERSION IS ONE NUMBER (SPEC-TABLES.md §20.7): the constant each
+# backend emits, and the number `schema build-version` prints, are the same
+# number or the tuple a store is indexed by means two different things. The
+# projection it hashes is pinned beside it as a golden, so a change to how it
+# is computed breaks every pinned value loudly.
+.PHONY: tables-block-build-version
+tables-block-build-version: bin/schema build/tables-generated/.stamp build/tables-generated-cs/.stamp
+	@v=$$(./bin/schema build-version tables/block); \
+		grep -q "inline constexpr uint64_t BuildVersion = $${v}ull;" build/tables-generated/block/RenderBlock.h || \
+			{ echo "BUILD VERSION GATE FAILED: the C++ constant is not $$v"; exit 1; }; \
+		grep -q "public const ulong BuildVersion = $${v}UL;" build/tables-generated-cs/block/*Block.cs || \
+			{ echo "BUILD VERSION GATE FAILED: the C# constant is not $$v"; exit 1; }; \
+		echo "block build-version gate: schema build-version, the C++ constant and the C# constant are all $$v"
+
+# THE FILL REFUSER (SPEC-TABLES.md §19.1, §19.5). The multi-threaded fill is an
+# OBLIGATION on the implementation, not a permission to the caller: the
+# generated fill path — Begin, the array accessors and the row storage they
+# hand back — contains no allocation, no lock and no atomic, and the BUILD
+# FAILS if one appears. This reads the generated SOURCE between the fill path's
+# own markers; test/tables/block_main.cpp watches the RUNNING program with a
+# global operator-new counter, and the two together are what the obligation
+# stands on.
+BLOCK_FORBIDDEN := malloc|calloc|realloc|operator new|[^_a-zA-Z]new |std::mutex|std::lock_guard|std::unique_lock|std::atomic|std::thread|pthread_|__atomic
+
+.PHONY: tables-block-fill-refuser
+tables-block-fill-refuser: build/tables-generated/.stamp
+	@rm -rf build/block-fill && mkdir -p build/block-fill
+	@for f in build/tables-generated/*/*Block.h; do \
+		out=build/block-fill/$$(echo $$f | tr / _); \
+		awk '/---- block fill path: begin ----/,/---- block fill path: end ----/' $$f > $$out; \
+		regions=$$(grep -c "block fill path: begin ----" $$f || true); \
+		ends=$$(grep -c "block fill path: end ----" $$f || true); \
+		begins=$$(grep -c "^inline bool .*BlockBegin(" $$f || true); \
+		lines=$$(wc -l < $$out | tr -d ' '); \
+		if [ "$$regions" != "$$ends" ] || [ "$$regions" != "$$begins" ]; then \
+			echo "FILL REFUSER FAILED: $$f has $$regions begin markers, $$ends end markers and $$begins Begin functions — the markers, not the property, are what broke"; exit 1; \
+		fi; \
+		if [ "$$lines" -lt $$(( 40 * $$regions )) ]; then \
+			echo "FILL REFUSER FAILED: $$f extracted $$lines lines for $$regions fill paths — the markers, not the property, are what broke"; exit 1; \
+		fi; \
+	done
+	@if grep -nE "$(BLOCK_FORBIDDEN)" build/block-fill/*; then \
+		echo "FILL REFUSER FAILED: the generated fill path allocates, locks or takes an atomic (SPEC-TABLES.md §19.1)"; exit 1; \
+	fi
+	@echo "block fill refuser: the generated fill path allocates nothing, locks nothing, takes no atomic"
+
+# NEGATIVE CONTROL ONE (the brief's (a)): the fill refuser above must be
+# CAPABLE of going red. An allocation and a lock are injected into a generated
+# fill path, and the gate must refuse. A green gate proves nothing until it has
+# been shown able to fail.
+.PHONY: tables-block-fill-refuser-negative-control
+tables-block-fill-refuser-negative-control: build/tables-generated/.stamp
+	@rm -rf build/block-fill-sabotage && mkdir -p build/block-fill-sabotage
+	@cp build/tables-generated/block/RenderBlock.h build/block-fill-sabotage/
+	@sed -i.bak 's|// ---- block fill path: begin ----|// ---- block fill path: begin ----\n// sabotaged: static std::mutex lock; void * p = malloc( 1 );|' \
+		build/block-fill-sabotage/RenderBlock.h
+	@grep -q "sabotaged: static std::mutex" build/block-fill-sabotage/RenderBlock.h || \
+		{ echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@awk '/---- block fill path: begin ----/,/---- block fill path: end ----/' \
+		build/block-fill-sabotage/RenderBlock.h > build/block-fill-sabotage/region
+	@if grep -qE "$(BLOCK_FORBIDDEN)" build/block-fill-sabotage/region; then \
+		echo "block fill refuser negative control: the gate goes red on an injected lock and allocation"; \
+	else \
+		echo "NEGATIVE CONTROL FAILED: the fill refuser did not see an injected lock and allocation"; exit 1; \
+	fi
+
+# NEGATIVE CONTROL THREE (the brief's (c)): the C# side's GENERATED PADDING
+# FIELDS are load-bearing, not decoration. Delete them from one padded record
+# and the generated layout check must go red — every field after the hole lands
+# at the wrong offset, which is exactly what §19.3 says Size alone cannot pin.
+.PHONY: tables-block-padding-negative-control
+tables-block-padding-negative-control: build/tables-generated-cs/.stamp
+	@rm -rf build/block-padding-sabotage && cp -R build/tables-generated-cs/block build/block-padding-sabotage
+	@sed -i.bak '/private byte _pad/d' build/block-padding-sabotage/PaddedBlock.cs
+	@grep -q "private byte _pad" build/block-padding-sabotage/PaddedBlock.cs && \
+		{ echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; } || true
+	@rm -f build/block-padding-sabotage/*.bak
+	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-padding-sabotage ) \
+		> build/block-padding-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C# layout check passed with the padding fields deleted"; \
+		cat build/block-padding-sabotage.log; exit 1; \
+	fi
+	@grep -q "schema block layout" build/block-padding-sabotage.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the failure was not the layout check"; cat build/block-padding-sabotage.log; exit 1; }
+	@echo "block padding negative control: deleting the generated padding fields turns the layout check red"
+
+# §19.5's FIRST named negative control: "perturb one row type's pitch constant
+# on one side only and the two-language test goes red". The constant is the C#
+# side's ShipsStride, which the generated layout check asserts against this
+# runtime's own sizeof — so a constant that drifted from the row it describes
+# is caught where the drift would matter, and the control proves the assert is
+# not inert.
+.PHONY: tables-block-pitch-negative-control
+tables-block-pitch-negative-control: build/tables-generated-cs/.stamp
+	@rm -rf build/block-pitch-sabotage && cp -R build/tables-generated-cs/block build/block-pitch-sabotage
+	@sed -i.bak 's|public const long ShipsStride = 88;|public const long ShipsStride = 96; // SABOTAGED|' \
+		build/block-pitch-sabotage/RenderBlock.cs
+	@grep -q "SABOTAGED" build/block-pitch-sabotage/RenderBlock.cs || \
+		{ echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@rm -f build/block-pitch-sabotage/*.bak
+	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-pitch-sabotage ) \
+		> build/block-pitch-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C# side accepted a pitch constant that is not its row's sizeof"; \
+		cat build/block-pitch-sabotage.log; exit 1; \
+	fi
+	@grep -q "ShipsStride" build/block-pitch-sabotage.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the pitch constant"; cat build/block-pitch-sabotage.log; exit 1; }
+	@echo "block pitch negative control: a pitch constant perturbed on ONE side turns the C# layout check red"
+
+# §19.5's SECOND named negative control: "perturb one field's offset in the
+# compiler's layout model and the generated asserts go red on both backends".
+# This one reaches past the emitters into ir.layoutRecord, so it proves the
+# thing the other controls cannot: that the asserts check the COMPILER's model
+# rather than restating whatever the target compiler already said.
+#
+# The sabotaged compiler reaches the build through `go build -overlay`, so no
+# tracked file is ever written to — the same mechanism the big-endian negative
+# control uses, and for the same reason.
+.PHONY: tables-block-layout-model-negative-control
+tables-block-layout-model-negative-control: bin/schema
+	@mkdir -p build
+	@sed 's|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start, Size: offset - start, Align: fieldAlign})|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start + 8, Size: offset - start, Align: fieldAlign}) // SABOTAGED: one field, moved|' \
+		ir/blocklayout.go > build/blocklayout-moved.gotext
+	@cmp -s build/blocklayout-moved.gotext ir/blocklayout.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/ir/blocklayout.go":"%s/build/blocklayout-moved.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/blocklayout-overlay.json
+	@go build -overlay=build/blocklayout-overlay.json -o build/schema-layout-moved ./cmd/schema
+	@rm -rf build/block-model-sabotage && mkdir -p build/block-model-sabotage/cpp build/block-model-sabotage/cs
+	@./build/schema-layout-moved generate --lang cpp --out build/block-model-sabotage/cpp tables/block
+	@./build/schema-layout-moved generate --lang cs --out build/block-model-sabotage/cs tables/block
+	@if $(CXX) $(BLOCK_CXXFLAGS) -fsyntax-only -Ibuild/block-model-sabotage/cpp \
+		build/block-model-sabotage/cpp/RenderBlock.cpp > build/block-model-cpp.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: C++ accepted a moved offset from the compiler's model"; exit 1; \
+	fi
+	@grep -q "static_assert" build/block-model-cpp.log || \
+		{ echo "NEGATIVE CONTROL FAILED: C++ went red, but not on a layout static_assert"; cat build/block-model-cpp.log; exit 1; }
+	@echo "block layout-model negative control (C++): a moved offset in the compiler's model turns the static_asserts red"
+	@if ( cd test/cs-block && dotnet run -p:BlockGeneratedDir=../../build/block-model-sabotage/cs ) \
+		> build/block-model-cs.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: C# accepted a moved offset from the compiler's model"; \
+		cat build/block-model-cs.log; exit 1; \
+	fi
+	@grep -q "schema block layout" build/block-model-cs.log || \
+		{ echo "NEGATIVE CONTROL FAILED: C# went red, but not on the layout check"; cat build/block-model-cs.log; exit 1; }
+	@echo "block layout-model negative control (C#): the same moved offset turns the once-run layout check red"
+
+# THE BLOCK HOME's NEGATIVE CONTROL (SPEC-TABLES.md §19.2's C# surface). The
+# dogfood found two defects with one root cause — a C# backend that emitted per
+# DECLARING FILE and skipped a file with no `table` in it: the unit's shared
+# runtime went to the PROTOCOL ID's home, which declares no table in any real
+# unit, and a blittable record went to its declaring file's Block.cs, which is
+# never written when that file declares only `type`s. Neither produced a
+# diagnostic; both produced a unit that does not compile.
+#
+# tables/blockhome has exactly that shape, and test/cs-block compiles it. This
+# puts the defect back — through `go build -overlay`, so no tracked file is
+# written — and requires the compile to FAIL.
+.PHONY: tables-block-home-negative-control
+tables-block-home-negative-control: bin/schema
+	@mkdir -p build
+	@sed -e 's|home := blockHome(u, blocks)|home := ir.ProtocolIdHome(u) // SABOTAGED|' \
+	     -e 's|if len(f.Tables) == 0 \&\& f.Base != home {|if len(f.Tables) == 0 {|' \
+		internal/codegen/cstable/block.go > build/csblock-declaring-file.gotext
+	@cmp -s build/csblock-declaring-file.gotext internal/codegen/cstable/block.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cstable/block.go":"%s/build/csblock-declaring-file.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/csblock-overlay.json
+	@go build -overlay=build/csblock-overlay.json -o build/schema-csblock-sabotaged ./cmd/schema
+	@rm -rf build/blockhome-sabotage && mkdir -p build/blockhome-sabotage
+	@./build/schema-csblock-sabotaged generate --lang cs --out build/blockhome-sabotage tables/blockhome
+	@if ( cd test/cs-block && dotnet build -v q --nologo -p:BlockHomeGeneratedDir=../../build/blockhome-sabotage ) \
+		> build/blockhome-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the unit compiled with its block runtime emitted into a file nothing writes"; \
+		cat build/blockhome-sabotage.log; exit 1; \
+	fi
+	@grep -qE "CS0103|CS0234|CS0246" build/blockhome-sabotage.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on an undefined name"; tail -20 build/blockhome-sabotage.log; exit 1; }
+	@echo "block home negative control: emitting the runtime into the protocol id's home leaves the unit uncompilable"
+
+# GATE 2 (SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
+# part of `make test` on purpose — a correctness suite whose verdict depends on
+# the machine's mood is not a correctness suite, and the estate's bench rules
+# want one bench at a time per machine and a quiet window.
+#
+# The C++ half writes the representative frame it measured into
+# build/block_gate2.bin and the C# half reads THE SAME BYTES, so the two
+# numbers are taken over one frame rather than over two descriptions of one.
+# Each half runs its own golden gate first and REFUSES to bench on a mismatch.
+build/schema_test_block_gate2: build/tables-generated/.stamp test/tables/block_gate2_main.cpp
+	@mkdir -p build
+	$(CXX) -O2 $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) test/tables/block_gate2_main.cpp $(BLOCK_SOURCES) -o $@
+
+.PHONY: tables-block-gate2
+tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
+	./build/schema_test_block_gate2
+	cd test/cs-block && dotnet run -c Release -- --gate2
 # The NEGATIVE CONTROL for a KEYED object's duplicate counting
 # (SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
 # the missing count was invisible to every round-trip test — the value was
@@ -450,8 +773,20 @@ build/schema_test_cook_endian_be: build/tables-generated/.stamp test/tables/cook
 	@mkdir -p build
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/cook_endian_main.cpp -o $@
 
+# The cross-endian BLOCK driver, built both ways for the same reason the cook
+# driver is: a block is produced in the byte order of the build that wrote it,
+# and every other block test in this tree runs producer and consumer in one
+# process. This is the one part of §19.1 that needs two builds and a file.
+build/schema_test_block_endian: build/tables-generated/.stamp test/tables/block_endian_main.cpp
+	@mkdir -p build
+	$(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
+
+build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/block_endian_main.cpp
+	@mkdir -p build
+	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
+
 .PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_cook_endian build/schema_test_cook_endian_be
+tables-big-endian: build/schema_test_tables_be build/schema_test_cook_endian build/schema_test_cook_endian_be build/schema_test_block_endian build/schema_test_block_endian_be
 	$(BE_RUN) ./build/schema_test_tables_be
 	./build/schema_test_cook_endian write build/cook-host.bin
 	$(BE_RUN) ./build/schema_test_cook_endian_be write build/cook-target.bin
@@ -460,6 +795,13 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_cook_endian bui
 	./build/schema_test_cook_endian accept build/cook-host.bin
 	./build/schema_test_cook_endian refuse build/cook-target.bin
 	@echo "big-endian leg: the wire crosses the byte order, the cook refuses to"
+	./build/schema_test_block_endian write build/block-host.bin
+	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
+	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
+	$(BE_RUN) ./build/schema_test_block_endian_be refuse build/block-host.bin
+	./build/schema_test_block_endian accept build/block-host.bin
+	./build/schema_test_block_endian refuse build/block-target.bin
+	@echo "big-endian leg: a block does not cross the byte order either — the magic refuses it and the prologue's word names the order that wrote it"
 
 # Its NEGATIVE CONTROL. Put ONE of the wire's byte-order-neutral stores back to
 # a host-order copy — put16, which writes every field id, every enum value and
@@ -787,7 +1129,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables
@@ -800,6 +1142,16 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/p
 	cd test/cs-tables && dotnet run
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
+	$(MAKE) tables-block
+	$(MAKE) tables-block-zero-cost
+	$(MAKE) tables-block-build-version
+	$(MAKE) tables-block-fill-refuser
+	$(MAKE) tables-block-fill-refuser-negative-control
+	$(MAKE) tables-block-padding-negative-control
+	$(MAKE) tables-block-pitch-negative-control
+	$(MAKE) tables-block-layout-model-negative-control
+	$(MAKE) tables-block-race-negative-control
+	$(MAKE) tables-block-home-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative
 	$(MAKE) tables-hostile-values
@@ -841,11 +1193,20 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/p
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
-update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_tables
+update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_tables build/schema_test_block
 	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
+	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
+	@for d in examples pointers block blockhome; do \
+		mkdir -p testdata/golden/tables/$$d; \
+		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
+	done
+	@mkdir -p testdata/golden/tables/examples-cs testdata/golden/tables/block-cs testdata/golden/tables/blockhome-cs
+	@cp build/tables-generated-cs/examples/*Table.cs testdata/golden/tables/examples-cs/
+	@cp build/tables-generated-cs/block/*Table.cs testdata/golden/tables/block-cs/
+	@cp build/tables-generated-cs/blockhome/*Table.cs testdata/golden/tables/blockhome-cs/
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	go test ./...
@@ -892,6 +1253,8 @@ check: bin/schema
 	./bin/schema check examples128
 	./bin/schema check tables/examples
 	./bin/schema check tables/pointers
+	./bin/schema check tables/block
+	./bin/schema check tables/blockhome
 	./bin/schema check test/tables/V1.schema
 	./bin/schema check test/tables/V2.schema
 	./bin/schema check test/tables/P1.schema
@@ -911,6 +1274,8 @@ fmt: bin/schema
 	./bin/schema fmt examples128
 	./bin/schema fmt tables/examples
 	./bin/schema fmt tables/pointers
+	./bin/schema fmt tables/block
+	./bin/schema fmt tables/blockhome
 	./bin/schema fmt test/tables/V1.schema
 	./bin/schema fmt test/tables/V2.schema
 	./bin/schema fmt test/tables/P1.schema

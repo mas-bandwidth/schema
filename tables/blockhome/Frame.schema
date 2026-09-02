@@ -1,0 +1,18 @@
+// Frame.schema — the block home: the first file that declares a table with a
+// block form. The unit's shared C# block runtime and every blittable record
+// land in its Block.cs (§19.2).
+
+package blockhome
+
+table PartRow
+{
+    armor   ArmorConfig
+    part_id uint32
+    slot    uint8
+}
+
+table PartFrame
+{
+    version uint64
+    parts   [..MaxParts]PartRow
+}
