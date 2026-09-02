@@ -526,6 +526,53 @@ static void test_evolution_union_insert_new_data()
     CHECK( out2.effect.type == tblv1::EffectType::Ward && out2.effect.ward.charge == -2.0f );
 }
 
+// ---- hostile: a REPEATED field id whose second occurrence names an arm or a
+// ---- variant this build cannot name. "Reads as empty" (SPEC-TABLES.md §4) is
+// ---- a value the reader must WRITE, not one the prefill happens to leave —
+// ---- an earlier occurrence of the same id may have decoded a real arm.
+
+static void test_repeated_id_unnameable_variant()
+{
+    const tblv1::TableFieldInfo * effect = v1_field( tblv1::CfgTableType(), "effect" );
+    const tblv1::TableFieldInfo * grade = v1_field( tblv1::CfgTableType(), "grade" );
+    CHECK( effect != NULL && grade != NULL );
+
+    // occurrence one is a real ward arm, written by the generator itself
+    tblv1::Cfg src;
+    src.effect.type = tblv1::EffectType::Ward;
+    src.effect.ward = tblv1::Ward{};
+    src.effect.ward.charge = 0.5f;
+    src.grade = tblv1::Grade::Gold;
+
+    uint8_t wire[512];
+    int64_t saved = tblv1::CfgSave( src, wire, sizeof( wire ) );
+    CHECK( saved > 2 );
+
+    // occurrence two, spliced over the terminator: the same ids, an arm id and
+    // a variant id no build names
+    int n = (int) ( saved - 2 );
+    le16( wire + n, effect->id ); n += 2;
+    wire[n++] = 15;                  // kUnion
+    le16( wire + n, 0xBEEF ); n += 2; // an arm id this reader cannot name
+    le32( wire + n, 2 ); n += 4;
+    le16( wire + n, 0 ); n += 2;     // the arm body: a bare terminator
+    le16( wire + n, grade->id ); n += 2;
+    wire[n++] = 7;                   // kU16
+    le16( wire + n, 0xBEEF ); n += 2; // a variant id this reader cannot name
+    le16( wire + n, 0 ); n += 2;     // the table terminator
+
+    tblv1::TableReport report;
+    tblv1::Cfg out;
+    out.effect.type = tblv1::EffectType::Boost; // junk the prefill must erase
+    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( !report.malformed );
+    CHECK( report.unknown == 2 ); // one arm id, one variant id
+    // both vocabularies land on the SAME answer: the reader's empty value,
+    // never the arm or variant an earlier occurrence decoded
+    CHECK( out.effect.type == tblv1::EffectType::None );
+    CHECK( out.grade == tblv1::Grade::None );
+}
+
 // a value no variant names has no wire identity: measure and save refuse it,
 // exactly as they refuse an out-of-range union tag
 static void test_unnameable_enum_refused()
@@ -1872,6 +1919,7 @@ int main()
     test_evolution_enum_insert_new_data();
     test_evolution_union_insert_old_data();
     test_evolution_union_insert_new_data();
+    test_repeated_id_unnameable_variant();
     test_unnameable_enum_refused();
     test_flags_are_positional();
     test_wide_extents();
