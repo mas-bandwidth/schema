@@ -218,8 +218,6 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
   or absent by value, with no pointer and no change of mode.
 - **An array may be ENUM-KEYED** (§2.4). `ships [ShipType]ShipConfig` has
   exactly one slot per variant, indexed by the variant.
-- **A blob is a node** (§2.5). `data *bytes` declares an unbounded byte
-  buffer at exactly its used size, and `*string` is its sibling.
 - **A union arm may be a table** (§2.6), which is what makes an evolvable
   message set expressible.
 - **`was` — the rename attribute** (§5).
@@ -268,11 +266,11 @@ lifecycle, so the choice is a real one.
 The spelling is C's, deliberately: it reads as what it is. The rules,
 each refused by name (§11):
 
-- **A pointer targets a `table`, or one of the two buffer primitives.**
-  `*Node` names a declared table; `*bytes` and `*string` name an unbounded
-  buffer at its used size (§2.5). Everything else is refused — `*SomeType`,
-  `*SomeEnum`, `*SomeUnion` — because value-semantics data has no
-  independent identity to point at. Nest it by value instead.
+- **A pointer targets a `table`, and nothing else.** `*Node` names a declared
+  table. Everything else is refused — `*SomeType`, `*SomeEnum`, `*SomeUnion`,
+  and the buffer spellings `*bytes` and `*string`, which do not parse (§15) —
+  because value-semantics data has no independent identity to point at. Nest
+  it by value instead.
 - **A pointer is declared inside a table body, and nowhere else.** A
   `type` body refuses one: types remain value semantics, and that is the
   founding line of the split.
@@ -282,8 +280,7 @@ each refused by name (§11):
 **An ARRAY OF POINTERS is refused, and it is a named follow-on** (§15).
 `[..8]*Node` and `[8]*Node` are both refused by name, and the diagnostic says
 what to write instead: a bounded array of tables BY VALUE, or a pointer to a
-table that holds the array. An array of `*bytes` or `*string` is refused
-too (§11).
+table that holds the array.
 
 A pointer's STORAGE is a four-byte relocatable reference — never a
 machine address — which is what keeps §9's relocatability true with
@@ -295,12 +292,11 @@ pointers in the struct. Its meaning depends on the form it sits in
 The compiler works out which class a table belongs to; the schema never
 says. The rule is a least-fixed-point over BY-VALUE edges:
 
-- A table is **VARIABLE-LENGTH** if it declares a pointer — including
-  `*bytes` and `*string` (§2.5) — or if anything it nests by value is
-  variable-length. "Nests by value" reaches through every by-value edge
-  there is: a plain nested table, an element of a bounded array, an
-  element of an enum-keyed array, a member of a guarded (`if`) group, an
-  optional's value (§2.3), and a UNION ARM that is a table (§2.6).
+- A table is **VARIABLE-LENGTH** if it declares a pointer, or if anything it
+  nests by value is variable-length. "Nests by value" reaches through every
+  by-value edge there is: a plain nested table, an element of a bounded
+  array, an element of an enum-keyed array, a member of a guarded (`if`)
+  group, an optional's value (§2.3), and a UNION ARM that is a table (§2.6).
 - Every other table is **FIXED-SIZE**.
 
 Pointer edges do not propagate the mode: a table that is merely POINTED
@@ -571,62 +567,14 @@ set of bits at once, so it names no single slot); a bounded keyed array,
 element that is a pointer, as for any array (§15); and an index of
 `E::None`, which names no slot.
 
-### 2.5 Byte buffers: `data *bytes`
+### 2.5 Byte buffers
 
-```
-table Asset
-{
-    format  AssetFormat
-    data    *bytes        // an unbounded blob, stored at exactly its used size
-    label   *string       // the sibling: a string node at its used length
-}
-```
-
-`bytes(N)` is fixed inline storage of N bytes in every instance. `*bytes`
-is a POINTER to a byte buffer that has no declared bound and occupies
-exactly the size it is given. The distinction is what makes large content
-expressible: in a table of a million nodes, a `bytes(65536)` field costs
-64 KB per node whether it is used or not, because the region packs storage
-verbatim, while a `*bytes` field costs the four-byte reference plus what
-each node actually holds.
-
-- **Storage** is the four-byte relocatable reference (§2.1) beside a u32
-  used length. Declaring one makes the holder VARIABLE-LENGTH (§2.2), like
-  any other pointer.
-- **In the arena**, `builder.AllocBytes( n )` returns a node of exactly `n`
-  bytes; `builder.AllocString( n )` is the sibling.
-- **In a region** it is packed at its used length, its reference
-  self-relative like every other (§6.3).
-- **On the wire it is framed exactly as `bytes(N)` is** — kind `14`, an
-  array of element kind `6` (u8) at its used count — and `*string` is
-  framed exactly as `string(N)` is, kind `12`. No new kind, no new skip
-  rule, and one useful consequence: `bytes(N)` and `*bytes` share one
-  framing, as `T`, `?T` and `*T` do (§3.1), so a field that outgrows its
-  inline bound moves to a blob and no byte changes **for any non-empty
-  value**. The one difference is the empty end, the same asymmetry the
-  other family has: an empty `bytes(N)` elides, while a non-null
-  ZERO-LENGTH `*bytes` writes an empty payload, because presence decides
-  for a pointer-shaped spelling. A null blob is absent, exactly as a null
-  pointer is.
-- **In the cooked form**, `Open`'s walk bounds the blob by its length as it
-  bounds every node, so a pointer into a mapped file IS the asset: no copy,
-  no parse (§7).
-
-Two sentences that must travel together: **a tolerant wire load COPIES the
-blob** — a gigabyte on the wire path is a gigabyte read — and **the cooked
-path is the zero-copy one.** Both are true and neither is the whole story.
-
-schema does not interpret the bytes. A format tag beside the blob is an
-ordinary field the user declares. A pattern falls out and is worth naming
-though it is no construct: a sub-document, or a rarely needed arm, can be
-stored as its own wire bytes inside a `*bytes` and decoded only when
-something asks for it — which keeps a very large file's resident memory
-proportional to what is touched rather than to what exists.
-
-Refused by name: `*bytes` or `*string` outside a table body; a specified
-default on one (a fresh reference is null); an array of them — a buffer
-takes no node index, so there is nothing to put in the slots (§3.1); `?`
-on one, because null already IS absence (§2.3).
+**There is no buffer primitive: `*bytes` and `*string` do not parse.** A
+pointer targets a declared `table` (§2.1), and `bytes` and `string` are
+keywords rather than table names, so the spelling is a parse failure and not
+a construct with rules. An unbounded byte buffer at its used size is a NAMED
+FOLLOW-ON (§15), tracked as schema#259; today a blob is `bytes(N)` at a
+declared bound, and a very large one is a table of its own pointed at.
 
 ### 2.6 Union arms may be tables
 
@@ -750,10 +698,9 @@ schema's codebase:
   kind `13` payload carries.
 
   **Spellings that add no row, and the one way they differ.** A `?T`
-  optional field is framed exactly as the non-optional `T` (§2.3), and
-  `*bytes` and `*string` are framed exactly as `bytes(N)` and
-  `string(N)` (§2.5). Each family is ONE FRAMING under several
-  declaration spellings. **`*T` naming a TABLE is the exception**: it
+  optional field is framed exactly as the non-optional `T` (§2.3), so the
+  two are ONE FRAMING under two declaration spellings. **`*T` naming a
+  TABLE is the exception**: it
   rides as a node index under its own kind `17` (§3.1), because a body
   that may be named twice cannot also sit inline at one of its names.
   The distinct kind is what makes moving a field to or from `*T` a
@@ -761,15 +708,13 @@ schema's codebase:
   exists (§3.2): a node index and a plain `uint32` are the same four
   bytes, and only the kind can tell a reader which it is holding.
 
-  **What differs inside a family is ELISION, and only at the empty end.**
-  Content decides for the by-value spellings and presence decides for the
-  pointer-shaped ones (above), so a by-value `T` at its defaults writes
-  nothing while a present `?T` at its defaults writes its body, and an
-  empty `bytes(N)` writes nothing while a non-null zero-length `*bytes`
-  writes an empty payload. **For any content that is not entirely default,
-  the spellings in a family are byte-identical**, and that is the scope of
-  the claim: a schema may move a field among them and no byte moves for
-  such a value. At the empty end the bytes differ and no reader
+  **What differs inside the family is ELISION, and only at the empty end.**
+  Content decides for a by-value spelling and presence decides for a
+  pointer-shaped one (above), so a by-value `T` at its defaults writes
+  nothing while a present `?T` at its defaults writes its body. **For any
+  content that is not entirely default, `T` and `?T` are byte-identical**,
+  and that is the scope of the claim: a schema may move a field between
+  them and no byte moves for such a value. At the empty end the bytes differ and no reader
   misdecodes — an elided field reads as absent (`?T`), null (`*T`) or the
   declared default (`T`), which is correct in every direction. Moving a
   field ACROSS families — between `*T` and `T` or `?T` — is not a free
@@ -822,12 +767,11 @@ schema's codebase:
   guarded group rides only when its guard is true. That is what makes a
   guard an optional GROUP on the wire and not merely in the language, and
   the text form defers to this rule rather than restating it (§16.2).
-  **PRESENCE, not content, decides the three pointer-shaped spellings.** An
-  absent `?T`, a null `*T` and a null `*bytes` are not written; a present
-  optional, a non-null pointer and a non-null blob are ALWAYS written, even
-  when the value is entirely default and even when the blob is zero bytes
-  long — otherwise "absent" and "present with nothing to say" would be one
-  value on the wire (§2.3, §2.5, §3.1).
+  **PRESENCE, not content, decides the two pointer-shaped spellings.** An
+  absent `?T` and a null `*T` are not written; a present optional and a
+  non-null pointer are ALWAYS written, even when the value is entirely
+  default — otherwise "absent" and "present with nothing to say" would be
+  one value on the wire (§2.3, §3.1).
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
   narrowest unsigned kind that holds it, compressed floats as f32, and a
@@ -883,10 +827,8 @@ exist; the set is closed before any of them ship, and §14 records the
 trade.
 
 **What a pointer edge is, and what it is not.** Only a `*T` naming a
-declared TABLE takes a node index. `*bytes` and `*string` are leaf
-buffers and are framed inline exactly as `bytes(N)` and `string(N)` are
-(§2.5) — they charge no node, take no index, and create no depth,
-because a buffer has nothing inside it to descend into. A table-typed
+declared TABLE takes a node index; it is the only pointer spelling the
+language has (§2.1). A table-typed
 UNION ARM is a by-value nesting and rides inline as §2.6 frames it; the
 pointer fields INSIDE an arm are indices like any other.
 
@@ -1016,7 +958,7 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
 - The **length** is a `u32`, and **a node body that would exceed
   `0xFFFFFFFF` bytes is a SAVE-TIME REFUSAL** naming the node: measure
   and save return failure, and nothing truncates. The case is reachable —
-  two 2 GiB `*bytes` in one table are four gigabytes of body under §2.5 —
+  two `bytes(2147483647)` fields in one table are four gigabytes of body —
   and it is refused rather than widened, because the repair is more
   nodes, which is the shape the flat encoding wants anyway, and a `u64`
   length would cost four bytes on every node in every save to frame a
@@ -1364,7 +1306,7 @@ the one the committed baseline (§18) exists to refuse:
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed and reordered; array bounds may move; a field may
-change between `T` and `?T`, or between `bytes(N)` and `*bytes` — all of
+change between `T` and `?T` — all of
 it either invisible to the wire or counted in the report. Moving a field
 to or from `*T` is a kind change and is counted (§3.1).
 
@@ -1600,9 +1542,7 @@ yields NULL and can never fabricate the root.
 
 Every node starts at its own type's alignment and the directory's offsets
 are those padded starts, so "is a directory entry" and "is aligned" are
-one check rather than two. A node's own buffers (§2.5) are packed inside
-its extent, so a buffer reference is checked against the extent of the
-node whose slot names it — no search at all.
+one check rather than two.
 
 **The directory is ATTRIBUTION, and attribution is separable.** Nothing
 that READS a structure touches it: a deref is one add on a self-relative
@@ -2049,10 +1989,6 @@ printing a `None` row, and it needs no rule about slot indices to do it —
 the same reserved id that keeps `None` off the wire keeps it out of a
 listing.
 
-**A `*bytes` or `*string` field** carries its used-length companion's
-offset beside the reference, so a walker reads the blob's extent the way
-it reads an array's count (§2.5).
-
 **A FIXED table carries a second set of positions for the same fields, and
 this is what makes the block form READABLE BY REFLECTION** (§19.2). No flag
 says it has the form — every fixed table does (§2.7), and the mode is already
@@ -2076,8 +2012,7 @@ POINTER columns below are conditional (§2.2).
 
 A unit that has pointers carries three more facts, and a unit that has
 none carries not one of them (§2.2): a field's **`is_pointer`** flag —
-whose `table` member then names the TARGET table's descriptor, NULL for a
-`*bytes` or `*string` because a buffer is not a declared table, and whose
+whose `table` member then names the TARGET table's descriptor and whose
 `elem_size` is the reference slot's width; a type's derived
 **`variable`** mode, so a tool can tell at runtime which of §6's two
 lives a table has without being told; and a table's own **node type id**
@@ -2554,9 +2489,8 @@ in build version (§20.5).
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
   outside a table body; a specified default on a pointer field; and an
-  ARRAY of pointers, of any element — `[..N]*T`, `[N]*T`, and an array of
-  `*bytes` or `*string` alike — which is a named follow-on (§15), the
-  diagnostic naming the two spellings that serve today.
+  ARRAY of pointers — `[..N]*T` and `[N]*T` — which is a named follow-on
+  (§15), the diagnostic naming the two spellings that serve today.
 - **Optional fields** (§2.3): `?T` outside a table body; `?` on a pointer
   (already optional); `?` on a union (its `None` IS the absence); `?` on an
   array, a string or `bytes` (a named follow-on, §15 — the count or length
@@ -2572,9 +2506,10 @@ in build version (§20.5).
   table closure, `| max = K` headroom and variant id collisions, each
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
-- **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
-  specified default on one; an array of them, as for any array of pointers
-  (§15); `?` on one, because a null reference already IS absence.
+- **Byte buffers** (§2.5): `*bytes` and `*string` reach no refusal of their
+  own — a pointer takes a declared table's name and these are keywords, so
+  the parser refuses the spelling where it stands. The construct is a named
+  follow-on (§15).
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19), and these
@@ -2621,8 +2556,8 @@ in build version (§20.5).
   from it reproduces what it was given.
 - **A node body past `0xFFFFFFFF` bytes** (§3.1): a record's length is a
   `u32`, so measure and save return failure naming the node rather than
-  truncating it. Two 2 GiB `*bytes` in one table reach it; the repair is
-  more nodes.
+  truncating it. Two `bytes(2147483647)` fields in one table reach it; the
+  repair is more nodes.
 - **A field id colliding with the reserved node-table id `0xFFFF`**
   (§3.1) — by hash accident or through `was` — naming the field. **Two
   tables in one unit's closure whose NAME ids collide** (§5), naming
@@ -2978,7 +2913,7 @@ are these rulings, in the owner's words:
   unions, this way you can have a pseudo-union in golang."
 - **The closing rung**: "variable tables, you'll obviously need to alloc
   and assuming otherwise is foolish."
-- **Why very large tables want a blob node** (§2.5): "the key with variable
+- **Why very large tables want a blob node** (§15): "the key with variable
   tables is imagine they could be very large, like a gigabyte. you'd not in
   that case want to blow out memory with extra union tables you don't need
   and so on" — and the primitive itself, "yes, I like byte buffer as
@@ -3619,8 +3554,22 @@ pre-empted here.
   it becomes wire. Wrap the field in a table and make that optional today.
 - **An array of `?T`** — the same question one level down: an element's
   presence bit beside the array's own count.
-- **AN ARRAY OF POINTERS** — `[..N]*T` and `[N]*T`, and an array of the
-  buffer spellings with them. It is refused by name today (§11) and the
+- **AN UNBOUNDED BYTE BUFFER — `*bytes`, and `*string` beside it** (§2.5),
+  tracked as schema#259. Neither spelling parses today. The case for it is
+  the owner's and is two sentences: *"yes, i like byte buffer as primitive"*
+  / *"since it can be nulled."* — a buffer that is a REFERENCE has an absent
+  state a bounded `bytes(N)` has to spend a field to express; and
+  *"instantly, it turns a table into variable"*, which is the price, because
+  one such field flips its holder's whole closure to the variable class
+  (§2.2) and with it the arena, the region and the lifecycle. What it buys is
+  size: in a table of a million nodes a `bytes(65536)` field costs 64 KB a
+  node whether it is used or not, while a reference costs four bytes plus
+  what each node actually holds — the same argument as a sub-document stored
+  as its own wire bytes and decoded only when something asks for it. What it
+  needs decided is the framing it rides under and the elision at the empty
+  end, since a null buffer and a zero-length one are different values.
+- **AN ARRAY OF POINTERS** — `[..N]*T` and `[N]*T`. It is refused by name
+  today (§11) and the
   diagnostic carries the two spellings that serve instead: *"declare a
   bounded array of tables by value, or a pointer to a table that holds the
   array"*. It is the spelling a node with a fixed fan-out wants, and it costs
@@ -3835,8 +3784,8 @@ Per kind:
 | integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` clamps and counts |
 | `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity |
 | `bool` | `true` / `false` | |
-| `string(N)`, `*string` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted (`*string` has no bound to clamp against) |
-| `bytes(N)`, `*bytes` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
+| `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
+| `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
@@ -3847,13 +3796,12 @@ Per kind:
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer |
 
-**Three of the entries above describe constructs no declaration reaches
-yet**: the `*string` and `*bytes` halves of their rows land with those
-declarations (schema#259), and the `table` union arm named in the union row
-lands with its own (schema#258). They are stated here rather than added
-later because a text mapping is a property of the KIND — each one lands as
-its declaration lands, not as a second decision about text. The `*T`
-pointer row is the variable class's, covered by the status in §16.1.
+**One entry above describes a construct no declaration reaches yet**: the
+`table` union arm named in the union row lands with its own (schema#258). It
+is stated here rather than added later because a text mapping is a property
+of the KIND — it lands as its declaration lands, not as a second decision
+about text. The `*T` pointer row is the variable class's, covered by the
+status in §16.1.
 
 **The text form is a TREE, and a pointer graph is not.** A pointee is
 written in place, so a node several parents name is written once per
@@ -4224,7 +4172,7 @@ committed file whenever one is there, and:
   removed, reordered or renamed under `was`; enum variants and union arms
   added anywhere; flags variants APPENDED at the end; bounds and capacities
   grown; a bounded array made fixed or the reverse; a field moved between
-  `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`.
+  `T`, `?T` and `*T`.
 
 **The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
 same-build contract that a compiler holds (§19.3), so an edit that moves an

@@ -330,10 +330,8 @@ Scalar      = IntType
                                                                  // the Q format is the type's SHAPE,
                                                                  // so it is positional like bits(N)
             | "ufixed" "(" IntExpr "," IntExpr ")"               // the unsigned sibling (§4.3)
-            | "*" ( ident | "bytes" | "string" )                 // a POINTER to a table
-                                                                 // (SPEC-TABLES.md §2.1), or to an
-                                                                 // unbounded byte or string buffer
-                                                                 // at its used size (§2.5);
+            | "*" ident                                          // a POINTER to a declared table
+                                                                 // (SPEC-TABLES.md §2.1);
                                                                  // TABLE BODIES ONLY — a type
                                                                  // body refuses one by name
             | ident .                                            // a declared type or enum

@@ -1026,38 +1026,14 @@ differ: a by-value `T` at its defaults elides, a non-null pointer does not).
 Null pointers are simply absent. **Wire v1 is a tree**: two pointers to one
 node write two bodies and load as two nodes.
 
-### Byte buffers: `data *bytes`
+### Byte buffers: `bytes(N)`
 
-`bytes(N)` is N bytes of inline storage in every instance. `*bytes` is a
-pointer to a buffer that has no bound and takes exactly the size you give it
-— which is how an image or an asset lives inside a table:
-
-```
-table Asset
-{
-    format AssetFormat
-    data   *bytes        // sized per node, not per declaration
-    label  *string       // the sibling
-}
-```
-
-```cpp
-Asset * asset = builder.Alloc<Asset>();
-asset->data = builder.AllocBytes( png_bytes );
-memcpy( BytesAt( asset->data ), png, png_bytes );
-```
-
-In a million-node table a `bytes(65536)` field costs 64 KB a node whether it
-is used or not; a `*bytes` costs the reference plus what each node holds.
-Like any pointer it makes the holder variable-length. On the wire it is
-framed exactly as `bytes(N)` is, so a field that outgrows its inline bound
-moves to a blob and no byte changes for any non-empty value — the same empty-end
-asymmetry as above: an empty `bytes(N)` elides, a non-null zero-length `*bytes`
-writes an empty payload.
-
-Two sentences that go together: **a tolerant wire load COPIES the blob** — a
-gigabyte on the wire path is a gigabyte read — and **the cooked path is the
-zero-copy one**, where a pointer into a mapped file IS the asset.
+A blob is `bytes(N)` — N bytes of inline storage in every instance, at a
+bound you declare. `*bytes` and `*string` are NOT language: a pointer takes a
+declared table's name, and `bytes` and `string` are keywords, so the spelling
+does not parse. An unbounded buffer at its used size is a named follow-on
+(SPEC-TABLES.md §15, schema#259); until it lands, a blob whose size varies
+per node is a table of its own with a `bytes(N)` field, pointed at.
 
 ### The block form: rows another language points at
 
@@ -1543,7 +1519,7 @@ and it is pretty-printed: one entry per line, two-space indent.
 
 The mapping is the obvious one: enums and flags by variant NAME, a union as
 an object with one key, an enum-keyed array as an object keyed by variant
-name, a `?T` optional present exactly when its key is present, `*bytes` as
+name, a `?T` optional present exactly when its key is present, `bytes(N)` as
 base64. **JSON has one number type**, so `2`, `2.0` and `1e3` all read into an
 integer field; a genuinely fractional value there is a kind mismatch, and a
 token that is not a JSON number at all — `1-2`, `1.2.3` — is malformed rather
