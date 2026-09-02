@@ -98,6 +98,8 @@ table Config
     swap_grade Grade
     swap_perks Perks
     swap Buff
+    per_grade [Grade]int32
+    gunner ?Buff
 }
 `
 
@@ -319,6 +321,25 @@ func TestRefusals(t *testing.T) {
 			control: replace(t, "    buff   Buff\n", "    buff   BuffPlus\n"),
 		},
 		{
+			// the keyed body and the positional body are different wire kinds
+			// (SPEC-TABLES.md §3.2), so a reader meeting the other skips —
+			// and the values are silently gone
+			name:    "an array changed from the keyed spelling to the positional one",
+			edited:  replace(t, "    per_grade [Grade]int32", "    per_grade [4]int32"),
+			where:   "Config.per_grade",
+			what:    "wire kind 16 -> 14",
+			token:   "kind",
+			control: replace(t, "    per_grade [Grade]int32", "    per_grade [Grade]int32\n    per_tier  [Tier]int32"),
+		},
+		{
+			name:    "an enum-keyed array's KEY enum swapped for another",
+			edited:  replace(t, "    per_grade [Grade]int32", "    per_grade [Tier]int32"),
+			where:   "Config.per_grade",
+			what:    "array key enum Grade -> Tier",
+			token:   "key",
+			control: replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Argent, Silver, Gold }"),
+		},
+		{
 			name:    "a flags variant inserted",
 			edited:  replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Hardened, Cloaked, Turbo }"),
 			where:   "flags Perks",
@@ -476,7 +497,7 @@ func TestVanishedMembers(t *testing.T) {
 			edited: strings.NewReplacer("table Config", "table Ship",
 				"damage  float32 = 21.0", "damage  float32 = 25.0").Replace(baseSrc),
 			warnAt:   "table Config",
-			warnWhat: "Ship carries 13 of its 13 identities",
+			warnWhat: "Ship carries 15 of its 15 identities",
 			verdict:  baseline.Refuse,
 			where:    "Ship.damage",
 			what:     "specified default 21.0 -> 25.0",
@@ -498,7 +519,8 @@ func TestVanishedMembers(t *testing.T) {
 			edited: strings.NewReplacer(
 				"enum Grade { Bronze, Silver, Gold }", "enum Rank { Bronze, Silver }",
 				"grade   Grade = Silver", "grade   Rank = Silver",
-				"swap_grade Grade", "swap_grade Rank").Replace(baseSrc),
+				"swap_grade Grade", "swap_grade Rank",
+				"per_grade [Grade]int32", "per_grade [Rank]int32").Replace(baseSrc),
 			warnAt:   "enum Grade",
 			warnWhat: "Rank carries 2 of its 3 identities",
 			verdict:  baseline.Warn,
@@ -552,7 +574,8 @@ func TestPairedRenameDoesNotRaiseTheVerdict(t *testing.T) {
 			renamed: strings.NewReplacer(
 				"enum Grade { Bronze, Silver, Gold }", "enum Rank { Bronze, Silver }",
 				"grade   Grade = Silver", "grade   Rank = Silver",
-				"swap_grade Grade", "swap_grade Rank").Replace(baseSrc),
+				"swap_grade Grade", "swap_grade Rank",
+				"per_grade [Grade]int32", "per_grade [Rank]int32").Replace(baseSrc),
 			where: "variant Gold removed",
 			what:  "Gold",
 		},
@@ -597,7 +620,8 @@ func TestBelowThresholdRenameIsARepoint(t *testing.T) {
 	renamed := strings.NewReplacer(
 		"enum Grade { Bronze, Silver, Gold }", "enum Rank { Silver }",
 		"grade   Grade = Silver", "grade   Rank = Silver",
-		"swap_grade Grade", "swap_grade Rank").Replace(baseSrc)
+		"swap_grade Grade", "swap_grade Rank",
+		"per_grade [Grade]int32", "per_grade [Rank]int32").Replace(baseSrc)
 	got := diff(t, renamed, baseline.DefaultTokenPolicy)
 	if !find(got, baseline.Refuse, "Config.swap_grade", "enum Grade -> Rank") {
 		t.Fatalf("below the threshold the change of referent is judged as a repoint, got:%s", summary(got))
@@ -791,6 +815,13 @@ func TestAbsorbedEdits(t *testing.T) {
 		{"a bounded array made fixed", replace(t, "slots   [..Slots]int32", "slots   [Slots]int32")},
 		{"a field moved under a guard", replace(t, "    hits    int32", "    guard   bool\n    if guard\n    {\n        hits int32\n    }")},
 		{"a table added", baseSrc + "\ntable Extra\n{\n    x int32 = 1\n}\n"},
+		// T, ?T and *T are one framing (SPEC-TABLES.md §3.1): presence is
+		// recorded in the file and judged on nothing
+		{"a field made optional", replace(t, "    boost   Buff", "    boost   ?Buff")},
+		{"an optional field made plain", replace(t, "    gunner ?Buff", "    gunner Buff")},
+		// a keyed array's bound is its enum's size: growing the enum grows the
+		// array, and the slots ride by variant NAME, so nothing moves
+		{"a keyed array's enum grown", replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver, Gold, Platinum }")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -801,27 +832,47 @@ func TestAbsorbedEdits(t *testing.T) {
 	}
 }
 
-// TestEnumKeyedArrayHook is the enum-keyed array's rule, live before the
-// construct is: the day `[E]T` lands the renderer emits one `key=` token and
-// swapping the key enum is a refusal, because the policy row is already here.
-// Synthesised, since no schema can spell the construct yet.
-func TestEnumKeyedArrayHook(t *testing.T) {
-	member := func(key string) *baseline.Unit {
-		return &baseline.Unit{
-			Version: baseline.Version,
-			Package: "fixture",
-			Tables: []baseline.Table{{Name: "Config", Fields: []baseline.Field{{
-				Name: "slots", Id: 0x1234,
-				Tokens: []baseline.Token{{Key: "kind", Value: "14"}, {Key: "elem", Value: "4"}, {Key: "key", Value: key}},
-			}}}},
-		}
+// TestKeyEnumIsCovered: an enum-keyed array's key enum reaches the closure
+// only through the array, never through a field's own type — and its variants
+// are wire identities all the same, because the slots ride under their name
+// ids (SPEC-TABLES.md §3.2). A projection that forgot it would leave every
+// keyed collection's vocabulary uncovered.
+func TestKeyEnumIsCovered(t *testing.T) {
+	const src = `package keyed
+
+enum Slot { Head, Chest, Legs }
+
+type Piece
+{
+    armour int32 = 1
+}
+
+table Loadout
+{
+    pieces [Slot]Piece
+}
+`
+	b := committed(t, src)
+	var names []string
+	for _, e := range b.Enums {
+		names = append(names, e.Name)
 	}
-	got := baseline.Diff(member("Grade"), member("Tier"), baseline.DefaultTokenPolicy)
-	if !find(got, baseline.Refuse, "Config.slots", "array key enum Grade -> Tier") {
-		t.Fatalf("swapping an enum-keyed array's enum must be refused, got:%s", summary(got))
+	if len(names) != 1 || names[0] != "Slot" {
+		t.Fatalf("the key enum must be projected, got %v", names)
 	}
-	if got := baseline.Diff(member("Grade"), member("Tier"), without("key")); len(got) != 0 {
-		t.Errorf("with the \"key\" rule removed the edit should pass, got:%s", summary(got))
+
+	dropped := strings.Replace(src, "enum Slot { Head, Chest, Legs }", "enum Slot { Head, Chest }", 1)
+	got := baseline.Diff(b, baseline.Render(unit(t, dropped)), baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "enum Slot", "variant Legs removed") {
+		t.Errorf("dropping a key enum variant loses those slots and must warn, got:%s", summary(got))
+	}
+	if got := baseline.Diff(b, baseline.Render(unit(t, dropped)), without("enum-variant")); find(got, baseline.Warn, "enum Slot", "variant Legs removed") {
+		t.Errorf("with the \"enum-variant\" rule removed the warning should be gone, got:%s", summary(got))
+	}
+	// growing it is absorbed: a new variant is a new slot nothing has written
+	grown := strings.Replace(src, "enum Slot { Head, Chest, Legs }", "enum Slot { Head, Chest, Legs, Boots }", 1)
+	if got := baseline.Diff(b, baseline.Render(unit(t, grown)), baseline.DefaultTokenPolicy); len(got) != 0 {
+		t.Errorf("growing a key enum is absorbed, got:%s", summary(got))
 	}
 }
 

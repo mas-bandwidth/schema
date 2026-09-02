@@ -89,10 +89,6 @@ const (
 )
 
 // DefaultTokenPolicy is the WHOLE compatibility policy, one row per fact.
-//
-// The `key` row is the enum-keyed array's rule. No construct spells one today,
-// which is why no renderer emits the token; the rule lives here because this
-// table describes the FACT SET, not the grammar (SPEC-TABLES.md §15).
 var DefaultTokenPolicy = map[string]TokenRule{
 	// ---- a field's own facts ----
 	"kind":    RuleFixed,  // a changed kind is skipped by every old reader, and the value is silently gone
@@ -100,9 +96,11 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"default": RuleFixed,  // an elided field MEANS the reader's default (SPEC-TABLES.md §4)
 	"bound":   RuleShrink, // a count past the reader's bound keeps the prefix and counts clamped
 	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
-	"key":     RuleFixed,  // an enum-keyed array: swapping the key enum remaps every stored element
 	"array":   RulePass,   // fixed and bounded frame identically on the wire (SPEC-TABLES.md §3)
 	"was":     RulePass,   // `was` is the rename that PRESERVES identity — that is its whole job
+	// PRESENCE IS RECORDED AND JUDGED ON NOTHING: T, ?T and *T are one
+	// framing, so a field moving between them moves no byte (§3.1, §18.1)
+	"optional": RulePass,
 
 	// ---- a field's REFERENT, split by what it names ----
 	//
@@ -115,6 +113,11 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"union":   RuleRefs,
 	"type":    RuleRefs,
 	"payload": RuleRefs, // a union arm's payload is a nested table, one level in
+	// an ENUM-KEYED array's KEY enum is a referent too, and an enum's one: its
+	// slots ride under their variants' name ids (§3.2), so it stands in
+	// exactly when those names survive. The keyed and positional spellings
+	// are different wire kinds, so THAT move is caught by the `kind` row.
+	"key": RuleRefs,
 
 	// ---- the vocabulary walks, which have no token of their own ----
 	"member":         RuleLoss,  // a closure member that is no longer covered by this baseline
@@ -554,7 +557,7 @@ func (d *differ) refsFindings(where, key, was, now string, present bool) []Findi
 func (d *differ) pairedRename(key, was string) string {
 	var p pairing
 	switch key {
-	case "enum":
+	case "enum", "key":
 		p = d.enums
 	case "flags":
 		p = d.flags
@@ -583,11 +586,13 @@ func (d *differ) pairedRename(key, was string) string {
 //   - a UNION body opens with its arm NAME hash, same rule;
 //   - a FLAGS mask is POSITIONAL and carries no names at all, so it stands in
 //     only when the old declaration's variants sit at the same bits.
+//   - an ENUM-KEYED array's KEY enum is judged as an enum: its slots ride
+//     under their variants' name ids (SPEC-TABLES.md §3.2).
 func (d *differ) substitutable(key, was, now string) []Finding {
 	switch key {
 	case "flags":
 		return bitsRide(flagsVariants(d.base, was), flagsVariants(d.live, now), now)
-	case "enum":
+	case "enum", "key":
 		return namesRide(enumNames(d.base, was), enumNames(d.live, now), now,
 			"variant name", "stored values naming them read as None")
 	case "union":
@@ -730,6 +735,8 @@ func tokenNoun(key string) string {
 		return "capacity"
 	case "key":
 		return "array key enum"
+	case "optional":
+		return "presence"
 	case "type":
 		return "nested table"
 	case "payload":

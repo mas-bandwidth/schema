@@ -15,6 +15,20 @@ table Buff
 table Debuff
     field amount id=0x39cc kind=4 default=0
 
+table GunnerConfig
+    field reaction id=0x900f kind=10 default=0.2
+    field tracking id=0x53d5 kind=1
+
+table HullConfig
+    field health id=0x8617 kind=10 default=100.0
+    field mass id=0xe7a6 kind=10 default=1.0
+    field turrets id=0x48ad kind=16 elem=13 type=TurretConfig array=keyed bound=4 key=Weapon
+
+table KeyedConfig
+    field teams id=0x9ae1 kind=16 elem=13 type=TeamConfig array=keyed bound=4 key=Team
+    field hulls id=0xeff5 kind=16 elem=13 type=HullConfig array=keyed bound=4 key=Hull
+    field scores id=0xdcf3 kind=13 type=ScoreBoard
+
 table LoadoutConfig
     field grade id=0xd272 kind=7 enum=Grade default=Silver
     field grades id=0x301a kind=14 elem=7 enum=Grade array=bounded bound=4
@@ -44,6 +58,18 @@ table RootConfig
     field weapons id=0x91cd kind=14 elem=13 type=WeaponConfig array=bounded bound=8
     field profiles id=0x73fd kind=14 elem=13 type=ProfileConfig array=bounded bound=4
 
+table ScoreBoard
+    field per_team id=0x443f kind=16 elem=4 array=keyed bound=4 key=Team
+
+table TeamConfig
+    field spawn_count id=0x3668 kind=4 default=4
+    field banner id=0x80e4 kind=12 size=16
+
+table TurretConfig
+    field damage id=0x15a9 kind=10 default=10.0
+    field cooldown id=0x2230 kind=10 default=0.5
+    field gunner id=0x2bc9 kind=13 type=GunnerConfig optional=true
+
 table WeaponConfig
     field damage id=0x15a9 kind=10 default=21.0
     field speed id=0x2e46 kind=10 default=500.0 was=velocity
@@ -62,6 +88,21 @@ enum Grade
     variant Silver id=0xa3e7
     variant Gold id=0xda27
 
+enum Hull
+    variant Interceptor id=0xf0f0
+    variant Gunship id=0xb534
+    variant Freighter id=0xb617
+
+enum Team
+    variant Red id=0xbb03
+    variant Blue id=0xf630
+    variant Green id=0x6e0f
+
+enum Weapon
+    variant Cannon id=0xf055
+    variant Missile id=0x16b3
+    variant Mine id=0x61bf
+
 flags Perks
     variant Shielded bit=0
     variant Cloaked bit=1
@@ -73,4 +114,4 @@ union Effect
 
 ## history
 ### 2026-09-02 — the first baseline over the tables corpus
-- baseline created over 9 tables — data written BEFORE this point is not covered by it
+- baseline created over 15 tables — data written BEFORE this point is not covered by it

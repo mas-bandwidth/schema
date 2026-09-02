@@ -171,6 +171,15 @@ func Render(u *ir.Unit) *Unit {
 		// the branch structure is deliberately not a fact here.
 		for _, f := range st.Fields {
 			t.Fields = append(t.Fields, renderField(f))
+			// an ENUM-KEYED array's key enum is a vocabulary on the wire, not
+			// just a spelling: its slots ride under their variants' NAME ids
+			// (SPEC-TABLES.md §3.2), so its variants are covered exactly as an
+			// enum-typed field's are. It reaches the closure through KeyEnum,
+			// never through the field's own type.
+			if f.KeyEnumRef != nil && !seenEnum[f.KeyEnumRef.Name] {
+				seenEnum[f.KeyEnumRef.Name] = true
+				out.Enums = append(out.Enums, renderEnum(f.KeyEnumRef))
+			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
 				if !seenEnum[ref.Name] {
@@ -241,11 +250,25 @@ func renderField(f *ir.Field) Field {
 			add("type", f.Type.Name)
 		}
 	}
-	switch f.Array {
-	case ir.ArrayFixed:
+	// PRESENCE IS RECORDED AND JUDGED ON NOTHING (SPEC-TABLES.md §18.1): a
+	// field moving between T, ?T and *T moves no byte (§3.1), so the fact is
+	// here to be read in a diff and nowhere in the policy.
+	if f.Type.Optional {
+		add("optional", "true")
+	}
+	switch {
+	case f.KeyEnum != "":
+		// an enum-keyed array is its own wire kind (§3.2) and its slots ride
+		// under their variants' NAME ids, so the key enum is a referent like
+		// any other — and the keyed and positional bodies can never be
+		// decoded as one another, which the kind fact already says.
+		add("array", "keyed")
+		add("bound", strconv.FormatInt(f.ArrayBound, 10))
+		add("key", f.KeyEnum)
+	case f.Array == ir.ArrayFixed:
 		add("array", "fixed")
 		add("bound", strconv.FormatInt(f.ArrayBound, 10))
-	case ir.ArrayCounted:
+	case f.Array == ir.ArrayCounted:
 		add("array", "bounded")
 		add("bound", strconv.FormatInt(f.ArrayBound, 10))
 	}
