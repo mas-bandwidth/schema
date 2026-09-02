@@ -3039,13 +3039,43 @@ static void test_json_dialect()
         CHECK( stray.name_length == 3 && (unsigned char) stray.name[2] == 0xc3 );
         CHECK( !raw.malformed );
 
-        // and it round-trips: the writer emits the byte, the reader takes it
+        // ... but the WRITER owes a valid JSON text (RFC 8259 §8.1), so the
+        // byte it cannot spell is written as U+FFFD, one per bad byte. The
+        // round trip is therefore NOT byte-identical for invalid UTF-8, and
+        // that is the trade: a text a conforming parser can read, rather than
+        // one only this walk can (SPEC-TABLES.md §16.2).
         int64_t size = tabledemo::ProfileConfigToJsonMeasure( stray );
-        std::vector<char> out( (size_t) size );
+        std::vector<char> out( (size_t) size + 1 );
         CHECK( tabledemo::ProfileConfigToJson( stray, out.data(), size ) == size );
+        out[(size_t) size] = 0;
+        CHECK( strstr( out.data(), "\"ab\xef\xbf\xbd\"" ) != NULL );
         tabledemo::ProfileConfig back;
         CHECK( tabledemo::ProfileConfigFromJson( back, out.data(), size, &raw ) );
-        CHECK( back.name_length == 3 && (unsigned char) back.name[2] == 0xc3 );
+        CHECK( back.name_length == 5 );
+        CHECK( (unsigned char) back.name[2] == 0xef && (unsigned char) back.name[3] == 0xbf &&
+               (unsigned char) back.name[4] == 0xbd );
+        // and the SECOND trip is stable: a text the walk wrote reads back and
+        // writes the same bytes again
+        int64_t again = tabledemo::ProfileConfigToJsonMeasure( back );
+        std::vector<char> twice( (size_t) again );
+        CHECK( tabledemo::ProfileConfigToJson( back, twice.data(), again ) == again );
+        CHECK( again == size && memcmp( twice.data(), out.data(), (size_t) size ) == 0 );
+    }
+
+    // a lone surrogate ESCAPE is valid JSON input with no UTF-8 encoding:
+    // it reads as U+FFFD rather than manufacturing CESU-8 out of it
+    {
+        tabledemo::ProfileConfig lone;
+        tabledemo::TableReport report;
+        const char * text = "{ \"name\": \"\\udc00x\\ud800\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( lone, text, (int64_t) strlen( text ), &report ) );
+        CHECK( lone.name_length == 7 );
+        CHECK( strcmp( lone.name, "\xef\xbf\xbd" "x" "\xef\xbf\xbd" ) == 0 );
+        // ... and a well-formed pair still decodes to the character it names
+        tabledemo::ProfileConfig pair;
+        const char * emoji = "{ \"name\": \"\\ud83d\\ude00\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( pair, emoji, (int64_t) strlen( emoji ), &report ) );
+        CHECK( pair.name_length == 4 && strcmp( pair.name, "\xf0\x9f\x98\x80" ) == 0 );
     }
 
     // string escapes both ways, including a surrogate pair
@@ -3545,6 +3575,450 @@ static void test_json_fuzz_tokenizer()
         tabledemo::RootConfigFromJson( root, work.data(), (int64_t) work.size(), &report );
         // whatever came back is a legal instance: it must still save
         CHECK( tabledemo::RootConfigMeasure( root ) > 0 );
+
+        // AND it must still be WRITABLE as a text. §16.1 sells one invariant —
+        // a text that reads writes back — and the way to lose it is to let a
+        // conversion put something in storage that has no JSON spelling. No
+        // mutated text, however hostile, may reach that state.
+        tabledemo::TableReport clean;
+        tabledemo::ProfileConfig checked;
+        if ( tabledemo::ProfileConfigFromJson( checked, work.data(), (int64_t) work.size(), &clean ) )
+        {
+            if ( tabledemo::ProfileConfigToJsonMeasure( checked ) <= 0 )
+            {
+                printf( "FAIL json fuzz: a text that READ produced an instance that cannot be WRITTEN\n" );
+                failures++;
+                break;
+            }
+        }
+    }
+}
+
+// ---- the PINNED TEXT: what ToJson actually spells ------------------------
+//
+// Every other test in this section round-trips through the writer, so reader
+// and writer share `enum_name` and a vocabulary error cancels itself out: a
+// walker emitting "???" for a bit it cannot name round-trips green. This test
+// is the one that cannot: a known instance against a known LITERAL text, so
+// every spelling the form promises — an enum variant, a flags bit, a union
+// arm name, None, base64, a bool, an integer, a float, the guard's elision
+// and the pretty-printed shape — is pinned to the page rather than to the
+// code's own opinion of itself.
+
+static void test_json_pinned_text()
+{
+    tabledemo::LoadoutConfig loadout;
+    loadout.grade = tabledemo::Grade::Gold;
+    loadout.grades_count = 2;
+    loadout.grades[0] = tabledemo::Grade::Bronze;
+    loadout.grades[1] = tabledemo::Grade::None;
+    loadout.podium[0] = tabledemo::Grade::Silver;
+    loadout.perks = tabledemo::Perks_Shielded | tabledemo::Perks_Turbo;
+    loadout.primary.damage = 2.5f;
+    loadout.primary.effect.type = tabledemo::EffectType::Buff;
+    loadout.primary.effect.buff.multiplier = 4.0f;
+    loadout.backups[0].effect.type = tabledemo::EffectType::Debuff;
+    loadout.backups[0].effect.debuff.amount = 7;
+    loadout.attachments_count = 1;
+    loadout.attachments[0].slot = 3;
+    loadout.attachments[0].power = 1.5f;
+
+    static const char * expected =
+        "{\n"
+        "  \"grade\": \"Gold\",\n"
+        "  \"grades\": [\n"
+        "    \"Bronze\",\n"
+        "    \"None\"\n"
+        "  ],\n"
+        "  \"podium\": [\n"
+        "    \"Silver\",\n"
+        "    \"None\",\n"
+        "    \"None\"\n"
+        "  ],\n"
+        "  \"perks\": [\n"
+        "    \"Shielded\",\n"
+        "    \"Turbo\"\n"
+        "  ],\n"
+        "  \"primary\": {\n"
+        "    \"damage\": 2.5,\n"
+        "    \"speed\": 500,\n"
+        "    \"penetration\": 1,\n"
+        "    \"channel\": 0,\n"
+        "    \"homing\": false,\n"
+        "    \"effect\": {\n"
+        "      \"buff\": {\n"
+        "        \"multiplier\": 4\n"
+        "      }\n"
+        "    }\n"
+        "  },\n"
+        "  \"backups\": [\n"
+        "    {\n"
+        "      \"damage\": 21,\n"
+        "      \"speed\": 500,\n"
+        "      \"penetration\": 1,\n"
+        "      \"channel\": 0,\n"
+        "      \"homing\": false,\n"
+        "      \"effect\": {\n"
+        "        \"debuff\": {\n"
+        "          \"amount\": 7\n"
+        "        }\n"
+        "      }\n"
+        "    },\n"
+        "    {\n"
+        "      \"damage\": 21,\n"
+        "      \"speed\": 500,\n"
+        "      \"penetration\": 1,\n"
+        "      \"channel\": 0,\n"
+        "      \"homing\": false,\n"
+        "      \"effect\": {}\n"
+        "    }\n"
+        "  ],\n"
+        "  \"attachments\": [\n"
+        "    {\n"
+        "      \"slot\": 3,\n"
+        "      \"power\": 1.5\n"
+        "    }\n"
+        "  ]\n"
+        "}";
+
+    int64_t size = tabledemo::LoadoutConfigToJsonMeasure( loadout );
+    if ( size < 0 )
+    {
+        // a refusal here means a spelling the writer could not name: report
+        // it as the failure it is rather than indexing a buffer by -1
+        printf( "FAIL json pinned text: ToJsonMeasure refused an instance the page can spell\n" );
+        failures++;
+        return;
+    }
+    CHECK( size == (int64_t) strlen( expected ) );
+    std::vector<char> text( (size_t) size + 1 );
+    CHECK( tabledemo::LoadoutConfigToJson( loadout, text.data(), size ) == size );
+    text[(size_t) size] = 0;
+    if ( strcmp( text.data(), expected ) != 0 )
+    {
+        printf( "FAIL json pinned text: ToJson does not spell what the page says\n--- got ---\n%s\n--- want ---\n%s\n",
+                text.data(), expected );
+        failures++;
+    }
+
+    // the empty vocabulary spellings, pinned too: an empty flags mask is [],
+    // an empty union is {}, and a defaulted enum is its variant's name
+    tabledemo::LoadoutConfig plain;
+    static const char * plain_head =
+        "{\n"
+        "  \"grade\": \"Silver\",\n"
+        "  \"grades\": [],\n";
+    int64_t plain_size = tabledemo::LoadoutConfigToJsonMeasure( plain );
+    if ( plain_size < 0 ) { printf( "FAIL json pinned text: an all-default instance was refused\n" ); failures++; return; }
+    std::vector<char> plain_text( (size_t) plain_size + 1 );
+    CHECK( tabledemo::LoadoutConfigToJson( plain, plain_text.data(), plain_size ) == plain_size );
+    plain_text[(size_t) plain_size] = 0;
+    CHECK( strncmp( plain_text.data(), plain_head, strlen( plain_head ) ) == 0 );
+    CHECK( strstr( plain_text.data(), "\"perks\": []" ) != NULL );
+    CHECK( strstr( plain_text.data(), "\"effect\": {}" ) != NULL );
+
+    // bytes are base64 AND PADDED on the way out, at all three lengths
+    struct { const uint8_t * bytes; int32_t length; const char * spelling; } base64[] = {
+        { (const uint8_t *) "\x01\x02\x03", 3, "\"icon\": \"AQID\"" },
+        { (const uint8_t *) "\x01\x02",     2, "\"icon\": \"AQI=\"" },
+        { (const uint8_t *) "\x01",         1, "\"icon\": \"AQ==\"" },
+        { (const uint8_t *) "",             0, "\"icon\": \"\"" },
+    };
+    for ( const auto & row : base64 )
+    {
+        tabledemo::ProfileConfig profile;
+        memcpy( profile.icon, row.bytes, (size_t) row.length );
+        profile.icon_length = row.length;
+        int64_t n = tabledemo::ProfileConfigToJsonMeasure( profile );
+        if ( n < 0 ) { printf( "FAIL json pinned base64: refused\n" ); failures++; continue; }
+        std::vector<char> out( (size_t) n + 1 );
+        CHECK( tabledemo::ProfileConfigToJson( profile, out.data(), n ) == n );
+        out[(size_t) n] = 0;
+        if ( strstr( out.data(), row.spelling ) == NULL )
+        {
+            printf( "FAIL json pinned base64: %s not in the text\n", row.spelling );
+            failures++;
+        }
+    }
+    // ... and UNPADDED base64 still reads, so a text from elsewhere lands
+    {
+        tabledemo::ProfileConfig profile;
+        tabledemo::TableReport report;
+        const char * text = "{ \"icon\": \"AQI\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( profile, text, (int64_t) strlen( text ), &report ) );
+        CHECK( profile.icon_length == 2 && profile.icon[0] == 1 && profile.icon[1] == 2 );
+        CHECK( !report.malformed );
+    }
+}
+
+// ---- numbers: JSON has ONE number type, and no value the field cannot hold
+// ---- ever reaches storage (SPEC-TABLES.md §16.2)
+
+static void test_json_number_grammar()
+{
+    // JSON's number production, and nothing else. A typo in an authoring file
+    // is a DIAGNOSTIC, not a value: the worst failure mode for a config
+    // pipeline is a garbled number that arrives as a clamped integer.
+    static const char * not_json[] = {
+        "{ \"heading\": 1-2 }",
+        "{ \"heading\": 5+ }",
+        "{ \"precision\": 1.2.3 }",
+        "{ \"precision\": 1e5e5 }",
+        "{ \"precision\": --3 }",
+        "{ \"heading\": +7 }",
+        "{ \"heading\": 007 }",
+        "{ \"precision\": .5 }",
+        "{ \"precision\": 3. }",
+        "{ \"precision\": 1e }",
+        "{ \"precision\": 1e+ }",
+        "{ \"heading\": - }",
+        "{ \"heading\": 0x10 }",
+    };
+    for ( const char * text : not_json )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        bool ok = tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report );
+        if ( ok || !report.malformed || report.clamped != 0 )
+        {
+            printf( "FAIL json number grammar (%s): ok=%d malformed=%d clamped=%d\n",
+                    text, ok, (int) report.malformed, report.clamped );
+            failures++;
+        }
+    }
+
+    // and the whole production IS accepted
+    struct { const char * text; double expect; } good[] = {
+        { "{ \"precision\": 0 }",        0.0 },
+        { "{ \"precision\": -0 }",       0.0 },
+        { "{ \"precision\": 1e3 }",      1000.0 },
+        { "{ \"precision\": 1E3 }",      1000.0 },
+        { "{ \"precision\": 1e+3 }",     1000.0 },
+        { "{ \"precision\": 1e-3 }",     0.001 },
+        { "{ \"precision\": -2.5 }",     -2.5 },
+        { "{ \"precision\": 0.5 }",      0.5 },
+        { "{ \"precision\": 123456.75 }", 123456.75 },
+    };
+    for ( const auto & row : good )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        CHECK( tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        if ( value.precision != row.expect || report.malformed || report.kind_mismatch != 0 )
+        {
+            printf( "FAIL json number accepted (%s): got %g want %g\n", row.text, value.precision, row.expect );
+            failures++;
+        }
+    }
+}
+
+static void test_json_integral_spellings()
+{
+    // JSON has one number type: 2.0 IS the integer 2 and 1e3 IS 1000. A text
+    // written by any library that round-trips numbers through a double spells
+    // integers this way — including this walker's own float writer — and
+    // §16.3 exists so a declaration can meet a text that already exists.
+    struct { const char * text; int64_t expect; } integral[] = {
+        { "{ \"experience\": 1e3 }",     1000 },
+        { "{ \"experience\": 2E0 }",     2 },
+        { "{ \"experience\": 2.0 }",     2 },
+        { "{ \"experience\": 2.00000 }", 2 },
+        { "{ \"experience\": 1.5e3 }",   1500 },
+        { "{ \"experience\": 4 }",       4 },
+        { "{ \"experience\": 1e0 }",     1 },
+    };
+    for ( const auto & row : integral )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        CHECK( tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report ) );
+        if ( (int64_t) value.experience != row.expect || report.kind_mismatch != 0 || report.malformed )
+        {
+            printf( "FAIL json integral spelling (%s): got %u want %lld kind=%d\n",
+                    row.text, value.experience, (long long) row.expect, report.kind_mismatch );
+            failures++;
+        }
+    }
+
+    // a GENUINELY fractional value is still the wrong shape for an integer
+    static const char * fractional[] = {
+        "{ \"experience\": 2.5 }",
+        "{ \"experience\": 1e-3 }",
+        "{ \"experience\": 0.1 }",
+        "{ \"experience\": -2.5 }",
+    };
+    for ( const char * text : fractional )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        if ( value.experience != 0 || report.kind_mismatch != 1 || report.malformed )
+        {
+            printf( "FAIL json fraction (%s): experience=%u kind=%d\n", text, value.experience, report.kind_mismatch );
+            failures++;
+        }
+    }
+
+    // an integral spelling still meets the width and the declared range
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"badge\": 3e2 }"; // 300 into a uint8
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.badge == 255 && report.clamped == 1 );
+    }
+    {
+        // signed, negative, and past the width
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"tilt\": -2e3 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.tilt == -128 && report.clamped == 1 );
+    }
+    {
+        // an integral value past every integer width saturates and counts
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"epoch\": 1e30 }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.epoch == 18446744073709551615ull && report.clamped == 1 );
+    }
+}
+
+static void test_json_no_infinity_reaches_storage()
+{
+    // A magnitude the field's format cannot hold never lands: storing the
+    // infinity the conversion produced would leave an instance this walk
+    // called CLEAN that ToJsonMeasure refuses forever, and §16.1's whole
+    // invariant is that a text which reads clean writes back.
+    struct { const char * text; const char * what; } overflow[] = {
+        { "{ \"precision\": 1e400 }",   "float64 over" },
+        { "{ \"precision\": -1e400 }",  "float64 under" },
+        { "{ \"ratings\": [ 1e400 ] }", "float32 array over" },
+        { "{ \"ratings\": [ -1e400 ] }", "float32 array under" },
+        { "{ \"ratings\": [ 1e300 ] }", "float64 magnitude into a float32" },
+    };
+    for ( const auto & row : overflow )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        bool ok = tabledemo::ProfileConfigFromJson( value, row.text, (int64_t) strlen( row.text ), &report );
+        if ( !ok || report.kind_mismatch != 1 )
+        {
+            printf( "FAIL json overflow (%s): ok=%d kind=%d\n", row.what, ok, report.kind_mismatch );
+            failures++;
+        }
+        // the field kept its default, and the instance is still writable
+        if ( tabledemo::ProfileConfigToJsonMeasure( value ) <= 0 )
+        {
+            printf( "FAIL json overflow (%s): the instance can no longer be written\n", row.what );
+            failures++;
+        }
+    }
+
+    // ... and a magnitude that DOES fit still lands exactly
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"precision\": 1e308, \"ratings\": [ 3.4e38 ] }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.precision == 1e308 && report.kind_mismatch == 0 );
+        CHECK( tabledemo::ProfileConfigToJsonMeasure( value ) > 0 );
+    }
+}
+
+static void test_json_duplicate_arrays_last_wins()
+{
+    // "last wins" has to be true of an ARRAY key too, and it is wire-visible:
+    // a fixed array writes every slot, so a second, shorter occurrence must
+    // not leave the first occurrence's tail standing.
+    {
+        tabledemo::LoadoutConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"podium\": [ \"Bronze\", \"Silver\", \"Gold\" ], \"podium\": [ \"Gold\" ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.podium[0] == tabledemo::Grade::Gold );
+        CHECK( value.podium[1] == tabledemo::Grade::None );
+        CHECK( value.podium[2] == tabledemo::Grade::None );
+        CHECK( report.duplicate == 1 );
+
+        // and it matches the instance the SECOND occurrence alone describes
+        tabledemo::LoadoutConfig once;
+        const char * single = "{ \"podium\": [ \"Gold\" ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( once, single, (int64_t) strlen( single ), &report ) );
+        uint8_t a[1024], b[1024];
+        int64_t na = tabledemo::LoadoutConfigSave( value, a, sizeof( a ) );
+        int64_t nb = tabledemo::LoadoutConfigSave( once, b, sizeof( b ) );
+        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
+    }
+    {
+        // a counted array, and a fixed array of TABLES (whose elements go back
+        // to their own declared defaults, not to zero)
+        tabledemo::LoadoutConfig value;
+        tabledemo::TableReport report;
+        const char * text =
+            "{ \"grades\": [ \"Gold\", \"Bronze\", \"Silver\" ], \"grades\": [ \"Bronze\" ],"
+            "  \"backups\": [ { \"damage\": 1 }, { \"damage\": 2 } ], \"backups\": [ { \"damage\": 3 } ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.grades_count == 1 && value.grades[0] == tabledemo::Grade::Bronze );
+        CHECK( value.backups[0].damage == 3 );     // the SECOND occurrence's element
+        CHECK( value.backups[1].damage == 21.0f ); // the DECLARED default, not 2
+        CHECK( report.duplicate == 2 );
+    }
+    {
+        // bytes too
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"icon\": \"AQIDBAUG\", \"icon\": \"/w==\" }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.icon_length == 1 && value.icon[0] == 0xff );
+        CHECK( report.duplicate == 1 );
+    }
+    {
+        // and a float array, the review's own repro
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"ratings\": [ 1.5, 2.5, 3.5, 4.5 ], \"ratings\": [ 9.5 ] }";
+        CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.ratings[0] == 9.5f && value.ratings[1] == 0.0f &&
+               value.ratings[2] == 0.0f && value.ratings[3] == 0.0f );
+    }
+}
+
+static void test_json_null_is_a_kind_mismatch()
+{
+    // null is a JSON value with no field kind to land in — there is no
+    // pointer row on this page — so it is the wrong shape everywhere, and it
+    // is skipped and counted like any other wrong shape.
+    static const char * nulls[] = {
+        "{ \"experience\": null }",
+        "{ \"name\": null }",
+        "{ \"icon\": null }",
+        "{ \"ratings\": null }",
+        "{ \"has_loadout\": null }",
+        "{ \"loadout\": null }",
+        "{ \"precision\": null }",
+    };
+    for ( const char * text : nulls )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        bool ok = tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report );
+        if ( !ok || report.kind_mismatch != 1 || report.malformed )
+        {
+            printf( "FAIL json null (%s): ok=%d kind=%d malformed=%d\n",
+                    text, ok, report.kind_mismatch, (int) report.malformed );
+            failures++;
+        }
+    }
+    // and inside a vocabulary array, and inside a union
+    {
+        tabledemo::LoadoutConfig value;
+        tabledemo::TableReport report;
+        const char * text = "{ \"grades\": [ \"Gold\", null ], \"perks\": [ null ] }";
+        CHECK( tabledemo::LoadoutConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( value.grades_count == 2 && value.grades[0] == tabledemo::Grade::Gold );
+        CHECK( report.kind_mismatch == 2 );
     }
 }
 
@@ -3617,6 +4091,12 @@ int main()
     test_json_writer_refusals();
     test_json_guards();
     test_json_key_attribute();
+    test_json_number_grammar();
+    test_json_integral_spellings();
+    test_json_no_infinity_reaches_storage();
+    test_json_duplicate_arrays_last_wins();
+    test_json_null_is_a_kind_mismatch();
+    test_json_pinned_text();
     test_json_fuzz_tokenizer();
 
     if ( failures > 0 )

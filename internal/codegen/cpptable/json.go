@@ -96,6 +96,22 @@ inline char TableJsonDecimalPoint()
 // ---- storage is the HOST's, so every load and store goes through a width
 // ---- switch rather than a memcpy into the low bytes of a wider word
 
+// finite: not a NaN, not an infinity. Written without <cmath> — the walk's
+// runtime surface stays the handful of functions it already names.
+// A vocabulary entry the descriptor could not spell. The generated name
+// functions answer "???" for a value outside the declared set, and that is
+// not a name — writing it would put a spelling in the text that the reader
+// then counts as unknown, turning a refusal into a silent loss.
+inline bool TableJsonNamed( const char * name )
+{
+    return name != NULL && strcmp( name, "???" ) != 0;
+}
+
+inline bool TableJsonFinite( double v )
+{
+    return v == v && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308;
+}
+
 inline uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
 {
     switch ( width )
@@ -301,6 +317,43 @@ inline void TableJsonWriteBase64( TableJsonOut & out, const uint8_t * data, int3
     out.put( '"' );
 }
 
+// One UTF-8 sequence at s, or -1 when the bytes there are not one. Rejects
+// the lot: a stray continuation, an overlong form, a surrogate half, and
+// anything past U+10FFFF.
+inline int32_t TableJsonUtf8( const char * s, int32_t remaining, int32_t * width )
+{
+    unsigned char lead = (unsigned char) s[0];
+    int32_t want = 0;
+    int32_t code = 0;
+    if ( lead < 0x80 ) { *width = 1; return lead; }
+    else if ( lead >= 0xc2 && lead <= 0xdf ) { want = 2; code = lead & 0x1f; }
+    else if ( lead >= 0xe0 && lead <= 0xef ) { want = 3; code = lead & 0x0f; }
+    else if ( lead >= 0xf0 && lead <= 0xf4 ) { want = 4; code = lead & 0x07; }
+    else { return -1; }
+    if ( remaining < want ) { return -1; }
+    for ( int32_t i = 1; i < want; i++ )
+    {
+        unsigned char next = (unsigned char) s[i];
+        if ( ( next & 0xc0 ) != 0x80 ) { return -1; }
+        code = ( code << 6 ) | ( next & 0x3f );
+    }
+    if ( want == 3 && code < 0x800 ) { return -1; }          // overlong
+    if ( want == 4 && code < 0x10000 ) { return -1; }        // overlong
+    if ( code >= 0xd800 && code <= 0xdfff ) { return -1; }   // a surrogate half
+    if ( code > 0x10ffff ) { return -1; }
+    *width = want;
+    return code;
+}
+
+// A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
+// byte-transparent — the wire imposes no encoding (§3) and a string may hold
+// anything — so the WRITER is where that obligation is met: a byte that is
+// not part of a well-formed sequence is written as U+FFFD, one per bad byte,
+// and never raw. A text this walk writes is therefore readable by any
+// conforming parser, which a raw byte would not be. The cost is stated
+// plainly: for a string holding invalid UTF-8, the round trip is NOT
+// byte-identical, because the alternative is emitting a text that is not
+// JSON.
 inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -323,11 +376,22 @@ inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t le
                     char escape[6] = { '\\', 'u', '0', '0', hex[ c >> 4 ], hex[ c & 0xf ] };
                     out.raw( escape, 6 );
                 }
+                else if ( c < 0x80 )
+                {
+                    out.put( (char) c );
+                }
                 else
                 {
-                    // UTF-8 rides as its own bytes: the wire imposes no
-                    // encoding and neither does the text (SPEC-TABLES.md §3)
-                    out.put( (char) c );
+                    int32_t width = 0;
+                    if ( TableJsonUtf8( s + i, length - i, &width ) < 0 )
+                    {
+                        out.raw( "\xef\xbf\xbd", 3 ); // U+FFFD, one per bad byte
+                    }
+                    else
+                    {
+                        out.raw( s + i, width );
+                        i += width - 1;
+                    }
                 }
                 break;
         }
@@ -367,10 +431,7 @@ inline void TableJsonWriteSigned( TableJsonOut & out, int64_t value )
 // already apply to an enum value no variant names (§5).
 inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
 {
-    if ( !( value == value ) || value > 1.7976931348623157e308 || value < -1.7976931348623157e308 )
-    {
-        return false;
-    }
+    if ( !TableJsonFinite( value ) ) { return false; }
     char text[64];
     int low = single ? 6 : 15;
     int high = single ? 9 : 17;
@@ -424,6 +485,11 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
             return false; // a tag no arm names, exactly as measure refuses it
         }
         const char * arm = f->enum_name( tag );
+        // and refuse on the NAME, not merely on the bound: §16.2 says a value
+        // no variant NAMES is refused, so the check is the name. Writing
+        // whatever came back would emit "???", a spelling the reader counts
+        // as unknown — a silent round-trip loss in place of a refusal.
+        if ( !TableJsonNamed( arm ) ) { return false; }
         out.put( '{' );
         out.line( depth + 1 );
         TableJsonWriteString( out, arm, (int32_t) strlen( arm ) );
@@ -449,6 +515,7 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         if ( (int64_t) value > f->enum_max ) { return false; }
         if ( value != 0 && f->variant_id( value ) == 0 ) { return false; }
         const char * name = f->enum_name( value );
+        if ( !TableJsonNamed( name ) ) { return false; }
         TableJsonWriteString( out, name, (int32_t) strlen( name ) );
         return true;
     }
@@ -469,10 +536,11 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
             {
                 return false; // a bit no variant names has no text spelling
             }
+            const char * name = f->enum_name( (uint64_t) bit );
+            if ( !TableJsonNamed( name ) ) { return false; }
             if ( !first ) { out.put( ',' ); }
             first = false;
             out.line( depth + 1 );
-            const char * name = f->enum_name( (uint64_t) bit );
             TableJsonWriteString( out, name, (int32_t) strlen( name ) );
         }
         out.line( depth );
@@ -730,6 +798,11 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
                             in.pos = mark; // a lone lead surrogate rides as itself
                         }
                     }
+                    // a surrogate half that never found its partner has no
+                    // UTF-8 encoding: encoding it anyway would manufacture
+                    // CESU-8 — invalid UTF-8 — out of input that was valid
+                    // JSON, so it reads as the replacement character
+                    if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
                     unit_length = TableJsonEncodeUtf8( code, unit );
                     break;
                 }
@@ -781,30 +854,71 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
 }
 
 // the numeric token at the cursor, copied out whole; false = not a number
+// Scan one number, to JSON's OWN grammar (RFC 8259 §6) and not to a run of
+// number-ish characters:
+//
+//     number = [ "-" ] int [ frac ] [ exp ]
+//     int    = "0" / ( digit1-9 *digit )
+//     frac   = "." 1*digit
+//     exp    = ( "e" / "E" ) [ "-" / "+" ] 1*digit
+//
+// Scanning the production is what makes a typo in an authoring file a
+// DIAGNOSTIC rather than a value: "1-2" scans as 1 and leaves "-2" where the
+// object expects a comma, so the text is malformed — which is what §16.2
+// already promises. A permissive scan would hand "1-2" to a digit loop and
+// report a clamp, and a config pipeline would never hear about it. Leading
+// "+", leading zeros, ".5" and "3." are not JSON either.
+inline bool TableJsonWalkNumber( TableJsonIn & in, bool * integral )
+{
+    TableJsonSpace( in );
+    bool whole = true;
+    if ( in.pos < in.size && in.text[in.pos] == '-' ) { in.pos++; }
+    // int: a lone zero, or a non-zero digit and any digits after it
+    if ( in.pos >= in.size ) { return false; }
+    if ( in.text[in.pos] == '0' )
+    {
+        in.pos++;
+    }
+    else if ( in.text[in.pos] >= '1' && in.text[in.pos] <= '9' )
+    {
+        while ( in.pos < in.size && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' ) { in.pos++; }
+    }
+    else
+    {
+        return false;
+    }
+    // frac
+    if ( in.pos < in.size && in.text[in.pos] == '.' )
+    {
+        in.pos++;
+        if ( in.pos >= in.size || in.text[in.pos] < '0' || in.text[in.pos] > '9' ) { return false; }
+        while ( in.pos < in.size && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' ) { in.pos++; }
+        whole = false;
+    }
+    // exp
+    if ( in.pos < in.size && ( in.text[in.pos] == 'e' || in.text[in.pos] == 'E' ) )
+    {
+        in.pos++;
+        if ( in.pos < in.size && ( in.text[in.pos] == '-' || in.text[in.pos] == '+' ) ) { in.pos++; }
+        if ( in.pos >= in.size || in.text[in.pos] < '0' || in.text[in.pos] > '9' ) { return false; }
+        while ( in.pos < in.size && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' ) { in.pos++; }
+        whole = false;
+    }
+    *integral = whole;
+    return true;
+}
+
+// the same production, with the token kept for conversion
 inline bool TableJsonScanNumber( TableJsonIn & in, char * token, int32_t capacity, int32_t * length, bool * integral )
 {
     TableJsonSpace( in );
     int64_t start = in.pos;
-    bool whole = true;
-    while ( in.pos < in.size )
-    {
-        char c = in.text[in.pos];
-        bool numeric = ( c >= '0' && c <= '9' ) || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E';
-        if ( !numeric ) { break; }
-        if ( c == '.' || c == 'e' || c == 'E' ) { whole = false; }
-        in.pos++;
-    }
-    bool digits = false;
-    for ( int64_t i = start; i < in.pos; i++ )
-    {
-        if ( in.text[i] >= '0' && in.text[i] <= '9' ) { digits = true; break; }
-    }
+    if ( !TableJsonWalkNumber( in, integral ) ) { return false; }
     int64_t count = in.pos - start;
-    if ( count <= 0 || count >= capacity || !digits ) { return false; }
+    if ( count <= 0 || count >= capacity ) { return false; }
     memcpy( token, in.text + start, (size_t) count );
     token[count] = 0;
     *length = (int32_t) count;
-    *integral = whole;
     return true;
 }
 
@@ -908,20 +1022,11 @@ inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth )
         default:
         {
             // consumed, never converted: skipping needs no buffer, and this
-            // is the one walk a hostile text drives to the depth cap
-            TableJsonSpace( in );
-            int64_t start = in.pos;
-            bool digits = false;
-            while ( in.pos < in.size )
-            {
-                char n = in.text[in.pos];
-                bool numeric = ( n >= '0' && n <= '9' ) || n == '-' || n == '+' ||
-                               n == '.' || n == 'e' || n == 'E';
-                if ( !numeric ) { break; }
-                if ( n >= '0' && n <= '9' ) { digits = true; }
-                in.pos++;
-            }
-            if ( in.pos == start || !digits ) { in.bad = true; return false; }
+            // is the one walk a hostile text drives to the depth cap. It is
+            // the SAME production the value path scans, so an unknown key
+            // cannot smuggle past a number a named key would refuse.
+            bool integral = false;
+            if ( !TableJsonWalkNumber( in, &integral ) ) { in.bad = true; return false; }
             return true;
         }
     }
@@ -1057,6 +1162,18 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     {
         bool single = f->kind == 10;
         double value = TableJsonTokenDouble( token, length, single );
+        // A magnitude the field's format cannot hold is the WRONG SHAPE for
+        // the kind, and it never reaches storage: 1e400 is not a float64 and
+        // 1e300 is not a float32. Storing the infinity the conversion
+        // produced would leave an instance this walk called CLEAN that
+        // ToJsonMeasure then refuses forever (a non-finite float has no JSON
+        // spelling), and §16.1's one invariant is that a text which reads
+        // clean writes back.
+        if ( !TableJsonFinite( value ) )
+        {
+            in.report->kind_mismatch++;
+            return true;
+        }
         if ( f->has_range )
         {
             if ( value < f->range_min ) { value = f->range_min; in.report->clamped++; }
@@ -1065,6 +1182,11 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( single )
         {
             float narrow = (float) value;
+            if ( !TableJsonFinite( (double) narrow ) )
+            {
+                in.report->kind_mismatch++;
+                return true;
+            }
             memcpy( storage, &narrow, sizeof( narrow ) );
         }
         else
@@ -1073,17 +1195,48 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
         return true;
     }
-    if ( !integral )
-    {
-        // a fraction where an integer is declared is the WRONG SHAPE for the
-        // kind, not framing damage: skipped and counted, never rounded into
-        // place (§16.2)
-        in.report->kind_mismatch++;
-        return true;
-    }
+    // JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
+    // library that round-trips numbers through a double emits them that way —
+    // this walker's own float writer emits 1e+21. So an integer field takes
+    // any number whose VALUE is integral, however it was spelled; only a
+    // genuinely fractional value is the wrong shape for it.
     bool is_signed = f->kind >= 2 && f->kind <= 5;
     bool saturated = false;
-    int64_t value = TableJsonTokenInteger( token, length, is_signed, &saturated );
+    int64_t value = 0;
+    if ( integral )
+    {
+        value = TableJsonTokenInteger( token, length, is_signed, &saturated );
+    }
+    else
+    {
+        double d = TableJsonTokenDouble( token, length, false );
+        if ( !TableJsonFinite( d ) )
+        {
+            in.report->kind_mismatch++;
+            return true;
+        }
+        if ( is_signed )
+        {
+            if ( d >= 9223372036854775808.0 ) { value = INT64_MAX; saturated = true; }
+            else if ( d < -9223372036854775808.0 ) { value = INT64_MIN; saturated = true; }
+            else if ( d != (double) (int64_t) d ) { in.report->kind_mismatch++; return true; }
+            else { value = (int64_t) d; }
+        }
+        else
+        {
+            if ( d < 0.0 )
+            {
+                // a negative for an unsigned field clamps to zero, as the
+                // exact digit path already does
+                if ( d != (double) (int64_t) d ) { in.report->kind_mismatch++; return true; }
+                value = 0;
+                saturated = true;
+            }
+            else if ( d >= 18446744073709551616.0 ) { value = (int64_t) UINT64_MAX; saturated = true; }
+            else if ( d != (double) (uint64_t) d ) { in.report->kind_mismatch++; return true; }
+            else { value = (int64_t) (uint64_t) d; }
+        }
+    }
     if ( saturated ) { in.report->clamped++; }
     if ( f->has_range )
     {
@@ -1135,6 +1288,8 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         // backslash in one is simply not an alphabet character.
         if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
         in.pos++;
+        memset( storage, 0, (size_t) f->array_bound );
+        TableJsonSetCount( base, f, 0 );
         const char * alphabet = TableJsonBase64Alphabet();
         int32_t placed = 0;
         uint32_t accumulator = 0;
@@ -1179,6 +1334,26 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
         in.pos++;
+        // LAST WINS has to be true of a repeated ARRAY key too, and it is
+        // wire-visible: a fixed array writes every slot, so a second, shorter
+        // occurrence overlaying a prefix would leave the first occurrence's
+        // tail standing. The field goes back to its declared defaults before
+        // this occurrence's elements are placed — the re-establishment a nested
+        // table and a union arm already get. A table element's defaults are
+        // its own (the reset hook); every other element kind's storage
+        // default is zero, which is what the generated array declares.
+        if ( f->kind == 13 )
+        {
+            for ( int32_t i = 0; i < f->array_bound; i++ )
+            {
+                f->table->reset( storage + (int64_t) i * f->elem_size );
+            }
+        }
+        else
+        {
+            memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
+        }
+        TableJsonSetCount( base, f, 0 );
         int32_t placed = 0;
         char shape = TableJsonElementShape( f );
         for ( ;; )
