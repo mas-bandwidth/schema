@@ -2664,11 +2664,15 @@ in build version (§20.5).
   here equal `tableGeneratedVerbs` exactly, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **`LayoutId` is in the set and is on its way out**: it is the id constant
-  wire v1's cook emits (§7's status), and it retires into the unit-wide build
-  version with the emitter (schema#251). The claim goes in that same change
-  and never before it, since dropping it first frees a name the generated
-  code still spells.
+  **Two of the twenty-six outlive what they guard, and both are stated rather
+  than quietly carried.** `LayoutId` is the id constant wire v1's cook emits
+  (§7's status), and it retires into the unit-wide build version with the
+  emitter (schema#251); the claim goes in that same change and never before
+  it, since dropping it first frees a name the generated code still spells.
+  `Root` is claimed and NO emitter spells `<X>Root` — the builder's accessor
+  is the member `GetRoot`, renamed for the reason below — so the claim guards
+  nothing and is tracked for removal as schema#310, page and checker moving
+  together.
 
   **The BLOCK FORM claims seven more, and the checker does not claim them
   yet** (§19's status: no backend emits the form). They are law on the same
