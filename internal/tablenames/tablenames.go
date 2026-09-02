@@ -1,0 +1,152 @@
+// Package tablenames is THE registry of unit-level names the generated
+// TABLE-wire runtimes define (SPEC-TABLES.md §11).
+//
+// It exists because the same list is needed in two places that must never
+// disagree: the CHECKER claims these names when a unit declares a table, so no
+// legal schema can reach a generated source that does not compile; and the
+// EMITTERS define them. A name defined by one and unclaimed by the other is
+// precisely the defect §11 promises cannot happen — a legal schema whose
+// generated code a compiler rejects — so the two read one list instead of
+// keeping two.
+//
+// The list is FRONT-END LAW, not one target's inventory: every backend's
+// spelling is claimed for ALL of them. A unit legal under one target and
+// illegal under another is the trap the claim exists to prevent, so C++'s
+// snake_case float helpers and C#'s CamelCase ones are claimed together, and
+// so are the variable-length runtime's names — claimed whenever a unit
+// declares a table, not only when one carries pointers, so adding a pointer to
+// an existing table never turns a legal declaration elsewhere into a collision.
+//
+// ADDING A RUNTIME NAME. Register it here, with the backends that define it.
+// The emitters are not generated from this list — a runtime is prose-laden
+// source that reads better written out — so the registry is held honest from
+// the other side instead: compiler's TestTableRuntimeNamesAreClaimed scans the
+// emitted output for every Table* identifier and requires the set to equal
+// this registry's, in both directions. An emitted name nobody registered fails
+// there; so does a registered name nothing emits any more.
+package tablenames
+
+import "sort"
+
+// Backend is a bit per table backend, so one entry can say which of them
+// define the name.
+type Backend uint8
+
+const (
+	// Cpp is the C++ table backend (internal/codegen/cpptable).
+	Cpp Backend = 1 << iota
+	// Cs is the C# table backend (internal/codegen/cstable).
+	Cs
+)
+
+// Name is one spelling the generated table runtimes carry, and the backends
+// whose emitted text carries it.
+type Name struct {
+	Name string
+	By   Backend
+	What string // what it is, for a reader of this file
+
+	// Scoped marks a spelling that exists ONLY as a member of another
+	// registered type, so it claims nothing: a schema may declare it, because
+	// the generated member is reached through its owner and cannot collide
+	// with a namespace-level declaration. Registered anyway, so the scan that
+	// holds this list honest has an answer for every name it finds rather
+	// than a filter nobody can see.
+	Scoped bool
+}
+
+// registry is the whole list. Sorted by nothing in particular — callers that
+// need an order sort for themselves, because map and slice order must never
+// decide what a diagnostic says.
+var registry = []Name{
+	// the shared surface both backends define per unit
+	{Name: "TableReport", By: Cpp | Cs, What: "the read report — the permissive contract's ledger"},
+	{Name: "TableWriter", By: Cpp | Cs, What: "the wire writer over the caller's buffer"},
+	{Name: "TableReader", By: Cpp | Cs, What: "the wire reader over the caller's buffer"},
+	{Name: "TableTypeInfo", By: Cpp | Cs, What: "a table's reflection descriptor"},
+	{Name: "TableFieldInfo", By: Cpp | Cs, What: "a field's reflection descriptor"},
+	{Name: "TableEnumId", By: Cpp | Cs, What: "an enum value -> its table-wire variant id"},
+	{Name: "TableEnumValue", By: Cpp | Cs, What: "a table-wire variant id -> its enum value"},
+
+	// SCOPED: a field descriptor's nested-table column. C++ spells it `table`
+	// and C# `Table`, and either way it is reached through its owner, so a
+	// schema is free to declare the name.
+	{Name: "Table", By: Cs, What: "TableFieldInfo's nested-table column", Scoped: true},
+
+	// C++'s float <-> IEEE-754 bit pattern helpers
+	{Name: "table_bits_to_float", By: Cpp, What: "u32 bits -> float"},
+	{Name: "table_float_to_bits", By: Cpp, What: "float -> u32 bits"},
+	{Name: "table_bits_to_double", By: Cpp, What: "u64 bits -> double"},
+	{Name: "table_double_to_bits", By: Cpp, What: "double -> u64 bits"},
+
+	// C#'s twins, plus the reader's in-place prefill. These are VERB-FIRST on
+	// purpose: §11 freezes the 23 name-first suffixes a closure member claims,
+	// and a port does not mint a 24th — so the reset joins the runtime family
+	// here instead, where it is claimed at unit level.
+	{Name: "TableReset", By: Cs, What: "restore a value's declared defaults in place"},
+	{Name: "TableBitsToFloat", By: Cs, What: "u32 bits -> float"},
+	{Name: "TableFloatToBits", By: Cs, What: "float -> u32 bits"},
+	{Name: "TableBitsToDouble", By: Cs, What: "u64 bits -> double"},
+	{Name: "TableDoubleToBits", By: Cs, What: "double -> u64 bits"},
+
+	// the VARIABLE-LENGTH runtime (SPEC-TABLES.md §6): the arena, the region
+	// and the reference slot. C++ only today — the C# backend carries the
+	// fixed class and refuses a pointered unit by name (§11).
+	// TableRef carries a SECOND, unrelated meaning in C#: a field descriptor's
+	// lazy factory for the nested table's descriptor, which is scoped. The
+	// C++ meaning is unit-level, so the name is claimed whatever the target —
+	// the claim is the union, never the intersection.
+	{Name: "TableRef", By: Cpp | Cs, What: "C++: a pointer's four-byte reference slot; C#: a field descriptor's nested-table factory"},
+	{Name: "TableSlot", By: Cpp, What: "an arena slot"},
+	{Name: "TableArena", By: Cpp, What: "the builder's segmented slab arena"},
+	{Name: "TableSlab", By: Cpp, What: "one worker's privately-owned slab of it"},
+	{Name: "TableWorker", By: Cpp, What: "a builder worker's allocation front"},
+	{Name: "TableBuilder", By: Cpp, What: "the mutable life's base"},
+	{Name: "TableRegion", By: Cpp, What: "the locked, packed region"},
+	{Name: "TableRegionHeader", By: Cpp, What: "the cooked form's build-locking header"},
+}
+
+// All returns the whole registry, sorted by name.
+func All() []Name {
+	out := append([]Name(nil), registry...)
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Claimed is every UNIT-LEVEL registered name, sorted — what the checker
+// claims when a unit declares a table, whatever target it is generating for.
+// Scoped spellings are not claimed: they cannot collide with a declaration.
+func Claimed() []string {
+	var names []string
+	for _, n := range registry {
+		if !n.Scoped {
+			names = append(names, n.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// DefinedBy is every name one backend's emitted text carries, scoped ones
+// included, sorted.
+func DefinedBy(b Backend) []string {
+	var names []string
+	for _, n := range registry {
+		if n.By&b != 0 {
+			names = append(names, n.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// Registered reports whether a spelling is in the registry at all — the
+// question the emitted-text scan asks of every Table* identifier it finds.
+func Registered(name string) bool {
+	for _, n := range registry {
+		if n.Name == name {
+			return true
+		}
+	}
+	return false
+}

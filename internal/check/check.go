@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -2509,32 +2510,11 @@ func (c *checker) checkClaimedNames() {
 		// package (SPEC-TABLES.md) — claimed only when a unit declares a
 		// table, so table-free units keep their whole namespace.
 		//
-		// EVERY BACKEND'S SPELLING IS CLAIMED FOR ALL OF THEM. This list is
-		// front-end law, not one target's inventory: §11's promise is that no
-		// legal schema reaches a non-compiling generated source through this
-		// door, and a name only one backend emits still breaks that backend.
-		// So the C++ snake_case float helpers and the C# CamelCase ones are
-		// claimed together, and a name a future port needs joins them here
-		// rather than in its emitter.
-		for _, gen := range []string{"TableReport", "TableWriter", "TableReader",
-			"TableTypeInfo", "TableFieldInfo", "table_bits_to_float",
-			"table_float_to_bits", "table_bits_to_double", "table_double_to_bits",
-			// the identity pair every table backend emits per enum in the
-			// closure: C++ spells it TableEnumId/TableEnumValue too, so
-			// claiming it closes both targets at once
-			"TableEnumId", "TableEnumValue",
-			// the C# runtime's verb-first names on the Schema class: the
-			// reader's in-place prefill and the four float helpers. An ENUM
-			// named after one of these resolves to the method group in
-			// expression position and the unit does not compile (CS0119).
-			"TableReset", "TableBitsToFloat", "TableFloatToBits",
-			"TableBitsToDouble", "TableDoubleToBits",
-			// the VARIABLE-LENGTH runtime (SPEC-TABLES.md): claimed whenever a
-			// unit declares a table, not only when one carries pointers, so
-			// adding a pointer to an existing table never turns a legal
-			// declaration into a collision
-			"TableRef", "TableSlot", "TableArena", "TableSlab", "TableWorker",
-			"TableBuilder", "TableRegion", "TableRegionHeader"} {
+		// The list is not written here: internal/tablenames is the ONE
+		// registry, read by this claim and held honest against what the
+		// emitters actually emit. A second copy of it in this file is exactly
+		// how the C# runtime's names came to be unclaimed in the first place.
+		for _, gen := range tablenames.Claimed() {
 			add(gen, "the generated TABLE-wire runtime (SPEC-TABLES.md)", unitPos)
 		}
 	}
