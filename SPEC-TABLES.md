@@ -1593,12 +1593,11 @@ separately, so a caller may place them together or apart and may release
 the attribution once `Load` returns. `Cook` writes them as two parts for
 the same reason (§7).
 
-**Backend status for this section: spec ahead of the emitter.** The node
-directory is the landed law and no backend writes one. A C++ region carries
-its data and nothing beside it: `Lock` packs the bodies, `Load` resolves
-indices without a resident directory, and `Cook` writes one part rather than
-two (§7), so the attribution a validating tool reads has no writer yet. It
-lands with §3.1's flat node table, tracked as schema#251.
+**Backend status: the node directory is not written (schema#251).** A C++
+region carries its data and nothing beside it — `Lock` packs the bodies and
+`Load` resolves indices without a resident directory — so the attribution a
+validating tool reads has no writer. It lands with §3.1's flat node table and
+the cook (§7).
 
 **The price, stated.** Twelve bytes a node on the wire (an 8-byte type id
 and a 4-byte length per record) and sixteen a node of attribution, which
@@ -1631,7 +1630,7 @@ The builder is designed to go wide, lock-free by ownership:
 - **The contract, stated plainly.** Allocating on YOUR OWN worker is safe
   concurrently with any other worker's. Writing fields of a node another
   worker allocated is your own synchronization problem; this runtime does
-  not arbitrate it. `Lock`, `Save`, `Cook` and `Open` are
+  not arbitrate it. `Lock` and `Save` are
   single-threaded — call them after the workers have joined. The
   reflection descriptors (§8) are immutable constant data and carry no
   first-use state, so reading them needs no synchronization at all.
@@ -1700,23 +1699,8 @@ SceneCook( builder, buffer, data, attribution );   // write it
 const Scene * scene = SceneOpen( bytes, size );    // point at it, or NULL
 ```
 
-**Backend status for this section: spec ahead of the emitter.** This section
-is the landed law and the C++ table backend — the only one that emits a cook
-(§11) — emits wire v1's, which differs from it in five ways a reader must
-know before building on either. `Open` matches the header and then WALKS the
-region behind a monotonic high-water mark, the traversal §14 REJECTS by name
-as forgeable, so the match-and-point below is the law and not the code. The
-header carries ONE 32-bit part length, which reimposes the ceiling §3.1
-removes. There is no attribution part and no node directory (§6.3) beside the
-data, so there is nothing for a tool to check a file against. A FIXED table
-has no cook at all: `Cook`, `CookMeasure` and `Open` are emitted for
-VARIABLE-LENGTH tables, and only in a unit that declares one, so the
-fixed-root cook stated below has no code behind it. And `schema
-cook-check` is not built. Moving the emitter to this section — the header
-match, the two 64-bit lengths, the attribution beside the data and the tool
-over it — is tracked as schema#251, the same change that lands §3.1's flat
-node table; §20's status paragraph carries the emitter obligations the build
-version adds to that list.
+**Backend status: the cook is not built (schema#251).** Variable-length tables
+ride the tolerant wire.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -1727,9 +1711,9 @@ what the match-and-point rule below already states and what a walk of any
 shape forfeits. The **byte order is settled at cook time** for the target
 build (below), so the reading side runs no fix-up pass at all. And a mapped
 file's **pages are touched only as they are used**, which is a property of
-touching nothing at open rather than a separate mechanism. **Not built**: the
-gate is open time flat across a 1 MB, a 100 MB and a 1 GB cook, and it rides
-with the emitter (schema#251).
+touching nothing at open rather than a separate mechanism. The gate is open
+time flat across a 1 MB, a 100 MB and a 1 GB cook, and it rides with the
+emitter.
 
 **The pipeline, in the owner's words**: *"the optimized path is still
 available, it is tooling does the build, then cooks to the rad binary format.
@@ -1826,7 +1810,7 @@ the wire, and keeps the flexibility that comes with it.
   The ATTRIBUTION follows it: the node directory of §6.3, which says
   where every node starts and what type it is. **Nothing that READS the
   structure touches it** — it is written beside the data for the TOOL
-  (`schema cook-check`, below — **not built**), so a build that ships no
+  (`schema cook-check`, below), so a build that ships no
   tooling need not carry it at all: the header records its length as zero and
   the file is just data.
 - **`Open` checks the header and points, and this is the WHOLE check**,
@@ -1846,7 +1830,7 @@ the wire, and keeps the flexibility that comes with it.
   which. A cook is an accelerator for a build's own assets, and a runtime
   that wanted to reason about a foreign one has already left the fast path.
 - **Validating an untrusted cook is a TOOL, not a runtime surface**:
-  `schema cook-check` (**not built**), over the same reflection descriptors
+  `schema cook-check`, over the same reflection descriptors
   (§8) the runtime already carries, checking the DATA against the ATTRIBUTION.
   That is where the case lives — a file whose provenance a person doubts, or
   one a tool is diagnosing — and it is a person's decision to run it, not a
@@ -2591,7 +2575,7 @@ in build version (§20.5).
   field's referent dropped, or swapped for one whose identities do not
   ride. Overridden only by moving the baseline with a recorded reason.
 - **A save-time data cycle reached from a builder** (§3.1): measure,
-  save, cook and `Lock` all return failure with the cycle named. Nothing
+  save and `Lock` all return failure with the cycle named. Nothing
   recurses away. A region loaded from a wire is not re-proved, and a save
   from it reproduces what it was given.
 - **A node body past `0xFFFFFFFF` bytes** (§3.1): a record's length is a
@@ -2602,33 +2586,18 @@ in build version (§20.5).
   (§3.1) — by hash accident or through `was` — naming the field. **Two
   tables in one unit's closure whose NAME ids collide** (§5), naming
   both: a node's type id is its table's name hash.
-- **Cooking a region that carries a not-materialized node** (§6.3): the
-  region loaded correctly and reads correctly, but a cooked file is an
-  accelerator and cannot carry a hole. `Cook` returns failure naming the
-  index.
-- **A cooked file this build cannot point at**: any of the six checks §7's
-  `Open` enumerates failing — the magic, the byte order, the build version, a
-  non-zero reserved word, either part length, the base's alignment. `Open`
-  returns NULL; the caller falls back to a wire load. `schema cook-check`
-  (§7 — **not built**) adds the attribution's own refusals, and they are the
-  TOOL's: a missing or out-of-file attribution part, a sentinel entry, a type
-  the unit does not have, a directory that does not ascend or overlaps a node
-  with the next, a reference that leaves the region or that the directory does
-  not name or names as another type, a misaligned reference, or a count
-  companion outside its declared bound.
-
 - **A declaration colliding with a generated table spelling.** Tables and
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **26 suffixes**, and a declaration spelling one of them is
+  each of these **24 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
-  At  Root  Emplace  Pack  PackMeasure  OpenWalk
-  Cook  CookMeasure  Open  LayoutId  TableFields  TableInfo
+  At  Emplace  Pack  PackMeasure  OpenWalk
+  Cook  CookMeasure  Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   ```
 
@@ -2639,16 +2608,13 @@ in build version (§20.5).
   here equal `tableGeneratedVerbs` exactly, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **Two of the twenty-six outlive what they guard, and both are stated rather
-  than quietly carried.** `LayoutId` is the id constant wire v1's cook emits
-  (§20's status, obligation 3 — a 32-bit id where the build version is 64),
-  and it retires into the unit-wide build version with the emitter
-  (schema#251); the claim goes in that same change and never before it, since
-  dropping it first frees a name the generated code still spells.
-  `Root` is claimed and NO emitter spells `<X>Root` — the builder's accessor
-  is the member `GetRoot`, renamed for the reason below — so the claim guards
-  nothing and is tracked for removal as schema#310, page and checker moving
-  together.
+  **Four of the twenty-four are claimed AHEAD of their emitter.** `Cook`,
+  `CookMeasure`, `Open` and `OpenWalk` are the cook's spellings and no backend
+  emits one: the cook is wire v2's (§7) and is not built (schema#251). The
+  claim is held while the emitter is absent, on this list's own rule — a name
+  freed now is a collision the day it lands. `<X>Root` is NOT claimed and needs
+  no claim: the builder's accessor is the member `GetRoot`, renamed for the
+  reason below, so no emitter ever spells it.
 
   **The BLOCK FORM claims nine more, and the checker claims them.** They are
   law on the same terms and for a stronger reason — every fixed table has a
@@ -3038,9 +3004,9 @@ are these rulings, in the owner's words:
   beside them (§7).
 - **The scale, and when its gate binds**: "We can keep the gigabyte scale
   stuff for v2, but think about it as we work now." The 1 GB open-time gate
-  belongs to the wire v2 emitter (§7's status, schema#251); the design
-  constraint it comes from — nothing per node at open — is held now, in this
-  section's `Open`.
+  belongs to the wire v2 emitter (§7, schema#251); the design constraint it
+  comes from — nothing per node at open — is what §7's `Open` is specified as,
+  a match and a point.
 - **Which files earn one**: "imagine a huge data file that specifies all
   the meshes used in the game for example, or all the texture files" —
   "that would be a cook"; against "Config.bin and Assets.bin are small
@@ -5021,11 +4987,9 @@ C# BLOCK backends emit the constant and stamp it into every block's prologue
    so the generated check runs once at type initialization and throws naming
    the type, the field, the offset it found and the offset the C++ side
    asserts. Loud and early, but not at compile time.
-4. **`schema cook-check` (§7) does not exist**, and no cooked header carries
-   the build version yet.
-5. **§7's cooked header takes 64-bit part LENGTHS — both of them** — where the
-   C++ runtime writes one 32-bit length, which reimposes at cook time the
-   ceiling §3.1 removed.
+4. **The COOK carries none of it.** The cook is not built (§7, schema#251),
+   so there is no cooked header to stamp the id into and no `schema
+   cook-check` to read it back.
 
 ### 20.1 What it digests
 

@@ -1318,16 +1318,6 @@ static void test_lock_layout_stable()
 
     CHECK( first.RegionBytes() == second.RegionBytes() );
     CHECK( memcmp( first.Region(), second.Region(), (size_t) first.RegionBytes() ) == 0 );
-
-    // and cooking twice gives identical files
-    int64_t need = graphdemo::SceneCookMeasure( first );
-    uint8_t * a = (uint8_t *) malloc( (size_t) need );
-    uint8_t * b = (uint8_t *) malloc( (size_t) need );
-    CHECK( graphdemo::SceneCook( first, a, need ) == need );
-    CHECK( graphdemo::SceneCook( second, b, need ) == need );
-    CHECK( memcmp( a, b, (size_t) need ) == 0 );
-    free( a );
-    free( b );
 }
 
 // ---- aliasing: two pointers to one node are TWO nodes, everywhere ----
@@ -1379,7 +1369,6 @@ static void test_pointer_cycle_refused()
     static uint8_t buffer[4096];
     CHECK( graphdemo::SceneMeasure( builder ) == -1 );
     CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
-    CHECK( graphdemo::SceneCookMeasure( builder ) == -1 );
     CHECK( !builder.Lock() ); // the compaction refuses too
 }
 
@@ -1523,92 +1512,6 @@ static void test_builder_workers()
         const graphdemo::ListNode * node = graphdemo::ListNodeAt( threaded.arena, heads[t] );
         CHECK( node != NULL && node->value == t );
     }
-}
-
-// ---- the cooked form: point at it, or refuse loudly ----
-
-static void test_cooked_form()
-{
-    graphdemo::SceneBuilder builder;
-    build_scene( builder );
-    CHECK( builder.Lock() );
-
-    int64_t need = graphdemo::SceneCookMeasure( builder );
-    CHECK( need == graphdemo::kTableCookedHeaderBytes + builder.RegionBytes() );
-    uint8_t * cooked = (uint8_t *) malloc( (size_t) need );
-    CHECK( graphdemo::SceneCook( builder, cooked, need ) == need );
-    CHECK( graphdemo::SceneCook( builder, cooked, need - 1 ) == -1 ); // short buffer refuses
-
-    // open by POINTING: no copy, no decode
-    const graphdemo::Scene * opened = graphdemo::SceneOpen( cooked, need );
-    CHECK( opened != NULL );
-    CHECK( (const uint8_t *) opened == cooked + graphdemo::kTableCookedHeaderBytes );
-    check_scene( opened );
-
-    // cook -> open -> cook is stable
-    uint8_t * again = (uint8_t *) malloc( (size_t) need );
-    CHECK( graphdemo::SceneCook( opened, again, need ) == need );
-    CHECK( memcmp( cooked, again, (size_t) need ) == 0 );
-    free( again );
-
-    // the wire still reads out of a cooked root: the two forms agree
-    static uint8_t wire[8192];
-    int64_t wrote = graphdemo::SceneSave( opened, wire, sizeof( wire ) );
-    CHECK( wrote == graphdemo::SceneMeasure( builder ) );
-
-    // ---- the refusal battery ----
-    uint8_t * broken = (uint8_t *) malloc( (size_t) need );
-
-    memcpy( broken, cooked, (size_t) need );
-    broken[0] ^= 0xFF; // magic: wrong form, or a foreign byte order
-    CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
-
-    memcpy( broken, cooked, (size_t) need );
-    broken[4] ^= 0xFF; // layout id: the schema or the ABI moved
-    CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
-
-    memcpy( broken, cooked, (size_t) need );
-    CHECK( graphdemo::SceneOpen( broken, need - 1 ) == NULL ); // truncated region
-
-    memcpy( broken, cooked, (size_t) need );
-    CHECK( graphdemo::SceneOpen( broken, 4 ) == NULL ); // shorter than the header
-
-    memcpy( broken, cooked, (size_t) need );
-    CHECK( graphdemo::SceneOpen( broken + 1, need - 1 ) == NULL ); // unaligned base
-
-    // an offset graph that leaves the region: the bounds walk catches it
-    memcpy( broken, cooked, (size_t) need );
-    {
-        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
-        root->head.value = 0x7FFFFFF0u; // far past the end
-        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
-    }
-    // a BACKWARD reference: impossible in a packed region, so it is corruption
-    memcpy( broken, cooked, (size_t) need );
-    {
-        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
-        root->head.value = 0xFFFFFFF8u; // -8 as an int32
-        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
-    }
-    // a misaligned reference
-    memcpy( broken, cooked, (size_t) need );
-    {
-        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
-        root->head.value += 1;
-        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
-    }
-    // a count companion outside its declared bound
-    memcpy( broken, cooked, (size_t) need );
-    {
-        graphdemo::Scene * root = (graphdemo::Scene *) ( broken + graphdemo::kTableCookedHeaderBytes );
-        root->layers_count = 99;
-        CHECK( graphdemo::SceneOpen( broken, need ) == NULL );
-    }
-    // and the untouched file still opens: the battery broke nothing else
-    CHECK( graphdemo::SceneOpen( cooked, need ) != NULL );
-
-    free( broken );
-    free( cooked );
 }
 
 // ---- evolution across a pointer field, both directions ----
@@ -1755,88 +1658,12 @@ static void test_pointer_reflection()
 // reduced to an assertion that goes red if the defect returns.
 // ============================================================================
 
-// ---- B1: Open's walk is LINEAR, not exponential ----
+// ---- B2: Lock is deterministic on a DIRTIED heap ----
 //
-// The repro: a legal cooked file whose TreeNode chain runs down `left`, then
-// forged so every node's `right` ALIASES its `left`. Every reference stays
-// forward, in range and aligned, so a walk with no order state explores 2^n
-// paths — 26 nodes took 312 ms and ~60 nodes never returned. The high-water
-// mark refuses the second (aliasing) reference outright, in linear time.
-static void test_open_walk_is_linear()
-{
-    for ( int n : { 16, 26, 40, 64 } )
-    {
-        graphdemo::SceneBuilder builder;
-        graphdemo::TableRef * slot = &builder.GetRoot()->tree;
-        for ( int i = 0; i < n; i++ )
-        {
-            graphdemo::TableSlot<graphdemo::TreeNode> node = builder.Alloc<graphdemo::TreeNode>();
-            *slot = node.ref;
-            slot = &node.ptr->left;
-        }
-        CHECK( builder.Lock() );
-        int64_t need = graphdemo::SceneCookMeasure( builder );
-        uint8_t * file = (uint8_t *) malloc( (size_t) need );
-        CHECK( graphdemo::SceneCook( builder, file, need ) == need );
-        CHECK( graphdemo::SceneOpen( file, need ) != NULL ); // the genuine file opens
-
-        // forge: every node's right aliases its left — forward, in range, aligned
-        uint8_t * base = file + graphdemo::kTableCookedHeaderBytes;
-        int64_t region = need - graphdemo::kTableCookedHeaderBytes;
-        graphdemo::Scene * root = (graphdemo::Scene *) base;
-        int64_t at = ( (uint8_t *) &root->tree - base ) + (int64_t) root->tree.value;
-        int patched = 0;
-        while ( at + (int64_t) sizeof( graphdemo::TreeNode ) <= region )
-        {
-            graphdemo::TreeNode * node = (graphdemo::TreeNode *) ( base + at );
-            if ( node->left.value == 0 ) { break; }
-            int64_t next_at = ( (uint8_t *) &node->left - base ) + (int64_t) node->left.value;
-            node->right.value = (uint32_t) ( ( base + next_at ) - (uint8_t *) &node->right );
-            patched++;
-            at = next_at;
-        }
-        CHECK( patched == n - 1 );
-        // REFUSED, and refused in linear time: the mark makes each accepted
-        // reference consume region bytes, so the walk cannot revisit a node.
-        // At n = 64 an unbounded walk would not return in the age of the
-        // universe; this returns before the next line runs.
-        CHECK( graphdemo::SceneOpen( file, need ) == NULL );
-        free( file );
-    }
-}
-
-// ---- B1's companion: the mark also closes mid-node overlap ----
-
-static void test_open_refuses_overlap()
-{
-    graphdemo::SceneBuilder builder;
-    graphdemo::TableSlot<graphdemo::ListNode> a = builder.Alloc<graphdemo::ListNode>();
-    graphdemo::TableSlot<graphdemo::ListNode> b = builder.Alloc<graphdemo::ListNode>();
-    a->value = 1;
-    b->value = 2;
-    a->next = b;
-    builder.GetRoot()->head = a;
-    CHECK( builder.Lock() );
-    int64_t need = graphdemo::SceneCookMeasure( builder );
-    uint8_t * file = (uint8_t *) malloc( (size_t) need );
-    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
-    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
-
-    // point head at a node-sized window that STARTS inside the first node:
-    // in range, aligned, forward — and an overlap the mark refuses
-    uint8_t * base = file + graphdemo::kTableCookedHeaderBytes;
-    graphdemo::Scene * root = (graphdemo::Scene *) base;
-    root->head.value += 8;
-    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
-    free( file );
-}
-
-// ---- B2: Lock and Cook are deterministic on a DIRTIED heap ----
-//
-// Lock and Cook memcpy whole nodes, struct PADDING included. Value-initialising
-// a node zeroes its members and not its padding, so before the arena's segments
-// were zeroed this test passed only when the allocator happened to hand back
-// fresh zero pages — and a cooked FILE carried heap bytes to disk.
+// Lock memcpys whole nodes, struct PADDING included. Value-initialising a node
+// zeroes its members and not its padding, so before the arena's segments were
+// zeroed this test passed only when the allocator happened to hand back fresh
+// zero pages — and the region carried heap bytes.
 
 static void dirty_the_heap( int pattern )
 {
@@ -1858,9 +1685,6 @@ static void test_lock_deterministic_on_dirty_heap()
     int64_t bytes = first.RegionBytes();
     uint8_t * saved = (uint8_t *) malloc( (size_t) bytes );
     memcpy( saved, first.Region(), (size_t) bytes );
-    int64_t cook_bytes = graphdemo::SceneCookMeasure( first );
-    uint8_t * cooked_first = (uint8_t *) malloc( (size_t) cook_bytes );
-    CHECK( graphdemo::SceneCook( first, cooked_first, cook_bytes ) == cook_bytes );
 
     dirty_the_heap( 0x5C ); // a DIFFERENT pattern, so any leak shows as a diff
     graphdemo::SceneBuilder second;
@@ -1868,10 +1692,6 @@ static void test_lock_deterministic_on_dirty_heap()
     CHECK( second.Lock() );
     CHECK( second.RegionBytes() == bytes );
     CHECK( memcmp( saved, second.Region(), (size_t) bytes ) == 0 );
-
-    uint8_t * cooked_second = (uint8_t *) malloc( (size_t) cook_bytes );
-    CHECK( graphdemo::SceneCook( second, cooked_second, cook_bytes ) == cook_bytes );
-    CHECK( memcmp( cooked_first, cooked_second, (size_t) cook_bytes ) == 0 );
 
     // and no padding byte carries heap content: the region's tail padding of
     // the root's string is zero, whatever the allocator handed back
@@ -1882,16 +1702,14 @@ static void test_lock_deterministic_on_dirty_heap()
         CHECK( region[i] == 0 );
     }
     free( saved );
-    free( cooked_first );
-    free( cooked_second );
 }
 
 // ---- C1: the four walks agree about what depth costs ----
 //
-// By-value nesting charges depth in NEITHER walk, so a chain that Locks and
-// Cooks is a chain the wire accepts. Before the fix, measure/save/load charged
-// a by-value nesting and pack/cook/open did not, and a structure reachable
-// through Scene::ground was lockable and cookable but unsaveable.
+// By-value nesting charges depth in NEITHER walk, so a chain that Locks is a
+// chain the wire accepts. Before the fix, measure/save/load charged a by-value
+// nesting and pack did not, and a structure reachable through Scene::ground was
+// lockable but unsaveable.
 
 static void test_depth_agrees_through_by_value_nesting()
 {
@@ -1909,17 +1727,12 @@ static void test_depth_agrees_through_by_value_nesting()
         tail = node;
     }
 
-    // every walk accepts it: measure, save, pack (Lock), cook, open, load
+    // every walk accepts it: measure, save, pack (Lock), load
     int64_t need = graphdemo::SceneMeasure( builder );
     CHECK( need > 0 );
     uint8_t * wire = (uint8_t *) malloc( (size_t) need );
     CHECK( graphdemo::SceneSave( builder, wire, need ) == need );
     CHECK( builder.Lock() );
-    int64_t cook_bytes = graphdemo::SceneCookMeasure( builder );
-    CHECK( cook_bytes > 0 );
-    uint8_t * cooked = (uint8_t *) malloc( (size_t) cook_bytes );
-    CHECK( graphdemo::SceneCook( builder, cooked, cook_bytes ) == cook_bytes );
-    CHECK( graphdemo::SceneOpen( cooked, cook_bytes ) != NULL );
 
     int64_t region_need = graphdemo::SceneLoadMeasure( wire, need );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
@@ -1935,61 +1748,9 @@ static void test_depth_agrees_through_by_value_nesting()
     }
     CHECK( walked == graphdemo::kTableMaxDepth - 1 );
     free( wire );
-    free( cooked );
     free( region );
 }
 
-// ---- C2: Open bounds the companions of by-value nested FIXED tables ----
-
-static void test_open_bounds_nested_fixed_companions()
-{
-    graphdemo::SceneBuilder builder;
-    build_scene( builder );
-    CHECK( builder.Lock() );
-    int64_t need = graphdemo::SceneCookMeasure( builder );
-    uint8_t * file = (uint8_t *) malloc( (size_t) need );
-    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
-    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
-
-    // Meta is FIXED-SIZE and nested BY VALUE in Scene. Its tag_length bounds
-    // any walk of tag[8]; an unbounded one is the over-read.
-    graphdemo::Scene * root = (graphdemo::Scene *) ( file + graphdemo::kTableCookedHeaderBytes );
-    int32_t good = root->meta.tag_length;
-    root->meta.tag_length = 30000;
-    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
-    root->meta.tag_length = -1;
-    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
-    root->meta.tag_length = good;
-    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
-
-    // the same for a fixed table reached through a POINTER
-    graphdemo::Settings * settings = (graphdemo::Settings *) graphdemo::SettingsAt( root->settings );
-    CHECK( settings != NULL );
-    settings->label_length = 9999;
-    CHECK( graphdemo::SceneOpen( file, need ) == NULL );
-    free( file );
-}
-
-// ---- the cooked header's reserved words are reserved ----
-
-static void test_open_refuses_dirty_reserved()
-{
-    graphdemo::SceneBuilder builder;
-    build_scene( builder );
-    CHECK( builder.Lock() );
-    int64_t need = graphdemo::SceneCookMeasure( builder );
-    uint8_t * file = (uint8_t *) malloc( (size_t) need );
-    CHECK( graphdemo::SceneCook( builder, file, need ) == need );
-    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
-    for ( int64_t at = 12; at < graphdemo::kTableCookedHeaderBytes; at++ )
-    {
-        file[at] = 0x7F; // a writer that used a reserved word
-        CHECK( graphdemo::SceneOpen( file, need ) == NULL );
-        file[at] = 0;
-    }
-    CHECK( graphdemo::SceneOpen( file, need ) != NULL );
-    free( file );
-}
 
 // ---- C3: the reflection surface is immutable constant data ----
 
@@ -2092,35 +1853,6 @@ static void test_cross_file_pointer_unit()
     CHECK( graphdemo::TallyAt( loaded->marker.note )->hits == 7 );
     CHECK( graphdemo::TallyAt( graphdemo::MarkerAt( loaded->pin )->note )->hits == 9 );
     free( region );
-
-    // ---- and Open bounds the CROSS-FILE members' companions ----
-    int64_t cook_need = graphdemo::AlbumCookMeasure( builder );
-    uint8_t * file = (uint8_t *) malloc( (size_t) cook_need );
-    CHECK( graphdemo::AlbumCook( builder, file, cook_need ) == cook_need );
-    CHECK( graphdemo::AlbumOpen( file, cook_need ) != NULL );
-
-    graphdemo::Album * forged = (graphdemo::Album *) ( file + graphdemo::kTableCookedHeaderBytes );
-
-    // a FIXED table declared in a file with no variable table at all
-    int32_t good_tag = forged->stamp.tag_length;
-    forged->stamp.tag_length = 30000;
-    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
-    forged->stamp.tag_length = good_tag;
-
-    // a VARIABLE table declared in a third file, nested by value
-    int32_t good_label = forged->marker.label_length;
-    forged->marker.label_length = -4;
-    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
-    forged->marker.label_length = good_label;
-
-    // its pointer, out of the region
-    uint32_t good_note = forged->marker.note.value;
-    forged->marker.note.value = 0x7FFFFFF0u;
-    CHECK( graphdemo::AlbumOpen( file, cook_need ) == NULL );
-    forged->marker.note.value = good_note;
-
-    CHECK( graphdemo::AlbumOpen( file, cook_need ) != NULL ); // nothing else broke
-    free( file );
 }
 
 // ---- optional fields: `?T` (SPEC-TABLES.md §2.3) ----
@@ -2735,7 +2467,7 @@ static void test_repeated_id_unnameable_enum_element()
 
 // ---- the two constructs in the VARIABLE class: a keyed array of variable
 // ---- tables, and an optional beside them. Every pointer-era walk — the
-// ---- region pre-pass, Pack, OpenWalk — has to know both framings.
+// ---- region pre-pass, Pack — has to know both framings.
 
 static void test_keyed_and_optional_in_a_variable_table()
 {
@@ -2784,18 +2516,14 @@ static void test_keyed_and_optional_in_a_variable_table()
     CHECK( loaded->banks.slots[0].depth == 0 );
     CHECK( graphdemo::ListNodeAt( loaded->banks.slots[0].head ) == NULL );
 
-    // and the cooked form: Pack lays every slot's pointee out, OpenWalk
-    // validates them, and the round trip is byte-stable
-    int64_t cook_need = graphdemo::DepotCookMeasure( builder );
-    uint8_t * cooked = (uint8_t *) malloc( (size_t) cook_need );
-    CHECK( graphdemo::DepotCook( builder, cooked, cook_need ) == cook_need );
-    const graphdemo::Depot * opened = graphdemo::DepotOpen( cooked, cook_need );
-    CHECK( opened != NULL );
-    CHECK( graphdemo::ListNodeAt( opened->banks[graphdemo::Tier::High].head )->value == 102 );
-    CHECK( opened->spare_present );
-    CHECK( graphdemo::DepotSave( opened, wire, sizeof( wire ) ) == wrote );
+    // and the PACKED REGION: Lock lays every slot's pointee out, the const
+    // form reads them back, and a save from it is byte-stable
+    const graphdemo::Depot * packed = builder.AsConst();
+    CHECK( packed != NULL );
+    CHECK( graphdemo::ListNodeAt( packed->banks[graphdemo::Tier::High].head )->value == 102 );
+    CHECK( packed->spare_present );
+    CHECK( graphdemo::DepotSave( packed, wire, sizeof( wire ) ) == wrote );
 
-    free( cooked );
     free( region );
 }
 
@@ -2803,7 +2531,7 @@ static void test_keyed_and_optional_in_a_variable_table()
 // ---- on one shape; this sweeps which slots ride, how long each slot's chain
 // ---- is, the string lengths and the optional's presence, and asserts the
 // ---- five properties every shape owes: measure == save, LoadMeasure sizes a
-// ---- region Load fits, every field survives, Cook -> Open agrees, and a
+// ---- region Load fits, every field survives, the packed region agrees, and a
 // ---- re-save is byte-stable. (Against the pre-fix region pre-pass this fails
 // ---- in the thousands; the single pinned shape caught it too, but only just.)
 
@@ -2894,16 +2622,12 @@ static void test_keyed_variable_oracle()
         CHECK( graphdemo::DepotSave( loaded, again, sizeof( again ) ) == need );
         CHECK( memcmp( wire, again, (size_t) need ) == 0 );
 
-        // and the cooked form agrees with the wire one
-        int64_t cook_need = graphdemo::DepotCookMeasure( builder );
-        uint8_t * cooked = (uint8_t *) malloc( (size_t) cook_need );
-        CHECK( graphdemo::DepotCook( builder, cooked, cook_need ) == cook_need );
-        const graphdemo::Depot * opened = graphdemo::DepotOpen( cooked, cook_need );
-        CHECK( opened != NULL );
-        CHECK( graphdemo::DepotSave( opened, again, sizeof( again ) ) == need );
+        // and the PACKED REGION agrees with the wire one
+        const graphdemo::Depot * packed = builder.AsConst();
+        CHECK( packed != NULL );
+        CHECK( graphdemo::DepotSave( packed, again, sizeof( again ) ) == need );
         CHECK( memcmp( wire, again, (size_t) need ) == 0 );
 
-        free( cooked );
         free( region );
         if ( failures > before ) return; // one shape is enough to name; do not print 30000
     }
@@ -5296,18 +5020,13 @@ int main()
     test_pointer_depth_cap();
     test_builder_grow();
     test_builder_workers();
-    test_cooked_form();
     test_pointer_evolution_old_reader_new_data();
     test_pointer_evolution_new_reader_old_data();
     test_pointer_null_and_empty();
     test_pointer_reflection();
 
-    test_open_walk_is_linear();
-    test_open_refuses_overlap();
     test_lock_deterministic_on_dirty_heap();
     test_depth_agrees_through_by_value_nesting();
-    test_open_bounds_nested_fixed_companions();
-    test_open_refuses_dirty_reserved();
     test_descriptors_are_constant();
     test_cross_file_pointer_unit();
 

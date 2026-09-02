@@ -114,13 +114,12 @@ layout; the game memory-maps it and points at it with minimal fix-up.
   config-format example holding gate 1 (§12), the C# backend reads the same
   bytes the C++ tools write, and the dogfood carries a real game's two files
   on this wire end to end — 803 values byte-identical, every injected bit
-  flip refused rather than read as data. The cook half is proven in the C++
-  corpus for what exists — `CookMeasure`, `Cook` and
-  `Open` round-trip over the pointer unit under `make` — while addressing a
-  cooked artifact by **(asset hash, build version)** is designed and not yet
-  built: the build version is **#292**, `schema cook-check` is not built, and
-  the variable class's flat node encoding (§3.1) is spec with its emitter
-  tracked by **#251**.
+  flip refused rather than read as data. **The cook half is not built**: no
+  backend emits `Cook`, `CookMeasure` or `Open`, there is no cooked header,
+  `schema cook-check` does not exist, and addressing an artifact by
+  **(asset hash, build version)** is designed only. It lands with the variable
+  class's flat node encoding (§3.1), tracked by **#251**; the build version
+  itself is **#292** and is live for the block form.
 
 ## 5. Render data written and read across two languages at runtime
 

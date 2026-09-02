@@ -2688,7 +2688,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 }
 
 // tableGeneratedVerbs is the full name-first suffix set a closure member
-// claims. The mutable-life suffixes (Builder, LoadMeasure, At, Root) are
+// claims. The mutable-life suffixes (Builder, LoadMeasure, At) are
 // claimed for EVERY closure member, not only pointer-bearing ones: a table
 // gains or loses pointers as an edit, and a name that was free yesterday must
 // not become a collision tomorrow (SPEC-TABLES.md).
@@ -2696,11 +2696,15 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // block form, every fixed table has one, and a table gains and loses the form
 // as its closure gains and loses a pointer — so a name that was free yesterday
 // must not become a collision tomorrow (§11).
+// Cook, CookMeasure, Open and OpenWalk are the COOK's spellings and no
+// backend emits them: the cook is wire v2's (SPEC-TABLES.md §7, schema#251)
+// and is not built. The claim is held while the emitter is absent, on the same
+// rule — freeing a name now is a collision the day it lands.
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
 	"LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
-	"At", "Root", "Emplace", "Pack", "PackMeasure", "OpenWalk",
-	"Cook", "CookMeasure", "Open", "LayoutId", "TableFields", "TableInfo",
+	"At", "Emplace", "Pack", "PackMeasure", "OpenWalk",
+	"Cook", "CookMeasure", "Open", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 	// the C# BLITTABLE records take claimed suffixes in the package namespace

@@ -313,8 +313,7 @@ func TestZeroCostForValueOnlyTables(t *testing.T) {
 	for _, leak := range []string{
 		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
 		"kTableSegment", "kTableSlab", "kTableMaxDepth", "is_pointer", "variable",
-		"Builder", "LayoutId", "OpenWalk", "PackMeasure", "LoadMeasure",
-		"Cook", "Open", "<atomic>", "template",
+		"Builder", "PackMeasure", "LoadMeasure", "<atomic>", "template",
 	} {
 		if strings.Contains(header, leak) {
 			t.Errorf("pointer machinery leaked into a value-only unit: %q", leak)
@@ -338,7 +337,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	for _, want := range []string{
 		"struct TableArena", "struct TableRef", "struct TableSlot",
 		"struct RootBuilder", "struct NodeBuilder",
-		"RootLayoutId", "RootCook", "RootOpen", "RootLoadMeasure", "RootOpenWalk",
+		"RootLoadMeasure", "RootPackMeasure", "RootPack(",
 		"NodeAt(", "NodeEmplace(", "TableRef next;", "TableRef head;",
 		"#include <atomic>",
 	} {
@@ -356,8 +355,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	// once per header and belong to the unit, not to any table in it.
 	for _, absent := range []string{
 		"struct PlainBuilder", "PlainPackMeasure", "PlainPack(",
-		"PlainLoadMeasureBody", "PlainEmplace", "PlainCook", "PlainOpen(",
-		"PlainLayoutId", "PlainLoadBuilder",
+		"PlainLoadMeasureBody", "PlainEmplace", "PlainLoadBuilder",
 	} {
 		if strings.Contains(header, absent) {
 			t.Errorf("a value-only table in a pointered unit grew %q", absent)
@@ -374,12 +372,6 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 			t.Errorf("a value-only table in a pointered unit lost its by-value codec: %q", want)
 		}
 	}
-	// it DOES get an Open walk: Open bounds the count companions of every
-	// by-value nested member, and a fixed table nested in a variable root is
-	// exactly such a member
-	if !strings.Contains(header, "PlainOpenWalk") {
-		t.Error("a value-only table lost its Open bounds walk — its companions would go unchecked")
-	}
 	// Leaf is POINTED AT but pointer-free: it needs allocation and resolution,
 	// and still no builder
 	if strings.Contains(header, "struct LeafBuilder") {
@@ -395,7 +387,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 }
 
 // TestPointerGenerationDeterministic: regeneration is byte-stable, pointer
-// graphs and layout ids included.
+// graphs included.
 func TestPointerGenerationDeterministic(t *testing.T) {
 	first := tableHeader(t, pointerSrc)
 	for range 3 {
@@ -403,117 +395,6 @@ func TestPointerGenerationDeterministic(t *testing.T) {
 			t.Fatal("regeneration is not byte-stable across runs")
 		}
 	}
-}
-
-// TestLayoutIdMovesWithTheSchema: the cooked form's build lock. The rule is
-// exact — it MOVES when the packed layout moves, and HOLDS when it does not,
-// because a false alarm invalidates every cooked file in existence.
-func TestLayoutIdMovesWithTheSchema(t *testing.T) {
-	base := layoutIdOf(t, tableHeader(t, pointerSrc))
-
-	moves := []struct {
-		name string
-		src  string
-	}{
-		{"widening a field", strings.Replace(pointerSrc, "value int32", "value int64", 1)},
-		{"renaming a field without was", strings.Replace(pointerSrc, "meta Plain", "info Plain", 1)},
-		{"reordering two fields", strings.Replace(pointerSrc,
-			"    head *Node\n    leaf *Leaf", "    leaf *Leaf\n    head *Node", 1)},
-		{"adding a field", strings.Replace(pointerSrc, "    meta Plain", "    extra int32\n    meta Plain", 1)},
-		{"turning a by-value nesting into a pointer", strings.Replace(pointerSrc, "meta Plain", "meta *Plain", 1)},
-	}
-	for _, tc := range moves {
-		if layoutIdOf(t, tableHeader(t, tc.src)) == base {
-			t.Errorf("%s did not move the layout id — a stale cooked file would be pointed at", tc.name)
-		}
-	}
-	_ = base
-
-	// HOLDS: a `was` rename moves no byte. The field keeps its wire id, keeps
-	// its offset, and every cooked file in the world stays valid — so the id
-	// must not budge. This is why the digest keys fields by WIRE ID and not by
-	// source name.
-	// The id's VALUE is the schema digest xor'd with this build's sizeof and
-	// offsetof terms. A `was` rename cannot change any of those values — same
-	// type, same field order, same offsets — so identity of the digest plus
-	// identity of the term structure IS identity of the value. The field's
-	// spelling inside offsetof() is the only thing allowed to differ, and
-	// normalising it is what separates "the value held" from "the text held".
-	renamedWithWas := strings.Replace(pointerSrc, "    meta Plain", "    facts Plain | was = \"meta\"", 1)
-	renamedExpr := layoutIdOf(t, tableHeader(t, renamedWithWas))
-	if layoutDigestOf(t, renamedExpr) != layoutDigestOf(t, base) {
-		t.Error("a `was` rename moved the layout id's schema digest — it moves no byte, and invalidating every cooked file for it is a false alarm")
-	}
-	if normalizeOffsets(renamedExpr) != normalizeOffsets(base) {
-		t.Error("a `was` rename changed the layout id's sizeof/offsetof terms — a rename moves no member, so every term must be value-identical")
-	}
-}
-
-// layoutDigestOf returns the schema-side digest constant that opens a layout
-// id expression.
-func layoutDigestOf(t *testing.T, expr string) string {
-	t.Helper()
-	i := strings.Index(expr, "0x")
-	if i < 0 {
-		t.Fatalf("no digest constant in %q", expr)
-	}
-	end := strings.IndexByte(expr[i:], '\n')
-	if end < 0 {
-		t.Fatalf("no digest constant in %q", expr)
-	}
-	return strings.TrimSpace(expr[i : i+end])
-}
-
-// normalizeOffsets rewrites `offsetof( T, field )` to `offsetof( T, ? )`, so
-// two expressions compare on the terms' VALUES rather than on the spelling of
-// a field that was renamed.
-func normalizeOffsets(expr string) string {
-	var b strings.Builder
-	for {
-		i := strings.Index(expr, "offsetof( ")
-		if i < 0 {
-			b.WriteString(expr)
-			return b.String()
-		}
-		comma := strings.Index(expr[i:], ", ")
-		close := strings.Index(expr[i:], " )")
-		if comma < 0 || close < 0 {
-			b.WriteString(expr)
-			return b.String()
-		}
-		b.WriteString(expr[:i+comma])
-		b.WriteString(", ? ")
-		expr = expr[i+close+2:]
-	}
-}
-
-// TestLayoutIdCarriesTheABI: the digest is not schema-only. Field offsets ride
-// in it as compile-time terms, so a padding or ABI difference that shifts a
-// member refuses the cooked file instead of misreading it — a fact no
-// schema-side test can produce, and one the emitted expression must show.
-func TestLayoutIdCarriesTheABI(t *testing.T) {
-	expr := layoutIdOf(t, tableHeader(t, pointerSrc))
-	if !strings.Contains(expr, "sizeof( Root )") {
-		t.Error("the layout id does not mix this build's sizeof")
-	}
-	for _, want := range []string{
-		"offsetof( Root, head )", "offsetof( Root, leaf )", "offsetof( Root, meta )",
-		"offsetof( Node, next )", "offsetof( Leaf, quality )",
-	} {
-		if !strings.Contains(expr, want) {
-			t.Errorf("the layout id does not mix %s — a member that moved would not refuse", want)
-		}
-	}
-}
-
-func layoutIdOf(t *testing.T, header string) string {
-	t.Helper()
-	i := strings.Index(header, "inline constexpr uint32_t RootLayoutId =")
-	if i < 0 {
-		t.Fatal("no RootLayoutId in the generated header")
-	}
-	end := strings.Index(header[i:], ";")
-	return header[i : i+end]
 }
 
 // TestTableRuntimeNamesAreClaimed is the SELF-MAINTAINING half of the §11

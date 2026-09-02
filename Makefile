@@ -241,7 +241,7 @@ tables-zero-cost: build/tables-generated/.stamp
 	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
 	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
 	          build/tables-generated/p3/*Table.h; do \
-		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|LayoutId|OpenWalk|PackMeasure|LoadMeasure|Cook|Open\\(" $$f; then \
+		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
@@ -775,15 +775,15 @@ build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cp
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 		-fno-omit-frame-pointer -g $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
-# ---- the BIG-ENDIAN leg (SPEC-TABLES.md §3 and §7) -------------------------
+# ---- the BIG-ENDIAN leg (SPEC-TABLES.md §3 and §19.1) ----------------------
 #
-# The wire is little-endian and byte-oriented (§3), and a cook is produced in
-# the byte order of the build it is cooked for (§7). Both were rules on a page:
+# The wire is little-endian and byte-oriented (§3), and a block is produced in
+# the byte order of the build that wrote it (§19.1). Both were rules on a page:
 # every host this repo builds on is little-endian, so nothing ever read a
 # golden the other way round. This leg builds the tables battery for a
 # BIG-ENDIAN target and runs it under an emulator, which turns the two rules
 # into gates — the goldens a little-endian host wrote are loaded, re-written
-# and byte-compared by a big-endian reader, and a cook that crosses the byte
+# and byte-compared by a big-endian reader, and a block that crosses the byte
 # order is proven to refuse rather than to garble.
 #
 # The toolchain is not a system binary and is not assumed: CI installs an
@@ -800,21 +800,10 @@ build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp
 	@mkdir -p build
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
-# The cross-endian COOK driver, built BOTH ways: the rule it holds — a cook
-# does not cross a byte order — needs two builds and a file between them, which
-# is the one part of §7 no single-process test can reach.
-build/schema_test_cook_endian: build/tables-generated/.stamp test/tables/cook_endian_main.cpp
-	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/cook_endian_main.cpp -o $@
-
-build/schema_test_cook_endian_be: build/tables-generated/.stamp test/tables/cook_endian_main.cpp
-	@mkdir -p build
-	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/cook_endian_main.cpp -o $@
-
-# The cross-endian BLOCK driver, built both ways for the same reason the cook
-# driver is: a block is produced in the byte order of the build that wrote it,
-# and every other block test in this tree runs producer and consumer in one
-# process. This is the one part of §19.1 that needs two builds and a file.
+# The cross-endian BLOCK driver, built BOTH ways: a block is produced in the
+# byte order of the build that wrote it, and every other block test in this
+# tree runs producer and consumer in one process. This is the one part of
+# §19.1 that needs two builds and a file between them.
 build/schema_test_block_endian: build/tables-generated/.stamp test/tables/block_endian_main.cpp
 	@mkdir -p build
 	$(CXX) $(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
@@ -824,15 +813,9 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
 .PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_cook_endian build/schema_test_cook_endian_be build/schema_test_block_endian build/schema_test_block_endian_be
+tables-big-endian: build/schema_test_tables_be build/schema_test_block_endian build/schema_test_block_endian_be
 	$(BE_RUN) ./build/schema_test_tables_be
-	./build/schema_test_cook_endian write build/cook-host.bin
-	$(BE_RUN) ./build/schema_test_cook_endian_be write build/cook-target.bin
-	$(BE_RUN) ./build/schema_test_cook_endian_be accept build/cook-target.bin
-	$(BE_RUN) ./build/schema_test_cook_endian_be refuse build/cook-host.bin
-	./build/schema_test_cook_endian accept build/cook-host.bin
-	./build/schema_test_cook_endian refuse build/cook-target.bin
-	@echo "big-endian leg: the wire crosses the byte order, the cook refuses to"
+	@echo "big-endian leg: the wire crosses the byte order"
 	./build/schema_test_block_endian write build/block-host.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be write build/block-target.bin
 	$(BE_RUN) ./build/schema_test_block_endian_be accept build/block-target.bin
