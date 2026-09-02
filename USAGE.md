@@ -1016,17 +1016,17 @@ Two sentences that go together: **a tolerant wire load COPIES the blob** — a
 gigabyte on the wire path is a gigabyte read — and **the cooked path is the
 zero-copy one**, where a pointer into a mapped file IS the asset.
 
-### The block form: `| block`, and rows another language points at
+### The block form: rows another language points at
 
-*Specified, not yet implemented — no backend emits this; a table marked
-`| block` is refused by name today (SPEC-TABLES.md §2.7, §19).*
+*Specified, not yet implemented — no backend emits the Block files yet
+(SPEC-TABLES.md §2.7, §19).*
 
 Some data is not a file and not a message. It is a block you rebuild every
 frame and hand to something in another language, which points at it and reads
-it in place. Mark the table:
+it in place. You declare nothing for it:
 
 ```
-table RenderFrame | block
+table RenderFrame
 {
     version uint64
     cameras [..1]RenderCamera
@@ -1037,16 +1037,32 @@ table RenderFrame | block
 
 **Nothing there is new.** Those are ordinary bounded arrays of ordinary fixed
 tables, and `RenderFrame` is an ordinary table — it still has `Measure`,
-`Save` and `Load` over the tolerant wire, and still cooks. The marker adds a
-third *form* of the same declaration: one in which the table's own bounded
-arrays sit out of line at a fixed pitch, and the instance at the front of the
-block carries, per array, where its rows start, how many there are, and how
-far apart they sit. The other side reads those three facts and points.
+`Save` and `Load` over the tolerant wire, and still cooks. **Every fixed table
+also gets a third *form* of the same declaration**: one in which the table's
+own bounded arrays sit out of line at a fixed pitch, and the instance at the
+front of the block carries, per array, where its rows start, how many there
+are, and how far apart they sit. The other side reads those three facts and
+points.
 
-Which arrays move out of line is the one rule to know: **the marked table's
-own `[..N]` arrays, and nothing else** — a fixed `[N]T`, an enum-keyed
-`[E]T`, and any array inside a row all stay where they are. Elements must be
-structs: a fixed table or a plain `type`. A row's pitch is its `sizeof`.
+You reach for it by INCLUDING it. The form is generated on the side, in
+`<Base>Block.h` / `<Base>Block.cpp` beside the unit's `<Base>Table.h`, and in
+`<Base>Block.cs` for C# — so a project that never blocks a table compiles
+none of it, and the table headers are the same bytes either way:
+
+```cpp
+#include "RenderTable.h"                      // the ordinary table surface
+#include "RenderBlock.h"                      // the block form, only if you use it
+```
+
+```
+c++ -c RenderBlock.cpp                        // and link it, once, if you did
+```
+
+Which arrays move out of line is the one rule to know: **the table's own
+`[..N]` arrays whose element is a struct, and nothing else** — a fixed `[N]T`,
+an enum-keyed `[E]T`, a bounded array of scalars, and any array inside a row
+all stay where they are. A row's pitch is its `sizeof`. A variable-length
+table has no block form at all: a pointer means no fixed pitch.
 
 **Building it goes wide, and that is required, not merely allowed.** Declare
 the counts, lay the block out once, then let N workers fill disjoint ranges:
@@ -1084,8 +1100,8 @@ foreach ( ref readonly RenderShip ship in block.Ships )
     Draw( ship );
 ```
 
-`BlockOpen` verifies the magic, the byte order, the layout id and the extent,
-and then you index. A generic consumer does not even need the generated
+`BlockOpen` verifies the magic, the byte order, the build version and the
+extent, and then you index. A generic consumer does not even need the generated
 struct: the reflection descriptors carry the projection's layout, so a tool
 can walk any block's rows without a type per table.
 
@@ -1098,9 +1114,10 @@ can walk any block's rows without a type per table.
   wrote it, use the wire — which this same table still has.
 - **The edits it absorbs are appends.** A field appended at the end of the
   table, a field appended at the end of a row, or a maximum raised: all three
-  are absorbed, because the consumer reads offsets and pitches from the
-  instance rather than assuming them. Anything that moves an existing offset
-  is a break, and the tables baseline refuses it.
+  are absorbed on `BlockOpenCompatible`, because the consumer reads offsets
+  and pitches from the instance rather than assuming them. Anything that
+  moves an existing offset is a break, and the generated asserts refuse it at
+  compile time — the tables baseline carries no layout fact.
 - **The allocation is the maximum, once.** `BlockMaxBytes` sums every array's
   declared maximum; the block is allocated once at that size and never grown.
   The bytes you hand off are only the frame's.
