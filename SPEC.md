@@ -8,21 +8,27 @@ document disagree, one of them is a bug (see VERSIONING.md).
 
 **schema** is a small language for describing bitpacked network data, and a
 compiler — written in Go — that translates `*.schema` files into generated C,
-C++, C#, Go, JavaScript and Rust source code targeting the serialize family of
-runtime libraries:
+C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust source code. Six of the
+nine targets read and write through a serialize-family runtime library; the
+other three carry the bit reader and writer in the generated code itself and
+need nothing but their own toolchain:
 
 | target | runtime library |
 |---|---|
 | C | [serialize.c](https://github.com/mas-bandwidth/serialize.c) |
 | C++ | [serialize](https://github.com/mas-bandwidth/serialize) |
 | C# | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) |
+| Dart | none — the generated code is self-contained |
+| Elixir | none — the generated code is self-contained |
 | Go | [serialize.go](https://github.com/mas-bandwidth/serialize.go) |
+| Java | none — the generated code is self-contained |
 | JavaScript | [serialize.js](https://github.com/mas-bandwidth/serialize.js) |
 | Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
 
 The runtimes are bit-for-bit wire compatible, pinned in CI with shared golden
-bytes. schema inherits that foundation: **a type serialized by generated code
-in any target language decodes identically in the others.**
+bytes, and the self-contained targets are held to the same goldens. schema
+inherits that foundation: **a type serialized by generated code in any
+target language decodes identically in the others.**
 
 The idea is extracted from
 [serialize.modern](https://github.com/mas-bandwidth/serialize.modern)'s

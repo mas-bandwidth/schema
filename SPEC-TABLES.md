@@ -542,6 +542,15 @@ carry a nested table, a collection, or anything else a table body holds —
 which is what a message set of documents needs and what a `type`-only
 payload could never express.
 
+**Backend status for this section: no backend, and no declaration reaches
+it.** A union arm naming a `table` is refused by the checker, before any
+emitter sees it — `<Name> is a table, not a union payload` — so a unit
+declaring the form above does not compile today and no generated code
+carries an arm that is a table. The construct is stated here rather than
+withheld because the framing it lands under is already the framing a `type`
+arm rides (below), so what lands is the checker's refusal lifting, not a
+second decision about the wire; it is tracked as schema#258.
+
 - **A union declared for the TYPE wire keeps refusing table arms.** Types
   are value semantics and their wire is positional; a table arm is a
   table-closure construct and is refused by name outside one.
@@ -772,6 +781,21 @@ length is not a depth; two references to one node are one node; and an
 array of pointers is an array of indices. It moves not one byte of a
 value-only table: a fixed-size table has no pointer, therefore no node
 table, therefore exactly the bytes §3 already describes.
+
+**Backend status for this section: spec ahead of the emitter.** This
+section is the landed law; no backend writes it yet. What a reader of
+today's generated code finds instead is the earlier NESTED form: the C++
+table backend — the only one that accepts a pointered unit, since C# refuses
+one by name (§11) — writes a pointer field's pointee inline as a nested
+table body under kind `13`, not as a `u32` index under kind `17`. Kind `17`
+is not in the kind vocabulary any backend emits, and no node table rides.
+Three consequences follow, and they are the reasons the flat form is the
+law: a node two parents name is written once per parent and reads back as
+that many nodes, so identity does not survive a save; a pointer chain IS a
+nesting depth; and that depth is therefore bounded, by a generated
+`kTableMaxDepth` of 128, with a graph past the cap — or a data cycle —
+refused by measure and save rather than written. Moving the emitter to the
+flat node table is tracked as schema#251.
 
 **Kind `17` costs nothing and closes an edit that would otherwise be
 silent.** A node index is four bytes and so is a `uint32`, so under a
@@ -2135,8 +2159,17 @@ The feature's acceptance test is a DOGFOOD, not a thought experiment: a
 real game's binary config and asset archive formats — a root table of
 nested collections of typed records, built by tools, loaded by the game —
 must be expressible as declared tables with nothing left over, and without
-schema prescribing any of their structure. The corpus carries a
-config-format example holding that gate.
+schema prescribing any of their structure.
+
+**Where the gate is held.** The corpus half is a config format declared and
+packed end to end: `tables/examples/Pack.schema` is the root — an
+enum-keyed collection of records, an optional section inside a record, a
+global block nested by value, a bounded array of records and a keyed array
+of scalars, fixed-size down to the leaves — and `tables/pack/config/` is the
+directory tree `schema pack` assembles into it and `unpack` writes back out
+(§17), byte-stable in both directions under `make`. That half proves the
+form; it does not prove the game. The dogfood half is **space#443**, where a
+real game takes its config on this wire.
 
 **The shape the gate is held to.** `Config.bin` and `Assets.bin` are each
 ONE root table, and each root is FIXED-SIZE down to the leaves: no pointer
