@@ -120,7 +120,6 @@ var registry = []Name{
 	// gains and loses it as its closure gains and loses a pointer.
 	{Name: "TableBlockAllocator", By: Cpp, What: "the caller's alloc/free pair, used once at build time"},
 	{Name: "TableBlockDefaultAllocator", By: Cpp, What: "the malloc/free pair, for a caller with none of its own"},
-	{Name: "TableBlockByteOrder", By: Cpp, What: "this build's byte order, as the prologue carries it"},
 	{Name: "table_block_default_alloc", By: Cpp, What: "the default allocator's alloc half"},
 	{Name: "table_block_default_free", By: Cpp, What: "the default allocator's free half"},
 	{Name: "TableBlockTriple", By: Cpp | Cs, What: "one array's (offset_of, count, stride)"},
@@ -130,6 +129,9 @@ var registry = []Name{
 	{Name: "TableBlockFieldInfo", By: Cpp | Cs, What: "a block field's reflection descriptor"},
 	{Name: "TableBlockInfo", By: Cpp | Cs, What: "a block's reflection descriptor"},
 	{Name: "TableBlockMagic", By: Cpp | Cs, What: "the block prologue's magic, and the byte-order check with it"},
+	{Name: "TableBlockLayout", By: Cs, What: "the C# layout contract's check, run once", Scoped: true},
+	{Name: "TableBlockRead64", By: Cs, What: "the C# prologue read (a Schema member, so it claims nothing)", Scoped: true},
+	{Name: "TableBlockByteOrder", By: Cpp | Cs, What: "this build's byte order, as the prologue carries it"},
 	{Name: "table_block_byteswap64", By: Cpp, What: "the byte-order check's swap"},
 	{Name: "table_block_read64", By: Cpp, What: "the prologue read BYTEWISE"},
 	{Name: "table_block_align", By: Cpp, What: "round an offset up to an alignment"},
@@ -138,7 +140,7 @@ var registry = []Name{
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is
 	// claimed here because it is a unit-level name the generated block sources
 	// define.
-	{Name: "BuildVersion", By: Cpp | Cs, What: "the unit's build version (SPEC-TABLES.md §20)"},
+	{Name: "BuildVersion", By: Cpp, What: "the unit's build version (SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++ puts it at namespace scope, so the claim is the union"},
 }
 
 // All returns the whole registry, sorted by name.

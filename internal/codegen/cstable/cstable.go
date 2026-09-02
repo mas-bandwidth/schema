@@ -217,7 +217,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// second definition is a compile error rather than C++'s harmless
 	// re-inclusion behind a guard
 	usedEnums := closureEnums(u, closure)
-	out := map[string][]byte{}
+	// The BLOCK FORM (SPEC-TABLES.md §19) is emitted ON THE SIDE, into
+	// <Base>Block.cs: nothing declares it, every fixed table has one, and a
+	// consumer compiles it only if it reads a block. The Table source below
+	// carries not one symbol of it.
+	out, err := generateBlockFiles(u, ir.Blocks(u))
+	if err != nil {
+		return nil, err
+	}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed}
 		var members []*ir.Struct
