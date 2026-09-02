@@ -360,10 +360,9 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        int64_t pairs_%s = 0, body_%s = 0;\n", f.Name, f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) // [%s]\n        {\n", f.ArrayBound, f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return -1;")
-		switch {
-		case kind == tkTable:
+		if kind == tkTable {
 			g.pf("            pairs_%s++; body_%s += 2 + 4 + elem_bytes; // key, length, body\n", f.Name, f.Name)
-		default:
+		} else {
 			g.pf("            pairs_%s++; body_%s += 2 + 4 + %d; // key, length, element\n", f.Name, f.Name, width)
 		}
 		g.pf("        }\n")
