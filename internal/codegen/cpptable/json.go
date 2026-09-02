@@ -553,9 +553,11 @@ inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const Ta
     {
         const TableFieldInfo * f = &info->fields[i];
         if ( f->guard[0] != 0 && !TableJsonGuardHolds( base, info, f->guard ) ) { continue; }
-        // ---- SEAM: optional fields (schema#260) write their key only when
-        // ---- present; enum-keyed arrays (schema#255) write an object keyed
-        // ---- by variant name instead of a positional array. Both land here.
+        // ---- SEAM (schema#260): an OPTIONAL field writes its key only when
+        // ---- present — skip here on !optional_present, since presence is the
+        // ---- presence and an absent key is the absence. The enum-keyed half
+        // ---- (schema#255) is not here: an object keyed by variant name is a
+        // ---- SHAPE, so it lands in TableJsonShape and TableJsonWriteField.
         if ( !any ) { out.put( '{' ); }
         else { out.put( ',' ); }
         any = true;
@@ -1258,10 +1260,12 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
                 if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->duplicate++; }
                 seen[index >> 6] |= bit;
             }
-            // ---- SEAM: an optional field (schema#260) sets its presence
-            // ---- companion here, by the key's PRESENCE; an enum-keyed array
-            // ---- (schema#255) reads an object keyed by variant name instead
-            // ---- of a positional array.
+            // ---- SEAM (schema#260): an OPTIONAL field sets its presence
+            // ---- companion here, because reaching this line IS the key being
+            // ---- present. The enum-keyed half (schema#255) is not here: it
+            // ---- is a shape, and lands in TableJsonShape and
+            // ---- TableJsonReadField, matching each key against the key
+            // ---- vocabulary rather than counting positions.
             if ( TableJsonValueShape( in ) != TableJsonShape( f ) )
             {
                 // the wrong JSON type for the kind: skipped, never coerced
