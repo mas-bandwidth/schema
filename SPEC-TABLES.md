@@ -1353,6 +1353,32 @@ Each of the three has its own answer:
   refuses the spelling changes above too, at compile time, ahead of the
   reader's report.
 
+**THE THREE FRAMES, ONCE.** Three sections judge an edit and they answer
+three different questions, which is why their lists differ: the READ REPORT
+says what a reader can tell you happened (§4), the BASELINE says what the
+compiler refuses to let you do to data already written (§18.2), and the BUILD
+VERSION says whether a cooked or blocked file this build wrote is still this
+build's (§20.1). The table is the reconciliation, and §18 and §20.1 cite it
+rather than restate it. "Silent" in this subsection means the first column
+only.
+
+| the edit | the read report | the baseline | the build version |
+|---|---|---|---|
+| a specified DEFAULT changed, added or removed | silent | **refuses** | **moves** |
+| a FLAGS variant inserted, removed, reordered or renamed in place | silent | **refuses** | no — a mask rides raw and a load copies it verbatim |
+| a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
+| a field's wire KIND, or an array's ELEMENT kind, changed | `kind_mismatch` | **refuses** | **moves** |
+| an array changed between keyed and positional, or its KEY enum swapped | `kind_mismatch` | **refuses** | **moves** |
+| a declared RANGE tightened | `clamped` | passes | **moves** |
+| an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves** |
+| a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes | **moves** |
+| a field renamed under `was` | silent, and nothing is lost | passes | no — `was` holds the wire id fixed |
+| an array BOUND or a string/`bytes` capacity moved | `clamped` past the reader's bound | warns on a shrink | **moves** |
+| a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
+| a field moved to or from `*T` | `kind_mismatch` | passes | **moves** |
+| an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
+| a declaration or field RENAMED with no `was`, on a `type` | not this wire's — it moves the PROTOCOL id (SPEC.md §3.1) | not covered | **moves**, through the protocol id |
+
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
 **One hash serves three vocabularies.** A field's wire id, an enum
@@ -4083,7 +4109,9 @@ no history and cannot see any of them on its own. The baseline IS that
 history, in a text file a person can read in a diff. It refuses more than
 those three (§18.2), because an edit the wire DOES report is still an edit a
 save game may not survive, and a refusal a person overrides deliberately is
-cheaper than a counter nobody reads.
+cheaper than a counter nobody reads. **§4.1's table is where the three frames
+are set beside each other** — what a reader is told, what this file refuses,
+and what moves a build version — and this section states only its own column.
 
 The motivating case is a SAVE GAME — a file written by a build the reader
 no longer has, read by a build the writer never saw, years apart — and tool
@@ -4887,6 +4915,9 @@ question §15 owns.
 **The set is closed, and the table below is the proof.** Every
 declaration-side fact this language has appears in it exactly once, assigned
 to the group that carries it or to `none` with the reason it carries nothing.
+**§4.1's table sets this column beside the other two** — what the read report
+tells a reader, and what the baseline refuses — so a reader asking "what does
+this edit do?" reads one table rather than three lists.
 A meaning fact is one that changes a stored VALUE while moving no offset, no
 size and no wire id; there is no fourth kind of such fact.
 
