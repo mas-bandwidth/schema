@@ -508,6 +508,7 @@ var valuedAttr = map[string]bool{
 	"max":        true,
 	"resolution": true,
 	"was":        true,
+	"json":       true,
 }
 
 func (c *checker) enumMax(e *ast.MaxExpr) (*big.Int, bool) {
@@ -1151,6 +1152,9 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		c.errf(f.Pos, "field %s: was is a table-wire concept — it aliases a renamed field's wire id, and only table fields have wire ids; a `type`'s wire is positional, so a rename there moves no bit (SPEC-TABLES.md)", f.Name)
 		return nil
 	}
+	// `json` outside a table CLOSURE is refused in checkTables, where the
+	// closure is known: a `type` a table reaches has a text form and may
+	// carry the attribute, and only membership decides it.
 
 	// the fixed and 128-bit families mirror serialize's own surface exactly
 	// (SPEC §4.3, runtime-first): fixed(I, F) and int128 are RANGED — the
@@ -1339,6 +1343,21 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 				continue
 			}
 			out.WasName = lit.Value
+		case "json":
+			// the text form's key (SPEC-TABLES.md §16.3): the one attribute
+			// the JSON walk adds, so a declaration can meet an existing text.
+			// Table fields only — enforced below, where the owner's kind is
+			// known — and it moves no wire byte.
+			lit, ok := a.Value.(*ast.StringLit)
+			if !ok {
+				c.errf(a.Pos, `json takes the field's text key as a quoted string, e.g. json = "type" (SPEC-TABLES.md §16.3)`)
+				continue
+			}
+			if lit.Value == "" {
+				c.errf(a.Pos, "json = \"\" names nothing — json records the key this field reads and writes in the text form (SPEC-TABLES.md §16.3)")
+				continue
+			}
+			out.JsonKey = lit.Value
 		case "round":
 			// refused by name: rounding is not an attribute — it is the one
 			// fixed-point rule, half away from zero, everywhere (SPEC §4.3)
@@ -1726,6 +1745,22 @@ func (c *checker) checkTables() {
 			c.errf(pos, "table %s: the name collides with a member of the generated %sBuilder — a member function hides the type name it shares, and the header would not compile; rename the table (SPEC-TABLES.md §6.2)",
 				name, name)
 		}
+		// the TEXT form's keys (SPEC-TABLES.md §16.3): two fields of one
+		// closure member whose keys collide are indistinguishable in a JSON
+		// object, exactly as colliding ids are on the wire — refused once,
+		// naming both, whether the collision comes from a `json` attribute
+		// or from an attribute meeting a plain field name.
+		seenKey := map[string]*ir.Field{}
+		for _, f := range st.Fields {
+			key := ir.TableFieldJsonKey(f)
+			if prev, dup := seenKey[key]; dup {
+				c.errf(pos, "%s %s: fields %s and %s collide on the JSON key %q — rename one, or give one a different json key (SPEC-TABLES.md §16.3)",
+					what, name, describeTableJsonField(prev), describeTableJsonField(f), key)
+				continue
+			}
+			seenKey[key] = f
+		}
+
 		seen := map[uint16]*ir.Field{}
 		for _, f := range st.Fields {
 			if f.Type.Pointer {
@@ -1774,6 +1809,30 @@ func (c *checker) checkTables() {
 		}
 	}
 	c.checkTableVariantIdentity(names)
+	c.checkJsonKeysInClosure()
+}
+
+// checkJsonKeysInClosure refuses `json = "key"` on a field no table closure
+// reaches (SPEC-TABLES.md §16.3). The text form is the table closure's — a
+// `type` a table nests has one and may carry the attribute; a type nothing in
+// a closure reaches has no text form for a key to name.
+func (c *checker) checkJsonKeysInClosure() {
+	for _, name := range sortedKeys(c.structs) {
+		if c.tableClosure[name] {
+			continue
+		}
+		st := c.structs[name]
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		for _, f := range st.Fields {
+			if f.JsonKey != "" {
+				c.errf(pos, "type %s: field %s carries json = %q, but no table reaches %s — the text form is the table closure's, and a type outside one has none (SPEC-TABLES.md §16.3)",
+					name, f.Name, f.JsonKey, name)
+			}
+		}
+	}
 }
 
 // sortedKeys gives a map's keys in a stable order, so diagnostics do not
@@ -2039,6 +2098,15 @@ func declKindName(d ast.Decl) string {
 func describeTableField(f *ir.Field) string {
 	if f.WasName != "" {
 		return fmt.Sprintf("%s (was %q)", f.Name, f.WasName)
+	}
+	return f.Name
+}
+
+// describeTableJsonField names a field in a text-key diagnostic, showing the
+// `json` attribute where one carries the key.
+func describeTableJsonField(f *ir.Field) string {
+	if f.JsonKey != "" {
+		return fmt.Sprintf("%s (json %q)", f.Name, f.JsonKey)
 	}
 	return f.Name
 }

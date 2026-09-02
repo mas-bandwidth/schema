@@ -193,6 +193,13 @@ type Field struct {
 	// identity survives a rename. Table fields only; "" when unset.
 	WasName string
 
+	// JsonKey is the `json = "key"` text-form key (SPEC-TABLES.md §16.3): the
+	// key the JSON walk reads and writes this field under, so a declaration
+	// can meet an existing text. Table fields only; "" means the field's own
+	// name is the key. It moves no wire byte — keys are the text's business,
+	// ids are the wire's.
+	JsonKey string
+
 	Array      ArrayKind
 	ArrayBound int64
 	ArrayExpr  Expr  // the declared bound expression, for rendering

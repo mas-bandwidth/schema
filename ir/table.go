@@ -36,6 +36,17 @@ func TableFieldId(f *Field) uint16 {
 	return FieldId(f.Name)
 }
 
+// TableFieldJsonKey is a field's key in the text form (SPEC-TABLES.md §16.3):
+// the `json = "key"` attribute where one is declared, and the field's own name
+// otherwise. Independent of the wire id — a `was` rename and a `json` key are
+// two different vocabularies over one field.
+func TableFieldJsonKey(f *Field) string {
+	if f.JsonKey != "" {
+		return f.JsonKey
+	}
+	return f.Name
+}
+
 // VariableTables derives the table MODE — the compiler works it out; nobody
 // declares it (the owner's ruling: "i wouldn't want to manually have to
 // specify this… the compiler can work it out"). A closure member is
