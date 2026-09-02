@@ -761,7 +761,7 @@ table ShipConfig
 			if !strings.HasSuffix(name, "Block.h") && !strings.HasSuffix(name, "Block.cs") {
 				continue
 			}
-			for _, line := range strings.Split(string(data), "\n") {
+			for line := range strings.SplitSeq(string(data), "\n") {
 				// the CONSTANT's own definition, not a descriptor that
 				// references it
 				if !strings.Contains(line, "BuildVersion = 0x") {

@@ -203,7 +203,7 @@ func TestBuildVersionOffsetTermIsLoadBearing(t *testing.T) {
 		var out []string
 		for line := range strings.SplitSeq(projection, "\n") {
 			var kept []string
-			for _, token := range strings.Fields(line) {
+			for token := range strings.FieldsSeq(line) {
 				if strings.HasPrefix(token, "offset=") {
 					continue
 				}
