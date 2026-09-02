@@ -1,4 +1,4 @@
-// Package baseline is the TABLES BASELINE (SPEC-TABLES.md §16): an optional
+// Package baseline is the TABLES BASELINE (SPEC-TABLES.md §18): an optional
 // committed projection of a unit's table closure, and the check that refuses
 // the edits the table wire cannot report.
 //
@@ -48,7 +48,14 @@ import (
 // an older file gets the "regenerate it" refusal, and `--update` regenerates
 // it with its history intact, instead of a flood of diffs against facts this
 // rendering spells differently.
-const Version = 2
+//
+// THE RULE FOR BUMPING IT: any NEW JUDGED TOKEN bumps the version. A token
+// this rendering emits and an older one did not reads as an ADDITION to every
+// older file, and the added-token branch of the diff refuses an addition on
+// every judged row — so an unbumped rendering greets an untouched schema with
+// a refusal per field. Recording a fact nothing judges (an `optional`) does
+// not need a bump; adding a rule does.
+const Version = 3
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.

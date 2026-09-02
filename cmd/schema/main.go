@@ -46,7 +46,7 @@ func main() {
 	}
 	// Warnings are never quiet and never gated on --verbose: a warning nobody
 	// reads is a warning that does not exist. Today they come from the tables
-	// baseline's warn class (SPEC-TABLES.md §16).
+	// baseline's warn class (SPEC-TABLES.md §18.2).
 	c.OnWarn = func(msg string) { fmt.Fprintln(os.Stderr, "warning: "+msg) }
 
 	switch os.Args[1] {
@@ -75,7 +75,7 @@ func main() {
 		unit := loadUnit(c, os.Args[2:])
 		fmt.Print(ir.WireProjection(unit))
 	case "tables-baseline":
-		// The TABLES BASELINE (SPEC-TABLES.md §16). Printing is the default:
+		// The TABLES BASELINE (SPEC-TABLES.md §18). Printing is the default:
 		// the same canonical projection the committed file holds, so a
 		// pipeline can diff without writing anything. --update moves the file
 		// and records WHY in its history — and never without --reason,

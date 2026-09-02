@@ -1,4 +1,4 @@
-schema-tables-baseline 2
+schema-tables-baseline 3
 package tabledemo
 
 table ArchiveConfig

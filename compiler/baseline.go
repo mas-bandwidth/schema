@@ -5,7 +5,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TablesBaselineText renders the unit's TABLES BASELINE (SPEC-TABLES.md §16):
+// TablesBaselineText renders the unit's TABLES BASELINE (SPEC-TABLES.md §18.1):
 // a canonical text projection of its table closure — every closure member's
 // fields with their wire ids, kinds, array shapes, evaluated defaults and
 // `was` aliases, and every enum, flags and union it reaches. One fact per

@@ -140,7 +140,7 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 		}
 	}
 
-	// the tables baseline (SPEC-TABLES.md §16) reads a corpus with tables in
+	// the tables baseline (SPEC-TABLES.md §18) reads a corpus with tables in
 	// it, so it runs over the tables corpora rather than the packet ones.
 	// Printing only: --update writes to the input tree, and this test measures
 	// the API, not the filesystem.

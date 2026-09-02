@@ -1,5 +1,5 @@
 // The FILE side: where the baseline lives, when the check runs, and how
-// `--update` moves it (SPEC-TABLES.md §16).
+// `--update` moves it (SPEC-TABLES.md §18.1, §18.2, §18.4).
 package baseline
 
 import (
@@ -79,7 +79,7 @@ func Check(u *ir.Unit, paths []string) (warnings []string, errs []error) {
 	if err != nil {
 		// EVERY parse refusal names the remedy, in one place, and the remedy
 		// works: Update parses leniently and salvages the history section.
-		return nil, []error{fmt.Errorf("%w — regenerate it with: schema tables-baseline --update --reason \"...\", which preserves the %s section (SPEC-TABLES.md §16)", err, HistoryHeading)}
+		return nil, []error{fmt.Errorf("%w — regenerate it with: schema tables-baseline --update --reason \"...\", which preserves the %s section (SPEC-TABLES.md §18.4)", err, HistoryHeading)}
 	}
 	if base.Package != u.Package {
 		return nil, []error{fmt.Errorf("%s: baseline is for package %s, this unit is package %s — the baseline belongs to the unit it sits beside", path, base.Package, u.Package)}
@@ -90,7 +90,7 @@ func Check(u *ir.Unit, paths []string) (warnings []string, errs []error) {
 		warnings = append(warnings, fmt.Sprintf("%s: %s", path, w))
 	}
 	for _, r := range refusals {
-		errs = append(errs, fmt.Errorf("%s: %w — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason \"...\" (SPEC-TABLES.md §16)", path, r))
+		errs = append(errs, fmt.Errorf("%s: %w — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason \"...\" (SPEC-TABLES.md §18)", path, r))
 	}
 	return warnings, errs
 }
@@ -109,7 +109,7 @@ func Update(u *ir.Unit, paths []string, reason string) (path string, rewrote boo
 // update is Update with the date supplied, so tests are not dated by the clock.
 func update(u *ir.Unit, paths []string, reason, date string) (string, bool, error) {
 	if strings.TrimSpace(reason) == "" {
-		return "", false, fmt.Errorf("--update needs --reason: moving the baseline declares an intentional break with data already written, and the reason is what a person reads years later when an old file refuses (SPEC-TABLES.md §16)")
+		return "", false, fmt.Errorf("--update needs --reason: moving the baseline declares an intentional break with data already written, and the reason is what a person reads years later when an old file refuses (SPEC-TABLES.md §18.4)")
 	}
 	dirs := map[string]bool{}
 	var dir string

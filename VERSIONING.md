@@ -99,7 +99,7 @@ emitters — carries no promise and may change in any
 release. Building on the compiler means `compiler.Generator` and `ir`, which is
 the same door the built-in backends come through.
 
-The tables baseline (SPEC-TABLES.md §16) adds to that covered surface:
+The tables baseline (SPEC-TABLES.md §18) adds to that covered surface:
 `compiler.TablesBaselineText` and `compiler.UpdateTablesBaseline`, the
 `TablesBaseline` and `OnWarn` policy fields on `compiler.Compiler`, and in `ir`
 the table-wire kind vocabulary — the `TableKind*` constants and

@@ -1,4 +1,4 @@
-// The tables baseline's gate (SPEC-TABLES.md §16): one fixture pair per
+// The tables baseline's gate (SPEC-TABLES.md §18.6): one fixture pair per
 // refusal class and per warn class, each with its negative controls.
 //
 // TWO KINDS OF NEGATIVE CONTROL, because a gate can be wrong in two ways.
@@ -873,6 +873,38 @@ table Loadout
 	grown := strings.Replace(src, "enum Slot { Head, Chest, Legs }", "enum Slot { Head, Chest, Legs, Boots }", 1)
 	if got := baseline.Diff(b, baseline.Render(unit(t, grown)), baseline.DefaultTokenPolicy); len(got) != 0 {
 		t.Errorf("growing a key enum is absorbed, got:%s", summary(got))
+	}
+}
+
+// TestKeyedBoundIsNotJudgedAsAnExtent: a keyed array's bound IS its key
+// enum's size, and its slots ride under variant name ids (SPEC-TABLES.md
+// §3.2) — an unknown key is skipped and counted `unknown`, with no bounded
+// prefix and nothing clamped. The enum walk already says what went and by
+// name, so the extent row must not say it a second time in the wrong words.
+func TestKeyedBoundIsNotJudgedAsAnExtent(t *testing.T) {
+	const src = `package keyed
+
+enum Slot { Head, Chest, Legs }
+
+table Loadout
+{
+    pieces  [Slot]int32
+    spares  [..3]int32
+}
+`
+	dropped := strings.Replace(src, "enum Slot { Head, Chest, Legs }", "enum Slot { Head, Chest }", 1)
+	got := baseline.Diff(committed(t, src), baseline.Render(unit(t, dropped)), baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "enum Slot", "variant Legs removed") {
+		t.Fatalf("the enum walk must report the lost slot by name, got:%s", summary(got))
+	}
+	if find(got, baseline.Warn, "Loadout.pieces", "array bound") {
+		t.Errorf("a keyed array's bound must not be judged as an extent — nothing clamps, and the enum walk already said it, got:%s", summary(got))
+	}
+	// the POSITIONAL sibling still warns on a shrunk extent: this is a
+	// discrimination, not a blanket exemption
+	shrunk := strings.Replace(src, "spares  [..3]int32", "spares  [..2]int32", 1)
+	if got := baseline.Diff(committed(t, src), baseline.Render(unit(t, shrunk)), baseline.DefaultTokenPolicy); !find(got, baseline.Warn, "Loadout.spares", "array bound 3 -> 2") {
+		t.Errorf("a positional array's shrunk bound still warns, got:%s", summary(got))
 	}
 }
 

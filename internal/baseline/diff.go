@@ -1,5 +1,5 @@
 // The DIFF: live projection against committed baseline, and the judgment on
-// every way they can differ (SPEC-TABLES.md §16).
+// every way they can differ (SPEC-TABLES.md §18.2).
 //
 // The three verdicts, and the one question that assigns them: what does an
 // old file MEAN to a new reader?
@@ -491,6 +491,15 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			}
 		case RuleShrink:
 			if !present || lv == bt.Value {
+				continue
+			}
+			// A KEYED ARRAY'S BOUND IS ITS KEY ENUM'S SIZE, and its slots ride
+			// under variant name ids (SPEC-TABLES.md §3.2): an unknown key is
+			// skipped and counted `unknown`, so there is no bounded prefix and
+			// nothing is clamped. The enum walk already reports each variant
+			// that went, correctly and by name — this row would say the wrong
+			// thing and say it a second time.
+			if shape, _ := bf.Get("array"); shape == "keyed" {
 				continue
 			}
 			was, err1 := strconv.ParseInt(bt.Value, 10, 64)
