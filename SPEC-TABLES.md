@@ -2043,7 +2043,7 @@ lives a table has without being told; and a table's own **node type id**
 (§3.1), so a tool can map a node table's records — or a region's node
 directory — onto descriptors with no schema files on hand. The
 compile-time refusals those ids bring (§11) apply to EVERY unit, as the
-26 generated spellings do, because a unit gains and loses pointers as an
+24 generated spellings do, because a unit gains and loses pointers as an
 edit and a name that was free yesterday must not become a collision
 tomorrow. A self-referential pointer resolves to its own type's
 descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
@@ -2651,7 +2651,7 @@ in build version (§20.5).
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
-    for every declaration in every unit. All three are in the 26 above and
+    for every declaration in every unit. All three are in the 24 above and
     are claimed today only for closure members; the descriptor emission
     spells all three per declaration, so widening one of them would leave
     two open.

@@ -1258,8 +1258,15 @@ cooked from.
 It is settled by the **compiler**, not by your C++ compiler, which is what
 lets tooling cook before any game binary exists. The layout half comes from
 the compiler's own C ABI model, and the generated code asserts it on every
-side: if your compiler lays a record out differently, the build fails and
-names the field.
+side — but WHEN it tells you differs by language, and only C++ tells you at
+build time. C++ `static_assert`s every `sizeof`, `alignof` and `offsetof`,
+so a compiler that lays a record out differently fails the BUILD, naming the
+type and the field. C# has no `static_assert`: the generated
+`TableBlockLayout.Verify()` runs once at first use and THROWS, naming the
+type, the field, the offset it found and the offset the C++ side asserts —
+loud and early, but at run time. Both cover the records the block form
+reaches, not yet every record in the unit's table closure. SPEC-TABLES.md
+§20's status list carries both gaps as items 2 and 3.
 
 Two things it does not do:
 
