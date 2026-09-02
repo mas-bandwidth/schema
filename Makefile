@@ -340,12 +340,18 @@ tables-cs-refuses-pointers: bin/schema
 # ---------------------------------------------------------------------------
 
 # -Wshadow, on all three tables legs (BLOCK here, TABLES and PACK below): the
-# POSIX gate for a class the POSIX legs were blind to. A shadowed local in an
-# emitted function is a warning nobody sees under -Wall -Wextra — gcc and clang
-# say nothing without this flag — and cl refuses it outright at /W4 /WX (C4456),
-# so the estate's Visual C++ requirement made a silent POSIX green into a
-# Windows red (#286). The flag puts the class back under a gate that runs on
-# every PR, on the compilers this bench actually has.
+# POSIX gate for a class the POSIX legs were blind to. A shadowed name in an
+# emitted function is a warning nobody sees under -Wall -Wextra — neither gcc
+# nor clang says a word without this flag — and cl refuses it outright at
+# /W4 /WX, so the estate's Visual C++ requirement turned a silent POSIX green
+# into a Windows red (#286).
+#
+# The two POSIX compilers cover DIFFERENT halves of what cl refuses, and the
+# matrix runs both, so the pair is the gate rather than either one:
+#   clang -Wshadow  -> a local hiding a local          (cl C4456)
+#   gcc   -Wshadow  -> the same, PLUS a constructor parameter hiding a member
+#                      (cl C4458), which clang files under -Wshadow-all
+# macOS runs clang and ubuntu runs gcc; the big-endian leg is a second gcc.
 BLOCK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
 BLOCK_INCLUDES := -Ibuild/tables-generated/block
 BLOCK_SOURCES = $$(ls build/tables-generated/block/*Block.cpp)

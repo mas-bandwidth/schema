@@ -136,7 +136,11 @@ struct TableWriter
     int64_t offset = 0;
     bool overflow = false;
 
-    TableWriter( uint8_t * buffer, int64_t capacity ) : buffer( buffer ), capacity( capacity ) {}
+    // the parameters do not repeat the member names: a parameter that hides a
+    // member is a warning the estate's compilers disagree about (gcc's
+    // -Wshadow and cl's C4458 refuse it, clang's -Wshadow does not), and this
+    // is a header a consumer compiles under its OWN flags
+    TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
     void raw( const void * data, int64_t bytes )
     {
@@ -163,8 +167,8 @@ struct TableReader
     int64_t offset = 0;
     TableReport * report;
 
-    TableReader( const uint8_t * buffer, int64_t size, TableReport * report )
-        : buffer( buffer ), size( size ), report( report ) {}
+    TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
+        : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
     bool has( int64_t bytes ) const { return offset + bytes <= size; }
     uint8_t get8()   { return buffer[offset++]; }
