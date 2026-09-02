@@ -597,7 +597,7 @@ only structural damage stops a load. Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
 **An array's BOUND is not part of that identity either.** Resize a bounded
-array — a literal, a constant, or an `E.Max + 1` expression that moved when
+array — a literal, a constant, or an `E.Max` expression that moved when
 the enum grew — and files written under the old bound still load: a count
 past your bound keeps the bounded prefix and counts `clamped`, a count short
 of it leaves your tail at its declared defaults. (`malformed` means something
@@ -705,22 +705,25 @@ beside a `<Name>Present` bool, and a union is its tag beside one pre-allocated
 arm — the same spelling the packet backend uses, because a table's closure
 decodes into the packet backend's own classes.
 
-An enum-keyed array is a `TableKeyed<T>` holding `E.Max + 1` slots. **C#
-indexes it by the slot index**, because the language has no non-boxing generic
-enum-to-int conversion — so the caller writes the cast,
-`fleet.Ships[(int)ShipType.Bomber]`. The `None` refusal survives as a runtime
-guard on that indexer, and unlike C++'s `assert` it is **not** compiled out in
-release. Generated code walks `.Slots` directly and never pays for the guard.
+An enum-keyed array is a `TableKeyed<T, E>` holding `E.Max` slots — one per
+named variant, nothing for `None`, the key `k` at index `k - 1`. Nothing
+outside the array names its size: the type derives its extent from the enum's
+own `Max`. **C# indexes it by the ENUM VALUE**, as every port does, but the
+language has no non-boxing generic enum-to-int conversion — so the caller
+writes the cast, `fleet.Ships[(int)ShipType.Bomber]`. The cast, never the
+shift. The `None` refusal survives as a runtime guard on that indexer, and
+unlike C++'s `assert` it is **not** compiled out in release. Generated code
+walks `.Slots` directly and never pays for the guard.
 
-`foreach` walks the valid slots, `1 .. E.Max`, and yields the slot index beside
-the element — the same currency the indexer takes, so a site that wants the key
+`foreach` walks every slot and yields the KEY, `1 .. E.Max`, beside the
+element — the same currency the indexer takes, so a site that wants the key
 as its enum writes `(ShipType)ship_type` there. The enumerator is a struct, so
 the walk allocates nothing:
 
 ```csharp
 foreach (var (ship_type, ship) in fleet.Ships)
 {
-    ship.Health *= 2.0f;   // slot 0 is not in the range
+    ship.Health *= 2.0f;   // ship_type is the KEY, never a storage index
 }
 ```
 
@@ -734,8 +737,10 @@ follow-on rather than part of this construct.
 
 `<Name>TableType()` returns the reflection descriptor: field names, wire ids
 and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
-an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId` — where `KeyId(0)` is
-`0`, the reserved id that marks slot 0 as `None`'s and never valid.
+an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
+the KEY — `KeyId(0)` is `0`, the reserved id that says `None` names no slot.
+`ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
+`i + 1`.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every
@@ -881,11 +886,12 @@ place, silently. A slot the writer left at its default is elided; a slot this
 reader has no name for is skipped and counted `unknown`; a slot the writer
 never sent keeps its declared default. A `None` key never rides at all.
 
-In a `type` body the same spelling is exactly `[E.Max + 1]T` — positional and
+In a `type` body the same spelling is exactly `[E.Max]T` — positional and
 bitpacked, the packet wire as always, with the same protocol id either way —
 and there the storage is a **plain array**: `per_team [Team]int32` in a `type`
-is `int32_t per_team[4]`, no accessor, no iteration surface and no `None`
-guard, because there is no key to check. Only the table wire keys the slots.
+is `int32_t per_team[3]`, no accessor, no iteration surface and no `None`
+guard, because there is no key to check and no `None` slot to guard. Only the
+table wire keys the slots.
 
 A key enum counts as part of the table closure: it rides by variant name, so
 `| max` headroom and colliding variant names are refused for it too, with the
