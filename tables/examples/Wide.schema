@@ -1,0 +1,14 @@
+// Wide.schema — extents past the old 16-bit ceiling (SPEC-TABLES.md §3):
+// string and bytes byte lengths and array counts ride as u32, so a table may
+// carry an extent no uint16 could count. The ceiling is the language's own
+// int32 storage cap (SPEC §4.3), not a wire ceiling.
+package tabledemo
+
+const MaxBlobBytes = 70000
+
+table WideBlob
+{
+    label   string(70000)
+    payload bytes(MaxBlobBytes)
+    samples [..70000]uint16
+}

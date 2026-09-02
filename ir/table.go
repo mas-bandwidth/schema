@@ -20,6 +20,12 @@ func FieldId(name string) uint16 {
 	return id
 }
 
+// VariantId is the stable TABLE-wire identity of an enum variant or a union
+// arm: the same fold a field name takes, over the variant's own name. An
+// enum's implicit None and a union's empty arm ride as 0, which the fold's
+// rebound keeps free of every declared name.
+func VariantId(name string) uint16 { return FieldId(name) }
+
 // TableFieldId is a field's EFFECTIVE table-wire id: the hash of its
 // `was = "old_name"` alias when one is declared — so wire identity survives
 // the rename — and of its own name otherwise.

@@ -91,18 +91,12 @@ func tableScalarKind(f *ir.Field) int {
 	case ir.TBytes:
 		return tkArray
 	case ir.TNamed:
-		switch ref := f.Type.Ref.(type) {
+		switch f.Type.Ref.(type) {
 		case *ir.Enum:
-			switch ref.StorageBits {
-			case 8:
-				return tkU8
-			case 16:
-				return tkU16
-			case 32:
-				return tkU32
-			default:
-				return tkU64
-			}
+			// an enum value rides as the u16 hash of its VARIANT NAME, whatever
+			// the declaration-side storage width (SPEC-TABLES.md §5): identity
+			// is the name here, exactly as it is for a field
+			return tkU16
 		case *ir.Flags:
 			return tkU64
 		case *ir.Struct:
@@ -238,8 +232,14 @@ struct TableFieldInfo
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
     double range_max;
-    int64_t enum_max;       // enums: highest valid value (None = 0 always valid); else -1
-    const char * (*enum_name)( uint64_t value ); // enums: value -> name; else NULL
+    int64_t enum_max;       // enums: highest valid value (None = 0 always valid);
+                            // unions: the arm count (tag range [0, enum_max]); else -1
+    const char * (*enum_name)( uint64_t value ); // enums: value -> name; unions: tag -> arm name; else NULL
+    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // hash of the variant's name; for a union, the hash of the arm's name.
+    // 0 is the reserved id — an enum's None, a union's empty. NULL for every
+    // other kind. Walk [0, enum_max] to enumerate a vocabulary and its ids.
+    uint16_t (*variant_id)( uint64_t value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 
@@ -303,22 +303,16 @@ struct TableReader
             case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
             case 4: case 8: case 10: return has( 4 ) ? ( offset += 4, true ) : false;
             case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
-            case 12:
-            {
-                if ( !has( 2 ) ) return false;
-                uint16_t n = get16();
-                return has( n ) ? ( offset += n, true ) : false;
-            }
-            case 13: case 14:
+            case 12: case 13: case 14:
             {
                 if ( !has( 4 ) ) return false;
                 uint32_t n = get32();
                 return has( n ) ? ( offset += n, true ) : false;
             }
-            case 15: // union: u8 tag, then the selected arm length-prefixed (tag 0 = None, no body)
+            case 15: // union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body)
             {
-                if ( !has( 1 ) ) return false;
-                if ( get8() == 0 ) return true;
+                if ( !has( 2 ) ) return false;
+                if ( get16() == 0 ) return true;
                 if ( !has( 4 ) ) return false;
                 uint32_t n = get32();
                 return has( n ) ? ( offset += n, true ) : false;
@@ -369,6 +363,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				if st.IsTable {
 					g.emitTableStruct(st)
 				}
+			}
+			for _, e := range tableEnums(members) {
+				g.emitEnumIdentity(e)
 			}
 			g.emitCodecDeclarations(members)
 			for _, st := range members {

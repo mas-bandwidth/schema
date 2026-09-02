@@ -96,10 +96,36 @@ table Node
 
 table Scene
 {
-    head     *Node
-    settings *Settings   // an optional subtable: null when absent
+    head    *Node
+    palette *Palette     // shared and large: one copy, pointed at
 }
 ```
+
+**A pointer is for recursion, sharing and size — not for optionality.**
+Every field on this wire is already optional: absence is the reader's
+default (§4), so nothing has to be pointed at to be left out. The spelling
+for an OPTIONAL SECTION is the guarded field:
+
+```
+table Scene
+{
+    has_settings bool
+    if has_settings
+    {
+        settings Settings   // an optional section: off the wire when the guard is false
+    }
+}
+```
+
+The guard is a field like any other, the section rides only when it is
+true, and a reader whose writer left it out gets the declared defaults —
+with no pointer, no allocation and no change of mode. Reach for `*` when
+the structure genuinely needs it: a table that refers to ITSELF (a chain, a
+tree), a large subtree you would rather not carry by value, or one node
+several parents name (sharing is a named follow-on, §15 — v1 writes a
+tree). One pointer anywhere in a table's by-value closure flips it to
+VARIABLE-LENGTH (§2.2) and with it the whole builder lifecycle, so the
+choice is a real one.
 
 The spelling is C's, deliberately: it reads as what it is. The rules,
 each refused by name (§11):
@@ -151,9 +177,11 @@ are where size lives, and the arena and the region are the size answer.
 
 The exclusions, each refused by name: `fixed`/`ufixed` and the 128-bit
 family have no table-wire kind; `const`/`reserved`/`align` describe bit
-positions, and the table wire has none; arrays of unions are a named
-follow-on; and string/bytes/array extents past 65535 exceed the wire's
-u16 lengths and counts (§3).
+positions, and the table wire has none; and arrays of unions are a named
+follow-on. **Extents have no wire ceiling**: lengths and counts ride as u32
+(§3), so the only limit is the language's own — a string, bytes or array
+extent lives in int32 storage (SPEC §4.3), and that cap is what a too-large
+extent is refused against.
 
 ## 3. The wire
 
@@ -166,29 +194,73 @@ schema's codebase:
 - A table value is a sequence of **fields**, each `id (u16), kind (u8),
   payload`, terminated by a **u16 zero terminator**. The id is the
   field's name hash — fnv1a32 over the name, xor-folded to 16 bits, with
-  0 mapping to 1 so the terminator can never collide (§5). The kind is
-  one of the closed set: bool, i8..i64, u8..u64, f32, f64, string,
-  array, union, table.
-- Scalar payloads are their kind's fixed width. Strings carry a **u16
-  byte length** then the bytes. Arrays, unions and nested tables carry a
-  **u32 byte length** then the body — so any reader can skip any field
-  without understanding it, and any parent can hand each nested table to
-  a different worker (§7). An array body opens with its **element kind
-  (u8) and count (u16)**; a union body opens with its **tag byte**
-  (variant ordinal + 1, 0 = empty) then the arm as a nested table body.
-  Fixed-extent scalar arrays are positional: absent trailing elements
-  pad to the declared bound.
+  0 mapping to 1 so the terminator can never collide (§5).
+- **The kinds are a closed set**, and these are their numbers: `1` bool,
+  `2` i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64,
+  `10` f32, `11` f64, `12` string, `13` table, `14` array, `15` union.
+- **Payloads**, one row per kind. `L` is a u32 byte length; `N` is a u32
+  element count. Nothing is aligned and nothing is padded.
+
+  | kind | payload |
+  |---|---|
+  | `1` bool | 1 byte, `0` or `1` |
+  | `2`–`5` i8/i16/i32/i64 | 1/2/4/8 bytes, two's complement |
+  | `6`–`9` u8/u16/u32/u64 | 1/2/4/8 bytes |
+  | `10` f32, `11` f64 | 4/8 bytes, the IEEE-754 bit pattern |
+  | `12` string | `L`, then `L` bytes. No terminator; no encoding imposed |
+  | `13` table | `L`, then `L` bytes of table body (fields, then the u16 zero terminator) |
+  | `14` array | `L`, then the array body: `element kind (u8)`, `N`, then the elements |
+  | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of table body |
+
+  **The union carries NO outer length** — its `arm id` sits where the other
+  three containers put theirs, and the length that follows frames the arm
+  alone. It is the one payload whose framing a skipper has to know (below).
+  - **Array elements.** For a scalar element kind the elements sit back to
+    back at that kind's fixed width. For element kind `13` (table) each
+    element is preceded by its own `L`. `bytes(N)` rides as an array of
+    element kind `6` (u8). A fixed-extent array writes all its declared
+    elements, so a reader that decodes fewer than its own bound leaves the
+    tail at its declared defaults.
+  - **An arm id of 0 is the empty union** and carries nothing after it.
+    This writer never emits it — an empty union elides (below) — but a
+    reader accepts it.
+- **Skipping a field you cannot name** needs the kind byte and nothing
+  else, which is what makes an unknown field survivable (§4). Three rules
+  cover the set: kinds `1`–`11` skip their fixed width; kinds `12`, `13`
+  and `14` read `L` and skip `L` bytes; kind `15` reads the `u16` arm id
+  and stops there if it is 0, else reads `L` and skips `L` bytes.
+- **Field ORDER within a body is not part of the contract.** This
+  implementation writes fields in declaration order, and a reader must not
+  rely on it: every field is found by its id, so any order decodes the same
+  value, and a body carrying an id more than once is legal input — the last
+  occurrence wins. An encoder written from this section is therefore free
+  to order fields as it likes, and byte-identical output against this
+  implementation requires matching its declaration order as well as its
+  framing.
 - **Writers elide what readers default**: a field holding its default, an
-  empty string or array, and an all-default nested table are not written
-  at all (fixed arrays of tables keep their elements — position is
-  identity there). Elision is why old readers and new writers meet
-  cleanly, and why measure and save agree byte for byte (§7).
+  empty string or array, an all-default FIXED array, an empty union and an
+  all-default nested table are not written at all (fixed arrays of tables
+  keep their elements — position is identity there). Elision is why old
+  readers and new writers meet cleanly, and why measure and save agree byte
+  for byte (§7). Elision makes the DECLARED DEFAULT part of the wire
+  contract: see §4.
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
-  narrowest unsigned kind that holds it, compressed floats as f32, enums
-  and flags as their unsigned storage. The bounds, resolutions and enum
-  vocabularies stay on the DECLARATION side, where they validate and
-  clamp on load (§4) — they never change what the bytes look like.
+  narrowest unsigned kind that holds it, compressed floats as f32, and a
+  `flags` mask as `u64`. The bounds and resolutions stay on the
+  DECLARATION side, where they validate and clamp on load (§4) — they
+  never change what the bytes look like.
+- **An enum value rides as u16 — kind `7` — carrying the hash of its
+  VARIANT NAME**, folded exactly as a field id is, whatever the
+  declaration-side storage width. The implicit `None` rides as `0`, the
+  one reserved id, which the fold's rebound keeps free of every declared
+  name. Variant identity by name is what makes §4's "add anywhere, remove
+  freely, reorder freely" true of an enum's variants and a union's arms,
+  and not only of a table's fields (§5).
+- **A `flags` value rides as its raw unsigned storage — a u64 of bits, kind
+  `9`.** A set of bits has no cheap name-identified form, so flags are the
+  wire's one POSITIONAL vocabulary, and the rule that follows from it is in
+  §4: variants are appended at the END, never inserted or reordered.
 
 ### 3.1 Pointers on the wire: a tree
 
@@ -252,8 +324,26 @@ tolerance is the versioning model:
 - **Unknown field** (newer writer): skipped by its length, counted.
 - **Absent field** (older writer): the reader's value takes the field's
   default — the specified default, else zero.
+- **Unknown enum variant or union arm** (a name this reader does not have):
+  the enum value reads as `None`, the union reads as empty, the arm's body
+  is skipped by its length, and the event is counted as **unknown** —
+  the same counter an unknown field id uses, because it is the same event:
+  the writer named something this reader cannot name.
 - **Kind mismatch** (a field changed type between builds): skipped, never
-  misdecoded, counted.
+  misdecoded, counted. The kinds are a coarser vocabulary than the
+  declaration side, so this catches a change of KIND, not every change of
+  type: an enum field and a plain `uint16` field are both kind `7`, so an
+  edit between the two is not a kind mismatch — the raw value is read as a
+  variant hash, and lands on `None` unless it happens to name one.
+- **A changed array BOUND** (a literal, a constant, or an `E.Max + 1`
+  expression that moved): the array still loads, and the bound is not part
+  of identity — a field is its name hash and its kind, and neither carries
+  an extent. A count past the READER's bound keeps the bounded prefix and
+  counts **clamped**; a count short of it fills what the writer sent and
+  leaves the reader's tail at its declared defaults. `malformed` is
+  reserved for a count the BODY cannot cover, which is framing damage and a
+  different thing. The storage struct's size changes with the constant; the
+  bytes do not.
 - **Out-of-range value** (bounds tightened since the writer): clamped to
   the reader's declared bounds, counted.
 - **Framing damage**: decode stops the damaged nesting level, keeps what
@@ -264,17 +354,59 @@ tolerance is the versioning model:
   the malformed flag, never values fabricated from a neighbor's bytes.
 
 Every event lands in the **read report** — unknown, kind_mismatch,
-clamped, malformed. Silence (all zero) means the data matched this
-reader's schema exactly. Tools surface the report; games decide their own
+clamped, malformed. `unknown` counts every id this reader cannot name: a
+field id, an enum variant id, a union arm id. Silence (all zero) means the
+data matched this reader's schema exactly. Tools surface the report; games decide their own
 policy over it. Nothing crashes on data from a different schema version,
 in either direction, and that property is held by a both-directions
 evolution test in the corpus.
 
 Fields may be added anywhere, removed freely, and reordered freely —
-identity is the name, not the position. The one edit the wire cannot
-survive alone is a rename, and §5 closes it.
+identity is the name, not the position. **So may an enum's variants and a
+union's arms** (§3, §5): they ride under their own name hashes, so
+inserting `Silver` between `Bronze` and `Gold` leaves every stored `Gold`
+reading back as `Gold`. The one edit the wire cannot survive alone is a
+rename, and §5 closes it.
+
+**Flags are the exception, and the rule for them is APPEND AT THE END.** A
+flags value rides as its raw mask (§3), so a variant's identity is its BIT
+POSITION. Inserting or reordering variants remaps every stored file
+silently — nothing on the wire says the bits moved, and no report event can
+fire:
+
+```
+flags Perks { Shielded, Cloaked, Turbo }          // v1: bits 0, 1, 2
+
+flags Perks { Shielded, Hardened, Cloaked, Turbo } // v2: WRONG — an insert
+// every stored Cloaked (bit 1) now reads as Hardened, and Turbo reads as
+// Cloaked. The compiler retains no history and cannot see this.
+
+flags Perks { Shielded, Cloaked, Turbo, Hardened } // v2: RIGHT — appended
+// every stored bit keeps its meaning; an old reader ignores bit 3, a new
+// reader sees it clear in old data.
+```
+
+Removing a flags variant frees no bit either: retire the name, keep the
+position (a spent bit stays spent). The 64-bit storage is the ceiling.
+
+**A DEFAULT IS PART OF THE WIRE CONTRACT.** A field holding its declared
+default is elided (§3), so the reader's default is what the absence means —
+and changing a default therefore rewrites the meaning of every file already
+written. A v1 writer elided `damage = 21.0`; a v2 reader whose declaration
+says `damage = 25.0` loads 25.0 out of that same file, and no report event
+fires, because nothing was lost or skipped. **A default change is a
+semantic edit to every stored file**, and `was` does not cover it: `was`
+preserves an identity, not a value. Change a default the way you would
+change data, or add a new field and leave the old one alone.
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
+
+**One hash serves three vocabularies.** A field's wire id, an enum
+variant's id and a union arm's id are all `fold16(fnv1a32(name))` — the
+fnv1a32 of the name, xored with its own high half and truncated to 16 bits,
+with a result of 0 rebounding to 1. The rebound reserves `0`: it is the
+field terminator, the enum's `None` and the union's empty arm, and no
+declared name can ever land on it.
 
 A field's wire id is the hash of its name. Two consequences, both handled
 at compile time:
@@ -297,6 +429,34 @@ at compile time:
   are a compile error naming both fields. This is the failure hand-rolled
   tag systems cannot see; the compiler sees every id in the closure and
   refuses once, forever.
+
+**Variants carry the same identity, and the same refusals.** An enum's
+values and a union's arms ride under their own name hashes (§3), so:
+
+- **Variants may be added anywhere, removed, and reordered** — the edit
+  §4's field rule always allowed, now true of a vocabulary too. What a
+  reader cannot name reads as `None` (enum) or empty (union), counted.
+- **Renaming a variant is a wire change**, and there is no `was` for one:
+  `was` is a field attribute. A renamed variant is a NEW variant, and old
+  data carrying the old name reads as unknown. Rename a variant only when
+  that is what you mean.
+- **Two variants of one enum, or two arms of one union, whose ids collide
+  are a compile error naming both** — the field rule, applied to the
+  vocabulary. Scoped to the TABLE CLOSURE: the packet wire identifies a
+  variant by its ordinal and is untouched.
+- **`| max = K` headroom on an enum in a table closure is refused.** A
+  headroom value is reserved by number and named by nothing, so it has no
+  identity to ride under — and the table wire needs no headroom, because a
+  variant may be added anywhere. A stored value no variant names is
+  likewise refused on the way out: measure and save return failure rather
+  than writing `None` over it, exactly as they refuse an out-of-range union
+  tag.
+- **Flags are the exception**: a mask is positional, and §4's append-at-the-
+  end rule is the whole of its evolution story.
+
+**And a default is identity's companion on the wire** (§4): an elided field
+means "the reader's declared default", so changing a default is a semantic
+edit to every file ever written, and `was` does not cover it.
 
 ## 6. The two lives of a table
 
@@ -496,8 +656,16 @@ design.
 For every table in the unit's closure the generated header carries static
 descriptors: field name, type name, wire id and kind, storage offset and
 element size, array bound and count-companion offset, declared bounds,
-enum max and a value→name function, branch guards, and the nested table's
-descriptor. `<Name>TableType()` returns that table's descriptor.
+branch guards, and the nested table's descriptor. `<Name>TableType()`
+returns that table's descriptor.
+
+**A vocabulary field carries its vocabulary and the ids it rides under.**
+An enum field and a union field both describe a named set indexed by
+`[0, enum_max]` — an enum's values, a union's arms — with a value→name
+function beside a **value→wire-id** function, so a tool can enumerate the
+names AND the ids without the schema files (§5). For every other kind those
+columns are absent: a flags field carries none, because its variants have
+no per-variant wire id to carry (§4).
 
 A unit that has pointers carries two more facts, and a unit that has none
 carries neither (§2.2): a field's **`is_pointer`** flag — whose `table`
@@ -555,13 +723,18 @@ lockstep redeploy by a table edit. This independence is held by test.
 ## 11. Refused by name
 
 - `table` bodies containing `fixed`/`ufixed` or the 128-bit family (§2 —
-  no wire kind), `const`/`reserved`/`align` (§2 — no bit positions),
-  arrays of unions (§2 — named follow-on), or extents past 65535 (§2 —
-  u16 lengths).
+  no wire kind), `const`/`reserved`/`align` (§2 — no bit positions), or
+  arrays of unions (§2 — named follow-on). Extents have no wire ceiling
+  (§3); an extent past the language's own int32 storage cap is refused
+  there, not here.
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name (§5).
 - Id collisions, hash or `was`-induced (§5).
 - `was` outside a table body (§5).
+- **Variant id collisions** — two variants of one enum, or two arms of one
+  union, whose name hashes collide, with both named (§5).
+- **`| max = K` headroom on an enum in a table closure** — a headroom value
+  has no name, and the table wire identifies a variant by name (§5).
 - Tables under any backend but C++ (status, above) — refused with the
   follow-on named, never silently ignored.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
@@ -577,15 +750,37 @@ lockstep redeploy by a table edit. This independence is held by test.
   graph that leaves the region, goes backward, misaligns, or is bounded
   by an out-of-range count. `Open` returns NULL; the caller falls back to
   a wire load.
+- **A declaration colliding with a generated table spelling.** Tables and
+  types share one symbol table (§13.1), which is what makes the generated
+  surface unprefixed and collision-free — so every name a closure member
+  claims is refused to everything else. A member `X` claims `X` followed by
+  each of these **23 suffixes**, and a declaration spelling one of them is
+  refused naming the collision:
+
+  ```
+  Measure  MeasureBody  Save  SaveBody  Load  LoadBody
+  LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
+  At  Root  Emplace  Pack  PackMeasure  OpenWalk
+  Cook  CookMeasure  Open  LayoutId  TableFields  TableInfo
+  ```
+
+  The set is claimed for EVERY closure member, not only pointer-bearing
+  ones: a table gains or loses pointers as an edit, and a name that was
+  free yesterday must not become a collision tomorrow.
 - **A table named after a member of its generated builder** — a member
   function hides the type name it shares, so the header would not
   compile. The two accessors a real schema would plausibly hit were
   renamed instead (`GetRoot`, `AsConst`), so `table Root`, this
   document's own canonical example, stays legal.
-- A cross-file reference CYCLE among table declarations — the generated
-  headers would have to include each other. Same-file recursion through
-  pointers is fine; move a declaration so the cross-file graph is
-  acyclic.
+- **A cross-file reference CYCLE among table declarations.** The rule is
+  language-neutral: **a unit's table files form a DAG by reference** — if a
+  declaration in file A reaches one in file B, nothing in B may reach back
+  into A. Same-file recursion through pointers is fine; move a declaration
+  so the cross-file graph is acyclic. (In C++ the consequence is concrete —
+  the generated `<A>Table.h` and `<B>Table.h` would have to include each
+  other, and neither could compile — but the requirement is not C++'s: a
+  port whose modules import by file inherits the same acyclicity, and the
+  rule is stated so it does not have to rediscover the reason.)
 
 ## 12. The expressiveness gate
 
