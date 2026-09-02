@@ -7,6 +7,7 @@
 package tabletext
 
 import (
+	"errors"
 	"math"
 	"math/big"
 	"strconv"
@@ -92,6 +93,12 @@ func (in *reader) valueShape() byte {
 		return 'n'
 	}
 }
+
+// TakesNull reports whether a field reads `null` as a VALUE rather than as a
+// kind mismatch: the two kinds where absence is a value — a `?T`, which reads
+// `null` as ABSENT, and a pointer, which reads it as null (SPEC-TABLES.md
+// §16.2).
+func TakesNull(f *ir.Field) bool { return f.Type.Optional || f.Type.Pointer }
 
 // Shape is the JSON shape a field's declaration takes, the classifier the read
 // side matches a value against before placing it (SPEC-TABLES.md §16.2). A
@@ -243,8 +250,15 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 					if low >= 0xdc00 && low <= 0xdfff {
 						code = 0x10000 + (uint32(high)-0xd800)<<10 + (uint32(low) - 0xdc00)
 					} else {
-						in.pos = mark // a lone lead surrogate rides as itself
+						in.pos = mark // a lone lead surrogate never found its partner
 					}
+				}
+				// a surrogate half that never found its partner has no UTF-8
+				// encoding: encoding it anyway would manufacture CESU-8 —
+				// invalid UTF-8 — out of input that was valid JSON, so it
+				// reads as the replacement character (SPEC-TABLES.md §16.3)
+				if code >= 0xd800 && code <= 0xdfff {
+					code = 0xfffd
 				}
 				unit = encodeUTF8(code)
 			default:
@@ -286,29 +300,75 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 	return out, clamped, true
 }
 
-// scanNumber lifts the numeric token at the cursor. integral reports whether
-// it carried no fraction and no exponent.
+// walkNumber steps the cursor over ONE RFC 8259 number and reports whether the
+// token was integral in FORM — no fraction and no exponent:
+//
+//	number = [ "-" ] int [ frac ] [ exp ]
+//	int    = "0" / ( digit1-9 *digit )
+//	frac   = "." 1*digit
+//	exp    = ( "e" / "E" ) [ "-" / "+" ] 1*digit
+//
+// Scanning the production is what makes a typo in an authoring file a
+// DIAGNOSTIC rather than a value: "1-2" scans as 1 and leaves "-2" where the
+// object expects a comma, so the text is malformed — which is what §16.2
+// promises. A permissive scan would hand "1-2" to a digit loop and report a
+// clamp, and a config pipeline would never hear about it. Leading "+", leading
+// zeros, ".5" and "3." are not JSON either.
+func (in *reader) walkNumber() (integral, ok bool) {
+	in.space()
+	integral = true
+	if in.pos < len(in.text) && in.text[in.pos] == '-' {
+		in.pos++
+	}
+	if in.pos >= len(in.text) {
+		return false, false
+	}
+	switch c := in.text[in.pos]; {
+	case c == '0':
+		in.pos++
+	case c >= '1' && c <= '9':
+		for in.pos < len(in.text) && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' {
+			in.pos++
+		}
+	default:
+		return false, false
+	}
+	if in.pos < len(in.text) && in.text[in.pos] == '.' {
+		in.pos++
+		if in.pos >= len(in.text) || in.text[in.pos] < '0' || in.text[in.pos] > '9' {
+			return false, false
+		}
+		for in.pos < len(in.text) && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' {
+			in.pos++
+		}
+		integral = false
+	}
+	if in.pos < len(in.text) && (in.text[in.pos] == 'e' || in.text[in.pos] == 'E') {
+		in.pos++
+		if in.pos < len(in.text) && (in.text[in.pos] == '-' || in.text[in.pos] == '+') {
+			in.pos++
+		}
+		if in.pos >= len(in.text) || in.text[in.pos] < '0' || in.text[in.pos] > '9' {
+			return false, false
+		}
+		for in.pos < len(in.text) && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' {
+			in.pos++
+		}
+		integral = false
+	}
+	return integral, true
+}
+
+// scanNumber is the same production with the token kept for conversion.
 func (in *reader) scanNumber() (token string, integral bool, ok bool) {
 	in.space()
 	start := in.pos
-	integral = true
-	digits := false
-	for in.pos < len(in.text) {
-		c := in.text[in.pos]
-		numeric := (c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.' || c == 'e' || c == 'E'
-		if !numeric {
-			break
-		}
-		if c == '.' || c == 'e' || c == 'E' {
-			integral = false
-		}
-		if c >= '0' && c <= '9' {
-			digits = true
-		}
-		in.pos++
+	integral, ok = in.walkNumber()
+	if !ok {
+		return "", false, false
 	}
 	n := in.pos - start
-	if n <= 0 || n > maxJsonNumber || !digits {
+	if n <= 0 || n > maxJsonNumber {
 		return "", false, false
 	}
 	return string(in.text[start:in.pos]), integral, true
@@ -333,7 +393,7 @@ func (in *reader) skipValue(depth int) bool {
 		in.bad = true
 		return false
 	default:
-		_, _, ok := in.scanNumber()
+		_, ok := in.walkNumber()
 		if !ok {
 			in.bad = true
 		}
@@ -430,13 +490,21 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 			}
 			seen[index] = true
 			fv := &inst.Fields[index]
-			if in.valueShape() != Shape(fv.Def) {
+			switch shape := in.valueShape(); {
+			case shape == 'z' && TakesNull(fv.Def):
+				// `null` is the absence, not a value: a `?T` reads it as
+				// ABSENT and a pointer as null (SPEC-TABLES.md §16.2)
+				if !in.literal("null") {
+					return false
+				}
+				in.m.reset(fv)
+			case shape != Shape(fv.Def):
 				// the wrong JSON type for the kind: skipped, never coerced
 				in.report.KindMismatch++
 				if !in.skipValue(depth + 1) {
 					return false
 				}
-			} else {
+			default:
 				// PRESENCE of the KEY is presence (SPEC-TABLES.md §16.2):
 				// reaching this line is the key being there, whatever the
 				// value turns out to be. A last-wins repeat re-places the
@@ -733,45 +801,112 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	}
 	kind := ScalarKind(f)
 	if kind == KindF32 || kind == KindF64 {
-		single := kind == KindF32
-		value, err := strconv.ParseFloat(token, 64)
-		if err != nil {
-			// a token the runtime converter saturates rather than refuses:
-			// mirror it, since the C++ side reads it through strtod
-			value = saturateFloat(token)
-		}
-		if single {
-			value = float64(float32(value))
-		}
-		if f.HasFloatRange {
-			if value < f.FMin {
-				value = f.FMin
-				in.report.Clamped++
-			} else if value > f.FMax {
-				value = f.FMax
-				in.report.Clamped++
-			}
-		}
-		if single {
-			value = float64(float32(value))
-		}
-		cell.F = value
-		return true
+		return in.placeFloat(cell, f, token, kind == KindF32)
 	}
-	if !integral {
-		// a fraction where an integer is declared is the WRONG SHAPE for the
-		// kind, not framing damage: skipped and counted, never rounded into
-		// place (§16.2)
+	if kind == KindU16 || kind == KindU32 || kind == KindU64 ||
+		kind == KindI8 || kind == KindI16 || kind == KindI32 || kind == KindI64 ||
+		kind == KindU8 {
+		return in.placeInteger(cell, f, token, integral, kind)
+	}
+	in.bad = true
+	return false
+}
+
+// placeFloat converts a number token into a float field. A magnitude the
+// field's format cannot hold is the WRONG SHAPE for the kind and never reaches
+// storage: storing the infinity the conversion produced would leave an
+// instance this walk called CLEAN that the writer then refuses forever, and
+// §16.1's invariant is that a text which reads clean writes back
+// (SPEC-TABLES.md §16.2, §16.3).
+func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool) bool {
+	value, err := strconv.ParseFloat(token, 64)
+	if err != nil && !errors.Is(err, strconv.ErrRange) {
+		in.bad = true
+		return false
+	}
+	if math.IsInf(value, 0) || math.IsNaN(value) {
 		in.report.KindMismatch++
 		return true
 	}
+	if f.HasFloatRange {
+		if value < f.FMin {
+			value = f.FMin
+			in.report.Clamped++
+		} else if value > f.FMax {
+			value = f.FMax
+			in.report.Clamped++
+		}
+	}
+	if single {
+		narrow := float32(value)
+		if math.IsInf(float64(narrow), 0) {
+			in.report.KindMismatch++
+			return true
+		}
+		value = float64(narrow)
+	}
+	cell.F = value
+	return true
+}
+
+// placeInteger converts a number token into an integer field. JSON HAS ONE
+// NUMBER TYPE, so an integer field takes any token whose VALUE is integral,
+// however it was spelled — 2, 2.0 and 1e3 are all the integers this walk
+// places — and only a genuinely fractional value is the wrong shape for it
+// (SPEC-TABLES.md §16.2).
+func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral bool, kind int) bool {
 	signed := kind >= KindI8 && kind <= KindI64
-	value, saturated := tokenInteger(token, signed)
+	var value int64
+	var saturated bool
+	if integral {
+		value, saturated = tokenInteger(token, signed)
+	} else {
+		d, err := strconv.ParseFloat(token, 64)
+		if err != nil && !errors.Is(err, strconv.ErrRange) {
+			in.bad = true
+			return false
+		}
+		if math.IsInf(d, 0) || math.IsNaN(d) {
+			in.report.KindMismatch++
+			return true
+		}
+		switch {
+		case signed && d >= 9223372036854775808.0:
+			value, saturated = math.MaxInt64, true
+		case signed && d < -9223372036854775808.0:
+			value, saturated = math.MinInt64, true
+		case signed:
+			if d != float64(int64(d)) {
+				in.report.KindMismatch++
+				return true
+			}
+			value = int64(d)
+		case d < 0.0:
+			// a negative for an unsigned field clamps to zero, as the exact
+			// digit path already does
+			if d != float64(int64(d)) {
+				in.report.KindMismatch++
+				return true
+			}
+			value, saturated = 0, true
+		case d >= 18446744073709551616.0:
+			value, saturated = -1, true // UINT64_MAX in the int64 both sides carry it in
+		default:
+			if d != float64(uint64(d)) {
+				in.report.KindMismatch++
+				return true
+			}
+			value = int64(uint64(d))
+		}
+	}
 	if saturated {
 		in.report.Clamped++
 	}
+	lo, hi, implied := ImpliedRange(f)
 	if f.HasIntRange {
-		lo, hi := bigToFloat(f.IntMin), bigToFloat(f.IntMax)
+		lo, hi, implied = bigToFloat(f.IntMin), bigToFloat(f.IntMax), true
+	}
+	if implied {
 		if float64(value) < lo {
 			value = int64(lo)
 			in.report.Clamped++
@@ -941,8 +1076,10 @@ func tokenInteger(token string, signed bool) (int64, bool) {
 		magnitude = magnitude*10 + digit
 	}
 	if !signed {
+		// -0 IS zero, and clamping it would report an event that did not
+		// happen; only a real negative magnitude is out of range here
 		if negative {
-			return 0, true
+			return 0, magnitude != 0
 		}
 		if over {
 			// the C++ token parser saturates an unsigned field at UINT64_MAX,
@@ -966,15 +1103,6 @@ func tokenInteger(token string, signed bool) (int64, bool) {
 	return int64(magnitude), false
 }
 
-// saturateFloat mirrors strtod's answer for a token Go's parser refuses only
-// for range: the signed infinity, which the writer then refuses to spell.
-func saturateFloat(token string) float64 {
-	if len(token) > 0 && token[0] == '-' {
-		return math.Inf(-1)
-	}
-	return math.Inf(1)
-}
-
 // bigToFloat renders an IR range bound as the double the descriptors carry, so
 // the text form's clamp compares the same two numbers the generated walk does.
 func bigToFloat(v *big.Int) float64 {
@@ -992,10 +1120,14 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
 	m.reset(fv)
 	var ok bool
-	if in.valueShape() != Shape(fv.Def) {
+	switch shape := in.valueShape(); {
+	case shape == 'z' && TakesNull(fv.Def):
+		// `null` is the absence, not a value (SPEC-TABLES.md §16.2)
+		ok = in.literal("null")
+	case shape != Shape(fv.Def):
 		report.KindMismatch++
 		ok = in.skipValue(0)
-	} else {
+	default:
 		ok = in.readField(fv, 0)
 		if ok && fv.Def.Type.Optional {
 			fv.Present = true

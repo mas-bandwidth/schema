@@ -387,11 +387,69 @@ build/schema_test_pack: build/tables-generated/.stamp test/tables/pack_main.cpp
 tables-pack: build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin
 	./build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin
 
+# The HOSTILE-VALUE gate (SPEC-TABLES.md §16.2, §16.3, §17.5). One tree per rule
+# the text form states — malformed number tokens, a value past a bits(N) width,
+# a lone surrogate, `null` on a `?T`, a "None" key, duplicate keys — packed by
+# the Go engine and then READ BY THE GENERATED BACKEND. The manifest says which
+# trees refuse and what report the rest produce; the backend half asserts the
+# invariant the report is a promise about, that bytes the engine called clean
+# load clean and re-save byte-identically. The Go half lives in
+# internal/tablepack's tests and reads the same manifest.
+HOSTILE_TREES := $(shell find tables/pack/hostile-values -type f 2>/dev/null)
+
+build/hostile-values/.stamp: bin/schema $(HOSTILE_TREES)
+	@rm -rf build/hostile-values
+	@mkdir -p build/hostile-values
+	@grep -v '^#' tables/pack/hostile-values/cases.txt | grep ' packs ' | \
+	while read -r name root outcome counts; do \
+		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin --tolerate \
+			tables/pack/hostile-values/$$name tables/examples || exit 1; \
+	done
+	@touch $@
+
+build/schema_test_hostile: build/tables-generated/.stamp test/tables/hostile_main.cpp
+	@mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/tables-generated/examples test/tables/hostile_main.cpp -o $@
+
+.PHONY: tables-hostile-values
+tables-hostile-values: build/schema_test_hostile build/hostile-values/.stamp
+	./build/schema_test_hostile tables/pack/hostile-values/cases.txt build/hostile-values
+
+# Its NEGATIVE CONTROL: relax ONE rule of the number grammar — accept a leading
+# `+`, which RFC 8259 does not — and the gate must go red, because a tree the
+# manifest says is REFUSED starts packing. Same overlay mechanism as the wire
+# negative control: no tracked file is ever written to.
+.PHONY: tables-hostile-negative
+tables-hostile-negative: tables-hostile-values
+	@mkdir -p build
+	@sed "s/in.text\[in.pos\] == '-' {/in.text[in.pos] == '-' || in.text[in.pos] == '+' { \/\/ SABOTAGED/" \
+		internal/tabletext/read.go > build/read-sabotaged.gotext
+	@cmp -s build/read-sabotaged.gotext internal/tabletext/read.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tabletext/read.go":"%s/build/read-sabotaged.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/read-overlay.json
+	@go build -overlay=build/read-overlay.json -o build/schema-loose-numbers ./cmd/schema
+	@if ./build/schema-loose-numbers pack --root RootConfig --out build/loose.bin --tolerate \
+		tables/pack/hostile-values/num-leading-plus tables/examples > /dev/null 2>&1; then \
+		echo "pack hostile-value negative control: a leading + packs once the grammar is relaxed"; \
+	else \
+		echo "NEGATIVE CONTROL FAILED: relaxing the number grammar left num-leading-plus refused"; exit 1; \
+	fi
+	@./bin/schema pack --root RootConfig --out build/loose.bin --tolerate \
+		tables/pack/hostile-values/num-leading-plus tables/examples > /dev/null 2>&1 && \
+		{ echo "NEGATIVE CONTROL FAILED: the real engine accepts a leading + too"; exit 1; } || true
+
 # The NEGATIVE CONTROL for that golden: break ONE framing rule in the Go
-# encoder — elide a present `?T`, which §2.3 says always rides — and the golden
-# must go red. A gate that cannot be made to fail is not a gate, so this target
-# runs the POSITIVE one first: a red golden must not be able to pass as a
-# successful sabotage.
+# encoder — elide a present `?T`, which §2.3 forbids — and the golden must go
+# red. A gate that cannot be made to fail is not a gate, so this target runs the
+# POSITIVE one first: a red golden must not be able to pass as a successful
+# sabotage.
+#
+# The sabotaged source lives under build/ and reaches the compiler through
+# `go build -overlay`, so no tracked file is ever written to: an interrupt in
+# the middle of this target cannot leave a sabotaged working tree, and a
+# parallel `make -j` cannot compile the sabotage into something else.
 .PHONY: tables-pack-negative
 tables-pack-negative: tables-pack
 	@mkdir -p build
@@ -399,10 +457,9 @@ tables-pack-negative: tables-pack
 		internal/tablewire/encode.go > build/encode-sabotaged.gotext
 	@cmp -s build/encode-sabotaged.gotext internal/tablewire/encode.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
-	@cp internal/tablewire/encode.go build/encode-original.gotext
-	@cp build/encode-sabotaged.gotext internal/tablewire/encode.go
-	@go build -o build/schema-sabotaged ./cmd/schema; status=$$?; \
-		cp build/encode-original.gotext internal/tablewire/encode.go; exit $$status
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/build/encode-sabotaged.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/sabotage-overlay.json
+	@go build -overlay=build/sabotage-overlay.json -o build/schema-sabotaged ./cmd/schema
 	@./build/schema-sabotaged pack --root PackConfig --out build/tables-pack-sabotaged.bin \
 		tables/pack/config tables/examples
 	@if ./build/schema_test_pack build/tables-pack-sabotaged.bin build/tables-pack-root.bin > /dev/null 2>&1; then \
@@ -558,7 +615,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_hostile build/hostile-values/.stamp build/schema_test_pack build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	./build/schema_test_tables
@@ -572,6 +629,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative
+	$(MAKE) tables-hostile-values
+	$(MAKE) tables-hostile-negative
 	./build/schema_test_random
 	./build/schema_test_ludicrous
 	cd test/c && ../../build/schema_test_c

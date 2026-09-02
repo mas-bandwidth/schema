@@ -15,15 +15,18 @@ import (
 )
 
 // Decode fills one instance from a root table's wire bytes, counting every
-// evolution event in the report. False means the framing was damaged past the
-// point where the walk could continue; the instance keeps what it decoded.
-func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) bool {
-	if err := refuseVariable(m, inst.Def); err != nil {
+// evolution event in the report. The error is a REFUSAL — a root this engine
+// does not decode at all — and is returned rather than folded into the report,
+// because a caller must not carry on as if it had a value; false with a nil
+// error is framing damage past the point the walk could continue, and the
+// instance keeps what it decoded.
+func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
+	if err := RefuseVariable(m, inst.Def); err != nil {
 		report.Malformed = true
-		return false
+		return false, err
 	}
 	r := &wireReader{buf: data, report: report, m: m}
-	return r.body(inst)
+	return r.body(inst), nil
 }
 
 type wireReader struct {

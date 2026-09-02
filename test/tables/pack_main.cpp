@@ -164,6 +164,8 @@ static void build_root( RootConfig & root )
 
     WeaponConfig & mine = root.weapons[1];
     mine.damage = 21.0f;
+    mine.channel = 63; // bits(6) at its implied maximum: the boundary the
+                       // text form clamps against on the way in
     mine.effect.type = EffectType::Debuff;
     mine.effect.debuff.amount = 15;
     root.weapons_count = 2;

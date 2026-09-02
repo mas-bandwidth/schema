@@ -62,17 +62,26 @@ func publicReport(r tabletext.Report) TableReport {
 // A tree that does not mirror the table is REPORTED rather than guessed at: the
 // error names every refusal at once, so a pack of a hundred files reports once.
 // Nothing is written; the bytes are the caller's to place.
-func (c *Compiler) Pack(u *ir.Unit, root, dir string) ([]byte, TableReport, error) {
-	bytes, report, err := tablepack.Pack(tabletext.NewModel(u), root, dir)
-	return bytes, publicReport(report), err
+//
+// The second result names the hidden non-JSON files the walk passed over — the
+// one thing a tree walk does not report as a refusal, because a tool that
+// refused `.DS_Store` would be a tool nobody could run on a checkout. Surface
+// them where a caller can see them.
+func (c *Compiler) Pack(u *ir.Unit, root, dir string) ([]byte, []string, TableReport, error) {
+	bytes, skipped, report, err := tablepack.Pack(tabletext.NewModel(u), root, dir)
+	return bytes, skipped, publicReport(report), err
 }
 
-// Unpack is the inverse (SPEC-TABLES.md §17.2): it decodes a root table's wire
+// Unpack is the inverse (SPEC-TABLES.md §17.3): it decodes a root table's wire
 // bytes and writes the tree back out through §16's text form, which is the
-// tool round trip §1 promises. `unpack` then `pack` is byte-stable.
+// tool round trip §1 promises. `unpack` then `pack` is byte-stable — including
+// into a directory that already holds a tree, because Unpack PRUNES the
+// entries it owns and did not write.
 //
 // The returned report is the WIRE's (§4): what the bytes carried that this
-// schema could not name, could not hold, or could not decode.
+// schema could not name, could not hold, or could not decode. An error is a
+// refusal — a root this engine does not decode, or bytes it cannot walk — and
+// nothing is written when one comes back.
 func (c *Compiler) Unpack(u *ir.Unit, root string, wire []byte, dir string) (TableReport, error) {
 	report, err := tablepack.Unpack(tabletext.NewModel(u), root, wire, dir)
 	return publicReport(report), err

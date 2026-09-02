@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"build_note\":\"000\xf4\xfb\x890\xb2\xc7000000000000000000000000000000\"}")

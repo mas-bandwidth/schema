@@ -32,9 +32,11 @@ func (w *writer) line(depth int) {
 	}
 }
 
-// Write renders one instance as one JSON text. It fails only where a value has
-// no text spelling at all — a non-finite float, an enum value or union tag no
-// variant names — which measure and save refuse for the same reason (§5).
+// Write renders one instance as one JSON text (SPEC-TABLES.md §16.3). It fails
+// where a value has no text spelling at all — a non-finite float, an enum value
+// or union tag no variant names, a flags bit no variant names — which measure
+// and save refuse for the same reason (§5), and where the structure is nested
+// past the depth cap.
 func (m *Model) Write(inst *Instance) ([]byte, error) {
 	w := &writer{}
 	if err := m.writeValue(w, inst, 0); err != nil {
@@ -44,6 +46,13 @@ func (m *Model) Write(inst *Instance) ([]byte, error) {
 }
 
 func (m *Model) writeValue(w *writer, inst *Instance, depth int) error {
+	// the write path carries the SAME cap the read path does (§3.1's 128):
+	// a pointer chain's nesting depth equals its length, and the two walks
+	// must agree about which structures are legal or one of them recurses
+	// away on a structure the other refuses.
+	if depth > maxJsonDepth {
+		return fmt.Errorf("table %s: nested past the depth cap of %d — a pointer chain's nesting depth is its length (SPEC-TABLES.md §3.1)", inst.Def.Name, maxJsonDepth)
+	}
 	guards := Guards(inst.Def)
 	any := false
 	for i := range inst.Fields {
@@ -174,6 +183,17 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		return nil
 	}
 	if st := StructOf(f); st != nil {
+		if f.Type.Pointer {
+			// a pointer is an object, or `null` — and a NULL POINTER IS NULL
+			// (SPEC-TABLES.md §16.2). Materializing a pointee here would both
+			// lie about the value and, for a self-referential table, never
+			// terminate.
+			if cell.Tab == nil {
+				w.raw("null")
+				return nil
+			}
+			return m.writeValue(w, cell.Tab, depth+1)
+		}
 		inst := cell.Tab
 		if inst == nil {
 			inst = m.New(st)
@@ -237,10 +257,59 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 	}
 }
 
+// utf8Sequence is the length of ONE well-formed UTF-8 sequence at s, or -1 when
+// the bytes there are not one. It rejects the lot: a stray continuation, an
+// overlong form, a surrogate half, and anything past U+10FFFF.
+func utf8Sequence(s []byte) int {
+	lead := s[0]
+	var want int
+	var code uint32
+	switch {
+	case lead < 0x80:
+		return 1
+	case lead >= 0xc2 && lead <= 0xdf:
+		want, code = 2, uint32(lead&0x1f)
+	case lead >= 0xe0 && lead <= 0xef:
+		want, code = 3, uint32(lead&0x0f)
+	case lead >= 0xf0 && lead <= 0xf4:
+		want, code = 4, uint32(lead&0x07)
+	default:
+		return -1
+	}
+	if len(s) < want {
+		return -1
+	}
+	for i := 1; i < want; i++ {
+		if s[i]&0xc0 != 0x80 {
+			return -1
+		}
+		code = code<<6 | uint32(s[i]&0x3f)
+	}
+	switch {
+	case want == 3 && code < 0x800: // overlong
+		return -1
+	case want == 4 && code < 0x10000: // overlong
+		return -1
+	case code >= 0xd800 && code <= 0xdfff: // a surrogate half
+		return -1
+	case code > 0x10ffff:
+		return -1
+	}
+	return want
+}
+
+// writeString emits one JSON string. A JSON text MUST be valid UTF-8 (RFC 8259
+// §8.1). The read path is byte-transparent — the wire imposes no encoding (§3)
+// and a string may hold anything — so the WRITER is where that obligation is
+// met: a byte that is not part of a well-formed sequence is written as U+FFFD,
+// one per bad byte, and never raw (SPEC-TABLES.md §16.3). The cost is stated
+// plainly: for a string holding invalid UTF-8 the round trip is NOT
+// byte-identical, because the alternative is emitting a text that is not JSON.
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
 	w.put('"')
-	for _, c := range s {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
 		switch c {
 		case '"':
 			w.raw("\\\"")
@@ -257,14 +326,20 @@ func writeString(w *writer, s []byte) {
 		case '\t':
 			w.raw("\\t")
 		default:
-			if c < 0x20 {
+			switch {
+			case c < 0x20:
 				w.raw("\\u00")
 				w.put(hex[c>>4])
 				w.put(hex[c&0xf])
-			} else {
-				// UTF-8 rides as its own bytes: the wire imposes no encoding
-				// and neither does the text (SPEC-TABLES.md §3)
+			case c < 0x80:
 				w.put(c)
+			default:
+				if width := utf8Sequence(s[i:]); width < 0 {
+					w.raw("\ufffd") // U+FFFD, one per bad byte
+				} else {
+					w.raw(string(s[i : i+width]))
+					i += width - 1
+				}
 			}
 		}
 	}

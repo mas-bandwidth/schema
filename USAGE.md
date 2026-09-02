@@ -1276,6 +1276,13 @@ else** — no magic, no hash, no protocol id. If you want an envelope, write
 your own few lines around them. `unpack` is the inverse, and `unpack` → `pack`
 is byte-stable.
 
+`unpack` writes the expanded shape — one `<field>.json` per field of the root
+and one `<field>/<Variant>.json` per keyed slot — and PRUNES the files it owns
+and did not write, so a stale value cannot survive into a newer tree. Neither
+verb writes to your `.schema` sources, and both exit nonzero when the read
+report is not silent; `--tolerate` accepts it, `--verbose` prints it either way
+and names any hidden non-JSON file the walk passed over.
+
 `pack` reads the texts with its own engine inside the compiler rather than by
 calling generated code — the compiler is a Go program — so the tree carries a
 second implementation of the same wire, held to the backends by goldens.

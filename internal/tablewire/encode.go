@@ -30,29 +30,25 @@ const KindKeyed = 16
 // §17.2): no magic, no content hash, no protocol id, no length prefix around
 // the whole.
 func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
-	if err := refuseVariable(m, inst.Def); err != nil {
+	if err := RefuseVariable(m, inst.Def); err != nil {
 		return nil, err
 	}
 	return encodeBody(m, inst)
 }
 
-// Measure is the exact byte count Encode writes. The engine's writer patches
-// its own length prefixes as it appends, so the two cannot disagree; the
-// measure == save invariant (§9) is held where it is load-bearing, on the
-// generated code.
-func Measure(m *tabletext.Model, inst *tabletext.Instance) (int, error) {
-	body, err := Encode(m, inst)
-	if err != nil {
-		return 0, err
-	}
-	return len(body), nil
-}
+// There is no Measure here on purpose. §9's measure/save split exists so a
+// build can size subtables on N workers and scatter-write disjoint ranges; this
+// engine writes one buffer on one goroutine and patches its own length prefixes
+// as it appends, so a Measure beside it could only be `len(Encode(...))` — and
+// a gate that asserts that against itself cannot fail. The measure == save
+// invariant is held where it is load-bearing, on the generated code, by the
+// mandatory battery there.
 
-// refuseVariable refuses a VARIABLE-LENGTH root by name. A pointer-bearing
+// RefuseVariable refuses a VARIABLE-LENGTH root by name. A pointer-bearing
 // table is never held by value: it is built through an arena and read through a
 // region (§6.2), and its text form reads through the builder — a named
 // follow-on the generated C++ does not emit either (§16.2).
-func refuseVariable(m *tabletext.Model, st *ir.Struct) error {
+func RefuseVariable(m *tabletext.Model, st *ir.Struct) error {
 	if ir.VariableTables(m.Unit)[st.Name] {
 		return fmt.Errorf("%s is VARIABLE-LENGTH — a pointer in its by-value closure — and the text form of one reads through its builder, a named follow-on (SPEC-TABLES.md §16.2, §15); pack a fixed-size root", st.Name)
 	}

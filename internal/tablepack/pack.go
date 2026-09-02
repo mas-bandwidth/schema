@@ -32,6 +32,13 @@ type packer struct {
 	m        *tabletext.Model
 	report   *tabletext.Report
 	refusals Refusals
+	skipped  []string // hidden non-JSON files the tree walk passed over
+}
+
+func (p *packer) list(dir string) ([]os.DirEntry, error) {
+	entries, skipped, err := readDir(dir)
+	p.skipped = append(p.skipped, skipped...)
+	return entries, err
 }
 
 func (p *packer) refusef(format string, args ...any) {
@@ -39,33 +46,38 @@ func (p *packer) refusef(format string, args ...any) {
 }
 
 // Pack assembles ONE instance of the named root table from the tree under dir
-// and returns the root's wire bytes (SPEC-TABLES.md §17). The report
-// aggregates everything §16 counts across the whole tree.
-func Pack(m *tabletext.Model, root, dir string) ([]byte, tabletext.Report, error) {
+// and returns the root's wire bytes (SPEC-TABLES.md §17), the hidden non-JSON
+// files the walk passed over, and the report — which aggregates everything §16
+// counts across the whole tree.
+func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Report, error) {
 	st := m.Unit.Tables[root]
 	if st == nil {
-		return nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
+		return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
+	}
+	if err := tablewire.RefuseVariable(m, st); err != nil {
+		// the refusal comes back before a single file is read
+		return nil, nil, tabletext.Report{}, err
 	}
 	inst := m.New(st)
 	p := &packer{m: m, report: &tabletext.Report{}}
 	if err := p.rootTree(inst, root, dir); err != nil {
-		return nil, *p.report, err
+		return nil, p.skipped, *p.report, err
 	}
 	if len(p.refusals) > 0 {
-		return nil, *p.report, p.refusals
+		return nil, p.skipped, *p.report, p.refusals
 	}
 	bytes, err := tablewire.Encode(m, inst)
 	if err != nil {
-		return nil, *p.report, err
+		return nil, p.skipped, *p.report, err
 	}
-	return bytes, *p.report, nil
+	return bytes, p.skipped, *p.report, nil
 }
 
 // rootTree reads the tree at dir into the root instance. The root may simply
 // be one `<Root>.json` (§17.1's last rule); anything beside that file is a
 // second claim on the root and is refused rather than merged.
 func (p *packer) rootTree(inst *tabletext.Instance, root, dir string) error {
-	entries, err := readDir(dir)
+	entries, err := p.list(dir)
 	if err != nil {
 		return err
 	}
@@ -130,7 +142,7 @@ func (p *packer) tableDir(inst *tabletext.Instance, dir string, entries []os.Dir
 // array holds files in NAME ORDER as its elements, and a nested table holds a
 // directory of its own fields (SPEC-TABLES.md §17.1).
 func (p *packer) fieldDir(fv *tabletext.Field, dir string) {
-	entries, err := readDir(dir)
+	entries, err := p.list(dir)
 	if err != nil {
 		p.refusef("%s: %v", dir, err)
 		return
@@ -265,23 +277,30 @@ func entryKey(e os.DirEntry) (string, bool) {
 	return "", false
 }
 
-// readDir lists a directory in name order. Dot-entries are not part of the
-// tree: a tool that refused `.DS_Store` would be a tool nobody could run on a
-// checkout, and a hidden file names no field by construction.
-func readDir(dir string) ([]os.DirEntry, error) {
+// readDir lists a directory in name order, and reports the entries it did not
+// return. The ONE thing a tree walk passes over is a hidden file that is not a
+// `.json`: a tool that refused `.DS_Store` would be a tool nobody could run on
+// a checkout. A hidden `.json` file and a hidden directory still name
+// something, so they go through the ordinary rules and are refused if they name
+// no field — the skip is narrow enough that it cannot swallow a value, and it
+// is counted so that `--verbose` can say what was passed over.
+func readDir(dir string) ([]os.DirEntry, []string, error) {
 	all, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := make([]os.DirEntry, 0, len(all))
+	var skipped []string
 	for _, e := range all {
-		if strings.HasPrefix(e.Name(), ".") {
+		if strings.HasPrefix(e.Name(), ".") && !e.IsDir() && !strings.HasSuffix(e.Name(), ".json") {
+			skipped = append(skipped, filepath.Join(dir, e.Name()))
 			continue
 		}
 		out = append(out, e)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
-	return out, nil
+	sort.Strings(skipped)
+	return out, skipped, nil
 }
 
 func plural(n int, one, many string) string {

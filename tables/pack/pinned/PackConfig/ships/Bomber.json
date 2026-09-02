@@ -1,0 +1,9 @@
+{
+  "name": "Bomber",
+  "health": 260,
+  "mass": 3.5,
+  "hardpoints": [
+    4,
+    5
+  ]
+}

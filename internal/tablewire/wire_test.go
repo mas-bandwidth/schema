@@ -52,17 +52,11 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	size, err := tablewire.Measure(m, inst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if size != len(wire) {
-		t.Fatalf("measure %d, save %d", size, len(wire))
-	}
 	back := m.New(m.Lookup("PackConfig"))
 	var r tabletext.Report
-	if !tablewire.Decode(m, back, wire, &r) {
-		t.Fatalf("the decode stopped: %+v", r)
+	ok, err := tablewire.Decode(m, back, wire, &r)
+	if err != nil || !ok {
+		t.Fatalf("the decode stopped: %v %+v", err, r)
 	}
 	if !r.Silent() {
 		t.Fatalf("expected silence, got %+v", r)
@@ -94,7 +88,9 @@ func TestPresentOptionalAlwaysRides(t *testing.T) {
 	}
 	back := m.New(m.Lookup("ShipEntry"))
 	var r tabletext.Report
-	tablewire.Decode(m, back, present, &r)
+	if _, err := tablewire.Decode(m, back, present, &r); err != nil {
+		t.Fatal(err)
+	}
 	fv, _ := back.FieldByKey("gunner")
 	if !fv.Present {
 		t.Fatal("a field that rode did not read back present")
@@ -129,7 +125,9 @@ func TestKeyZeroIsMalformed(t *testing.T) {
 
 	back := m.New(m.Lookup("PackConfig"))
 	var r tabletext.Report
-	tablewire.Decode(m, back, wire, &r)
+	if _, err := tablewire.Decode(m, back, wire, &r); err != nil {
+		t.Fatal(err)
+	}
 	if !r.Malformed {
 		t.Fatalf("a None key should be framing damage, got %+v", r)
 	}
@@ -150,8 +148,8 @@ func TestUnknownFieldIsSkipped(t *testing.T) {
 
 	back := m.New(m.Lookup("GlobalSettings"))
 	var r tabletext.Report
-	if !tablewire.Decode(m, back, hostile, &r) {
-		t.Fatalf("an unknown field should not stop the decode: %+v", r)
+	if ok, err := tablewire.Decode(m, back, hostile, &r); !ok || err != nil {
+		t.Fatalf("an unknown field should not stop the decode: %v %+v", err, r)
 	}
 	if r.Unknown != 1 || r.Malformed {
 		t.Fatalf("expected one unknown, got %+v", r)
@@ -182,8 +180,8 @@ func TestKeyedUnderArrayKindIsAMismatch(t *testing.T) {
 	}
 	back := m.New(m.Lookup("PackConfig"))
 	var r tabletext.Report
-	if !tablewire.Decode(m, back, wire, &r) {
-		t.Fatalf("a kind mismatch should not stop the decode: %+v", r)
+	if ok, err := tablewire.Decode(m, back, wire, &r); !ok || err != nil {
+		t.Fatalf("a kind mismatch should not stop the decode: %v %+v", err, r)
 	}
 	if r.KindMismatch != 1 {
 		t.Fatalf("expected one kind_mismatch, got %+v", r)

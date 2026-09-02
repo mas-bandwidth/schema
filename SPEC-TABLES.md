@@ -2557,7 +2557,9 @@ are what make them one:
 - `schema pack` → a backend's `Load` → that backend's `ToJson` →
   `schema unpack` is byte-stable;
 - every text `schema unpack` writes is byte-identical to the one the
-  backend's `ToJson` writes for the same instance.
+  backend's `ToJson` writes for the same instance — and until a backend emits
+  one, to a PINNED TEXT committed beside the corpus (§16.5), which is the same
+  comparison with one side written down.
 
 Every backend that implements the text form inherits that obligation
 against the same corpus, which is what keeps one wire and one text form as
@@ -2592,6 +2594,18 @@ which is §1's promise that schema imposes no envelope. `unpack` is the
 inverse — it writes the tree back out of a `.bin` — which is the tool round
 trip §1 promises, and `unpack` → `pack` is byte-stable.
 
+§17.2 lets a field's value live in a file or in a directory, and `unpack`
+takes the EXPANDED form: one `<field>.json` per field of the root, and one
+`<field>/<Variant>.json` per slot of an enum-keyed array. An absent `?T` and
+a guarded-out field write no file at all, because omission is how a tree says
+absence — **and that is why `unpack` PRUNES**: an entry naming a field of the
+table it just wrote, that it did not write this time, is removed. Without it,
+unpacking a newer `.bin` over yesterday's tree would leave the file an absent
+optional used to have standing beside the new one, and byte-stability would
+hold only into an empty directory, which is not the directory the verb is
+pointed at. An entry naming NO field is left exactly where it is: it is not
+the tool's, and `pack` refuses it by name (§17.4).
+
 ### 17.4 Refusals and the report
 
 A tree that does not mirror the table is reported rather than guessed at: a
@@ -2600,12 +2614,39 @@ a variant name the enum does not have, a `None.json`, a file that is not
 JSON. Everything §16 counts is counted here too, aggregated across the
 tree, so a pack of a hundred files reports once.
 
+Three rules complete it, because a packer is a TOOL and a tool's edges are
+part of what it promises:
+
+- **A hidden file that is not JSON is passed over, and NAMED.** It is the one
+  thing a tree walk does not refuse — a tool that died on `.DS_Store` would be
+  a tool nobody could run on a checkout — and the skip is narrow enough that it
+  cannot swallow a value: a hidden `.json` file and a hidden directory still
+  name something, and are refused if they name no field.
+- **A report that is not silent is a nonzero exit.** "Reported, never fatal"
+  (§4) is about the walk not stopping, not about a tool's exit code: a value
+  that was skipped, renamed away or cut down is a thing a build pipeline has to
+  be able to fail on. `--tolerate` is how a caller says the report is expected.
+- **Neither verb writes to the unit's schema sources.** Every other command
+  canonicalizes them in place because formatting is part of what it is doing to
+  them; these two are pointed at a config tree and only READ the declarations.
+
 ### 17.5 Held by test
 
 A directory corpus packs to bytes identical to `Save` of the same instance
-built by hand; `unpack` → `pack` is byte-stable; the goldens of §17.1 hold
-the engine to every backend that implements the form; and the hostile tree
-above is refused or counted per §16's rules.
+built by hand; `unpack` → `pack` is byte-stable, INTO A TREE THAT ALREADY
+HOLDS ONE; the goldens of §17.1 hold the engine to every backend that
+implements the form; and the hostile tree above is refused or counted per
+§16's rules.
+
+**And a HOSTILE-VALUE corpus beside the hostile tree**: one tree per rule §16
+states — every row of the number grammar, a value past a `bits(N)` width, a
+lone surrogate, a `null` at every kind, a `"None"` key, a duplicate key, a
+union with two keys — each carrying the outcome the rule requires, packed by
+the engine and read back by a backend. A tree that packs carries one further
+invariant: its bytes load CLEAN in that backend and re-save byte-identically,
+because a read this form calls clean must not be one the backend cuts down.
+A corpus of well-formed trees proves the happy path and nothing else, and the
+rules are where the implementations drift apart.
 
 ## 18. The tables baseline
 

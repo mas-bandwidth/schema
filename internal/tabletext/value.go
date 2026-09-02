@@ -364,10 +364,24 @@ func KindWidth(kind int) int {
 	return 0
 }
 
+// ImpliedRange is the range a declaration implies without declaring one:
+// `bits(N)` declares its bound by its WIDTH, `[0, 2^N - 1]`, and a value past
+// it clamps and counts exactly as a declared `| max` would (SPEC-TABLES.md
+// §16.2). The generated descriptors carry it in the same `has_range` columns a
+// declared range uses, so the two implementations clamp on the same numbers in
+// the same order. ok is false when the field implies nothing.
+func ImpliedRange(f *ir.Field) (lo, hi float64, ok bool) {
+	if f.Type.Kind != ir.TBits || f.HasIntRange || f.Type.Width >= 64 {
+		return 0, 0, false
+	}
+	return 0, float64(uint64(1)<<uint(f.Type.Width) - 1), true
+}
+
 // StorageBytes is the width of a field's own C++ storage slot, which the text
 // form's integer clamp bounds against — the same `elem_size` the descriptors
 // carry. It is the wire kind's width for a plain integer, and the declared
-// storage for `bits(N)`, which is wider than the kind it rides in.
+// storage for `bits(N)`, which is wider than the kind it rides in — which is
+// why `bits(N)`'s own bound is [ImpliedRange]'s job and not this one's.
 func StorageBytes(f *ir.Field) int {
 	switch f.Type.Kind {
 	case ir.TInt:
