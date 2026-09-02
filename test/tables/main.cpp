@@ -742,7 +742,15 @@ static void test_flags_are_positional()
     CHECK( perks != NULL );
     CHECK( perks->kind == 9 );            // kU64: the mask's raw storage
     CHECK( perks->variant_id == NULL );   // no per-variant wire id exists to carry
-    CHECK( perks->enum_max == -1 );
+    // the bits DO have names, and the descriptor carries them: enum_max is the
+    // highest declared BIT INDEX and enum_name spells one bit (SPEC-TABLES.md
+    // §8). The missing variant_id beside a present enum_name is what says
+    // "positional vocabulary" — a bit has a name, never a wire id.
+    CHECK( perks->enum_max == 2 );
+    CHECK( perks->enum_name != NULL );
+    CHECK( strcmp( perks->enum_name( 0 ), "Shielded" ) == 0 );
+    CHECK( strcmp( perks->enum_name( 1 ), "Cloaked" ) == 0 );
+    CHECK( strcmp( perks->enum_name( 2 ), "Turbo" ) == 0 );
 
     tabledemo::LoadoutConfig loadout;
     loadout.perks = tabledemo::Perks_Cloaked; // bit 1
@@ -985,6 +993,48 @@ static void test_reflection()
     CHECK( strcmp( effect->enum_name( 1 ), "buff" ) == 0 );
     CHECK( effect->variant_id( 0 ) == 0 );
     CHECK( effect->variant_id( 2 ) == field_id( "debuff" ) );
+    // and the arms carry their PAYLOAD: where it sits in the union storage and
+    // what it looks like, so a walker can enter a union with no schema files
+    // (SPEC-TABLES.md §8). Arm 0 is the empty arm and has none.
+    CHECK( effect->arms != NULL );
+    {
+        const tabledemo::TableUnionInfo * arms = effect->arms();
+        CHECK( arms->tag_offset == offsetof( tabledemo::Effect, type ) );
+        CHECK( arms->tag_size == sizeof( tabledemo::Effect{}.type ) );
+        CHECK( arms->arms[0].table == NULL );
+        CHECK( arms->arms[1].table == tabledemo::BuffTableType() );
+        CHECK( arms->arms[1].offset == offsetof( tabledemo::Effect, buff ) );
+        CHECK( arms->arms[2].table == tabledemo::DebuffTableType() );
+
+        // the walk a tool actually does: reach the arm's payload by name
+        tabledemo::WeaponConfig w;
+        w.effect.type = tabledemo::EffectType::Buff;
+        w.effect.buff.multiplier = 3.5f;
+        uint8_t * base = (uint8_t *) &w;
+        uint8_t tag = *( base + effect->offset + arms->tag_offset );
+        CHECK( strcmp( effect->enum_name( tag ), "buff" ) == 0 );
+        const void * payload = base + effect->offset + arms->arms[tag].offset;
+        const tabledemo::TableFieldInfo * mult = demo_field( arms->arms[tag].table, "multiplier" );
+        CHECK( mult != NULL );
+        float read = 0.0f;
+        memcpy( &read, (const uint8_t *) payload + mult->offset, sizeof( read ) );
+        CHECK( read == 3.5f );
+    }
+
+    // reset: a generic walker can put any instance back at its declared
+    // defaults with no type to spell (SPEC-TABLES.md §8)
+    {
+        tabledemo::WeaponConfig w;
+        w.damage = 999.0f;
+        w.homing = true;
+        weapon->reset( &w );
+        CHECK( w.damage == 21.0f ); // the DECLARED default, not zero
+        CHECK( w.homing == false );
+    }
+
+    // the text form's key rides beside the name (SPEC-TABLES.md §16.3); with
+    // no json attribute in the corpus the two are the same string's content
+    CHECK( strcmp( damage->json, "damage" ) == 0 );
     const tabledemo::TableFieldInfo * nameF = demo_field( profileType, "name" );
     CHECK( nameF != NULL && nameF->kind == 12 ); // string
 

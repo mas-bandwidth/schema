@@ -298,9 +298,29 @@ struct TableReport
 
 struct TableTypeInfo;
 
+// One arm of a union field: where its payload sits inside the union's storage
+// and what its payload looks like. The arm's NAME and its table-wire id come
+// from the field's enum_name/variant_id functions at the same tag, so nothing
+// is spelled twice (SPEC-TABLES.md §8).
+struct TableUnionArmInfo
+{
+    uint32_t offset;             // offsetof the arm's payload within the union storage
+    const TableTypeInfo * table; // the arm payload's descriptor
+};
+
+// A union field's shape: the tag, and the arms indexed by it. Arms run
+// [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
+struct TableUnionInfo
+{
+    uint32_t tag_offset; // offsetof the tag within the union storage
+    uint32_t tag_size;   // sizeof the tag
+    const TableUnionArmInfo * arms;
+};
+
 struct TableFieldInfo
 {
     const char * name;      // schema field name, e.g. "health"
+    const char * json;      // the TEXT form's key: the json = "key" attribute, else name (§16.3)
     const char * type_name; // schema type name, e.g. "float32", "Grade"
     uint16_t id;            // table-wire field id (name hash; the was alias's hash after a rename)
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
@@ -317,12 +337,18 @@ struct TableFieldInfo
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
     double range_max;
     int64_t enum_max;       // enums: highest valid value (None = 0 always valid);
-                            // unions: the arm count (tag range [0, enum_max]); else -1
-    const char * (*enum_name)( uint64_t value ); // enums: value -> name; unions: tag -> arm name; else NULL
+                            // unions: the arm count (tag range [0, enum_max]);
+                            // flags: the highest declared BIT INDEX; else -1
+    // the vocabulary's names, indexed the same way enum_max bounds: an enum's
+    // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
+    // variant name. NULL for every other kind.
+    const char * (*enum_name)( uint64_t value );
     // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
-    // other kind. Walk [0, enum_max] to enumerate a vocabulary and its ids.
+    // other kind — a FLAGS field's variants have no per-variant wire id (§4),
+    // so a NULL here beside a non-NULL enum_name is what says "flags".
+    // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
     // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
@@ -332,6 +358,11 @@ struct TableFieldInfo
     const char * key_type_name;
     const char * (*key_name)( uint64_t value );
     uint16_t (*key_id)( uint64_t value );
+    // union fields: the tag and its arms, behind a function so the whole
+    // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
+    // a function pointer at compile time; the arms themselves are a static
+    // inside it). NULL for every other kind.
+    const TableUnionInfo * (*arms)();
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 };
 
@@ -340,7 +371,13 @@ struct TableTypeInfo
     const char * name;   // schema type name
     uint32_t size;       // sizeof the storage struct
     int32_t num_fields;
-    const TableFieldInfo * fields;` + pointerTypeMember + `
+    const TableFieldInfo * fields;
+    // put one instance back at its declared defaults, in place. A generic
+    // walker that fills a value has to be able to establish the defaults an
+    // absent field takes, and it holds no type to spell — this is the one
+    // thing the descriptors could not express without it. Placement-new
+    // value-init, exactly what the wire's read path does, and no temporary.
+    void (*reset)( void * storage );` + pointerTypeMember + `
 };
 
 struct TableWriter

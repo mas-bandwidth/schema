@@ -1099,6 +1099,33 @@ func unionArmLambda(un *ir.Union, result string, arm func(ir.UnionVariant) strin
 	return b.String()
 }
 
+// resetLambda renders a type descriptor's reset column: placement-new
+// value-init, the same in-place prefill the read path uses, behind a
+// captureless lambda so the descriptor stays constant-initialisable.
+func resetLambda(name string) string {
+	return fmt.Sprintf("+[]( void * p ) { new ( p ) %s{}; }", name)
+}
+
+// unionArmsLambda renders a union field's arms column: a captureless lambda
+// whose function-pointer conversion is a constant expression, so a descriptor
+// that names it stays constant-initialised (SPEC-TABLES.md §8). The arms table
+// is a static inside it — no namespace-scope name to claim, and no first-use
+// state on the surface a caller sees.
+func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
+	var b strings.Builder
+	b.WriteString("+[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL },")
+	for _, v := range un.Variants {
+		table := v.Type + "TableType()"
+		if hoisted {
+			table = "&" + v.Type + "TableInfo"
+		}
+		fmt.Fprintf(&b, " { (uint32_t) offsetof( %s, %s ), %s },", un.Name, v.Name, table)
+	}
+	fmt.Fprintf(&b, " }; static const TableUnionInfo info = { (uint32_t) offsetof( %s, type ), (uint32_t) sizeof( %s{}.type ), arms }; return &info; }",
+		un.Name, un.Name)
+	return b.String()
+}
+
 // bigToDouble renders a big.Int as a C++ double literal for the descriptor's
 // range fields (precision past 2^53 is documented as lost).
 func bigToDouble(v *big.Int) string {
@@ -1211,18 +1238,30 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 				rangeMin, rangeMax = formatFloat(f.FMin, false), formatFloat(f.FMax, false)
 			}
 
-			// the VOCABULARY columns: an enum's values and a union's arms are
-			// both a named set indexed by [0, enum_max], and each name carries
-			// the table-wire id it rides under (SPEC-TABLES.md §5, §8)
+			// the VOCABULARY columns: an enum's values, a union's arms and a
+			// flags field's BITS are each a named set indexed by
+			// [0, enum_max]. An enum's and a union's names carry the
+			// table-wire id they ride under; a flags variant has none, and
+			// that missing id is what tells the two apart at runtime
+			// (SPEC-TABLES.md §4, §5, §8).
 			enumMax := "-1"
 			enumName := "NULL"
 			variantId := "NULL"
+			arms := "NULL"
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
 				if f.Type.Kind == ir.TNamed {
 					enumMax = fmt.Sprintf("%d", ref.Max)
 					enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
 					variantId = fmt.Sprintf("+[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.Type.Name)
+				}
+			case *ir.Flags:
+				if f.Type.Kind == ir.TNamed {
+					// a flags mask is the wire's one POSITIONAL vocabulary
+					// (SPEC-TABLES.md §4): its variants are BIT POSITIONS, so
+					// the descriptor names bits, and there is no variant id.
+					enumMax = fmt.Sprintf("%d", len(ref.Variants)-1)
+					enumName = fmt.Sprintf("+[]( uint64_t v ) { return FlagName%s( (int) v ); }", f.Type.Name)
 				}
 			case *ir.Union:
 				if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
@@ -1233,6 +1272,10 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 					variantId = unionArmLambda(ref, "uint16_t", func(v ir.UnionVariant) string {
 						return fmt.Sprintf("0x%04x", ir.VariantId(v.Name))
 					}, "0", "0")
+					arms = g.unionArmsLambda(ref, hoisted)
+					for _, v := range ref.Variants {
+						g.noteRef(v.Type)
+					}
 				}
 			}
 
@@ -1256,27 +1299,27 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			if g.anyVariable {
 				pointerColumn = fmt.Sprintf("%v, ", f.Type.Pointer)
 			}
-			g.pf("%s    { \"%s\", \"%s\", 0x%04x, %d, %v, %s%v, %v, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
-				indent, f.Name, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
+			g.pf("%s    { \"%s\", \"%s\", \"%s\", 0x%04x, %d, %v, %s%v, %v, %d, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\" },\n",
+				indent, f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 				st.Name, f.Name, elemSize, countOffset, presentOffset, table,
 				hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
-				keyTypeName, keyName, keyId, guards[f.Name])
+				keyTypeName, keyName, keyId, arms, guards[f.Name])
 		}
 		if hoisted {
 			g.pf("};\n")
-			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields%s };\n",
-				st.Name, st.Name, st.Name, len(st.Fields), st.Name, g.modeColumn(st))
+			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s };\n",
+				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st))
 		} else {
 			g.pf("    };\n")
-			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields%s };\n",
-				infoQualifier, st.Name, st.Name, len(st.Fields), g.modeColumn(st))
+			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s };\n",
+				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st))
 		}
 	case hoisted:
-		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL%s };\n",
-			st.Name, st.Name, st.Name, g.modeColumn(st))
+		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s };\n",
+			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st))
 	default:
-		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL%s };\n",
-			infoQualifier, st.Name, st.Name, g.modeColumn(st))
+		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s };\n",
+			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st))
 	}
 	if hoisted {
 		g.pf("inline const TableTypeInfo * %sTableType() { return &%sTableInfo; }\n\n", st.Name, st.Name)
