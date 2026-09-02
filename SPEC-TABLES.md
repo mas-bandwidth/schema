@@ -279,12 +279,11 @@ each refused by name (§11):
 - **A pointer field takes no specified default.** A fresh pointer is
   null, and null is the only value a default could name.
 
-**An array of pointers is a bounded array like any other.** `[..8]*Node`
-declares eight reference slots and rides as an array of node indices
-(§3.1); a null element is index `0`. It is the spelling for a node with a
-fixed fan-out, and it costs four bytes a slot instead of a whole table by
-value. An array of `*bytes` or `*string` stays refused (§2.5): a buffer
-takes no index, so there is nothing to put in the slots.
+**An ARRAY OF POINTERS is refused, and it is a named follow-on** (§15).
+`[..8]*Node` and `[8]*Node` are both refused by name, and the diagnostic says
+what to write instead: a bounded array of tables BY VALUE, or a pointer to a
+table that holds the array. An array of `*bytes` or `*string` is refused
+too (§11).
 
 A pointer's STORAGE is a four-byte relocatable reference — never a
 machine address — which is what keeps §9's relocatability true with
@@ -852,8 +851,8 @@ schema's codebase:
 A pointered save writes every reachable node ONCE, into a **node table**,
 and a pointer field rides as a `u32` **index** into it under kind `17`.
 The encoding is flat: no pointer edge is a nesting level, so a chain's
-length is not a depth; two references to one node are one node; and an
-array of pointers is an array of indices. It moves not one byte of a
+length is not a depth, and two references to one node are one node. It
+moves not one byte of a
 value-only table: a fixed-size table has no pointer, therefore no node
 table, therefore exactly the bytes §3 already describes.
 
@@ -1044,15 +1043,13 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   counted, never misdecoded, the field taking its default. The framings
   cannot merge while identity holds: a body that may be named twice
   cannot also sit inline at one of its names.
-- **An array of pointers rides as an array of indices**: `kind = 14`,
-  element kind `17`, `N`, then `N` `u32` indices. `[..8]*Node` is a legal
-  declaration (§2.1) — an array of `*bytes` or `*string` is still refused
-  (§2.5), because a buffer has no index to put in a slot. An array whose
-  elements are all null elides like any other all-default array; an array
-  with any non-null element rides as §3 frames arrays, so a null inside
-  it is index `0` and every position is preserved. §3's element-kind rule
-  applies unchanged, so an array of indices and an array of `uint32` do
-  not decode each other either.
+- **No array carries indices**, because an array of pointers is refused and
+  is a named follow-on (§2.1, §15). Kind `17` is a field's kind and never an
+  array's element kind, so an array of `uint32` is the only four-byte array
+  the wire has and there is no pair for §3's element-kind rule to hold
+  apart. What the follow-on would frame — `kind = 14`, element kind `17`,
+  `N`, then `N` `u32` indices — is what it costs to state, and nothing
+  writes it.
 
 **Reading: every failure is one of §4's events, and none is new.**
 
@@ -2552,9 +2549,10 @@ in build version (§20.5).
   with them missing.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
-  outside a table body; a specified default on a pointer field. An array
-  of table pointers is legal (§3.1); an array of `*bytes` or `*string`
-  is not (§2.5).
+  outside a table body; a specified default on a pointer field; and an
+  ARRAY of pointers, of any element — `[..N]*T`, `[N]*T`, and an array of
+  `*bytes` or `*string` alike — which is a named follow-on (§15), the
+  diagnostic naming the two spellings that serve today.
 - **Optional fields** (§2.3): `?T` outside a table body; `?` on a pointer
   (already optional); `?` on a union (its `None` IS the absence); `?` on an
   array, a string or `bytes` (a named follow-on, §15 — the count or length
@@ -2571,9 +2569,8 @@ in build version (§20.5).
   diagnostic naming the keying field that pulled the enum in. A slot value no variant names is a SAVE failure, not a silent `None`
   (§3.2).
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
-  specified default on one; an array of them — a buffer takes no node
-  index (§3.1), unlike an array of table pointers, which is legal; `?` on
-  one, because a null reference already IS absence.
+  specified default on one; an array of them, as for any array of pointers
+  (§15); `?` on one, because a null reference already IS absence.
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19), and these
@@ -3595,6 +3592,16 @@ pre-empted here.
   it becomes wire. Wrap the field in a table and make that optional today.
 - **An array of `?T`** — the same question one level down: an element's
   presence bit beside the array's own count.
+- **AN ARRAY OF POINTERS** — `[..N]*T` and `[N]*T`, and an array of the
+  buffer spellings with them. It is refused by name today (§11) and the
+  diagnostic carries the two spellings that serve instead: *"declare a
+  bounded array of tables by value, or a pointer to a table that holds the
+  array"*. It is the spelling a node with a fixed fan-out wants, and it costs
+  four bytes a slot where a by-value array costs a whole table. What it needs
+  decided first is the wire: an array whose ELEMENT kind is the pointer index
+  `17` (§3.1) is one shape, and it wants the null element, the all-null
+  elision and the element-kind separation from an array of `uint32` settled
+  together rather than one at a time.
 - **Cross-endian COOKING**: producing a cook for a target whose byte order
   is not the cooking machine's, by swapping as the region is written. The
   ENDIAN FIX-UP ITSELF IS NOT DEFERRED — it is part of the cook and §7 states
