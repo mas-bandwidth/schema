@@ -37,7 +37,13 @@ const Slots = 8
 
 enum Grade { Bronze, Silver, Gold }
 
+// declared and unreferenced: a different vocabulary, for the referent fixtures
+enum Tier { Copper, Brass }
+
 flags Perks { Shielded, Cloaked, Turbo }
+
+// declared and unreferenced: Perks' three names at different bits
+flags Traits { Turbo, Shielded, Cloaked }
 
 type Buff
 {
@@ -49,11 +55,26 @@ type Debuff
     amount int32 = 0
 }
 
-// same field ids as Buff, plus one: the referent rule's "the ids ride" side
+// same field ids as Buff, plus one, under identical facts: a declaration that
+// really can stand in for Buff
 type BuffPlus
 {
     multiplier float32 = 1.0
     stacks     int32 = 1
+}
+
+// Buff's TWIN: the same field id under a different specified default. Id
+// membership alone would let this through, and every stored body's elided
+// multiplier would quietly mean 7.0
+type Boon
+{
+    multiplier float32 = 7.0
+}
+
+// the same twin under a different wire kind
+type BoonWide
+{
+    multiplier float64 = 1.0
 }
 
 union Effect
@@ -74,6 +95,9 @@ table Config
     slots   [..Slots]int32
     boost   Buff
     effect  Effect
+    swap_grade Grade
+    swap_perks Perks
+    swap Buff
 }
 `
 
@@ -214,18 +238,20 @@ func TestRefusals(t *testing.T) {
 			control: replace(t, "slots   [..Slots]int32", "slots   [Slots]int32"), // fixed vs bounded frames identically
 		},
 		{
-			name: "a field's flags TYPE swapped for a differently-ordered flags declaration",
-			edited: replace(t, "    perks   Perks",
-				"    perks   Traits") + "\nflags Traits { Turbo, Shielded, Cloaked }\n",
-			where:   "Config.perks",
+			// the ORIGINAL stays referenced, so nothing vanishes and no rename
+			// pairing fires: this is a field repointed at a different
+			// declaration, which is what the referent rule is for
+			name:    "a field's flags TYPE swapped for a differently-ordered declaration",
+			edited:  replace(t, "    swap_perks Perks", "    swap_perks Traits"),
+			where:   "Config.swap_perks",
 			what:    "flags Perks -> Traits",
 			token:   "flags",
-			control: replace(t, "flags Perks { Shielded, Cloaked, Turbo }", "flags Perks { Shielded, Cloaked, Turbo, Hardened }"),
+			control: replace(t, "flags Traits { Turbo, Shielded, Cloaked }", "flags Traits { Shielded, Cloaked, Turbo, Hardened }"),
 		},
 		{
 			name:    "a field's enum TYPE swapped for another vocabulary",
-			edited:  replace(t, "    grade   Grade = Silver", "    grade   Tier = Copper") + "\nenum Tier { Copper, Brass }\n",
-			where:   "Config.grade",
+			edited:  replace(t, "    swap_grade Grade", "    swap_grade Tier"),
+			where:   "Config.swap_grade",
 			what:    "enum Grade -> Tier",
 			token:   "enum",
 			control: replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Argent, Silver, Gold }"),
@@ -251,19 +277,46 @@ func TestRefusals(t *testing.T) {
 		},
 		{
 			name:    "a nested table swapped for one whose ids do not ride",
-			edited:  replace(t, "    boost   Buff", "    boost   Debuff"),
-			where:   "Config.boost",
-			what:    "nested table Buff -> Debuff",
+			edited:  replace(t, "    swap Buff", "    swap Debuff"),
+			where:   "Config.swap",
+			what:    "nested table Buff -> Debuff, and 1 of 1 field ids do not ride",
 			token:   "type",
-			control: replace(t, "    boost   Buff", "    boost   BuffPlus"), // every id rides
+			control: replace(t, "    swap Buff", "    swap BuffPlus"), // stands in: every id, same facts
+		},
+		{
+			// THE TWIN. Every id rides and the declaration is still not
+			// substitutable, because the fact under the shared id moved: every
+			// stored body's elided multiplier now means 7.0.
+			name:    "a nested table swapped for a twin carrying the same id under a different default",
+			edited:  replace(t, "    swap Buff", "    swap Boon"),
+			where:   "Config.swap",
+			what:    "nested table Buff -> Boon, and multiplier's specified default 1.0 -> 7.0",
+			token:   "default",
+			control: replace(t, "    swap Buff", "    swap BuffPlus"),
+		},
+		{
+			name:    "a nested table swapped for a twin carrying the same id under a different kind",
+			edited:  replace(t, "    swap Buff", "    swap BoonWide"),
+			where:   "Config.swap",
+			what:    "nested table Buff -> BoonWide, and multiplier's wire kind 10 -> 11",
+			token:   "kind",
+			control: replace(t, "    swap Buff", "    swap BuffPlus"),
 		},
 		{
 			name:    "a union arm's payload swapped for one whose ids do not ride",
 			edited:  replace(t, "    buff   Buff\n", "    buff   Debuff\n"),
 			where:   "union Effect.buff",
-			what:    "arm payload Buff -> Debuff",
+			what:    "arm payload Buff -> Debuff, and 1 of 1 field ids do not ride",
 			token:   "payload",
-			control: replace(t, "    buff   Buff\n", "    buff   BuffPlus\n"), // every id rides
+			control: replace(t, "    buff   Buff\n", "    buff   BuffPlus\n"),
+		},
+		{
+			name:    "a union arm's payload swapped for a twin carrying the same id under a different default",
+			edited:  replace(t, "    buff   Buff\n", "    buff   Boon\n"),
+			where:   "union Effect.buff",
+			what:    "arm payload Buff -> Boon, and multiplier's specified default 1.0 -> 7.0",
+			token:   "default",
+			control: replace(t, "    buff   Buff\n", "    buff   BuffPlus\n"),
 		},
 		{
 			name:    "a flags variant inserted",
@@ -423,7 +476,7 @@ func TestVanishedMembers(t *testing.T) {
 			edited: strings.NewReplacer("table Config", "table Ship",
 				"damage  float32 = 21.0", "damage  float32 = 25.0").Replace(baseSrc),
 			warnAt:   "table Config",
-			warnWhat: "Ship carries 10 of its 10 identities",
+			warnWhat: "Ship carries 13 of its 13 identities",
 			verdict:  baseline.Refuse,
 			where:    "Ship.damage",
 			what:     "specified default 21.0 -> 25.0",
@@ -431,19 +484,21 @@ func TestVanishedMembers(t *testing.T) {
 		{
 			name: "a flags declaration renamed, and its bits reordered with it",
 			edited: strings.NewReplacer(
-				"flags Perks { Shielded, Cloaked, Turbo }", "flags Traits { Cloaked, Shielded, Turbo }",
-				"perks   Perks", "perks   Traits").Replace(baseSrc),
+				"flags Perks { Shielded, Cloaked, Turbo }", "flags Boons { Cloaked, Shielded, Turbo }",
+				"perks   Perks", "perks   Boons",
+				"swap_perks Perks", "swap_perks Boons").Replace(baseSrc),
 			warnAt:   "flags Perks",
-			warnWhat: "Traits carries 3 of its 3 identities",
+			warnWhat: "Boons carries 3 of its 3 identities",
 			verdict:  baseline.Refuse,
-			where:    "flags Traits",
+			where:    "flags Boons",
 			what:     "variant Shielded moved from bit 0 to bit 1",
 		},
 		{
 			name: "an enum renamed, and a variant dropped with it",
 			edited: strings.NewReplacer(
 				"enum Grade { Bronze, Silver, Gold }", "enum Rank { Bronze, Silver }",
-				"grade   Grade = Silver", "grade   Rank = Silver").Replace(baseSrc),
+				"grade   Grade = Silver", "grade   Rank = Silver",
+				"swap_grade Grade", "swap_grade Rank").Replace(baseSrc),
 			warnAt:   "enum Grade",
 			warnWhat: "Rank carries 2 of its 3 identities",
 			verdict:  baseline.Warn,
@@ -479,6 +534,77 @@ func TestVanishedMembers(t *testing.T) {
 				t.Errorf("with the %q rule removed the finding should be gone, got:%s", "member", summary(got))
 			}
 		})
+	}
+}
+
+// TestRenamingDoesNotRaiseTheVerdict: the same wire loss must draw the same
+// verdict whether or not the author also renamed the declaration. A paired
+// rename is the declaration under a new name, so its own walk judges it and
+// the referent rule stays out — otherwise repointing a field at "the same
+// thing, renamed" would refuse what an in-place edit only warns about.
+func TestRenamingDoesNotRaiseTheVerdict(t *testing.T) {
+	cases := []struct{ name, alone, renamed, where, what string }{
+		{
+			name:  "an enum variant dropped",
+			alone: replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Silver }"),
+			renamed: strings.NewReplacer(
+				"enum Grade { Bronze, Silver, Gold }", "enum Rank { Bronze, Silver }",
+				"grade   Grade = Silver", "grade   Rank = Silver",
+				"swap_grade Grade", "swap_grade Rank").Replace(baseSrc),
+			where: "variant Gold removed",
+			what:  "Gold",
+		},
+		{
+			name:  "a union arm dropped",
+			alone: replace(t, "    buff   Buff\n    debuff Debuff\n", "    buff   Buff\n"),
+			renamed: strings.NewReplacer(
+				"union Effect\n{\n    buff   Buff\n    debuff Debuff\n}", "union Outcome\n{\n    buff   Buff\n}",
+				"effect  Effect", "effect  Outcome").Replace(baseSrc),
+			where: "arm debuff removed",
+			what:  "debuff",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			aloneRefusals, _ := baseline.Split(diff(t, tc.alone, baseline.DefaultTokenPolicy))
+			renamedRefusals, _ := baseline.Split(diff(t, tc.renamed, baseline.DefaultTokenPolicy))
+			if len(aloneRefusals) != 0 {
+				t.Fatalf("the edit alone must not refuse, got:%s", summary(aloneRefusals))
+			}
+			if len(renamedRefusals) != 0 {
+				t.Errorf("the same edit plus a declaration rename must not refuse either — a rename moves no byte, got:%s", summary(renamedRefusals))
+			}
+		})
+	}
+}
+
+// TestUnpairedVanishedMemberNamesWhatItFound: on the unpaired path the warning
+// is the ONLY thing between a reader and the coverage hole, so it says what it
+// actually found rather than asserting nothing was close.
+func TestUnpairedVanishedMemberNamesWhatItFound(t *testing.T) {
+	// a root table renamed with most of its fields dropped: too little in
+	// common to call it a rename, and something in common all the same
+	edited := strings.NewReplacer(
+		"table Config", "table Archive",
+		"    heading int16\n", "",
+		"    homing  bool\n", "",
+		"    hits    int32\n", "",
+		"    grade   Grade = Silver\n", "",
+		"    swap_grade Grade\n", "",
+		"    name    string(32)\n", "",
+		"    slots   [..Slots]int32\n", "",
+		"    swap Buff\n", "").Replace(baseSrc)
+	got := diff(t, edited, baseline.DefaultTokenPolicy)
+	if !find(got, baseline.Warn, "table Config", "below the half needed to call it a rename") {
+		t.Fatalf("the unpaired warning must say what it found, got:%s", summary(got))
+	}
+	if find(got, baseline.Warn, "table Config", "no declaration carries any of its identities") {
+		t.Errorf("a candidate DID carry some identities; the message must not deny it, got:%s", summary(got))
+	}
+	// and the zero-overlap wording is still reachable, on a member nothing resembles
+	gone := strings.Replace(baseSrc, "    effect  Effect\n", "", 1)
+	if got := diff(t, gone, baseline.DefaultTokenPolicy); !find(got, baseline.Warn, "union Effect", "no declaration carries any of its identities") {
+		t.Errorf("wanted the zero-overlap wording, got:%s", summary(got))
 	}
 }
 
@@ -793,7 +919,7 @@ func TestCheckRefusesAForeignBaseline(t *testing.T) {
 	for _, tc := range []struct{ name, data, want string }{
 		{"not a baseline at all", "hello\n", "not a schema tables baseline"},
 		{"a future rendering version", "schema-tables-baseline 99\npackage fixture\n", "this compiler writes"},
-		{"another unit's baseline", "schema-tables-baseline 1\npackage elsewhere\n", "baseline is for package elsewhere"},
+		{"another unit's baseline", fmt.Sprintf("schema-tables-baseline %d\npackage elsewhere\n", baseline.Version), "baseline is for package elsewhere"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, baseline.FileName), []byte(tc.data), 0o644); err != nil {

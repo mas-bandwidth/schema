@@ -6,12 +6,21 @@
 //
 //   - REFUSE — the meaning changed and nothing on the wire says so. A
 //     specified default, a flags variant's bit position, a field's kind, a
-//     field's vocabulary swapped for another.
+//     field pointed at a declaration that cannot stand in for the old one.
 //   - WARN — the data survives but something is lost, and the read report
 //     says so at runtime (clamped, unknown). A shrunk bound, a removed enum
 //     variant or union arm, a closure member that is no longer covered.
 //   - PASS — the wire absorbs it. Fields added, removed, reordered or
 //     renamed under `was`; variants appended; bounds grown.
+//
+// TWO KINDS OF EDIT, AND THEY MUST NOT DOUBLE-JUDGE EACH OTHER. A declaration
+// edited IN PLACE is judged by its own walk, where the verdicts follow what
+// the runtime can report. A field REPOINTED at a different declaration is
+// judged by the referent rule, where the question is substitutability: can the
+// new declaration stand in for the old one for data already written? Renaming
+// a declaration is the first kind wearing the second's clothes, so a paired
+// rename (see pairMembers) is left to the walk — otherwise the same wire loss
+// would draw a harsher verdict merely because the author also renamed.
 //
 // ONE TABLE IS THE WHOLE POLICY. [DefaultTokenPolicy] maps a field token's key
 // to what a change of it means, and it carries a row for each of the four
@@ -63,11 +72,10 @@ const (
 	RuleShrink
 	// RuleLoss — something present in the baseline is gone; it warns.
 	RuleLoss
-	// RuleRefs — the token names another declaration in this file. Renaming
-	// that declaration moves no byte, so the edit is absorbed exactly when the
-	// new referent's IDENTITIES RIDE; otherwise stored data means something
-	// else under it and that is a refusal. What "ride" means is the referent's
-	// own identity rule (see identitiesRide).
+	// RuleRefs — the token names another declaration. Dropping it refuses;
+	// changing it to the declaration a rename paired it with is left to that
+	// declaration's own walk; changing it to any other is judged on whether
+	// the new one can STAND IN for the old (see substitutable).
 	RuleRefs
 )
 
@@ -89,12 +97,10 @@ var DefaultTokenPolicy = map[string]TokenRule{
 
 	// ---- a field's REFERENT, split by what it names ----
 	//
-	// A referent is judged on whether the DECLARATION IT NAMES still carries
-	// what the old one carried (RuleRefs). Dropping the referent entirely —
-	// an enum-typed field spelled as its raw uint16 — is always a refusal:
-	// SPEC-TABLES.md §4 states outright that an enum field and a plain uint16
-	// field are both kind 7, so the runtime cannot report the edit, which is
-	// the definition of this file's job.
+	// Dropping the referent — an enum-typed field respelled as its raw uint16
+	// — is always a refusal: SPEC-TABLES.md §4 states outright that both ride
+	// as kind 7, so the runtime cannot report the edit, which is the
+	// definition of this file's job.
 	"enum":    RuleRefs,
 	"flags":   RuleRefs,
 	"union":   RuleRefs,
@@ -129,12 +135,32 @@ func (f Finding) String() string { return f.Where + ": " + f.What }
 // passes, which shows the refusal came from THAT check and not from something
 // else in the walk.
 func Diff(base, live *Unit, policy map[string]TokenRule) []Finding {
+	d := &differ{base: base, live: live, policy: policy, visiting: map[string]bool{}}
+	renames := policy["member"] == RuleLoss
+	d.tables = pairMembers(tableIdents(base), tableIdents(live), renames)
+	d.enums = pairMembers(enumIdents(base), enumIdents(live), renames)
+	d.unions = pairMembers(unionIdents(base), unionIdents(live), renames)
+	d.flags = pairMembers(flagsIdents(base), flagsIdents(live), renames)
+
 	var out []Finding
-	out = append(out, diffTables(base, live, policy)...)
-	out = append(out, diffEnums(base, live, policy)...)
-	out = append(out, diffFlags(base, live, policy)...)
-	out = append(out, diffUnions(base, live, policy)...)
+	out = append(out, d.diffTables()...)
+	out = append(out, d.diffEnums()...)
+	out = append(out, d.diffFlags()...)
+	out = append(out, d.diffUnions()...)
 	return out
+}
+
+// a differ carries the two projections, the policy and the member pairings
+// through one diff — plus the set of referent comparisons currently open, so a
+// chain of simultaneous renames cannot walk in a circle.
+type differ struct {
+	base, live *Unit
+	policy     map[string]TokenRule
+	tables     pairing
+	enums      pairing
+	unions     pairing
+	flags      pairing
+	visiting   map[string]bool
 }
 
 // ---- matching members across a rename ----
@@ -146,6 +172,21 @@ type idents struct {
 	names []string
 	sets  map[string]map[string]bool
 }
+
+// a match is what became of one baseline member: the live declaration it maps
+// to and, when it is not a plain namesake, how much of its identity that
+// declaration actually carries.
+type match struct {
+	name      string // the live declaration, "" when nothing was close enough
+	closest   string // the best candidate considered, paired or not
+	carried   int    // identities of this member the candidate carries
+	total     int    // identities this member had
+	renamed   bool   // matched across a rename rather than by name
+	vanished  bool   // the baseline name is gone from the live projection
+	unmatched bool   // vanished, and no candidate reached the threshold
+}
+
+type pairing map[string]match
 
 // pairMembers matches baseline members onto live ones. Names first — the
 // ordinary case, and a declaration name is not on the wire. Then THE RENAME
@@ -162,14 +203,14 @@ type idents struct {
 // rename that also drops one of two arms is exactly the commit this rule
 // exists to catch; the uniqueness requirement keeps a tie from picking
 // arbitrarily. A member that pairs is judged in full under its new name. A
-// member that does not is a coverage loss, and either way vanished names it,
-// because a hole in the coverage has to be visible.
+// member that does not is a coverage loss, and either way the vanished name is
+// reported, because a hole in the coverage has to be visible.
 //
 // Pairing rides the `member` policy row with the warning, because they are one
 // feature: without the row there is no rename matching and no report of the
 // hole, which is the behaviour the row exists to replace.
-func pairMembers(base, live idents, allowRenames bool) (pair map[string]string, vanished []string) {
-	pair = map[string]string{}
+func pairMembers(base, live idents, allowRenames bool) pairing {
+	out := pairing{}
 	liveHas := map[string]bool{}
 	for _, n := range live.names {
 		liveHas[n] = true
@@ -183,7 +224,7 @@ func pairMembers(base, live idents, allowRenames bool) (pair map[string]string, 
 	var orphans []string
 	for _, n := range base.names {
 		if liveHas[n] {
-			pair[n] = n
+			out[n] = match{name: n, closest: n, carried: len(base.sets[n]), total: len(base.sets[n])}
 			taken[n] = true
 			continue
 		}
@@ -199,19 +240,13 @@ func pairMembers(base, live idents, allowRenames bool) (pair map[string]string, 
 	sort.Strings(candidates)
 
 	for _, o := range orphans {
-		vanished = append(vanished, o)
 		want := base.sets[o]
 		best, bestScore, tie := "", 0, false
 		for _, c := range candidates {
 			if taken[c] {
 				continue
 			}
-			score := 0
-			for id := range want {
-				if live.sets[c][id] {
-					score++
-				}
-			}
+			score := carried(want, live.sets[c])
 			switch {
 			case score > bestScore:
 				best, bestScore, tie = c, score, false
@@ -219,24 +254,36 @@ func pairMembers(base, live idents, allowRenames bool) (pair map[string]string, 
 				tie = true
 			}
 		}
+		m := match{closest: best, carried: bestScore, total: len(want), vanished: true}
 		if allowRenames && bestScore > 0 && !tie && bestScore*2 >= len(want) {
-			pair[o] = best
+			m.name, m.renamed = best, true
 			taken[best] = true
+		} else {
+			m.unmatched = true
 		}
+		out[o] = m
 	}
-	return pair, vanished
+	return out
 }
 
 // vanishedFinding reports a baseline member that is no longer in the closure
-// under its own name — paired with the declaration that looks like its rename,
-// or unpaired and therefore out of coverage entirely.
-func vanishedFinding(what, name, paired string, carried, total int) Finding {
-	if paired == "" {
-		return Finding{Warn, what + " " + name,
-			"no longer in the closure — nothing left carries its identities, so this baseline no longer covers it"}
+// under its own name. The unpaired message states what was actually found —
+// the closest candidate and its score — because on that path the message is
+// the only thing standing between a reader and the coverage hole.
+func vanishedFinding(what, name string, m match) Finding {
+	where := what + " " + name
+	if m.renamed {
+		return Finding{Warn, where, fmt.Sprintf(
+			"no longer in the closure under that name; %s carries %d of its %d identities, so it is judged as the rename it looks like",
+			m.name, m.carried, m.total)}
 	}
-	return Finding{Warn, what + " " + name,
-		fmt.Sprintf("no longer in the closure under that name; %s carries %d of its %d identities, so it is judged as the rename it looks like", paired, carried, total)}
+	if m.carried > 0 {
+		return Finding{Warn, where, fmt.Sprintf(
+			"no longer in the closure — the closest declaration, %s, carries %d of its %d identities, below the half needed to call it a rename, so this baseline no longer covers it",
+			m.closest, m.carried, m.total)}
+	}
+	return Finding{Warn, where,
+		"no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it"}
 }
 
 func carried(want, have map[string]bool) int {
@@ -247,6 +294,19 @@ func carried(want, have map[string]bool) int {
 		}
 	}
 	return n
+}
+
+func (d *differ) vanished(what string, p pairing, names []string) []Finding {
+	if d.policy["member"] != RuleLoss {
+		return nil
+	}
+	var out []Finding
+	for _, name := range names {
+		if m := p[name]; m.vanished {
+			out = append(out, vanishedFinding(what, name, m))
+		}
+	}
+	return out
 }
 
 // ---- the four walks ----
@@ -264,24 +324,19 @@ func tableIdents(u *Unit) idents {
 	return out
 }
 
-func diffTables(base, live *Unit, policy map[string]TokenRule) []Finding {
-	var out []Finding
+func (d *differ) diffTables() []Finding {
 	liveTables := map[string]Table{}
-	for _, t := range live.Tables {
+	for _, t := range d.live.Tables {
 		liveTables[t.Name] = t
 	}
-	baseIdents, liveIdents := tableIdents(base), tableIdents(live)
-	pair, vanished := pairMembers(baseIdents, liveIdents, policy["member"] == RuleLoss)
-
-	if policy["member"] == RuleLoss {
-		for _, name := range vanished {
-			out = append(out, vanishedFinding("table", name, pair[name],
-				carried(baseIdents.sets[name], liveIdents.sets[pair[name]]), len(baseIdents.sets[name])))
-		}
+	names := make([]string, 0, len(d.base.Tables))
+	for _, t := range d.base.Tables {
+		names = append(names, t.Name)
 	}
+	out := d.vanished("table", d.tables, names)
 
-	for _, bt := range base.Tables {
-		lt, ok := liveTables[pair[bt.Name]]
+	for _, bt := range d.base.Tables {
+		lt, ok := liveTables[d.tables[bt.Name].name]
 		if !ok {
 			continue
 		}
@@ -298,19 +353,19 @@ func diffTables(base, live *Unit, policy map[string]TokenRule) []Finding {
 			if !ok {
 				continue
 			}
-			out = append(out, diffTokens(lt.Name+"."+lf.Name, bf, lf, base, live, policy)...)
+			out = append(out, d.diffTokens(lt.Name+"."+lf.Name, bf, lf)...)
 		}
 	}
 	return out
 }
 
-func diffTokens(where string, bf, lf Field, base, live *Unit, policy map[string]TokenRule) []Finding {
+func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 	var out []Finding
 	seen := map[string]bool{}
 	for _, bt := range bf.Tokens {
 		seen[bt.Key] = true
 		lv, present := lf.Get(bt.Key)
-		switch policy[bt.Key] {
+		switch d.policy[bt.Key] {
 		case RuleFixed:
 			switch {
 			case !present:
@@ -329,9 +384,7 @@ func diffTokens(where string, bf, lf Field, base, live *Unit, policy map[string]
 			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, shrinkNote(bt.Key))})
 		case RuleRefs:
-			if f, moved := refsFinding(where, bt.Key, bt.Value, lv, present, base, live); moved {
-				out = append(out, f)
-			}
+			out = append(out, d.refsFindings(where, bt.Key, bt.Value, lv, present)...)
 		}
 	}
 	// a fact the live projection carries and the baseline does not: only the
@@ -341,7 +394,7 @@ func diffTokens(where string, bf, lf Field, base, live *Unit, policy map[string]
 		if seen[lt.Key] {
 			continue
 		}
-		switch policy[lt.Key] {
+		switch d.policy[lt.Key] {
 		case RuleFixed, RuleRefs:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s added", tokenNoun(lt.Key), lt.Value)})
 		}
@@ -349,76 +402,164 @@ func diffTokens(where string, bf, lf Field, base, live *Unit, policy map[string]
 	return out
 }
 
-// refsFinding judges a token that NAMES another declaration. Renaming a
-// declaration moves no byte, so the question is never the name: it is whether
-// the new referent still carries what stored data was written against.
-func refsFinding(where, key, was, now string, present bool, base, live *Unit) (Finding, bool) {
+// refsFindings judges a token that NAMES another declaration.
+//
+//   - Dropped entirely — refused: the field keeps its wire kind, so no reader
+//     can report it (SPEC-TABLES.md §4).
+//   - Changed to the declaration the RENAME PAIRING matched the old one with —
+//     silent here. It is the same declaration under a new name, and its own
+//     walk judges what changed inside it. Judging it twice would make the same
+//     wire loss draw a harsher verdict merely because the author also renamed.
+//   - Changed to anything else — the new declaration has to be able to STAND
+//     IN for the old one for data already written (see substitutable).
+func (d *differ) refsFindings(where, key, was, now string, present bool) []Finding {
 	if !present {
-		return Finding{Refuse, where, fmt.Sprintf("%s %s removed — the field keeps its wire kind, so no reader can report the change (SPEC-TABLES.md §4)", tokenNoun(key), was)}, true
+		return []Finding{{Refuse, where, fmt.Sprintf(
+			"%s %s removed — the field keeps its wire kind, so no reader can report the change (SPEC-TABLES.md §4)", tokenNoun(key), was)}}
 	}
-	if now == was {
-		return Finding{}, false
+	if now == was || d.pairedRename(key, was) == now {
+		return nil
 	}
-	if why, rides := identitiesRide(key, was, now, base, live); !rides {
-		return Finding{Refuse, where, fmt.Sprintf("%s %s -> %s, and %s", tokenNoun(key), was, now, why)}, true
+	// a chain of simultaneous renames must not walk in a circle
+	visit := key + ":" + was + "->" + now
+	if d.visiting[visit] {
+		return nil
 	}
-	return Finding{}, false
+	d.visiting[visit] = true
+	defer delete(d.visiting, visit)
+
+	found := d.substitutable(key, was, now)
+	out := make([]Finding, 0, len(found))
+	for _, f := range found {
+		out = append(out, Finding{f.Verdict, where, fmt.Sprintf("%s %s -> %s, and %s", tokenNoun(key), was, now, f.What)})
+	}
+	return out
 }
 
-// identitiesRide answers, per vocabulary, whether stored data written against
-// `was` still means the same thing under `now`. Each answer is that
-// vocabulary's own wire identity (SPEC-TABLES.md §3):
+// pairedRename reports the live declaration a vanished baseline declaration
+// was matched to, or "" when it was not matched across a rename.
+func (d *differ) pairedRename(key, was string) string {
+	var p pairing
+	switch key {
+	case "enum":
+		p = d.enums
+	case "flags":
+		p = d.flags
+	case "union":
+		p = d.unions
+	default:
+		p = d.tables
+	}
+	if m := p[was]; m.renamed {
+		return m.name
+	}
+	return ""
+}
+
+// substitutable asks whether `now` can stand in for `was` for data already
+// written, and answers in that vocabulary's own terms (SPEC-TABLES.md §3):
 //
-//   - a TABLE (a nested field, a union arm's payload) decodes by field id, so
-//     it rides when every field id the old table carried is still carried;
-//   - an ENUM value is its variant NAME hash, so it rides when every variant
-//     name survives;
+//   - a TABLE (a nested field, a union arm's payload) is read by field id, so
+//     it stands in when every id the old one carried is still carried AND THE
+//     FACTS UNDER THOSE IDS ARE UNCHANGED. Id membership alone is not enough:
+//     a twin declaration carrying the same id under a different specified
+//     default rewrites the meaning of every stored body, which is the flagship
+//     class this whole file exists to refuse.
+//   - an ENUM value is its variant NAME hash, so it stands in when every
+//     variant name survives;
 //   - a UNION body opens with its arm NAME hash, same rule;
-//   - a FLAGS mask is POSITIONAL and carries no names at all, so it rides only
-//     when the old declaration's variants sit at the same bits — a prefix.
-func identitiesRide(key, was, now string, base, live *Unit) (why string, rides bool) {
+//   - a FLAGS mask is POSITIONAL and carries no names at all, so it stands in
+//     only when the old declaration's variants sit at the same bits.
+func (d *differ) substitutable(key, was, now string) []Finding {
 	switch key {
 	case "flags":
-		var oldBits, newBits []string
-		for _, f := range base.Flags {
-			if f.Name == was {
-				oldBits = f.Variants
-			}
-		}
-		for _, f := range live.Flags {
-			if f.Name == now {
-				newBits = f.Variants
-			}
-		}
-		for i, v := range oldBits {
-			if i >= len(newBits) {
-				return fmt.Sprintf("%s declares no bit %d — every stored mask above bit %d loses its meaning, and nothing on the wire says so", now, i, i-1), false
-			}
-			if newBits[i] != v {
-				return fmt.Sprintf("bit %d was %s and is %s under %s — a mask carries bits, not names, so every stored file is remapped silently", i, v, newBits[i], now), false
-			}
-		}
-		return "", true
+		return bitsRide(flagsVariants(d.base, was), flagsVariants(d.live, now), now)
 	case "enum":
-		return ridesBySet(enumNames(base, was), enumNames(live, now), now,
+		return namesRide(enumNames(d.base, was), enumNames(d.live, now), now,
 			"variant name", "stored values naming them read as None")
 	case "union":
-		return ridesBySet(armNames(base, was), armNames(live, now), now,
+		return namesRide(armNames(d.base, was), armNames(d.live, now), now,
 			"arm name", "stored bodies naming them are skipped")
-	default: // "type", "payload" — a table body, decoded by field id
-		return ridesBySet(tableIdents(base).sets[was], tableIdents(live).sets[now], now,
-			"field id", "that much of every stored body reads back as declared defaults")
+	default: // "type", "payload" — a table body, read by field id
+		return d.bodyRides(was, now)
 	}
 }
 
-func ridesBySet(want, have map[string]bool, now, noun, consequence string) (string, bool) {
+// bodyRides compares two table declarations as a reader would meet them: the
+// ids that stop riding, then EVERY FACT the policy judges under the ids that
+// do. It reuses diffTokens, so the referent path and the in-place path can
+// never disagree about what a field fact means.
+func (d *differ) bodyRides(was, now string) []Finding {
+	before, after := findTable(d.base, was), findTable(d.live, now)
+	if after == nil {
+		return []Finding{{Refuse, "", now + " is not described by this baseline"}}
+	}
+	if before == nil {
+		return nil
+	}
+	liveFields := map[uint16]Field{}
+	for _, f := range after.Fields {
+		liveFields[f.Id] = f
+	}
+	var out []Finding
+	missing := 0
+	for _, bf := range before.Fields {
+		lf, ok := liveFields[bf.Id]
+		if !ok {
+			missing++
+			continue
+		}
+		for _, f := range d.diffTokens("", bf, lf) {
+			out = append(out, Finding{f.Verdict, "", fmt.Sprintf("%s's %s", bf.Name, f.What)})
+		}
+	}
+	if missing > 0 {
+		out = append(out, Finding{Refuse, "", fmt.Sprintf(
+			"%d of %d field ids do not ride — that much of every stored body reads back as declared defaults", missing, len(before.Fields))})
+	}
+	return out
+}
+
+func namesRide(want, have map[string]bool, now, noun, consequence string) []Finding {
 	if have == nil {
-		return fmt.Sprintf("%s is not described by this baseline", now), false
+		return []Finding{{Refuse, "", now + " is not described by this baseline"}}
 	}
 	if missing := len(want) - carried(want, have); missing > 0 {
-		return fmt.Sprintf("%d of %d %ss do not ride — %s", missing, len(want), noun, consequence), false
+		return []Finding{{Refuse, "", fmt.Sprintf("%d of %d %ss do not ride — %s", missing, len(want), noun, consequence)}}
 	}
-	return "", true
+	return nil
+}
+
+func bitsRide(oldBits, newBits []string, now string) []Finding {
+	for i, v := range oldBits {
+		if i >= len(newBits) {
+			return []Finding{{Refuse, "", fmt.Sprintf(
+				"%s declares no bit %d — every stored mask above bit %d loses its meaning, and nothing on the wire says so", now, i, i-1)}}
+		}
+		if newBits[i] != v {
+			return []Finding{{Refuse, "", fmt.Sprintf(
+				"bit %d was %s and is %s under %s — a mask carries bits, not names, so every stored file is remapped silently", i, v, newBits[i], now)}}
+		}
+	}
+	return nil
+}
+
+func findTable(u *Unit, name string) *Table {
+	for i := range u.Tables {
+		if u.Tables[i].Name == name {
+			return &u.Tables[i]
+		}
+	}
+	return nil
+}
+
+func flagsVariants(u *Unit, name string) []string {
+	for _, f := range u.Flags {
+		if f.Name == name {
+			return f.Variants
+		}
+	}
+	return nil
 }
 
 func enumNames(u *Unit, name string) map[string]bool {
@@ -497,26 +638,21 @@ func enumIdents(u *Unit) idents {
 	return out
 }
 
-func diffEnums(base, live *Unit, policy map[string]TokenRule) []Finding {
-	var out []Finding
+func (d *differ) diffEnums() []Finding {
 	liveEnums := map[string]Enum{}
-	for _, e := range live.Enums {
+	for _, e := range d.live.Enums {
 		liveEnums[e.Name] = e
 	}
-	baseIdents, liveIdents := enumIdents(base), enumIdents(live)
-	pair, vanished := pairMembers(baseIdents, liveIdents, policy["member"] == RuleLoss)
-
-	if policy["member"] == RuleLoss {
-		for _, name := range vanished {
-			out = append(out, vanishedFinding("enum", name, pair[name],
-				carried(baseIdents.sets[name], liveIdents.sets[pair[name]]), len(baseIdents.sets[name])))
-		}
+	names := make([]string, 0, len(d.base.Enums))
+	for _, e := range d.base.Enums {
+		names = append(names, e.Name)
 	}
-	if policy["enum-variant"] != RuleLoss {
+	out := d.vanished("enum", d.enums, names)
+	if d.policy["enum-variant"] != RuleLoss {
 		return out
 	}
-	for _, be := range base.Enums {
-		le, ok := liveEnums[pair[be.Name]]
+	for _, be := range d.base.Enums {
+		le, ok := liveEnums[d.enums[be.Name].name]
 		if !ok {
 			continue
 		}
@@ -547,23 +683,19 @@ func unionIdents(u *Unit) idents {
 	return out
 }
 
-func diffUnions(base, live *Unit, policy map[string]TokenRule) []Finding {
-	var out []Finding
+func (d *differ) diffUnions() []Finding {
 	liveUnions := map[string]Union{}
-	for _, u := range live.Unions {
+	for _, u := range d.live.Unions {
 		liveUnions[u.Name] = u
 	}
-	baseIdents, liveIdents := unionIdents(base), unionIdents(live)
-	pair, vanished := pairMembers(baseIdents, liveIdents, policy["member"] == RuleLoss)
-
-	if policy["member"] == RuleLoss {
-		for _, name := range vanished {
-			out = append(out, vanishedFinding("union", name, pair[name],
-				carried(baseIdents.sets[name], liveIdents.sets[pair[name]]), len(baseIdents.sets[name])))
-		}
+	names := make([]string, 0, len(d.base.Unions))
+	for _, u := range d.base.Unions {
+		names = append(names, u.Name)
 	}
-	for _, bu := range base.Unions {
-		lu, ok := liveUnions[pair[bu.Name]]
+	out := d.vanished("union", d.unions, names)
+
+	for _, bu := range d.base.Unions {
+		lu, ok := liveUnions[d.unions[bu.Name].name]
 		if !ok {
 			continue
 		}
@@ -574,7 +706,7 @@ func diffUnions(base, live *Unit, policy map[string]TokenRule) []Finding {
 		for _, a := range bu.Arms {
 			la, still := arms[a.Name]
 			if !still {
-				if policy["union-arm"] == RuleLoss {
+				if d.policy["union-arm"] == RuleLoss {
 					out = append(out, Finding{Warn, "union " + lu.Name,
 						fmt.Sprintf("arm %s removed — stored bodies naming it are skipped and count unknown", a.Name)})
 				}
@@ -582,11 +714,9 @@ func diffUnions(base, live *Unit, policy map[string]TokenRule) []Finding {
 			}
 			// an arm's PAYLOAD is a reference like a nested table's, judged
 			// the same way: the arm id still selects the arm, and what rides
-			// inside it is decided by whether the field ids ride
-			if policy["payload"] == RuleRefs {
-				if f, moved := refsFinding("union "+lu.Name+"."+a.Name, "payload", a.Payload, la.Payload, la.Payload != "", base, live); moved {
-					out = append(out, f)
-				}
+			// inside it is a table body read by field id
+			if d.policy["payload"] == RuleRefs {
+				out = append(out, d.refsFindings("union "+lu.Name+"."+a.Name, "payload", a.Payload, la.Payload, la.Payload != "")...)
 			}
 		}
 	}
@@ -611,26 +741,21 @@ func flagsIdents(u *Unit) idents {
 // diffFlags is the one vocabulary with no names on the wire: bit i is variant
 // i, so the ORDER is the fact and APPEND AT THE END is the only safe edit
 // (SPEC-TABLES.md §4).
-func diffFlags(base, live *Unit, policy map[string]TokenRule) []Finding {
-	var out []Finding
+func (d *differ) diffFlags() []Finding {
 	liveFlags := map[string]Flags{}
-	for _, f := range live.Flags {
+	for _, f := range d.live.Flags {
 		liveFlags[f.Name] = f
 	}
-	baseIdents, liveIdents := flagsIdents(base), flagsIdents(live)
-	pair, vanished := pairMembers(baseIdents, liveIdents, policy["member"] == RuleLoss)
-
-	if policy["member"] == RuleLoss {
-		for _, name := range vanished {
-			out = append(out, vanishedFinding("flags", name, pair[name],
-				carried(baseIdents.sets[name], liveIdents.sets[pair[name]]), len(baseIdents.sets[name])))
-		}
+	names := make([]string, 0, len(d.base.Flags))
+	for _, f := range d.base.Flags {
+		names = append(names, f.Name)
 	}
-	if policy["flags-position"] != RuleFixed {
+	out := d.vanished("flags", d.flags, names)
+	if d.policy["flags-position"] != RuleFixed {
 		return out
 	}
-	for _, bf := range base.Flags {
-		lf, ok := liveFlags[pair[bf.Name]]
+	for _, bf := range d.base.Flags {
+		lf, ok := liveFlags[d.flags[bf.Name].name]
 		if !ok {
 			continue
 		}

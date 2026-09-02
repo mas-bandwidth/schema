@@ -44,8 +44,11 @@ import (
 
 // Version is the baseline RENDERING's own version, on the file's first line —
 // the same discipline ir.ProjectionVersion keeps for the protocol id. Bumping
-// it makes every committed baseline stale at once, deliberately and visibly.
-const Version = 1
+// it makes every committed baseline stale at once, deliberately and visibly:
+// an older file gets the "regenerate it" refusal, and `--update` regenerates
+// it with its history intact, instead of a flood of diffs against facts this
+// rendering spells differently.
+const Version = 2
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.

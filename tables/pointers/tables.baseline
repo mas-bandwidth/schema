@@ -1,4 +1,4 @@
-schema-tables-baseline 1
+schema-tables-baseline 2
 package graphdemo
 
 table Album
