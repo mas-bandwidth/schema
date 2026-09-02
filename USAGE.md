@@ -1166,11 +1166,19 @@ target's byte order, so it refuses the moment any of it moves and you
 regenerate it. The tolerant wire stays the format of record.
 
 `Open` checks the header and points — the magic, the byte order it
-establishes, the build version, the two part lengths, the base's alignment —
-and that is the whole of it. On a match the bytes ARE what this build wrote,
-so there is nothing to validate and nothing to fix up. It is the only runtime
-entry point there is: a cook is your build's own accelerator, and a file that
-is not your build's returns NULL and you load the wire.
+establishes, the build version, every reserved word zero, the two part lengths
+against the size you passed, the base's alignment — and that is the whole of
+it. On a match the bytes ARE what this build wrote, so there is nothing to
+validate and nothing to fix up, and open time does not grow with the file. It
+is the only runtime entry point there is: a cook is your build's own
+accelerator, and a file that is not your build's returns NULL and you load the
+wire.
+
+*What the C++ backend emits today is wire v1's cook, and it differs: `Open`
+matches the header and then walks the region, the header carries one 32-bit
+length rather than two 64-bit ones, and no attribution part is written — so
+`schema cook-check` has nothing to read. The emitter moves to the surface
+above with the flat node encoding (SPEC-TABLES.md §7, schema#251).*
 
 If you have a cooked file whose provenance you doubt — one that crossed a
 machine boundary, or one you are diagnosing — check it with the tool:
@@ -1179,8 +1187,10 @@ cook carries beside its data and verifies every reference, buffer and count
 against it, without following one reference or decoding one value. That is a
 person's decision, made once, not a flag on a load in the hot path.
 
-Value-only tables get no `Cook`/`Open` of their own: they are structs, and
-`sizeof` plus `memcpy` already is their region form.
+A FIXED table cooks too, and its cook is the same idea with nothing in it:
+one struct behind the header, so you memcpy it or point at it where it lies —
+no region, no node table, no attribution, and the build version is the whole
+of the check.
 
 ### The build version: what a cooked asset is stored under
 
@@ -1397,8 +1407,10 @@ pointer-free, arrays inline with their `_count`/`_length` companions — so a
 value can be memcpy'd, mmap'd or shared across processes and still walked
 through descriptor offsets. Generated `static_assert`s enforce it.
 
-Tables are generated for `--lang cpp` only today; every other target refuses
-a unit that declares them, by name. What stays off the table wire: `fixed`,
+Tables are generated for `--lang cpp` and `--lang cs` today — C++ carries
+both classes, C# the fixed class, and a pointered unit is refused by name
+under C#; every other target refuses a unit that declares tables at all, by
+name. What stays off the table wire: `fixed`,
 `int128`/`uint128` (no neutral table kind), and `const`/`reserved`/`align`
 (bit-position constructs — the table wire has no bit positions). Extents have
 no wire ceiling: string and bytes byte lengths and array counts ride in
