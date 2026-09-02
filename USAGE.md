@@ -1100,8 +1100,8 @@ foreach ( ref readonly RenderShip ship in block.Ships )
     Draw( ship );
 ```
 
-`BlockOpen` verifies the magic, the byte order, the layout id and the extent,
-and then you index. A generic consumer does not even need the generated
+`BlockOpen` verifies the magic, the byte order, the build version and the
+extent, and then you index. A generic consumer does not even need the generated
 struct: the reflection descriptors carry the projection's layout, so a tool
 can walk any block's rows without a type per table.
 
@@ -1114,9 +1114,10 @@ can walk any block's rows without a type per table.
   wrote it, use the wire — which this same table still has.
 - **The edits it absorbs are appends.** A field appended at the end of the
   table, a field appended at the end of a row, or a maximum raised: all three
-  are absorbed, because the consumer reads offsets and pitches from the
-  instance rather than assuming them. Anything that moves an existing offset
-  is a break, and the tables baseline refuses it.
+  are absorbed on `BlockOpenCompatible`, because the consumer reads offsets
+  and pitches from the instance rather than assuming them. Anything that
+  moves an existing offset is a break, and the generated asserts refuse it at
+  compile time — the tables baseline carries no layout fact.
 - **The allocation is the maximum, once.** `BlockMaxBytes` sums every array's
   declared maximum; the block is allocated once at that size and never grown.
   The bytes you hand off are only the frame's.

@@ -584,7 +584,7 @@ pitch anywhere in it.
 emitted ON THE SIDE, in files of its own, and a consumer that does not include
 them pays for none of it — the same shape §16's text form already takes, one
 step further (§19). What a fixed table's declaration owes the form is two
-names it may not spell, `magic` and `layout_id` (§11), and nothing else.
+names it may not spell, `magic` and `build_version` (§11), and nothing else.
 
 The form itself — which arrays move out of line, what the projection is, what
 the pitch is, what it costs and what it refuses — is §19.
@@ -1996,8 +1996,8 @@ lockstep redeploy by a table edit. This independence is held by test.
     (§19); declared headroom is a named follow-on (§15), and the attribute
     is refused rather than accepted-and-ignored, because an inert attribute
     is a lie about the declaration;
-  - **a field of a FIXED table named `magic` or `layout_id`** — those two are
-    the projection's generated prologue (§19.1), as `<field>_present` is an
+  - **a field of a FIXED table named `magic` or `build_version`** — those two
+    are the projection's generated prologue (§19.1), as `<field>_present` is an
     optional's generated companion. Claimed on every fixed table, for the
     reason the generated spellings below are: the form is not opted into, so
     a name that was free yesterday must not become a collision tomorrow.
@@ -2020,11 +2020,7 @@ lockstep redeploy by a table edit. This independence is held by test.
   an array's ELEMENT kind changed; an array changed between the keyed and
   the positional spelling; an enum-keyed array's key enum swapped; a
   field's referent dropped, or swapped for one whose identities do not
-  ride; and, for a BLOCK-FORM table (§2.7), a field inserted before the end,
-  reordered, removed or retyped in that table or in any row type it names, an
-  out-of-line array's element swapped, an array moved between the out-of-line
-  and inline classes, or an out-of-line array removed or moved earlier.
-  Overridden only by moving the baseline with a recorded reason.
+  ride. Overridden only by moving the baseline with a recorded reason.
 - **A save-time data cycle reached from a builder** (§3.1): measure,
   save, cook and `Lock` all return failure with the cycle named. Nothing
   recurses away. A region loaded from a wire is not re-proved, and a save
@@ -2064,7 +2060,7 @@ lockstep redeploy by a table edit. This independence is held by test.
   Cook  CookMeasure  Open  OpenValidated  LayoutId  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
-  BlockOpenCompatible  BlockLayoutId  Counts
+  BlockOpenCompatible  BlockBuildVersion  Counts
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
@@ -2733,8 +2729,7 @@ have added one are priced here.
   lost.** A cook is produced FROM A BUILDER by a single-threaded `Lock`,
   which is precisely the serialization point §12.1's bar refuses. The two are
   not competitors and not the same accelerator: a cook accelerates a file
-  read once at load, a block is rebuilt every frame, and §7 says why they
-  must not share a layout id.
+  read once at load, and a block is rebuilt every frame.
 - **The tolerant table wire, per frame — REJECTED with a number implied.**
   It is a parse and a copy on every frame on both sides; the abandoned
   flatbuffers build is that rejection already paid for once (§7).
@@ -2790,12 +2785,12 @@ have added one are priced here.
   drops any array whose pitch differs. Shipping headroom costs that consumer
   its fast path in exchange for a property the owner has already called
   possibly obsolete. §15 holds it as a follow-on with the reason.
-- **An exact layout id, plus a NAMED compatible entry point — TAKEN, because
-  an append-tolerant digest is impossible.** A single number
-  cannot be verified against a PREFIX of the facts that produced it: a
-  consumer that knows fewer fields cannot recompute the producer's digest,
-  and any fold that ignored the difference would ignore a real break too. So
-  the id is exact, like a cooked file's (§7), and the tolerant path is a
+- **An exact id, plus a NAMED compatible entry point — TAKEN, because an
+  append-tolerant id is impossible.** A single number cannot be verified
+  against a PREFIX of the facts that produced it: a consumer that knows fewer
+  fields cannot recompute the producer's number, and any fold that ignored
+  the difference would ignore a real break too. So the block's id is exact —
+  the build version (§19.3) — and the tolerant path is a
   second entry point a caller asks for BY NAME — §7's `Open` /
   `OpenValidated` shape, for the same reason: no silent bypass, ever. What
   that path checks is a `<=` on the pitch and never an equality against the
@@ -3332,30 +3327,12 @@ and payloads.
 names** — a table, an `enum`, a `flags` or a `union` — because those four
 are judged by four different identity rules (§18.3).
 
-**A BLOCK-FORM table and the tables its out-of-line arrays name record LAYOUT
-FACTS BESIDE their wire facts** (§2.7, §19.3). A block-form table keeps every
-wire line it already had — it is an ordinary table (§2.7) — and gains, per
-field, the BYTE OFFSET and SIZE that field has IN THE PROJECTION, plus the
-projection's own `sizeof` and alignment; an out-of-line array's line adds its
-declared MAXIMUM and its evaluated STRIDE. Every table one of those arrays
-names records the same per-field offsets and sizes for its by-value layout,
-beside its `sizeof` and alignment.
-
-**The block-form table's OWN fields are recorded, not just its elements'**,
-and that is load-bearing rather than tidy: a scalar inserted before an
-out-of-line array moves every triple after it, and a consumer reading the
-projection by value then reads every offset, count and pitch at the wrong
-place. The table at the front of a block is a record too, and its layout is
-the other side's contract exactly as a row's is.
-
-Those are the only lines in this file that are not wire facts, and they are
-here for the same reason every other line is: they are what an edit can break
-and the compiler cannot remember. A table with no block form — a
-variable-length one (§2.7) — records none of them, so a unit of those is
-projected exactly as it was, but the RENDERING VERSION on the file's first
-line moves, because the projection can now carry lines an older reader does
-not know, and §18.4's repair path is what a baseline written under the older
-version takes.
+**Every line in it is a WIRE fact.** The block form's layout — the
+projection's offsets, each row's size, each pitch — is not recorded and not
+judged here (§19.3): **the baseline guards what the wire cannot report, and
+layout is a compile-time contract**, asserted in both generated sides and
+stamped with the build version, so a drift is a build error rather than
+something data quietly outlives.
 
 **The values are EVALUATED**, not the source text: a constant that moves
 and flows through an expression into a default shows up as the value it now
@@ -3372,24 +3349,13 @@ It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
 
 ```
-schema-tables-baseline 3
+schema-tables-baseline 2
 package shipdemo
 
 table ShipConfig
     field damage id=0x15a9 kind=10 default=21.0
     field speed id=0x2e46 kind=10 default=500.0 was=velocity
     field name id=0x30df kind=12 size=32
-
-table RenderFrame
-    block sizeof=40 alignof=8
-    field version id=0xe8e6 kind=9 offset=16 size=8
-    field ships id=0x2d39 kind=14 elem=13 elem_type=RenderShip bound=..4096
-        offset=24 size=16 out_of_line stride=32
-
-table RenderShip
-    row sizeof=32 alignof=8
-    field position id=0xdd45 kind=13 offset=0 size=24
-    field object_id id=0xdc71 kind=8 offset=24 size=4
 
 ## history
 ### 2026-09-02 — first baseline before 1.0 ships
@@ -3423,49 +3389,12 @@ committed file whenever one is there, and:
   grown; a bounded array made fixed or the reverse; a field moved between
   `T`, `?T` and `*T`, or between `bytes(N)` and `*bytes`.
 
-**A BLOCK-FORM table's LAYOUT facts are judged by a second standard beside
-the wire's** (§2.7). Its wire lines are judged exactly as above — it is an
-ordinary table and its wire absorbs what any table's does. Its layout lines
-are judged by what a POINTED-AT row can survive, which is a stricter and
-narrower question, and the two verdicts are reported separately so an author
-can see which contract an edit broke:
-
-- **REFUSES, naming `table.field` and the edit** — a field INSERTED before
-  the end, REORDERED, removed, or changed to a type of a different size or
-  alignment, in a block-form table ITSELF or in any table one of its
-  out-of-line arrays names. Each moves a byte offset the other side reads at,
-  and nothing in a block can report it. Also: an out-of-line array's ELEMENT
-  swapped for another declaration; an array moved between the out-of-line
-  class (`[..N]`) and an inline one (`[N]`, `[E]`) in a block-form table,
-  which moves it into or out of the block entirely; and an out-of-line array
-  removed or moved earlier among its siblings.
-- **WARNS** — an out-of-line array's declared maximum LOWERED (rows that used
-  to fit no longer do, and the producer's own bound is what says so), and a
-  block-form table that vanished under its baseline name (§18.3's rule,
-  unchanged).
-- **PASSES, in silence** — a field APPENDED at the end of a block-form table,
-  scalar or out-of-line array, past every offset the baseline records; a
-  field APPENDED at the end of a row; a declared maximum RAISED. These are
-  the three edits the form absorbs (§19.4), and each is silent because a
-  consumer reading its own prefix at offsets and pitches it took FROM THE
-  INSTANCE is unaffected by all three.
-
-**WHOSE layout this half judges is OPEN** (§13.6). Every fixed table has a
-block form now, so the literal reading is that every fixed table's layout
-lines are recorded and judged — which would refuse a field
-inserted in the middle of a table nobody points at, an edit its wire absorbs
-in silence. The narrower reading is that the layout half belongs only where a
-block crosses a boundary, and nothing in a declaration says where that is.
-Nothing is unguarded while this is open: a layout that drifts under a consumer
-is refused by the generated asserts and the layout id, loudly, at compile time
-(§19.3). The scope is the owner's to set.
-
-**A table GAINING or LOSING its block form takes no row here**, and that is
-deliberate: nothing declares the form, so the only edit that can move it is an
-edit that moves the MODE — a pointer added or removed somewhere in the closure
-(§2.2) — and the day a table's Block files stop being emitted, everything
-that included them stops compiling. It is loud already, and a baseline row
-would only repeat the compiler.
+**The BLOCK FORM takes no row here at all** (§18.1). A table's layout is a
+same-build contract that a compiler holds (§19.3), so an edit that moves an
+offset, a size or a pitch is a build error on both generated sides before it
+is anything else; a baseline row would only repeat the compiler, and a
+baseline cannot know which tables a project actually blocks. Every verdict
+above is the wire's.
 
 ### 18.3 What a name is worth, and what a referent is worth
 
@@ -3701,7 +3630,7 @@ out when both are asked of one table.
 
 - **The PROJECTION at offset 0** (above). It opens with a generated PROLOGUE
   of two `uint64`s — `magic`, a constant identifying a schema block and the
-  byte-order check with it, and `layout_id`, the digest §19.3 defines — and
+  byte-order check with it, and `build_version`, the id §19.3 names — and
   the table's own fields follow, each at its natural offset, with every
   out-of-line array's storage replaced in place by its sixteen-byte
   `(offset_of, count, stride)`. The prologue is generated, as an optional's
@@ -3865,8 +3794,9 @@ ReadOnlySpan<RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is 
 ```
 
 - **`BlockOpen` checks once and points, and this is the WHOLE check**: the
-  magic read bytewise, the byte order it establishes, the layout id against
-  this build's own, the used extent against the `bytes` the caller passed,
+  magic read bytewise, the byte order it establishes, the build version
+  against this build's own, the used extent against the `bytes` the caller
+  passed,
   the base's alignment, and each array's `offset_of` and extent inside the
   block. On a match the bytes are what a build with this layout wrote, so
   there is nothing to validate and nothing to fix up. On any failure it
@@ -3944,69 +3874,71 @@ the other's — both are checked against the compiler's own model, which is the
 only way a two-language contract can be held by a compiler that generates
 both halves.
 
-**The `layout_id` is a 64-bit digest** over the facts §18.2 refuses to move:
-the projection's own fields and their offsets and sizes, each out-of-line
-array's element and pitch, and every row field's offset, size and kind. It is
-the cooked form's layout id (§7) applied to a flatter shape, sized like a
-digest rather than a version counter — and it is a DIFFERENT id from that
-table's cook (§7), computed over different facts.
+**The prologue carries the BUILD VERSION, not a per-table digest** (#292).
+There are two ids in the design — the protocol id for the wire's shape, and
+the build version for artifacts a build points at — and the block uses the
+second: `Begin` stamps this build's version into the prologue and `BlockOpen`
+checks it against its own. The LAYOUT is held by the asserts above, at compile
+time, on both sides; the build version is what says the two halves came out of
+one build. A producer and a consumer generated together match by
+construction, and one pair from two different builds does not.
 
-**A declared MAXIMUM is deliberately NOT a digest fact**, and it is excluded
-rather than merely absent. A maximum sizes the storage and moves the
-`offset_of`s written into the instance; it moves no offset a consumer reads
-AT, because a consumer takes every `offset_of` from the instance (§19.2). So
-raising one is absorbed on the DEFAULT entry point (§19.4), and a port that
-folded the maximum into the digest would break that absorption with nothing
-to catch it. The rule for what belongs: a fact both sides must AGREE on is in
-the digest; a fact a consumer READS is not.
+**A declared MAXIMUM moves nothing a consumer reads AT.** It sizes the storage
+and moves the `offset_of`s written into the instance, and a consumer takes
+every `offset_of` from the instance (§19.2) rather than from a constant. So a
+build whose rows and fields did not move is read correctly by a consumer from
+an earlier build on the compatible path (§19.4), and a port that asserted a
+maximum on either side would break that with nothing to catch it. The rule for
+what belongs: a fact both sides must AGREE on is asserted; a fact a consumer
+READS is not.
 
-**What the digest sees, and what it does not.** It sees layout: a moved
+**What the contract sees, and what it does not.** It sees layout: a moved
 offset, a changed size, a different pitch. It does not see MEANING — a field
 whose units, frame of reference or interpretation changed while its offset
-and width did not moves no digest, because no layout fact moved. A semantic
-version is therefore an ordinary field an author declares and owns, and the
-digest neither replaces nor covers it.
+and width did not moves nothing here, because no layout fact moved. A semantic
+version is therefore an ordinary field an author declares and owns, and
+neither the asserts nor the build version replaces or covers it.
 
 ### 19.4 Evolution
 
-**Three edits are absorbed**, and §18.2 passes each in silence — but they are
-not absorbed by the same entry point, and which one matters:
+**Three edits are absorbed** — but not by the same entry point, and which one
+matters:
 
 1. **A field appended at the END of a block-form table** — a scalar, or a new
    out-of-line array. Every earlier offset is unchanged; a consumer built
    before the edit reads its own prefix of the projection at the same places,
    and the arrays it knows are at the `offset_of`s the producer actually
-   wrote. **The digest moves** (a new offset and size), so `BlockOpen`
-   REFUSES and this is absorbed only by `BlockOpenCompatible`.
+   wrote.
 2. **A field appended at the END of a row type.** The row grows and so does
    its derived pitch — and because a consumer indexes at the pitch it READ,
-   its shorter row type lands correctly on every row. **The digest moves**
-   (a changed row size and pitch), so again `BlockOpen` refuses and the
-   compatible path is what absorbs it.
+   its shorter row type lands correctly on every row.
 3. **A declared maximum raised.** The storage grows and the `offset_of`s
-   move; the consumer reads them. **The digest does NOT move** — a maximum is
-   excluded from it by design (§19.3) — so this one is absorbed by
-   `BlockOpen` ITSELF, on the default path, with no waiver.
+   move; the consumer reads them out of the instance.
 
-**So the default path absorbs exactly one of the three**, and that is not an
-oversight: edits 1 and 2 change what a row or a projection IS, and §14's "no
-silent bypass" says a consumer meets that by asking for the weaker check by
-name. Edit 3 changes only numbers the consumer was already reading out of the
-instance, and nothing about it needs a waiver.
+**All three are absorbed on the COMPATIBLE path and none on the default one**,
+and that follows from what the two entry points check. `BlockOpen` is the
+SAME-BUILD check: the build version an older consumer carries is not the one
+the producer stamped, whatever the edit was, so it refuses. Absorbing an edit
+is therefore always a caller asking for the weaker check by name, which is
+§14's "no silent bypass" holding: what makes these three absorbable is not
+that they escape an id, but that `BlockOpenCompatible`'s own checks — the
+extent, the alignment, each array's `offset_of` and extent, and this build's
+`sizeof( element ) <= the stride it read` — all pass for them.
 
-**Everything else is a break, and the baseline refuses it** (§18.2): a field
-inserted before the end, reordered, removed or retyped, in the table or in a
-row type; an array's element swapped; an array moved between the out-of-line
-and inline classes, or removed, or moved earlier. Each moves a byte the other
-side reads at, and a block has nothing that could report it — which is why
-the refusal is at compile time and loud.
+**Everything else is a break, and the GENERATED ASSERTS refuse it** (§19.3):
+a field inserted before the end, reordered, removed or retyped, in the table
+or in a row type; an array's element swapped; an array moved between the
+out-of-line and inline classes, or removed, or moved earlier. Each moves a
+byte the other side reads at, and a block has nothing that could report it —
+which is why the refusal is at compile time and loud, and why the baseline
+(§18) carries none of it.
 
 **And the runtime has ONE more entry point, taken by name.**
 `<Table>BlockOpenCompatible` checks **everything `BlockOpen` checks except
-the layout id** — the magic, the byte order, the extent, the alignment, and
-each array's `offset_of` and extent inside the block — and then, per array it
-knows, **this build's `sizeof( element ) <= the stride it read from the
-instance`**. Never an equality, and never against its own pitch constant: a
+the build version** — the magic, the byte order, the extent, the alignment,
+and each array's `offset_of` and extent inside the block — and then, per
+array it knows, **this build's `sizeof( element ) <= the stride it read from
+the instance`**. Never an equality, and never against its own pitch constant: a
 producer whose rows have grown writes a larger pitch, and it is precisely
 that case this entry point exists to absorb.
 
@@ -4020,7 +3952,7 @@ be the wrong trade in both directions.
 It is the tolerant path made available to a caller who deliberately runs a
 consumer older than its producer: a transitional deploy, a hot reload, a tool
 built against last week's schema. **There is no silent bypass** — a caller
-either gets the layout id's guarantee from `BlockOpen`, or asks for the
+either gets the build version's guarantee from `BlockOpen`, or asks for the
 weaker one by name, exactly as §7 splits `Open` from `OpenValidated`. A
 single number cannot be checked against a prefix of the facts that produced
 it, and pretending otherwise is what the second entry point exists to avoid
@@ -4061,11 +3993,11 @@ it, and pretending otherwise is what the second entry point exists to avoid
   wrong one and pass.
 - **The refusal battery**: one fixture per §11 block refusal, each with its
   negative control.
-- **The baseline battery**: one fixture per §18.2 block row — a field
-  inserted in the middle refuses, a field appended at the end of the table
-  passes, a field appended at the end of a row passes, an array's element
-  swapped refuses, an array moved between the inline and out-of-line classes
-  refuses, a maximum raised passes, a maximum lowered warns.
+- **The evolution battery** (§19.4), against the generated asserts and the
+  two entry points rather than against a baseline: a field inserted in the
+  middle fails the build, a field appended at the end of the table and one
+  appended at the end of a row each open under `BlockOpenCompatible` and not
+  under `BlockOpen`, and a maximum raised opens under both.
 - **The zero-cost gate** (§19): the Table headers are byte-identical with the
   Block files generated and with them absent, and the build fails if one
   symbol of the block machinery appears in a Table header.

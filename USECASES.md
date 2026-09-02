@@ -129,7 +129,7 @@ sixty times a second or better.
   (§19.3). The compiler derives every offset and size, C++ asserts them with
   `static_assert` and C# with a blittable `Sequential` struct plus generated
   padding fields and a generated size and offset check, so neither side can
-  drift silently. `BlockOpen` matches the layout digest;
+  drift silently. `BlockOpen` matches the build version;
   `BlockOpenCompatible` drops that one check by name and nothing else, for a
   consumer deliberately older than its producer. The block carries no field
   ids, no lengths, no elision and no read report — §4's counters do not
