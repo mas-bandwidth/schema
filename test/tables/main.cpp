@@ -2379,6 +2379,71 @@ static void test_repeated_id_unnameable_enum_element()
     CHECK( out.grades[1] == tblv1::Grade::None );
 }
 
+// ---- the two constructs in the VARIABLE class: a keyed array of variable
+// ---- tables, and an optional beside them. Every pointer-era walk — the
+// ---- region pre-pass, Pack, OpenWalk — has to know both framings.
+
+static void test_keyed_and_optional_in_a_variable_table()
+{
+    graphdemo::DepotBuilder builder;
+    graphdemo::Depot * root = builder.GetRoot();
+    set_string( root->name, root->name_length, "depot" );
+    root->spare_present = true;
+    root->spare.build = 7;
+
+    // two of the three slots carry a chain; Layer is VARIABLE, so each slot's
+    // pointee is a node the region has to hold
+    for ( int32_t tier = int32_t( graphdemo::Tier::Low ); tier <= int32_t( graphdemo::Tier::High ); tier++ )
+    {
+        graphdemo::Layer & layer = root->banks[tier];
+        layer.depth = tier * 3;
+        graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+        node->value = 100 + tier;
+        layer.head = node;
+    }
+    CHECK( builder.Lock() );
+
+    static uint8_t wire[8192];
+    int64_t wrote = graphdemo::DepotSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote > 0 && wrote == graphdemo::DepotMeasure( builder ) );
+
+    // the region pre-pass reads FRAMING ONLY, and a keyed element's length
+    // sits past its variant id: get that wrong and the size is wrong
+    int64_t need = graphdemo::DepotLoadMeasure( wire, wrote );
+    CHECK( need > 0 );
+    uint8_t * region = (uint8_t *) malloc( (size_t) need );
+    graphdemo::TableReport report;
+    const graphdemo::Depot * loaded = graphdemo::DepotLoad( region, need, wire, wrote, &report );
+    CHECK( loaded != NULL );
+    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( strcmp( loaded->name, "depot" ) == 0 );
+    CHECK( loaded->spare_present && loaded->spare.build == 7 );
+    for ( int32_t tier = int32_t( graphdemo::Tier::Low ); tier <= int32_t( graphdemo::Tier::High ); tier++ )
+    {
+        const graphdemo::Layer & layer = loaded->banks[tier];
+        CHECK( layer.depth == tier * 3 );
+        const graphdemo::ListNode * node = graphdemo::ListNodeAt( layer.head );
+        CHECK( node != NULL && node->value == 100 + tier );
+    }
+    // None's slot was never set: it defaults, and its pointer is null
+    CHECK( loaded->banks[int32_t( graphdemo::Tier::None )].depth == 0 );
+    CHECK( graphdemo::ListNodeAt( loaded->banks[int32_t( graphdemo::Tier::None )].head ) == NULL );
+
+    // and the cooked form: Pack lays every slot's pointee out, OpenWalk
+    // validates them, and the round trip is byte-stable
+    int64_t cook_need = graphdemo::DepotCookMeasure( builder );
+    uint8_t * cooked = (uint8_t *) malloc( (size_t) cook_need );
+    CHECK( graphdemo::DepotCook( builder, cooked, cook_need ) == cook_need );
+    const graphdemo::Depot * opened = graphdemo::DepotOpen( cooked, cook_need );
+    CHECK( opened != NULL );
+    CHECK( graphdemo::ListNodeAt( opened->banks[int32_t( graphdemo::Tier::High )].head )->value == 102 );
+    CHECK( opened->spare_present );
+    CHECK( graphdemo::DepotSave( opened, wire, sizeof( wire ) ) == wrote );
+
+    free( cooked );
+    free( region );
+}
+
 // ---- reflection: an optional's presence companion, and a keyed array's key
 
 static void test_optional_and_keyed_reflection()
@@ -2441,6 +2506,7 @@ int main()
     test_keyed_evolution_old_data();
     test_keyed_evolution_new_data();
     test_optional_and_keyed_reflection();
+    test_keyed_and_optional_in_a_variable_table();
     test_unnameable_enum_refused();
     test_unnameable_enum_element_read();
     test_flags_are_positional();

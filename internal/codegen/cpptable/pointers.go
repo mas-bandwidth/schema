@@ -390,6 +390,15 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 			g.pf("                    uint32_t count = r.get32();\n")
 			g.pf("                    TableReader elems( r.buffer + r.offset, body_end - r.offset, r.report );\n")
 			g.pf("                    for ( uint32_t i = 0; i < count && i < %d; i++ )\n                    {\n", f.ArrayBound)
+			if f.KeyEnum != "" {
+				// an ENUM-KEYED array puts the slot's variant id before the
+				// element's length (SPEC-TABLES.md §3.2). The pre-pass reads
+				// framing only, so it skips the key without naming it — but it
+				// must skip it, or every element length after the first is read
+				// out of a key's bytes
+				g.pf("                        if ( !elems.has( 2 ) ) { break; }\n")
+				g.pf("                        elems.get16(); // the slot's variant id\n")
+			}
 			g.pf("                        if ( !elems.has( 4 ) ) { break; }\n")
 			g.pf("                        uint32_t elem_len = elems.get32();\n")
 			g.pf("                        if ( !elems.has( elem_len ) ) { break; }\n")
