@@ -289,8 +289,8 @@ TypeDecl    = "type" ident ( Block
 TableDecl   = "table" ident ( Block
             | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
-                                                        // The one qualifier a table takes is
-                                                        // `block` (SPEC-TABLES.md §2.7)
+                                                        // A table declaration takes no
+                                                        // qualifier of its own (§4.2)
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -544,14 +544,7 @@ sequence    uint16
   compressed float); `fixed`/`ufixed`/`int128` take `min`/`max` (required —
   §4.3); enum declarations take `max`; type declarations take a tag and the
   `cpp_native`/`cpp_include` pair (below); a field of a **table** body takes
-  `was` (below); and a **table declaration** takes `block` (below).
-- **`block` — the block form, table declarations only** (SPEC-TABLES.md
-  §2.7). A valueless marker on a fixed table: `table RenderFrame | block`. It
-  declares nothing and changes no field. It says the table has a third
-  projection beside its wire and its cook — one in which the table's own
-  bounded arrays are laid out of line at a fixed pitch, so another language
-  points at their rows. Refused on a `type`, and on a table that reaches a
-  pointer.
+  `was` (below); and a **table declaration** takes none.
 - **`was = "old_name"` — the rename attribute, table bodies only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`

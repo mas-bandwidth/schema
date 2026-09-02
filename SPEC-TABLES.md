@@ -98,8 +98,9 @@ name, with this document cited. The remaining per-language backends are named
 follow-ons (§15).
 
 **The BLOCK FORM (§2.7, §19) is specified and unimplemented.** No backend
-emits it yet: a table marked `| block` is refused by name, with §19 cited,
-never emitted with the block surface missing. C++ and C# take it together,
+emits the Block files yet, so the form is unavailable everywhere: a consumer
+that reaches for it finds nothing to include, which is the same absence a
+variable-length table's block form is (§19). C++ and C# take it together,
 because the form is an ABI between two languages and one language alone
 cannot hold the gate it exists for (§12.1).
 
@@ -162,10 +163,10 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
   message set expressible.
 - **`was` — the rename attribute** (§5).
 
-And one addition that is not a field spelling at all: **a fixed table may be
-marked `| block`** (§2.7), which gives it a third FORM beside its wire and its
-cook — the same declaration laid out so another language points at its rows
-(§19). It adds no field type, no wire kind and no byte on the wire.
+And one addition that is not a field spelling at all: **every fixed table has
+a BLOCK FORM** (§2.7), a third form beside its wire and its cook — the same
+declaration laid out so another language points at its rows (§19). Nothing
+declares it, and it adds no field type, no wire kind and no byte on the wire.
 
 ### 2.1 Pointers
 
@@ -246,11 +247,12 @@ Pointer edges do not propagate the mode: a table that is merely POINTED
 AT stays fixed-size if it holds no pointer of its own. It gains an
 allocation and a resolution entry, and nothing else.
 
-**`| block` does not enter this derivation at all** (§2.7). A block-form
-table declares nothing new: its fields are the bounded arrays of fixed
-structs it always had, which are by-value edges under the rule above, so it
-derives FIXED by that rule unchanged. The marker selects a FORM, and a form
-is not a mode.
+**The BLOCK FORM does not enter this derivation — it READS it** (§2.7). The
+form declares nothing, so there is nothing for the rule above to take account
+of; the rule instead decides which tables have the form at all. Every FIXED
+table has one and a variable-length table has none, so "which arrays are laid
+out at a fixed pitch" and "which tables can be" are both answered by the mode.
+A form is not a mode, and this one is derived from it.
 
 **A fixed-size table pays nothing for the VARIABLE-LENGTH machinery**, and
 that is a gate, not a hope: in a unit whose tables are all fixed-size the
@@ -267,13 +269,14 @@ emitted in every unit, whatever its mode, because a fixed-size table can
 declare it and a tool walking a fixed-size table has to find it. The gate
 asks "did the pointer world leak in?", never "did the descriptor grow?".
 
-**The BLOCK machinery takes the same gate, on the same terms** (§19): a unit
-in which no table is marked `| block` carries no block storage type, no
-`Begin`, no `Open`, no row iterator and no layout constants — the build fails
-if one symbol of it appears. No marker, not one symbol. The descriptor
-COLUMNS (§8) the block form reads ride in every unit as every other column
-does, because they describe the language. Machinery is gated; columns are
-not, which is the rule the paragraph above already states.
+**The BLOCK machinery takes the same gate, and it is held by SEPARATION**
+(§19): the block storage type, `Begin`, `Open`, the row accessors and the
+layout constants live in a unit's Block files and nowhere else, so a Table
+header is byte-identical whether those files exist or not and the build fails
+if one symbol of them appears in it. The descriptor COLUMNS (§8) the block
+form reads ride in every unit as every other column does, because they
+describe the language. Machinery is gated; columns are not, which is the rule
+the paragraph above already states.
 
 The assumption behind the split, stated so nobody quietly designs against
 it: size and mode correlate in practice. Value-only tables are assumed
@@ -282,15 +285,16 @@ struct and loaded directly, and no large-flat-struct machinery is
 warranted for them without a real case forcing it. Pointer-bearing tables
 are where size lives, and the arena and the region are the size answer.
 
-**`| block` IS a case forcing it, and it declares that it is** (§2.7). A
-block-form table's bounded arrays are storage like any other — `T[N]` inline
-beside an `int32` count — so its BY-VALUE struct is the sum of its declared
-maxima, and for the case this form comes from that is about 7.5 MiB. The
-marker is the author saying so out loud: a table marked `| block` is not
+**LARGE DECLARED MAXIMA ARE a case forcing it, and the declaration is where
+they are visible** (§2.7). A table's bounded arrays are storage like any
+other — `T[N]` inline beside an `int32` count — so its BY-VALUE struct is
+the sum of its declared maxima, and for the case the block form comes from
+that is about 7.5 MiB. Nothing announces it but the maxima themselves, and
+nothing else could: a table that declares megabytes of bounded arrays is not
 covered by the assumption above, and everything about its by-value form
-follows from that rather than from a surprise. §19.1 prices the block form's
-own storage; the by-value form's price is here, where the assumption it
-breaks is stated.
+follows from the numbers in its own declaration rather than from a surprise.
+§19.1 prices the block form's own storage; the by-value form's price is here,
+where the assumption it breaks is stated.
 
 **Three consequences, so a reader meets them here rather than in a profile.**
 A `Load` of such a table needs a destination struct of that size, and the
@@ -566,67 +570,24 @@ second decision about the wire; it is tracked as schema#258.
 - **A backend without a native union may allocate for the arm** (the
   ladder, above): the carve-out is the language's, not the table's.
 
-### 2.7 The block form: `table RenderFrame | block`
+### 2.7 The block form is not declared
 
-```
-table RenderFrame | block
-{
-    version uint64
-    cameras [..1]RenderCamera
-    ships   [..MaxShips]RenderShip
-    lasers  [..MaxLasers]RenderLaser
-}
-```
+**Nothing in a declaration selects it, and nothing is refused for asking.**
+Every FIXED table has a block form — a THIRD projection beside its wire (§3)
+and its cook (§7), in which the table's own bounded arrays are laid out of
+line at a fixed pitch so a consumer in another language points at their rows
+instead of parsing them. A VARIABLE-LENGTH table has none, and the mode (§2.2)
+is the whole of the rule: a pointer anywhere in the closure means no fixed
+pitch anywhere in it.
 
-**`| block` declares no construct.** Every field above is an ordinary field
-of an ordinary fixed table: a scalar and three bounded arrays of structs,
-which this document has always had. The marker says that this table has a
-THIRD FORM beside its wire (§3) and its cook (§7) — one in which its own
-bounded arrays are laid out of line at a fixed pitch, so a consumer in
-another language points at their rows instead of parsing them (§19). One
-declaration, three projections of it.
+**It needs no marker because it costs a declaration nothing.** The form is
+emitted ON THE SIDE, in files of its own, and a consumer that does not include
+them pays for none of it — the same shape §16's text form already takes, one
+step further (§19). What a fixed table's declaration owes the form is two
+names it may not spell, `magic` and `layout_id` (§11), and nothing else.
 
-**The rule, in full, because it is the one thing a reader has to know that
-the declaration does not spell:**
-
-- **DEPTH ONE, BOUNDED ONLY.** In the block form, every **bounded** array
-  field **of the marked table itself** — `[..N]T` — is laid out of line, in
-  declaration order, each at its own pitch. Everything else stays exactly
-  where it is: a fixed `[N]T`, an enum-keyed `[E]T`, and **every array at any
-  depth inside an element**. An element is one flat record or it is not a
-  record another language can point at, and one level is what makes "which
-  arrays move" answerable by reading one declaration.
-- **THE INSTANCE IS WHAT MOVES, not the schema.** The block form generates
-  the table's struct as a PROJECTION: each out-of-line array's inline storage
-  — `T[N]` and its count companion — is replaced, AT THAT FIELD'S POSITION,
-  by `(offset_of u64, count u32, stride u32)`, sixteen bytes with no interior
-  padding. Every other field keeps its by-value storage at its natural offset.
-  That projection is what sits at the front of the block, and nothing declares
-  it: it is what the table already knows about its own rows, written down
-  where the other side can read it.
-- **THE ELEMENTS ARE STRUCTS.** A bounded array takes the out-of-line form
-  only when its element is a fixed-class `table` or a declared `type` — the
-  same thing, semantically (the ladder, above). A variable-length table, a
-  `*T`, a `string` or `bytes` element is refused by name in a block-form table
-  (§11): none of them has a fixed pitch, and striding what has no pitch means
-  nothing.
-- **THE PITCH IS `sizeof`.** A row's stride is the element's `sizeof`, rounded
-  up to its alignment — which for a standard-layout struct (§9) is `sizeof`
-  itself. It is derived, always, and no declaration adjusts it in this
-  version; declared headroom is a named follow-on (§15) with the reason it is
-  not here. The stride still RIDES in the triple, because it is the pitch the
-  consumer indexes with and it must come from the data, never from the
-  consumer's own constant (§19.2).
-- **A TABLE, NOT A NEW KIND OF TABLE.** A block-form table keeps everything
-  an ordinary fixed table has: `Measure`, `Save` and `Load` over the tolerant
-  wire (§3), its cook (§7), its reflection descriptors (§8), its place as a
-  nested field or an array element in someone else's table. `| block` adds a
-  form; it removes nothing. That is what makes "is the render data a table?"
-  answerable with one word.
-
-**`| block` is refused on a `type`, and on a table whose closure is not all
-structs** (§11). A type has no table wire to be a third form beside, and a
-table that reaches a pointer has no fixed pitch anywhere in it.
+The form itself — which arrays move out of line, what the projection is, what
+the pitch is, what it costs and what it refuses — is §19.
 
 ## 3. The wire
 
@@ -721,7 +682,7 @@ schema's codebase:
 - **The BLOCK FORM moves no byte on this wire, and spends no kind** (§2.7,
   §19). A block-form table's bounded arrays ride here exactly as every other
   bounded array of tables does — kind `14`, element kind `13`, the LIVE
-  count — and `| block` is not a wire fact at all: it selects a second
+  count — and the block form is not a wire fact at all: it is a second
   projection of the same declaration, the way a cook (§7) is a third. The
   `(offset_of, count, stride)` triple is a block-form artifact and has
   nothing to ride here, because a wire form has no triple. So a tool can
@@ -1877,16 +1838,16 @@ listing.
 offset beside the reference, so a walker reads the blob's extent the way
 it reads an array's count (§2.5).
 
-**A BLOCK-FORM table carries a second set of positions for the same fields,
-and this is what makes the block form READABLE BY REFLECTION** (§19.2). A
-table's own **`block`** flag says it has the form; each out-of-line array
-field then carries, beside the offset its by-value storage has, the
-**projection offset** of its `(offset_of, count, stride)` triple and the
-offsets of the three members inside it, with the ELEMENT's own descriptor
-already in the column a nested table uses. Every other field carries its
-projection offset too, because the projection is a different struct from the
-by-value one (§19.3) and a walker over a block needs the positions that
-struct actually has.
+**A FIXED table carries a second set of positions for the same fields, and
+this is what makes the block form READABLE BY REFLECTION** (§19.2). No flag
+says it has the form — every fixed table does (§2.7), and the mode is already
+in the descriptors. Each out-of-line array field carries, beside the offset
+its by-value storage has, the **projection offset** of its
+`(offset_of, count, stride)` triple and the offsets of the three members
+inside it, with the ELEMENT's own descriptor already in the column a nested
+table uses. Every other field carries its projection offset too, because the
+projection is a different struct from the by-value one (§19.3) and a walker
+over a block needs the positions that struct actually has.
 
 That is the whole mechanism behind the block form's read side: a consumer
 with the descriptors reads the triples out of an instance and points at rows,
@@ -2026,27 +1987,20 @@ lockstep redeploy by a table edit. This independence is held by test.
   specified default on one; an array of them — a buffer takes no node
   index (§3.1), unlike an array of table pointers, which is legal; `?` on
   one, because a null reference already IS absence.
-- **The block form** (§2.7), each refusal naming the marked table and the
-  field or declaration at fault:
-  - **`| block` on a `type`** — a type has no table wire for the form to sit
-    beside, and the marker's whole meaning is "a third projection of this
-    table";
-  - **`| block` on a VARIABLE-LENGTH table** — a pointer anywhere in the
-    closure means no fixed pitch anywhere in it;
-  - **an out-of-line array whose ELEMENT is not a struct** — a
-    variable-length table, a `*T`, a `string` or `bytes` element in a
-    `[..N]` field of a block-form table. Striding what has no fixed pitch
-    means nothing, which is the refusal in one line;
+- **The block form** (§2.7), each refusal naming the table and the field or
+  declaration at fault. **Nothing declares the form, so nothing is refused
+  FOR it** — a table that cannot have one simply has none (§19), and these
+  two are refusals of a DECLARATION that collides with what the form
+  generates:
   - **`| stride` in this version** — the pitch is `sizeof` by construction
-    (§2.7); declared headroom is a named follow-on (§15), and the attribute
+    (§19); declared headroom is a named follow-on (§15), and the attribute
     is refused rather than accepted-and-ignored, because an inert attribute
     is a lie about the declaration;
-  - **a field of a block-form table named `magic` or `layout_id`** — those
-    two are the projection's generated prologue (§19.1), as `<field>_present`
-    is an optional's generated companion;
-  - **`| block` under a backend that carries none** — which today is every
-    backend (status, above), refused with §19 cited and never emitted with
-    the block surface missing.
+  - **a field of a FIXED table named `magic` or `layout_id`** — those two are
+    the projection's generated prologue (§19.1), as `<field>_present` is an
+    optional's generated companion. Claimed on every fixed table, for the
+    reason the generated spellings below are: the form is not opted into, so
+    a name that was free yesterday must not become a collision tomorrow.
 
   **What is NOT refused, and it is worth stating because the block form's own
   need for a base invites the opposite guess**: a block-form table nested by
@@ -2116,10 +2070,10 @@ lockstep redeploy by a table edit. This independence is held by test.
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. The nine block
-  spellings are claimed on the same terms, for the same reason: a table
-  gains `| block` as an edit.
+  spellings are claimed on the same terms and for a stronger reason: every
+  fixed table has a block form (§2.7), so every fixed table claims them.
 
-  **A BLOCK-FORM TABLE claims two more per out-of-line array, because its
+  **A FIXED TABLE claims two more per out-of-line array, because its
   row accessors are named after its fields.** `<Table>` followed by the
   PascalCase of the field's name is the accessor that hands back that
   field's rows, and the same name with `Span` appended is the contiguous
@@ -2230,13 +2184,13 @@ marshalling and no copy AT THE BOUNDARY. (What a consumer then does with a
 row is its own business: the one that exists copies rows into a pool so its
 jobs can take them, and that copy is the consumer's design, not the form's.)
 
-**The shape the gate is held to.** One fixed table marked `| block`
-(§2.7), fixed down to the leaves: bounded arrays of fixed-size records, no
-pointer anywhere in the closure. The block's storage is sized from the
-declared maxima and its layout is settled from the counts before any worker
-starts, so N workers fill disjoint row ranges with no lock, no atomic and no
-per-row synchronisation — and that is an OBLIGATION on the implementation,
-not a permission to the caller (§9, §19.1). The consumer maps the block,
+**The shape the gate is held to.** One fixed table (§2.7), fixed down to the
+leaves: bounded arrays of fixed-size records, no pointer anywhere in the
+closure. The block's storage is sized from the declared maxima and its layout
+is settled from the counts before any worker starts, so N workers fill
+disjoint row ranges with no lock, no atomic and no per-row synchronisation —
+and that is an OBLIGATION on the implementation, not a permission to the
+caller (§9, §19.1). The consumer maps the block,
 checks it once, and reads each array at the pitch the instance gives it. The
 layout contract — the projection's own offsets, every row's size, every
 field's offset, every pitch — is asserted by GENERATED code on both sides
@@ -2557,6 +2511,14 @@ Owner rulings, 2026-09-02, in the order given.
 - **The purpose, in one line**: "this is a 'nice' property to get some sort
   of more robust structure (ABI) between C++ and C# without hardcore
   versioning", "because both sides were previously manually updated."
+- **No per-table marker, 2026-09-02.** Asked "what is it about render data
+  that requires a specific per-table declaration?", the ruling was **"KISS"**.
+  Nothing does: the `| block` marker was a cost switch and not a semantic, so
+  it is gone. Every fixed table has a block form and the form is emitted on
+  the side (§19) — a consumer that includes it pays for it, one that does not
+  pays nothing — which is what the marker was buying and the only thing it
+  was buying. §2.7 declares nothing at all now, and §14's decision below
+  records what the marker cost.
 
 ## 14. Design notes: the models weighed
 
@@ -2803,20 +2765,24 @@ have added one are priced here.
 - **DEPTH ONE, BOUNDED ONLY — TAKEN, and it is what carries the rule a
   keyword would otherwise state.** With no keyword saying which arrays move
   out of line, the rule must be derivable from the declaration, and this is
-  the rule that is: the marked table's own `[..N]` arrays move, everything
-  else stays. **Deeper rules and per-field opt-ins are REJECTED** for the
-  reason a keyword is — they put the answer somewhere other than the one line
-  a reader is already looking at. The genuine cost is that a small array
+  the rule that is: the table's own `[..N]` arrays of structs move, and
+  everything else stays. **Deeper rules and per-field opt-ins are REJECTED**
+  for the reason a keyword is — they put the answer somewhere other than the
+  one line a reader is already looking at. The genuine cost is that a small array
   BESIDE the strided ones in one root cannot stay inline; the answer is to
   wrap it in a nested type, whose arrays are at depth two and therefore
-  inline (§2.7).
-- **The block form is selected by `| block` ALONE — TAKEN.** The alternative
-  is a per-field trigger, "any field carrying `| stride`, or the table
-  carrying `| block`", and its stride half is REJECTED on the evidence: the
-  case this form comes from has nine strided arrays and **zero** declared
-  strides — every pitch there is `sizeof`. A trigger the primary case never
-  fires is not a trigger. One table-level marker is explicit, answerable by
-  reading one line, and keeps §2.2's zero-cost gate stated verbatim.
+  inline (§19).
+- **NOTHING SELECTS THE FORM — TAKEN** (owner, §13.6: "KISS"). A per-table
+  marker was the earlier answer, and it was REJECTED once the question it
+  answered was named: the marker bought cost control, not meaning, and cost
+  is answered better by emitting the form on the side (§19), where a consumer
+  that does not include it pays nothing and no declaration has to predict who
+  will. A per-FIELD trigger, "any field carrying `| stride`", is rejected on
+  its own evidence: the case this form comes from has nine strided arrays and
+  **zero** declared strides — every pitch there is `sizeof` — and a trigger
+  the primary case never fires is not a trigger. What is left is the mode
+  (§2.2): fixed tables have the form, variable-length ones do not, and the
+  answer is derived rather than declared, exactly as the mode itself is.
 - **No `| stride` attribute at all in this version — TAKEN, on the same
   evidence plus the consumer's.** Beyond the zero declared strides, the one
   consumer that exists cannot read a strided array: it reads rows by casting
@@ -3384,11 +3350,12 @@ the other side's contract exactly as a row's is.
 
 Those are the only lines in this file that are not wire facts, and they are
 here for the same reason every other line is: they are what an edit can break
-and the compiler cannot remember. A table with no block form records none of
-them, so a unit with no block is projected exactly as it was — but the
-RENDERING VERSION on the file's first line moves, because the projection can
-now carry lines an older reader does not know, and §18.4's repair path is
-what a baseline written under the older version takes.
+and the compiler cannot remember. A table with no block form — a
+variable-length one (§2.7) — records none of them, so a unit of those is
+projected exactly as it was, but the RENDERING VERSION on the file's first
+line moves, because the projection can now carry lines an older reader does
+not know, and §18.4's repair path is what a baseline written under the older
+version takes.
 
 **The values are EVALUATED**, not the source text: a constant that moves
 and flows through an expression into a default shows up as the value it now
@@ -3413,7 +3380,7 @@ table ShipConfig
     field speed id=0x2e46 kind=10 default=500.0 was=velocity
     field name id=0x30df kind=12 size=32
 
-table RenderFrame | block
+table RenderFrame
     block sizeof=40 alignof=8
     field version id=0xe8e6 kind=9 offset=16 size=8
     field ships id=0x2d39 kind=14 elem=13 elem_type=RenderShip bound=..4096
@@ -3483,10 +3450,22 @@ can see which contract an edit broke:
   consumer reading its own prefix at offsets and pitches it took FROM THE
   INSTANCE is unaffected by all three.
 
-**`| block` added or removed takes no row here**, and that is deliberate:
-both sides are generated from one declaration, so adding or removing the form
-changes what compiles on both sides at once. It is loud already, and a
-baseline row would only repeat the compiler.
+**WHOSE layout this half judges is OPEN** (§13.6). Every fixed table has a
+block form now, so the literal reading is that every fixed table's layout
+lines are recorded and judged — which would refuse a field
+inserted in the middle of a table nobody points at, an edit its wire absorbs
+in silence. The narrower reading is that the layout half belongs only where a
+block crosses a boundary, and nothing in a declaration says where that is.
+Nothing is unguarded while this is open: a layout that drifts under a consumer
+is refused by the generated asserts and the layout id, loudly, at compile time
+(§19.3). The scope is the owner's to set.
+
+**A table GAINING or LOSING its block form takes no row here**, and that is
+deliberate: nothing declares the form, so the only edit that can move it is an
+edit that moves the MODE — a pointer added or removed somewhere in the closure
+(§2.2) — and the day a table's Block files stop being emitted, everything
+that included them stops compiling. It is loud already, and a baseline row
+would only repeat the compiler.
 
 ### 18.3 What a name is worth, and what a referent is worth
 
@@ -3602,8 +3581,22 @@ repairs it while keeping every history line.
 rows — for each of its bounded arrays, where the rows start, how many there
 are, and how far apart they sit — so another language reads those facts and
 points at the rows.** That is the block form, and it is the whole idea. It
-adds no declaration (§2.7): a table marked `| block` gets a THIRD projection
-of the same schema, beside its wire (§3) and its cook (§7).
+adds no declaration (§2.7): **every FIXED table has one**, a THIRD projection
+of the same schema beside its wire (§3) and its cook (§7).
+
+```
+table RenderFrame
+{
+    version uint64
+    cameras [..1]RenderCamera
+    ships   [..MaxShips]RenderShip
+    lasers  [..MaxLasers]RenderLaser
+}
+```
+
+Nothing there is new. Those are ordinary fields of an ordinary fixed table: a
+scalar and three bounded arrays of structs, which this document has always
+had. One declaration, three projections of it.
 
 | form | contract | who reads it | cost |
 |---|---|---|---|
@@ -3627,6 +3620,74 @@ and asserted into both generated sides, so nothing is decided, discovered or
 checked at frame time. That is what makes it the fastest thing tables have
 and why §12.1 ranks it as the hottest path.
 
+**IT IS EMITTED ON THE SIDE, and that is why no declaration selects it.** A
+table unit emits `<Base>Block.h` and `<Base>Block.cpp` beside its
+`<Base>Table.h` and `<Base>Table.cpp` (§13.5), and `<Base>Block.cs` for C#.
+The Block header carries the whole surface — the projection struct, the
+generated layout asserts (§19.3), the builder API (§19.1), and the
+`BlockOpen` / `BlockOpenCompatible` declarations (§19.2) — and the Block
+translation unit carries their definitions. **The Table headers carry nothing
+of it.** A consumer that uses the form includes the Block header and links the
+Block unit; a consumer that does not includes nothing and compiles nothing for
+it. This is §16's split taken one step further: the text form declares in the
+Table header and defines in the Table unit, because its cost is a body of code
+to compile; the block form's cost is in the header too — a projection struct
+and a wall of asserts per table — so its declarations move out with it.
+
+**The zero-cost gate, and it is a gate rather than a hope** (§2.2): **the
+Table headers are BYTE-IDENTICAL with or without the Block files existing**,
+and the Block files cost nothing unless they are included. The build fails if
+one symbol of the block machinery — a storage type, a `Begin`, an `Open`, a
+row accessor, a layout constant — appears in a Table header. The descriptor
+COLUMNS (§8) the block form reads are not machinery and ride in every unit as
+every other column does, because they describe the language.
+
+**A VARIABLE-LENGTH table has no block form, and it is refused by ABSENCE**:
+no Block declarations are emitted for it, so a consumer that reaches for one
+gets a missing name from its own compiler rather than a diagnostic from this
+one. The reason is one line — a pointer anywhere in the closure means no fixed
+pitch anywhere in it — and there is nothing for the schema compiler to refuse,
+because nothing in the declaration asked.
+
+**The rule, in full, because it is the one thing a reader has to know that the
+declaration does not spell:**
+
+- **DEPTH ONE, BOUNDED ONLY.** In the block form, every **bounded** array
+  field **of the table itself** — `[..N]T` — is laid out of line, in
+  declaration order, each at its own pitch, subject to the element rule below.
+  Everything else stays exactly where it is: a fixed `[N]T`, an enum-keyed
+  `[E]T`, and **every
+  array at any depth inside an element**. An element is one flat record or it
+  is not a record another language can point at, and one level is what makes
+  "which arrays move" answerable by reading one declaration.
+- **THE INSTANCE IS WHAT MOVES, not the schema.** The block form generates
+  the table's struct as a PROJECTION: each out-of-line array's inline storage
+  — `T[N]` and its count companion — is replaced, AT THAT FIELD'S POSITION,
+  by `(offset_of u64, count u32, stride u32)`, sixteen bytes with no interior
+  padding. Every other field keeps its by-value storage at its natural offset.
+  That projection is what sits at the front of the block, and nothing declares
+  it: it is what the table already knows about its own rows, written down
+  where the other side can read it.
+- **ONLY ARRAYS OF STRUCTS MOVE.** A bounded array takes the out-of-line form
+  only when its element is a fixed-class `table` or a declared `type` — the
+  same thing, semantically (the ladder). A bounded array of scalars, of
+  `string(N)` or of `bytes(N)` stays INLINE in the projection, exactly as a
+  fixed `[N]T` does: striding what another language cannot point at as a
+  record buys nothing, and the projection is a struct either way.
+- **THE PITCH IS `sizeof`.** A row's stride is the element's `sizeof`, rounded
+  up to its alignment — which for a standard-layout struct (§9) is `sizeof`
+  itself. It is derived, always, and no declaration adjusts it in this
+  version; declared headroom is a named follow-on (§15) with the reason it is
+  not here. The stride still RIDES in the triple, because it is the pitch the
+  consumer indexes with and it must come from the data, never from the
+  consumer's own constant (§19.2).
+- **A TABLE, NOT A NEW KIND OF TABLE.** A table in its block form keeps
+  everything an ordinary fixed table has: `Measure`, `Save` and `Load` over
+  the tolerant wire (§3), its cook (§7), its reflection descriptors (§8), its
+  place as a nested field or an array element in someone else's table. The
+  form adds a projection; it removes nothing. That is what makes "is the
+  render data a table?" answerable with one word.
+
 **Two halves, and neither is new machinery.** Building a block is §6.4's
 builder in its block form — reserve from the counts, write the facts, let the
 workers run. Reading one is §8's descriptors doing what they already do —
@@ -3638,7 +3699,7 @@ out when both are asked of one table.
 
 **One extent, 64-byte aligned at its base**, laid out in this order:
 
-- **The PROJECTION at offset 0** (§2.7). It opens with a generated PROLOGUE
+- **The PROJECTION at offset 0** (above). It opens with a generated PROLOGUE
   of two `uint64`s — `magic`, a constant identifying a schema block and the
   byte-order check with it, and `layout_id`, the digest §19.3 defines — and
   the table's own fields follow, each at its natural offset, with every
@@ -3818,7 +3879,7 @@ ReadOnlySpan<RenderShip> ships = block.ShipsSpan;   // contiguous: the pitch is 
   the idiom written at every call site is the one written wrong somewhere. A
   typed base pointer sits beside it for the producer, which addresses rows by
   index (§19.1).
-- **A contiguous view is available because the pitch IS `sizeof`** (§2.7), so
+- **A contiguous view is available because the pitch IS `sizeof`** (§19), so
   a consumer that casts a byte range to a row type — which is how the fast
   path is actually written — is always able to. That is a property of
   deriving the pitch; a version that let a declaration widen it would cost
@@ -3967,9 +4028,9 @@ it, and pretending otherwise is what the second entry point exists to avoid
 
 ### 19.5 Held by test
 
-- **A dogfood-shaped block-form table in the corpus** — a marked root of
-  several bounded arrays over fixed-size row types with a nested `type`
-  apiece — compiled, built and read by every backend that carries the form.
+- **A dogfood-shaped block-form table in the corpus** — a root of several
+  bounded arrays over fixed-size row types with a nested `type` apiece —
+  compiled, built and read by every backend that carries the form.
 - **A REAL multi-threaded fill.** N workers fill disjoint index ranges of
   every array; the resulting block is byte-identical to a serial fill of the
   same data over the rows each count covers. Run under the sanitizer leg,
@@ -4005,12 +4066,12 @@ it, and pretending otherwise is what the second entry point exists to avoid
   passes, a field appended at the end of a row passes, an array's element
   swapped refuses, an array moved between the inline and out-of-line classes
   refuses, a maximum raised passes, a maximum lowered warns.
-- **The zero-cost gate** (§2.2): a unit with no `| block` carries not one
-  symbol of the block machinery, and the build fails if one appears.
-- **The wire is untouched** (§3): a block-form table saves and loads over the
-  tolerant wire exactly as the same declaration does without the marker, and
-  its wire goldens are byte-identical with and without it. That is the test
-  that keeps the form a form.
+- **The zero-cost gate** (§19): the Table headers are byte-identical with the
+  Block files generated and with them absent, and the build fails if one
+  symbol of the block machinery appears in a Table header.
+- **The wire is untouched** (§3): a table's wire goldens are byte-identical
+  whether or not its block form is generated, and its `Save` and `Load` are
+  the ones any fixed table has. That is the test that keeps the form a form.
 - **The measured leg is §12.1's**, and it is the gate rather than a
   regression test: the per-frame C++ write and the per-frame C# read, against
   the hand-written scatter and the hand mirror, paired in one sitting under

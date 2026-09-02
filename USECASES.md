@@ -119,11 +119,12 @@ A C++ producer writes a block of per-frame render data and a C# consumer
 points at it and reads rows in place — large structures, both directions,
 sixty times a second or better.
 
-- **Form** — the **block form** (SPEC-TABLES.md §19): a fixed table marked
-  `| block` gets a third projection beside its wire and its cook, in which
-  the table's own bounded arrays are laid out of line at a fixed pitch and
-  the instance at the front of the block carries, per array, an `(offset_of,
-  count, stride)` triple.
+- **Form** — the **block form** (SPEC-TABLES.md §19): every fixed table has a
+  third projection beside its wire and its cook, in which the table's own
+  bounded arrays are laid out of line at a fixed pitch and the instance at
+  the front of the block carries, per array, an `(offset_of, count, stride)`
+  triple. Nothing declares it; it is emitted on the side, and a consumer that
+  does not include it pays nothing.
 - **Contract** — one exact layout, held as a **two-language layout contract**
   (§19.3). The compiler derives every offset and size, C++ asserts them with
   `static_assert` and C# with a blittable `Sequential` struct plus generated
