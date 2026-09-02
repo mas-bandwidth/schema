@@ -946,8 +946,8 @@ never a type body. Arrays of pointers, and a specified default on a pointer,
 are refused by name.
 
 **Do not reach for a pointer to make a field optional.** Every field on this
-wire is already optional — absence is the reader's default — and a section
-that is present or absent as a unit is spelled `?T`:
+wire is already optional — absence is the reader's default — and a group of
+fields that is present or absent as a unit is spelled `?T`:
 
 ```
 table Scene

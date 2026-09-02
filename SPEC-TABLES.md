@@ -248,12 +248,12 @@ table Scene
 **A pointer is for recursion, sharing and size — not for optionality.**
 Every field on this wire is already optional: absence is the reader's
 default (§4), so nothing has to be pointed at to be left out. The spelling
-for an OPTIONAL SECTION is `?T` (§2.3):
+for an OPTIONAL GROUP is `?T` (§2.3):
 
 ```
 table Scene
 {
-    settings ?Settings   // an optional section: off the wire when it is absent
+    settings ?Settings   // an optional group: off the wire when it is absent
 }
 ```
 
@@ -820,7 +820,7 @@ schema's codebase:
   **A field under a FALSE GUARD is elided too**, whatever its storage
   holds: an `if` branch that does not run writes none of its fields, so a
   guarded group rides only when its guard is true. That is what makes a
-  guard an optional SECTION on the wire and not merely in the language, and
+  guard an optional GROUP on the wire and not merely in the language, and
   the text form defers to this rule rather than restating it (§16.2).
   **PRESENCE, not content, decides the three pointer-shaped spellings.** An
   absent `?T`, a null `*T` and a null `*bytes` are not written; a present
@@ -2770,7 +2770,7 @@ schema prescribing any of their structure.
 
 **Where the gate is held.** The corpus half is a config format declared and
 packed end to end: `tables/examples/Pack.schema` is the root — an
-enum-keyed collection of records, an optional section inside a record, a
+enum-keyed collection of records, an optional group inside a record, a
 global block nested by value, a bounded array of records and a keyed array
 of scalars, fixed-size down to the leaves — and `tables/pack/config/` is the
 directory tree `schema pack` assembles into it and `unpack` writes back out
@@ -2780,7 +2780,7 @@ real game takes its config on this wire.
 
 **The shape the gate is held to.** `Config.bin` and `Assets.bin` are each
 ONE root table, and each root is FIXED-SIZE down to the leaves: no pointer
-anywhere in the closure. `?T` (§2.3) expresses an optional section by
+anywhere in the closure. `?T` (§2.3) expresses an optional group by
 value and `[E]T` (§2.4) expresses the enum-keyed collection as language
 rather than as convention, so neither forces a pointer. A fixed root is
 the strong form of the gate: it says the whole content pipeline runs on
@@ -4549,7 +4549,7 @@ ships[i].position = ...;
   accessors, and the row storage they hand back — contains **no allocation,
   no lock and no atomic**, and the build fails if one appears, on the model
   §2.2 already uses for the zero-cost gate. A backend may not satisfy this
-  section with a serial `Begin` that allocates, or an accessor that
+  requirement with a serial `Begin` that allocates, or an accessor that
   synchronises. It is held twice over: by that refuser, and by a real
   multi-threaded fill in the corpus (§19.5) whose result is byte-identical to
   a serial one.
