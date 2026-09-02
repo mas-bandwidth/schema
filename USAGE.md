@@ -548,6 +548,10 @@ not talk to each other at all. Check it during your handshake.
 There is no version tag on the wire — that is the point. The id is how you
 find out, once, at connect time, instead of paying for it on every packet.
 
+It covers your `type` declarations and nothing else. Tables never touch it —
+edit a table and what moves is the **build version**, which keys cooked
+assets and gates no connection (below).
+
 ---
 
 ## Tables: data that outlives builds
@@ -1110,14 +1114,14 @@ can walk any block's rows without a type per table.
 - **It is a same-build contract.** Both sides are generated from one
   declaration and ship together. Every row size and field offset is asserted
   by generated code in both languages, so a field that moves is a build
-  error, not a garbled frame. If you want data that outlives the build that
-  wrote it, use the wire — which this same table still has.
-- **The edits it absorbs are appends.** A field appended at the end of the
-  table, a field appended at the end of a row, or a maximum raised: all three
-  are absorbed on `BlockOpenCompatible`, because the consumer reads offsets
-  and pitches from the instance rather than assuming them. Anything that
-  moves an existing offset is a break, and the generated asserts refuse it at
-  compile time — the tables baseline carries no layout fact.
+  error, not a garbled frame.
+- **Every schema edit is a regenerate.** Append a field to the table, append
+  one to a row, raise a maximum — each moves the build version, `BlockOpen`
+  refuses bytes from the older build, and both sides rebuild from the one
+  declaration. That is the trade for having no version machinery in the hot
+  path: a block is same-build, so there is nothing to absorb and nothing to
+  ask for by name. If you want data that outlives the build that wrote it,
+  use the wire — which this same table still has.
 - **The allocation is the maximum, once.** `BlockMaxBytes` sums every array's
   declared maximum; the block is allocated once at that size and never grown.
   The bytes you hand off are only the frame's.
@@ -1142,19 +1146,75 @@ if ( scene == NULL )
 ```
 
 A cooked file is an ACCELERATOR, not an archive: it is build-locked by a
-layout id that mixes the schema's packed-layout facts with this build's own
-`sizeof`s, so it refuses the moment either moves, and you regenerate it. The
-tolerant wire stays the format of record.
+build version that covers the schema's layout, its meaning facts and your
+target's byte order, so it refuses the moment any of it moves and you
+regenerate it. The tolerant wire stays the format of record.
 
-`Open` validates before it points — a bounds walk over the reference graph and
-the counts that bound a traversal of it, never a field value. It is linear in
-the region and cannot be driven exponentially by a forged file: packing lays
-nodes out in pre-order and the walk follows that order behind a high-water
-mark, so it consumes region bytes monotonically and visits each byte at most
-once. A walk, not a parse.
+`Open` checks the header and points — the magic, the byte order it
+establishes, the build version, the two part lengths, the base's alignment —
+and that is the whole of it. On a match the bytes ARE what this build wrote,
+so there is nothing to validate and nothing to fix up. It is the only runtime
+entry point there is: a cook is your build's own accelerator, and a file that
+is not your build's returns NULL and you load the wire.
+
+If you have a cooked file whose provenance you doubt — one that crossed a
+machine boundary, or one you are diagnosing — check it with the tool:
+`schema cook-check` — *specified, not yet built* — scans the attribution the
+cook carries beside its data and verifies every reference, buffer and count
+against it, without following one reference or decoding one value. That is a
+person's decision, made once, not a flag on a load in the hot path.
 
 Value-only tables get no `Cook`/`Open` of their own: they are structs, and
 `sizeof` plus `memcpy` already is their region form.
+
+### The build version: what a cooked asset is stored under
+
+*Specified, not yet implemented — no backend emits this constant and
+`schema build-version` does not exist yet (SPEC-TABLES.md §20).*
+
+A cook is only ever produced for one build, so something has to name which
+build. That is the **build version**: one digest over everything a cook's
+bytes depend on — your protocol id, every record's layout as the compiler
+computes it, and the declaration facts that decide what a load puts in a slot
+(a specified default, a declared range, an enum's variant order, a union's arm
+order) — plus the target's byte order.
+
+```
+$ schema build-version tables/examples/
+package tabledemo
+build version 0x................
+```
+
+```cpp
+// generated, beside ProtocolId
+printf( "%016llx\n", (unsigned long long) tabledemo::BuildVersion );
+```
+
+Your tools cook asset X to build version Y and write `(X, Y)` into the store;
+your game asks the store for `(X, Y)`. That is the whole protocol. You never
+have to reason about which edits invalidate what — anything that would change
+a cook's bytes moves Y, so the key moves with it, and a new Y is simply a new
+cook the build cache absorbs. The asset hash is the hash of the WIRE file you
+cooked from.
+
+It is settled by the **compiler**, not by your C++ compiler, which is what
+lets tooling cook before any game binary exists. The layout half comes from
+the compiler's own C ABI model, and the generated code asserts it on every
+side: if your compiler lays a record out differently, the build fails and
+names the field.
+
+Two things it does not do:
+
+- **It never gates a connection.** Peers connect on the protocol id, and two
+  peers at the same protocol id may run different build versions all day —
+  their tables ride the tolerant wire between them, and each side loads its
+  own cooked assets out of its own store.
+- **It never moves your protocol id.** Edit a table and only the build version
+  moves; edit a `type` and both move. That is the same independence the tables
+  page opens with, seen from the cook's end.
+
+Two ids, and there is no third: the protocol id for the type wire, and the
+build version for everything cooked or blocked.
 
 ### Renaming a field: `was`
 
