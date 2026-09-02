@@ -197,7 +197,7 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 
 func (w *regionWriter) slots(at int64, f *ir.Field, elems []tabletext.Cell, n int) error {
 	step := elementBytes(w.m.Unit, f)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if err := w.element(at+int64(i)*step, f, &elems[i]); err != nil {
 			return err
 		}
@@ -321,10 +321,7 @@ func (w *regionWriter) putWidth(at, width int64, v uint64) {
 // putBytes writes a buffer piece: the used bytes, and a zero tail to its full
 // declared width.
 func (w *regionWriter) putBytes(at, size int64, src []byte) {
-	n := int64(len(src))
-	if n > size {
-		n = size
-	}
+	n := min(int64(len(src)), size)
 	copy(w.buf[at:at+n], src[:n])
 	for i := at + n; i < at+size; i++ {
 		w.buf[i] = 0

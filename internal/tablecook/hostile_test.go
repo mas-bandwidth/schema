@@ -52,6 +52,7 @@ func hostileN() int {
 // bar runs one mutated file through the bar and reports what it did, so a
 // battery can assert that its DIRECTED cases actually landed on a refusal
 // rather than quietly producing a valid file again.
+//
 // EVERY read of the forged bytes happens inside this function, under the
 // recover — including working out which root the file claims. A battery that
 // reached into a forgery to decide what to do with it would have a hole in it
@@ -239,7 +240,7 @@ func TestCookCheckHostileBattery(t *testing.T) {
 		0x7FFFFFFFFFFFFFFF, 0x8000000000000000, 0xFFFFFFFFFFFFFFFF}
 
 	refusals := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		src := fixtures[rng.Intn(len(fixtures))]
 		f := append([]byte(nil), src...)
 		switch rng.Intn(4) {

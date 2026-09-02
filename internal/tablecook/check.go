@@ -183,7 +183,7 @@ func (s *scan) companion(at, bound int64, what string) error {
 
 func (s *scan) slots(at int64, f *ir.Field, n int64) error {
 	step := elementBytes(s.m.Unit, f)
-	for i := int64(0); i < n; i++ {
+	for i := range n {
 		if err := s.element(at+i*step, f); err != nil {
 			return err
 		}

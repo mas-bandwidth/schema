@@ -340,7 +340,7 @@ func TestBigEndianCookSwapsEveryScalar(t *testing.T) {
 		}
 		l := little[at : at+8]
 		b := big[at : at+8]
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			if l[i] != b[7-i] {
 				t.Fatalf("header word at %d is not the byte reversal of the other order's: % x vs % x", at, l, b)
 			}

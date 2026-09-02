@@ -80,10 +80,7 @@ func main() {
 	align := ir.RegionAlignOf(rootLayout.Align, chainLayout.Align)
 	chainBase := alignUp(rootLayout.Size, chainLayout.Align)
 	// how many nodes fit in the size asked for, over the region alone
-	nodes := (*bytesWanted - chainBase) / chainLayout.Size
-	if nodes < 1 {
-		nodes = 1
-	}
+	nodes := max((*bytesWanted-chainBase)/chainLayout.Size, 1)
 	dataLength := alignUp(chainBase+nodes*chainLayout.Size, align)
 	attribLength := (nodes + 1) * 16
 
@@ -124,7 +121,7 @@ func main() {
 	// record: one node on, less the slot's own position inside the record
 	forward := chainLayout.Size - chainRef.Offset
 	ord.PutUint32(chainRec[chainRef.Offset:], uint32(int32(forward)))
-	for i := int64(0); i < nodes-1; i++ {
+	for range nodes - 1 {
 		must(w.Write(chainRec))
 	}
 	// the last node's reference is NULL, which in a region is a delta of zero
@@ -138,7 +135,7 @@ func main() {
 	ord.PutUint64(entry[8:], ir.TableTypeId(root.Name))
 	must(w.Write(entry))
 	chainTypeId := ir.TableTypeId(chain.Name)
-	for i := int64(0); i < nodes; i++ {
+	for i := range nodes {
 		ord.PutUint64(entry[0:], uint64(chainBase+i*chainLayout.Size))
 		ord.PutUint64(entry[8:], chainTypeId)
 		must(w.Write(entry))

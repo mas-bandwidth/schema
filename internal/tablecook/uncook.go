@@ -123,7 +123,7 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 
 func (r *regionReader) slots(at int64, f *ir.Field, elems []tabletext.Cell, n int) error {
 	step := elementBytes(r.m.Unit, f)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if err := r.element(at+int64(i)*step, f, &elems[i]); err != nil {
 			return err
 		}
