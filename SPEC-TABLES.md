@@ -1272,6 +1272,16 @@ ChatMessageLoad( msg, buffer, size, &report );     // destination first
 the wire answer; schema generates no size constants of any kind, because
 those two already exist.
 
+**Where the generated code lives.** A table unit file emits two files:
+`<Base>Table.h`, which a consumer includes, and `<Base>Table.cpp`, which a
+consumer COMPILES when it uses what is in it. The header carries the
+storage structs, the wire codecs and the reflection descriptors — inlineable
+code, templates over a context, and constant data. The `.cpp` carries the
+table RUNTIME: today that is the text form's walk (§16), and anything else
+that is neither a template nor constant data is a candidate for it on
+measured evidence (§13.5). The TYPE wire has no such file and does not want
+one: a type is a struct and its codec, and it stays header-only.
+
 ### 6.2 Variable-length: a lifecycle
 
 A file-format-scale structure is not a struct you copy. It is built
@@ -2053,6 +2063,40 @@ are these rulings, in the owner's words:
   later, unless there are specific decisions we need to make now that will
   knowingly make things slower."
 
+### 13.5 Header versus translation unit, ruled
+
+The JSON walk (§16) first shipped as inline code in every table header, and
+it cost every translation unit that included one — measured at +11% to +15%
+compile time on an empty unit including a single corpus header, whether or
+not that unit ever read a text.
+
+- **The ruling**: "It would be best if it were written to a corresponding
+  cpp file so it doesn't need to be included every time."
+- **Why now and not before**: "As we get more complex stuff in
+  types/tables, needing a .cpp file now makes more sense."
+- **And the line that does NOT move**: "I think it's OK for types to remain
+  header only."
+
+So the split is by WIRE, and it is a real boundary rather than a
+convenience:
+
+- **The TYPE wire stays header-only.** A type is a struct and its codec —
+  generated code that a compiler folds into the caller, with nothing to
+  compile once and link. Nothing in SPEC.md's generated output gains a
+  translation unit.
+- **A table unit gains `<Base>Table.cpp` for its RUNTIME.** The JSON walk
+  is what lives there today: a body of non-template, non-constant code that
+  every consumer would otherwise re-parse. The storage structs, the wire
+  codecs and the reflection descriptors stay in the header, because they
+  are respectively inlineable, template-parameterised over a context, and
+  constant data a tool reads directly.
+- **What may follow it, and on what evidence.** Any further table runtime
+  that is neither a template nor constant data is a CANDIDATE for the same
+  file, decided on measurement when a measurement exists. The arena and the
+  cooked form are not moved: their surfaces are templates over a sink or a
+  context (§6.4, §7), so they have no single definition to emit, and no
+  number has been taken for them.
+
 ## 14. Design notes: the models weighed
 
 Recorded because the rejected options are the useful part.
@@ -2302,16 +2346,22 @@ packer (§17) calls this section once per text and does the rest itself.
 **This section states RULES, not one implementation.** A generic walk over
 the descriptors is what makes the form cheap enough to exist at all, and
 the C++ backend holds it as one walker whose source is byte-identical in
-every generated header — but that is C++'s way of meeting the rules, not
+every generated `.cpp` — but that is C++'s way of meeting the rules, not
 the definition of them. Another backend, and the compiler's own packer
 (§17), implement the same rules over the same IR, and goldens are what make
 the implementations one form: for every instance in the corpus, every
 implementation's text is byte-identical and every implementation's read of
 that text produces the same wire bytes.
 
-**The walk rides in every table closure's header, the fixed class
-included.** It is not gated on a unit's mode, because a fixed-size table is
-exactly the kind a tool authors as text; there is no opt-out.
+**The walk is a generated TRANSLATION UNIT, not header content.** A table
+unit file emits `<Base>Table.cpp` beside `<Base>Table.h`: the header declares
+the three functions per table and carries the descriptors, and the `.cpp`
+holds the walker and the definitions. A project that reads or writes a text
+compiles that file; a project that never does compiles nothing for it, and
+its headers carry neither the walker nor the number-conversion includes the
+walker needs. The form is still available to every FIXED-SIZE table in the
+closure with no opt-out at the DECLARATION level — nothing is gated on a
+unit's mode — but paying for it is a build decision, not an include.
 
 ### 16.1 The surface
 
@@ -2329,6 +2379,18 @@ if ( !ShipConfigFromJson( ship, text, text_bytes, &report ) )
 int64_t size = ShipConfigToJsonMeasure( ship );      // exact bytes, writes nothing
 ShipConfigToJson( ship, buffer, size );              // returns size; -1 = refused
 ```
+
+**These are declarations in `<Base>Table.h` and definitions in
+`<Base>Table.cpp`** (§6.1, §13.5). Compile the generated `.cpp` to call
+them:
+
+```
+c++ -c ShipTable.cpp        # once, not once per including translation unit
+```
+
+A project that never reads or writes a text simply does not compile that
+file, and its headers carry neither the walk nor the number-conversion
+includes the walk needs.
 
 A VARIABLE-LENGTH table reads through its builder, because that is where
 its storage comes from (§6.5):
@@ -2513,7 +2575,7 @@ touching a stored file.
   one field, the round-trip goes red on the first table that has two
   fields.
 - The one-walk gate: within a backend that holds the form as a single
-  walker, that walker's source is identical in every generated header.
+  walker, that walker's source is identical in every generated `.cpp`.
 
 ### 16.6 What this is not
 

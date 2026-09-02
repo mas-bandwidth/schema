@@ -190,8 +190,15 @@ func TestTablesMoveNoGeneratedPacketByte(t *testing.T) {
 			t.Errorf("file %s changed when a table was added — tables must move no packet byte", name)
 		}
 	}
+	// A table declaration grows the two TABLE files and nothing else: the
+	// header a consumer includes, and the .cpp carrying the text form's walk
+	// (SPEC-TABLES.md §6.1, §13.5). The type wire stays header-only, so no
+	// packet file appears or moves.
 	for name := range with {
-		if _, ok := without[name]; !ok && !strings.HasSuffix(name, "Table.h") {
+		if _, ok := without[name]; ok {
+			continue
+		}
+		if !strings.HasSuffix(name, "Table.h") && !strings.HasSuffix(name, "Table.cpp") {
 			t.Errorf("adding a table grew unexpected non-table file %s", name)
 		}
 	}
@@ -638,4 +645,74 @@ func capitalizeFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// allVariableSrc declares nothing but pointered tables: every table in the
+// unit derives VARIABLE-LENGTH, so none of them gets a text form (§16.1 —
+// the variable class reads through its builder, which no backend emits yet,
+// schema#275).
+const allVariableSrc = packetSrc + `
+table Chain
+{
+    value int32
+    next  *Chain
+}
+
+table Holder
+{
+    head *Chain
+}
+`
+
+// TestNoTextFormUnitEmitsNoCpp: the .cpp exists to carry definitions, so a
+// unit with no definitions to carry does not get one. The alternative that
+// looks equivalent is not: an EMPTY .cpp would still have to hold a walker
+// to satisfy the generic-walk gate, and a glob-driven build would compile
+// 1600 lines exporting nothing on every build.
+func TestNoTextFormUnitEmitsNoCpp(t *testing.T) {
+	c := New()
+	files, err := c.Generate(unitFromSource(t, allVariableSrc), "cpp", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name := range files {
+		if strings.HasSuffix(name, "Table.cpp") {
+			t.Errorf("an all-variable unit emitted %s — it has no text form to define", name)
+		}
+	}
+	// the header still exists, and still says by name that the class has no
+	// text form: the refusal is by absence and it is loud
+	header := ""
+	for name, body := range files {
+		if strings.HasSuffix(name, "Table.h") {
+			header = string(body)
+		}
+	}
+	if header == "" {
+		t.Fatal("no Table header generated for an all-variable unit")
+	}
+	for _, want := range []string{"ChainFromJson", "HolderFromJson"} {
+		if strings.Contains(header, want+"(") {
+			t.Errorf("header declares %s for a variable-length table", want)
+		}
+		if !strings.Contains(header, "no "+want) {
+			t.Errorf("header does not say by name that %s is absent", want)
+		}
+	}
+
+	// and a unit that DOES have a fixed table still gets its .cpp, so the
+	// gate above is testing the guard rather than the emitter being off
+	with, err := c.Generate(unitFromSource(t, tableSrc), "cpp", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for name := range with {
+		if strings.HasSuffix(name, "Table.cpp") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a unit with a fixed-size table emitted no Table.cpp")
+	}
 }

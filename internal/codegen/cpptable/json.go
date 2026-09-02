@@ -21,7 +21,20 @@ import (
 // between them is a strict byte comparison across every header of the corpus.
 func tableJsonWalk(pkg string) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_JSON"
-	return "#ifndef " + guard + "\n#define " + guard + "\n\nnamespace " + pkg + " {\n\n" +
+	// The include guard is LOAD-BEARING in a .cpp, which is not where a reader
+	// expects to find one — hence the comment riding with it. It is what lets
+	// several same-package .cpp files be concatenated into one translation
+	// unit, the unity build a game project reaches for, without redefining
+	// every walker function. The comment sits OUTSIDE the walk's markers, with
+	// the guard and the namespace, so the package name never enters the region
+	// the generic-walk gate compares.
+	return "// The guard is not vestigial. Several " + pkg + " Table.cpp files may be\n" +
+		"// concatenated into ONE translation unit — a unity build — and without it\n" +
+		"// each would redefine the walk. It is also why the walk's functions may be\n" +
+		"// weak (vague linkage) across separate objects: ODR requires their\n" +
+		"// definitions to be token-identical, and the generic-walk gate is what\n" +
+		"// proves that, byte for byte, across every generated .cpp.\n" +
+		"#ifndef " + guard + "\n#define " + guard + "\n\nnamespace " + pkg + " {\n\n" +
 		tableJsonWalkSource +
 		"\n} // namespace " + pkg + "\n\n#endif // " + guard + "\n"
 }
@@ -33,24 +46,42 @@ func tableJsonWalk(pkg string) string {
 // a descriptor-driven walk, which is a named follow-on (§16.6), not a cheap
 // add-on. The refusal is by absence and it is loud: no <Name>FromJson exists
 // to call.
-func (g *tableGen) emitJsonSurface(st *ir.Struct) {
+// emitJsonDeclarations puts one closure member's text-form surface in the
+// HEADER: three declarations and nothing else. The definitions, and the walker
+// they call, live in the generated <Base>Table.cpp — so a translation unit
+// that includes the header to use the wire codecs or the descriptors pays
+// nothing for a form it never calls (SPEC-TABLES.md §16.1, owner's ruling).
+func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		// SPEC-TABLES.md §16.1 states the builder surface for this class —
 		// <Name>FromJson( builder, ... ) — and this backend does not carry it
-		// yet. The refusal is by ABSENCE and it is loud: there is no function
-		// to call, so nothing silently reads a pointered table as an empty one.
+		// yet (schema#275). The refusal is by ABSENCE and it is loud: there is
+		// no function to call, so nothing silently reads a pointered table as
+		// an empty one.
 		g.pf("// %s is VARIABLE-LENGTH. Its text form reads through the builder\n", st.Name)
 		g.pf("// (SPEC-TABLES.md §16.1), which this backend does not emit yet:\n")
 		g.pf("// no %sFromJson and no %sToJson exist to call.\n\n", st.Name, st.Name)
 		return
 	}
-	g.pf("// %s in and out of a JSON text — one instance, one text, the generic walk\n", st.Name)
-	g.pf("// over this type's descriptors (SPEC-TABLES.md §16).\n")
-	g.pf("inline bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("// %s in and out of a JSON text — one instance, one text, the generic\n", st.Name)
+	g.pf("// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in\n")
+	g.pf("// %sTable.cpp; link it to use them.\n", g.file.Base)
+	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
+	g.pf("int64_t %sToJsonMeasure( const %s & value );\n", st.Name, st.Name)
+	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity );\n\n", st.Name, st.Name)
+}
+
+// emitJsonDefinitions puts the same member's three definitions in the .cpp,
+// each a thin wrapper naming a descriptor and nothing else.
+func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
+	if g.isVar(st.Name) {
+		return
+	}
+	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonRead( &value, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
-	g.pf("inline int64_t %sToJsonMeasure( const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("int64_t %sToJsonMeasure( const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonWrite( &value, %sTableType(), NULL, 0 );\n}\n\n", st.Name)
-	g.pf("inline int64_t %sToJson( const %s & value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
+	g.pf("int64_t %sToJson( const %s & value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    return TableJsonWrite( &value, %sTableType(), buffer, capacity );\n}\n\n", st.Name)
 }
 

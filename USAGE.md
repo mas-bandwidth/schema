@@ -1229,6 +1229,8 @@ The same descriptors drive a JSON text form, so every table reads from and
 writes to text with no per-table codec:
 
 ```cpp
+#include "ShipTable.h"
+
 TableReport report;
 ShipConfig ship;
 ShipConfigFromJson( ship, text, text_bytes, &report );   // fills ONE instance
@@ -1236,6 +1238,17 @@ ShipConfigFromJson( ship, text, text_bytes, &report );   // fills ONE instance
 int64_t size = ShipConfigToJsonMeasure( ship );          // exact, writes nothing
 ShipConfigToJson( ship, buffer, size );
 ```
+
+The header DECLARES these; the walk itself lives in the generated
+`ShipTable.cpp`, so add it to your build once:
+
+```
+c++ -c ShipTable.cpp
+```
+
+That is the whole cost of the text form, and it is opt-in: a project that
+never reads or writes a text does not compile that file, and including
+`ShipTable.h` for the wire codecs or the descriptors carries none of it.
 
 `FromJson` places what the text mentions and leaves the rest at its declared
 defaults, exactly as an absent field on the wire does; unknown keys, wrong

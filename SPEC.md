@@ -1322,7 +1322,14 @@ tree mirrors the schema tree a person navigates.
   `<Base>Wire.h`. A unit may not contain files named both `X` and `XWire` —
   the emitter refuses the collision. Everything sits in
   `namespace <package>`, under `#pragma once`, with cross-file `#include`s
-  derived from actual references.
+  derived from actual references. **The type wire is HEADER-ONLY**, and
+  stays so by ruling ("I think it's OK for types to remain header only"): a
+  type is a struct and its codec, both of which a compiler folds into the
+  caller, so there is nothing to compile once and link. A unit that declares
+  TABLES emits one further pair — `<Base>Table.h` and `<Base>Table.cpp` —
+  because the table wire carries a RUNTIME the type wire has no equivalent
+  of (SPEC-TABLES.md §6.1, §13.5); it is a table-side file and adds nothing
+  to a table-free unit.
 - **C:** the same data/wire header pair per schema file (`<Base>.h` /
   `<Base>Wire.h`), mirroring the C++ split in C's own types.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
