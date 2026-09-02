@@ -1664,6 +1664,95 @@ static class Program
         Check(cfg.Teams[(int)Demo.Team.Blue] != null, "keyed indexer: a named slot reads");
     }
 
+    // ---- iteration over the VALID slots (§2.4) ----
+    //
+    // The C++ twin of this test is test_keyed_iteration in test/tables/main.cpp.
+    // foreach runs 1..E.Max, yields the slot index beside the element — the
+    // same currency the indexer takes — and never hands out slot 0, so no call
+    // site out here spells a bound, a lower limit or the slot rule.
+
+    static void TestKeyedIteration()
+    {
+        Demo.KeyedConfig cfg = new Demo.KeyedConfig();
+
+        // WRITING through the iteration: the element of a class-typed keyed
+        // array is the live instance, so filling one is the same walk
+        int spawn = 10;
+        int seen = 0;
+        int expect = 1; // slots arrive in ascending variant order, from 1
+        foreach (var (key, team) in cfg.Teams)
+        {
+            Check(key != 0, "keyed iteration: slot 0 is never yielded");
+            Check(key == expect, "keyed iteration: ascending from slot 1");
+            expect++;
+            seen++;
+            team.SpawnCount = spawn++;
+        }
+        Check(seen == 3, "keyed iteration: one slot per variant, never Max + 1");
+        Check(cfg.Teams[(int)Demo.Team.Red].SpawnCount == 10, "keyed iteration: Red filled");
+        Check(cfg.Teams[(int)Demo.Team.Green].SpawnCount == 12, "keyed iteration: Green filled");
+        // slot 0 was not in the range, so it still holds its declared default
+        Check(cfg.Teams.Slots[0].SpawnCount == 4, "keyed iteration: None's slot untouched");
+
+        // every keyed array in the corpus, including a nested one
+        foreach (var entry in cfg.Hulls)
+        {
+            Check(entry.Key != 0, "keyed iteration: hulls never yield slot 0");
+            int turrets = 0;
+            foreach (var turret in entry.Element.Turrets)
+            {
+                Check(turret.Key != 0, "keyed iteration: nested turrets never yield slot 0");
+                turrets++;
+            }
+            Check(turrets == 3, "keyed iteration: one turret slot per weapon");
+        }
+
+        // the evolution unit's keyed arrays: tables, scalars and enums as
+        // elements. A scalar slot is a VALUE here, not a reference — the
+        // indexer is how a scalar slot is written, and iteration is how it is
+        // read.
+        V2.Cfg v2 = new V2.Cfg();
+        v2.Tokens[(int)V2.Slot.Alpha] = 10;
+        int tokens = 0;
+        int total = 0;
+        foreach (var (key, value) in v2.Tokens)
+        {
+            Check(key != 0, "keyed iteration: tokens never yield slot 0");
+            total += value;
+            tokens++;
+        }
+        Check(tokens == 5 && total == 10, "keyed iteration: five slots, one written");
+
+        int ranks = 0;
+        foreach (var rank in v2.Ranks)
+        {
+            Check(rank.Key != 0, "keyed iteration: ranks never yield slot 0");
+            ranks++;
+        }
+        Check(ranks == 5, "keyed iteration: an enum-element keyed array");
+
+        int ledger = 0;
+        foreach (var slot in v2.Ledger)
+        {
+            Check(slot.Key != 0, "keyed iteration: ledger never yields slot 0");
+            ledger++;
+        }
+        Check(ledger == 3, "keyed iteration: Grade's three variants");
+
+        // a value filled by iteration rides and reads back by name
+        byte[] wire = new byte[8192];
+        long wrote = Demo.Schema.KeyedConfigSave(cfg, wire);
+        Check(wrote > 0, "keyed iteration: saved");
+        Demo.KeyedConfig back = new Demo.KeyedConfig();
+        Demo.TableReport report = new Demo.TableReport();
+        Check(Demo.Schema.KeyedConfigLoad(back, new ReadOnlySpan<byte>(wire, 0, (int)wrote), report),
+            "keyed iteration: loaded");
+        foreach (var (key, team) in back.Teams)
+        {
+            Check(team.SpawnCount == 9 + key, "keyed iteration: every slot rode by name");
+        }
+    }
+
     static int Main()
     {
         goldenDir = FindGoldenDir();
@@ -1678,6 +1767,7 @@ static class Program
         TestKeyedHostileKeys();
         TestSeamReflection();
         TestKeyedIndexerRefusesNone();
+        TestKeyedIteration();
         TestExactCapacity();
         TestStorageInvariants();
         TestBoundedElements();

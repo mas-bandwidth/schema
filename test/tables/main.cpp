@@ -8,11 +8,16 @@
 #include <cstring>
 
 #include <new>
+
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <thread>
 #include <vector>
 
 #include "TablesTable.h"
 #include "KeyedTable.h"
+#include "PackTable.h"
 #include "NestedTable.h"
 #include "WideTable.h"
 #include "GuardedTable.h"
@@ -2364,6 +2369,155 @@ static void test_keyed_round_trip()
     // an all-default keyed array elides whole
     tabledemo::KeyedConfig empty;
     CHECK( tabledemo::KeyedConfigMeasure( empty ) == 2 );
+}
+
+// ---- iteration over the VALID slots (SPEC-TABLES.md §2.4) ----
+//
+// A consumer of a keyed array wants the WHOLE array, and the shape it wants is
+// (key, element) over the slots that can hold data. Iteration is that shape,
+// and it is where the slot rule lives now: the range is 1..E.Max, so slot 0
+// never reaches a call site and nothing out here spells a lower bound, a cast
+// or an E.Max of its own. The assert on operator[] is a debug guard that a
+// shipped build compiles out; this is not.
+
+// the sweep every keyed array in the corpus goes through: walk it, and prove
+// the key is never slot 0. Written once, against no particular enum, so a
+// keyed array added to the corpus is one line away from being covered.
+template <typename Keyed>
+static int32_t iterate_and_refuse_slot_zero( const Keyed & keyed )
+{
+    int32_t seen = 0;
+    int32_t expect = 1; // slots arrive in ascending variant order, from 1
+    for ( auto [ key, element ] : keyed )
+    {
+        (void) element;
+        CHECK( (int32_t) key != 0 );
+        CHECK( (int32_t) key == expect );
+        expect++;
+        seen++;
+    }
+    return seen;
+}
+
+static void test_keyed_iteration()
+{
+    tabledemo::KeyedConfig cfg;
+
+    // WRITING through the iteration: the element is a REFERENCE to the slot,
+    // so filling a whole keyed array is the same loop as reading one
+    int32_t spawn = 10;
+    for ( auto [ team, config ] : cfg.teams )
+    {
+        CHECK( team != tabledemo::Team::None );
+        config.spawn_count = spawn++;
+    }
+    CHECK( cfg.teams[tabledemo::Team::Red].spawn_count == 10 );
+    CHECK( cfg.teams[tabledemo::Team::Blue].spawn_count == 11 );
+    CHECK( cfg.teams[tabledemo::Team::Green].spawn_count == 12 );
+    // slot 0 was not in the range, so it still holds the declared default
+    CHECK( cfg.teams.slots[0].spawn_count == 4 );
+
+    // reading it back through a CONST keyed array: the same range, const
+    // elements
+    const tabledemo::KeyedConfig & const_cfg = cfg;
+    int32_t total = 0;
+    for ( auto [ team, config ] : const_cfg.teams )
+    {
+        CHECK( team != tabledemo::Team::None );
+        total += config.spawn_count;
+    }
+    CHECK( total == 10 + 11 + 12 );
+
+    // EVERY keyed array in the corpus, iterated, and slot 0 in none of them.
+    // Team, Hull and Weapon each declare three variants, so each iteration is
+    // exactly E.Max long — one slot per variant, never E.Max + 1.
+    CHECK( iterate_and_refuse_slot_zero( cfg.teams ) == 3 );
+    CHECK( iterate_and_refuse_slot_zero( cfg.hulls ) == 3 );
+    for ( auto [ hull, config ] : cfg.hulls )
+    {
+        CHECK( hull != tabledemo::Hull::None );
+        CHECK( iterate_and_refuse_slot_zero( config.turrets ) == 3 ); // nested
+    }
+
+    // the space-shaped corpus: one record per ship type, one threshold per
+    // difficulty — the config bin this construct exists for
+    tabledemo::PackConfig pack;
+    CHECK( iterate_and_refuse_slot_zero( pack.ships ) == 3 );
+    CHECK( iterate_and_refuse_slot_zero( pack.thresholds ) == 3 );
+    for ( auto [ ship_type, entry ] : pack.ships )
+    {
+        CHECK( ship_type != tabledemo::ShipType::None );
+        entry.mass = 2.0f;
+    }
+    CHECK( pack.ships.slots[0].mass == 1.0f ); // None's slot, still default
+    CHECK( pack.ships[tabledemo::ShipType::Bomber].mass == 2.0f );
+
+    // the evolution unit's four keyed arrays: tables, scalars and enums as
+    // elements, over an enum with five variants
+    tblv2::Cfg v2;
+    CHECK( iterate_and_refuse_slot_zero( v2.bank ) == 5 );
+    CHECK( iterate_and_refuse_slot_zero( v2.tokens ) == 5 );
+    CHECK( iterate_and_refuse_slot_zero( v2.ranks ) == 5 );
+    CHECK( iterate_and_refuse_slot_zero( v2.ledger ) == 3 );
+
+    // and the VARIABLE class's keyed array, which is the same storage type
+    graphdemo::Depot depot;
+    CHECK( iterate_and_refuse_slot_zero( depot.banks ) == 2 );
+
+    // a scalar element iterates as a reference too
+    for ( auto [ slot, tokens ] : v2.tokens )
+    {
+        tokens = (int32_t) slot * 10;
+    }
+    CHECK( v2.tokens[tblv2::Slot::Alpha] == 10 );
+    CHECK( v2.tokens[tblv2::Slot::Sigma] == 50 );
+    CHECK( v2.tokens.slots[0] == 0 );
+
+    // a value filled by iteration rides and reads back by name
+    uint8_t wire[8192];
+    int64_t bytes = tabledemo::KeyedConfigSave( cfg, wire, sizeof( wire ) );
+    CHECK( bytes > 0 );
+    tabledemo::KeyedConfig back;
+    tabledemo::TableReport report;
+    CHECK( tabledemo::KeyedConfigLoad( back, wire, bytes, &report ) );
+    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    for ( auto [ team, config ] : back.teams )
+    {
+        CHECK( config.spawn_count == 9 + (int32_t) team );
+    }
+}
+
+// ---- the None assert on operator[] is still there (SPEC-TABLES.md §2.4) ----
+//
+// The runtime guard is what a debug build has, and iteration is what a release
+// build has instead — so the guard is worth a test that shows it firing rather
+// than a comment claiming it does. A forked child indexes slot 0 and must die
+// on the assert; the parent goes red if the child returns instead.
+
+static void test_keyed_none_index_asserts()
+{
+    fflush( stdout );
+    pid_t child = fork();
+    if ( child == 0 )
+    {
+        // the abort message is the point of the child, not of this log
+        FILE * quiet = freopen( "/dev/null", "w", stderr );
+        (void) quiet;
+        tabledemo::KeyedConfig cfg;
+        tabledemo::TeamConfig & none = cfg.teams[tabledemo::Team::None];
+        none.spawn_count = 1; // never reached: the accessor asserted
+        _exit( 0 );
+    }
+    CHECK( child > 0 );
+    int status = 0;
+    CHECK( waitpid( child, &status, 0 ) == child );
+    CHECK( WIFSIGNALED( status ) ); // the assert aborted the child
+    if ( WIFEXITED( status ) )
+    {
+        printf( "FAIL keyed None index: the child returned %d — the assert is gone\n",
+                WEXITSTATUS( status ) );
+        failures++;
+    }
 }
 
 // ---- the edit that breaks a positional slot array: V2 REMOVES Gamma and
@@ -5102,6 +5256,8 @@ int main()
     test_optional_round_trip();
     test_optional_three_way_evolution();
     test_keyed_round_trip();
+    test_keyed_iteration();
+    test_keyed_none_index_asserts();
     test_keyed_evolution_old_data();
     test_keyed_evolution_new_data();
     test_keyed_versus_positional_is_a_kind_mismatch();

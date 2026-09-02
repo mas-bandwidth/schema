@@ -417,26 +417,23 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // (SPEC-TABLES.md §2.4). Emitted only into a unit that declares a keyed array,
 // so a unit without one is byte-identical to what it was.
 //
-// WHAT C# CANNOT EXPRESS, stated where a reader meets it. C++ gives this type
-// two accessors: `operator[]( E )`, which asserts a runtime key is not None,
-// and `Slot<Key>()`, which static_asserts a COMPILE-TIME key and is the form
-// that still holds under NDEBUG. C# has neither half of that:
-//
-//   - There is no compile-time key. C# generics take no non-type parameter
-//     and the language has no constexpr, so `Slot<ShipType::Bomber>()` has no
-//     C# spelling at all and the compile-time refusal is simply unavailable.
-//   - There is no non-boxing generic enum-to-int conversion either, so the
-//     indexer cannot take the key's own enum type. `(int)(object)key` throws
-//     for any enum whose backing is not exactly int (it is an unbox, not a
-//     conversion — measured), and Convert.ToInt32 boxes on every index, which
-//     is per-frame garbage in the consumer this port exists for.
+// WHAT C# SPELLS DIFFERENTLY, stated where a reader meets it. C++'s accessor
+// takes the key's own enum type; C# has no non-boxing generic enum-to-int
+// conversion, so the indexer cannot. `(int)(object)key` throws for any enum
+// whose backing is not exactly int (it is an unbox, not a conversion —
+// measured), and Convert.ToInt32 boxes on every index, which is per-frame
+// garbage in the consumer this port exists for.
 //
 // So the indexer takes the SLOT INDEX and the caller writes the cast:
 // `hull.Turrets[(int)Weapon.Missile]`. The None refusal survives as the
-// runtime guard, which is the half C# can express — and unlike C++'s assert
-// it is NOT compiled out in release, so the C# guard is the stronger of the
-// two at runtime and the weaker at compile time. The wire enforces the rule
-// from the other side regardless: a None key never rides (§3.2).
+// runtime guard, and unlike C++'s assert it is NOT compiled out in release,
+// so the C# guard is the stronger of the two at runtime.
+//
+// ITERATION carries over exactly (§2.4): a struct enumerator over slots
+// 1..E.Max, so `foreach` allocates nothing and slot 0 is never yielded. Its
+// key is the SLOT INDEX, the same currency the indexer takes, so the two
+// halves of the surface agree. The wire enforces the rule from the other side
+// regardless: a None key never rides (§3.2).
 const tableKeyedStorage = `// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
 // own value, so Turrets[(int)Weapon.Missile] reads as itself.
 //
@@ -444,6 +441,12 @@ const tableKeyedStorage = `// An ENUM-KEYED array's storage: N = E.Max + 1 slots
 // the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR.
 // The slot exists because memory is cheap and the bias is not: a slot's index
 // IS its variant's value, with nothing to add or subtract anywhere.
+//
+// ITERATION is the surface a consumer of the WHOLE array wants: foreach runs
+// slots 1..E.Max and yields the key beside the element, so slot 0 never
+// reaches a call site and no caller spells a bound or a lower limit of its
+// own. The enumerator is a struct and foreach binds it by pattern, so the
+// walk allocates nothing.
 //
 // Slots is public and is what the generated codecs walk; the indexer is for
 // callers, and it is the one place the None key can be caught in C#.
@@ -476,6 +479,54 @@ public sealed class TableKeyed<T>
         {
             throw new ArgumentOutOfRangeException("key",
                 "slot 0 is None's and is never valid: None is the null key of an enum-keyed array");
+        }
+    }
+
+    public Enumerator GetEnumerator()
+    {
+        return new Enumerator(Slots);
+    }
+
+    // one valid slot: its index and its element. Deconstruct so a caller may
+    // write: foreach (var (key, element) in keyed).
+    public readonly struct Entry
+    {
+        public readonly int Key;
+        public readonly T Element;
+
+        public Entry(int key, T element)
+        {
+            Key = key;
+            Element = element;
+        }
+
+        public void Deconstruct(out int key, out T element)
+        {
+            key = Key;
+            element = Element;
+        }
+    }
+
+    public struct Enumerator
+    {
+        readonly T[] slots;
+        int index;
+
+        public Enumerator(T[] slots)
+        {
+            this.slots = slots;
+            this.index = 0; // the first MoveNext lands on slot 1, never slot 0
+        }
+
+        public bool MoveNext()
+        {
+            index++;
+            return index < slots.Length;
+        }
+
+        public Entry Current
+        {
+            get { return new Entry(index, slots[index]); }
         }
     }
 }

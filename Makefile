@@ -340,6 +340,23 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
+# The NEGATIVE CONTROL for a keyed array's ITERATION RANGE (SPEC-TABLES.md
+# §2.4). The iteration's whole promise is that slot 0 — None's — is not in the
+# range, and an untouched slot 0 holds the same declared defaults every other
+# untouched slot does, so a walk that visited it would look identical to a walk
+# that did not. This sabotage moves begin() to slot 0 and the fixture must go
+# red; without it, nothing in the suite could see the range slip by one.
+.PHONY: tables-keyed-iteration-negative-control
+tables-keyed-iteration-negative-control: bin/schema test/tables/keyed_iteration_negative_main.cpp
+	@rm -rf build/keyed-iteration-sabotage && mkdir -p build/keyed-iteration-sabotage
+	./bin/schema generate --lang cpp --out build/keyed-iteration-sabotage tables/examples
+	@sed -i.bak 's|Iterator begin() { return Iterator{ slots, 1 }; } // 1: slot 0 is None.s|Iterator begin() { return Iterator{ slots, 0 }; } // sabotaged: from slot 0|' build/keyed-iteration-sabotage/KeyedTable.h
+	@grep -q 'sabotaged: from slot 0' build/keyed-iteration-sabotage/KeyedTable.h || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
+	@mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/keyed-iteration-sabotage test/tables/keyed_iteration_negative_main.cpp -o build/schema_test_keyed_iteration_negative
+	./build/schema_test_keyed_iteration_negative
+
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
 #
@@ -763,6 +780,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/p
 	$(MAKE) tables-cs-refuses-pointers
 	cd test/cs-tables && dotnet run
 	$(MAKE) tables-json-keyed-dup-negative-control
+	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative
 	$(MAKE) tables-hostile-values
