@@ -265,16 +265,20 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
 		-Ibuild/json-sabotage test/tables/json_negative_main.cpp -o build/schema_test_json_negative
-	./build/schema_test_json_negative# The same corpus through the C# table backend (SPEC-TABLES.md, schema#262):
+	./build/schema_test_json_negative
+
+# The same corpus through the C# table backend (SPEC-TABLES.md, schema#262):
 # the tables corpus plus the evolution pair, generated at build time into
 # build/ — test-only, never part of the committed generated/ tree. The full
 # unit is generated (packet .cs + <Base>Table.cs), because a table's closure
 # decodes into the packet emitter's own classes.
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) test/tables/V1.schema test/tables/V2.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
 	./bin/schema generate --lang cs --out build/tables-generated-cs/v1 test/tables/V1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/v2 test/tables/V2.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/p1 test/tables/P1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/p3 test/tables/P3.schema
 	@touch $@
 
 # The C# twin of the C++ "no serialize include path" build: a generated
@@ -284,8 +288,8 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) test/tables/V1.sc
 .PHONY: tables-cs-standalone
 tables-cs-standalone: build/tables-generated-cs/.stamp
 	@n=$$(ls build/tables-generated-cs/*/*Table.cs 2>/dev/null | wc -l | tr -d ' '); \
-		if [ "$$n" -lt 5 ]; then \
-			echo "STANDALONE GATE FAILED: found $$n generated Table sources, expected 5 — the glob, not the property, is what broke"; exit 1; \
+		if [ "$$n" -lt 8 ]; then \
+			echo "STANDALONE GATE FAILED: found $$n generated Table sources, expected 8 — the glob, not the property, is what broke"; exit 1; \
 		fi
 	@for f in build/tables-generated-cs/*/*Table.cs; do \
 		if grep -n "Serialize" $$f; then \

@@ -56,6 +56,10 @@ const (
 	tkTable  = 13
 	tkArray  = 14
 	tkUnion  = 15
+	// an ENUM-KEYED array body is its OWN kind (SPEC-TABLES.md §3.2): the
+	// positional array body and the keyed one are incompatible, so a reader
+	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
+	tkKeyed = 16
 )
 
 func tableScalarKind(f *ir.Field) int {
@@ -164,12 +168,14 @@ func csKindStorage(kind int) string {
 }
 
 type tableGen struct {
-	unit   *ir.Unit
-	file   *ir.File
-	home   bool // this file carries the unit's shared table runtime
-	types  strings.Builder
-	schema strings.Builder
-	indent string // extra per-line indent while emitting inside a branch guard
+	unit     *ir.Unit
+	file     *ir.File
+	home     bool       // this file carries the unit's shared table runtime
+	anyKeyed bool       // the unit declares at least one enum-keyed array
+	owner    *ir.Struct // the closure member whose codec is being emitted
+	types    strings.Builder
+	schema   strings.Builder
+	indent   string // extra per-line indent while emitting inside a branch guard
 }
 
 // tf prints into the namespace-level region (storage classes).
@@ -205,6 +211,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	closure := ir.TableClosure(u)
 	home := ir.ProtocolIdHome(u)
+	anyKeyed := unitHasKeyedArray(u, closure)
 	// the identity pair of an enum is emitted ONCE per unit, by the file that
 	// declares it: `Schema` is one partial class across a unit's files, so a
 	// second definition is a compile error rather than C++'s harmless
@@ -212,7 +219,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	usedEnums := closureEnums(u, closure)
 	out := map[string][]byte{}
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed}
 		var members []*ir.Struct
 		members = append(members, f.Tables...)
 		for _, d := range f.Decls {
@@ -221,11 +228,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 		}
 		if g.home {
-			g.tf("%s", tableRuntime())
+			g.tf("%s", tableRuntime(anyKeyed))
 			g.pf("%s", tableBitHelpers())
 		}
 		for _, st := range members {
 			if st.IsTable {
+				g.owner = st
 				g.emitTableClass(st)
 			}
 		}
@@ -233,6 +241,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitEnumIdentity(e)
 		}
 		for _, st := range members {
+			g.owner = st
 			g.emitTableReset(st)
 			g.emitTableMeasure(st)
 			g.emitTableWrite(st)
@@ -242,6 +251,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if len(members) > 0 {
 			g.pf("// ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
+				g.owner = st
 				g.emitTableDescriptor(st)
 			}
 		}
@@ -295,6 +305,11 @@ func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
 			continue
 		}
 		for _, f := range st.Fields {
+			// an enum-keyed array's KEY rides as a variant hash too, so its
+			// enum needs the identity pair even when no field has that type
+			if f.KeyEnumRef != nil {
+				used[f.KeyEnumRef.Name] = f.KeyEnumRef
+			}
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
@@ -378,6 +393,95 @@ func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+// unitHasKeyedArray reports whether any closure member declares an enum-keyed
+// array, which is what decides whether the unit carries the keyed storage type.
+func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
+	for name := range closure {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.KeyEnum != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tableKeyedStorage is the storage type behind `ships [ShipType]ShipConfig`
+// (SPEC-TABLES.md §2.4). Emitted only into a unit that declares a keyed array,
+// so a unit without one is byte-identical to what it was.
+//
+// WHAT C# CANNOT EXPRESS, stated where a reader meets it. C++ gives this type
+// two accessors: `operator[]( E )`, which asserts a runtime key is not None,
+// and `Slot<Key>()`, which static_asserts a COMPILE-TIME key and is the form
+// that still holds under NDEBUG. C# has neither half of that:
+//
+//   - There is no compile-time key. C# generics take no non-type parameter
+//     and the language has no constexpr, so `Slot<ShipType::Bomber>()` has no
+//     C# spelling at all and the compile-time refusal is simply unavailable.
+//   - There is no non-boxing generic enum-to-int conversion either, so the
+//     indexer cannot take the key's own enum type. `(int)(object)key` throws
+//     for any enum whose backing is not exactly int (it is an unbox, not a
+//     conversion — measured), and Convert.ToInt32 boxes on every index, which
+//     is per-frame garbage in the consumer this port exists for.
+//
+// So the indexer takes the SLOT INDEX and the caller writes the cast:
+// `hull.Turrets[(int)Weapon.Missile]`. The None refusal survives as the
+// runtime guard, which is the half C# can express — and unlike C++'s assert
+// it is NOT compiled out in release, so the C# guard is the stronger of the
+// two at runtime and the weaker at compile time. The wire enforces the rule
+// from the other side regardless: a None key never rides (§3.2).
+const tableKeyedStorage = `// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
+// own value, so Turrets[(int)Weapon.Missile] reads as itself.
+//
+// SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
+// the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR.
+// The slot exists because memory is cheap and the bias is not: a slot's index
+// IS its variant's value, with nothing to add or subtract anywhere.
+//
+// Slots is public and is what the generated codecs walk; the indexer is for
+// callers, and it is the one place the None key can be caught in C#.
+public sealed class TableKeyed<T>
+{
+    public readonly T[] Slots;
+
+    public TableKeyed(int slots)
+    {
+        Slots = new T[slots];
+    }
+
+    public T this[int key]
+    {
+        get
+        {
+            RefuseNone(key);
+            return Slots[key];
+        }
+        set
+        {
+            RefuseNone(key);
+            Slots[key] = value;
+        }
+    }
+
+    static void RefuseNone(int key)
+    {
+        if (key == 0)
+        {
+            throw new ArgumentOutOfRangeException("key",
+                "slot 0 is None's and is never valid: None is the null key of an enum-keyed array");
+        }
+    }
+}
+
+`
+
 // tableBitHelpers is the float <-> IEEE-754 bit pattern pair, on Schema
 // beside the codecs. Emitted once per unit, with the runtime.
 func tableBitHelpers() string {
@@ -409,14 +513,24 @@ public static ulong TableDoubleToBits(double value)
 // unit (the protocol-id home). C++ emits it into every header behind an
 // include guard; C# compiles a unit's files together into one assembly, so a
 // second copy would be a duplicate-definition error instead.
-func tableRuntime() string {
-	return `// The table-wire read report — the permissive contract's ledger. Silence
+func tableRuntime(anyKeyed bool) string {
+	keyedStorage := ""
+	if anyKeyed {
+		keyedStorage = tableKeyedStorage
+	}
+	return keyedStorage + `// The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
 public sealed class TableReport
 {
     public int Unknown;        // unknown field ids skipped (newer data)
     public int KindMismatch;   // known id, changed type — skipped, never misdecoded
     public int Clamped;        // out-of-range values clamped to declared bounds
+    // duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
+    // (SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
+    // whose last occurrence wins, silently. It rides on this struct because a
+    // caller has one report type, not two — so a wire read always leaves it
+    // zero, and it is here for the JSON walk that has not been ported yet.
+    public int Duplicate;
     public bool Malformed;     // framing damage; decode stopped, partial result kept
 }
 
@@ -443,6 +557,7 @@ public sealed class TableFieldInfo
     public byte Kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     public bool IsArray;        // fixed or counted array (bytes included)
     public bool Counted;        // a <name>Count/<name>Length companion exists
+    public bool Optional;       // a ?T field: a <name>Present bool decides whether it rides
     public int ArrayBound;      // array capacity / string max length; 0 for plain scalars
     public bool HasRange;       // a declared [min, max] (int or float)
     public double RangeMin;     // NOTE: int64 ranges beyond 2^53 lose precision here
@@ -455,6 +570,19 @@ public sealed class TableFieldInfo
     // 0 is the reserved id — an enum's None, a union's empty. null for every
     // other kind. Walk [0, EnumMax] to enumerate a vocabulary and its ids.
     public Func<ulong, ushort> VariantId;
+
+    // an ENUM-KEYED array (SPEC-TABLES.md §2.4, §8): the array has one slot
+    // per variant of KeyTypeName, indexed by the variant's value, and its
+    // slots ride under variant ids rather than positions. KeyName and KeyId
+    // are the key's vocabulary — walk [0, ArrayBound) to print slots by name.
+    // SLOT 0 IS NONE'S AND IS NEVER VALID: KeyId(0) is 0, the one reserved id
+    // no declared name can hold, and KeyName(0) is "None", so a walker
+    // enumerating slots skips it rather than printing a None row. All three
+    // are null on every other field.
+    public string KeyTypeName;
+    public Func<ulong, string> KeyName;
+    public Func<ulong, ushort> KeyId;
+
     public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 
     // the nested table's descriptor, or null. Held as a factory rather than a
@@ -592,7 +720,7 @@ public ref struct TableReader
                 if (!Has(8)) { return false; }
                 Offset += 8;
                 return true;
-            case 12: case 13: case 14:
+            case 12: case 13: case 14: case 16:
             {
                 if (!Has(4)) { return false; }
                 uint n = Get32();

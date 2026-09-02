@@ -68,6 +68,14 @@ var registry = []Name{
 	{Name: "TableEnumId", By: Cpp | Cs, What: "an enum value -> its table-wire variant id"},
 	{Name: "TableEnumValue", By: Cpp | Cs, What: "a table-wire variant id -> its enum value"},
 
+	// the ENUM-KEYED array's storage type (SPEC-TABLES.md §2.4). C++ spells it
+	// a class template and C# a generic class; both put it at unit level, and
+	// both emit it ONLY into a unit that declares a keyed array — but the
+	// claim is unconditional on a unit declaring a table, for the same reason
+	// the variable-length names are: adding a keyed array to an existing table
+	// must not turn a legal declaration elsewhere into a collision.
+	{Name: "TableKeyed", By: Cpp | Cs, What: "an enum-keyed array's slot storage"},
+
 	// SCOPED: a field descriptor's nested-table column. C++ spells it `table`
 	// and C# `Table`, and either way it is reached through its owner, so a
 	// schema is free to declare the name.

@@ -17,6 +17,8 @@ using System.Text;
 using Demo = Tabledemo;
 using V1 = Tblv1;
 using V2 = Tblv2;
+using P1 = Tblp1;
+using P3 = Tblp3;
 
 static class Program
 {
@@ -1177,12 +1179,505 @@ static class Program
         Check(outArchive.Count == 5, "cross-file: own field");
     }
 
+
+    // ---- the SEAM instances: `?T` (§2.3) and `[E]T` (§2.4) ----
+    //
+    // Mirroring test/tables/main.cpp value for value. A keyed field's slots
+    // are reached through .Slots here: C# expresses neither a compile-time key
+    // nor a non-boxing generic enum-to-int, so the indexer takes the slot
+    // index (see TableKeyed in the generated runtime) and the codecs and these
+    // builders walk .Slots directly.
+
+    static void BuildGoldenKeyed(Demo.KeyedConfig cfg)
+    {
+        Demo.TeamConfig red = cfg.Teams.Slots[(int)Demo.Team.Red];
+        red.SpawnCount = 8;
+        SetString(red.Banner, ref red.BannerLength, "red");
+        Demo.TeamConfig green = cfg.Teams.Slots[(int)Demo.Team.Green];
+        green.SpawnCount = 2;
+        SetString(green.Banner, ref green.BannerLength, "green");
+        // Blue's slot stays entirely default: a default slot ELIDES (§3.2)
+
+        Demo.HullConfig gunship = cfg.Hulls.Slots[(int)Demo.Hull.Gunship];
+        gunship.Health = 250.0f;
+        gunship.Mass = 3.5f;
+        Demo.TurretConfig cannon = gunship.Turrets.Slots[(int)Demo.Weapon.Cannon];
+        cannon.Damage = 40.0f;
+        cannon.GunnerPresent = true;            // present, and entirely DEFAULT: it still rides
+        Demo.TurretConfig mine = gunship.Turrets.Slots[(int)Demo.Weapon.Mine];
+        mine.Damage = 5.0f;
+        mine.Cooldown = 9.0f;
+        mine.GunnerPresent = true;
+        mine.Gunner.Reaction = 0.75f;
+        mine.Gunner.Tracking = true;
+
+        Demo.HullConfig freighter = cfg.Hulls.Slots[(int)Demo.Hull.Freighter];
+        freighter.Mass = 12.0f;                 // turrets all default: the keyed array elides whole
+
+        cfg.Scores.PerTeam[1] = 10;             // a `type`'s keyed field: plain array storage,
+        cfg.Scores.PerTeam[3] = 30;             // keyed BODY on this wire
+    }
+
+    static void BuildGoldenV1Seams(V1.Cfg cfg)
+    {
+        cfg.A = 3;
+        cfg.Bank.Slots[1].Power = 11;           // Alpha
+        SetString(cfg.Bank.Slots[1].Label, ref cfg.Bank.Slots[1].LabelLength, "a1");
+        cfg.Bank.Slots[2].Power = 22;           // Beta — ordinal 2 in V1, 3 in V2
+        cfg.Bank.Slots[3].Power = 33;           // Gamma — REMOVED in V2
+        cfg.Tokens.Slots[1] = 101;
+        cfg.Tokens.Slots[2] = 102;
+        cfg.Tokens.Slots[4] = 104;              // Delta
+        cfg.Ranks.Slots[1] = V1.Grade.Gold;
+        cfg.Ranks.Slots[3] = V1.Grade.Bronze;
+        cfg.Ledger[0] = 7; cfg.Ledger[2] = 9;   // POSITIONAL in V1, KEYED in V2: kind 14 vs 16
+        cfg.ExtraPresent = true;
+        cfg.Extra.Factor = 6.25f;
+        cfg.TierPresent = true;
+        cfg.Tier = 41;
+        cfg.MarkPresent = true;
+        cfg.Mark = V1.Grade.Gold;
+    }
+
+    static void BuildGoldenV2Seams(V2.Cfg cfg)
+    {
+        cfg.A = 1.5f;
+        cfg.Bank.Slots[1].Power = 11;           // Alpha
+        SetString(cfg.Bank.Slots[1].Label, ref cfg.Bank.Slots[1].LabelLength, "a1");
+        cfg.Bank.Slots[2].Power = 44;           // Omega — INSERTED in V2; V1 cannot name it
+        cfg.Bank.Slots[3].Power = 22;           // Beta, slid from ordinal 2 to 3
+        cfg.Bank.Slots[5].Power = 55;           // Sigma — appended; V1 cannot name it
+        cfg.Tokens.Slots[1] = 101;
+        cfg.Tokens.Slots[3] = 102;
+        cfg.Ranks.Slots[1] = V2.Grade.Gold;
+        cfg.Ledger.Slots[1] = 7; cfg.Ledger.Slots[3] = 9; // KEYED in V2
+        cfg.ExtraPresent = true;
+        cfg.Extra.Factor = 6.25f;
+        cfg.TierPresent = false;                // absent: nothing rides
+        cfg.MarkPresent = true;
+        cfg.Mark = V2.Grade.Gold;
+    }
+
+    static void BuildGoldenChainValue(P1.Chain chain)
+    {
+        SetString(chain.Name, ref chain.NameLength, "chain");
+        chain.Link.Value = 7;
+        SetString(chain.Link.Tag, ref chain.Link.TagLength, "tip");
+    }
+
+    // ---- gate: the seam goldens, written from C# ----
+
+    static void TestGoldenSeamsWrite()
+    {
+        byte[] buffer = new byte[1 << 20];
+
+        Demo.KeyedConfig cfg = new Demo.KeyedConfig();
+        BuildGoldenKeyed(cfg);
+        long wrote = Demo.Schema.KeyedConfigSave(cfg, buffer);
+        Check(wrote > 0 && wrote == Demo.Schema.KeyedConfigMeasure(cfg), "keyed_config: measure == save");
+        GoldenWire("keyed_config", new ReadOnlySpan<byte>(buffer, 0, (int)wrote));
+
+        Demo.KeyedConfig empty = new Demo.KeyedConfig();
+        wrote = Demo.Schema.KeyedConfigSave(empty, buffer);
+        Check(wrote == 2, "keyed_default: every slot default, every keyed array elides");
+        GoldenWire("keyed_default", new ReadOnlySpan<byte>(buffer, 0, (int)wrote));
+
+        V1.Cfg v1 = new V1.Cfg();
+        BuildGoldenV1Seams(v1);
+        wrote = V1.Schema.CfgSave(v1, buffer);
+        Check(wrote > 0 && wrote == V1.Schema.CfgMeasure(v1), "v1_seams: measure == save");
+        GoldenWire("v1_seams", new ReadOnlySpan<byte>(buffer, 0, (int)wrote));
+
+        V2.Cfg v2 = new V2.Cfg();
+        BuildGoldenV2Seams(v2);
+        wrote = V2.Schema.CfgSave(v2, buffer);
+        Check(wrote > 0 && wrote == V2.Schema.CfgMeasure(v2), "v2_seams: measure == save");
+        GoldenWire("v2_seams", new ReadOnlySpan<byte>(buffer, 0, (int)wrote));
+
+        // the three spellings over NON-DEFAULT content: byte-identical. C#
+        // carries T and ?T; *T is pointered, so this backend refuses it and
+        // the pointer's bytes come from the C++-pinned golden below.
+        P1.Chain value = new P1.Chain();
+        BuildGoldenChainValue(value);
+        long wValue = P1.Schema.ChainSave(value, buffer);
+        Check(wValue > 0, "chain_value: saved");
+        GoldenWire("chain_value", new ReadOnlySpan<byte>(buffer, 0, (int)wValue));
+
+        byte[] other = new byte[4096];
+        P3.Chain optional = new P3.Chain();
+        SetString(optional.Name, ref optional.NameLength, "chain");
+        optional.LinkPresent = true;
+        optional.Link.Value = 7;
+        SetString(optional.Link.Tag, ref optional.Link.TagLength, "tip");
+        long wOpt = P3.Schema.ChainSave(optional, other);
+        Check(wOpt == wValue && new ReadOnlySpan<byte>(other, 0, (int)wOpt).SequenceEqual(new ReadOnlySpan<byte>(buffer, 0, (int)wValue)),
+            "?T and a plain nesting are byte-identical over non-default content");
+        GoldenWire("chain_optional", new ReadOnlySpan<byte>(other, 0, (int)wOpt));
+        Check(new ReadOnlySpan<byte>(other, 0, (int)wOpt).SequenceEqual(ReadGolden("chain_pointer")),
+            "and so is *T — the pointer's bytes, written by C++");
+
+        // the ASYMMETRY at the empty end: a by-value nesting at its defaults
+        // writes nothing; a PRESENT optional writes its body anyway
+        P1.Chain valueEmpty = new P1.Chain();
+        long wValueEmpty = P1.Schema.ChainSave(valueEmpty, buffer);
+        Check(wValueEmpty == 2, "chain_value_empty: an all-default nesting elides");
+        GoldenWire("chain_value_empty", new ReadOnlySpan<byte>(buffer, 0, (int)wValueEmpty));
+
+        P3.Chain optionalEmpty = new P3.Chain();
+        optionalEmpty.LinkPresent = true; // present and all-default: it RIDES
+        long wOptEmpty = P3.Schema.ChainSave(optionalEmpty, other);
+        Check(wOptEmpty > wValueEmpty, "chain_optional_empty: presence decides, not content");
+        GoldenWire("chain_optional_empty", new ReadOnlySpan<byte>(other, 0, (int)wOptEmpty));
+        Check(new ReadOnlySpan<byte>(other, 0, (int)wOptEmpty).SequenceEqual(ReadGolden("chain_pointer_empty")),
+            "and a non-null pointer writes the same body — the empty end's asymmetry is shared");
+    }
+
+    // ---- gate: LOAD the C++-written seam bytes ----
+
+    static void TestGoldenSeamsRead()
+    {
+        {
+            byte[] golden = ReadGolden("keyed_config");
+            Demo.TableReport report = new Demo.TableReport();
+            Demo.KeyedConfig cfg = new Demo.KeyedConfig();
+            Check(Demo.Schema.KeyedConfigLoad(cfg, golden, report), "keyed_config loads");
+            Check(!report.Malformed && report.Unknown == 0 && report.KindMismatch == 0 && report.Clamped == 0,
+                "keyed_config: silence");
+            Check(report.Duplicate == 0, "keyed_config: duplicate is the text form's counter — a wire read leaves it zero");
+            Check(cfg.Teams.Slots[(int)Demo.Team.Red].SpawnCount == 8, "keyed: Red's slot");
+            Check(GetString(cfg.Teams.Slots[(int)Demo.Team.Green].Banner, cfg.Teams.Slots[(int)Demo.Team.Green].BannerLength) == "green",
+                "keyed: Green's slot");
+            Check(cfg.Teams.Slots[(int)Demo.Team.Blue].SpawnCount == 4, "keyed: Blue's elided slot keeps its declared default");
+            Demo.HullConfig gunship = cfg.Hulls.Slots[(int)Demo.Hull.Gunship];
+            Check(gunship.Health == 250.0f && gunship.Mass == 3.5f, "keyed: nested hull");
+            Demo.TurretConfig cannon = gunship.Turrets.Slots[(int)Demo.Weapon.Cannon];
+            Check(cannon.Damage == 40.0f, "keyed: nested keyed array");
+            Check(cannon.GunnerPresent && cannon.Gunner.Reaction == 0.2f,
+                "keyed: a PRESENT all-default optional rode, and reads back present at its defaults");
+            Demo.TurretConfig mine = gunship.Turrets.Slots[(int)Demo.Weapon.Mine];
+            Check(mine.GunnerPresent && mine.Gunner.Reaction == 0.75f && mine.Gunner.Tracking, "keyed: optional with content");
+            Check(!gunship.Turrets.Slots[(int)Demo.Weapon.Missile].GunnerPresent,
+                "keyed: an untouched slot's optional is ABSENT");
+            Check(cfg.Hulls.Slots[(int)Demo.Hull.Freighter].Mass == 12.0f, "keyed: freighter");
+            Check(cfg.Scores.PerTeam[1] == 10 && cfg.Scores.PerTeam[3] == 30, "keyed: a type's keyed field");
+            Check(cfg.Scores.PerTeam[0] == 0 && cfg.Scores.PerTeam[2] == 0, "keyed: unsent slots default");
+        }
+        {
+            byte[] golden = ReadGolden("v1_seams");
+            V1.TableReport report = new V1.TableReport();
+            V1.Cfg cfg = new V1.Cfg();
+            Check(V1.Schema.CfgLoad(cfg, golden, report), "v1_seams loads");
+            Check(!report.Malformed && report.Unknown == 0 && report.Clamped == 0, "v1_seams: silence");
+            Check(cfg.Bank.Slots[1].Power == 11 && cfg.Bank.Slots[2].Power == 22 && cfg.Bank.Slots[3].Power == 33,
+                "v1_seams: keyed table slots");
+            Check(cfg.Tokens.Slots[4] == 104 && cfg.Ranks.Slots[1] == V1.Grade.Gold, "v1_seams: keyed scalars and enums");
+            Check(cfg.ExtraPresent && cfg.Extra.Factor == 6.25f, "v1_seams: optional table");
+            Check(cfg.TierPresent && cfg.Tier == 41, "v1_seams: optional scalar");
+            Check(cfg.MarkPresent && cfg.Mark == V1.Grade.Gold, "v1_seams: optional enum");
+        }
+        {
+            byte[] golden = ReadGolden("v2_seams");
+            V2.TableReport report = new V2.TableReport();
+            V2.Cfg cfg = new V2.Cfg();
+            Check(V2.Schema.CfgLoad(cfg, golden, report), "v2_seams loads");
+            Check(!report.Malformed && report.Unknown == 0, "v2_seams: silence");
+            Check(cfg.Bank.Slots[5].Power == 55, "v2_seams: the appended slot");
+            Check(!cfg.TierPresent && cfg.Tier == 0, "v2_seams: an absent optional stays absent at its default");
+            Check(cfg.Ledger.Slots[1] == 7 && cfg.Ledger.Slots[3] == 9, "v2_seams: the keyed ledger");
+        }
+        // the pointer's bytes, read by the two spellings C# carries
+        {
+            byte[] golden = ReadGolden("chain_pointer");
+            P1.TableReport r1 = new P1.TableReport();
+            P1.Chain byValue = new P1.Chain();
+            Check(P1.Schema.ChainLoad(byValue, golden, r1), "chain_pointer loads into a by-value nesting");
+            Check(!r1.Malformed && GetString(byValue.Name, byValue.NameLength) == "chain" && byValue.Link.Value == 7,
+                "*T bytes decode as T");
+            P3.TableReport r3 = new P3.TableReport();
+            P3.Chain optional = new P3.Chain();
+            Check(P3.Schema.ChainLoad(optional, golden, r3), "chain_pointer loads into an optional");
+            Check(!r3.Malformed && optional.LinkPresent && optional.Link.Value == 7, "*T bytes decode as ?T, and present");
+        }
+        {
+            byte[] golden = ReadGolden("chain_value_empty");
+            P3.TableReport r3 = new P3.TableReport();
+            P3.Chain optional = new P3.Chain();
+            optional.LinkPresent = true; // junk the reset must erase
+            Check(P3.Schema.ChainLoad(optional, golden, r3), "chain_value_empty loads into an optional");
+            Check(!optional.LinkPresent, "an elided by-value nesting reads as ABSENT through ?T — the right answer");
+        }
+        {
+            byte[] golden = ReadGolden("chain_pointer_empty");
+            P1.TableReport r1 = new P1.TableReport();
+            P1.Chain byValue = new P1.Chain();
+            Check(P1.Schema.ChainLoad(byValue, golden, r1), "chain_pointer_empty loads into a by-value nesting");
+            Check(!r1.Malformed && byValue.Link.Value == 0, "a non-null empty pointee reads as the declared default by value");
+        }
+    }
+
+    // ---- optional fields: PRESENCE decides, never content (§2.3) ----
+
+    static void TestOptionalPresence()
+    {
+        byte[] wire = new byte[1024];
+
+        // ABSENT: nothing rides at all
+        V1.Cfg none = new V1.Cfg();
+        long bytes = V1.Schema.CfgSave(none, wire);
+        Check(bytes == 2, "optional: absent writes nothing — the terminator alone");
+
+        // PRESENT and entirely DEFAULT: it rides anyway
+        V1.Cfg present = new V1.Cfg();
+        present.ExtraPresent = true;
+        long presentBytes = V1.Schema.CfgSave(present, wire);
+        Check(presentBytes > bytes, "optional: present-at-default RIDES");
+        Check(presentBytes == V1.Schema.CfgMeasure(present), "optional: measure == save");
+
+        V1.TableReport report = new V1.TableReport();
+        V1.Cfg outCfg = new V1.Cfg();
+        Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)presentBytes), report), "optional: load");
+        Check(outCfg.ExtraPresent, "optional: a field that rode is PRESENT");
+        Check(outCfg.Extra.Factor == 2.5f, "optional: present, at its declared default");
+        Check(!outCfg.TierPresent && !outCfg.MarkPresent, "optional: the fields that did not ride are ABSENT");
+
+        // a present scalar with content, and the reset erasing stale presence
+        V1.Cfg scalar = new V1.Cfg();
+        scalar.TierPresent = true;
+        scalar.Tier = 9;
+        bytes = V1.Schema.CfgSave(scalar, wire);
+        V1.TableReport r2 = new V1.TableReport();
+        V1.Cfg out2 = new V1.Cfg();
+        out2.ExtraPresent = true; // junk the reset must erase
+        out2.MarkPresent = true;
+        Check(V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, (int)bytes), r2), "optional scalar: load");
+        Check(out2.TierPresent && out2.Tier == 9, "optional scalar: present with content");
+        Check(!out2.ExtraPresent && !out2.MarkPresent, "optional: the reset erases stale presence");
+    }
+
+    // ---- enum-keyed arrays: the middle insert and the removal (§3.2) ----
+
+    static void TestKeyedEvolution()
+    {
+        byte[] wire = new byte[4096];
+
+        V1.Cfg v1 = new V1.Cfg();
+        BuildGoldenV1Seams(v1);
+        long bytes = V1.Schema.CfgSave(v1, wire);
+        Check(bytes > 0, "keyed evolution: v1 saved");
+
+        V2.TableReport report = new V2.TableReport();
+        V2.Cfg newReader = new V2.Cfg();
+        Check(V2.Schema.CfgLoad(newReader, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "keyed evolution: v2 reads v1");
+        Check(!report.Malformed, "keyed evolution: not malformed");
+        // Gamma was REMOVED in V2, so its slot is a key V2 cannot name: 2 of
+        // them (bank and tokens carry a Gamma slot; ranks does not)
+        // Gamma was REMOVED in V2, so V1's two Gamma slots (bank and ranks)
+        // are keys V2 cannot name; `a` changed kind and `ledger` changed
+        // ENCODING, positional to keyed. The C++ leg pins the same four counts
+        // on the same bytes.
+        Check(report.Unknown == 2, "keyed evolution: two Gamma slots V2 cannot name — counted, never misplaced");
+        Check(report.KindMismatch == 2, "keyed evolution: a (i32 -> f32) and ledger (positional -> keyed)");
+        Check(report.Clamped == 0, "keyed evolution: nothing clamped");
+        // BETA SLID from ordinal 2 to 3 and still lands in its own home
+        Check(newReader.Bank.Slots[(int)V2.Slot.Beta].Power == 22,
+            "keyed evolution: Beta rode by NAME — a positional encoding would have put it in Omega's slot");
+        Check(newReader.Bank.Slots[(int)V2.Slot.Alpha].Power == 11, "keyed evolution: Alpha");
+        Check(newReader.Bank.Slots[(int)V2.Slot.Omega].Power == 0,
+            "keyed evolution: Omega is new in V2 and the writer never sent it — its slot keeps its default");
+        Check(newReader.Tokens.Slots[(int)V2.Slot.Beta] == 102, "keyed evolution: a scalar slot by name");
+        Check(newReader.Tokens.Slots[(int)V2.Slot.Delta] == 104, "keyed evolution: Delta kept ordinal 4");
+
+        // the other direction: V2's data into V1
+        V2.Cfg v2 = new V2.Cfg();
+        BuildGoldenV2Seams(v2);
+        bytes = V2.Schema.CfgSave(v2, wire);
+        V1.TableReport back = new V1.TableReport();
+        V1.Cfg oldReader = new V1.Cfg();
+        Check(V1.Schema.CfgLoad(oldReader, new ReadOnlySpan<byte>(wire, 0, (int)bytes), back), "keyed evolution: v1 reads v2");
+        Check(!back.Malformed, "keyed evolution reverse: not malformed");
+        Check(oldReader.Bank.Slots[(int)V1.Slot.Beta].Power == 22, "keyed evolution reverse: Beta found its home");
+        Check(oldReader.Bank.Slots[(int)V1.Slot.Gamma].Power == 0, "keyed evolution reverse: Gamma unsent, keeps its default");
+        Check(back.Unknown == 2, "keyed evolution reverse: Omega and Sigma are names V1 does not have");
+        Check(back.KindMismatch == 2, "keyed evolution reverse: a and ledger again");
+
+        // THE NEGATIVE CONTROL, in the data: the keyed body's whole point is
+        // that Beta's slot is found by NAME. Under a positional encoding
+        // Beta (ordinal 2 in V1) would land in ordinal 2 of V2 — Omega's slot.
+        Check(newReader.Bank.Slots[(int)V2.Slot.Omega].Power != 22,
+            "keyed evolution: Beta did NOT land in the slot its old ordinal names");
+    }
+
+    // ---- keyed and positional do not decode each other (§3.2) ----
+
+    static void TestKeyedVersusPositional()
+    {
+        // `ledger` is [Grade.Max + 1]int32 in V1 (kind 14, positional) and
+        // [Grade]int32 in V2 (kind 16, keyed): the same field name, two
+        // encodings, and neither may be decoded as the other.
+        V1.TableFieldInfo v1Ledger = V1Field(V1.Schema.CfgTableType(), "ledger");
+        Check(v1Ledger != null && v1Ledger.KeyTypeName == null, "ledger: positional in V1 — no key vocabulary");
+
+        byte[] wire = new byte[4096];
+        V1.Cfg v1 = new V1.Cfg();
+        v1.Ledger[0] = 7; v1.Ledger[2] = 9;
+        long bytes = V1.Schema.CfgSave(v1, wire);
+
+        V2.TableReport report = new V2.TableReport();
+        V2.Cfg outCfg = new V2.Cfg();
+        Check(V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "keyed vs positional: load");
+        Check(report.KindMismatch == 1, "keyed vs positional: a positional body under a keyed field is a KIND MISMATCH");
+        Check(!report.Malformed, "keyed vs positional: skipped, not damaged");
+        Check(outCfg.Ledger.Slots[1] == 0 && outCfg.Ledger.Slots[2] == 0,
+            "keyed vs positional: the array is left at its declared defaults, never misdecoded");
+
+        // and the reverse
+        V2.Cfg v2 = new V2.Cfg();
+        v2.Ledger.Slots[1] = 7; v2.Ledger.Slots[3] = 9;
+        bytes = V2.Schema.CfgSave(v2, wire);
+        V1.TableReport back = new V1.TableReport();
+        V1.Cfg old = new V1.Cfg();
+        Check(V1.Schema.CfgLoad(old, new ReadOnlySpan<byte>(wire, 0, (int)bytes), back), "keyed vs positional reverse: load");
+        Check(back.KindMismatch == 1, "keyed vs positional reverse: a keyed body under a positional field is a KIND MISMATCH");
+        Check(old.Ledger[1] == 0 && old.Ledger[2] == 0, "keyed vs positional reverse: left at defaults");
+    }
+
+    // ---- a stored key of 0 is MALFORMED and STOPS THE BODY (§3.2) ----
+
+    static void TestKeyedHostileKeys()
+    {
+        V1.TableFieldInfo tokens = V1Field(V1.Schema.CfgTableType(), "tokens");
+        V1.TableFieldInfo a = V1Field(V1.Schema.CfgTableType(), "a");
+        Check(tokens != null && a != null && tokens.Kind == 4, "keyed hostile: descriptors");
+
+        // two pairs: the FIRST is a real Beta slot, the SECOND carries key 0.
+        // None is the null key and 0 is the reserved id no declared name can
+        // fold to, so the body is DAMAGED — the decode stops there, keeps what
+        // it decoded, and the parent reads on past the length.
+        byte[] wire = new byte[64];
+        int n = 0;
+        Le16(wire, n, tokens.Id); n += 2;
+        wire[n++] = 16;                       // kind 16: an enum-keyed body
+        Le32(wire, n, 5 + 2 * (2 + 4 + 4)); n += 4;
+        wire[n++] = 4;                        // element kind i32
+        Le32(wire, n, 2); n += 4;             // two pairs
+        Le16(wire, n, FieldId("Beta")); n += 2;
+        Le32(wire, n, 4); n += 4;
+        Le32(wire, n, 77); n += 4;
+        Le16(wire, n, 0); n += 2;             // KEY 0 — None's, and never legal
+        Le32(wire, n, 4); n += 4;
+        Le32(wire, n, 88); n += 4;
+        Le16(wire, n, a.Id); n += 2;          // a following field, after the body
+        wire[n++] = 4;
+        Le32(wire, n, 42); n += 4;
+        Le16(wire, n, 0); n += 2;
+
+        V1.TableReport report = new V1.TableReport();
+        V1.Cfg outCfg = new V1.Cfg();
+        Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, n), report), "key 0: load returns true");
+        Check(report.Malformed, "key 0: a None key is framing damage, not an unknown variant");
+        Check(report.Unknown == 0, "key 0: and it is NOT counted unknown — 0 names nothing, it is damage");
+        Check(outCfg.Tokens.Slots[(int)V1.Slot.Beta] == 77, "key 0: the pair decoded before the damage is kept");
+        Check(outCfg.A == 42, "key 0: the parent read on past the body's length");
+
+        // an UNKNOWN key is a different event: skipped by its length, counted
+        // unknown, and the slots around it land normally
+        n = 0;
+        Le16(wire, n, tokens.Id); n += 2;
+        wire[n++] = 16;
+        Le32(wire, n, 5 + 2 * (2 + 4 + 4)); n += 4;
+        wire[n++] = 4;
+        Le32(wire, n, 2); n += 4;
+        Le16(wire, n, 0xBEEF); n += 2;        // a key no build names
+        Le32(wire, n, 4); n += 4;
+        Le32(wire, n, 88); n += 4;
+        Le16(wire, n, FieldId("Delta")); n += 2;
+        Le32(wire, n, 4); n += 4;
+        Le32(wire, n, 99); n += 4;
+        Le16(wire, n, 0); n += 2;
+
+        V1.TableReport r2 = new V1.TableReport();
+        V1.Cfg out2 = new V1.Cfg();
+        Check(V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, n), r2), "unknown key: load");
+        Check(!r2.Malformed, "unknown key: not damage");
+        Check(r2.Unknown == 1, "unknown key: counted, the same counter an unknown field id uses");
+        Check(out2.Tokens.Slots[(int)V1.Slot.Delta] == 99, "unknown key: the slot after it decodes normally");
+    }
+
+    // ---- reflection: the presence companion and the key's vocabulary (§8) ----
+
+    static void TestSeamReflection()
+    {
+        V1.TableTypeInfo cfg = V1.Schema.CfgTableType();
+
+        V1.TableFieldInfo extra = V1Field(cfg, "extra");
+        Check(extra != null && extra.Optional, "reflection: ?T is marked optional");
+        Check(extra.Kind == 13, "reflection: an optional table body is a table kind — the framing *T and T use");
+        V1.TableFieldInfo tier = V1Field(cfg, "tier");
+        Check(tier != null && tier.Optional && tier.Kind == 4, "reflection: an optional scalar");
+        V1.TableFieldInfo grade = V1Field(cfg, "grade");
+        Check(grade != null && !grade.Optional, "reflection: a plain field is not optional");
+
+        V1.TableFieldInfo bank = V1Field(cfg, "bank");
+        Check(bank != null && bank.IsArray && !bank.Counted, "reflection: a keyed array is an array with no count");
+        Check(bank.ArrayBound == 5, "reflection: Slot.Max + 1 — None's slot plus four");
+        Check(bank.KeyTypeName == "Slot", "reflection: the keying enum is named");
+        // KeyName and KeyId take the SLOT INDEX, which IS the variant's value
+        Check(bank.KeyName(2) == "Beta" && bank.KeyId(2) == FieldId("Beta"), "reflection: slot 2 is Beta's in V1");
+        // SLOT 0 IS MARKED INVALID by the one id no declared name can hold
+        Check(bank.KeyId(0) == 0, "reflection: KeyId(0) is 0 — the reserved id marks slot 0 invalid");
+        Check(bank.KeyName(0) == "None", "reflection: KeyName(0) is None");
+        for (int slot = 1; slot < bank.ArrayBound; slot++)
+        {
+            Check(bank.KeyId((ulong)slot) != 0, "reflection: every other slot is nameable");
+        }
+
+        // a keyed array OF enums carries BOTH vocabularies
+        V1.TableFieldInfo ranks = V1Field(cfg, "ranks");
+        Check(ranks != null && ranks.KeyTypeName != null && ranks.EnumName != null, "reflection: both vocabularies");
+        Check(ranks.EnumName(2) == "Gold" && ranks.KeyName(1) == "Alpha", "reflection: element and key names");
+
+        // a POSITIONAL array names no key — the contrast the feature exists for
+        V1.TableFieldInfo tally = V1Field(cfg, "tally");
+        Check(tally != null && tally.IsArray, "reflection: tally is an array");
+        Check(tally.KeyTypeName == null && tally.KeyName == null && tally.KeyId == null,
+            "reflection: a positional array carries no key vocabulary");
+    }
+
+    // ---- the keyed indexer refuses slot 0 at runtime (§2.4) ----
+
+    static void TestKeyedIndexerRefusesNone()
+    {
+        Demo.KeyedConfig cfg = new Demo.KeyedConfig();
+        bool threw = false;
+        try
+        {
+            Demo.TeamConfig ignored = cfg.Teams[0];
+            Check(ignored == null, "unreachable");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            threw = true;
+        }
+        Check(threw, "keyed indexer: slot 0 is None's and indexing it is an error");
+
+        // and a real slot is reachable through the same indexer
+        Check(cfg.Teams[(int)Demo.Team.Blue] != null, "keyed indexer: a named slot reads");
+    }
+
     static int Main()
     {
         goldenDir = FindGoldenDir();
 
         TestGoldenWireWrite();
         TestGoldenWireRead();
+        TestGoldenSeamsWrite();
+        TestGoldenSeamsRead();
+        TestOptionalPresence();
+        TestKeyedEvolution();
+        TestKeyedVersusPositional();
+        TestKeyedHostileKeys();
+        TestSeamReflection();
+        TestKeyedIndexerRefusesNone();
         TestExactCapacity();
         TestStorageInvariants();
         TestBoundedElements();

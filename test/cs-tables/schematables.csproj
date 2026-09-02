@@ -30,6 +30,11 @@
     <Compile Include="../../build/tables-generated-cs/examples/*.cs" />
     <Compile Include="../../build/tables-generated-cs/v1/*.cs" />
     <Compile Include="../../build/tables-generated-cs/v2/*.cs" />
+    <!-- the three-way T / ?T / *T set (SPEC-TABLES.md §2.3, §3.1). P2 is
+         POINTERED, so this backend refuses it by name and the leg reads P2's
+         C++-written golden bytes instead of generating it. -->
+    <Compile Include="../../build/tables-generated-cs/p1/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/p3/*.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>

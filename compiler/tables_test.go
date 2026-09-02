@@ -64,6 +64,19 @@ table Config
 }
 `
 
+// runtimeSrc is tableSrc plus the two FIXED-CLASS spellings whose runtime
+// names would otherwise never be emitted here: an enum-keyed array brings
+// TableKeyed, and an optional brings the presence surface. It is separate
+// from tableSrc on purpose — the zero-cost gate reads tableSrc and a keyed
+// array legitimately emits a C++ class template, which that gate greps for.
+const runtimeSrc = tableSrc + `
+table Keyed
+{
+    slots [Kind]int32
+    extra ?Point
+}
+`
+
 // TestTablelessTargetsRefuseTables: a unit declaring tables is refused by name
 // under every target that carries no table backend — loudly, never by silently
 // dropping the tables. cpp and cs carry one (SPEC-TABLES.md, backend status).
@@ -522,7 +535,7 @@ func layoutIdOf(t *testing.T, header string) string {
 // puts TableReset in expression position (TableReset.A), where it resolves to
 // the method group rather than the type — CS0119.
 func TestTableRuntimeNamesAreClaimed(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, tableSrc), "cs", Options{})
+	files, err := New().Generate(unitFromSource(t, runtimeSrc), "cs", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +549,7 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 	// the unit's own namespace is capitalize(package), which starts with
 	// Table for a package named table*: it is the schema's name, not the
 	// runtime's, and claims nothing
-	namespace := capitalizeFirst(unitFromSource(t, tableSrc).Package)
+	namespace := capitalizeFirst(unitFromSource(t, runtimeSrc).Package)
 	emitted := map[string]bool{}
 	for _, data := range files {
 		for line := range strings.SplitSeq(string(data), "\n") {

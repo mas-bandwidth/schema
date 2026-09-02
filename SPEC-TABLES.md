@@ -76,8 +76,11 @@ licensed. Unexplained slowness is still a defect, in every rung.
   backends allocate inside their runtime and say so. No port contorts
   itself toward zero allocation for a variable-length table.
 
-**Backend status: C++.** Every other backend refuses a unit that declares
-tables, by name, with this document cited. Per-language backends are named
+**Backend status: C++, and C# for the FIXED class.** C++ carries both classes;
+C# carries the fixed class (§6.1) — optionals, enum-keyed arrays and all — and
+refuses a unit whose closure declares a pointer, naming its variable class as a
+follow-on. Every other backend refuses a unit that declares tables at all, by
+name, with this document cited. The remaining per-language backends are named
 follow-ons (§15).
 
 ## 1. Purpose
@@ -1315,8 +1318,12 @@ lockstep redeploy by a table edit. This independence is held by test.
 - **`| max = K` headroom on an enum in a table closure** — a headroom value
   has no name, and the table wire identifies a variant by name (§5). Key
   enums are in scope on the same terms.
-- Tables under any backend but C++ (status, above) — refused with the
+- Tables under a backend that carries none (status, above) — refused with the
   follow-on named, never silently ignored.
+- **A VARIABLE-LENGTH table under the C# backend** — the C# port carries the
+  fixed class; its variable class (pointers, arena, region, cooked) is a named
+  follow-on, and a pointered unit is refused naming the tables, never emitted
+  with them missing.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
   outside a table body; an array of pointers (§15); a specified default
@@ -1615,14 +1622,18 @@ together.
   - **Lifting the depth cap**, so a pointer chain's length stops being a
     nesting depth (§3.1).
   - **Arrays of pointers** (§2.1).
-- **Per-language backends beyond C++** (the refusal in §11 names this). The
-  first is C#, because the dogfood's game engine reads the same config and
+- **Per-language backends beyond C++ and C#** (the refusal in §11 names this).
+  C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12), and the FIXED class is what that
   needs: storage structs, measure/save/load over caller-owned buffers, the
-  report, the reflection descriptors, `?T`, `[E]T`, name-hashed vocabularies
-  and the text form. A port mirrors this document and invents no contract of
+  report, the reflection descriptors, `?T`, `[E]T` and name-hashed
+  vocabularies — the text form and the variable class are still ahead of it.
+  A port mirrors this document and invents no contract of
   its own; where a language forces a shape — a pseudo-union for a language
   with no native union — the ladder above already says what is licensed.
+- **The C# VARIABLE class** — the arena, the region, the cooked form and the
+  pointer surface, on top of the fixed class C# carries today (§11). And the
+  C# text form (§16), whose walk C++ carries alone.
 - **The variable class in a ported backend** — the arena, the region, the
   cooked form and the pointer surface — after that port's fixed class.
 - **The TEXT FORM for the variable class** (§16.1) — a second walker that
