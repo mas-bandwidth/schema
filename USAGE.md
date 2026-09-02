@@ -1016,6 +1016,83 @@ Two sentences that go together: **a tolerant wire load COPIES the blob** — a
 gigabyte on the wire path is a gigabyte read — and **the cooked path is the
 zero-copy one**, where a pointer into a mapped file IS the asset.
 
+### Sections: a header, strided arrays, and one block
+
+*Specified, not yet implemented — no backend emits this; a unit that declares
+a section is refused by name today (SPEC-TABLES.md §2.7, §19).*
+
+Some data is not a file and not a message. It is a BLOCK you rebuild every
+frame and hand to something in another language, which points at it and reads
+it in place: a header, and sections it names, each a strided array of one
+record type. A `section` field declares exactly that.
+
+```
+table RenderFrame
+{
+    cameras section [..1]RenderCamera
+    ships   section [..MaxShips]RenderShip
+    lasers  section [..MaxLasers]RenderLaser | stride = 128
+}
+```
+
+The field's storage is sixteen bytes — an offset, a count and a stride — and
+the records live out of line in the block, after the header. The point of the
+stride is speed across the language boundary: records sit at a fixed, declared
+pitch that both generated sides know, so the consumer points at one and reads
+it with no marshalling and no copy.
+
+**Building it goes wide, with nothing to synchronise.** Declare the counts,
+lay the block out once, then let N workers fill disjoint records:
+
+```cpp
+RenderFrameBlockStorage storage;              // max-sized allocation, made once
+
+RenderFrameCounts counts = {};
+counts.ships = numShips;
+
+RenderFrameBlock block;
+if ( !RenderFrameBlockBegin( block, storage, counts ) )   // a count is over its maximum
+    return;
+
+RenderShip * ships = RenderFrameShips( block );   // the section's typed base
+
+// worker w handles [begin, end) — no lock, no atomic, no allocation
+for ( int i = begin; i < end; i++ )
+    ships[i].position = ...;
+
+int64_t bytes = RenderFrameBlockBytes( block );   // the used extent, for the handoff
+```
+
+**Reading it is one check and then pointers.** The consumer opens the block,
+which verifies the magic, the byte order, the layout id and the extent, and
+then iterates each section at the stride the header gives it:
+
+```csharp
+if ( !RenderFrame.BlockOpen( out RenderFrameBlock block, pointer, bytes ) )
+    return;
+
+foreach ( ref readonly RenderShip ship in block.Ships )
+    Draw( ship );
+```
+
+**Three things to know before you reach for one.**
+
+- **A block has no wire.** It is not tolerant, it has no read report, and a
+  section cannot be saved or loaded. Its records are ordinary fixed tables and
+  keep their own wire; only the header is wire-less. If you want data that
+  outlives the build that wrote it, you want a table (above), not a block.
+- **Both sides are generated and the compiler holds the contract.** Every
+  record's size and every field's offset is asserted by generated code in both
+  languages, against the layout the compiler computed. A field that moves is a
+  build error, not a garbled frame.
+- **Leave the stride alone unless you want headroom.** Derived, it is the
+  element's `sizeof`, and the consumer gets a contiguous span over the section.
+  Declaring a bigger one buys room to append fields later — an older consumer
+  reads its prefix at the same pitch — and costs that span. Appending a field
+  at the end of a record, appending a section, or raising a maximum are the
+  edits a block absorbs; anything that moves an existing offset is a break, and
+  the tables baseline refuses it.
+
 ### The cooked form: point at a file instead of parsing it
 
 The wire is generic — it allocates, walks and parses, and any build reads any
