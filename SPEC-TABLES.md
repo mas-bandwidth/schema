@@ -733,6 +733,14 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   its field, or bytes left over inside a field make the whole table
   **malformed**: every pointer in the save reads null and one event is
   counted. A reader never salvages part of a numbering.
+
+  **So resolution cannot be inline**, and that is a consequence worth
+  stating rather than leaving to be discovered: the node table is written
+  last (below) and found by id, so a reader has already read `head = 2`
+  before it learns whether the table can be read at all. A conforming
+  reader therefore either DEFERS every index until the table is known
+  good, or nulls every index it stored when the table turns out
+  malformed. No index ever resolves against a numbering that failed.
 - **A save's node bodies have NO aggregate ceiling**, and the only thing
   record-aligned chunking cannot frame is a single record larger than a
   field — which a node body may not be in any case (below).
@@ -741,10 +749,16 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   variable-length table nested by value inside another (§2.2), and not a
   record. A save has one numbering and every index anywhere in it names
   that one.
-- This implementation writes the fields LAST in the root body, after the
-  root's own declared fields, so a reader that gives up partway still has
-  them. Field order is not part of the contract (§3), so a reader finds
-  them by id.
+- This implementation writes the node-table fields LAST in the root body,
+  after the root's own declared fields, so that **a reader which gives up
+  inside the node table has already decoded the ROOT'S OWN FIELDS** — the
+  node table is the large part and the part most likely to be damaged,
+  and a reader that dies a gigabyte into it still holds the root's real
+  values. It buys nothing for a reader that gives up EARLIER, which is
+  the ordinary case for a build that does not have kind `17` (§14): that
+  one stops at the first pointer field and never reaches these at all.
+  Field order is not part of the contract (§3), so a reader finds them by
+  id.
 - A root that reaches no nodes writes none of them, like every other
   empty thing (§3).
 - **The record scan is authoritative.** `node_count` is data from the
