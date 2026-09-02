@@ -165,6 +165,7 @@ list and what the gates prove.
 | Document | What's in it |
 |---|---|
 | **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
+| **[USECASES.md](USECASES.md)** | The use cases schema is designed for — the form that serves each one, the contract it carries, and the proof it has today. |
 | **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks, and how to read them honestly. |
 | **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
 | **[COMPARISON.md](COMPARISON.md)** | The same packet in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
