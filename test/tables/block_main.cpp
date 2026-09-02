@@ -489,15 +489,29 @@ int main( int argc, char ** argv )
         wide.projection->version = RenderVersion;
 
         const int num_workers = 4;
+        std::atomic<int> started( 0 );
         std::vector<std::thread> workers;
         workers.reserve( num_workers );
         for ( int w = 0; w < num_workers; w++ )
         {
-            workers.push_back( std::thread( [&wide, &counts, w, race]() {
-                // disjoint index ranges, by ownership — or, under --race, the
-                // whole array from every worker, which is the control
-                if ( race ) { fill_block( wide, counts, 0, 1 ); }
-                else { fill_block( wide, counts, w, num_workers ); }
+            workers.push_back( std::thread( [&wide, &counts, w, race, &started]() {
+                if ( race )
+                {
+                    // THE CONTROL: every worker writes ONE row, after a start
+                    // barrier, many times. Overlapping RANGES would be a race
+                    // too, but whether a sanitizer observes one then depends on
+                    // how the machine happened to schedule four threads over
+                    // seven thousand rows — and a control that depends on that
+                    // is not a control. Contending on one address, from threads
+                    // that start together, is the same defect made certain.
+                    started.fetch_add( 1, std::memory_order_relaxed );
+                    while ( started.load( std::memory_order_relaxed ) < num_workers ) {}
+                    RenderShip * ships = RenderFrameShips( wide );
+                    for ( int i = 0; i < 20000; i++ ) { fill_ship( ships[0], w ); }
+                    return;
+                }
+                // disjoint index ranges, by ownership
+                fill_block( wide, counts, w, num_workers );
             } ) );
         }
         for ( size_t i = 0; i < workers.size(); i++ ) { workers[i].join(); }

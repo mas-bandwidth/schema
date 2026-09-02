@@ -368,9 +368,15 @@ build/schema_test_block_tsan: build/tables-generated/.stamp test/tables/block_ma
 		$(BLOCK_INCLUDES) test/tables/block_main.cpp $(BLOCK_SOURCES) -o $@
 
 # Its NEGATIVE CONTROL, because a green TSan run otherwise proves only that the
-# leg ran: --race makes every worker fill the WHOLE of every array instead of
-# its own disjoint share, and the leg must go red on the write-write race that
-# creates.
+# leg ran: --race has every worker write ONE row, after a start barrier, many
+# times, and the leg must go red on the write-write race that creates.
+#
+# Overlapping RANGES would be a race too, and that is what this control did at
+# first — but whether a sanitizer observes one then depends on how the machine
+# happened to schedule four threads over seven thousand rows, and it passed on
+# this bench and failed on CI's. Contending on one address from threads that
+# start together is the same defect made certain, which is what a control has
+# to be.
 .PHONY: tables-block-race-negative-control
 tables-block-race-negative-control: build/schema_test_block_tsan
 	@if ./build/schema_test_block_tsan --race > build/block-race.log 2>&1; then \
