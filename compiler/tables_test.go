@@ -438,7 +438,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	// directly recursive — and a recursive always_inline does not compile under
 	// gcc. Every line carrying the qualifier must therefore be a non-template
 	// one, or the emitter has emitted source no gcc build can compile.
-	for _, line := range strings.Split(header, "\n") {
+	for line := range strings.SplitSeq(header, "\n") {
 		if strings.Contains(line, "PROBE_TABLE_INLINE") && strings.Contains(line, "template") {
 			t.Errorf("the force-inline qualifier reached a template — recursion is possible there: %q", line)
 		}
