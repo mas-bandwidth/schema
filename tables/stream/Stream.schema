@@ -2,6 +2,8 @@
 // (docs/SPEC-TABLES.md §2.2, §2.6): the mode runs through arms, so Feed is
 // variable-length because Frame's chunk arm is, and the set arm is a by-value
 // edge every pointer walk descends — the numbering, the pack and the cook.
+// Feed also holds the two ARRAY OF POINTERS spellings (§2.1): a counted one and
+// a fixed one, whose slots share nodes with each other and with the chain.
 package streamdemo
 
 table Header
@@ -25,4 +27,6 @@ table Feed
 {
     id    uint32
     frame Frame
+    parts [..4] * Chunk
+    pair  [2] * Chunk
 }

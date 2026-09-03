@@ -5941,6 +5941,7 @@ static void test_message_golden_reload()
     reload_table_golden( "m2_open", tblm2::MsgLoad, tblm2::MsgSave );
     reload_stream_golden( "stream_chain" );
     reload_stream_golden( "stream_header" );
+    reload_stream_golden( "stream_parts" );
 }
 
 // a cook is written for the build that opens it (§7): the host's own order,
@@ -6203,6 +6204,172 @@ static void test_message_variable_arm()
     CHECK( !cyclic.Lock() );
 }
 
+// ---- ARRAYS OF POINTERS: `[..N]*T` and `[N]*T` (docs/SPEC-TABLES.md §2.1, §3.1) ----
+//
+// A slot per element, each a node index on the wire; a counted array rides its
+// live slots, null as 0; a fixed array holding only null elides, and one
+// non-null slot makes it ride whole. Slots share nodes with each other and
+// with every other pointer, on the wire, in a region and in a cook.
+
+// the chain, plus parts = [a, null, c] and pair = [null, c]: a is the chain's
+// first node and c is named twice, so both sharing shapes cross every form
+static void build_stream_parts( streamdemo::FeedBuilder & builder )
+{
+    build_stream_chain( builder );
+    streamdemo::Feed * root = builder.GetRoot();
+    streamdemo::TableSlot<streamdemo::Chunk> c = builder.Alloc<streamdemo::Chunk>();
+    c->data[0] = 9;
+    c->data_length = 1;
+    root->parts_count = 3;
+    root->parts[0] = root->frame.chunk.next; // shared with the chain
+    root->parts[2] = c;
+    root->pair[1] = c;                       // shared with parts[2]
+}
+
+static void check_stream_parts( const streamdemo::Feed * feed )
+{
+    CHECK( feed->parts_count == 3 );
+    const streamdemo::Chunk * chain_first = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, feed->frame.chunk.next );
+    const streamdemo::Chunk * p0 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, feed->parts[0] );
+    const streamdemo::Chunk * p1 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, feed->parts[1] );
+    const streamdemo::Chunk * p2 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, feed->parts[2] );
+    const streamdemo::Chunk * q0 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, feed->pair[0] );
+    const streamdemo::Chunk * q1 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, feed->pair[1] );
+    CHECK( p0 != NULL && p0 == chain_first && p0->data[0] == 2 ); // ONE node, named from the chain and the array
+    CHECK( p1 == NULL );
+    CHECK( p2 != NULL && p2->data[0] == 9 );
+    CHECK( q0 == NULL );
+    CHECK( q1 == p2 );                                            // shared between the two arrays
+}
+
+static void test_pointer_arrays()
+{
+    static uint8_t wire[4096];
+    static uint8_t again[4096];
+    streamdemo::FeedBuilder builder;
+    build_stream_parts( builder );
+    int64_t need = streamdemo::FeedMeasure( builder );
+    int64_t wrote = streamdemo::FeedSave( builder, wire, sizeof( wire ) );
+    CHECK( need > 0 && need == wrote );
+    pin_table_golden( "stream_parts", wire, wrote );
+
+    CHECK( builder.Lock() );
+    check_stream_parts( builder.AsConst() );
+    CHECK( streamdemo::FeedSave( builder.AsConst(), again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
+    std::vector<uint8_t> region( (size_t) region_need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    if ( loaded == NULL ) return;
+    check_stream_parts( loaded );
+    CHECK( streamdemo::FeedSave( loaded, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the text: an array of the pointer row — objects, null, and `&node` for
+    // the two shared nodes — and back to the same bytes
+    int64_t size = streamdemo::FeedToJsonMeasure( loaded );
+    CHECK( size > 0 );
+    std::vector<char> text( (size_t) size + 1 );
+    CHECK( streamdemo::FeedToJson( loaded, text.data(), size ) == size );
+    text[(size_t) size] = 0;
+    CHECK( strstr( text.data(), "\"&node\"" ) != NULL );
+    CHECK( strstr( text.data(), "null" ) != NULL );
+    streamdemo::FeedBuilder from_text;
+    streamdemo::TableReport text_report;
+    CHECK( streamdemo::FeedFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
+    CHECK( streamdemo::FeedSave( from_text, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the cook: every slot a self-relative delta, the shared nodes once
+    int64_t cook_bytes = streamdemo::FeedCookMeasure( loaded );
+    CHECK( cook_bytes > 0 );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( streamdemo::FeedCook( loaded, cook, (uint64_t) cook_bytes, host_byte_order( streamdemo::TableByteOrder::Little, streamdemo::TableByteOrder::Big ) ) );
+    const streamdemo::Feed * opened = streamdemo::FeedOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        check_stream_parts( opened );
+        CHECK( streamdemo::FeedSave( opened, again, sizeof( again ) ) == wrote );
+        CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+    }
+    free( cook );
+
+    // the reflection: an array of pointers describes its element as kind 17
+    const streamdemo::TableTypeInfo * type = streamdemo::FeedTableType();
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+    {
+        const streamdemo::TableFieldInfo * f = &type->fields[i];
+        if ( strcmp( f->name, "parts" ) == 0 )
+        {
+            CHECK( f->kind == 17 && f->is_array && f->counted && f->array_bound == 4 );
+            CHECK( f->elem_size == sizeof( streamdemo::TableRef ) && f->table == streamdemo::ChunkTableType() );
+        }
+        if ( strcmp( f->name, "pair" ) == 0 )
+        {
+            CHECK( f->kind == 17 && f->is_array && !f->counted && f->array_bound == 2 );
+        }
+    }
+}
+
+// the elision rules at the empty end (§3.1): an empty counted array and an
+// all-null fixed array write nothing, so a Feed with neither is byte-identical
+// to one declared before the arrays existed; a counted array of null slots is
+// content and rides
+static void test_pointer_arrays_elision()
+{
+    static uint8_t wire[4096];
+    streamdemo::FeedBuilder plain;
+    build_stream_chain( plain );
+    int64_t wrote = streamdemo::FeedSave( plain, wire, sizeof( wire ) );
+    const int64_t pinned = read_table_golden( "stream_chain" );
+    CHECK( pinned == wrote && memcmp( golden_pinned, wire, (size_t) wrote ) == 0 );
+
+    streamdemo::FeedBuilder nulls;
+    build_stream_chain( nulls );
+    nulls.GetRoot()->parts_count = 2; // two live slots, both null: the count is content
+    int64_t with_nulls = streamdemo::FeedSave( nulls, wire, sizeof( wire ) );
+    CHECK( with_nulls == wrote + 3 + 4 + 5 + 4 * 2 );
+    int64_t region_need = streamdemo::FeedLoadMeasure( wire, with_nulls );
+    std::vector<uint8_t> region( (size_t) region_need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, with_nulls, &report );
+    CHECK( loaded != NULL && !report.malformed && loaded->parts_count == 2 );
+    if ( loaded != NULL )
+    {
+        CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->parts[0] ) == NULL );
+        CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->parts[1] ) == NULL );
+    }
+}
+
+// the element-kind separation (§3, §3.1): `parts` arriving as an array of
+// uint32 — element kind 8 where this reader declares 17 — is a kind mismatch,
+// counted, and the field stays empty; nothing reads a number as an index
+static void test_pointer_arrays_element_kind_mismatch()
+{
+    uint8_t wire[64];
+    size_t n = 0;
+    le16( wire + n, field_id( "parts" ) ); n += 2;
+    wire[n++] = 14;                       // kind: array
+    le32( wire + n, 5 + 4 ); n += 4;      // L: element kind, N, one element
+    wire[n++] = 8;                        // element kind: u32, not a node index
+    le32( wire + n, 1 ); n += 4;
+    le32( wire + n, 5 ); n += 4;
+    le16( wire + n, 0 ); n += 2;          // terminator
+    int64_t region_need = streamdemo::FeedLoadMeasure( wire, (int64_t) n );
+    CHECK( region_need > 0 );
+    std::vector<uint8_t> region( (size_t) region_need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, (int64_t) n, &report );
+    CHECK( loaded != NULL && !report.malformed );
+    CHECK( report.kind_mismatch == 1 );
+    if ( loaded != NULL ) CHECK( loaded->parts_count == 0 );
+}
+
 int main()
 {
     test_golden_wire();
@@ -6294,6 +6461,9 @@ int main()
     test_message_reflection();
     test_message_json_hostile();
     test_message_variable_arm();
+    test_pointer_arrays();
+    test_pointer_arrays_elision();
+    test_pointer_arrays_element_kind_mismatch();
     test_json_fuzz_tokenizer();
 
     if ( failures > 0 )

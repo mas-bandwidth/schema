@@ -27,12 +27,18 @@ type decodeState struct {
 // resolve places one node index in a pointer slot. Every failure is one of §4's
 // events and none is new; in every one of them the pointer stays null.
 func (r *wireReader) resolve(fv *tabletext.Field, index uint32) {
-	fv.Cell.Node = nil
+	r.resolveCell(&fv.Cell, fv.Def, index)
+}
+
+// resolveCell resolves one pointer SLOT — a field's cell, or an element of an
+// array of pointers (§2.1) — against the numbering.
+func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint32) {
+	cell.Node = nil
 	st := r.st
 	if st == nil || !st.good {
 		return // a numbering that failed resolves nothing
 	}
-	target := fv.Def.Type.Name
+	target := f.Type.Name
 	switch {
 	case index == ir.NodeIndexNull:
 		return
@@ -44,7 +50,7 @@ func (r *wireReader) resolve(fv *tabletext.Field, index uint32) {
 			r.report.KindMismatch++
 			return
 		}
-		fv.Cell.Node = st.root
+		cell.Node = st.root
 	case int(index)-2 < len(st.nodes):
 		node := st.nodes[index-2]
 		if node == nil {
@@ -57,7 +63,7 @@ func (r *wireReader) resolve(fv *tabletext.Field, index uint32) {
 			r.report.KindMismatch++
 			return
 		}
-		fv.Cell.Node = node
+		cell.Node = node
 	default:
 		// an index above node_count + 1
 		r.report.Malformed = true

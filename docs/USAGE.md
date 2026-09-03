@@ -1495,8 +1495,9 @@ table Scene
 ```
 
 A pointer targets a `table`, never a `type` — and lives in a table body,
-never a type body. Arrays of pointers, and a specified default on a pointer,
-are refused by name.
+never a type body. `[..N]*T` and `[N]*T` are arrays of pointer slots, each
+null until assigned and free to share a node with any other slot; a keyed
+`[E]*T` and a specified default on a pointer are refused by name.
 
 **Do not reach for a pointer to make a field optional.** Every field on this
 wire is already optional — absence is the reader's default — and a group of

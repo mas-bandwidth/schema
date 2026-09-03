@@ -1039,7 +1039,7 @@ namespace streamdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xbdbae7f5d8e3c67bull;
+static const uint64_t BuildVersion = 0x31296384cfd5612full;
 
 } // namespace streamdemo
 
@@ -1341,6 +1341,9 @@ struct Frame
 struct Feed {
     uint32_t id = 0;
     Frame frame;
+    TableRef parts[4]; // [..4]*Chunk — used count beside it; every slot null until assigned
+    int32_t parts_count = 0;
+    TableRef pair[2]; // [2]*Chunk — every slot null until assigned
 };
 
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
@@ -1366,6 +1369,9 @@ inline void FeedReset( Feed & value )
 {
     value.id = 0;
     value.frame = Frame();
+    for ( int32_t i = 0; i < 4; i++ ) { value.parts[i].value = 0; } // [4]*Chunk — every slot null
+    value.parts_count = 0;
+    for ( int32_t i = 0; i < 2; i++ ) { value.pair[i].value = 0; } // [2]*Chunk — every slot null
 }
 
 // ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----
@@ -1675,6 +1681,13 @@ inline int64_t FeedMeasureBody( const Ctx & ctx, const Feed & value )
         }
         default: return -1; // invalid tag — the write side refuses it too
     }
+    if ( value.parts_count < 0 || value.parts_count > 4 ) { return -1; } // storage invariant
+    if ( value.parts_count > 0 ) { bytes += 3 + 4 + 5 + 4 * (int64_t) value.parts_count; } // parts: [..4]*Chunk
+    {
+        bool any_pair = false;
+        for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
+        if ( any_pair ) { bytes += 3 + 4 + 5 + 4 * 2; } // pair: [2]*Chunk
+    }
     return bytes;
 }
 
@@ -1705,6 +1718,41 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             default: return false; // write validates the tag before it rides
         }
         w.patch32( len_at_frame, uint32_t( w.offset - len_at_frame - 4 ) );
+    }
+    if ( value.parts_count < 0 || value.parts_count > 4 ) { return false; } // storage invariant
+    if ( value.parts_count > 0 )
+    {
+        w.put16( 0xfc18 ); w.put8( 14 ); // parts
+        w.put32( uint32_t( 5 + 4 * (int64_t) value.parts_count ) );
+        w.put8( 17 ); w.put32( uint32_t( value.parts_count ) ); // element kind 17: node indices
+        for ( int32_t i = 0; i < value.parts_count; i++ )
+        {
+            {
+                const Chunk * slot_pointee = ChunkAt( ctx, value.parts[i] );
+                uint32_t slot_index = 0;
+                if ( slot_pointee != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee, slot_index ) ) { return false; }
+                w.put32( slot_index );
+            }
+        }
+    }
+    {
+        bool any_pair = false;
+        for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
+        if ( any_pair )
+        {
+        w.put16( 0x26f5 ); w.put8( 14 ); // pair
+        w.put32( uint32_t( 5 + 4 * (int64_t) 2 ) );
+        w.put8( 17 ); w.put32( uint32_t( 2 ) ); // element kind 17: node indices
+        for ( int32_t i = 0; i < 2; i++ )
+        {
+            {
+                const Chunk * slot_pointee = ChunkAt( ctx, value.pair[i] );
+                uint32_t slot_index = 0;
+                if ( slot_pointee != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee, slot_index ) ) { return false; }
+                w.put32( slot_index );
+            }
+        }
+        }
     }
     return !w.overflow;
 }
@@ -1780,6 +1828,75 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                     }
                 }
                 r.offset += body_len;
+                break;
+            }
+            case 0xfc18: // parts
+            {
+                if ( kind != 14 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                uint32_t body_len = r.get32();
+                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + body_len;
+                if ( body_len >= 5 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint32_t count = r.get32();
+                    if ( elem_kind != 17 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    uint32_t keep = count;
+                    if ( keep > 4 ) { keep = 4; r.report->clamped++; }
+                    // elements are BOUNDED by the field body: a count the length
+                    // cannot cover keeps the decoded prefix, flags malformed, and
+                    // the parent continues at the next field — following fields'
+                    // bytes are never fabricated into elements
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );
+                    uint32_t decoded = 0;
+                    for ( uint32_t i = 0; i < keep; i++ )
+                    {
+                        if ( !sub.has( 4 ) ) { r.report->malformed = true; break; }
+                        TableNodeResolve( nodes, value.parts[i], sub.get32(), 0xcf4368dcf951e082ull, r.report ); // *Chunk
+                        decoded = i + 1;
+                    }
+                    value.parts_count = (int32_t) decoded;
+                }
+                r.offset = body_end; // excess elements and slack skip via the length
+                break;
+            }
+            case 0x26f5: // pair
+            {
+                if ( kind != 14 )
+                {
+                    r.report->kind_mismatch++;
+                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    break;
+                }
+                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
+                uint32_t body_len = r.get32();
+                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
+                int64_t body_end = r.offset + body_len;
+                if ( body_len >= 5 )
+                {
+                    uint8_t elem_kind = r.get8();
+                    uint32_t count = r.get32();
+                    if ( elem_kind != 17 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    uint32_t keep = count;
+                    if ( keep > 2 ) { keep = 2; r.report->clamped++; }
+                    // elements are BOUNDED by the field body: a count the length
+                    // cannot cover keeps the decoded prefix, flags malformed, and
+                    // the parent continues at the next field — following fields'
+                    // bytes are never fabricated into elements
+                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report );
+                    for ( uint32_t i = 0; i < keep; i++ )
+                    {
+                        if ( !sub.has( 4 ) ) { r.report->malformed = true; break; }
+                        TableNodeResolve( nodes, value.pair[i], sub.get32(), 0xcf4368dcf951e082ull, r.report ); // *Chunk
+                    }
+                }
+                r.offset = body_end; // excess elements and slack skip via the length
                 break;
             }
             case 0xffff:
@@ -1912,6 +2029,64 @@ inline bool ChunkPack( const Ctx & ctx, TablePackMap & seen, const Chunk & src, 
 template <typename Ctx>
 inline bool FeedNumber( const Ctx & ctx, TableNumbering & numbering, const Feed & value )
 {
+    for ( int32_t i = 0; i < value.parts_count && i < 4; i++ ) // parts: [..4]*Chunk
+    {
+    {
+        const Chunk * pointee = ChunkAt( ctx, value.parts[i] ); // parts
+        if ( pointee != NULL )
+        {
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,
+                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+            }
+            else
+            {
+                TableNodeEntry node;
+                node.node = (const void *) pointee;
+                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
+                if ( !ChunkNumber( ctx, numbering, *pointee ) ) { return false; }
+                TablePackMapClose( numbering.seen, (const void *) pointee, slot );
+            }
+        }
+    }
+    }
+    for ( int32_t i = 0; i < 2; i++ ) // pair: [2]*Chunk
+    {
+    {
+        const Chunk * pointee = ChunkAt( ctx, value.pair[i] ); // pair
+        if ( pointee != NULL )
+        {
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,
+                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+            }
+            else
+            {
+                TableNodeEntry node;
+                node.node = (const void *) pointee;
+                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
+                if ( !ChunkNumber( ctx, numbering, *pointee ) ) { return false; }
+                TablePackMapClose( numbering.seen, (const void *) pointee, slot );
+            }
+        }
+    }
+    }
     switch ( value.frame.type ) // frame: the set arm is the by-value edge
     {
         case FrameType::Chunk:
@@ -1932,6 +2107,54 @@ template <typename Ctx>
 inline int64_t FeedPackMeasure( const Ctx & ctx, TablePackMap & seen, const Feed & value )
 {
     int64_t bytes = 0;
+    for ( int32_t i = 0; i < value.parts_count && i < 4; i++ ) // parts: [..4]*Chunk
+    {
+    {
+        const Chunk * pointee = ChunkAt( ctx, value.parts[i] ); // parts
+        if ( pointee != NULL )
+        {
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = ChunkPackMeasure( ctx, seen, *pointee );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( Chunk ) ) + inner;
+            }
+        }
+    }
+    }
+    for ( int32_t i = 0; i < 2; i++ ) // pair: [2]*Chunk
+    {
+    {
+        const Chunk * pointee = ChunkAt( ctx, value.pair[i] ); // pair
+        if ( pointee != NULL )
+        {
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = ChunkPackMeasure( ctx, seen, *pointee );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( Chunk ) ) + inner;
+            }
+        }
+    }
+    }
     switch ( value.frame.type ) // frame: the set arm is the by-value edge
     {
         case FrameType::Chunk:
@@ -1959,6 +2182,64 @@ template <typename Ctx>
 inline bool FeedPack( const Ctx & ctx, TablePackMap & seen, const Feed & src, Feed & dst, uint8_t * base, int64_t capacity, int64_t & used )
 {
     memcpy( (void *) &dst, (const void *) &src, sizeof( Feed ) ); // trivially copyable, by construction
+    for ( int32_t i = 0; i < src.parts_count && i < 4; i++ ) // parts: [..4]*Chunk
+    {
+    {
+        dst.parts[i].value = 0; // parts
+        const Chunk * pointee = ChunkAt( ctx, src.parts[i] );
+        if ( pointee != NULL )
+        {
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.parts[i].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.parts[i] ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( Chunk ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( Chunk ) );
+                Chunk * child = new ( base + at ) Chunk; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.parts[i].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.parts[i] );
+                if ( !ChunkPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
+        }
+    }
+    }
+    for ( int32_t i = 0; i < 2; i++ ) // pair: [2]*Chunk
+    {
+    {
+        dst.pair[i].value = 0; // pair
+        const Chunk * pointee = ChunkAt( ctx, src.pair[i] );
+        if ( pointee != NULL )
+        {
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.pair[i].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.pair[i] ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( Chunk ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( Chunk ) );
+                Chunk * child = new ( base + at ) Chunk; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.pair[i].value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.pair[i] );
+                if ( !ChunkPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
+        }
+    }
+    }
     switch ( src.frame.type ) // frame: the set arm is the by-value edge
     {
         case FrameType::Chunk:
@@ -2961,6 +3242,15 @@ template <typename Ctx> inline bool FeedCookBody( const Ctx & ctx, const TableCo
             default: break; // every byte outside the set arm stays zero
         }
     }
+    for ( int32_t i = 0; i < 4; i++ ) // parts: an array of pointers, every slot
+    {
+        if ( !table_cook_ref( region, at + 40 + i * 8, (const void *) ChunkAt( ctx, value.parts[ i ] ), order ) ) { return false; }
+    }
+    table_cook_put( at + 72, (uint64_t) (uint32_t) value.parts_count, 4, order );
+    for ( int32_t i = 0; i < 2; i++ ) // pair: an array of pointers, every slot
+    {
+        if ( !table_cook_ref( region, at + 80 + i * 8, (const void *) ChunkAt( ctx, value.pair[ i ] ), order ) ) { return false; }
+    }
     return true;
 }
 
@@ -3195,7 +3485,7 @@ inline bool FeedCookLayout( const TableNumbering & numbering, TableCookRegion & 
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    int64_t offset = 40; // the root, at zero
+    int64_t offset = 96; // the root, at zero
     int64_t align = 8;
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
@@ -3387,10 +3677,12 @@ static_assert( sizeof( Chunk ) == 24, "Chunk's sizeof moved: the build version w
 static_assert( alignof( Chunk ) == 8, "Chunk's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Chunk, data ) == 0, "Chunk's field data moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Chunk, next ) == 16, "Chunk's field next moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Feed ) == 40, "Feed's sizeof moved: the build version was taken over 40, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Feed ) == 96, "Feed's sizeof moved: the build version was taken over 96, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Feed ) == 8, "Feed's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Feed, id ) == 0, "Feed's field id moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Feed, frame ) == 8, "Feed's field frame moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Feed, parts ) == 40, "Feed's field parts moved: the build version was taken over offset 40 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Feed, pair ) == 80, "Feed's field pair moved: the build version was taken over offset 80 (docs/SPEC-TABLES.md §20.3)" );
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
@@ -3423,8 +3715,10 @@ inline const TableTypeInfo * ChunkTableType() { return &ChunkTableInfo; }
 inline const TableFieldInfo FeedTableFields[] = {
     { "id", "id", "uint32", 0x5dd8, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Feed, id ), (uint32_t) sizeof( Feed::id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "frame", "frame", "Frame", 0xa3ac, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Feed, frame ), (uint32_t) sizeof( Feed::frame ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "header"; case 2: return "chunk"; default: return "???"; } }, +[]( uint64_t v ) -> uint16_t { switch ( v ) { case 0: return 0; case 1: return 0x30e8; case 2: return 0xbd7d; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL }, { (uint32_t) offsetof( Frame, header ), &HeaderTableInfo }, { (uint32_t) offsetof( Frame, chunk ), &ChunkTableInfo }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Frame, type ), (uint32_t) sizeof( Frame::type ), arms }; return &info; }, "" },
+    { "parts", "parts", "Chunk", 0xfc18, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, true, false, 4, (uint32_t) offsetof( Feed, parts ), (uint32_t) sizeof( Feed::parts[0] ), (uint32_t) offsetof( Feed, parts_count ), 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "pair", "pair", "Chunk", 0x26f5, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 2, (uint32_t) offsetof( Feed, pair ), (uint32_t) sizeof( Feed::pair[0] ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
-inline const TableTypeInfo FeedTableInfo = { "Feed", (uint32_t) sizeof( Feed ), 2, FeedTableFields, +[]( void * p ) { FeedReset( *(Feed *) p ); }, true };
+inline const TableTypeInfo FeedTableInfo = { "Feed", (uint32_t) sizeof( Feed ), 4, FeedTableFields, +[]( void * p ) { FeedReset( *(Feed *) p ); }, true };
 inline const TableTypeInfo * FeedTableType() { return &FeedTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

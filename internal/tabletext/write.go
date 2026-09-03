@@ -89,7 +89,7 @@ func (m *Model) countInstance(g *graphOut, inst *Instance, open map[*Instance]bo
 func (m *Model) countField(g *graphOut, fv *Field, open map[*Instance]bool) error {
 	f := fv.Def
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return m.countNode(g, fv.Cell.Node, open)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		return nil
@@ -116,6 +116,9 @@ func (m *Model) countField(g *graphOut, fv *Field, open map[*Instance]bool) erro
 }
 
 func (m *Model) countCell(g *graphOut, cell *Cell, f *ir.Field, open map[*Instance]bool) error {
+	if f.Type.Pointer {
+		return m.countNode(g, cell.Node, open) // an element of an array of pointers (§2.1)
+	}
 	if un := UnionOf(f); un != nil {
 		if cell.U != 0 && cell.Tab != nil {
 			return m.countInstance(g, cell.Tab, open)

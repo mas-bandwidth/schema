@@ -102,7 +102,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 	id := ir.TableFieldId(f)
 	kind := ir.TableScalarKind(f)
 
-	if f.Type.Pointer {
+	if f.Type.Pointer && f.Array == ir.ArrayNone {
 		// A pointer to a table rides as `id (u16), kind = 17, index (u32)`
 		// (docs/SPEC-TABLES.md §3.1). NULL IS INDEX 0, AND NULL IS ELIDED: absence
 		// and null are one value, because a pointer takes no specified default.
@@ -370,6 +370,10 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		}
 		w.u32(uint32(len(body)))
 		w.raw(body)
+	case ir.TableKindPointer:
+		// an element of an ARRAY OF POINTERS is a node index like any pointer
+		// field's payload (docs/SPEC-TABLES.md §3.1): null rides as 0 in its slot
+		w.u32(e.g.Index(cell.Node))
 	default:
 		if ir.TableKindWide(kind) {
 			// the raw integer at the kind's width, two's complement, little-endian —
@@ -410,6 +414,9 @@ func variantWireId(e *ir.Enum, value uint64, field string) (uint16, error) {
 // default is not written at all, which is why old readers and new writers meet
 // cleanly (§3).
 func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
+	if f.Type.Pointer {
+		return cell.Node == nil // null is a pointer slot's only default (§2.1)
+	}
 	def := e.m.FieldDefaultCell(f)
 	switch {
 	case f.Type.Kind == ir.TBool:

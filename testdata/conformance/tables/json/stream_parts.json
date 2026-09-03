@@ -4,6 +4,7 @@
     "chunk": {
       "data": "AQ==",
       "next": {
+        "&node": 1,
         "data": "Ag==",
         "next": {
           "data": "Aw==",
@@ -12,9 +13,21 @@
       }
     }
   },
-  "parts": [],
+  "parts": [
+    {
+      "&node": 1
+    },
+    null,
+    {
+      "&node": 2,
+      "data": "CQ==",
+      "next": null
+    }
+  ],
   "pair": [
     null,
-    null
+    {
+      "&node": 2
+    }
   ]
 }

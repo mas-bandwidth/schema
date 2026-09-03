@@ -143,8 +143,6 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\nenum E { A }\ntable Tab { e *E }\n"},
 		{name: "a pointer inside a type body is refused by name", want: "pointers are a TABLE construct",
 			src: "package t\ntable Tab { x int32 }\ntype P { t *Tab }\n"},
-		{name: "an array of pointers is a named follow-on", want: "an array of pointers is a named follow-on",
-			src: "package t\ntable Node { x int32 }\ntable Tab { kids [..4]*Node }\n"},
 		{name: "a pointer field takes no specified default", want: "a pointer field takes no specified default",
 			src: "package t\ntable Node { x int32 }\ntable Tab { head *Node = 0 }\n"},
 		// every generated name-first spelling is claimed, including the ones a
@@ -207,7 +205,7 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\nenum E { A, B }\ntable Tab { xs [..E]int32 }\n"},
 		{name: "a ranged enum-keyed array is refused by name", want: "a bounded enum-keyed array is refused",
 			src: "package t\nenum E { A, B }\ntable Tab { xs [1..E]int32 }\n"},
-		{name: "a keyed array of pointers stays a named follow-on", want: "an array of pointers is a named follow-on",
+		{name: "a keyed array of pointers stays a named follow-on", want: "an enum-keyed array of pointers",
 			src: "package t\nenum E { A, B }\ntable Node { x int32 }\ntable Tab { kids [E]*Node }\n"},
 		{name: "an optional keyed array is refused as an array", want: "? on an ARRAY is a named follow-on",
 			src: "package t\nenum E { A, B }\ntable Tab { xs ?[E]int32 }\n"},
@@ -931,5 +929,34 @@ func TestEveryScalarRidesInATable(t *testing.T) {
 	}
 	if u.Structs["Inner"].Fields[0].DefInt.String() != "1073741824" {
 		t.Errorf("the fixed default is held RAW: %v", u.Structs["Inner"].Fields[0].DefInt)
+// TestPointerArraysAreLegal is §2.1's bounded spellings: `[N]*T` and `[..N]*T`
+// are pointer slots per element, they make their holder variable-length, and
+// their element rides under kind 17.
+func TestPointerArraysAreLegal(t *testing.T) {
+	u := buildUnit(t, `package t
+table Node { x int32 }
+table Tab
+{
+    kids  [..4]*Node
+    pair  [2]*Node
+}
+`)
+	tab := u.Tables["Tab"]
+	if tab == nil || len(tab.Fields) != 2 {
+		t.Fatalf("Tab did not resolve: %+v", tab)
+	}
+	for _, f := range tab.Fields {
+		if !f.Type.Pointer || f.Array == ir.ArrayNone {
+			t.Fatalf("%s: not an array of pointers: %+v", f.Name, f.Type)
+		}
+		if ir.TableFieldKind(f) != ir.TableKindArray || ir.TableElemKind(f) != ir.TableKindPointer {
+			t.Fatalf("%s: kinds %d/%d, want 14/17", f.Name, ir.TableFieldKind(f), ir.TableElemKind(f))
+		}
+	}
+	if v := ir.VariableTables(u); !v["Tab"] || v["Node"] {
+		t.Fatalf("an array of pointers did not make its holder variable: %v", v)
+	}
+	if pieces := ir.FieldPieces(u, tab.Fields[1], 0); len(pieces) != 1 || pieces[0].Size != 16 {
+		t.Fatalf("[2]*Node is two eight-byte slots, got %+v", pieces)
 	}
 }
