@@ -381,21 +381,13 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("  }\n}\n\n")
 }
 
-// refusal renders the throw a codec makes when a value violates a storage
+// refusalExpr renders the throw a codec makes when a value violates a storage
 // invariant — a count or length past its bound, an enum value or union tag no
-// variant names. C++ and C# answer -1 for these; the JavaScript shape is an
-// exception, because the value is the CALLER's and a value the wire cannot
-// carry is the caller's error — the report is for what the DATA does, never
-// for what the caller did. The message names the table and the field.
-func (g *tableGen) refusal(f *ir.Field, what string) string {
-	owner := ""
-	if g.owner != nil {
-		owner = g.owner.Name + "."
-	}
-	return fmt.Sprintf("throw new RangeError(%q);", owner+f.Name+": "+what)
-}
-
-// refusalExpr is refusal with one runtime value interpolated into the message.
+// variant names — with the offending value interpolated into the message. C++
+// and C# answer -1 for these; the JavaScript shape is an exception, because
+// the value is the CALLER's and a value the wire cannot carry is the caller's
+// error — the report is for what the DATA does, never for what the caller
+// did. The message names the table and the field.
 func (g *tableGen) refusalExpr(f *ir.Field, what, expr string) string {
 	owner := ""
 	if g.owner != nil {
