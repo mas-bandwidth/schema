@@ -49,6 +49,7 @@ unit graphdemo tables/pointers
 unit blockdemo tables/block
 unit messagedemo tables/messages
 unit streamdemo tables/stream
+unit blobdemo  tables/blobs
 unit tblm1     test/tables/M1.schema
 unit tblm2     test/tables/M2.schema
 
@@ -120,6 +121,17 @@ instance stream_parts         streamdemo  Feed        testdata/wire/tables/strea
 # on. The wire is the TOOL's (`schema pack` of the text), and the reference is
 # held to it.
 instance stream_arm_first     streamdemo  Feed        testdata/wire/tables/stream_arm_first.bin
+
+# THE BYTE BUFFER corpus (§2.5): a blob at its used size, pointed at. blob_small
+# carries every field once; blob_empty holds a present blob and string of length
+# zero beside null slots — two values at the empty end; blob_large is one blob
+# past a 64 KiB slab. blob_shared is `no-text` BY THE FORM'S OWN RULE: a blob's
+# text is a string, which has no first key to carry `&node`, so a blob two slots
+# name has no spelling and the writer refuses the graph (§16.7).
+instance blob_small           blobdemo    Catalog     testdata/wire/tables/blob_small.bin
+instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_empty.bin
+instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
+instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -252,6 +264,10 @@ cook-write stream_chain           testdata/conformance/tables/cook-write/stream_
 cook-write stream_header          testdata/conformance/tables/cook-write/stream_header.cook testdata/conformance/tables/cook-write/stream_header-be.cook
 cook-write stream_parts           testdata/conformance/tables/cook-write/stream_parts.cook testdata/conformance/tables/cook-write/stream_parts-be.cook
 cook-write stream_arm_first       testdata/conformance/tables/cook-write/stream_arm_first.cook testdata/conformance/tables/cook-write/stream_arm_first-be.cook
+cook-write blob_small             testdata/conformance/tables/cook-write/blob_small.cook testdata/conformance/tables/cook-write/blob_small-be.cook
+cook-write blob_empty             testdata/conformance/tables/cook-write/blob_empty.cook testdata/conformance/tables/cook-write/blob_empty-be.cook
+cook-write blob_large             testdata/conformance/tables/cook-write/blob_large.cook testdata/conformance/tables/cook-write/blob_large-be.cook
+cook-write blob_shared            testdata/conformance/tables/cook-write/blob_shared.cook testdata/conformance/tables/cook-write/blob_shared-be.cook
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
@@ -568,3 +584,13 @@ json-hostile uint128-over             scalars SimState testdata/conformance/tabl
 json-hostile uint128-negative         scalars SimState testdata/conformance/tables/json-hostile/uint128-negative         0,0,1,0,false
 json-hostile int128-saturated-below   scalars SimState testdata/conformance/tables/json-hostile/int128-saturated-below   0,0,2,0,false
 json-hostile fixed-nested-type        scalars SimState testdata/conformance/tables/json-hostile/fixed-nested-type        0,1,1,0,false
+
+# THE BYTE BUFFER's text rules (§2.5, §16.2): `""` and `null` are two values;
+# a body that is not base64, or not a string at all, is `kind_mismatch` with
+# the reference left null; and an `&node` label inside a value a mismatch
+# SKIPPED defines nothing, so a later reference to it is one more mismatch.
+json-hostile blob-empty-string            blobdemo Catalog testdata/conformance/tables/json-hostile/blob-empty-string            0,0,0,0,false
+json-hostile blob-null                    blobdemo Catalog testdata/conformance/tables/json-hostile/blob-null                    0,0,0,0,false
+json-hostile blob-not-base64              blobdemo Catalog testdata/conformance/tables/json-hostile/blob-not-base64              0,1,0,0,false
+json-hostile blob-wrong-shape             blobdemo Catalog testdata/conformance/tables/json-hostile/blob-wrong-shape             0,2,0,0,false
+json-hostile blob-label-in-skipped-value  blobdemo Catalog testdata/conformance/tables/json-hostile/blob-label-in-skipped-value  0,2,0,0,false

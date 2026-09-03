@@ -56,6 +56,9 @@
 #include "StreamTable.h"
 #include "M1Table.h"
 #include "M2Table.h"
+// the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
+// pointed at — a variable root like any pointered one
+#include "AssetsTable.h"
 
 // ---------------------------------------------------------------------------
 // the manifest, read exactly as testdata/conformance/tables/FORMAT.md states it
@@ -320,6 +323,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "tblp2", tblp2, Chain ),
     VARCODEC( "streamdemo", streamdemo, Feed ),
+    VARCODEC( "blobdemo", blobdemo, Catalog ),
 };
 
 static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )
