@@ -2,14 +2,13 @@
 //
 // This is the ordinary shape of a real unit and it is what the dogfood has:
 // the constants live in their own file, that file sorts first, and
-// `ir.ProtocolIdHome` therefore names a file with no `table` in it. A C#
-// backend that emitted the unit's shared block runtime into the PROTOCOL ID's
-// home would emit it into a file it never writes, and nothing in the unit's
-// block output would compile — every reference to the runtime undefined.
+// `ir.ProtocolIdHome` therefore names a file with no `table` in it — a file
+// that gets no Block source at all. A shared runtime emitted there would be
+// emitted into a file nothing writes, and every reference to it undefined.
 //
-// The runtime goes to the BLOCK HOME instead: the first file that declares a
-// table with a block form (§19.2). This file is here to make that a corpus
-// fact rather than a claim.
+// The unit's shared C# runtime goes to <Package>Block.cs — BlockhomeBlock.cs,
+// emitted for the UNIT because no file here is named for the package (§19.2).
+// This file is here to make that a corpus fact rather than a claim.
 
 package blockhome
 

@@ -1,6 +1,8 @@
-// Frame.schema — the block home: the first file that declares a table with a
-// block form. The unit's shared C# block runtime and every blittable record
-// land in its Block.cs (§19.2).
+// Frame.schema — the first file that declares a table with a block form, which
+// is what the C# block home USED to be. The unit's shared runtime does not land
+// here: it lands in <Package>Block.cs, named by the package and independent of
+// file order (§19.2). What FrameBlock.cs carries is what belongs to a
+// declaration — each table's projection record and its block handle.
 
 package blockhome
 

@@ -6,6 +6,9 @@
 // bytes, no serialize dependency. Tables version by field id, never by the
 // unit's protocol id.
 //
+// the unit's shared runtime lives here — <Package>Table.cs, one home per unit, named by
+// the package and independent of file order (docs/SPEC-TABLES.md §19.2).
+//
 // Measure/Save/Load are name-first free functions on Schema (C# has no
 // namespace-level functions): <Name>Measure gives the exact wire size,
 // <Name>Save writes exactly that many bytes into the caller's span,

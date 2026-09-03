@@ -1079,8 +1079,8 @@ points.
 
 You reach for it by INCLUDING it. The form is generated on the side, in
 `<Base>Block.h` / `<Base>Block.cpp` beside the unit's `<Base>Table.h`, and in
-`<Base>Block.cs` for C# — so a project that never blocks a table compiles
-none of it, and the table headers are the same bytes either way:
+`<Base>Block.cs` plus the unit's one runtime home, `<Package>Block.cs`, for C#
+— so a project that never blocks a table compiles none of it, and the table headers are the same bytes either way:
 
 ```cpp
 #include "RenderTable.h"                      // the ordinary table surface
@@ -1164,7 +1164,7 @@ walk any block's rows without a type per table.
 
 The generated C# is UNSAFE by nature, not by taste — a block is memory another
 language wrote, and pointing at it without a copy is the whole point — so a
-project that compiles `<Base>Block.cs` sets `AllowUnsafeBlocks`. Nothing on
+project that compiles a unit's `*Block.cs` sets `AllowUnsafeBlocks`. Nothing on
 this side allocates: the bytes are yours, from wherever you got them.
 
 **Three things to know before you reach for one.**
@@ -1285,7 +1285,7 @@ record is the same blittable `<Name>Row` struct the block form uses**, from the
 same layout model, so the two accelerators share one set of records; the layout
 is checked once, at start-up, and throws naming the record and the field if your
 runtime disagrees. And **a pointered unit's C# WIRE surface is refused by name**:
-you get `<Base>Cook.cs` and `<Base>Block.cs` and no `<Base>Table.cs`, because the
+you get the unit's `*Cook.cs` and `*Block.cs` and no Table sources at all, because the
 codec for the variable class is a named follow-on and neither accelerator needs
 one. Your cooked assets open in full; `Measure`, `Save` and `Load` for those
 tables are C++'s or the tool's for now.
@@ -1707,7 +1707,7 @@ Schema.ShipConfigToJson(ship, buffer);
 ```
 
 There is nothing extra to add to a C# build: a unit's files compile together,
-so the walk is already in the `<Base>Table.cs` you compile for the wire
+so the walk is already in the `<Package>Table.cs` you compile for the wire
 codecs. The read path allocates nothing beyond the instance you passed in —
 strings land in the field's own `byte[]` storage, and keys, names and number
 tokens are handled in stack buffers.

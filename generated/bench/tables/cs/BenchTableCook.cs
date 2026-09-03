@@ -4,6 +4,9 @@
 // AGPL-3.0, its output is not.
 // package benchtable — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half.
 //
+// the unit's shared runtime lives here — <Package>Cook.cs, one home per unit, named by
+// the package and independent of file order (§19.2).
+//
 // A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format and not a wire. Tooling writes
 // a region for one BUILD VERSION and that build points at it: Open matches the
 // header and returns the root where it lies. There is no walk, no fix-up and no

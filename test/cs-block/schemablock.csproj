@@ -36,11 +36,12 @@
     <Compile Include="src/*.cs" />
     <Compile Include="$(BlockGeneratedDir)/*.cs" />
     <!-- The BLOCK HOME unit (tables/blockhome): its protocol-id home declares
-         no table and one of its files declares only `type`s. Compiling it here
-         IS the gate — a backend that put the shared runtime in the protocol
-         id's home, or a blittable record in its declaring file, emits a unit
-         that does not compile at all, and this project is where that is
-         caught. -->
+         no table, one of its files declares only `type`s, and no file is named
+         for the package — so its runtime home, BlockhomeBlock.cs, is emitted
+         for the UNIT (docs/SPEC-TABLES.md §19.2). Compiling it here IS the gate — a
+         backend that left the shared runtime without a file, or put a blittable
+         record in its declaring file, emits a unit that does not compile at
+         all, and this project is where that is caught. -->
     <Compile Include="$(BlockHomeGeneratedDir)/*.cs" />
     <!-- EVERY corpus unit the C# backend emits a block form for, so §19.3's
          layout contract is a GENERATION-TIME gate and not only a throw the

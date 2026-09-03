@@ -159,9 +159,11 @@ follow-ons (§15).
 form is an ABI between two languages and one language alone cannot hold the
 gate it exists for (§12.1). C++ emits `<Base>Block.h` (the projection, the
 generated layout asserts, the fill path inline) and `<Base>Block.cpp` (the
-open path and the block descriptors); C# emits `<Base>Block.cs` (the blittable
-records with their generated padding, the layout check, the block handle with
-its span accessors, and the same descriptors). The Table headers carry not one
+open path and the block descriptors); C# emits `<Base>Block.cs` per declaring
+file (the block handle with its span accessors and the table's projection
+record) beside `<Package>Block.cs`, the unit's one runtime home (§19.2), which
+carries the blittable records with their generated padding, the layout check
+and the same descriptors. The Table headers carry not one
 symbol of it, and the build fails if one appears.
 
 **What is absent, and by absence rather than by refusal** (§2.7): a
@@ -2151,10 +2153,9 @@ the wire, and keeps the flexibility that comes with it.
 
   **WHERE IT IS EMITTED is §19.2's rule, for §19.2's reason**: C# has no include
   guard and one assembly sees every file, so the unit's shared cook runtime —
-  the descriptors, the layout check and the constants — is emitted ONCE, into the
-  `<Base>Cook.cs` of the first file that declares a table this backend can open,
-  and every blittable record the block form does not already carry is emitted
-  there too. The unit's BUILD VERSION constant is defined by whichever
+  the descriptors, the layout check and the constants — is emitted ONCE, into
+  `<Package>Cook.cs`, and every blittable record the block form does not already
+  carry is emitted there too. The unit's BUILD VERSION constant is defined by whichever
   accelerator's runtime the unit has: the block form's when it has one, the
   cook's otherwise. `Schema` is one partial class across a unit's files, so
   exactly one definition of each constant is the whole requirement.
@@ -5595,23 +5596,34 @@ problem: it collides only inside the unit that declares it, which is exactly
 where §11's claim reaches.
 
 **WHERE THE C# SURFACE IS EMITTED, because C# has no include guard and the
-answer is not "beside the declaration".** A unit's shared block runtime — the
-triple, the row view, the descriptors, the layout check and the constants — is
-emitted ONCE, into the Block file of the first file that declares a table WITH
-a block form, and every blittable record the FORM TOUCHES is emitted there too.
-The COOK's C# reader follows the same rule in its own home and for its own
-closure (§7), taking the records the block form already carries rather than
-spelling them again — a cooked record IS the blittable row, and one declaration
-cannot be two types. It
-is deliberately NOT the protocol id's home, which in an ordinary unit is a
-constants file that declares no table and therefore gets no Block file at all;
-and a record is deliberately NOT emitted beside its declaration, because a
-record a block form reaches is often declared in a file of `type`s alone, which
-gets no Block file either. Both roads lead to a unit that does not compile,
-with every reference undefined and no diagnostic. One assembly sees every file,
-so "emitted once, anywhere it exists" is the whole requirement. **C++ takes the
-other road for its own reason**: a C++ consumer may include one `<Base>Block.h`
-alone, so its primitives ride in EVERY one behind a `#ifndef` guard.
+answer is not "beside the declaration".** **The unit's shared runtime lives in
+`<Package><Surface>.cs`** — the table runtime and the text form's walk (§16) in
+`<Package>Table.cs`, the block runtime and every blittable record the FORM
+TOUCHES in `<Package>Block.cs`, the cook runtime and the records the block form
+does not already carry in `<Package>Cook.cs`. One home per surface per unit,
+named by the PACKAGE, and it is emitted for the unit when no file of the unit
+is named for the package — so the home always exists and no reference to it can
+dangle. A file basename that differs from the package only by case is the same
+name on a case-insensitive filesystem, so the match is case-insensitive and the
+file's own spelling wins.
+
+The home is the package and NOT A FILE because every file-order rule relocates
+the runtime: the day a unit gains a file that sorts earlier, ~2,000 lines move
+to it — correct output, and a diff nobody can read. It is likewise deliberately
+NOT the protocol id's home, which in an ordinary unit is a constants file that
+declares no table and therefore gets no Block file at all; and a record is
+deliberately NOT emitted beside its declaration, because a record a block form
+reaches is often declared in a file of `type`s alone, which gets no Block file
+either. Both of those roads lead to a unit that does not compile, with every
+reference undefined and no diagnostic. What stays per DECLARATION is what
+belongs to one: a table's projection record and its block handle ride in its
+declaring file's `<Base>Block.cs`. The cook takes the records the block form
+already carries rather than spelling them again — a cooked record IS the
+blittable row, and one declaration cannot be two types. One assembly sees every
+file, so "emitted once, anywhere it exists" is the whole requirement. **C++
+takes the other road for its own reason**: a C++ consumer may include one
+`<Base>Block.h` alone, so its primitives ride in EVERY one behind a `#ifndef`
+guard.
 
 **Three spellings a reader has to have, because a consumer written from this
 page alone needs all three.** `Open` is a static on the block type, taking the
@@ -5894,9 +5906,9 @@ header, `schema cook-check` reads it back, and the C++ `<Root>Open` and the C#
 
 1. **The constant rides in the TABLE-bearing sources only.** §20.7 asks for
    one beside `ProtocolId` in every backend; today the two block backends emit
-   it into `<Base>Block.h` / `<Base>Block.cs`, the C++ table backend emits it
+   it into `<Base>Block.h` / `<Package>Block.cs`, the C++ table backend emits it
    into every `<Base>Table.h` — where the cook's reader is — the C# cook emits
-   it into `<Base>Cook.cs` when the unit has no block form to carry it already,
+   it into `<Package>Cook.cs` when the unit has no block form to carry it already,
    and the seven backends that carry no table emit none. The C# Table sources
    carry none, which is the zero-cost gate (§2.2) rather than an omission: the
    C# cook reader is in the accelerator's own file. **In C# exactly one

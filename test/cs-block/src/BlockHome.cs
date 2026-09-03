@@ -28,7 +28,8 @@ static class BlockHomeGate
     {
         bool ok = true;
 
-        // the shared RUNTIME, which the protocol id's home would have hidden.
+        // the shared RUNTIME, which lives in this unit's BlockhomeBlock.cs —
+        // emitted for the unit, since no file here is named for the package.
         // Read through locals, because these are compile-time constants and a
         // comparison against one folds to an unreachable branch.
         ulong magic = Schema.TableBlockMagic;

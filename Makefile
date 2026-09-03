@@ -1214,14 +1214,18 @@ tables-block-layout-model-negative-control: bin/schema
 # never written when that file declares only `type`s. Neither produced a
 # diagnostic; both produced a unit that does not compile.
 #
-# tables/blockhome has exactly that shape, and test/cs-block compiles it. This
-# puts the defect back — through `go build -overlay`, so no tracked file is
-# written — and requires the compile to FAIL.
+# tables/blockhome has exactly that shape, and test/cs-block compiles it.
+#
+# THE HOME IS <Package>Block.cs NOW (docs/SPEC-TABLES.md §19.2), emitted FOR THE UNIT
+# when no file of the unit is named for the package — which is what makes the
+# home unconditional and this class of defect structural rather than a rule to
+# keep. The sabotage is therefore the one line that guarantees it: take away
+# the emitted-for-the-unit home, and the runtime and every blittable record
+# have nowhere to land. The compile must FAIL.
 .PHONY: tables-block-home-negative-control
 tables-block-home-negative-control: bin/schema
 	@mkdir -p build
-	@sed -e 's|home := blockHome(u, blocks)|home := ir.ProtocolIdHome(u) // SABOTAGED|' \
-	     -e 's|if len(f.Tables) == 0 \&\& f.Base != home {|if len(f.Tables) == 0 {|' \
+	@sed -e 's|if home != "" \&\& !runtimeWritten {|if false \&\& !runtimeWritten { // SABOTAGED: no home is emitted for the unit|' \
 		internal/codegen/cstable/block.go > build/csblock-declaring-file.gotext
 	@cmp -s build/csblock-declaring-file.gotext internal/codegen/cstable/block.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
@@ -1232,12 +1236,65 @@ tables-block-home-negative-control: bin/schema
 	@./build/schema-csblock-sabotaged generate --lang cs --out build/blockhome-sabotage tables/blockhome
 	@if ( cd test/cs-block && dotnet build -v q --nologo -p:BlockHomeGeneratedDir=../../build/blockhome-sabotage ) \
 		> build/blockhome-sabotage.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the unit compiled with its block runtime emitted into a file nothing writes"; \
+		echo "NEGATIVE CONTROL FAILED: the unit compiled with its block runtime emitted nowhere"; \
 		cat build/blockhome-sabotage.log; exit 1; \
 	fi
 	@grep -qE "CS0103|CS0234|CS0246" build/blockhome-sabotage.log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on an undefined name"; tail -20 build/blockhome-sabotage.log; exit 1; }
-	@echo "block home negative control: emitting the runtime into the protocol id's home leaves the unit uncompilable"
+	@echo "block home negative control: a unit with no home for its block runtime does not compile"
+
+# THE RUNTIME HOME IS THE PACKAGE (docs/SPEC-TABLES.md §19.2). A unit's shared C#
+# runtime — the table runtime and the text form's walk in <Package>Table.cs, the
+# block runtime and its blittable records in <Package>Block.cs, the cook runtime
+# in <Package>Cook.cs — is emitted ONCE, and every earlier rule picked WHERE off
+# the file order. Adding a file that sorts earlier then relocated ~2,000 lines:
+# correct output, and a diff nobody can read (issue #347).
+#
+# The gate adds exactly such a file to a COPY of tables/examples — Aaa.schema,
+# ahead of Guarded.schema — and requires the homes not to move. The table
+# runtime is byte-identical across the two trees as well as same-named: it
+# carries no build version (the zero-cost gate above), so a unit gaining a table
+# cannot move it. The block and cook runtimes DO carry the build version, so
+# their names are what is checked.
+.PHONY: tables-runtime-home
+tables-runtime-home: bin/schema
+	@rm -rf build/runtime-home && mkdir -p build/runtime-home/src
+	@cp tables/examples/*.schema build/runtime-home/src/
+	@printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' > build/runtime-home/src/Aaa.schema
+	@./bin/schema generate --lang cs --out build/runtime-home/base tables/examples
+	@./bin/schema generate --lang cs --out build/runtime-home/added build/runtime-home/src
+	@for surface in Table Block Cook; do \
+		base=$$(cd build/runtime-home/base && grep -l "the unit's shared runtime lives here" *$$surface.cs); \
+		added=$$(cd build/runtime-home/added && grep -l "the unit's shared runtime lives here" *$$surface.cs); \
+		if [ "$$base" != "Tabledemo$$surface.cs" ] || [ "$$added" != "Tabledemo$$surface.cs" ]; then \
+			echo "RUNTIME HOME GATE FAILED: the $$surface runtime is in $$base before the added file and $$added after — expected Tabledemo$$surface.cs both times"; exit 1; \
+		fi; \
+	done
+	@cmp -s build/runtime-home/base/TabledemoTable.cs build/runtime-home/added/TabledemoTable.cs || \
+		{ echo "RUNTIME HOME GATE FAILED: the table runtime's bytes moved when the unit gained a file"; exit 1; }
+	@echo "runtime home gate: the table, block and cook runtimes stay in <Package><Surface>.cs when an earlier-sorting file joins the unit"
+
+# The NEGATIVE CONTROL: put the file-order rule back — the table runtime to the
+# protocol id's home — and the home must MOVE when the earlier-sorting file
+# joins. A gate that has never gone red is watching nothing.
+.PHONY: tables-runtime-home-negative-control
+tables-runtime-home-negative-control: bin/schema tables-runtime-home
+	@sed 's|home := capitalize(u.Package)|home := ir.ProtocolIdHome(u) // SABOTAGED: back to the file order|' \
+		internal/codegen/cstable/cstable.go > build/csruntime-fileorder.gotext
+	@grep -q SABOTAGED build/csruntime-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cstable/cstable.go":"%s/build/csruntime-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/csruntime-overlay.json
+	@go build -overlay=build/csruntime-overlay.json -o build/schema-csruntime-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home/base-sabotage build/runtime-home/added-sabotage
+	@./build/schema-csruntime-sabotaged generate --lang cs --out build/runtime-home/base-sabotage tables/examples
+	@./build/schema-csruntime-sabotaged generate --lang cs --out build/runtime-home/added-sabotage build/runtime-home/src
+	@base=$$(cd build/runtime-home/base-sabotage && grep -l "the unit's shared runtime lives here" *Table.cs); \
+	 added=$$(cd build/runtime-home/added-sabotage && grep -l "the unit's shared runtime lives here" *Table.cs); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the runtime in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control: the file-order rule moves the runtime from $$base to $$added"
 
 # DEFECT B's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.7's DEPTH ONE, BOUNDED ONLY).
 # The dogfood found the C# blittable emitter projecting a bounded array INSIDE
@@ -2047,6 +2104,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-block-layout-model-negative-control
 	$(MAKE) tables-block-race-negative-control
 	$(MAKE) tables-block-home-negative-control
+	$(MAKE) tables-runtime-home
+	$(MAKE) tables-runtime-home-negative-control
 	$(MAKE) tables-block-inline-array-negative-control
 	$(MAKE) tables-pack
 	$(MAKE) tables-pack-negative
