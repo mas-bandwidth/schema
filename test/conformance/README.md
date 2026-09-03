@@ -180,24 +180,28 @@ parts:
 
 | leg | wall |
 |---|---|
-| all five, 268 cases per leg | 13.8 s |
-| `go` alone | 0.57 s |
-| `rust` alone | 0.59 s |
-| `cpp` alone | 0.65 s |
-| `java` alone | 2.2 s |
-| `cs` alone | 11.7 s |
+| all six, 268 cases per leg | PENDING |
+| `c` alone | PENDING |
+| `go` alone | PENDING |
+| `rust` alone | PENDING |
+| `cpp` alone | PENDING |
+| `java` alone | PENDING |
+| `cs` alone | PENDING |
 
 **The cost is per-PROCESS, not per-case, and the numbers say so plainly.** The
 battery grew from 80 cases per leg to 268 — the cook's 111 forgeries, the 66
 hostile trees, a sixth cook, two block row dumps and the two FOREIGN surfaces —
-and the three NATIVE legs still answer all 268 each in under a second. The C#
+and the four NATIVE legs still answer all 268 each in under a second. The C#
 leg starts a runtime once per surface plus once per cook, because
 `test/cs-cook`'s dump takes one root per invocation, and that is where nearly
-the whole wall is: of the 1,340 cases in this table, the 804 the native legs
-answer cost under two seconds between them, the 268 Java answers cost two, and
-the last 268 cost twelve.
+the whole wall is: of the 1,608 cases in this table, the 1,072 the native legs
+answer cost PENDING between them, the 268 Java answers cost PENDING, and the
+last 268 cost PENDING.
 
-**Three native legs cost under two seconds together.** Adding the two
+**The C leg answers all 268 from one native binary**, which is the cheapest
+shape the contract allows and what puts its row where it is.
+
+**Four native legs cost under two seconds together.** Adding the two
 foreign surfaces cost each native leg two more execs of a binary that starts in
 milliseconds, and cost the C# leg two more runtime starts — which is the whole
 shape of this table in one edit. A leg that answers every surface in ONE binary
