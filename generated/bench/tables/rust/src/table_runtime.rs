@@ -934,12 +934,11 @@ fn table_json_write_signed(out: &mut TableJsonOut, value: i64) {
 // below -4 or at least the precision and style f otherwise, then strip the
 // fraction's trailing zeros and a bare decimal point. The exponent field
 // carries a sign and at least two digits.
-// THE NUMBER SINK, and it is a stack buffer because the alternative allocated.
-// This formatter used to build its digits with format!, which cost 74
-// allocations per ToJson of the corpus's root — against USAGE's own promise
-// that the text path allocates nothing beyond the instance the caller passed.
-// core::fmt writes a float through its own stack buffers, so a SINK that does
-// not allocate makes the whole formatter allocation-free.
+// THE NUMBER SINK, and it is a STACK buffer because docs/USAGE.md's promise is
+// that the text path allocates nothing beyond the instance and the buffers the
+// caller passed. core::fmt writes a float through its own stack buffers, so a
+// sink that does not allocate leaves the whole formatter allocation-free, and
+// make tables-rust-alloc-audit is what counts it.
 //
 // SIXTY-FOUR BYTES, the C++ walker's own char text[64], and it is provably
 // enough rather than generously chosen: style f is used only when the decimal

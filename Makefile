@@ -683,10 +683,11 @@ MIRI_MAX_SEED_BYTES ?= 4224
 # saving is opt-in.
 #
 # The gate is that all four combinations BUILD: a wire-only consumer, a cook
-# consumer, a block consumer, and everything. It is not a formality — the
-# first cut of it found two real couplings, the unit's BUILD VERSION and its
-# blittable RECORDS, each of which belongs to neither accelerator and had been
-# sitting inside one of them.
+# consumer, a block consumer, and everything. It is not a formality — a fact
+# that belongs to NEITHER accelerator, the unit's BUILD VERSION and its
+# blittable RECORDS among them, is unreachable from a wire-only build unless it
+# has an always-compiled home of its own, and only building that combination
+# says so.
 .PHONY: tables-rust-features
 tables-rust-features: build/tables-generated-rust/.stamp
 	@for unit in build/tables-generated-rust/*/; do \
@@ -771,10 +772,9 @@ tables-rust-alloc-audit: conformance
 # ITS NEGATIVE CONTROL, and the soak's. A gate that has never fired proves
 # nothing, and the LIVE-BYTE gate could not fire on this class at all: live
 # bytes answer "does this leak", and a path that allocates and frees the same
-# bytes every iteration reads +0 there forever — which is exactly how 74
-# allocations per ToJson sat under a green soak. SOAK_SABOTAGE puts ONE
-# allocation per iteration inside the measured region and both gates must go
-# red on it.
+# bytes every iteration reads +0 there forever, however many allocations it
+# makes. SOAK_SABOTAGE puts ONE allocation per iteration inside the measured
+# region and both gates must go red on it.
 .PHONY: tables-rust-alloc-negative-control
 tables-rust-alloc-negative-control: conformance
 	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt alloc-audit \
