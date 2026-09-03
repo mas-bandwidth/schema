@@ -169,6 +169,16 @@ named follow-on there for the same reason it is absent from the block form: a
 Rust union is a real enum with no committed payload layout, and the
 `#[repr(C)] union` twin is a pass of its own.
 
+**BIG-ENDIAN, per backend.** The C++ leg proves the wire, the block form and
+the cooked form crossing the byte order on a real big-endian target under an
+emulator. The Rust surface is CHECKED for that same target — the pinned
+toolchain cross-compiles to it — which is more than a compile: every cooked
+record's and every block projection's layout contract is a const assert over
+`size_of` and `offset_of`, so the check EVALUATES the whole layout model for
+big-endian. The RUN-time half is a named follow-on: the codecs are
+order-neutral by construction, and a cross-and-emulate Rust leg would turn that
+from a construction into a proof.
+
 **The BLOCK FORM (§2.7, §19) is live in C++, C# and Rust**, and it took C++ and
 C# TOGETHER to land, because the form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits

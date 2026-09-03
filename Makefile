@@ -600,6 +600,39 @@ build/cook-fuzz/.stamp: $(wildcard test/cookgen/*.go) $(SCHEMAS_TABLES_POINTERS)
 MIRI_N ?= 8
 MIRI_MAX_SEED_BYTES ?= 4224
 
+# THE RUST TABLE SURFACE ON A BIG-ENDIAN TARGET (docs/SPEC-TABLES.md §7.1,
+# §19.1, §20.3). The pinned toolchain cross-compiles to s390x — the same
+# big-endian target the C++ leg uses — so this is a CHECK of the whole
+# generated surface for that target, and it needs no linker and no emulator.
+#
+# WHAT IT PROVES, which is more than a compile: every cooked record's and every
+# block projection's LAYOUT CONTRACT is a const assert over size_of and
+# offset_of, so `cargo check` EVALUATES it for s390x. A record whose C ABI
+# layout differed on a big-endian target — a padding rule, an alignment, a
+# bool's width — would fail here rather than in a file nobody could read.
+#
+# WHAT IT DOES NOT PROVE, named rather than implied: that the wire's bytes
+# cross the order at RUN time. That needs the cross linker and qemu the C++
+# leg's job installs, and it is the next step rather than this one — a
+# cross-and-emulate leg's first run belongs in a change that can iterate on it,
+# not in a port branch that cannot exercise it locally. The code is
+# order-neutral by construction (to_le_bytes / from_le_bytes everywhere, and
+# the two accelerators carry cfg!(target_endian) order words that refuse a
+# foreign file), so what the runtime leg would add is proof rather than
+# suspicion.
+RUST_BE_TARGET ?= s390x-unknown-linux-gnu
+
+.PHONY: tables-rust-big-endian
+tables-rust-big-endian: build/tables-generated-rust/.stamp
+	@if ! PATH="$(RUSTUP_BIN):$$PATH" rustup target list --installed 2>/dev/null | grep -qx "$(RUST_BE_TARGET)"; then \
+		echo "SKIP tables-rust-big-endian: $(RUST_BE_TARGET) is not installed"; \
+		echo "  rustup target add $(RUST_BE_TARGET)"; \
+		exit 0; \
+	fi; \
+	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" \
+		cargo check --quiet --target $(RUST_BE_TARGET) && \
+		echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), every layout const assert with it"
+
 .PHONY: tables-rust-fuzz
 tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
 	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
@@ -2207,6 +2240,10 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-rust-walk
+	# the generated Rust table surface CHECKED for a big-endian target, layout
+	# const asserts and all. It SKIPS cleanly where the target is not
+	# installed, so it costs a machine without it nothing.
+	$(MAKE) tables-rust-big-endian
 	$(MAKE) tables-json-negative-control
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
