@@ -173,35 +173,39 @@ because the contract is a COMMAND.
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64
-macOS, everything already built, median of three, **one sitting on an otherwise
-quiet laptop** — the whole table re-measured together, because a table whose
-rows come from different sittings can say the whole costs less than one of its
-parts:
+macOS, everything already built, median of three, **one sitting** — the whole
+table re-measured together when the C leg registered, because a table whose rows
+come from different sittings can say the whole costs less than one of its parts.
+**The laptop was NOT quiet for this sitting** (three sibling ports building
+alongside, load average near 12), so every row here is an upper bound and every
+row is inflated by the same load: read the RATIOS, and read the totals as a
+ceiling. The quiet-laptop numbers this replaces are in git history:
 
 | leg | wall |
 |---|---|
-| all six, 268 cases per leg | PENDING |
-| `c` alone | PENDING |
-| `go` alone | PENDING |
-| `rust` alone | PENDING |
-| `cpp` alone | PENDING |
-| `java` alone | PENDING |
-| `cs` alone | PENDING |
+| all six, 268 cases per leg | 19.9 s |
+| `java` alone | 0.63 s |
+| `go` alone | 0.74 s |
+| `c` alone | 0.76 s |
+| `rust` alone | 0.88 s |
+| `cpp` alone | 1.00 s |
+| `cs` alone | 18.0 s |
 
 **The cost is per-PROCESS, not per-case, and the numbers say so plainly.** The
 battery grew from 80 cases per leg to 268 — the cook's 111 forgeries, the 66
 hostile trees, a sixth cook, two block row dumps and the two FOREIGN surfaces —
-and the four NATIVE legs still answer all 268 each in under a second. The C#
+and the five NATIVE legs still answer all 268 each in under a second. The C#
 leg starts a runtime once per surface plus once per cook, because
 `test/cs-cook`'s dump takes one root per invocation, and that is where nearly
-the whole wall is: of the 1,608 cases in this table, the 1,072 the native legs
-answer cost PENDING between them, the 268 Java answers cost PENDING, and the
-last 268 cost PENDING.
+the whole wall is: of the 1,608 cases in this table, the 1,340 the five NATIVE
+legs answer cost about four seconds between them — under a second each, even
+under this load — and the last 268 cost eighteen.
 
 **The C leg answers all 268 from one native binary**, which is the cheapest
-shape the contract allows and what puts its row where it is.
+shape the contract allows and what puts its row among the fastest. A sixth leg
+cost the whole run less than the run's own spread across three repeats.
 
-**Four native legs cost under two seconds together.** Adding the two
+**Five native legs cost about four seconds together.** Adding the two
 foreign surfaces cost each native leg two more execs of a binary that starts in
 milliseconds, and cost the C# leg two more runtime starts — which is the whole
 shape of this table in one edit. A leg that answers every surface in ONE binary
