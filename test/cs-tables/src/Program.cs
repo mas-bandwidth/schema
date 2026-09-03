@@ -1182,54 +1182,62 @@ static class Program
 
     // ---- the SEAM instances: `?T` (§2.3) and `[E]T` (§2.4) ----
     //
-    // Mirroring test/tables/main.cpp value for value. A keyed field's slots
-    // are reached through .Slots here: C# has no non-boxing generic
-    // enum-to-int, so the indexer takes the slot index (see TableKeyed in the
-    // generated runtime) and the codecs and these builders walk .Slots
-    // directly, past the indexer's None guard.
+    // Mirroring test/tables/main.cpp value for value. A keyed field is reached
+    // through its INDEXER, which takes the KEY as every port's does; C# has no
+    // non-boxing generic enum-to-int, so the CAST is written here and the
+    // SHIFT is not (see TableKeyed in the generated runtime). The generated
+    // codecs walk .Slots by storage index instead, past the None guard.
+
+    // a `type` body's keyed array is a PLAIN ARRAY (SPEC-TABLES.md §2.4): no
+    // wrapper and no indexer, so the STORAGE INDEX is spelled here — the key
+    // minus one, the same shift TableKeyed does for a table body.
+    static int KeyedIndex(int key) { return key - 1; }
 
     static void BuildGoldenKeyed(Demo.KeyedConfig cfg)
     {
-        Demo.TeamConfig red = cfg.Teams.Slots[(int)Demo.Team.Red];
+        Demo.TeamConfig red = cfg.Teams[(int)Demo.Team.Red];
         red.SpawnCount = 8;
         SetString(red.Banner, ref red.BannerLength, "red");
-        Demo.TeamConfig green = cfg.Teams.Slots[(int)Demo.Team.Green];
+        Demo.TeamConfig green = cfg.Teams[(int)Demo.Team.Green];
         green.SpawnCount = 2;
         SetString(green.Banner, ref green.BannerLength, "green");
         // Blue's slot stays entirely default: a default slot ELIDES (§3.2)
 
-        Demo.HullConfig gunship = cfg.Hulls.Slots[(int)Demo.Hull.Gunship];
+        Demo.HullConfig gunship = cfg.Hulls[(int)Demo.Hull.Gunship];
         gunship.Health = 250.0f;
         gunship.Mass = 3.5f;
-        Demo.TurretConfig cannon = gunship.Turrets.Slots[(int)Demo.Weapon.Cannon];
+        Demo.TurretConfig cannon = gunship.Turrets[(int)Demo.Weapon.Cannon];
         cannon.Damage = 40.0f;
         cannon.GunnerPresent = true;            // present, and entirely DEFAULT: it still rides
-        Demo.TurretConfig mine = gunship.Turrets.Slots[(int)Demo.Weapon.Mine];
+        Demo.TurretConfig mine = gunship.Turrets[(int)Demo.Weapon.Mine];
         mine.Damage = 5.0f;
         mine.Cooldown = 9.0f;
         mine.GunnerPresent = true;
         mine.Gunner.Reaction = 0.75f;
         mine.Gunner.Tracking = true;
 
-        Demo.HullConfig freighter = cfg.Hulls.Slots[(int)Demo.Hull.Freighter];
+        Demo.HullConfig freighter = cfg.Hulls[(int)Demo.Hull.Freighter];
         freighter.Mass = 12.0f;                 // turrets all default: the keyed array elides whole
 
-        cfg.Scores.PerTeam[1] = 10;             // a `type`'s keyed field: plain array storage,
-        cfg.Scores.PerTeam[3] = 30;             // keyed BODY on this wire
+        // a `type`.s keyed field: PLAIN ARRAY storage, shifted like any other
+        // keyed array (key k at index k-1), and a keyed BODY on this wire
+        cfg.Scores.PerTeam[KeyedIndex((int)Demo.Team.Red)] = 10;
+        cfg.Scores.PerTeam[KeyedIndex((int)Demo.Team.Green)] = 30;
     }
 
     static void BuildGoldenV1Seams(V1.Cfg cfg)
     {
         cfg.A = 3;
-        cfg.Bank.Slots[1].Power = 11;           // Alpha
-        SetString(cfg.Bank.Slots[1].Label, ref cfg.Bank.Slots[1].LabelLength, "a1");
-        cfg.Bank.Slots[2].Power = 22;           // Beta — ordinal 2 in V1, 3 in V2
-        cfg.Bank.Slots[3].Power = 33;           // Gamma — REMOVED in V2
-        cfg.Tokens.Slots[1] = 101;
-        cfg.Tokens.Slots[2] = 102;
-        cfg.Tokens.Slots[4] = 104;              // Delta
-        cfg.Ranks.Slots[1] = V1.Grade.Gold;
-        cfg.Ranks.Slots[3] = V1.Grade.Bronze;
+        V1.Cell alpha = cfg.Bank[(int)V1.Slot.Alpha];
+        alpha.Power = 11;
+        SetString(alpha.Label, ref alpha.LabelLength, "a1");
+        cfg.Bank[(int)V1.Slot.Beta].Power = 22;   // ordinal 2 in V1, 3 in V2
+        cfg.Bank[(int)V1.Slot.Gamma].Power = 33;  // REMOVED in V2
+        cfg.Tokens[(int)V1.Slot.Alpha] = 101;
+        cfg.Tokens[(int)V1.Slot.Beta] = 102;
+        cfg.Tokens[(int)V1.Slot.Delta] = 104;
+        cfg.Ranks[(int)V1.Slot.Alpha] = V1.Grade.Gold;
+        cfg.Ranks[(int)V1.Slot.Gamma] = V1.Grade.Bronze;
         cfg.Ledger[0] = 7; cfg.Ledger[2] = 9;   // POSITIONAL in V1, KEYED in V2: kind 14 vs 16
         cfg.ExtraPresent = true;
         cfg.Extra.Factor = 6.25f;
@@ -1242,15 +1250,17 @@ static class Program
     static void BuildGoldenV2Seams(V2.Cfg cfg)
     {
         cfg.A = 1.5f;
-        cfg.Bank.Slots[1].Power = 11;           // Alpha
-        SetString(cfg.Bank.Slots[1].Label, ref cfg.Bank.Slots[1].LabelLength, "a1");
-        cfg.Bank.Slots[2].Power = 44;           // Omega — INSERTED in V2; V1 cannot name it
-        cfg.Bank.Slots[3].Power = 22;           // Beta, slid from ordinal 2 to 3
-        cfg.Bank.Slots[5].Power = 55;           // Sigma — appended; V1 cannot name it
-        cfg.Tokens.Slots[1] = 101;
-        cfg.Tokens.Slots[3] = 102;
-        cfg.Ranks.Slots[1] = V2.Grade.Gold;
-        cfg.Ledger.Slots[1] = 7; cfg.Ledger.Slots[3] = 9; // KEYED in V2
+        V2.Cell alpha = cfg.Bank[(int)V2.Slot.Alpha];
+        alpha.Power = 11;
+        SetString(alpha.Label, ref alpha.LabelLength, "a1");
+        cfg.Bank[(int)V2.Slot.Omega].Power = 44;  // INSERTED in V2; V1 cannot name it
+        cfg.Bank[(int)V2.Slot.Beta].Power = 22;   // slid from ordinal 2 to 3
+        cfg.Bank[(int)V2.Slot.Sigma].Power = 55;  // appended; V1 cannot name it
+        cfg.Tokens[(int)V2.Slot.Alpha] = 101;
+        cfg.Tokens[(int)V2.Slot.Beta] = 102;
+        cfg.Ranks[(int)V2.Slot.Alpha] = V2.Grade.Gold;
+        cfg.Ledger[(int)V2.Grade.Bronze] = 7;
+        cfg.Ledger[(int)V2.Grade.Gold] = 9;       // KEYED in V2
         cfg.ExtraPresent = true;
         cfg.Extra.Factor = 6.25f;
         cfg.TierPresent = false;                // absent: nothing rides
@@ -1344,23 +1354,24 @@ static class Program
             Check(!report.Malformed && report.Unknown == 0 && report.KindMismatch == 0 && report.Clamped == 0,
                 "keyed_config: silence");
             Check(report.Duplicate == 0, "keyed_config: duplicate is the text form's counter — a wire read leaves it zero");
-            Check(cfg.Teams.Slots[(int)Demo.Team.Red].SpawnCount == 8, "keyed: Red's slot");
-            Check(GetString(cfg.Teams.Slots[(int)Demo.Team.Green].Banner, cfg.Teams.Slots[(int)Demo.Team.Green].BannerLength) == "green",
+            Check(cfg.Teams[(int)Demo.Team.Red].SpawnCount == 8, "keyed: Red's slot");
+            Check(GetString(cfg.Teams[(int)Demo.Team.Green].Banner, cfg.Teams[(int)Demo.Team.Green].BannerLength) == "green",
                 "keyed: Green's slot");
-            Check(cfg.Teams.Slots[(int)Demo.Team.Blue].SpawnCount == 4, "keyed: Blue's elided slot keeps its declared default");
-            Demo.HullConfig gunship = cfg.Hulls.Slots[(int)Demo.Hull.Gunship];
+            Check(cfg.Teams[(int)Demo.Team.Blue].SpawnCount == 4, "keyed: Blue's elided slot keeps its declared default");
+            Demo.HullConfig gunship = cfg.Hulls[(int)Demo.Hull.Gunship];
             Check(gunship.Health == 250.0f && gunship.Mass == 3.5f, "keyed: nested hull");
-            Demo.TurretConfig cannon = gunship.Turrets.Slots[(int)Demo.Weapon.Cannon];
+            Demo.TurretConfig cannon = gunship.Turrets[(int)Demo.Weapon.Cannon];
             Check(cannon.Damage == 40.0f, "keyed: nested keyed array");
             Check(cannon.GunnerPresent && cannon.Gunner.Reaction == 0.2f,
                 "keyed: a PRESENT all-default optional rode, and reads back present at its defaults");
-            Demo.TurretConfig mine = gunship.Turrets.Slots[(int)Demo.Weapon.Mine];
+            Demo.TurretConfig mine = gunship.Turrets[(int)Demo.Weapon.Mine];
             Check(mine.GunnerPresent && mine.Gunner.Reaction == 0.75f && mine.Gunner.Tracking, "keyed: optional with content");
-            Check(!gunship.Turrets.Slots[(int)Demo.Weapon.Missile].GunnerPresent,
+            Check(!gunship.Turrets[(int)Demo.Weapon.Missile].GunnerPresent,
                 "keyed: an untouched slot's optional is ABSENT");
-            Check(cfg.Hulls.Slots[(int)Demo.Hull.Freighter].Mass == 12.0f, "keyed: freighter");
-            Check(cfg.Scores.PerTeam[1] == 10 && cfg.Scores.PerTeam[3] == 30, "keyed: a type's keyed field");
-            Check(cfg.Scores.PerTeam[0] == 0 && cfg.Scores.PerTeam[2] == 0, "keyed: unsent slots default");
+            Check(cfg.Hulls[(int)Demo.Hull.Freighter].Mass == 12.0f, "keyed: freighter");
+            Check(cfg.Scores.PerTeam[KeyedIndex((int)Demo.Team.Red)] == 10
+                && cfg.Scores.PerTeam[KeyedIndex((int)Demo.Team.Green)] == 30, "keyed: a type's keyed field");
+            Check(cfg.Scores.PerTeam[KeyedIndex((int)Demo.Team.Blue)] == 0, "keyed: an unsent slot defaults");
         }
         {
             byte[] golden = ReadGolden("v1_seams");
@@ -1368,9 +1379,10 @@ static class Program
             V1.Cfg cfg = new V1.Cfg();
             Check(V1.Schema.CfgLoad(cfg, golden, report), "v1_seams loads");
             Check(!report.Malformed && report.Unknown == 0 && report.Clamped == 0, "v1_seams: silence");
-            Check(cfg.Bank.Slots[1].Power == 11 && cfg.Bank.Slots[2].Power == 22 && cfg.Bank.Slots[3].Power == 33,
-                "v1_seams: keyed table slots");
-            Check(cfg.Tokens.Slots[4] == 104 && cfg.Ranks.Slots[1] == V1.Grade.Gold, "v1_seams: keyed scalars and enums");
+            Check(cfg.Bank[(int)V1.Slot.Alpha].Power == 11 && cfg.Bank[(int)V1.Slot.Beta].Power == 22
+                && cfg.Bank[(int)V1.Slot.Gamma].Power == 33, "v1_seams: keyed table slots");
+            Check(cfg.Tokens[(int)V1.Slot.Delta] == 104 && cfg.Ranks[(int)V1.Slot.Alpha] == V1.Grade.Gold,
+                "v1_seams: keyed scalars and enums");
             Check(cfg.ExtraPresent && cfg.Extra.Factor == 6.25f, "v1_seams: optional table");
             Check(cfg.TierPresent && cfg.Tier == 41, "v1_seams: optional scalar");
             Check(cfg.MarkPresent && cfg.Mark == V1.Grade.Gold, "v1_seams: optional enum");
@@ -1381,9 +1393,10 @@ static class Program
             V2.Cfg cfg = new V2.Cfg();
             Check(V2.Schema.CfgLoad(cfg, golden, report), "v2_seams loads");
             Check(!report.Malformed && report.Unknown == 0, "v2_seams: silence");
-            Check(cfg.Bank.Slots[5].Power == 55, "v2_seams: the appended slot");
+            Check(cfg.Bank[(int)V2.Slot.Sigma].Power == 55, "v2_seams: the appended slot");
             Check(!cfg.TierPresent && cfg.Tier == 0, "v2_seams: an absent optional stays absent at its default");
-            Check(cfg.Ledger.Slots[1] == 7 && cfg.Ledger.Slots[3] == 9, "v2_seams: the keyed ledger");
+            Check(cfg.Ledger[(int)V2.Grade.Bronze] == 7 && cfg.Ledger[(int)V2.Grade.Gold] == 9,
+                "v2_seams: the keyed ledger");
         }
         // the pointer's bytes, read by the two spellings C# carries
         {
@@ -1479,13 +1492,13 @@ static class Program
         Check(report.KindMismatch == 2, "keyed evolution: a (i32 -> f32) and ledger (positional -> keyed)");
         Check(report.Clamped == 0, "keyed evolution: nothing clamped");
         // BETA SLID from ordinal 2 to 3 and still lands in its own home
-        Check(newReader.Bank.Slots[(int)V2.Slot.Beta].Power == 22,
+        Check(newReader.Bank[(int)V2.Slot.Beta].Power == 22,
             "keyed evolution: Beta rode by NAME — a positional encoding would have put it in Omega's slot");
-        Check(newReader.Bank.Slots[(int)V2.Slot.Alpha].Power == 11, "keyed evolution: Alpha");
-        Check(newReader.Bank.Slots[(int)V2.Slot.Omega].Power == 0,
+        Check(newReader.Bank[(int)V2.Slot.Alpha].Power == 11, "keyed evolution: Alpha");
+        Check(newReader.Bank[(int)V2.Slot.Omega].Power == 0,
             "keyed evolution: Omega is new in V2 and the writer never sent it — its slot keeps its default");
-        Check(newReader.Tokens.Slots[(int)V2.Slot.Beta] == 102, "keyed evolution: a scalar slot by name");
-        Check(newReader.Tokens.Slots[(int)V2.Slot.Delta] == 104, "keyed evolution: Delta kept ordinal 4");
+        Check(newReader.Tokens[(int)V2.Slot.Beta] == 102, "keyed evolution: a scalar slot by name");
+        Check(newReader.Tokens[(int)V2.Slot.Delta] == 104, "keyed evolution: Delta kept ordinal 4");
 
         // the other direction: V2's data into V1
         V2.Cfg v2 = new V2.Cfg();
@@ -1495,15 +1508,15 @@ static class Program
         V1.Cfg oldReader = new V1.Cfg();
         Check(V1.Schema.CfgLoad(oldReader, new ReadOnlySpan<byte>(wire, 0, (int)bytes), back), "keyed evolution: v1 reads v2");
         Check(!back.Malformed, "keyed evolution reverse: not malformed");
-        Check(oldReader.Bank.Slots[(int)V1.Slot.Beta].Power == 22, "keyed evolution reverse: Beta found its home");
-        Check(oldReader.Bank.Slots[(int)V1.Slot.Gamma].Power == 0, "keyed evolution reverse: Gamma unsent, keeps its default");
+        Check(oldReader.Bank[(int)V1.Slot.Beta].Power == 22, "keyed evolution reverse: Beta found its home");
+        Check(oldReader.Bank[(int)V1.Slot.Gamma].Power == 0, "keyed evolution reverse: Gamma unsent, keeps its default");
         Check(back.Unknown == 2, "keyed evolution reverse: Omega and Sigma are names V1 does not have");
         Check(back.KindMismatch == 2, "keyed evolution reverse: a and ledger again");
 
         // THE NEGATIVE CONTROL, in the data: the keyed body's whole point is
         // that Beta's slot is found by NAME. Under a positional encoding
         // Beta (ordinal 2 in V1) would land in ordinal 2 of V2 — Omega's slot.
-        Check(newReader.Bank.Slots[(int)V2.Slot.Omega].Power != 22,
+        Check(newReader.Bank[(int)V2.Slot.Omega].Power != 22,
             "keyed evolution: Beta did NOT land in the slot its old ordinal names");
     }
 
@@ -1527,12 +1540,12 @@ static class Program
         Check(V2.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "keyed vs positional: load");
         Check(report.KindMismatch == 1, "keyed vs positional: a positional body under a keyed field is a KIND MISMATCH");
         Check(!report.Malformed, "keyed vs positional: skipped, not damaged");
-        Check(outCfg.Ledger.Slots[1] == 0 && outCfg.Ledger.Slots[2] == 0,
+        Check(outCfg.Ledger[(int)V2.Grade.Bronze] == 0 && outCfg.Ledger[(int)V2.Grade.Silver] == 0,
             "keyed vs positional: the array is left at its declared defaults, never misdecoded");
 
         // and the reverse
         V2.Cfg v2 = new V2.Cfg();
-        v2.Ledger.Slots[1] = 7; v2.Ledger.Slots[3] = 9;
+        v2.Ledger[(int)V2.Grade.Bronze] = 7; v2.Ledger[(int)V2.Grade.Gold] = 9;
         bytes = V2.Schema.CfgSave(v2, wire);
         V1.TableReport back = new V1.TableReport();
         V1.Cfg old = new V1.Cfg();
@@ -1576,7 +1589,7 @@ static class Program
         Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, n), report), "key 0: load returns true");
         Check(report.Malformed, "key 0: a None key is framing damage, not an unknown variant");
         Check(report.Unknown == 0, "key 0: and it is NOT counted unknown — 0 names nothing, it is damage");
-        Check(outCfg.Tokens.Slots[(int)V1.Slot.Beta] == 77, "key 0: the pair decoded before the damage is kept");
+        Check(outCfg.Tokens[(int)V1.Slot.Beta] == 77, "key 0: the pair decoded before the damage is kept");
         Check(outCfg.A == 42, "key 0: the parent read on past the body's length");
 
         // an UNKNOWN key is a different event: skipped by its length, counted
@@ -1600,7 +1613,7 @@ static class Program
         Check(V1.Schema.CfgLoad(out2, new ReadOnlySpan<byte>(wire, 0, n), r2), "unknown key: load");
         Check(!r2.Malformed, "unknown key: not damage");
         Check(r2.Unknown == 1, "unknown key: counted, the same counter an unknown field id uses");
-        Check(out2.Tokens.Slots[(int)V1.Slot.Delta] == 99, "unknown key: the slot after it decodes normally");
+        Check(out2.Tokens[(int)V1.Slot.Delta] == 99, "unknown key: the slot after it decodes normally");
     }
 
     // ---- reflection: the presence companion and the key's vocabulary (§8) ----
@@ -1619,16 +1632,17 @@ static class Program
 
         V1.TableFieldInfo bank = V1Field(cfg, "bank");
         Check(bank != null && bank.IsArray && !bank.Counted, "reflection: a keyed array is an array with no count");
-        Check(bank.ArrayBound == 5, "reflection: Slot.Max + 1 — None's slot plus four");
+        Check(bank.ArrayBound == 4, "reflection: Slot.Max — one slot per named variant");
         Check(bank.KeyTypeName == "Slot", "reflection: the keying enum is named");
-        // KeyName and KeyId take the SLOT INDEX, which IS the variant's value
-        Check(bank.KeyName(2) == "Beta" && bank.KeyId(2) == FieldId("Beta"), "reflection: slot 2 is Beta's in V1");
-        // SLOT 0 IS MARKED INVALID by the one id no declared name can hold
-        Check(bank.KeyId(0) == 0, "reflection: KeyId(0) is 0 — the reserved id marks slot 0 invalid");
+        // KeyName and KeyId are functions of the KEY, not of the storage index:
+        // a walker steps [0, ArrayBound) and asks about index + 1
+        Check(bank.KeyName(2) == "Beta" && bank.KeyId(2) == FieldId("Beta"), "reflection: key 2 is Beta in V1");
+        // None is a KEY the enum has and it names no slot
+        Check(bank.KeyId(0) == 0, "reflection: KeyId(0) is 0 — the reserved id says None keys no slot");
         Check(bank.KeyName(0) == "None", "reflection: KeyName(0) is None");
-        for (int slot = 1; slot < bank.ArrayBound; slot++)
+        for (int slot = 0; slot < bank.ArrayBound; slot++)
         {
-            Check(bank.KeyId((ulong)slot) != 0, "reflection: every other slot is nameable");
+            Check(bank.KeyId((ulong)(slot + 1)) != 0, "reflection: every stored slot holds a nameable key");
         }
 
         // a keyed array OF enums carries BOTH vocabularies
@@ -1643,7 +1657,7 @@ static class Program
             "reflection: a positional array carries no key vocabulary");
     }
 
-    // ---- the keyed indexer refuses slot 0 at runtime (§2.4) ----
+    // ---- the keyed indexer refuses the None key at runtime (§2.4) ----
 
     static void TestKeyedIndexerRefusesNone()
     {
@@ -1658,7 +1672,7 @@ static class Program
         {
             threw = true;
         }
-        Check(threw, "keyed indexer: slot 0 is None's and indexing it is an error");
+        Check(threw, "keyed indexer: None is the null key and indexing it is an error");
 
         // and a real slot is reachable through the same indexer
         Check(cfg.Teams[(int)Demo.Team.Blue] != null, "keyed indexer: a named slot reads");
@@ -1667,9 +1681,9 @@ static class Program
     // ---- iteration over the VALID slots (§2.4) ----
     //
     // The C++ twin of this test is test_keyed_iteration in test/tables/main.cpp.
-    // foreach runs 1..E.Max, yields the slot index beside the element — the
-    // same currency the indexer takes — and never hands out slot 0, so no call
-    // site out here spells a bound, a lower limit or the slot rule.
+    // foreach walks every stored slot and yields the KEY, 1..E.Max, beside the
+    // element — the same currency the indexer takes — so no call site out here
+    // spells a bound, a lower limit or the shift.
 
     static void TestKeyedIteration()
     {
@@ -1679,29 +1693,29 @@ static class Program
         // array is the live instance, so filling one is the same walk
         int spawn = 10;
         int seen = 0;
-        int expect = 1; // slots arrive in ascending variant order, from 1
+        int expect = 1; // keys arrive in ascending variant order, from 1
         foreach (var (key, team) in cfg.Teams)
         {
-            Check(key != 0, "keyed iteration: slot 0 is never yielded");
-            Check(key == expect, "keyed iteration: ascending from slot 1");
+            Check(key != 0, "keyed iteration: None is never yielded");
+            Check(key == expect, "keyed iteration: keys ascend from 1");
             expect++;
             seen++;
             team.SpawnCount = spawn++;
         }
-        Check(seen == 3, "keyed iteration: one slot per variant, never Max + 1");
+        Check(seen == 3, "keyed iteration: one slot per named variant, never Max + 1");
         Check(cfg.Teams[(int)Demo.Team.Red].SpawnCount == 10, "keyed iteration: Red filled");
         Check(cfg.Teams[(int)Demo.Team.Green].SpawnCount == 12, "keyed iteration: Green filled");
-        // slot 0 was not in the range, so it still holds its declared default
-        Check(cfg.Teams.Slots[0].SpawnCount == 4, "keyed iteration: None's slot untouched");
+        // there is no None slot: the storage is one element per named variant
+        Check(cfg.Teams.Slots.Length == 3, "keyed iteration: E.Max slots, nothing for None");
 
         // every keyed array in the corpus, including a nested one
         foreach (var entry in cfg.Hulls)
         {
-            Check(entry.Key != 0, "keyed iteration: hulls never yield slot 0");
+            Check(entry.Key != 0, "keyed iteration: hulls never yield None");
             int turrets = 0;
             foreach (var turret in entry.Element.Turrets)
             {
-                Check(turret.Key != 0, "keyed iteration: nested turrets never yield slot 0");
+                Check(turret.Key != 0, "keyed iteration: nested turrets never yield None");
                 turrets++;
             }
             Check(turrets == 3, "keyed iteration: one turret slot per weapon");
@@ -1716,12 +1730,12 @@ static class Program
         int ships = 0;
         foreach (var (ship_type, ship) in pack.Ships)
         {
-            Check(ship_type != 0, "keyed iteration: ships never yield slot 0");
+            Check(ship_type != 0, "keyed iteration: ships never yield None");
             ship.Mass = 2.0f;
             ships++;
         }
         Check(ships == 3, "keyed iteration: one record per ship type");
-        Check(pack.Ships.Slots[0].Mass == 1.0f, "keyed iteration: None's ship slot untouched");
+        Check(pack.Ships.Slots.Length == 3, "keyed iteration: E.Max ship slots, nothing for None");
         Check(pack.Ships[(int)Demo.ShipType.Bomber].Mass == 2.0f,
             "keyed iteration: a class element is the live instance");
 
@@ -1730,7 +1744,7 @@ static class Program
         int highest = 0;
         foreach (var (difficulty, threshold) in pack.Thresholds)
         {
-            Check(difficulty != 0, "keyed iteration: thresholds never yield slot 0");
+            Check(difficulty != 0, "keyed iteration: thresholds never yield None");
             highest = threshold > highest ? threshold : highest;
             thresholds++;
         }
@@ -1747,17 +1761,17 @@ static class Program
         int v1bank = 0, v1tokens = 0, v1ranks = 0;
         foreach (var entry in v1.Bank)
         {
-            Check(entry.Key != 0, "keyed iteration: V1 bank never yields slot 0");
+            Check(entry.Key != 0, "keyed iteration: V1 bank never yields None");
             v1bank++;
         }
         foreach (var entry in v1.Tokens)
         {
-            Check(entry.Key != 0, "keyed iteration: V1 tokens never yield slot 0");
+            Check(entry.Key != 0, "keyed iteration: V1 tokens never yield None");
             v1tokens++;
         }
         foreach (var entry in v1.Ranks)
         {
-            Check(entry.Key != 0, "keyed iteration: V1 ranks never yield slot 0");
+            Check(entry.Key != 0, "keyed iteration: V1 ranks never yield None");
             v1ranks++;
         }
         Check(v1bank == 4 && v1tokens == 4 && v1ranks == 4,
@@ -1769,7 +1783,7 @@ static class Program
         int power = 0;
         foreach (var (slot, cell) in v2.Bank)
         {
-            Check(slot != 0, "keyed iteration: bank never yields slot 0");
+            Check(slot != 0, "keyed iteration: bank never yields None");
             power += cell.Power;
             bank++;
         }
@@ -1780,7 +1794,7 @@ static class Program
         int total = 0;
         foreach (var (key, value) in v2.Tokens)
         {
-            Check(key != 0, "keyed iteration: tokens never yield slot 0");
+            Check(key != 0, "keyed iteration: tokens never yield None");
             total += value;
             tokens++;
         }
@@ -1789,7 +1803,7 @@ static class Program
         int ranks = 0;
         foreach (var rank in v2.Ranks)
         {
-            Check(rank.Key != 0, "keyed iteration: ranks never yield slot 0");
+            Check(rank.Key != 0, "keyed iteration: ranks never yield None");
             ranks++;
         }
         Check(ranks == 5, "keyed iteration: an enum-element keyed array");
@@ -1797,7 +1811,7 @@ static class Program
         int ledger = 0;
         foreach (var slot in v2.Ledger)
         {
-            Check(slot.Key != 0, "keyed iteration: ledger never yields slot 0");
+            Check(slot.Key != 0, "keyed iteration: ledger never yields None");
             ledger++;
         }
         Check(ledger == 3, "keyed iteration: Grade's three variants");

@@ -215,36 +215,43 @@ struct TableReader
 };
 
 
-// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
-// own value, so ships[ShipType::Bomber] reads as itself.
+// An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
+// key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
 //
-// SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
-// the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR —
-// an assert through operator[], which cannot see a runtime key any earlier,
-// and that assert is a DEBUG guard, compiled out by -DNDEBUG. So a shipped
-// build carries no check on a keyed index at all, and ITERATION is where the
-// safety lives: begin()/end() run 1..E.Max and never offer slot 0, so a
-// consumer of the whole array writes no bound, no cast and no None question.
-// The slot exists because memory is cheap and the bias is not: a slot's index
-// IS its variant's value, with nothing to add or subtract anywhere.
-template <typename T, typename E, int32_t N>
+// NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent is derived from E::Max
+// here and nowhere else, so there is no size parameter to spell and no count a
+// consumer could put one out of step with.
+//
+// NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
+// key of 0 is malformed, and INDEXING BY IT IS AN ERROR — an assert through
+// operator[], which cannot see a runtime key any earlier, and that assert is a
+// DEBUG guard, compiled out by -DNDEBUG. So a shipped build carries no check
+// on a keyed index at all, and an index by None there computes -1 and reads
+// ONE ELEMENT BEFORE THE ARRAY. ITERATION is where the safety lives:
+// begin()/end() walk every stored slot and yield the KEY, 1..E.Max, so a
+// consumer of the whole array writes no bound, no cast, no shift and no None
+// question.
+template <typename T, typename E>
 struct TableKeyed
 {
-    T slots[N] = {};
+    // the extent is the enum's, derived here and named nowhere else
+    static constexpr int32_t kSlots = (int32_t) E::Max;
+
+    T slots[kSlots] = {};
 
     T & operator[]( E key )
     {
-        // slot 0 is None's, and None is the null key
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        // None is the null key and keys no slot
+        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        return slots[ (int32_t) key - 1 ];
     }
     const T & operator[]( E key ) const
     {
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        return slots[ (int32_t) key - 1 ];
     }
 
-    // ---- iteration over the VALID slots: 1..E.Max, key beside element ----
+    // ---- iteration: keys 1..E.Max over storage 0..E.Max-1, key beside element ----
     //
     // The entry is a key and a REFERENCE, handed out BY VALUE the way any
     // proxy is: for ( auto [ key, element ] : keyed ) binds element to the
@@ -268,8 +275,8 @@ struct TableKeyed
         typedef Entry reference;
 
         T * slots;
-        int32_t index;
-        Entry operator*() const { return Entry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
         Iterator & operator++() { index++; return *this; }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
@@ -284,17 +291,17 @@ struct TableKeyed
         typedef ConstEntry reference;
 
         const T * slots;
-        int32_t index;
-        ConstEntry operator*() const { return ConstEntry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
         ConstIterator & operator++() { index++; return *this; }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
 
-    Iterator begin() { return Iterator{ slots, 1 }; } // 1: slot 0 is None's
-    Iterator end() { return Iterator{ slots, N }; }
-    ConstIterator begin() const { return ConstIterator{ slots, 1 }; }
-    ConstIterator end() const { return ConstIterator{ slots, N }; }
+    Iterator begin() { return Iterator{ slots, 0 }; }
+    Iterator end() { return Iterator{ slots, kSlots }; }
+    ConstIterator begin() const { return ConstIterator{ slots, 0 }; }
+    ConstIterator end() const { return ConstIterator{ slots, kSlots }; }
 };
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -546,7 +553,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x7970dae87b5cf43aull;
+inline constexpr uint64_t BuildVersion = 0xe7c54936602ceecaull;
 
 } // namespace graphdemo
 
@@ -773,7 +780,7 @@ struct Scene {
 struct Depot {
     char name[12 + 1] = {}; // string(12): max length, used length beside it
     int32_t name_length = 0;
-    TableKeyed<Layer, Tier, 3> banks; // [Tier]: one slot per variant, indexed by the value
+    TableKeyed<Layer, Tier> banks; // [Tier]: one slot per named variant, keyed by the value
     Meta spare;
     bool spare_present = false; // ?Meta: absent until set
     TableRef head; // *ListNode — null until assigned
@@ -886,7 +893,7 @@ inline void DepotReset( Depot & value )
     memset( value.name, 0, sizeof( value.name ) );
     value.name_length = 0;
     LayerReset( value.banks.slots[0] );
-    for ( int32_t i = 1; i < 3; i++ ) { value.banks.slots[i] = value.banks.slots[0]; }
+    for ( int32_t i = 1; i < 2; i++ ) { value.banks.slots[i] = value.banks.slots[0]; }
     MetaReset( value.spare );
     value.spare_present = false;
     value.head.value = 0; // *ListNode — null
@@ -2162,13 +2169,13 @@ inline int64_t DepotMeasureBody( const Ctx & ctx, const Depot & value, int32_t d
     if ( value.name_length > 0 ) { bytes += 3 + 4 + value.name_length; } // name
     {
         int64_t pairs_banks = 0, body_banks = 0;
-        for ( int32_t i = 1; i < 3; i++ ) // [Tier]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 2; i++ ) // [Tier]: every stored slot is a named variant's
         {
             int64_t elem_bytes = LayerMeasureBody( ctx, value.banks.slots[i], depth );
             if ( elem_bytes < 0 ) { return -1; }
             if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Tier( i ), key_id ) ) { return -1; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Tier( i + 1 ), key_id ) ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             pairs_banks++; body_banks += 2 + 4 + elem_bytes; // key, length, body
         }
         if ( pairs_banks > 0 ) { bytes += 3 + 4 + 5 + body_banks; } // banks
@@ -2206,13 +2213,13 @@ inline bool DepotSaveBody( const Ctx & ctx, TableWriter & w, const Depot & value
     }
     {
         uint32_t pairs_banks = 0;
-        for ( int32_t i = 1; i < 3; i++ ) // [Tier]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 2; i++ ) // [Tier]: every stored slot is a named variant's
         {
             int64_t elem_bytes = LayerMeasureBody( ctx, value.banks.slots[i], depth );
             if ( elem_bytes < 0 ) { return false; }
             if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Tier( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Tier( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             pairs_banks++;
         }
         if ( pairs_banks > 0 )
@@ -2226,13 +2233,13 @@ inline bool DepotSaveBody( const Ctx & ctx, TableWriter & w, const Depot & value
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (SPEC-TABLES.md §3.2)
-            for ( int32_t i = 1; i < 3; i++ )
+            for ( int32_t i = 0; i < 2; i++ )
             {
                 int64_t elem_bytes = LayerMeasureBody( ctx, value.banks.slots[i], depth );
                 if ( elem_bytes < 0 ) { return false; }
                 if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
                 uint16_t key_id = 0;
-                if ( !TableEnumId( Tier( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+                if ( !TableEnumId( Tier( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.put16( key_id ); // the slot's VARIANT id, not its position
                 int64_t elem_len_at_banks = w.offset; w.put32( 0 );
                 if ( !LayerSaveBody( ctx, w, value.banks.slots[i], depth ) ) return false;
@@ -2340,7 +2347,7 @@ inline bool DepotLoadBody( TableReader & r, Sink & sink, Depot & value, int32_t 
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
-                            LayerLoadBody( elem, sink, value.banks.slots[int32_t( slot )], depth );
+                            LayerLoadBody( elem, sink, value.banks.slots[int32_t( slot ) - 1], depth );
                         }
                         sub.offset += elem_len;
                     }
@@ -3289,7 +3296,7 @@ inline int64_t DepotPackMeasure( const Ctx & ctx, const Depot & value, int32_t d
             bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
         }
     }
-    for ( int32_t i = 0; i < 3; i++ ) // banks
+    for ( int32_t i = 0; i < 2; i++ ) // banks
     {
         int64_t inner = LayerPackMeasure( ctx, value.banks.slots[i], depth );
         if ( inner < 0 ) { return -1; }
@@ -3322,7 +3329,7 @@ inline bool DepotPack( const Ctx & ctx, const Depot & src, Depot & dst, uint8_t 
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
     }
-    for ( int32_t i = 0; i < 3; i++ ) // banks
+    for ( int32_t i = 0; i < 2; i++ ) // banks
     {
         if ( !LayerPack( ctx, src.banks.slots[i], dst.banks.slots[i], base, capacity, used, depth ) ) { return false; }
     }
@@ -3371,7 +3378,7 @@ inline int64_t DepotLoadMeasureBody( TableReader & r, int32_t depth )
                     r.get8(); // element kind
                     uint32_t count = r.get32();
                     TableReader elems( r.buffer + r.offset, body_end - r.offset, r.report );
-                    for ( uint32_t i = 0; i < count && i < 3; i++ )
+                    for ( uint32_t i = 0; i < count && i < 2; i++ )
                     {
                         if ( !elems.has( 2 ) ) { break; }
                         elems.get16(); // the slot's variant id
@@ -4763,12 +4770,12 @@ static_assert( offsetof( Scene, alias ) == 64, "Scene's field alias moved: the b
 static_assert( offsetof( Scene, ground ) == 72, "Scene's field ground moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Scene, layers ) == 88, "Scene's field layers moved: the build version was taken over offset 88 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Scene, meta ) == 156, "Scene's field meta moved: the build version was taken over offset 156 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Depot ) == 104, "Depot's sizeof moved: the build version was taken over 104, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Depot ) == 88, "Depot's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Depot ) == 8, "Depot's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Depot, name ) == 0, "Depot's field name moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Depot, banks ) == 24, "Depot's field banks moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Depot, spare ) == 72, "Depot's field spare moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Depot, head ) == 96, "Depot's field head moved: the build version was taken over offset 96 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Depot, spare ) == 56, "Depot's field spare moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Depot, head ) == 80, "Depot's field head moved: the build version was taken over offset 80 (SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( Album ) == 88, "Album's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Album ) == 8, "Album's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Album, name ) == 0, "Album's field name moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
@@ -4856,7 +4863,7 @@ inline const TableTypeInfo * SceneTableType() { return &SceneTableInfo; }
 
 inline const TableFieldInfo DepotTableFields[] = {
     { "name", "name", "string", 0x30df, 12, false, false, true, false, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( Depot::name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "banks", "banks", "Layer", 0x7f34, 13, true, false, false, false, 3, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( Depot::banks.slots[0] ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, "Tier", +[]( uint64_t v ) { return EnumName( Tier( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Tier( v ), id ); return id; }, NULL, "" },
+    { "banks", "banks", "Layer", 0x7f34, 13, true, false, false, false, (int32_t) Tier::Max, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( Depot::banks.slots[0] ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, "Tier", +[]( uint64_t v ) { return EnumName( Tier( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Tier( v ), id ); return id; }, NULL, "" },
     { "spare", "spare", "Meta", 0x3a4f, 13, false, false, false, true, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( Depot::spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &MetaTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     { "head", "head", "ListNode", 0x79aa, 13, false, true, false, false, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };

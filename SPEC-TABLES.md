@@ -227,7 +227,8 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
 - **Fields may be OPTIONAL** (§2.3). `settings ?GunnerSettings` is present
   or absent by value, with no pointer and no change of mode.
 - **An array may be ENUM-KEYED** (§2.4). `ships [ShipType]ShipConfig` has
-  exactly one slot per variant, indexed by the variant.
+  exactly one slot per NAMED variant, keyed by the variant, and nothing for
+  `None`.
 - **A union arm may be a table** (§2.6), which is what makes an evolvable
   message set expressible.
 - **`was` — the rename attribute** (§5).

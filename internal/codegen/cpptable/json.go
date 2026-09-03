@@ -236,12 +236,21 @@ inline bool TableJsonIsKeyed( const TableFieldInfo * f )
     return f->key_name != NULL;
 }
 
-// SLOT 0 IS NONE'S AND NAMES NOTHING (§2.4, §8): its key id is 0, the
-// reserved id no declared name can fold to, so a walk enumerating
-// [0, array_bound) skips it without needing any rule about slot indices.
+// THE KEY A STORAGE SLOT HOLDS (§2.4, §8): the storage shifts left, so slot i
+// holds the key i + 1 and nothing is stored for None. This is the ONE place
+// the walker spells the shift.
+inline uint64_t TableJsonKeyedSlotKey( int64_t slot )
+{
+    return (uint64_t) ( slot + 1 );
+}
+
+// A slot whose key names a variant of the keying enum. Every slot in
+// [0, array_bound) does, unless the enum carries max-headroom variants outside
+// a table closure, where a reserved value names nothing and its key id is 0 —
+// the reserved id no declared name can fold to (§5).
 inline bool TableJsonKeyedSlotValid( const TableFieldInfo * f, int64_t slot )
 {
-    return f->key_id( (uint64_t) slot ) != 0;
+    return f->key_id( TableJsonKeyedSlotKey( slot ) ) != 0;
 }
 
 inline bool TableJsonIsFlags( const TableFieldInfo * f )
@@ -642,8 +651,8 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( TableJsonIsKeyed( f ) )
     {
         // one entry per SLOT, keyed by the variant that owns it, so inserting
-        // a variant next season moves nothing in the text either. Slot 0 is
-        // None's and names nothing, so it is skipped by its reserved key id.
+        // a variant next season moves nothing in the text either. Slot i holds
+        // the key i + 1: nothing is stored for None, so nothing is written for it.
         out.put( '{' );
         bool first = true;
         for ( int64_t slot = 0; slot < f->array_bound; slot++ )
@@ -652,7 +661,7 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
             if ( !first ) { out.put( ',' ); }
             first = false;
             out.line( depth + 1 );
-            const char * key = f->key_name( (uint64_t) slot );
+            const char * key = f->key_name( TableJsonKeyedSlotKey( slot ) );
             TableJsonWriteString( out, key, (int32_t) strlen( key ) );
             out.raw( ": ", 2 );
             if ( !TableJsonWriteScalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
@@ -1453,10 +1462,10 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             int64_t slot = -1;
             for ( int64_t v = 0; v < f->array_bound; v++ )
             {
-                // slot 0 names nothing, so "None" finds no slot and is an
-                // unknown key like any other name this reader cannot place
+                // nothing is stored for None, so "None" finds no slot and is
+                // an unknown key like any other name this reader cannot place
                 if ( !TableJsonKeyedSlotValid( f, v ) ) { continue; }
-                if ( strcmp( f->key_name( (uint64_t) v ), key ) == 0 ) { slot = v; break; }
+                if ( strcmp( f->key_name( TableJsonKeyedSlotKey( v ) ), key ) == 0 ) { slot = v; break; }
             }
             if ( slot >= 0 && slot < 512 )
             {

@@ -212,36 +212,43 @@ struct TableReader
 };
 
 
-// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
-// own value, so ships[ShipType::Bomber] reads as itself.
+// An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
+// key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
 //
-// SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
-// the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR —
-// an assert through operator[], which cannot see a runtime key any earlier,
-// and that assert is a DEBUG guard, compiled out by -DNDEBUG. So a shipped
-// build carries no check on a keyed index at all, and ITERATION is where the
-// safety lives: begin()/end() run 1..E.Max and never offer slot 0, so a
-// consumer of the whole array writes no bound, no cast and no None question.
-// The slot exists because memory is cheap and the bias is not: a slot's index
-// IS its variant's value, with nothing to add or subtract anywhere.
-template <typename T, typename E, int32_t N>
+// NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent is derived from E::Max
+// here and nowhere else, so there is no size parameter to spell and no count a
+// consumer could put one out of step with.
+//
+// NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
+// key of 0 is malformed, and INDEXING BY IT IS AN ERROR — an assert through
+// operator[], which cannot see a runtime key any earlier, and that assert is a
+// DEBUG guard, compiled out by -DNDEBUG. So a shipped build carries no check
+// on a keyed index at all, and an index by None there computes -1 and reads
+// ONE ELEMENT BEFORE THE ARRAY. ITERATION is where the safety lives:
+// begin()/end() walk every stored slot and yield the KEY, 1..E.Max, so a
+// consumer of the whole array writes no bound, no cast, no shift and no None
+// question.
+template <typename T, typename E>
 struct TableKeyed
 {
-    T slots[N] = {};
+    // the extent is the enum's, derived here and named nowhere else
+    static constexpr int32_t kSlots = (int32_t) E::Max;
+
+    T slots[kSlots] = {};
 
     T & operator[]( E key )
     {
-        // slot 0 is None's, and None is the null key
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        // None is the null key and keys no slot
+        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        return slots[ (int32_t) key - 1 ];
     }
     const T & operator[]( E key ) const
     {
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        return slots[ (int32_t) key - 1 ];
     }
 
-    // ---- iteration over the VALID slots: 1..E.Max, key beside element ----
+    // ---- iteration: keys 1..E.Max over storage 0..E.Max-1, key beside element ----
     //
     // The entry is a key and a REFERENCE, handed out BY VALUE the way any
     // proxy is: for ( auto [ key, element ] : keyed ) binds element to the
@@ -265,8 +272,8 @@ struct TableKeyed
         typedef Entry reference;
 
         T * slots;
-        int32_t index;
-        Entry operator*() const { return Entry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
         Iterator & operator++() { index++; return *this; }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
@@ -281,17 +288,17 @@ struct TableKeyed
         typedef ConstEntry reference;
 
         const T * slots;
-        int32_t index;
-        ConstEntry operator*() const { return ConstEntry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
         ConstIterator & operator++() { index++; return *this; }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
 
-    Iterator begin() { return Iterator{ slots, 1 }; } // 1: slot 0 is None's
-    Iterator end() { return Iterator{ slots, N }; }
-    ConstIterator begin() const { return ConstIterator{ slots, 1 }; }
-    ConstIterator end() const { return ConstIterator{ slots, N }; }
+    Iterator begin() { return Iterator{ slots, 0 }; }
+    Iterator end() { return Iterator{ slots, kSlots }; }
+    ConstIterator begin() const { return ConstIterator{ slots, 0 }; }
+    ConstIterator end() const { return ConstIterator{ slots, kSlots }; }
 };
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -543,7 +550,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x7970dae87b5cf43aull;
+inline constexpr uint64_t BuildVersion = 0xe7c54936602ceecaull;
 
 } // namespace graphdemo
 

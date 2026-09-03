@@ -323,7 +323,7 @@ static class Program
             {
                 return;
             }
-            Check(Unsafe.SizeOf<PaddedRowRow>() == 72, "a padded row is 72 bytes in the managed model, as it is in C++");
+            Check(Unsafe.SizeOf<PaddedRowRow>() == 64, "a padded row is 64 bytes in the managed model, as it is in C++");
 
             ref readonly PaddedFrameBlockProjection projection = ref block.Projection;
             Check(projection.Marker == 7, "the projection's scalar before the hole");
@@ -345,11 +345,13 @@ static class Program
                     {
                         Check(p->Slots[s] == (ushort) (i * 4 + s), "padded row slot — an inline fixed array");
                     }
-                    // an enum-keyed array stays INLINE (§2.7): one slot per
-                    // variant, indexed by the variant's own value, slot 0 None's
-                    for (int t = 1; t < 5; t++)
+                    // an enum-keyed array stays INLINE (§2.7): one slot per NAMED
+                    // variant, nothing for None, the key t at index t-1 (§2.4).
+                    // The projection is a raw layout mirror, so the shift is
+                    // spelled here rather than by an accessor.
+                    for (int t = 1; t <= 4; t++)
                     {
-                        Check(p->Teams[t] == (byte) (i + t), "padded row team slot — an inline enum-keyed array");
+                        Check(p->Teams[t - 1] == (byte) (i + t), "padded row team slot — an inline enum-keyed array");
                     }
                 }
                 Check(row.Counter == i * 9, "padded row optional value");

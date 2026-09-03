@@ -39,9 +39,9 @@ table HullConfig
 }
 
 // a plain `type` may spell a keyed array too. On the TYPE wire `[Team]int32`
-// is exactly `[Team.Max + 1]int32` — positional, bitpacked, and the two
-// spellings share one protocol id. On the table wire its slots ride keyed:
-// one construct, two wires, the rule every kind follows.
+// is exactly `[Team.Max]int32` — positional, bitpacked, and the two spellings
+// share one protocol id. On the table wire its slots ride keyed: one
+// construct, two wires, the rule every kind follows.
 type ScoreBoard
 {
     per_team [Team]int32 | min = 0, max = 100000

@@ -204,36 +204,43 @@ struct TableReader
 };
 
 
-// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
-// own value, so ships[ShipType::Bomber] reads as itself.
+// An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
+// key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
 //
-// SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
-// the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR —
-// an assert through operator[], which cannot see a runtime key any earlier,
-// and that assert is a DEBUG guard, compiled out by -DNDEBUG. So a shipped
-// build carries no check on a keyed index at all, and ITERATION is where the
-// safety lives: begin()/end() run 1..E.Max and never offer slot 0, so a
-// consumer of the whole array writes no bound, no cast and no None question.
-// The slot exists because memory is cheap and the bias is not: a slot's index
-// IS its variant's value, with nothing to add or subtract anywhere.
-template <typename T, typename E, int32_t N>
+// NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent is derived from E::Max
+// here and nowhere else, so there is no size parameter to spell and no count a
+// consumer could put one out of step with.
+//
+// NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
+// key of 0 is malformed, and INDEXING BY IT IS AN ERROR — an assert through
+// operator[], which cannot see a runtime key any earlier, and that assert is a
+// DEBUG guard, compiled out by -DNDEBUG. So a shipped build carries no check
+// on a keyed index at all, and an index by None there computes -1 and reads
+// ONE ELEMENT BEFORE THE ARRAY. ITERATION is where the safety lives:
+// begin()/end() walk every stored slot and yield the KEY, 1..E.Max, so a
+// consumer of the whole array writes no bound, no cast, no shift and no None
+// question.
+template <typename T, typename E>
 struct TableKeyed
 {
-    T slots[N] = {};
+    // the extent is the enum's, derived here and named nowhere else
+    static constexpr int32_t kSlots = (int32_t) E::Max;
+
+    T slots[kSlots] = {};
 
     T & operator[]( E key )
     {
-        // slot 0 is None's, and None is the null key
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        // None is the null key and keys no slot
+        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        return slots[ (int32_t) key - 1 ];
     }
     const T & operator[]( E key ) const
     {
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        return slots[ (int32_t) key - 1 ];
     }
 
-    // ---- iteration over the VALID slots: 1..E.Max, key beside element ----
+    // ---- iteration: keys 1..E.Max over storage 0..E.Max-1, key beside element ----
     //
     // The entry is a key and a REFERENCE, handed out BY VALUE the way any
     // proxy is: for ( auto [ key, element ] : keyed ) binds element to the
@@ -257,8 +264,8 @@ struct TableKeyed
         typedef Entry reference;
 
         T * slots;
-        int32_t index;
-        Entry operator*() const { return Entry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
         Iterator & operator++() { index++; return *this; }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
@@ -273,17 +280,17 @@ struct TableKeyed
         typedef ConstEntry reference;
 
         const T * slots;
-        int32_t index;
-        ConstEntry operator*() const { return ConstEntry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
         ConstIterator & operator++() { index++; return *this; }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
 
-    Iterator begin() { return Iterator{ slots, 1 }; } // 1: slot 0 is None's
-    Iterator end() { return Iterator{ slots, N }; }
-    ConstIterator begin() const { return ConstIterator{ slots, 1 }; }
-    ConstIterator end() const { return ConstIterator{ slots, N }; }
+    Iterator begin() { return Iterator{ slots, 0 }; }
+    Iterator end() { return Iterator{ slots, kSlots }; }
+    ConstIterator begin() const { return ConstIterator{ slots, 0 }; }
+    ConstIterator end() const { return ConstIterator{ slots, kSlots }; }
 };
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -312,7 +319,7 @@ namespace blockdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0xb34bc386659d9873ull;
+inline constexpr uint64_t BuildVersion = 0x863a8eebc1090dc6ull;
 
 } // namespace blockdemo
 
@@ -487,7 +494,7 @@ struct PaddedRow {
     char label[15 + 1] = {}; // string(15): max length, used length beside it
     int32_t label_length = 0;
     uint16_t slots[4] = {};
-    TableKeyed<uint8_t, Team, 5> teams; // [Team]: one slot per variant, indexed by the value
+    TableKeyed<uint8_t, Team> teams; // [Team]: one slot per named variant, keyed by the value
     int32_t counter = 0;
     bool counter_present = false; // ?int32: absent until set
 };
@@ -592,11 +599,11 @@ inline int64_t PaddedRowMeasure( const PaddedRow & value )
     }
     {
         int64_t pairs_teams = 0, body_teams = 0;
-        for ( int32_t i = 1; i < 5; i++ ) // [Team]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 4; i++ ) // [Team]: every stored slot is a named variant's
         {
             if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Team( i ), key_id ) ) { return -1; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             pairs_teams++; body_teams += 2 + 4 + 1; // key, length, element
         }
         if ( pairs_teams > 0 ) { bytes += 3 + 4 + 5 + body_teams; } // teams
@@ -654,11 +661,11 @@ inline bool PaddedRowSaveBody( TableWriter & w, const PaddedRow & value )
     }
     {
         uint32_t pairs_teams = 0;
-        for ( int32_t i = 1; i < 5; i++ ) // [Team]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 4; i++ ) // [Team]: every stored slot is a named variant's
         {
             if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Team( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             pairs_teams++;
         }
         if ( pairs_teams > 0 )
@@ -672,11 +679,11 @@ inline bool PaddedRowSaveBody( TableWriter & w, const PaddedRow & value )
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (SPEC-TABLES.md §3.2)
-            for ( int32_t i = 1; i < 5; i++ )
+            for ( int32_t i = 0; i < 4; i++ )
             {
                 if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
                 uint16_t key_id = 0;
-                if ( !TableEnumId( Team( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+                if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.put16( key_id ); // the slot's VARIANT id, not its position
                 int64_t elem_len_at_teams = w.offset; w.put32( 0 );
                 w.put8( uint8_t( value.teams.slots[i] ) );
@@ -862,7 +869,7 @@ inline bool PaddedRowLoadBody( TableReader & r, PaddedRow & value )
                             TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
                             if ( !elem.has( 1 ) ) { r.report->malformed = true; sub.offset += elem_len; continue; }
                             uint8_t decoded_v = uint8_t( elem.get8( ) );
-                            value.teams.slots[int32_t( slot )] = decoded_v;
+                            value.teams.slots[int32_t( slot ) - 1] = decoded_v;
                         }
                         sub.offset += elem_len;
                     }
@@ -1173,7 +1180,7 @@ static_assert( std::is_standard_layout<PaddedFrame>::value, "PaddedFrame must st
 // agrees. The model is not self-evidently right — on 32-bit System V
 // alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
 // rather than assumed.
-static_assert( sizeof( PaddedRow ) == 72, "PaddedRow's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( PaddedRow ) == 64, "PaddedRow's sizeof moved: the build version was taken over 64, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
 static_assert( alignof( PaddedRow ) == 8, "PaddedRow's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PaddedRow, tag ) == 0, "PaddedRow's field tag moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PaddedRow, value ) == 8, "PaddedRow's field value moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
@@ -1182,13 +1189,13 @@ static_assert( offsetof( PaddedRow, id ) == 20, "PaddedRow's field id moved: the
 static_assert( offsetof( PaddedRow, label ) == 24, "PaddedRow's field label moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PaddedRow, slots ) == 44, "PaddedRow's field slots moved: the build version was taken over offset 44 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PaddedRow, teams ) == 52, "PaddedRow's field teams moved: the build version was taken over offset 52 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, counter ) == 60, "PaddedRow's field counter moved: the build version was taken over offset 60 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( PaddedFrame ) == 4648, "PaddedFrame's sizeof moved: the build version was taken over 4648, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, counter ) == 56, "PaddedRow's field counter moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( PaddedFrame ) == 4136, "PaddedFrame's sizeof moved: the build version was taken over 4136, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
 static_assert( alignof( PaddedFrame ) == 8, "PaddedFrame's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PaddedFrame, marker ) == 0, "PaddedFrame's field marker moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PaddedFrame, stamp ) == 8, "PaddedFrame's field stamp moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( PaddedFrame, rows ) == 16, "PaddedFrame's field rows moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedFrame, blob ) == 4628, "PaddedFrame's field blob moved: the build version was taken over offset 4628 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedFrame, blob ) == 4116, "PaddedFrame's field blob moved: the build version was taken over offset 4116 (SPEC-TABLES.md §20.3)" );
 
 // ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
 
@@ -1204,7 +1211,7 @@ inline const TableTypeInfo * PaddedRowTableType()
         { "id", "id", "uint32", 0x5dd8, 8, false, false, false, 0, (uint32_t) offsetof( PaddedRow, id ), (uint32_t) sizeof( PaddedRow::id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "label", "label", "string", 0xe16a, 12, false, true, false, 15, (uint32_t) offsetof( PaddedRow, label ), (uint32_t) sizeof( PaddedRow::label ), (uint32_t) offsetof( PaddedRow, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "slots", "slots", "uint16", 0xf4d8, 7, true, false, false, 4, (uint32_t) offsetof( PaddedRow, slots ), (uint32_t) sizeof( PaddedRow::slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "teams", "teams", "uint8", 0x9ae1, 6, true, false, false, 5, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( PaddedRow::teams.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
+        { "teams", "teams", "uint8", 0x9ae1, 6, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( PaddedRow::teams.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
         { "counter", "counter", "int32", 0x428f, 4, false, false, true, 0, (uint32_t) offsetof( PaddedRow, counter ), (uint32_t) sizeof( PaddedRow::counter ), 0xffffffffu, (uint32_t) offsetof( PaddedRow, counter_present ), NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "PaddedRow", (uint32_t) sizeof( PaddedRow ), 8, fields, +[]( void * p ) { PaddedRowReset( *(PaddedRow *) p ); } };

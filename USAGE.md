@@ -822,22 +822,22 @@ takes no specified default: presence is its only default.
 
 ### Enum-keyed arrays: `ships [ShipType]ShipConfig`
 
-An array bound that names a declared ENUM gives you exactly one slot per
-variant, indexed by the variant:
+An array bound that names a declared ENUM gives you exactly one slot per NAMED
+variant, keyed by the variant:
 
 ```
 enum ShipType { Fighter, Bomber, Scout }
 
 table Fleet
 {
-    ships [ShipType]ShipConfig   // one slot per variant, indexed by the variant
+    ships [ShipType]ShipConfig   // one slot per named variant, keyed by the variant
 }
 ```
 
 ```cpp
 Fleet fleet;
 
-for ( auto [ ship_type, ship ] : fleet.ships )   // every VALID slot, 1..Max
+for ( auto [ ship_type, ship ] : fleet.ships )   // every slot; the KEY runs 1..Max
 {
     ship.health = DefaultHealth( ship_type );    // the element is a reference
 }
@@ -846,23 +846,24 @@ ShipType key = TypeFromConfig();                 // keys are runtime values
 fleet.ships[key].health = 400.0f;                // asserts key != None
 ```
 
-Storage is a generated keyed-array type wrapping a plain `ShipConfig[ShipType.Max
-+ 1]` — no count companion, because every slot exists — so the memory is the
-array you would have written by hand, with the accessor and the iteration on
-top of it. **Slot 0 exists and is never valid**: `None` is the enum's
-null, so it keys nothing and only `ShipType.Max` slots ever hold data. The
-slot is kept so indexing stays unbiased, and reaching it is an error — an
-assert on the accessor, and **not in the iteration's range at all**.
+Storage is a generated keyed-array type wrapping a plain
+`ShipConfig[ShipType.Max]` — no count companion, because every named slot
+exists — so the memory is the array you would have written by hand, with the
+accessor and the iteration on top of it. **Nothing is stored for `None`, and
+the storage shifts left**: `None` is the enum's null, so it keys nothing and
+takes no room, and the key `k` lives at index `k - 1`. The type is
+`TableKeyed<T, E>` and derives its extent from the enum: nothing outside the
+array names its size.
 
 **Iterate, and the slot rule never reaches your code.** Keys in a
 data-driven program are runtime values — an enum read out of a file, a key a
 tool hands you — so `operator[]` is the accessor every call site uses, and its
 assert is a debug guard that `NDEBUG` compiles out. A shipped build carries no
-check on a keyed index, which is why iteration, not the assert, is where the
-safety lives: the range is `1 .. Max`, so a consumer of the whole array writes
-no lower bound, no cast and no `Max` of its own, and cannot reach `None`'s
-slot by accident. Iteration is const-correct, and a const keyed array yields
-const elements.
+check on a keyed index — and an index by `None` there computes `-1` and reads
+one element before the array. That is why iteration, not the assert, is where
+the safety lives: it yields the KEY, `1 .. Max`, so a consumer of the whole
+array writes no lower bound, no cast, no shift and no `Max` of its own.
+Iteration is const-correct, and a const keyed array yields const elements.
 
 The entry is a **proxy handed out by value** — a key beside a reference — so
 the spelling is `for ( auto [ key, element ] : keyed )`. `auto & [ ... ]` is a

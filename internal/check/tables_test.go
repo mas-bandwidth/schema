@@ -223,9 +223,9 @@ type Packet
 }
 `
 
-// TestKeyedSpellingIsTheSameTypeWire: on the TYPE wire `[E]T` IS `[E.Max +
-// 1]T` — positional, bitpacked, one slot per variant plus None's. The two
-// spellings must project identically and carry one protocol id, or a keyed
+// TestKeyedSpellingIsTheSameTypeWire: on the TYPE wire `[E]T` IS `[E.Max]T` —
+// positional, bitpacked, one slot per NAMED VARIANT and nothing for None. The
+// two spellings must project identically and carry one protocol id, or a keyed
 // array would be a packet-wire edit dressed as a table-wire feature.
 func TestKeyedSpellingIsTheSameTypeWire(t *testing.T) {
 	const keyed = `package probe
@@ -243,21 +243,22 @@ enum Kind { Alpha, Beta }
 
 type Board
 {
-    per_kind [Kind.Max + 1]int32
+    per_kind [Kind.Max]int32
 }
 `
 	a := buildUnit(t, keyed)
 	b := buildUnit(t, spelled)
 	if ir.WireProjection(a) != ir.WireProjection(b) {
-		t.Fatalf("[E]T and [E.Max + 1]T project differently:\n--- [E]T ---\n%s\n--- [E.Max + 1]T ---\n%s",
+		t.Fatalf("[E]T and [E.Max]T project differently:\n--- [E]T ---\n%s\n--- [E.Max + 1]T ---\n%s",
 			ir.WireProjection(a), ir.WireProjection(b))
 	}
 	if a.ProtocolId != b.ProtocolId {
-		t.Fatalf("[E]T and [E.Max + 1]T carry different protocol ids %#x != %#x", a.ProtocolId, b.ProtocolId)
+		t.Fatalf("[E]T and [E.Max]T carry different protocol ids %#x != %#x", a.ProtocolId, b.ProtocolId)
 	}
-	// and the resolved bound is the slot count: None's slot plus one per variant
+	// and the resolved bound is the slot count: one per named variant, and
+	// nothing for None (SPEC-TABLES.md §2.4)
 	f := a.Structs["Board"].Fields[0]
-	if f.Array != ir.ArrayFixed || f.ArrayBound != 3 || f.KeyEnum != "Kind" {
+	if f.Array != ir.ArrayFixed || f.ArrayBound != 2 || f.KeyEnum != "Kind" {
 		t.Fatalf("keyed field resolved wrong: array=%v bound=%d key=%q", f.Array, f.ArrayBound, f.KeyEnum)
 	}
 }

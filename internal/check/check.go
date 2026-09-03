@@ -1106,12 +1106,13 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 		switch {
 		case out.KeyEnum != "":
-			// one slot per named variant, plus None's — which is never valid,
-			// because None is the null key (SPEC-TABLES.md §2.4). The bound is
-			// E.Max + 1, the same count `[E.Max + 1]T` resolves to, so the two
+			// ONE SLOT PER NAMED VARIANT and not one more: None is the null
+			// key, so nothing is stored for it and the storage SHIFTS LEFT —
+			// the key k lives at index k-1 (SPEC-TABLES.md §2.4). The bound is
+			// E.Max, the same count `[E.Max]T` resolves to, so the two
 			// spellings share one projection and one protocol id.
 			out.Array = ir.ArrayFixed
-			out.ArrayBound = out.KeyEnumRef.Max + 1
+			out.ArrayBound = out.KeyEnumRef.Max
 			out.ArrayExpr = f.Array.Hi
 		default:
 			hi, ok := c.evalInt(f.Array.Hi)

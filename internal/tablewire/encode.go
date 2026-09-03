@@ -301,7 +301,7 @@ func encodeArray(e *encoder, w *buf, fv *tabletext.Field, id uint16, kind, count
 // body length, then one `(variant id, L, element body)` pair per PRESENT slot,
 // ascending by variant ordinal. A slot holding its default elides exactly as a
 // defaulted field does, an array with no present slot is not written at all,
-// and None — slot 0 — never rides.
+// and None keys no slot, so nothing is stored for it and nothing rides (§2.4).
 func encodeKeyed(e *encoder, w *buf, fv *tabletext.Field, id uint16, kind int) error {
 	f := fv.Def
 	body := &buf{}
@@ -333,9 +333,6 @@ func encodeKeyed(e *encoder, w *buf, fv *tabletext.Field, id uint16, kind int) e
 		keyID, err := variantWireId(f.KeyEnumRef, uint64(tabletext.KeyedSlotValue(f, slot)), f.Name)
 		if err != nil {
 			return err
-		}
-		if keyID == 0 {
-			return fmt.Errorf("enum-keyed array %s: slot %d is None's, and None keys no record (SPEC-TABLES.md §3.2)", f.Name, slot)
 		}
 		body.u16(keyID)
 		body.u32(uint32(len(elem)))

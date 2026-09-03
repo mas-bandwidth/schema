@@ -52,8 +52,8 @@ namespace Tabledemo
     {
         public uint Version = 1;
         public GlobalSettings Global = new GlobalSettings();
-        public TableKeyed<ShipEntry> Ships = new TableKeyed<ShipEntry>(4); // [ShipType]: one slot per variant, indexed by the value
-        public TableKeyed<int> Thresholds = new TableKeyed<int>(4); // [Difficulty]: one slot per variant, indexed by the value
+        public TableKeyed<ShipEntry, ShipType> Ships = new TableKeyed<ShipEntry, ShipType>(); // [ShipType]: one slot per named variant, keyed by the value
+        public TableKeyed<int, Difficulty> Thresholds = new TableKeyed<int, Difficulty>(); // [Difficulty]: one slot per named variant, keyed by the value
         public ShipEntry[] Reserves = new ShipEntry[3]; // used count beside it; count in [0, 3]
         public int ReservesCount;
 
@@ -690,24 +690,24 @@ namespace Tabledemo
             }
             {
                 long pairs = 0, keyedBytes = 0;
-                for (int i = 1; i < 4; i++) // [ShipType]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [ShipType]: every stored slot is a named variant's
                 {
                     long elemBytes = ShipEntryMeasure(value.Ships.Slots[i]);
                     if (elemBytes < 0) { return -1; }
                     if (elemBytes <= 2) { continue; } // an all-default slot elides
                     ushort keyId;
-                    if (!TableEnumId((ShipType)i, out keyId)) { return -1; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((ShipType)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body
                 }
                 if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // ships
             }
             {
                 long pairs = 0, keyedBytes = 0;
-                for (int i = 1; i < 4; i++) // [Difficulty]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Difficulty]: every stored slot is a named variant's
                 {
                     if (value.Thresholds.Slots[i] == 0) { continue; } // a default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Difficulty)i, out keyId)) { return -1; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Difficulty)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++; keyedBytes += 2 + 4 + 4; // key, length, element
                 }
                 if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // thresholds
@@ -745,13 +745,13 @@ namespace Tabledemo
             }
             {
                 uint pairs = 0;
-                for (int i = 1; i < 4; i++) // [ShipType]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [ShipType]: every stored slot is a named variant's
                 {
                     long elemBytes = ShipEntryMeasure(value.Ships.Slots[i]);
                     if (elemBytes < 0) { return false; }
                     if (elemBytes <= 2) { continue; } // an all-default slot elides
                     ushort keyId;
-                    if (!TableEnumId((ShipType)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((ShipType)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++;
                 }
                 if (pairs > 0)
@@ -765,13 +765,13 @@ namespace Tabledemo
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
                     // slot is found by its key (SPEC-TABLES.md §3.2)
-                    for (int i = 1; i < 4; i++)
+                    for (int i = 0; i < 3; i++)
                     {
                         long elemBytes = ShipEntryMeasure(value.Ships.Slots[i]);
                         if (elemBytes < 0) { return false; }
                         if (elemBytes <= 2) { continue; } // an all-default slot elides
                         ushort keyId;
-                        if (!TableEnumId((ShipType)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                        if (!TableEnumId((ShipType)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                         w.Put16(keyId); // the slot's VARIANT id, not its position
                         int elemLenAt = w.Offset; w.Put32(0);
                         if (!ShipEntrySaveBody(ref w, value.Ships.Slots[i])) { return false; }
@@ -782,11 +782,11 @@ namespace Tabledemo
             }
             {
                 uint pairs = 0;
-                for (int i = 1; i < 4; i++) // [Difficulty]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Difficulty]: every stored slot is a named variant's
                 {
                     if (value.Thresholds.Slots[i] == 0) { continue; } // a default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Difficulty)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Difficulty)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++;
                 }
                 if (pairs > 0)
@@ -800,11 +800,11 @@ namespace Tabledemo
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
                     // slot is found by its key (SPEC-TABLES.md §3.2)
-                    for (int i = 1; i < 4; i++)
+                    for (int i = 0; i < 3; i++)
                     {
                         if (value.Thresholds.Slots[i] == 0) { continue; } // a default slot elides
                         ushort keyId;
-                        if (!TableEnumId((Difficulty)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                        if (!TableEnumId((Difficulty)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                         w.Put16(keyId); // the slot's VARIANT id, not its position
                         int elemLenAt = w.Offset; w.Put32(0);
                         w.Put32(unchecked((uint)(value.Thresholds.Slots[i])));
@@ -929,7 +929,7 @@ namespace Tabledemo
                                 }
                                 {
                                     TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    ShipEntryLoadBody(ref elem, value.Ships.Slots[(int)slot]);
+                                    ShipEntryLoadBody(ref elem, value.Ships.Slots[(int)slot - 1]);
                                 }
                                 sub.Offset += (int)elemLen;
                             }
@@ -986,7 +986,7 @@ namespace Tabledemo
                                         int decodedV = unchecked((int)elem.Get32());
                                         if (decodedV < 0) { decodedV = 0; r.Report.Clamped++; }
                                         else if (decodedV > 1000) { decodedV = 1000; r.Report.Clamped++; }
-                                        value.Thresholds.Slots[(int)slot] = decodedV;
+                                        value.Thresholds.Slots[(int)slot - 1] = decodedV;
                                     }
                                 }
                                 sub.Offset += (int)elemLen;
@@ -1124,8 +1124,8 @@ namespace Tabledemo
             {
                 new TableFieldInfo { Name = "version", TypeName = "uint32", Id = 0xe8e6, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "global", TypeName = "GlobalSettings", Id = 0x1b51, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GlobalSettingsTableType(); } },
-                new TableFieldInfo { Name = "ships", TypeName = "ShipEntry", Id = 0x2d39, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "ShipType", KeyName = delegate(ulong v) { return EnumNameShipType(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((ShipType)v, out id); return id; }, Guard = "", TableRef = delegate { return ShipEntryTableType(); } },
-                new TableFieldInfo { Name = "thresholds", TypeName = "int32", Id = 0xb2eb, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Difficulty", KeyName = delegate(ulong v) { return EnumNameDifficulty(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Difficulty)v, out id); return id; }, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "ships", TypeName = "ShipEntry", Id = 0x2d39, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)ShipType.Max, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "ShipType", KeyName = delegate(ulong v) { return EnumNameShipType(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((ShipType)v, out id); return id; }, Guard = "", TableRef = delegate { return ShipEntryTableType(); } },
+                new TableFieldInfo { Name = "thresholds", TypeName = "int32", Id = 0xb2eb, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Difficulty.Max, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Difficulty", KeyName = delegate(ulong v) { return EnumNameDifficulty(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Difficulty)v, out id); return id; }, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "reserves", TypeName = "ShipEntry", Id = 0x049d, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 3, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ShipEntryTableType(); } },
             };
             PackConfigTableInfo = info;

@@ -16,7 +16,7 @@ table Colour
 
 table Depot
     field name id=0x30df kind=12 size=12
-    field banks id=0x7f34 kind=16 elem=13 type=Layer array=keyed bound=3 key=Tier
+    field banks id=0x7f34 kind=16 elem=13 type=Layer array=keyed bound=2 key=Tier
     field spare id=0x3a4f kind=13 type=Meta optional=true
     field head id=0x79aa kind=13 type=ListNode
 
@@ -71,3 +71,6 @@ enum Tier
 ## history
 ### 2026-09-02 — the first baseline over the pointers corpus
 - baseline created over 12 tables — data written BEFORE this point is not covered by it
+
+### 2026-09-02 — enum arrays store Max slots and shift left: nothing is stored or packed for None (owner ruling 2026-09-03)
+- no compatibility-affecting edits; the wire absorbs the rest

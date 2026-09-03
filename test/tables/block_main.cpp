@@ -798,7 +798,9 @@ int main( int argc, char ** argv )
             snprintf( rows[i].label, sizeof( rows[i].label ), "row-%d", i );
             rows[i].label_length = (int32_t) strlen( rows[i].label );
             for ( int s = 0; s < 4; s++ ) { rows[i].slots[s] = (uint16_t) ( i * 4 + s ); }
-            for ( int t = 1; t < 5; t++ ) { rows[i].teams.slots[t] = (uint8_t) ( i + t ); }
+            // by KEY, never by storage index: the accessor is the only place
+            // the shift appears (SPEC-TABLES.md §2.4)
+            for ( int t = 1; t <= 4; t++ ) { rows[i].teams[ (Team) t ] = (uint8_t) ( i + t ); }
             rows[i].counter = i * 9;
             rows[i].counter_present = ( i % 2 ) == 1;
         }

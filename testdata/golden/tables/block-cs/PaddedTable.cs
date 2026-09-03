@@ -17,34 +17,44 @@ using System;
 namespace Blockdemo
 {
 
-    // An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
-    // own value, so Turrets[(int)Weapon.Missile] reads as itself.
+    // An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
+    // key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
     //
-    // SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
-    // the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR.
-    // The slot exists because memory is cheap and the bias is not: a slot's index
-    // IS its variant's value, with nothing to add or subtract anywhere.
+    // NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent comes from the key
+    // enum's own Max member, read once per closed generic type and cached, so
+    // there is no constructor argument and no constant a consumer could put one
+    // out of step with.
     //
-    // ITERATION is the surface a consumer of the WHOLE array wants: foreach runs
-    // slots 1..E.Max and yields the key beside the element, so slot 0 never
-    // reaches a call site and no caller spells a bound or a lower limit of its
-    // own. The enumerator is a struct and foreach binds it by pattern, so the
-    // walk allocates nothing.
+    // NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
+    // key of 0 is malformed, and INDEXING BY IT IS AN ERROR — a throw from the
+    // indexer, which is NOT compiled out in release the way C++'s assert is.
+    //
+    // ITERATION is the surface a consumer of the WHOLE array wants: foreach walks
+    // every stored slot and yields the KEY, 1..E.Max, beside the element, so no
+    // caller spells a bound, a lower limit or the shift. The enumerator is a
+    // struct and foreach binds it by pattern, so the walk allocates nothing.
     //
     // The entry's Element is a readonly T: a CLASS element (a nested table) is the
     // live instance and mutating it through the iteration is visible, and a VALUE
     // element (a scalar, an enum) is a COPY — iteration READS those and the
     // indexer is how they are written.
     //
-    // Slots is public and is what the generated codecs walk; the indexer is for
-    // callers, and it is the one place the None key can be caught in C#.
-    public sealed class TableKeyed<T>
+    // Slots is public and is what the generated codecs walk, by STORAGE INDEX; the
+    // indexer is for callers and takes the KEY, and it is the one place the None
+    // key can be caught in C#.
+    public sealed class TableKeyed<T, E> where E : struct, System.Enum
     {
+        // the extent is the enum's, derived here and named nowhere else. C# has no
+        // compile-time enum arithmetic, so this reads the generated Max member
+        // once, at type initialization — never on a per-value path.
+        public static readonly int SlotCount =
+            (int)System.Convert.ToInt64(System.Enum.Parse(typeof(E), "Max"));
+
         public readonly T[] Slots;
 
-        public TableKeyed(int slots)
+        public TableKeyed()
         {
-            Slots = new T[slots];
+            Slots = new T[SlotCount];
         }
 
         public T this[int key]
@@ -52,12 +62,12 @@ namespace Blockdemo
             get
             {
                 RefuseNone(key);
-                return Slots[key];
+                return Slots[key - 1];
             }
             set
             {
                 RefuseNone(key);
-                Slots[key] = value;
+                Slots[key - 1] = value;
             }
         }
 
@@ -66,7 +76,7 @@ namespace Blockdemo
             if (key == 0)
             {
                 throw new ArgumentOutOfRangeException("key",
-                    "slot 0 is None's and is never valid: None is the null key of an enum-keyed array");
+                    "None is the null key of an enum-keyed array: it keys no slot");
             }
         }
 
@@ -75,7 +85,7 @@ namespace Blockdemo
             return new Enumerator(Slots);
         }
 
-        // one valid slot: its index and its element. Deconstruct so a caller may
+        // one slot: the KEY it holds and its element. Deconstruct so a caller may
         // write: foreach (var (key, element) in keyed).
         public readonly struct Entry
         {
@@ -98,12 +108,12 @@ namespace Blockdemo
         public struct Enumerator
         {
             readonly T[] slots;
-            int index;
+            int index; // the STORAGE index; the key it holds is index + 1
 
             public Enumerator(T[] slots)
             {
                 this.slots = slots;
-                this.index = 0; // the first MoveNext lands on slot 1, never slot 0
+                this.index = -1; // the first MoveNext lands on the first stored slot
             }
 
             public bool MoveNext()
@@ -114,7 +124,7 @@ namespace Blockdemo
 
             public Entry Current
             {
-                get { return new Entry(index, slots[index]); }
+                get { return new Entry(index + 1, slots[index]); }
             }
         }
     }
@@ -355,7 +365,7 @@ namespace Blockdemo
         public byte[] Label = new byte[15]; // string(15): max length, used length beside it
         public int LabelLength;
         public ushort[] Slots = new ushort[4];
-        public TableKeyed<byte> Teams = new TableKeyed<byte>(5); // [Team]: one slot per variant, indexed by the value
+        public TableKeyed<byte, Team> Teams = new TableKeyed<byte, Team>(); // [Team]: one slot per named variant, keyed by the value
         public int Counter;
         public bool CounterPresent; // ?int32: absent until set
     }
@@ -441,11 +451,11 @@ namespace Blockdemo
             }
             {
                 long pairs = 0, keyedBytes = 0;
-                for (int i = 1; i < 5; i++) // [Team]: slot 0 is None's and never rides
+                for (int i = 0; i < 4; i++) // [Team]: every stored slot is a named variant's
                 {
                     if (value.Teams.Slots[i] == 0) { continue; } // a default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Team)i, out keyId)) { return -1; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Team)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++; keyedBytes += 2 + 4 + 1; // key, length, element
                 }
                 if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // teams
@@ -503,11 +513,11 @@ namespace Blockdemo
             }
             {
                 uint pairs = 0;
-                for (int i = 1; i < 5; i++) // [Team]: slot 0 is None's and never rides
+                for (int i = 0; i < 4; i++) // [Team]: every stored slot is a named variant's
                 {
                     if (value.Teams.Slots[i] == 0) { continue; } // a default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Team)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++;
                 }
                 if (pairs > 0)
@@ -521,11 +531,11 @@ namespace Blockdemo
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
                     // slot is found by its key (SPEC-TABLES.md §3.2)
-                    for (int i = 1; i < 5; i++)
+                    for (int i = 0; i < 4; i++)
                     {
                         if (value.Teams.Slots[i] == 0) { continue; } // a default slot elides
                         ushort keyId;
-                        if (!TableEnumId((Team)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                        if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                         w.Put16(keyId); // the slot's VARIANT id, not its position
                         int elemLenAt = w.Offset; w.Put32(0);
                         w.Put8(unchecked((byte)(value.Teams.Slots[i])));
@@ -717,7 +727,7 @@ namespace Blockdemo
                                     if (!elem.Has(1)) { r.Report.Malformed = true; sub.Offset += (int)elemLen; continue; }
                                     {
                                         byte decodedV = unchecked((byte)elem.Get8());
-                                        value.Teams.Slots[(int)slot] = decodedV;
+                                        value.Teams.Slots[(int)slot - 1] = decodedV;
                                     }
                                 }
                                 sub.Offset += (int)elemLen;
@@ -998,7 +1008,7 @@ namespace Blockdemo
                 new TableFieldInfo { Name = "id", TypeName = "uint32", Id = 0x5dd8, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "label", TypeName = "string", Id = 0xe16a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "slots", TypeName = "uint16", Id = 0xf4d8, Kind = 7, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "teams", TypeName = "uint8", Id = 0x9ae1, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = 5, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "teams", TypeName = "uint8", Id = 0x9ae1, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "counter", TypeName = "int32", Id = 0x428f, Kind = 4, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
             };
             PaddedRowTableInfo = info;

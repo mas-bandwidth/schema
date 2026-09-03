@@ -1680,7 +1680,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
 5. ~~Doc comments~~ — deferred; the design is kept at §4.1.
 6. ~~A root/packet marker~~ — discarded.
 7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
-   `const NumTeams = Team.Max + 1`. `len(Team)` was declined: it has three
+   `const NumTeams = Team.Max`. `len(Team)` was declined: it has three
    plausible meanings, and every one sizes enum-indexed tables wrong under
    `max` headroom — the max is the true primitive.
 8. ~~Platform-conditional constants~~ — settled: constants are

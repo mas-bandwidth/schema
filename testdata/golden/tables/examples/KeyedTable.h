@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — protocol id 0x12cf1828bc593ac7 (packets only: tables version by field id, not by protocol id)
+// package tabledemo — protocol id 0x9924bf6d375ec24d (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -203,36 +203,43 @@ struct TableReader
 };
 
 
-// An ENUM-KEYED array's storage: N = E.Max + 1 slots indexed by the variant's
-// own value, so ships[ShipType::Bomber] reads as itself.
+// An ENUM-KEYED array's storage: E.Max slots, ONE PER NAMED VARIANT, with the
+// key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
 //
-// SLOT 0 IS NONE'S AND IS NEVER VALID. None is the null key: it never rides on
-// the wire, a stored key of 0 is malformed, and INDEXING BY IT IS AN ERROR —
-// an assert through operator[], which cannot see a runtime key any earlier,
-// and that assert is a DEBUG guard, compiled out by -DNDEBUG. So a shipped
-// build carries no check on a keyed index at all, and ITERATION is where the
-// safety lives: begin()/end() run 1..E.Max and never offer slot 0, so a
-// consumer of the whole array writes no bound, no cast and no None question.
-// The slot exists because memory is cheap and the bias is not: a slot's index
-// IS its variant's value, with nothing to add or subtract anywhere.
-template <typename T, typename E, int32_t N>
+// NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent is derived from E::Max
+// here and nowhere else, so there is no size parameter to spell and no count a
+// consumer could put one out of step with.
+//
+// NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
+// key of 0 is malformed, and INDEXING BY IT IS AN ERROR — an assert through
+// operator[], which cannot see a runtime key any earlier, and that assert is a
+// DEBUG guard, compiled out by -DNDEBUG. So a shipped build carries no check
+// on a keyed index at all, and an index by None there computes -1 and reads
+// ONE ELEMENT BEFORE THE ARRAY. ITERATION is where the safety lives:
+// begin()/end() walk every stored slot and yield the KEY, 1..E.Max, so a
+// consumer of the whole array writes no bound, no cast, no shift and no None
+// question.
+template <typename T, typename E>
 struct TableKeyed
 {
-    T slots[N] = {};
+    // the extent is the enum's, derived here and named nowhere else
+    static constexpr int32_t kSlots = (int32_t) E::Max;
+
+    T slots[kSlots] = {};
 
     T & operator[]( E key )
     {
-        // slot 0 is None's, and None is the null key
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        // None is the null key and keys no slot
+        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        return slots[ (int32_t) key - 1 ];
     }
     const T & operator[]( E key ) const
     {
-        assert( key != E::None && "slot 0 is None's and is never valid: None is the null key of an enum-keyed array" );
-        return slots[ (int32_t) key ];
+        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        return slots[ (int32_t) key - 1 ];
     }
 
-    // ---- iteration over the VALID slots: 1..E.Max, key beside element ----
+    // ---- iteration: keys 1..E.Max over storage 0..E.Max-1, key beside element ----
     //
     // The entry is a key and a REFERENCE, handed out BY VALUE the way any
     // proxy is: for ( auto [ key, element ] : keyed ) binds element to the
@@ -256,8 +263,8 @@ struct TableKeyed
         typedef Entry reference;
 
         T * slots;
-        int32_t index;
-        Entry operator*() const { return Entry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
         Iterator & operator++() { index++; return *this; }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
@@ -272,17 +279,17 @@ struct TableKeyed
         typedef ConstEntry reference;
 
         const T * slots;
-        int32_t index;
-        ConstEntry operator*() const { return ConstEntry{ (E) index, slots[index] }; }
+        int32_t index; // the STORAGE index; the key it holds is index + 1
+        ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
         ConstIterator & operator++() { index++; return *this; }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
 
-    Iterator begin() { return Iterator{ slots, 1 }; } // 1: slot 0 is None's
-    Iterator end() { return Iterator{ slots, N }; }
-    ConstIterator begin() const { return ConstIterator{ slots, 1 }; }
-    ConstIterator end() const { return ConstIterator{ slots, N }; }
+    Iterator begin() { return Iterator{ slots, 0 }; }
+    Iterator end() { return Iterator{ slots, kSlots }; }
+    ConstIterator begin() const { return ConstIterator{ slots, 0 }; }
+    ConstIterator end() const { return ConstIterator{ slots, kSlots }; }
 };
 
 inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -311,7 +318,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x324fda67cd7d76efull;
+inline constexpr uint64_t BuildVersion = 0x89c17e3f4a1f6255ull;
 
 } // namespace tabledemo
 
@@ -505,14 +512,14 @@ struct TurretConfig {
 struct HullConfig {
     float health = 100.0f;
     float mass = 1.0f;
-    TableKeyed<TurretConfig, Weapon, 4> turrets; // [Weapon]: one slot per variant, indexed by the value
+    TableKeyed<TurretConfig, Weapon> turrets; // [Weapon]: one slot per named variant, keyed by the value
 };
 
 // table KeyedConfig — TABLE-wire storage: relocatable, bounded, defaults in the
 // member initializers (SPEC-TABLES.md)
 struct KeyedConfig {
-    TableKeyed<TeamConfig, Team, 4> teams; // [Team]: one slot per variant, indexed by the value
-    TableKeyed<HullConfig, Hull, 4> hulls; // [Hull]: one slot per variant, indexed by the value
+    TableKeyed<TeamConfig, Team> teams; // [Team]: one slot per named variant, keyed by the value
+    TableKeyed<HullConfig, Hull> hulls; // [Hull]: one slot per named variant, keyed by the value
     ScoreBoard scores;
 };
 
@@ -638,15 +645,15 @@ inline void HullConfigReset( HullConfig & value )
     value.health = 100.0f;
     value.mass = 1.0f;
     TurretConfigReset( value.turrets.slots[0] );
-    for ( int32_t i = 1; i < 4; i++ ) { value.turrets.slots[i] = value.turrets.slots[0]; }
+    for ( int32_t i = 1; i < 3; i++ ) { value.turrets.slots[i] = value.turrets.slots[0]; }
 }
 
 inline void KeyedConfigReset( KeyedConfig & value )
 {
     TeamConfigReset( value.teams.slots[0] );
-    for ( int32_t i = 1; i < 4; i++ ) { value.teams.slots[i] = value.teams.slots[0]; }
+    for ( int32_t i = 1; i < 3; i++ ) { value.teams.slots[i] = value.teams.slots[0]; }
     HullConfigReset( value.hulls.slots[0] );
-    for ( int32_t i = 1; i < 4; i++ ) { value.hulls.slots[i] = value.hulls.slots[0]; }
+    for ( int32_t i = 1; i < 3; i++ ) { value.hulls.slots[i] = value.hulls.slots[0]; }
     ScoreBoardReset( value.scores );
 }
 
@@ -978,13 +985,13 @@ inline int64_t HullConfigMeasure( const HullConfig & value )
     if ( value.mass != 1.0f ) { bytes += 3 + 4; } // mass
     {
         int64_t pairs_turrets = 0, body_turrets = 0;
-        for ( int32_t i = 1; i < 4; i++ ) // [Weapon]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 3; i++ ) // [Weapon]: every stored slot is a named variant's
         {
             int64_t elem_bytes = TurretConfigMeasure( value.turrets.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
             if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Weapon( i ), key_id ) ) { return -1; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Weapon( i + 1 ), key_id ) ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             pairs_turrets++; body_turrets += 2 + 4 + elem_bytes; // key, length, body
         }
         if ( pairs_turrets > 0 ) { bytes += 3 + 4 + 5 + body_turrets; } // turrets
@@ -1006,13 +1013,13 @@ inline bool HullConfigSaveBody( TableWriter & w, const HullConfig & value )
     }
     {
         uint32_t pairs_turrets = 0;
-        for ( int32_t i = 1; i < 4; i++ ) // [Weapon]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 3; i++ ) // [Weapon]: every stored slot is a named variant's
         {
             int64_t elem_bytes = TurretConfigMeasure( value.turrets.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
             if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Weapon( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Weapon( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             pairs_turrets++;
         }
         if ( pairs_turrets > 0 )
@@ -1026,13 +1033,13 @@ inline bool HullConfigSaveBody( TableWriter & w, const HullConfig & value )
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (SPEC-TABLES.md §3.2)
-            for ( int32_t i = 1; i < 4; i++ )
+            for ( int32_t i = 0; i < 3; i++ )
             {
                 int64_t elem_bytes = TurretConfigMeasure( value.turrets.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
                 if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
                 uint16_t key_id = 0;
-                if ( !TableEnumId( Weapon( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+                if ( !TableEnumId( Weapon( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.put16( key_id ); // the slot's VARIANT id, not its position
                 int64_t elem_len_at_turrets = w.offset; w.put32( 0 );
                 if ( !TurretConfigSaveBody( w, value.turrets.slots[i] ) ) return false;
@@ -1132,7 +1139,7 @@ inline bool HullConfigLoadBody( TableReader & r, HullConfig & value )
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
-                            TurretConfigLoadBody( elem, value.turrets.slots[int32_t( slot )] );
+                            TurretConfigLoadBody( elem, value.turrets.slots[int32_t( slot ) - 1] );
                         }
                         sub.offset += elem_len;
                     }
@@ -1162,26 +1169,26 @@ inline int64_t KeyedConfigMeasure( const KeyedConfig & value )
     int64_t bytes = 2; // terminator
     {
         int64_t pairs_teams = 0, body_teams = 0;
-        for ( int32_t i = 1; i < 4; i++ ) // [Team]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
             int64_t elem_bytes = TeamConfigMeasure( value.teams.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
             if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Team( i ), key_id ) ) { return -1; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             pairs_teams++; body_teams += 2 + 4 + elem_bytes; // key, length, body
         }
         if ( pairs_teams > 0 ) { bytes += 3 + 4 + 5 + body_teams; } // teams
     }
     {
         int64_t pairs_hulls = 0, body_hulls = 0;
-        for ( int32_t i = 1; i < 4; i++ ) // [Hull]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 3; i++ ) // [Hull]: every stored slot is a named variant's
         {
             int64_t elem_bytes = HullConfigMeasure( value.hulls.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
             if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Hull( i ), key_id ) ) { return -1; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Hull( i + 1 ), key_id ) ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             pairs_hulls++; body_hulls += 2 + 4 + elem_bytes; // key, length, body
         }
         if ( pairs_hulls > 0 ) { bytes += 3 + 4 + 5 + body_hulls; } // hulls
@@ -1198,13 +1205,13 @@ inline bool KeyedConfigSaveBody( TableWriter & w, const KeyedConfig & value )
 {
     {
         uint32_t pairs_teams = 0;
-        for ( int32_t i = 1; i < 4; i++ ) // [Team]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
             int64_t elem_bytes = TeamConfigMeasure( value.teams.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
             if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Team( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             pairs_teams++;
         }
         if ( pairs_teams > 0 )
@@ -1218,13 +1225,13 @@ inline bool KeyedConfigSaveBody( TableWriter & w, const KeyedConfig & value )
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (SPEC-TABLES.md §3.2)
-            for ( int32_t i = 1; i < 4; i++ )
+            for ( int32_t i = 0; i < 3; i++ )
             {
                 int64_t elem_bytes = TeamConfigMeasure( value.teams.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
                 if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
                 uint16_t key_id = 0;
-                if ( !TableEnumId( Team( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+                if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.put16( key_id ); // the slot's VARIANT id, not its position
                 int64_t elem_len_at_teams = w.offset; w.put32( 0 );
                 if ( !TeamConfigSaveBody( w, value.teams.slots[i] ) ) return false;
@@ -1235,13 +1242,13 @@ inline bool KeyedConfigSaveBody( TableWriter & w, const KeyedConfig & value )
     }
     {
         uint32_t pairs_hulls = 0;
-        for ( int32_t i = 1; i < 4; i++ ) // [Hull]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 3; i++ ) // [Hull]: every stored slot is a named variant's
         {
             int64_t elem_bytes = HullConfigMeasure( value.hulls.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
             if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Hull( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Hull( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             pairs_hulls++;
         }
         if ( pairs_hulls > 0 )
@@ -1255,13 +1262,13 @@ inline bool KeyedConfigSaveBody( TableWriter & w, const KeyedConfig & value )
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (SPEC-TABLES.md §3.2)
-            for ( int32_t i = 1; i < 4; i++ )
+            for ( int32_t i = 0; i < 3; i++ )
             {
                 int64_t elem_bytes = HullConfigMeasure( value.hulls.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
                 if ( elem_bytes <= 2 ) { continue; } // an all-default slot elides
                 uint16_t key_id = 0;
-                if ( !TableEnumId( Hull( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+                if ( !TableEnumId( Hull( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.put16( key_id ); // the slot's VARIANT id, not its position
                 int64_t elem_len_at_hulls = w.offset; w.put32( 0 );
                 if ( !HullConfigSaveBody( w, value.hulls.slots[i] ) ) return false;
@@ -1347,7 +1354,7 @@ inline bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & value )
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
-                            TeamConfigLoadBody( elem, value.teams.slots[int32_t( slot )] );
+                            TeamConfigLoadBody( elem, value.teams.slots[int32_t( slot ) - 1] );
                         }
                         sub.offset += elem_len;
                     }
@@ -1399,7 +1406,7 @@ inline bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & value )
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, elem_len, r.report );
-                            HullConfigLoadBody( elem, value.hulls.slots[int32_t( slot )] );
+                            HullConfigLoadBody( elem, value.hulls.slots[int32_t( slot ) - 1] );
                         }
                         sub.offset += elem_len;
                     }
@@ -1447,11 +1454,11 @@ inline int64_t ScoreBoardMeasure( const ScoreBoard & value )
     int64_t bytes = 2; // terminator
     {
         int64_t pairs_per_team = 0, body_per_team = 0;
-        for ( int32_t i = 1; i < 4; i++ ) // [Team]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
             if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Team( i ), key_id ) ) { return -1; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             pairs_per_team++; body_per_team += 2 + 4 + 4; // key, length, element
         }
         if ( pairs_per_team > 0 ) { bytes += 3 + 4 + 5 + body_per_team; } // per_team
@@ -1463,11 +1470,11 @@ inline bool ScoreBoardSaveBody( TableWriter & w, const ScoreBoard & value )
 {
     {
         uint32_t pairs_per_team = 0;
-        for ( int32_t i = 1; i < 4; i++ ) // [Team]: slot 0 is None's and never rides
+        for ( int32_t i = 0; i < 3; i++ ) // [Team]: every stored slot is a named variant's
         {
             if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
             uint16_t key_id = 0;
-            if ( !TableEnumId( Team( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+            if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             pairs_per_team++;
         }
         if ( pairs_per_team > 0 )
@@ -1481,11 +1488,11 @@ inline bool ScoreBoardSaveBody( TableWriter & w, const ScoreBoard & value )
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (SPEC-TABLES.md §3.2)
-            for ( int32_t i = 1; i < 4; i++ )
+            for ( int32_t i = 0; i < 3; i++ )
             {
                 if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
                 uint16_t key_id = 0;
-                if ( !TableEnumId( Team( i ), key_id ) ) { return false; } // a slot no variant names has no wire identity
+                if ( !TableEnumId( Team( i + 1 ), key_id ) ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.put16( key_id ); // the slot's VARIANT id, not its position
                 int64_t elem_len_at_per_team = w.offset; w.put32( 0 );
                 w.put32( uint32_t( value.per_team[i] ) );
@@ -1565,7 +1572,7 @@ inline bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & value )
                             int32_t decoded_v = int32_t( elem.get32( ) );
                             if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
                             else if ( decoded_v > 100000 ) { decoded_v = 100000; r.report->clamped++; }
-                            value.per_team[int32_t( slot )] = decoded_v;
+                            value.per_team[int32_t( slot ) - 1] = decoded_v;
                         }
                         sub.offset += elem_len;
                     }
@@ -1756,17 +1763,17 @@ static_assert( alignof( TurretConfig ) == 4, "TurretConfig's alignof moved: the 
 static_assert( offsetof( TurretConfig, damage ) == 0, "TurretConfig's field damage moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( TurretConfig, cooldown ) == 4, "TurretConfig's field cooldown moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( TurretConfig, gunner ) == 8, "TurretConfig's field gunner moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( HullConfig ) == 88, "HullConfig's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( HullConfig ) == 68, "HullConfig's sizeof moved: the build version was taken over 68, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
 static_assert( alignof( HullConfig ) == 4, "HullConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( HullConfig, health ) == 0, "HullConfig's field health moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( HullConfig, mass ) == 4, "HullConfig's field mass moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( HullConfig, turrets ) == 8, "HullConfig's field turrets moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( KeyedConfig ) == 480, "KeyedConfig's sizeof moved: the build version was taken over 480, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( KeyedConfig ) == 300, "KeyedConfig's sizeof moved: the build version was taken over 300, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
 static_assert( alignof( KeyedConfig ) == 4, "KeyedConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( KeyedConfig, teams ) == 0, "KeyedConfig's field teams moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( KeyedConfig, hulls ) == 112, "KeyedConfig's field hulls moved: the build version was taken over offset 112 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( KeyedConfig, scores ) == 464, "KeyedConfig's field scores moved: the build version was taken over offset 464 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( ScoreBoard ) == 16, "ScoreBoard's sizeof moved: the build version was taken over 16, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( KeyedConfig, hulls ) == 84, "KeyedConfig's field hulls moved: the build version was taken over offset 84 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( KeyedConfig, scores ) == 288, "KeyedConfig's field scores moved: the build version was taken over offset 288 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( ScoreBoard ) == 12, "ScoreBoard's sizeof moved: the build version was taken over 12, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
 static_assert( alignof( ScoreBoard ) == 4, "ScoreBoard's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( ScoreBoard, per_team ) == 0, "ScoreBoard's field per_team moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
 
@@ -1815,7 +1822,7 @@ inline const TableTypeInfo * HullConfigTableType()
     static const TableFieldInfo fields[] = {
         { "health", "health", "float32", 0x8617, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, health ), (uint32_t) sizeof( HullConfig::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "mass", "mass", "float32", 0xe7a6, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, mass ), (uint32_t) sizeof( HullConfig::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "turrets", "turrets", "TurretConfig", 0x48ad, 13, true, false, false, 4, (uint32_t) offsetof( HullConfig, turrets ), (uint32_t) sizeof( HullConfig::turrets.slots[0] ), 0xffffffffu, 0xffffffffu, TurretConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Weapon", +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Weapon( v ), id ); return id; }, NULL, "" },
+        { "turrets", "turrets", "TurretConfig", 0x48ad, 13, true, false, false, (int32_t) Weapon::Max, (uint32_t) offsetof( HullConfig, turrets ), (uint32_t) sizeof( HullConfig::turrets.slots[0] ), 0xffffffffu, 0xffffffffu, TurretConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Weapon", +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Weapon( v ), id ); return id; }, NULL, "" },
     };
     static const TableTypeInfo info = { "HullConfig", (uint32_t) sizeof( HullConfig ), 3, fields, +[]( void * p ) { HullConfigReset( *(HullConfig *) p ); } };
     return &info;
@@ -1824,8 +1831,8 @@ inline const TableTypeInfo * HullConfigTableType()
 inline const TableTypeInfo * KeyedConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "teams", "teams", "TeamConfig", 0x9ae1, 13, true, false, false, 4, (uint32_t) offsetof( KeyedConfig, teams ), (uint32_t) sizeof( KeyedConfig::teams.slots[0] ), 0xffffffffu, 0xffffffffu, TeamConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
-        { "hulls", "hulls", "HullConfig", 0xeff5, 13, true, false, false, 4, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( KeyedConfig::hulls.slots[0] ), 0xffffffffu, 0xffffffffu, HullConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Hull", +[]( uint64_t v ) { return EnumName( Hull( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Hull( v ), id ); return id; }, NULL, "" },
+        { "teams", "teams", "TeamConfig", 0x9ae1, 13, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( KeyedConfig, teams ), (uint32_t) sizeof( KeyedConfig::teams.slots[0] ), 0xffffffffu, 0xffffffffu, TeamConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
+        { "hulls", "hulls", "HullConfig", 0xeff5, 13, true, false, false, (int32_t) Hull::Max, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( KeyedConfig::hulls.slots[0] ), 0xffffffffu, 0xffffffffu, HullConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Hull", +[]( uint64_t v ) { return EnumName( Hull( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Hull( v ), id ); return id; }, NULL, "" },
         { "scores", "scores", "ScoreBoard", 0xdcf3, 13, false, false, false, 0, (uint32_t) offsetof( KeyedConfig, scores ), (uint32_t) sizeof( KeyedConfig::scores ), 0xffffffffu, 0xffffffffu, ScoreBoardTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 3, fields, +[]( void * p ) { KeyedConfigReset( *(KeyedConfig *) p ); } };
@@ -1835,7 +1842,7 @@ inline const TableTypeInfo * KeyedConfigTableType()
 inline const TableTypeInfo * ScoreBoardTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "per_team", "per_team", "int32", 0x443f, 4, true, false, false, 4, (uint32_t) offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( ScoreBoard::per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100000.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
+        { "per_team", "per_team", "int32", 0x443f, 4, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( ScoreBoard::per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100000.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
     };
     static const TableTypeInfo info = { "ScoreBoard", (uint32_t) sizeof( ScoreBoard ), 1, fields, +[]( void * p ) { ScoreBoardReset( *(ScoreBoard *) p ); } };
     return &info;

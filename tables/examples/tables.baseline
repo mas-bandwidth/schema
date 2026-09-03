@@ -33,11 +33,11 @@ table GunnerSettings
 table HullConfig
     field health id=0x8617 kind=10 default=100.0
     field mass id=0xe7a6 kind=10 default=1.0
-    field turrets id=0x48ad kind=16 elem=13 type=TurretConfig array=keyed bound=4 key=Weapon
+    field turrets id=0x48ad kind=16 elem=13 type=TurretConfig array=keyed bound=3 key=Weapon
 
 table KeyedConfig
-    field teams id=0x9ae1 kind=16 elem=13 type=TeamConfig array=keyed bound=4 key=Team
-    field hulls id=0xeff5 kind=16 elem=13 type=HullConfig array=keyed bound=4 key=Hull
+    field teams id=0x9ae1 kind=16 elem=13 type=TeamConfig array=keyed bound=3 key=Team
+    field hulls id=0xeff5 kind=16 elem=13 type=HullConfig array=keyed bound=3 key=Hull
     field scores id=0xdcf3 kind=13 type=ScoreBoard
 
 table LoadoutConfig
@@ -52,8 +52,8 @@ table LoadoutConfig
 table PackConfig
     field version id=0xe8e6 kind=8 default=1
     field global id=0x1b51 kind=13 type=GlobalSettings
-    field ships id=0x2d39 kind=16 elem=13 type=ShipEntry array=keyed bound=4 key=ShipType
-    field thresholds id=0xb2eb kind=16 elem=4 array=keyed bound=4 key=Difficulty
+    field ships id=0x2d39 kind=16 elem=13 type=ShipEntry array=keyed bound=3 key=ShipType
+    field thresholds id=0xb2eb kind=16 elem=4 array=keyed bound=3 key=Difficulty
     field reserves id=0x049d kind=14 elem=13 type=ShipEntry array=bounded bound=3
 
 table Patrol
@@ -85,7 +85,7 @@ table RootConfig
     field profiles id=0x73fd kind=14 elem=13 type=ProfileConfig array=bounded bound=4
 
 table ScoreBoard
-    field per_team id=0x443f kind=16 elem=4 array=keyed bound=4 key=Team
+    field per_team id=0x443f kind=16 elem=4 array=keyed bound=3 key=Team
 
 table ShipEntry
     field display_name id=0xcb8b kind=12 size=32
@@ -163,4 +163,7 @@ union Effect
 - no compatibility-affecting edits; the wire absorbs the rest
 
 ### 2026-09-02 — schema pack's corpus root (#257): Pack.schema adds PackConfig and its closure — new declarations only, so nothing already written moves
+- no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-02 — enum arrays store Max slots and shift left: nothing is stored or packed for None (owner ruling 2026-09-03)
 - no compatibility-affecting edits; the wire absorbs the rest

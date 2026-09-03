@@ -206,15 +206,15 @@ type Field struct {
 	ArrayMin   int64 // ArrayCounted range form; 0 otherwise
 
 	// KeyEnum is the enum an ENUM-KEYED array is keyed by — the `[E]T`
-	// spelling (SPEC-TABLES.md §2.4). The field is an ArrayFixed of
-	// E.Max + 1 elements indexed directly by the enum value; slot 0 is
-	// None's and is NEVER VALID, because None is the null key — it names no
-	// record, it never rides, and indexing it is an error. On the TABLE wire
-	// the slots ride keyed by variant id under their own wire kind, so the
-	// keyed and positional bodies can never be decoded as one another. ""
-	// when the field is not keyed. On the type wire the spelling is exactly
-	// `[E.Max + 1]T` and this field changes nothing: the projection carries
-	// the resolved bound, so the two spellings share one protocol id.
+	// spelling (SPEC-TABLES.md §2.4). The field is an ArrayFixed of E.Max
+	// elements, ONE PER NAMED VARIANT: None is the null key, so nothing is
+	// stored for it and the storage SHIFTS LEFT — the key k lives at index
+	// k-1. On the TABLE wire the slots ride keyed by variant id under their
+	// own wire kind, so the keyed and positional bodies can never be decoded
+	// as one another. "" when the field is not keyed. On the type wire the
+	// spelling is exactly `[E.Max]T` and this field changes nothing: the
+	// projection carries the resolved bound, so the two spellings share one
+	// protocol id.
 	KeyEnum    string
 	KeyEnumRef *Enum
 

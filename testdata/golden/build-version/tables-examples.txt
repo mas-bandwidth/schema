@@ -1,6 +1,6 @@
-0x324fda67cd7d76ef
+0x89c17e3f4a1f6255
 schema-build-version 1
-protocol 12cf1828bc593ac7
+protocol 9924bf6d375ec24d
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record ArchiveConfig sizeof=1488 alignof=8
@@ -25,14 +25,14 @@ record GunnerSettings sizeof=36 alignof=4
     field 900f kind=10 offset=0 size=4 default=0.2
     field 53d5 kind=1 offset=4 size=1
     field 74dc kind=12 offset=5 size=31 bound=24
-record HullConfig sizeof=88 alignof=4
+record HullConfig sizeof=68 alignof=4
     field 8617 kind=10 offset=0 size=4 default=100.0
     field e7a6 kind=10 offset=4 size=4 default=1.0
-    field 48ad kind=13 offset=8 size=80 type=TurretConfig elem=20 array=keyed bound=4 key=Weapon
-record KeyedConfig sizeof=480 alignof=4
-    field 9ae1 kind=13 offset=0 size=112 type=TeamConfig elem=28 array=keyed bound=4 key=Team
-    field eff5 kind=13 offset=112 size=352 type=HullConfig elem=88 array=keyed bound=4 key=Hull
-    field dcf3 kind=13 offset=464 size=16 type=ScoreBoard
+    field 48ad kind=13 offset=8 size=60 type=TurretConfig elem=20 array=keyed bound=3 key=Weapon
+record KeyedConfig sizeof=300 alignof=4
+    field 9ae1 kind=13 offset=0 size=84 type=TeamConfig elem=28 array=keyed bound=3 key=Team
+    field eff5 kind=13 offset=84 size=204 type=HullConfig elem=68 array=keyed bound=3 key=Hull
+    field dcf3 kind=13 offset=288 size=12 type=ScoreBoard
 record LoadoutConfig sizeof=176 alignof=8
     field d272 kind=7 offset=0 size=1 enum=Grade default=Silver
     field 301a kind=7 offset=1 size=11 enum=Grade elem=1 array=bounded bound=4
@@ -41,18 +41,18 @@ record LoadoutConfig sizeof=176 alignof=8
     field 05f7 kind=13 offset=24 size=28 type=WeaponConfig
     field 1647 kind=13 offset=52 size=56 type=WeaponConfig elem=28 array=fixed bound=2
     field 44d5 kind=13 offset=108 size=68 type=Attachment elem=8 array=bounded bound=8
-record PackConfig sizeof=852 alignof=4
+record PackConfig sizeof=740 alignof=4
     field e8e6 kind=8 offset=0 size=4 default=1
     field 1b51 kind=13 offset=4 size=72 type=GlobalSettings
-    field 2d39 kind=13 offset=76 size=432 type=ShipEntry elem=108 array=keyed bound=4 key=ShipType
-    field b2eb kind=4 offset=508 size=16 elem=4 array=keyed bound=4 key=Difficulty min=0 max=1000
-    field 049d kind=13 offset=524 size=328 type=ShipEntry elem=108 array=bounded bound=3
-block PackConfig sizeof=568 alignof=8
+    field 2d39 kind=13 offset=76 size=324 type=ShipEntry elem=108 array=keyed bound=3 key=ShipType
+    field b2eb kind=4 offset=400 size=12 elem=4 array=keyed bound=3 key=Difficulty min=0 max=1000
+    field 049d kind=13 offset=412 size=328 type=ShipEntry elem=108 array=bounded bound=3
+block PackConfig sizeof=456 alignof=8
     slot e8e6 offset=24 size=4
     slot 1b51 offset=28 size=72
-    slot 2d39 offset=100 size=432
-    slot b2eb offset=532 size=16
-    slot 049d offset=552 size=16 out_of_line stride=108
+    slot 2d39 offset=100 size=324
+    slot b2eb offset=424 size=12
+    slot 049d offset=440 size=16 out_of_line stride=108
 record Patrol sizeof=36 alignof=4
     field 405a kind=1 offset=0 size=1
     field bc00 kind=10 offset=4 size=4 default=1.0
@@ -78,8 +78,8 @@ record RootConfig sizeof=1480 alignof=8
     field e726 kind=12 offset=0 size=24 bound=16
     field 91cd kind=13 offset=24 size=228 type=WeaponConfig elem=28 array=bounded bound=8
     field 73fd kind=13 offset=256 size=1220 type=ProfileConfig elem=304 array=bounded bound=4
-record ScoreBoard sizeof=16 alignof=4
-    field 443f kind=4 offset=0 size=16 elem=4 array=keyed bound=4 key=Team min=0 max=100000
+record ScoreBoard sizeof=12 alignof=4
+    field 443f kind=4 offset=0 size=12 elem=4 array=keyed bound=3 key=Team min=0 max=100000
 record ShipEntry sizeof=108 alignof=4
     field cb8b kind=12 offset=0 size=40 bound=32
     field 8617 kind=10 offset=40 size=4 default=100.0

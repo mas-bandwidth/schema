@@ -44,7 +44,7 @@ namespace Tabledemo
     {
         public float Health = 100.0f;
         public float Mass = 1.0f;
-        public TableKeyed<TurretConfig> Turrets = new TableKeyed<TurretConfig>(4); // [Weapon]: one slot per variant, indexed by the value
+        public TableKeyed<TurretConfig, Weapon> Turrets = new TableKeyed<TurretConfig, Weapon>(); // [Weapon]: one slot per named variant, keyed by the value
 
         public HullConfig()
         {
@@ -59,8 +59,8 @@ namespace Tabledemo
     // construction, declared defaults in the field initializers (SPEC-TABLES.md)
     public sealed class KeyedConfig
     {
-        public TableKeyed<TeamConfig> Teams = new TableKeyed<TeamConfig>(4); // [Team]: one slot per variant, indexed by the value
-        public TableKeyed<HullConfig> Hulls = new TableKeyed<HullConfig>(4); // [Hull]: one slot per variant, indexed by the value
+        public TableKeyed<TeamConfig, Team> Teams = new TableKeyed<TeamConfig, Team>(); // [Team]: one slot per named variant, keyed by the value
+        public TableKeyed<HullConfig, Hull> Hulls = new TableKeyed<HullConfig, Hull>(); // [Hull]: one slot per named variant, keyed by the value
         public ScoreBoard Scores = new ScoreBoard();
 
         public KeyedConfig()
@@ -504,13 +504,13 @@ namespace Tabledemo
             if (value.Mass != 1.0f) { bytes += 3 + 4; } // mass
             {
                 long pairs = 0, keyedBytes = 0;
-                for (int i = 1; i < 4; i++) // [Weapon]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Weapon]: every stored slot is a named variant's
                 {
                     long elemBytes = TurretConfigMeasure(value.Turrets.Slots[i]);
                     if (elemBytes < 0) { return -1; }
                     if (elemBytes <= 2) { continue; } // an all-default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Weapon)i, out keyId)) { return -1; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Weapon)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body
                 }
                 if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // turrets
@@ -532,13 +532,13 @@ namespace Tabledemo
             }
             {
                 uint pairs = 0;
-                for (int i = 1; i < 4; i++) // [Weapon]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Weapon]: every stored slot is a named variant's
                 {
                     long elemBytes = TurretConfigMeasure(value.Turrets.Slots[i]);
                     if (elemBytes < 0) { return false; }
                     if (elemBytes <= 2) { continue; } // an all-default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Weapon)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Weapon)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++;
                 }
                 if (pairs > 0)
@@ -552,13 +552,13 @@ namespace Tabledemo
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
                     // slot is found by its key (SPEC-TABLES.md §3.2)
-                    for (int i = 1; i < 4; i++)
+                    for (int i = 0; i < 3; i++)
                     {
                         long elemBytes = TurretConfigMeasure(value.Turrets.Slots[i]);
                         if (elemBytes < 0) { return false; }
                         if (elemBytes <= 2) { continue; } // an all-default slot elides
                         ushort keyId;
-                        if (!TableEnumId((Weapon)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                        if (!TableEnumId((Weapon)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                         w.Put16(keyId); // the slot's VARIANT id, not its position
                         int elemLenAt = w.Offset; w.Put32(0);
                         if (!TurretConfigSaveBody(ref w, value.Turrets.Slots[i])) { return false; }
@@ -658,7 +658,7 @@ namespace Tabledemo
                                 }
                                 {
                                     TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    TurretConfigLoadBody(ref elem, value.Turrets.Slots[(int)slot]);
+                                    TurretConfigLoadBody(ref elem, value.Turrets.Slots[(int)slot - 1]);
                                 }
                                 sub.Offset += (int)elemLen;
                             }
@@ -702,26 +702,26 @@ namespace Tabledemo
             long bytes = 2; // terminator
             {
                 long pairs = 0, keyedBytes = 0;
-                for (int i = 1; i < 4; i++) // [Team]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Team]: every stored slot is a named variant's
                 {
                     long elemBytes = TeamConfigMeasure(value.Teams.Slots[i]);
                     if (elemBytes < 0) { return -1; }
                     if (elemBytes <= 2) { continue; } // an all-default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Team)i, out keyId)) { return -1; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Team)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body
                 }
                 if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // teams
             }
             {
                 long pairs = 0, keyedBytes = 0;
-                for (int i = 1; i < 4; i++) // [Hull]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Hull]: every stored slot is a named variant's
                 {
                     long elemBytes = HullConfigMeasure(value.Hulls.Slots[i]);
                     if (elemBytes < 0) { return -1; }
                     if (elemBytes <= 2) { continue; } // an all-default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Hull)i, out keyId)) { return -1; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Hull)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++; keyedBytes += 2 + 4 + elemBytes; // key, length, body
                 }
                 if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // hulls
@@ -738,13 +738,13 @@ namespace Tabledemo
         {
             {
                 uint pairs = 0;
-                for (int i = 1; i < 4; i++) // [Team]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Team]: every stored slot is a named variant's
                 {
                     long elemBytes = TeamConfigMeasure(value.Teams.Slots[i]);
                     if (elemBytes < 0) { return false; }
                     if (elemBytes <= 2) { continue; } // an all-default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Team)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++;
                 }
                 if (pairs > 0)
@@ -758,13 +758,13 @@ namespace Tabledemo
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
                     // slot is found by its key (SPEC-TABLES.md §3.2)
-                    for (int i = 1; i < 4; i++)
+                    for (int i = 0; i < 3; i++)
                     {
                         long elemBytes = TeamConfigMeasure(value.Teams.Slots[i]);
                         if (elemBytes < 0) { return false; }
                         if (elemBytes <= 2) { continue; } // an all-default slot elides
                         ushort keyId;
-                        if (!TableEnumId((Team)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                        if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                         w.Put16(keyId); // the slot's VARIANT id, not its position
                         int elemLenAt = w.Offset; w.Put32(0);
                         if (!TeamConfigSaveBody(ref w, value.Teams.Slots[i])) { return false; }
@@ -775,13 +775,13 @@ namespace Tabledemo
             }
             {
                 uint pairs = 0;
-                for (int i = 1; i < 4; i++) // [Hull]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Hull]: every stored slot is a named variant's
                 {
                     long elemBytes = HullConfigMeasure(value.Hulls.Slots[i]);
                     if (elemBytes < 0) { return false; }
                     if (elemBytes <= 2) { continue; } // an all-default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Hull)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Hull)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++;
                 }
                 if (pairs > 0)
@@ -795,13 +795,13 @@ namespace Tabledemo
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
                     // slot is found by its key (SPEC-TABLES.md §3.2)
-                    for (int i = 1; i < 4; i++)
+                    for (int i = 0; i < 3; i++)
                     {
                         long elemBytes = HullConfigMeasure(value.Hulls.Slots[i]);
                         if (elemBytes < 0) { return false; }
                         if (elemBytes <= 2) { continue; } // an all-default slot elides
                         ushort keyId;
-                        if (!TableEnumId((Hull)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                        if (!TableEnumId((Hull)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                         w.Put16(keyId); // the slot's VARIANT id, not its position
                         int elemLenAt = w.Offset; w.Put32(0);
                         if (!HullConfigSaveBody(ref w, value.Hulls.Slots[i])) { return false; }
@@ -887,7 +887,7 @@ namespace Tabledemo
                                 }
                                 {
                                     TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    TeamConfigLoadBody(ref elem, value.Teams.Slots[(int)slot]);
+                                    TeamConfigLoadBody(ref elem, value.Teams.Slots[(int)slot - 1]);
                                 }
                                 sub.Offset += (int)elemLen;
                             }
@@ -939,7 +939,7 @@ namespace Tabledemo
                                 }
                                 {
                                     TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);
-                                    HullConfigLoadBody(ref elem, value.Hulls.Slots[(int)slot]);
+                                    HullConfigLoadBody(ref elem, value.Hulls.Slots[(int)slot - 1]);
                                 }
                                 sub.Offset += (int)elemLen;
                             }
@@ -993,11 +993,11 @@ namespace Tabledemo
             long bytes = 2; // terminator
             {
                 long pairs = 0, keyedBytes = 0;
-                for (int i = 1; i < 4; i++) // [Team]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Team]: every stored slot is a named variant's
                 {
                     if (value.PerTeam[i] == 0) { continue; } // a default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Team)i, out keyId)) { return -1; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Team)(i + 1), out keyId)) { return -1; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++; keyedBytes += 2 + 4 + 4; // key, length, element
                 }
                 if (pairs > 0) { bytes += 3 + 4 + 5 + keyedBytes; } // per_team
@@ -1009,11 +1009,11 @@ namespace Tabledemo
         {
             {
                 uint pairs = 0;
-                for (int i = 1; i < 4; i++) // [Team]: slot 0 is None's and never rides
+                for (int i = 0; i < 3; i++) // [Team]: every stored slot is a named variant's
                 {
                     if (value.PerTeam[i] == 0) { continue; } // a default slot elides
                     ushort keyId;
-                    if (!TableEnumId((Team)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                    if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                     pairs++;
                 }
                 if (pairs > 0)
@@ -1027,11 +1027,11 @@ namespace Tabledemo
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
                     // slot is found by its key (SPEC-TABLES.md §3.2)
-                    for (int i = 1; i < 4; i++)
+                    for (int i = 0; i < 3; i++)
                     {
                         if (value.PerTeam[i] == 0) { continue; } // a default slot elides
                         ushort keyId;
-                        if (!TableEnumId((Team)i, out keyId)) { return false; } // a slot no variant names has no wire identity
+                        if (!TableEnumId((Team)(i + 1), out keyId)) { return false; } // i is the STORAGE index; the key it holds is i + 1
                         w.Put16(keyId); // the slot's VARIANT id, not its position
                         int elemLenAt = w.Offset; w.Put32(0);
                         w.Put32(unchecked((uint)(value.PerTeam[i])));
@@ -1112,7 +1112,7 @@ namespace Tabledemo
                                         int decodedV = unchecked((int)elem.Get32());
                                         if (decodedV < 0) { decodedV = 0; r.Report.Clamped++; }
                                         else if (decodedV > 100000) { decodedV = 100000; r.Report.Clamped++; }
-                                        value.PerTeam[(int)slot] = decodedV;
+                                        value.PerTeam[(int)slot - 1] = decodedV;
                                     }
                                 }
                                 sub.Offset += (int)elemLen;
@@ -1203,7 +1203,7 @@ namespace Tabledemo
             {
                 new TableFieldInfo { Name = "health", TypeName = "float32", Id = 0x8617, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "mass", TypeName = "float32", Id = 0xe7a6, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "turrets", TypeName = "TurretConfig", Id = 0x48ad, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Weapon", KeyName = delegate(ulong v) { return EnumNameWeapon(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Weapon)v, out id); return id; }, Guard = "", TableRef = delegate { return TurretConfigTableType(); } },
+                new TableFieldInfo { Name = "turrets", TypeName = "TurretConfig", Id = 0x48ad, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Weapon.Max, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Weapon", KeyName = delegate(ulong v) { return EnumNameWeapon(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Weapon)v, out id); return id; }, Guard = "", TableRef = delegate { return TurretConfigTableType(); } },
             };
             HullConfigTableInfo = info;
             return info;
@@ -1219,8 +1219,8 @@ namespace Tabledemo
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "teams", TypeName = "TeamConfig", Id = 0x9ae1, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = delegate { return TeamConfigTableType(); } },
-                new TableFieldInfo { Name = "hulls", TypeName = "HullConfig", Id = 0xeff5, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Hull", KeyName = delegate(ulong v) { return EnumNameHull(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Hull)v, out id); return id; }, Guard = "", TableRef = delegate { return HullConfigTableType(); } },
+                new TableFieldInfo { Name = "teams", TypeName = "TeamConfig", Id = 0x9ae1, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = delegate { return TeamConfigTableType(); } },
+                new TableFieldInfo { Name = "hulls", TypeName = "HullConfig", Id = 0xeff5, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Hull.Max, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Hull", KeyName = delegate(ulong v) { return EnumNameHull(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Hull)v, out id); return id; }, Guard = "", TableRef = delegate { return HullConfigTableType(); } },
                 new TableFieldInfo { Name = "scores", TypeName = "ScoreBoard", Id = 0xdcf3, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ScoreBoardTableType(); } },
             };
             KeyedConfigTableInfo = info;
@@ -1237,7 +1237,7 @@ namespace Tabledemo
             info.NumFields = 1;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "per_team", TypeName = "int32", Id = 0x443f, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "per_team", TypeName = "int32", Id = 0x443f, Kind = 4, IsArray = true, Counted = false, Optional = false, ArrayBound = (int)Team.Max, HasRange = true, RangeMin = 0.0, RangeMax = 100000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = "Team", KeyName = delegate(ulong v) { return EnumNameTeam(v); }, KeyId = delegate(ulong v) { ushort id; TableEnumId((Team)v, out id); return id; }, Guard = "", TableRef = null },
             };
             ScoreBoardTableInfo = info;
             return info;
