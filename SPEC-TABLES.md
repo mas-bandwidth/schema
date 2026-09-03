@@ -1910,10 +1910,8 @@ enough that the cost of loading it does not matter is the wire, and stays
 the wire, and keeps the flexibility that comes with it.
 
 - **The header build-locks it**: a magic (which is also the byte-order
-  check), the unit's BUILD VERSION (§20), and the lengths of the two parts
-  below. The reserved words are reserved: a non-zero one means a writer used
-  a form this build does not understand, and `Open` refuses rather than
-  ignoring it.
+  check), the unit's BUILD VERSION (§20), the lengths of the two parts
+  below, and two reserved words (§7.1).
 
   A cooked file never crosses builds, so most of the header's shape is
   the implementation's business. **Three widths are not**, because each
