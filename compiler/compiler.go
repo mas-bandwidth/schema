@@ -50,7 +50,7 @@ type Compiler struct {
 	// stage the file, or fail the build.
 	OnFormat func(path string)
 
-	// TablesBaseline turns on the TABLES BASELINE check (SPEC-TABLES.md §18.2):
+	// TablesBaseline turns on the TABLES BASELINE check (docs/SPEC-TABLES.md §18.2):
 	// when a tables.baseline sits in the unit's directory, Load diffs the
 	// unit's table closure against it and REFUSES the edits the table wire
 	// cannot report — a changed specified default, a moved flags bit, a
@@ -273,5 +273,5 @@ func MigrateFile(path string) (canonical []byte, rewrote bool, err error) {
 // linker stamp if the build carried one, otherwise the module version or a
 // VCS revision. Deliberately absent from generated output — generated code
 // carries the protocol id, which is what actually governs compatibility (see
-// VERSIONING.md).
+// docs/VERSIONING.md).
 func UserAgent() string { return version.UserAgent() }

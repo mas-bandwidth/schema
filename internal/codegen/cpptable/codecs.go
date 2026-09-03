@@ -1,4 +1,4 @@
-// TABLE-wire storage, codec and descriptor emission (SPEC-TABLES.md).
+// TABLE-wire storage, codec and descriptor emission (docs/SPEC-TABLES.md).
 // Readers prefill declared defaults then overlay, skip unknown ids, skip
 // kind mismatches, clamp out-of-range values, and count every event.
 package cpptable
@@ -115,7 +115,7 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 
 func (g *tableGen) emitTableStruct(st *ir.Struct) {
 	g.pf("// table %s — TABLE-wire storage: relocatable, bounded, defaults in the\n", st.Name)
-	g.pf("// member initializers (SPEC-TABLES.md)\n")
+	g.pf("// member initializers (docs/SPEC-TABLES.md)\n")
 	g.pf("struct %s {\n", st.Name)
 	prevGuard := ""
 	for _, f := range st.Fields {
@@ -155,7 +155,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// stored for None, and the accessor is the only place the shift
 		// appears. Every named slot exists, so there is no count companion,
 		// and the type derives its own extent from the enum — nothing outside
-		// the array names its size (SPEC-TABLES.md §2.4).
+		// the array names its size (docs/SPEC-TABLES.md §2.4).
 		g.noteRef(f.KeyEnum)
 		g.pf("    TableKeyed<%s, %s> %s; // [%s]: one slot per named variant, keyed by the value\n",
 			typ, f.KeyEnum, f.Name, f.KeyEnum)
@@ -173,7 +173,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	}
 	if f.Type.Optional {
 		// `?T` — the value plus its presence bool, and nothing else: the
-		// holder stays a fixed-size struct (SPEC-TABLES.md §2.3). PRESENCE,
+		// holder stays a fixed-size struct (docs/SPEC-TABLES.md §2.3). PRESENCE,
 		// not content, decides whether the field rides.
 		g.pf("    bool %s_present = false; // ?%s: absent until set\n", f.Name, tableFieldTypeName(f))
 	}
@@ -209,7 +209,7 @@ func tableArrayInit(selfInit bool) string {
 // defaults and copying it across the array is the same work at run time and
 // the cost of a single element at compile time.
 func (g *tableGen) emitTableResetDeclarations(members []*ir.Struct) {
-	g.pf("// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----\n\n")
+	g.pf("// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----\n\n")
 	for _, st := range members {
 		g.pf("inline void %sReset( %s & value );\n", st.Name, st.Name)
 	}
@@ -269,7 +269,7 @@ func (g *tableGen) emitTableResetArray(expr string, bound int64, typ string, sel
 	}
 	if !selfInit {
 		// a scalar element's array carries ` = {}`, which gives every element a
-		// zero whatever the field's own default says (SPEC-TABLES.md): a memset
+		// zero whatever the field's own default says (docs/SPEC-TABLES.md): a memset
 		// is that, exactly
 		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
 		return
@@ -303,7 +303,7 @@ func (g *tableGen) tableResetName(t ir.FieldType, typ string) (string, bool) {
 	return t.Name, true
 }
 
-// ---- enum identity on the table wire (SPEC-TABLES.md §5) ----
+// ---- enum identity on the table wire (docs/SPEC-TABLES.md §5) ----
 
 // keyedSlots renders a keyed array's RAW slot storage, the form the codecs
 // index by slot number rather than by variant.
@@ -311,7 +311,7 @@ func (g *tableGen) tableResetName(t ir.FieldType, typ string) (string, bool) {
 // A TABLE's keyed field is a TableKeyed<>, whose slots sit behind `.slots`; a
 // closure `type`'s field is its PACKET storage — a plain array — because a
 // type's struct is a raw struct emitted by the packet backend, and nothing on
-// this wire changes that (SPEC-TABLES.md §2.4). Both are `E.Max` elements with
+// this wire changes that (docs/SPEC-TABLES.md §2.4). Both are `E.Max` elements with
 // the key k at index k-1, so only the spelling differs.
 func (g *tableGen) keyedSlots(owner string, f *ir.Field) string {
 	if g.owner != nil && g.owner.IsTable {
@@ -375,7 +375,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	guard := strings.ToUpper(g.unit.Package) + "_SCHEMA_TABLE_ENUM_" + strings.ToUpper(e.Name)
 	g.pf("// %s on the TABLE wire: a value rides as the u16 hash of its VARIANT\n", e.Name)
 	g.pf("// NAME, so a variant may be added anywhere, removed, or reordered and old\n")
-	g.pf("// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.\n")
+	g.pf("// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.\n")
 	g.pf("#ifndef %s\n#define %s\n", guard, guard)
 	g.pf("inline bool TableEnumId( %s value, uint16_t & id )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
@@ -599,7 +599,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 }
 
 // emitKeyedSlotRides emits the head of an enum-keyed array's per-slot loop
-// (SPEC-TABLES.md §2.4, §3.2). It elides a slot holding its default, refuses a
+// (docs/SPEC-TABLES.md §2.4, §3.2). It elides a slot holding its default, refuses a
 // slot whose value or whose KEY no variant names — a value with no wire
 // identity is refused rather than silently renamed, the enum rule applied to
 // slots — and leaves `key_id` holding the slot's wire id. For a table element
@@ -693,7 +693,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 	case f.Type.Optional:
 		// present: the payload ALWAYS rides, all-default included — the
 		// pointer's rule, and what makes ?T, *T and a plain nesting
-		// wire-identical (SPEC-TABLES.md §2.3, §3.1)
+		// wire-identical (docs/SPEC-TABLES.md §2.3, §3.1)
 		g.pf("    if ( value.%s_present ) // ?%s\n    {\n", f.Name, tableFieldTypeName(f))
 		switch {
 		case kind == tkTable:
@@ -725,13 +725,13 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        if ( pairs_%s > 0 )\n        {\n", f.Name)
 		g.pf("            // KIND 16, not 14: a keyed body and a positional one are\n")
 		g.pf("            // incompatible, so a reader of the other kind must see a kind\n")
-		g.pf("            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)\n")
+		g.pf("            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)\n")
 		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s (keyed by %s)\n", id, tkKeyed, f.Name, f.KeyEnum)
 		g.pf("            int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
 		g.pf("            w.put8( %d ); w.put32( pairs_%s );\n", kind, f.Name)
 		g.pf("            // ASCENDING BY VARIANT ORDINAL, which is slot order — this\n")
 		g.pf("            // writer's choice, and a reader must not rely on it: every\n")
-		g.pf("            // slot is found by its key (SPEC-TABLES.md §3.2)\n")
+		g.pf("            // slot is found by its key (docs/SPEC-TABLES.md §3.2)\n")
 		g.pf("            for ( int32_t i = 0; i < %d; i++ )\n            {\n", f.ArrayBound)
 		g.emitKeyedSlotRides(f, kind, "                ", "return false;")
 		g.pf("                w.put16( key_id ); // the slot's VARIANT id, not its position\n")
@@ -817,7 +817,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		}
 		g.pf("    if ( value.%s.type != %sType::None )\n    {\n", f.Name, un.Name)
 		g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkUnion, f.Name)
-		g.pf("        // the ARM ID is the hash of the arm's NAME (SPEC-TABLES.md §5), so\n")
+		g.pf("        // the ARM ID is the hash of the arm's NAME (docs/SPEC-TABLES.md §5), so\n")
 		g.pf("        // arms may be added anywhere, removed and reordered\n")
 		g.pf("        switch ( value.%s.type )\n        {\n", f.Name)
 		for _, v := range un.Variants {
@@ -920,7 +920,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			if f.Type.Pointer {
 				// a pointer rides as a nested table body — framing identical to
 				// a by-value nesting, which is why a field can change between
-				// the two without moving a byte (SPEC-TABLES.md §3)
+				// the two without moving a byte (docs/SPEC-TABLES.md §3)
 				kind, wireKind = tkTable, tkTable
 			}
 			if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
@@ -929,7 +929,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			if f.KeyEnum != "" {
 				// a KEYED body is its own kind, so the positional-to-keyed edit
 				// (and its reverse) reads as a kind mismatch and is counted,
-				// never decoded as the other body (SPEC-TABLES.md §3.2)
+				// never decoded as the other body (docs/SPEC-TABLES.md §3.2)
 				wireKind = tkKeyed
 			}
 			if f.Type.Kind == ir.TBytes {
@@ -943,7 +943,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.emitTableReadField(f, kind)
 			if f.Type.Optional {
 				// the field rode, so it is PRESENT — content decides nothing
-				// here either (SPEC-TABLES.md §2.3)
+				// here either (docs/SPEC-TABLES.md §2.3)
 				g.pf("                value.%s_present = true;\n", f.Name)
 			}
 			g.pf("                break;\n            }\n")
@@ -961,7 +961,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 
 	// buffer-level convenience entry. A VARIABLE-LENGTH table has none: it is
 	// never held by value, so its Load takes the caller's region and hands back
-	// the root instead (SPEC-TABLES.md §2).
+	// the root instead (docs/SPEC-TABLES.md §2).
 	if g.isVar(st.Name) {
 		return
 	}
@@ -978,7 +978,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		// each pair is placed by its VARIANT id, so a slot lands by name
 		// however the enum moved; an id this reader cannot name is skipped by
 		// its length and counted unknown, and a slot the writer never sent
-		// keeps the prefill's default (SPEC-TABLES.md §3.2)
+		// keeps the prefill's default (docs/SPEC-TABLES.md §3.2)
 		g.noteRef(f.KeyEnum)
 		g.pf("%sif ( !r.has( 4 ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%suint32_t body_len = r.get32();\n", ind)
@@ -1000,14 +1000,14 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s            // name can fold to, so a body carrying one is DAMAGED, not\n", ind)
 		g.pf("%s            // merely foreign. Framing damage stops this body, keeps what\n", ind)
 		g.pf("%s            // it decoded, and the parent reads on past the length\n", ind)
-		g.pf("%s            // (SPEC-TABLES.md §3.2, §4).\n", ind)
+		g.pf("%s            // (docs/SPEC-TABLES.md §3.2, §4).\n", ind)
 		g.pf("%s            r.report->malformed = true;\n%s            break;\n%s        }\n", ind, ind, ind)
 		g.pf("%s        %s slot = %s::None;\n", ind, f.KeyEnum, f.KeyEnum)
 		g.pf("%s        if ( !TableEnumValue( key, slot ) )\n%s        {\n", ind, ind)
 		g.pf("%s            r.report->unknown++; // a slot this reader cannot name\n", ind)
 		g.pf("%s            sub.offset += elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
 		g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, elem_len, r.report );\n", ind, ind)
-		// the key k lives at STORAGE INDEX k-1 (SPEC-TABLES.md §2.4)
+		// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
 		slot := g.keyedSlots("value.", f) + "[int32_t( slot ) - 1]"
 		if kind == tkTable {
 			g.pf("%s            %s;\n", ind, g.loadCall(f.Type.Name, "elem", slot, depthSame))
@@ -1026,7 +1026,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%sif ( !r.has( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%sif ( depth >= kTableMaxDepth )\n%s{\n", ind, ind)
 		g.pf("%s    // past the nesting cap: the subtree is refused, the pointer stays\n", ind)
-		g.pf("%s    // null, and the parent reads on (SPEC-TABLES.md §4)\n", ind)
+		g.pf("%s    // null, and the parent reads on (docs/SPEC-TABLES.md §4)\n", ind)
 		g.pf("%s    r.report->malformed = true;\n", ind)
 		g.pf("%s    r.offset += body_len;\n%s    break;\n%s}\n", ind, ind, ind)
 		g.pf("%s{\n%s    %s * pointee = %sEmplace( sink, value.%s );\n", ind, ind, t, t, f.Name)
@@ -1093,7 +1093,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint32_t body_len = r.get32();\n", ind)
 		g.pf("%sif ( !r.has( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, body_len, r.report );\n", ind, ind)
-		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
+		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
 		for _, v := range un.Variants {
 			g.pf("%s        case 0x%04x: // %s\n%s            value.%s.type = %sType::%s;\n%s            %s;\n%s            break;\n",
 				ind, ir.VariantId(v.Name), v.Name, ind, f.Name, un.Name, ir.GoExportName(v.Name),
@@ -1104,7 +1104,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s            // the body is skipped by its length, never misdecoded. The\n", ind)
 		g.pf("%s            // reset is explicit, not the prefill's: a repeated field id\n", ind)
 		g.pf("%s            // must not leave an arm decoded by an earlier occurrence\n", ind)
-		g.pf("%s            // standing (SPEC-TABLES.md §4).\n", ind)
+		g.pf("%s            // standing (docs/SPEC-TABLES.md §4).\n", ind)
 		g.pf("%s            value.%s.type = %sType::None;\n", ind, f.Name, un.Name)
 		g.pf("%s            r.report->unknown++;\n%s            break;\n", ind, ind)
 		g.pf("%s    }\n%s}\n", ind, ind)
@@ -1150,7 +1150,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	width := tableKindWidth(kind)
 	g.pf("%sif ( !%s.has( %d ) ) { %s }\n", ind, rdr, width, onTrunc)
 	if enum := enumRef(f); enum != nil {
-		// identity is the variant's NAME (SPEC-TABLES.md §5): an id this build
+		// identity is the variant's NAME (docs/SPEC-TABLES.md §5): an id this build
 		// cannot name reads as None and counts as unknown, exactly as an
 		// unknown FIELD id does — same event, one counter
 		g.pf("%s{\n%s    uint16_t variant = %s.get16();\n", ind, ind, rdr)
@@ -1246,7 +1246,7 @@ func resetLambda(name string) string {
 
 // unionArmsLambda renders a union field's arms column: a captureless lambda
 // whose function-pointer conversion is a constant expression, so a descriptor
-// that names it stays constant-initialised (SPEC-TABLES.md §8). The arms table
+// that names it stays constant-initialised (docs/SPEC-TABLES.md §8). The arms table
 // is a static inside it — no namespace-scope name to claim, and no first-use
 // state on the surface a caller sees.
 func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
@@ -1286,7 +1286,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	// any thread at any time with no synchronisation.
 	//
 	// A pointer-free unit keeps the function-local statics it always had, to
-	// the byte (SPEC-TABLES.md §2.2, the zero-cost gate).
+	// the byte (docs/SPEC-TABLES.md §2.2, the zero-cost gate).
 	hoisted := g.anyVariable
 	indent := "    "
 	if hoisted {
@@ -1317,7 +1317,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 
 			// the count column, spelled the way the storage spells its own
 			// extent: a keyed array DERIVES it from the key enum, so nothing
-			// outside the array names its size (SPEC-TABLES.md §2.4, §8.1)
+			// outside the array names its size (docs/SPEC-TABLES.md §2.4, §8.1)
 			bound := "0"
 			switch {
 			case f.KeyEnum != "":
@@ -1381,7 +1381,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			rangeMin, rangeMax := "0.0", "0.0"
 			if f.Type.Kind == ir.TBits && !f.HasIntRange {
 				// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The
-				// codec has always clamped a read to it (SPEC-TABLES.md §4);
+				// codec has always clamped a read to it (docs/SPEC-TABLES.md §4);
 				// carrying it here is what lets a generic walker apply the
 				// same bound without re-deriving it from the type name.
 				max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
@@ -1401,7 +1401,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			// [0, enum_max]. An enum's and a union's names carry the
 			// table-wire id they ride under; a flags variant has none, and
 			// that missing id is what tells the two apart at runtime
-			// (SPEC-TABLES.md §4, §5, §8).
+			// (docs/SPEC-TABLES.md §4, §5, §8).
 			enumMax := "-1"
 			enumName := "NULL"
 			variantId := "NULL"
@@ -1416,7 +1416,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			case *ir.Flags:
 				if f.Type.Kind == ir.TNamed {
 					// a flags mask is the wire's one POSITIONAL vocabulary
-					// (SPEC-TABLES.md §4): its variants are BIT POSITIONS, so
+					// (docs/SPEC-TABLES.md §4): its variants are BIT POSITIONS, so
 					// the descriptor names bits, and there is no variant id.
 					enumMax = fmt.Sprintf("%d", len(ref.Variants)-1)
 					enumName = fmt.Sprintf("+[]( uint64_t v ) { return FlagName%s( (int) v ); }", f.Type.Name)
@@ -1442,7 +1442,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 				presentOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s_present )", st.Name, f.Name)
 			}
 
-			// the KEY's vocabulary on an enum-keyed array (SPEC-TABLES.md §8):
+			// the KEY's vocabulary on an enum-keyed array (docs/SPEC-TABLES.md §8):
 			// functions of the KEY, not of the storage index — a walker
 			// stepping [0, array_bound) asks about index + 1 and prints slots
 			// by name without the schema files

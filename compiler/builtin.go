@@ -19,7 +19,7 @@ import (
 )
 
 // refuseTables is the named refusal every target without a table backend
-// gives a unit that declares tables (SPEC-TABLES.md): C++ and C# carry table
+// gives a unit that declares tables (docs/SPEC-TABLES.md): C++ and C# carry table
 // backends today, and each remaining per-language one is a named follow-on —
 // refused loudly here rather than silently emitting a unit with the tables
 // missing.
@@ -32,7 +32,7 @@ func refuseTables(u *ir.Unit, target string) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return fmt.Errorf("unit declares tables (%s) — tables are C++ and C# only today, and the %s table backend is a named follow-on; generate with --lang cpp or --lang cs, or move the tables to their own unit (SPEC-TABLES.md)",
+	return fmt.Errorf("unit declares tables (%s) — tables are C++ and C# only today, and the %s table backend is a named follow-on; generate with --lang cpp or --lang cs, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), target)
 }
 
@@ -103,7 +103,7 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	// units that declare tables ALSO get <Base>Table.h per file — the
-	// TABLE-wire codecs (SPEC-TABLES.md); a table-free unit's output is
+	// TABLE-wire codecs (docs/SPEC-TABLES.md); a table-free unit's output is
 	// byte-identical to what the packet emitter alone produces
 	tables, err := cpptable.Generate(u)
 	if err != nil {
@@ -111,7 +111,7 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	}
 	for name, data := range tables {
 		if _, dup := files[name]; dup {
-			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table header; rename one file (SPEC-TABLES.md)", name)
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table header; rename one file (docs/SPEC-TABLES.md)", name)
 		}
 		files[name] = data
 	}
@@ -129,7 +129,7 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	// units that declare tables ALSO get <Base>Table.cs per file — the
-	// TABLE-wire codecs, FIXED class (SPEC-TABLES.md); a table-free unit's
+	// TABLE-wire codecs, FIXED class (docs/SPEC-TABLES.md); a table-free unit's
 	// output is byte-identical to what the packet emitter alone produces
 	tables, err := cstable.Generate(u)
 	if err != nil {
@@ -137,7 +137,7 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	}
 	for name, data := range tables {
 		if _, dup := files[name]; dup {
-			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table source; rename one file (SPEC-TABLES.md)", name)
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table source; rename one file (docs/SPEC-TABLES.md)", name)
 		}
 		files[name] = data
 	}

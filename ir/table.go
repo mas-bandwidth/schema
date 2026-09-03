@@ -1,4 +1,4 @@
-// Table-wire field identity and the table closure (SPEC-TABLES.md).
+// Table-wire field identity and the table closure (docs/SPEC-TABLES.md).
 // Target-independent, so every backend and any generator outside this module
 // derives one id for one field name.
 package ir
@@ -26,7 +26,7 @@ func FieldId(name string) uint16 {
 // rebound keeps free of every declared name.
 func VariantId(name string) uint16 { return FieldId(name) }
 
-// TableTypeId is a node record's TYPE ID (SPEC-TABLES.md §3.1): the target
+// TableTypeId is a node record's TYPE ID (docs/SPEC-TABLES.md §3.1): the target
 // table's NAME under fnv1a64, with a result of 0 rebounding to 1.
 //
 // Sixty-four bits because a table name is the one vocabulary scoped to a WHOLE
@@ -49,13 +49,13 @@ func TableTypeId(name string) uint64 {
 }
 
 // NodeTableFieldId is the RESERVED field id the node table rides under
-// (SPEC-TABLES.md §3.1). §5's fold reaches it and ordinary names land there, so
+// (docs/SPEC-TABLES.md §3.1). §5's fold reaches it and ordinary names land there, so
 // the compiler refuses a field name — or a `was` — whose id does (§11).
 const NodeTableFieldId = uint16(0xFFFF)
 
 // NodeIndexNull, NodeIndexRoot are the two node indices that name no record:
 // `0` is null and `1` is the ROOT, the body that hosts the node table. Record
-// `k` (1-based) is node index `k + 1` (SPEC-TABLES.md §3.1).
+// `k` (1-based) is node index `k + 1` (docs/SPEC-TABLES.md §3.1).
 const (
 	NodeIndexNull = uint32(0)
 	NodeIndexRoot = uint32(1)
@@ -71,7 +71,7 @@ func TableFieldId(f *Field) uint16 {
 	return FieldId(f.Name)
 }
 
-// TableFieldJsonKey is a field's key in the text form (SPEC-TABLES.md §16.3):
+// TableFieldJsonKey is a field's key in the text form (docs/SPEC-TABLES.md §16.3):
 // the `json = "key"` attribute where one is declared, and the field's own name
 // otherwise. Independent of the wire id — a `was` rename and a `json` key are
 // two different vocabularies over one field.

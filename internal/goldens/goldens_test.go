@@ -254,7 +254,7 @@ func pinDir(t *testing.T, dir string, files map[string][]byte) {
 }
 
 // TestGoldenBuildVersion pins the BUILD VERSION and the COOK PROJECTION it
-// hashes, per unit (SPEC-TABLES.md §20.8). The number is what a distributed
+// hashes, per unit (docs/SPEC-TABLES.md §20.8). The number is what a distributed
 // store's tuple is keyed by and what a block's prologue carries, so a change
 // to how it is computed has to break every pinned value loudly — and the TEXT
 // is pinned beside it, so a port reproduces the projection and not only the

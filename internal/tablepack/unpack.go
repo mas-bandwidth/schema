@@ -1,4 +1,4 @@
-// `schema unpack` — the inverse (SPEC-TABLES.md §17.3): a root table's wire
+// `schema unpack` — the inverse (docs/SPEC-TABLES.md §17.3): a root table's wire
 // bytes become the tree again, through §16's text form, which is the tool round
 // trip §1 promises. `unpack` -> `pack` is byte-stable.
 package tablepack
@@ -64,7 +64,7 @@ func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bo
 		return report, err
 	}
 	if !ok {
-		return report, fmt.Errorf("the bytes are not a %s body — the framing is damaged past the point the walk could continue (SPEC-TABLES.md §4)", root)
+		return report, fmt.Errorf("the bytes are not a %s body — the framing is damaged past the point the walk could continue (docs/SPEC-TABLES.md §4)", root)
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {

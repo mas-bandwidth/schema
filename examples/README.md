@@ -5,7 +5,7 @@ shapes, drawn from a real game's serialize usage with names and tuning values
 genericized — these files carry the *structure* of a real protocol, not any
 game's actual protocol.
 
-**The standing check: every file here must compile under SPEC.md as written.**
+**The standing check: every file here must compile under docs/SPEC.md as written.**
 A corpus example the spec's own rules reject is a finding — in one document or
 the other. `make check` runs it; the golden pins (SPEC §7.2) hold every
 target's generated output and wire bytes to these files.

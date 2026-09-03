@@ -1,5 +1,5 @@
 // Package tablewire is the compiler-side encoder and decoder for the neutral
-// TABLE wire (SPEC-TABLES.md §3), over the instance model in tabletext.
+// TABLE wire (docs/SPEC-TABLES.md §3), over the instance model in tabletext.
 //
 // It is TOOLING, never a runtime: `schema pack` (§17) is a Go command and a
 // compiler cannot execute the code it emits, so the packer carries its own
@@ -17,7 +17,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Encode is the root instance's wire bytes and nothing else (SPEC-TABLES.md
+// Encode is the root instance's wire bytes and nothing else (docs/SPEC-TABLES.md
 // §17.2): no magic, no content hash, no protocol id, no length prefix around
 // the whole.
 func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
@@ -61,7 +61,7 @@ type encoder struct {
 // follow-on the generated C++ does not emit either (§16.2).
 func RefuseVariable(m *tabletext.Model, st *ir.Struct) error {
 	if ir.VariableTables(m.Unit)[st.Name] {
-		return fmt.Errorf("%s is VARIABLE-LENGTH — a pointer in its by-value closure — and the text form of one reads through its builder, a named follow-on (SPEC-TABLES.md §16.2, §15); pack a fixed-size root", st.Name)
+		return fmt.Errorf("%s is VARIABLE-LENGTH — a pointer in its by-value closure — and the text form of one reads through its builder, a named follow-on (docs/SPEC-TABLES.md §16.2, §15); pack a fixed-size root", st.Name)
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 
 	if f.Type.Pointer {
 		// A pointer to a table rides as `id (u16), kind = 17, index (u32)`
-		// (SPEC-TABLES.md §3.1). NULL IS INDEX 0, AND NULL IS ELIDED: absence
+		// (docs/SPEC-TABLES.md §3.1). NULL IS INDEX 0, AND NULL IS ELIDED: absence
 		// and null are one value, because a pointer takes no specified default.
 		// A non-null pointer ALWAYS rides, even when its node's body is
 		// entirely default, or null and "points at an empty node" would be one
@@ -222,7 +222,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 			return nil // None elides — TLV absence is the None
 		}
 		if int(fv.Cell.U) > len(un.Variants) {
-			return fmt.Errorf("union %s: tag %d names no arm — save refuses it (SPEC-TABLES.md §5)", un.Name, fv.Cell.U)
+			return fmt.Errorf("union %s: tag %d names no arm — save refuses it (docs/SPEC-TABLES.md §5)", un.Name, fv.Cell.U)
 		}
 		arm := un.Variants[fv.Cell.U-1]
 		payload := fv.Cell.Tab
@@ -297,7 +297,7 @@ func encodeArray(e *encoder, w *buf, fv *tabletext.Field, id uint16, kind, count
 	return nil
 }
 
-// encodeKeyed writes an enum-keyed array (SPEC-TABLES.md §3.2): kind 16, the
+// encodeKeyed writes an enum-keyed array (docs/SPEC-TABLES.md §3.2): kind 16, the
 // body length, then one `(variant id, L, element body)` pair per PRESENT slot,
 // ascending by variant ordinal. A slot holding its default elides exactly as a
 // defaulted field does, an array with no present slot is not written at all,
@@ -402,7 +402,7 @@ func subInstance(e *encoder, f *ir.Field, cell *tabletext.Cell) *tabletext.Insta
 func variantWireId(e *ir.Enum, value uint64, field string) (uint16, error) {
 	name := tabletext.EnumName(e, int64(value))
 	if name == "" {
-		return 0, fmt.Errorf("field %s: enum %s value %d names no variant, so it has no wire identity — save refuses it (SPEC-TABLES.md §5)", field, e.Name, value)
+		return 0, fmt.Errorf("field %s: enum %s value %d names no variant, so it has no wire identity — save refuses it (docs/SPEC-TABLES.md §5)", field, e.Name, value)
 	}
 	if name == "None" {
 		return 0, nil

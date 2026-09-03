@@ -1,5 +1,5 @@
 // The NEGATIVE CONTROL for a keyed object's duplicate counting
-// (SPEC-TABLES.md §16.2).
+// (docs/SPEC-TABLES.md §16.2).
 //
 // A keyed object's keys ARE keys, so a variant named twice is last-wins AND
 // counted. Last-wins was already true — the slot is re-established before

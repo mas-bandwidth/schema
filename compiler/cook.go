@@ -1,5 +1,5 @@
 // `schema cook`, `schema cook-check` and `schema uncook` on the public driver
-// (SPEC-TABLES.md §7).
+// (docs/SPEC-TABLES.md §7).
 //
 // COOKING IS FUNDAMENTALLY AN OPTIMIZATION: the wire stays the format of record
 // and a cook is a build-locked accelerator beside it, produced only where load
@@ -20,7 +20,7 @@ type CookOptions struct {
 	// Big produces a BIG-ENDIAN cook. A cook is produced in the byte order of
 	// the build it is cooked for, so the fixing happens where the target is
 	// known — offline, once, on the writing side — and never on the reading
-	// side, which is what makes `Open` a match and a point (SPEC-TABLES.md §7).
+	// side, which is what makes `Open` a match and a point (docs/SPEC-TABLES.md §7).
 	Big bool
 	// NoAttribution leaves the node directory out, so a build that ships no
 	// tooling carries just data. `schema cook-check` then refuses the file and
@@ -69,7 +69,7 @@ func (c *Compiler) Cook(u *ir.Unit, root string, wire []byte, opts CookOptions) 
 		return nil, rep, publicReport(wr), err
 	}
 	if wr.Malformed {
-		return nil, rep, publicReport(wr), fmt.Errorf("the wire is malformed: a region loaded from it would carry a hole, and a cook cannot (SPEC-TABLES.md §7)")
+		return nil, rep, publicReport(wr), fmt.Errorf("the wire is malformed: a region loaded from it would carry a hole, and a cook cannot (docs/SPEC-TABLES.md §7)")
 	}
 	out, err := tablecook.Cook(m, inst, tablecook.Options{Big: opts.Big, NoAttribution: opts.NoAttribution})
 	if err != nil {
@@ -126,7 +126,7 @@ func (c *Compiler) CookCheck(u *ir.Unit, root string, file []byte) (CookReport, 
 // attribution removed and its length word zeroed, and the attribution on its
 // own. It is header arithmetic and reads no declaration, because the
 // attribution is separable and a caller may place the parts together or apart
-// (SPEC-TABLES.md §6.3).
+// (docs/SPEC-TABLES.md §6.3).
 func CookSplitAttribution(file []byte) (data, attribution []byte, err error) {
 	return tablecook.SplitAttribution(file)
 }

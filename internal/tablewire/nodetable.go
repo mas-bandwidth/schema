@@ -1,4 +1,4 @@
-// The NODE TABLE's framing on the wire (SPEC-TABLES.md §3.1): the records a
+// The NODE TABLE's framing on the wire (docs/SPEC-TABLES.md §3.1): the records a
 // pointered save writes, under the reserved field id `0xFFFF`, in one or more
 // kind-`12` fields that CONCATENATE.
 //
@@ -25,7 +25,7 @@ const nodeRecordHeader = 8 + 4
 const nodeFieldMax = int(0xFFFFFFFF)
 
 // NodeBodyMax is the ceiling on ONE node's body, and exceeding it is a
-// SAVE-TIME REFUSAL naming the node (SPEC-TABLES.md §3.1): the record's length
+// SAVE-TIME REFUSAL naming the node (docs/SPEC-TABLES.md §3.1): the record's length
 // is a `u32`, and the repair is more nodes — which is the shape the flat
 // encoding wants anyway — rather than four more bytes on every node in every
 // save. The AGGREGATE ceiling is the one that had to go, and the repeating
@@ -63,7 +63,7 @@ func (e *encoder) appendNodeTable(body []byte, g *NodeGraph) ([]byte, error) {
 			return nil, err
 		}
 		if len(rec) > NodeBodyMax {
-			return nil, fmt.Errorf("node %s: its body is %d bytes and a record's length is a u32 — save refuses it rather than truncating, and the repair is more nodes (SPEC-TABLES.md §3.1)", node.Def.Name, len(rec))
+			return nil, fmt.Errorf("node %s: its body is %d bytes and a record's length is a u32 — save refuses it rather than truncating, and the repair is more nodes (docs/SPEC-TABLES.md §3.1)", node.Def.Name, len(rec))
 		}
 		// A RECORD NEVER STRADDLES A FIELD: the next field opens when the
 		// record about to be written would not fit in this one, so every
@@ -132,7 +132,7 @@ type nodeRecord struct {
 	Body   []byte
 }
 
-// scanNodeRecords is the AUTHORITATIVE record scan (SPEC-TABLES.md §3.1).
+// scanNodeRecords is the AUTHORITATIVE record scan (docs/SPEC-TABLES.md §3.1).
 // `node_count` is data from the wire: the scan reads records until the payload
 // is consumed and takes what it finds, and a count that disagrees with the scan
 // is malformed. Nothing — no directory, no region, no allocation — is sized

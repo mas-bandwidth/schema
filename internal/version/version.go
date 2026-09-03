@@ -12,7 +12,7 @@
 // every downstream repository, and would break the goldens on version bumps
 // alone — a diff that says nothing about whether the wire changed. Generated
 // code carries the protocol id instead, which is the thing that actually
-// governs compatibility. See VERSIONING.md.
+// governs compatibility. See docs/VERSIONING.md.
 package version
 
 import (

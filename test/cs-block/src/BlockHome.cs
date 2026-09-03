@@ -1,4 +1,4 @@
-// THE BLOCK HOME gate (SPEC-TABLES.md §19.2's C# surface).
+// THE BLOCK HOME gate (docs/SPEC-TABLES.md §19.2's C# surface).
 //
 // Two defects the dogfood found, both from one root cause — a C# backend that
 // emitted per DECLARING FILE and skipped a file with no `table` in it:
@@ -74,7 +74,7 @@ static class BlockHomeGate
 
         // <Table>BlockMaxBytes: a consumer caps a playback buffer, a recording
         // or a scratch copy from the GENERATED constant, not from a number
-        // somebody wrote down beside it (SPEC-TABLES.md §19.1).
+        // somebody wrote down beside it (docs/SPEC-TABLES.md §19.1).
         long cap = PartFrameBlock.BlockMaxBytes;
         if (cap <= Unsafe.SizeOf<PartFrameBlockProjection>())
         {

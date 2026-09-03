@@ -1,4 +1,4 @@
-// The BLOCK FORM's C# leg (SPEC-TABLES.md §19, §19.5) — the CONSUMER half of
+// The BLOCK FORM's C# leg (docs/SPEC-TABLES.md §19, §19.5) — the CONSUMER half of
 // the two-language gate, and the twin of test/tables/block_main.cpp.
 //
 // A C++ producer laid a block out, filled it, and pinned its bytes into
@@ -243,7 +243,7 @@ static class Program
             *camerasOffsetOf = savedCameras;
 
             Check(forgeries == 11, "the battery is the C++ leg's eleven");
-            Check(refusals == forgeries, "every forgery is refused: " + refusals + " of " + forgeries + " (SPEC-TABLES.md §19.2)");
+            Check(refusals == forgeries, "every forgery is refused: " + refusals + " of " + forgeries + " (docs/SPEC-TABLES.md §19.2)");
 
             Check(RenderFrameBlock.Open(out refused, pointer, bytes.Length), "and the restored block opens again");
         }
@@ -254,9 +254,9 @@ static class Program
 
         CheckPadded();
         Check(BlockHomeGate.Run(), "the block home unit's C# surface is emitted and reachable");
-        Check(LayoutGate.Run(), "every corpus unit's block layout agrees with the compiler's model (SPEC-TABLES.md §19.3)");
+        Check(LayoutGate.Run(), "every corpus unit's block layout agrees with the compiler's model (docs/SPEC-TABLES.md §19.3)");
 
-        // GATE 2's C# half (SPEC-TABLES.md §12.1), run only when asked: it is a
+        // GATE 2's C# half (docs/SPEC-TABLES.md §12.1), run only when asked: it is a
         // MEASUREMENT, and a measurement in a correctness leg would make the
         // leg's verdict depend on the machine's mood.
         string[] argv = Environment.GetCommandLineArgs();
@@ -275,7 +275,7 @@ static class Program
                 }
             }
 
-            // THE FORGERY FUZZER's C# half (SPEC-TABLES.md §19.2, §19.5), run
+            // THE FORGERY FUZZER's C# half (docs/SPEC-TABLES.md §19.2, §19.5), run
             // only when asked, because it is a STANDING GATE with a budget of
             // its own and the correctness leg above must stay quick enough to
             // run on every change. Its seed blocks are written by the C++ leg,

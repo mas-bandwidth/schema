@@ -1,4 +1,4 @@
-// §19.3's LAYOUT CONTRACT as a GENERATION-TIME gate (SPEC-TABLES.md §19.3,
+// §19.3's LAYOUT CONTRACT as a GENERATION-TIME gate (docs/SPEC-TABLES.md §19.3,
 // §19.5).
 //
 // The C# half of the contract is a check that runs once and throws — C# has no

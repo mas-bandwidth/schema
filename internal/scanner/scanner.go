@@ -32,7 +32,7 @@ const (
 	Colon
 	Assign   // =
 	Not      // !
-	Question // ? — the OPTIONAL type prefix in a table body (SPEC-TABLES.md §2.3)
+	Question // ? — the OPTIONAL type prefix in a table body (docs/SPEC-TABLES.md §2.3)
 	Dot      // .
 	DotDot   // ..
 	LessEq   // <= — retired spelling; scanned so the parser can refuse it by name (SPEC §4.3)

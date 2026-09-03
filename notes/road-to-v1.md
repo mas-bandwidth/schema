@@ -1,7 +1,7 @@
 # Road to 1.0 — the decisions, as they landed
 
 *2026-08-05. The audit ran in the afternoon (three audits, eight dossiers, adversarial
-verification — see SPEC.md draft-5 changelog); Glenn answered the same evening, item by
+verification — see docs/SPEC.md draft-5 changelog); Glenn answered the same evening, item by
 item, in the main channel. This file is now the record of those answers; the spec carries
 each one at its section with his words. The original decision-list form of this file is in
 git.*
@@ -44,7 +44,7 @@ git.*
   around deltas and snapshots, not around priority accumulators […]"* No external-engine
   name mentions remain in this repo's tracked files (grep-verified; bracketed elisions in
   his quotes are the sweep applied to the quotes themselves; the full sentences are in
-  SPEC.md §9 q14).
+  docs/SPEC.md §9 q14).
 
 ## Landed outside the spec the same day
 

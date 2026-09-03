@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package graphdemo — protocol id 0x79242c6a555d3a60 (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
 #pragma once
@@ -37,13 +37,13 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
-// ---- reflection (tables only, SPEC-TABLES.md) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id/kind, storage offset, bounds, ranges, enum names and branch guards —
@@ -55,7 +55,7 @@ struct TableTypeInfo;
 // One arm of a union field: where its payload sits inside the union's storage
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
-// is spelled twice (SPEC-TABLES.md §8).
+// is spelled twice (docs/SPEC-TABLES.md §8).
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
@@ -98,14 +98,14 @@ struct TableFieldInfo
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
     const char * (*enum_name)( uint64_t value );
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
@@ -133,7 +133,7 @@ struct TableTypeInfo
     // thing the descriptors could not express without it. Placement-new
     // value-init, exactly what the wire's read path does, and no temporary.
     void (*reset)( void * storage );
-    // the DERIVED mode (SPEC-TABLES.md): false = fixed-size, a plain
+    // the DERIVED mode (docs/SPEC-TABLES.md): false = fixed-size, a plain
     // relocatable struct; true = variable-length, built through a Builder
     // and read through a region root. Nobody declares it; the compiler
     // works it out.
@@ -334,7 +334,7 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace graphdemo {
 
-// ---- variable-length tables: tuning constants (SPEC-TABLES.md) ----
+// ---- variable-length tables: tuning constants (docs/SPEC-TABLES.md) ----
 //
 // The segment size and the count multiply to exactly 2^32: the u32 reference
 // is the arena's hard ceiling, and these constants saturate it rather than
@@ -581,7 +581,7 @@ struct TableRegionSink
 
 namespace graphdemo {
 
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on — the type wire's protocol id, every record's
 // layout as the compiler's own C ABI model computes it, and the facts that
 // decide what a load PUTS in those slots. It is the number a cook's header
@@ -604,14 +604,14 @@ inline constexpr uint64_t BuildVersion = 0xe7c54936602ceecaull;
 
 namespace graphdemo {
 
-// ---- the cooked form (SPEC-TABLES.md §7) ----
+// ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 //
 // A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 // order. Every word of the header is a u64 written in the byte order the cook
 // was produced in, and the header is 64 bytes:
 //
 //     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
-//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//     8  build_version       the unit's id (docs/SPEC-TABLES.md §20)
 //    16  byte_order          1 little, 2 big — the order that WROTE the file
 //    24  data_length         the region's bytes, rounded up to alignment
 //    32  attribution_length  the directory's bytes, or 0
@@ -658,7 +658,7 @@ inline constexpr uint64_t TableCookByteOrder = 1; // little
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
-// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+// describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
 inline constexpr uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
@@ -759,7 +759,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 namespace graphdemo {
 
 // table Meta — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct Meta {
     int32_t build = 1;
     char tag[8 + 1] = {}; // string(8): max length, used length beside it
@@ -767,7 +767,7 @@ struct Meta {
 };
 
 // table Settings — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct Settings {
     int32_t quality = 2;
     char label[16 + 1] = {}; // string(16): max length, used length beside it
@@ -775,7 +775,7 @@ struct Settings {
 };
 
 // table ListNode — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct ListNode {
     int32_t value = 0;
     char name[12 + 1] = {}; // string(12): max length, used length beside it
@@ -784,7 +784,7 @@ struct ListNode {
 };
 
 // table TreeNode — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct TreeNode {
     char label[12 + 1] = {}; // string(12): max length, used length beside it
     int32_t label_length = 0;
@@ -793,14 +793,14 @@ struct TreeNode {
 };
 
 // table Layer — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct Layer {
     int32_t depth = 0;
     TableRef head; // *ListNode — null until assigned
 };
 
 // table Scene — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct Scene {
     char name[24 + 1] = {}; // string(24): max length, used length beside it
     int32_t name_length = 0;
@@ -816,7 +816,7 @@ struct Scene {
 };
 
 // table Depot — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct Depot {
     char name[12 + 1] = {}; // string(12): max length, used length beside it
     int32_t name_length = 0;
@@ -827,7 +827,7 @@ struct Depot {
 };
 
 // table Album — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct Album {
     char name[16 + 1] = {}; // string(16): max length, used length beside it
     int32_t name_length = 0;
@@ -840,7 +840,7 @@ struct Album {
 
 // Tier on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef GRAPHDEMO_SCHEMA_TABLE_ENUM_TIER
 #define GRAPHDEMO_SCHEMA_TABLE_ENUM_TIER
 inline bool TableEnumId( Tier value, uint16_t & id )
@@ -865,7 +865,7 @@ inline bool TableEnumValue( uint16_t id, Tier & out )
 }
 #endif // GRAPHDEMO_SCHEMA_TABLE_ENUM_TIER
 
-// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void MetaReset( Meta & value );
 inline void SettingsReset( Settings & value );
@@ -950,7 +950,7 @@ inline void AlbumReset( Album & value )
     value.head.value = 0; // *ListNode — null
 }
 
-// ---- the arena's reset hook (SPEC-TABLES.md §6) ----
+// ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----
 //
 // TableWorker::Alloc is a template and cannot name a member's Reset, so
 // the arena reaches it through this overload set by argument-dependent
@@ -966,7 +966,7 @@ inline void TableReset( Scene & value ) { SceneReset( value ); }
 inline void TableReset( Depot & value ) { DepotReset( value ); }
 inline void TableReset( Album & value ) { AlbumReset( value ); }
 
-// ---- pointer targets: allocation and resolution (SPEC-TABLES.md §2) ----
+// ---- pointer targets: allocation and resolution (docs/SPEC-TABLES.md §2) ----
 //
 // A reference resolves differently in the two forms, and the CONTEXT says
 // which: in the arena it is an offset; in a region it is a self-relative
@@ -1455,7 +1455,7 @@ inline bool ListNodeLoadBody( TableReader & r, Sink & sink, ListNode & value, in
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -1599,7 +1599,7 @@ inline bool TreeNodeLoadBody( TableReader & r, Sink & sink, TreeNode & value, in
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -1632,7 +1632,7 @@ inline bool TreeNodeLoadBody( TableReader & r, Sink & sink, TreeNode & value, in
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -1747,7 +1747,7 @@ inline bool LayerLoadBody( TableReader & r, Sink & sink, Layer & value, int32_t 
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -2013,7 +2013,7 @@ inline bool SceneLoadBody( TableReader & r, Sink & sink, Scene & value, int32_t 
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -2046,7 +2046,7 @@ inline bool SceneLoadBody( TableReader & r, Sink & sink, Scene & value, int32_t 
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -2079,7 +2079,7 @@ inline bool SceneLoadBody( TableReader & r, Sink & sink, Scene & value, int32_t 
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -2112,7 +2112,7 @@ inline bool SceneLoadBody( TableReader & r, Sink & sink, Scene & value, int32_t 
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -2285,13 +2285,13 @@ inline bool DepotSaveBody( const Ctx & ctx, TableWriter & w, const Depot & value
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
-            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             w.put16( 0x7f34 ); w.put8( 16 ); // banks (keyed by Tier)
             int64_t len_at_banks = w.offset; w.put32( 0 );
             w.put8( 13 ); w.put32( pairs_banks );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
-            // slot is found by its key (SPEC-TABLES.md §3.2)
+            // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 2; i++ )
             {
                 int64_t elem_bytes = LayerMeasureBody( ctx, value.banks.slots[i], depth );
@@ -2393,7 +2393,7 @@ inline bool DepotLoadBody( TableReader & r, Sink & sink, Depot & value, int32_t 
                             // name can fold to, so a body carrying one is DAMAGED, not
                             // merely foreign. Framing damage stops this body, keeps what
                             // it decoded, and the parent reads on past the length
-                            // (SPEC-TABLES.md §3.2, §4).
+                            // (docs/SPEC-TABLES.md §3.2, §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -2447,7 +2447,7 @@ inline bool DepotLoadBody( TableReader & r, Sink & sink, Depot & value, int32_t 
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -2690,7 +2690,7 @@ inline bool AlbumLoadBody( TableReader & r, Sink & sink, Album & value, int32_t 
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -2723,7 +2723,7 @@ inline bool AlbumLoadBody( TableReader & r, Sink & sink, Album & value, int32_t 
                 if ( depth >= kTableMaxDepth )
                 {
                     // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (SPEC-TABLES.md §4)
+                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
                     r.report->malformed = true;
                     r.offset += body_len;
                     break;
@@ -2754,7 +2754,7 @@ inline bool AlbumLoadBody( TableReader & r, Sink & sink, Album & value, int32_t 
 
 // SettingsPackMeasure: the packed region bytes of everything Settings POINTS AT.
 // Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).
+// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
 template <typename Ctx>
 inline int64_t SettingsPackMeasure( const Ctx & ctx, const Settings & value, int32_t depth )
 {
@@ -2791,7 +2791,7 @@ inline int64_t SettingsLoadMeasureBody( TableReader & r, int32_t depth )
 
 // ListNodePackMeasure: the packed region bytes of everything ListNode POINTS AT.
 // Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).
+// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
 template <typename Ctx>
 inline int64_t ListNodePackMeasure( const Ctx & ctx, const ListNode & value, int32_t depth )
 {
@@ -2877,7 +2877,7 @@ inline int64_t ListNodeLoadMeasureBody( TableReader & r, int32_t depth )
 
 // TreeNodePackMeasure: the packed region bytes of everything TreeNode POINTS AT.
 // Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).
+// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
 template <typename Ctx>
 inline int64_t TreeNodePackMeasure( const Ctx & ctx, const TreeNode & value, int32_t depth )
 {
@@ -3000,7 +3000,7 @@ inline int64_t TreeNodeLoadMeasureBody( TableReader & r, int32_t depth )
 
 // LayerPackMeasure: the packed region bytes of everything Layer POINTS AT.
 // Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).
+// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
 template <typename Ctx>
 inline int64_t LayerPackMeasure( const Ctx & ctx, const Layer & value, int32_t depth )
 {
@@ -3086,7 +3086,7 @@ inline int64_t LayerLoadMeasureBody( TableReader & r, int32_t depth )
 
 // ScenePackMeasure: the packed region bytes of everything Scene POINTS AT.
 // Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).
+// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
 template <typename Ctx>
 inline int64_t ScenePackMeasure( const Ctx & ctx, const Scene & value, int32_t depth )
 {
@@ -3340,7 +3340,7 @@ inline int64_t SceneLoadMeasureBody( TableReader & r, int32_t depth )
 
 // DepotPackMeasure: the packed region bytes of everything Depot POINTS AT.
 // Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).
+// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
 template <typename Ctx>
 inline int64_t DepotPackMeasure( const Ctx & ctx, const Depot & value, int32_t depth )
 {
@@ -3463,7 +3463,7 @@ inline int64_t DepotLoadMeasureBody( TableReader & r, int32_t depth )
 
 // AlbumPackMeasure: the packed region bytes of everything Album POINTS AT.
 // Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).
+// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
 template <typename Ctx>
 inline int64_t AlbumPackMeasure( const Ctx & ctx, const Album & value, int32_t depth )
 {
@@ -3606,7 +3606,7 @@ inline int64_t AlbumLoadMeasureBody( TableReader & r, int32_t depth )
     }
 }
 
-// ---- ListNode: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
+// ---- ListNode: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: ListNodeBuilder — allocate nodes, wire them together, then Lock.
 // CONST:   one packed region, root at its base. Lock produces it and Load
@@ -3686,7 +3686,7 @@ inline bool ListNodeBuilder::Lock()
     return true;
 }
 
-// ---- ListNode on the wire: the generic, tolerant form (SPEC-TABLES.md §3) ----
+// ---- ListNode on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----
 
 inline int64_t ListNodeMeasure( const ListNode * root )
 {
@@ -3764,7 +3764,7 @@ inline bool ListNodeLoadBuilder( ListNodeBuilder & builder, const uint8_t * wire
     return ListNodeLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- TreeNode: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
+// ---- TreeNode: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: TreeNodeBuilder — allocate nodes, wire them together, then Lock.
 // CONST:   one packed region, root at its base. Lock produces it and Load
@@ -3844,7 +3844,7 @@ inline bool TreeNodeBuilder::Lock()
     return true;
 }
 
-// ---- TreeNode on the wire: the generic, tolerant form (SPEC-TABLES.md §3) ----
+// ---- TreeNode on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----
 
 inline int64_t TreeNodeMeasure( const TreeNode * root )
 {
@@ -3922,7 +3922,7 @@ inline bool TreeNodeLoadBuilder( TreeNodeBuilder & builder, const uint8_t * wire
     return TreeNodeLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- Layer: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
+// ---- Layer: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: LayerBuilder — allocate nodes, wire them together, then Lock.
 // CONST:   one packed region, root at its base. Lock produces it and Load
@@ -4002,7 +4002,7 @@ inline bool LayerBuilder::Lock()
     return true;
 }
 
-// ---- Layer on the wire: the generic, tolerant form (SPEC-TABLES.md §3) ----
+// ---- Layer on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----
 
 inline int64_t LayerMeasure( const Layer * root )
 {
@@ -4080,7 +4080,7 @@ inline bool LayerLoadBuilder( LayerBuilder & builder, const uint8_t * wire, int6
     return LayerLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- Scene: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
+// ---- Scene: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: SceneBuilder — allocate nodes, wire them together, then Lock.
 // CONST:   one packed region, root at its base. Lock produces it and Load
@@ -4160,7 +4160,7 @@ inline bool SceneBuilder::Lock()
     return true;
 }
 
-// ---- Scene on the wire: the generic, tolerant form (SPEC-TABLES.md §3) ----
+// ---- Scene on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----
 
 inline int64_t SceneMeasure( const Scene * root )
 {
@@ -4238,7 +4238,7 @@ inline bool SceneLoadBuilder( SceneBuilder & builder, const uint8_t * wire, int6
     return SceneLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- Depot: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
+// ---- Depot: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: DepotBuilder — allocate nodes, wire them together, then Lock.
 // CONST:   one packed region, root at its base. Lock produces it and Load
@@ -4318,7 +4318,7 @@ inline bool DepotBuilder::Lock()
     return true;
 }
 
-// ---- Depot on the wire: the generic, tolerant form (SPEC-TABLES.md §3) ----
+// ---- Depot on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----
 
 inline int64_t DepotMeasure( const Depot * root )
 {
@@ -4396,7 +4396,7 @@ inline bool DepotLoadBuilder( DepotBuilder & builder, const uint8_t * wire, int6
     return DepotLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- Album: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----
+// ---- Album: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
 //
 // MUTABLE: AlbumBuilder — allocate nodes, wire them together, then Lock.
 // CONST:   one packed region, root at its base. Lock produces it and Load
@@ -4476,7 +4476,7 @@ inline bool AlbumBuilder::Lock()
     return true;
 }
 
-// ---- Album on the wire: the generic, tolerant form (SPEC-TABLES.md §3) ----
+// ---- Album on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----
 
 inline int64_t AlbumMeasure( const Album * root )
 {
@@ -4554,7 +4554,7 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire, int6
     return AlbumLoadBody( r, builder.main, *root, 1 );
 }
 
-// ---- the cooked form: point at a cook (SPEC-TABLES.md §7) ----
+// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
 // MetaOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
@@ -4789,62 +4789,62 @@ static_assert( std::is_standard_layout<Depot>::value, "Depot must stay standard-
 static_assert( std::is_trivially_copyable<Album>::value, "Album must stay relocatable" );
 static_assert( std::is_standard_layout<Album>::value, "Album must stay standard-layout for offsetof" );
 
-// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----
+// ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
 // The compiler derived every number below from the declaration and folded it
 // into the BUILD VERSION; these asserts are this compiler saying whether it
 // agrees. The model is not self-evidently right — on 32-bit System V
 // alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
 // rather than assumed.
-static_assert( sizeof( Meta ) == 20, "Meta's sizeof moved: the build version was taken over 20, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Meta ) == 4, "Meta's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Meta, build ) == 0, "Meta's field build moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Meta, tag ) == 4, "Meta's field tag moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Settings ) == 28, "Settings's sizeof moved: the build version was taken over 28, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Settings ) == 4, "Settings's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Settings, quality ) == 0, "Settings's field quality moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Settings, label ) == 4, "Settings's field label moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( ListNode ) == 32, "ListNode's sizeof moved: the build version was taken over 32, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( ListNode ) == 8, "ListNode's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ListNode, value ) == 0, "ListNode's field value moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ListNode, name ) == 4, "ListNode's field name moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ListNode, next ) == 24, "ListNode's field next moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( TreeNode ) == 40, "TreeNode's sizeof moved: the build version was taken over 40, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( TreeNode ) == 8, "TreeNode's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TreeNode, label ) == 0, "TreeNode's field label moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TreeNode, left ) == 24, "TreeNode's field left moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TreeNode, right ) == 32, "TreeNode's field right moved: the build version was taken over offset 32 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Layer ) == 16, "Layer's sizeof moved: the build version was taken over 16, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Layer ) == 8, "Layer's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Layer, depth ) == 0, "Layer's field depth moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Layer, head ) == 8, "Layer's field head moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Scene ) == 176, "Scene's sizeof moved: the build version was taken over 176, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Scene ) == 8, "Scene's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, name ) == 0, "Scene's field name moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, version ) == 32, "Scene's field version moved: the build version was taken over offset 32 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, head ) == 40, "Scene's field head moved: the build version was taken over offset 40 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, tree ) == 48, "Scene's field tree moved: the build version was taken over offset 48 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, settings ) == 56, "Scene's field settings moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, alias ) == 64, "Scene's field alias moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, ground ) == 72, "Scene's field ground moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, layers ) == 88, "Scene's field layers moved: the build version was taken over offset 88 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Scene, meta ) == 156, "Scene's field meta moved: the build version was taken over offset 156 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Depot ) == 88, "Depot's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Depot ) == 8, "Depot's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Depot, name ) == 0, "Depot's field name moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Depot, banks ) == 24, "Depot's field banks moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Depot, spare ) == 56, "Depot's field spare moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Depot, head ) == 80, "Depot's field head moved: the build version was taken over offset 80 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Album ) == 88, "Album's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Album ) == 8, "Album's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Album, name ) == 0, "Album's field name moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Album, tint ) == 24, "Album's field tint moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Album, stamp ) == 28, "Album's field stamp moved: the build version was taken over offset 28 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Album, marker ) == 48, "Album's field marker moved: the build version was taken over offset 48 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Album, pin ) == 72, "Album's field pin moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Album, head ) == 80, "Album's field head moved: the build version was taken over offset 80 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Meta ) == 20, "Meta's sizeof moved: the build version was taken over 20, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Meta ) == 4, "Meta's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Meta, build ) == 0, "Meta's field build moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Meta, tag ) == 4, "Meta's field tag moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Settings ) == 28, "Settings's sizeof moved: the build version was taken over 28, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Settings ) == 4, "Settings's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Settings, quality ) == 0, "Settings's field quality moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Settings, label ) == 4, "Settings's field label moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( ListNode ) == 32, "ListNode's sizeof moved: the build version was taken over 32, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( ListNode ) == 8, "ListNode's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ListNode, value ) == 0, "ListNode's field value moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ListNode, name ) == 4, "ListNode's field name moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ListNode, next ) == 24, "ListNode's field next moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( TreeNode ) == 40, "TreeNode's sizeof moved: the build version was taken over 40, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( TreeNode ) == 8, "TreeNode's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( TreeNode, label ) == 0, "TreeNode's field label moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( TreeNode, left ) == 24, "TreeNode's field left moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( TreeNode, right ) == 32, "TreeNode's field right moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Layer ) == 16, "Layer's sizeof moved: the build version was taken over 16, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Layer ) == 8, "Layer's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Layer, depth ) == 0, "Layer's field depth moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Layer, head ) == 8, "Layer's field head moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Scene ) == 176, "Scene's sizeof moved: the build version was taken over 176, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Scene ) == 8, "Scene's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, name ) == 0, "Scene's field name moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, version ) == 32, "Scene's field version moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, head ) == 40, "Scene's field head moved: the build version was taken over offset 40 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, tree ) == 48, "Scene's field tree moved: the build version was taken over offset 48 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, settings ) == 56, "Scene's field settings moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, alias ) == 64, "Scene's field alias moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, ground ) == 72, "Scene's field ground moved: the build version was taken over offset 72 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, layers ) == 88, "Scene's field layers moved: the build version was taken over offset 88 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Scene, meta ) == 156, "Scene's field meta moved: the build version was taken over offset 156 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Depot ) == 88, "Depot's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Depot ) == 8, "Depot's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Depot, name ) == 0, "Depot's field name moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Depot, banks ) == 24, "Depot's field banks moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Depot, spare ) == 56, "Depot's field spare moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Depot, head ) == 80, "Depot's field head moved: the build version was taken over offset 80 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Album ) == 88, "Album's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Album ) == 8, "Album's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Album, name ) == 0, "Album's field name moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Album, tint ) == 24, "Album's field tint moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Album, stamp ) == 28, "Album's field stamp moved: the build version was taken over offset 28 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Album, marker ) == 48, "Album's field marker moved: the build version was taken over offset 48 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Album, pin ) == 72, "Album's field pin moved: the build version was taken over offset 72 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Album, head ) == 80, "Album's field head moved: the build version was taken over offset 80 (docs/SPEC-TABLES.md §20.3)" );
 
-// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
+// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * MetaTableType();
 inline const TableTypeInfo * SettingsTableType();
@@ -4940,44 +4940,44 @@ inline const TableFieldInfo AlbumTableFields[] = {
 inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 6, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true };
 inline const TableTypeInfo * AlbumTableType() { return &AlbumTableInfo; }
 
-// ---- the text form (SPEC-TABLES.md §16) ----
+// ---- the text form (docs/SPEC-TABLES.md §16) ----
 
 // Meta in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // GraphTable.cpp; link it to use them.
 bool MetaFromJson( Meta & value, const char * text, int64_t bytes, TableReport * report );
 int64_t MetaToJsonMeasure( const Meta & value );
 int64_t MetaToJson( const Meta & value, char * buffer, int64_t capacity );
 
 // Settings in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // GraphTable.cpp; link it to use them.
 bool SettingsFromJson( Settings & value, const char * text, int64_t bytes, TableReport * report );
 int64_t SettingsToJsonMeasure( const Settings & value );
 int64_t SettingsToJson( const Settings & value, char * buffer, int64_t capacity );
 
 // ListNode is VARIABLE-LENGTH. Its text form reads through the builder
-// (SPEC-TABLES.md §16.1), which this backend does not emit yet:
+// (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
 // no ListNodeFromJson and no ListNodeToJson exist to call.
 
 // TreeNode is VARIABLE-LENGTH. Its text form reads through the builder
-// (SPEC-TABLES.md §16.1), which this backend does not emit yet:
+// (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
 // no TreeNodeFromJson and no TreeNodeToJson exist to call.
 
 // Layer is VARIABLE-LENGTH. Its text form reads through the builder
-// (SPEC-TABLES.md §16.1), which this backend does not emit yet:
+// (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
 // no LayerFromJson and no LayerToJson exist to call.
 
 // Scene is VARIABLE-LENGTH. Its text form reads through the builder
-// (SPEC-TABLES.md §16.1), which this backend does not emit yet:
+// (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
 // no SceneFromJson and no SceneToJson exist to call.
 
 // Depot is VARIABLE-LENGTH. Its text form reads through the builder
-// (SPEC-TABLES.md §16.1), which this backend does not emit yet:
+// (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
 // no DepotFromJson and no DepotToJson exist to call.
 
 // Album is VARIABLE-LENGTH. Its text form reads through the builder
-// (SPEC-TABLES.md §16.1), which this backend does not emit yet:
+// (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
 // no AlbumFromJson and no AlbumToJson exist to call.
 
 } // namespace graphdemo

@@ -1,4 +1,4 @@
-// TABLE-wire storage, codec and descriptor emission for C# (SPEC-TABLES.md),
+// TABLE-wire storage, codec and descriptor emission for C# (docs/SPEC-TABLES.md),
 // mirroring internal/codegen/cpptable — the reference. Readers restore
 // declared defaults then overlay, skip unknown ids, skip kind mismatches,
 // clamp out-of-range values, and count every event.
@@ -170,7 +170,7 @@ func member(f *ir.Field) string { return ir.GoExportName(f.Name) }
 
 func (g *tableGen) emitTableClass(st *ir.Struct) {
 	g.tf("// table %s — TABLE-wire storage: public fields, every buffer allocated at\n", st.Name)
-	g.tf("// construction, declared defaults in the field initializers (SPEC-TABLES.md)\n")
+	g.tf("// construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)\n")
 	g.tf("public sealed class %s\n{\n", st.Name)
 	prevGuard := ""
 	for _, f := range st.Fields {
@@ -206,7 +206,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// stored for None, and the indexer is the only place the shift
 		// appears. Every named slot exists, so there is no count companion,
 		// and the type derives its own extent from the enum — nothing outside
-		// the array names its size (SPEC-TABLES.md §2.4).
+		// the array names its size (docs/SPEC-TABLES.md §2.4).
 		g.tf("    public TableKeyed<%s, %s> %s = new TableKeyed<%s, %s>(); // [%s]: one slot per named variant, keyed by the value\n",
 			typ, f.KeyEnum, name, typ, f.KeyEnum, f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
@@ -228,7 +228,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	}
 	if f.Type.Optional {
 		// `?T` — the value plus its presence bool, and nothing else: the
-		// holder stays a fixed-size record (SPEC-TABLES.md §2.3). PRESENCE,
+		// holder stays a fixed-size record (docs/SPEC-TABLES.md §2.3). PRESENCE,
 		// not content, decides whether the field rides.
 		g.tf("    public bool %sPresent; // ?%s: absent until set\n", name, tableFieldTypeName(f))
 	}
@@ -240,7 +240,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 // A TABLE's keyed field is a TableKeyed<T>, whose slots sit behind .Slots; a
 // closure `type`'s field is its PACKET storage — a plain array — because a
 // type's class is emitted by the packet backend and nothing on this wire
-// changes that (SPEC-TABLES.md §2.4). Both are E.Max elements with the key k
+// changes that (docs/SPEC-TABLES.md §2.4). Both are E.Max elements with the key k
 // at index k-1, so only the spelling differs.
 func (g *tableGen) keyedSlots(access string, f *ir.Field) string {
 	name := access + member(f)
@@ -287,7 +287,7 @@ func isClassRef(t ir.FieldType) bool {
 	return false
 }
 
-// ---- enum identity on the table wire (SPEC-TABLES.md §5) ----
+// ---- enum identity on the table wire (docs/SPEC-TABLES.md §5) ----
 
 func enumRef(f *ir.Field) *ir.Enum {
 	if f.Type.Kind != ir.TNamed {
@@ -302,7 +302,7 @@ func enumRef(f *ir.Field) *ir.Enum {
 func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("// %s on the TABLE wire: a value rides as the u16 hash of its VARIANT\n", e.Name)
 	g.pf("// NAME, so a variant may be added anywhere, removed, or reordered and old\n")
-	g.pf("// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.\n")
+	g.pf("// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.\n")
 	g.pf("public static bool TableEnumId(%s value, out ushort id)\n{\n", e.Name)
 	g.pf("    switch (value)\n    {\n")
 	g.pf("        case %s.None: id = 0; return true;\n", e.Name)
@@ -379,7 +379,7 @@ func guardWalk(st *ir.Struct, csharp bool) map[string]string {
 // allocation.
 //
 // The name is VERB-FIRST and overloaded on the value's type, deliberately:
-// SPEC-TABLES.md §11 freezes the name-first suffixes a closure member
+// docs/SPEC-TABLES.md §11 freezes the name-first suffixes a closure member
 // claims, and a port must not quietly mint another. TableReset joins
 // TableEnumId/TableEnumValue in the verb-first family instead, which claims
 // nothing from a declaration's name.
@@ -572,7 +572,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 }
 
 // emitKeyedSlotRides emits the head of an enum-keyed array's per-slot loop
-// (SPEC-TABLES.md §2.4, §3.2). It elides a slot holding its default, refuses a
+// (docs/SPEC-TABLES.md §2.4, §3.2). It elides a slot holding its default, refuses a
 // slot whose value or whose KEY no variant names — a value with no wire
 // identity is refused rather than silently renamed, the enum rule applied to
 // slots — and leaves `keyId` holding the slot's wire id. For a table element
@@ -648,7 +648,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 	case f.Type.Optional:
 		// present: the payload ALWAYS rides, all-default included — the
 		// pointer's rule, and what makes ?T, *T and a plain nesting
-		// wire-identical (SPEC-TABLES.md §2.3, §3.1)
+		// wire-identical (docs/SPEC-TABLES.md §2.3, §3.1)
 		g.pf("    if (value.%sPresent) // ?%s\n    {\n", name, tableFieldTypeName(f))
 		switch {
 		case kind == tkTable:
@@ -680,13 +680,13 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        if (pairs > 0)\n        {\n")
 		g.pf("            // KIND 16, not 14: a keyed body and a positional one are\n")
 		g.pf("            // incompatible, so a reader of the other kind must see a kind\n")
-		g.pf("            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)\n")
+		g.pf("            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)\n")
 		g.pf("            w.Put16(0x%04x); w.Put8(%d); // %s (keyed by %s)\n", id, tkKeyed, f.Name, f.KeyEnum)
 		g.pf("            int lenAt = w.Offset; w.Put32(0);\n")
 		g.pf("            w.Put8(%d); w.Put32(pairs);\n", kind)
 		g.pf("            // ASCENDING BY VARIANT ORDINAL, which is slot order — this\n")
 		g.pf("            // writer's choice, and a reader must not rely on it: every\n")
-		g.pf("            // slot is found by its key (SPEC-TABLES.md §3.2)\n")
+		g.pf("            // slot is found by its key (docs/SPEC-TABLES.md §3.2)\n")
 		g.pf("            for (int i = 0; i < %d; i++)\n            {\n", f.ArrayBound)
 		g.emitKeyedSlotRides(f, kind, "                ", "return false;")
 		g.pf("                w.Put16(keyId); // the slot's VARIANT id, not its position\n")
@@ -752,7 +752,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		un := f.Type.Ref.(*ir.Union)
 		g.pf("    if (value.%s.Type != %sType.None)\n    {\n", name, un.Name)
 		g.pf("        w.Put16(0x%04x); w.Put8(%d); // %s\n", id, tkUnion, f.Name)
-		g.pf("        // the ARM ID is the hash of the arm's NAME (SPEC-TABLES.md §5), so\n")
+		g.pf("        // the ARM ID is the hash of the arm's NAME (docs/SPEC-TABLES.md §5), so\n")
 		g.pf("        // arms may be added anywhere, removed and reordered\n")
 		g.pf("        switch (value.%s.Type)\n        {\n", name)
 		for _, v := range un.Variants {
@@ -848,7 +848,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			if f.KeyEnum != "" {
 				// a KEYED body is its own kind, so the positional-to-keyed edit
 				// (and its reverse) reads as a kind mismatch and is counted,
-				// never decoded as the other body (SPEC-TABLES.md §3.2)
+				// never decoded as the other body (docs/SPEC-TABLES.md §3.2)
 				wireKind = tkKeyed
 			}
 			if f.Type.Kind == ir.TBytes {
@@ -862,7 +862,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.emitTableReadField(f, kind)
 			if f.Type.Optional {
 				// the field rode, so it is PRESENT — content decides nothing
-				// here either (SPEC-TABLES.md §2.3)
+				// here either (docs/SPEC-TABLES.md §2.3)
 				g.pf("                value.%sPresent = true;\n", member(f))
 			}
 			g.pf("                break;\n            }\n")
@@ -891,7 +891,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		// each pair is placed by its VARIANT id, so a slot lands by name
 		// however the enum moved; an id this reader cannot name is skipped by
 		// its length and counted unknown, and a slot the writer never sent
-		// keeps the prefill's default (SPEC-TABLES.md §3.2)
+		// keeps the prefill's default (docs/SPEC-TABLES.md §3.2)
 		g.pf("%sif (!r.Has(4)) { r.Report.Malformed = true; return false; }\n", ind)
 		g.pf("%suint bodyLen = r.Get32();\n", ind)
 		g.pf("%sif (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }\n", ind)
@@ -912,14 +912,14 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s            // name can fold to, so a body carrying one is DAMAGED, not\n", ind)
 		g.pf("%s            // merely foreign. Framing damage stops this body, keeps what\n", ind)
 		g.pf("%s            // it decoded, and the parent reads on past the length\n", ind)
-		g.pf("%s            // (SPEC-TABLES.md §3.2, §4).\n", ind)
+		g.pf("%s            // (docs/SPEC-TABLES.md §3.2, §4).\n", ind)
 		g.pf("%s            r.Report.Malformed = true;\n%s            break;\n%s        }\n", ind, ind, ind)
 		g.pf("%s        %s slot;\n", ind, f.KeyEnum)
 		g.pf("%s        if (!TableEnumValue(key, out slot))\n%s        {\n", ind, ind)
 		g.pf("%s            r.Report.Unknown++; // a slot this reader cannot name\n", ind)
 		g.pf("%s            sub.Offset += (int)elemLen;\n%s            continue;\n%s        }\n", ind, ind, ind)
 		g.pf("%s        {\n%s            TableReader elem = new TableReader(sub.Buffer.Slice(sub.Offset, (int)elemLen), r.Report);\n", ind, ind)
-		// the key k lives at STORAGE INDEX k-1 (SPEC-TABLES.md §2.4)
+		// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
 		slot := g.keyedSlots("value.", f) + "[(int)slot - 1]"
 		if kind == tkTable {
 			g.pf("%s            %sLoadBody(ref elem, %s);\n", ind, f.Type.Name, slot)
@@ -986,7 +986,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint bodyLen = r.Get32();\n", ind)
 		g.pf("%sif (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }\n", ind)
 		g.pf("%s{\n%s    TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);\n", ind, ind)
-		g.pf("%s    switch (armId) // the arm's NAME hash (SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
+		g.pf("%s    switch (armId) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
 		for _, v := range un.Variants {
 			g.pf("%s        case 0x%04x: // %s\n%s            value.%s.Type = %sType.%s;\n%s            %sLoadBody(ref sub, value.%s.%s);\n%s            break;\n",
 				ind, ir.VariantId(v.Name), v.Name, ind, name, un.Name, ir.GoExportName(v.Name),
@@ -997,7 +997,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s            // the body is skipped by its length, never misdecoded. The\n", ind)
 		g.pf("%s            // reset is explicit, not the prefill's: a repeated field id\n", ind)
 		g.pf("%s            // must not leave an arm decoded by an earlier occurrence\n", ind)
-		g.pf("%s            // standing (SPEC-TABLES.md §4).\n", ind)
+		g.pf("%s            // standing (docs/SPEC-TABLES.md §4).\n", ind)
 		g.pf("%s            value.%s.Type = %sType.None;\n", ind, name, un.Name)
 		g.pf("%s            r.Report.Unknown++;\n%s            break;\n", ind, ind)
 		g.pf("%s    }\n%s}\n", ind, ind)
@@ -1044,7 +1044,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	width := tableKindWidth(kind)
 	g.pf("%sif (!%s.Has(%d)) { %s }\n", ind, rdr, width, onTrunc)
 	if enum := enumRef(f); enum != nil {
-		// identity is the variant's NAME (SPEC-TABLES.md §5): an id this build
+		// identity is the variant's NAME (docs/SPEC-TABLES.md §5): an id this build
 		// cannot name reads as None and counts as unknown, exactly as an
 		// unknown FIELD id does — same event, one counter
 		g.pf("%s{\n%s    ushort variant = %s.Get16();\n", ind, ind, rdr)
@@ -1170,7 +1170,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
-	// names its size (SPEC-TABLES.md §2.4, §8.1)
+	// names its size (docs/SPEC-TABLES.md §2.4, §8.1)
 	bound := "0"
 	switch {
 	case f.KeyEnum != "":
@@ -1186,7 +1186,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		tableRef = fmt.Sprintf("delegate { return %sTableType(); }", f.Type.Name)
 	}
 
-	// the KEY's vocabulary on an enum-keyed array (SPEC-TABLES.md §8):
+	// the KEY's vocabulary on an enum-keyed array (docs/SPEC-TABLES.md §8):
 	// functions of the KEY, not of the storage index — a walker stepping
 	// [0, ArrayBound) asks about index + 1 and prints slots by name without
 	// the schema files. KeyId(0) is 0 and KeyName(0) is "None", the reserved
@@ -1210,7 +1210,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 
 	// the VOCABULARY columns: an enum's values and a union's arms are both a
 	// named set indexed by [0, EnumMax], and each name carries the table-wire
-	// id it rides under (SPEC-TABLES.md §5, §8)
+	// id it rides under (docs/SPEC-TABLES.md §5, §8)
 	enumMax := "-1"
 	enumName := "null"
 	variantId := "null"

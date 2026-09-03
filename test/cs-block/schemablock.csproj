@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The C# BLOCK FORM conformance test (SPEC-TABLES.md §19, §19.5): the
+  <!-- The C# BLOCK FORM conformance test (docs/SPEC-TABLES.md §19, §19.5): the
        CONSUMER half of the two-language gate. A C++ producer wrote a block and
        pinned its bytes into testdata/wire/tables/block_render.bin; this program
        points at those very bytes and reads every field of every row, twice —
@@ -27,7 +27,7 @@
     <AssemblyName>schemablocktest</AssemblyName>
     <!-- Overridable so the Makefile's padding NEGATIVE CONTROL can point this
          leg at a sabotaged copy of the generated sources and require it to go
-         red (SPEC-TABLES.md §19.5's negative-control rule). -->
+         red (docs/SPEC-TABLES.md §19.5's negative-control rule). -->
     <BlockGeneratedDir Condition="'$(BlockGeneratedDir)' == ''">../../build/tables-generated-cs/block</BlockGeneratedDir>
     <BlockHomeGeneratedDir Condition="'$(BlockHomeGeneratedDir)' == ''">../../build/tables-generated-cs/blockhome</BlockHomeGeneratedDir>
   </PropertyGroup>

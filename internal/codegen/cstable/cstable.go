@@ -1,4 +1,4 @@
-// Package cstable emits a unit's C# table surface (SPEC-TABLES.md): the
+// Package cstable emits a unit's C# table surface (docs/SPEC-TABLES.md): the
 // TABLE-wire codecs in <Base>Table.cs, and the two ACCELERATORS on the side in
 // <Base>Block.cs (§19) and <Base>Cook.cs (§7). One file per unit file, emitted
 // only when the unit declares tables.
@@ -46,7 +46,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// table-wire kinds (SPEC-TABLES.md §3) — the numbers are the wire's, not a
+// table-wire kinds (docs/SPEC-TABLES.md §3) — the numbers are the wire's, not a
 // backend's, and they are duplicated from cpptable deliberately: a port that
 // derives them from the reference emitter's private helpers would break the
 // day the two files disagree, and this way a disagreement shows up in the
@@ -67,7 +67,7 @@ const (
 	tkTable  = 13
 	tkArray  = 14
 	tkUnion  = 15
-	// an ENUM-KEYED array body is its OWN kind (SPEC-TABLES.md §3.2): the
+	// an ENUM-KEYED array body is its OWN kind (docs/SPEC-TABLES.md §3.2): the
 	// positional array body and the keyed one are incompatible, so a reader
 	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
 	tkKeyed = 16
@@ -123,7 +123,7 @@ func tableScalarKind(f *ir.Field) int {
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
 			// an enum value rides as the u16 hash of its VARIANT NAME
-			// (SPEC-TABLES.md §5), whatever the declaration-side width
+			// (docs/SPEC-TABLES.md §5), whatever the declaration-side width
 			return tkU16
 		case *ir.Flags:
 			return tkU64
@@ -233,7 +233,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		return nil, err
 	}
 	maps.Copy(out, cooks)
-	// The VARIABLE-CLASS refusal (SPEC-TABLES.md §2.2, §11) is a refusal of the
+	// The VARIABLE-CLASS refusal (docs/SPEC-TABLES.md §2.2, §11) is a refusal of the
 	// WIRE SURFACE, which is the half the variable class is missing: no arena,
 	// no builder, no region and no node-table codec. It is named rather than
 	// silent — every generated Cook file of the unit opens with the banner
@@ -285,7 +285,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitTableRead(st)
 		}
 		if len(members) > 0 {
-			g.pf("// ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----\n\n")
+			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----\n\n")
 			for _, st := range members {
 				g.owner = st
 				g.emitTableDescriptor(st)
@@ -312,13 +312,13 @@ func variableTableNames(u *ir.Unit) []string {
 }
 
 // variableClassBanner is the VARIABLE-class refusal, written where a consumer
-// meets it (SPEC-TABLES.md §2.2, §11). The refusal is of the WIRE half and of
+// meets it (docs/SPEC-TABLES.md §2.2, §11). The refusal is of the WIRE half and of
 // nothing else: the accelerators below are pure readers over blittable records
 // and need no codec, so they are emitted. What is absent is Measure, Save,
 // Load, the arena and the builder — named here rather than left as a missing
 // symbol with no explanation.
 func variableClassBanner(names []string) string {
-	return "// THE C# WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME (SPEC-TABLES.md §11).\n" +
+	return "// THE C# WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME (docs/SPEC-TABLES.md §11).\n" +
 		"//\n" +
 		"// It declares variable-length tables (" + englishList(names) + "), and the C# table\n" +
 		"// backend's VARIABLE CLASS — the arena, the builder, the region and the node-table\n" +
@@ -394,7 +394,7 @@ func (g *tableGen) assemble() []byte {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the TABLE wire (SPEC-TABLES.md): evolution-tolerant, neutral\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral\n", g.unit.Package)
 	h.WriteString("// bytes, no serialize dependency. Tables version by field id, never by the\n")
 	h.WriteString("// unit's protocol id.\n")
 	if g.home {
@@ -468,7 +468,7 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 }
 
 // tableKeyedStorage is the storage type behind `ships [ShipType]ShipConfig`
-// (SPEC-TABLES.md §2.4). Emitted only into a unit that declares a keyed array,
+// (docs/SPEC-TABLES.md §2.4). Emitted only into a unit that declares a keyed array,
 // so a unit without one is byte-identical to what it was.
 //
 // WHAT C# SPELLS DIFFERENTLY, stated where a reader meets it. C++'s accessor
@@ -622,7 +622,7 @@ public sealed class TableKeyed<T, E> where E : struct, System.Enum
 // tableBitHelpers is the float <-> IEEE-754 bit pattern pair, on Schema
 // beside the codecs. Emitted once per unit, with the runtime.
 func tableBitHelpers() string {
-	return `// the IEEE-754 bit patterns the wire carries for f32 and f64 (SPEC-TABLES.md §3)
+	return `// the IEEE-754 bit patterns the wire carries for f32 and f64 (docs/SPEC-TABLES.md §3)
 public static float TableBitsToFloat(uint bits)
 {
     return BitConverter.Int32BitsToSingle(unchecked((int)bits));
@@ -663,7 +663,7 @@ public sealed class TableReport
     public int KindMismatch;   // known id, changed type — skipped, never misdecoded
     public int Clamped;        // out-of-range values clamped to declared bounds
     // duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
-    // (SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
+    // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
     // whose last occurrence wins, silently. It rides on this struct because a
     // caller has one report type, not two — so a wire read always leaves it
     // zero, and it is here for the JSON walk that has not been ported yet.
@@ -671,7 +671,7 @@ public sealed class TableReport
     public bool Malformed;     // framing damage; decode stopped, partial result kept
 }
 
-// ---- reflection (tables only, SPEC-TABLES.md §8) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id and kind, bounds, ranges, the enum/union vocabulary and its wire ids,
@@ -702,13 +702,13 @@ public sealed class TableFieldInfo
     public long EnumMax;        // enums: highest valid value (None = 0 always valid);
                                 // unions: the arm count (tag range [0, EnumMax]); else -1
     public Func<ulong, string> EnumName;  // enums: value -> name; unions: tag -> arm name; else null
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. null for every
     // other kind. Walk [0, EnumMax] to enumerate a vocabulary and its ids.
     public Func<ulong, ushort> VariantId;
 
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4, §8): the array has one slot
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
     // per variant of KeyTypeName, indexed by the variant's value, and its
     // slots ride under variant ids rather than positions. KeyName and KeyId
     // are the key's vocabulary — walk [0, ArrayBound) to print slots by name.

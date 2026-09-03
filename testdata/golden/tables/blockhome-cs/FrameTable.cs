@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package blockhome — the TABLE wire (SPEC-TABLES.md): evolution-tolerant, neutral
+// package blockhome — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
 // bytes, no serialize dependency. Tables version by field id, never by the
 // unit's protocol id.
 
@@ -12,7 +12,7 @@ namespace Blockhome
 {
 
     // table PartRow — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class PartRow
     {
         public ArmorConfig Armor = new ArmorConfig();
@@ -22,7 +22,7 @@ namespace Blockhome
     }
 
     // table PartFrame — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class PartFrame
     {
         public ulong Version;
@@ -357,7 +357,7 @@ namespace Blockhome
             return PartFrameLoadBody(ref r, value);
         }
 
-        // ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----
+        // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo PartRowTableInfo;
         public static TableTypeInfo PartRowTableType()

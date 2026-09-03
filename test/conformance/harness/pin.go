@@ -2,7 +2,7 @@
 //
 // Two artefacts cannot come from the compiler's own engine, because what they
 // describe is a RUNTIME's read rather than a file's content: the cook's
-// canonical node dump (SPEC-TABLES.md §7.5) and the block forgery battery
+// canonical node dump (docs/SPEC-TABLES.md §7.5) and the block forgery battery
 // resolved to byte offsets (§19.2). Both are pinned from the REFERENCE leg —
 // the first driver in the registry, which is C++, exactly as the wire goldens
 // are — and every other language byte-compares them.

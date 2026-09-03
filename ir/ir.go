@@ -38,7 +38,7 @@ type Unit struct {
 	Structs  map[string]*Struct
 	Unions   map[string]*Union
 
-	// Tables holds the unit's `table` declarations (SPEC-TABLES.md), keyed by
+	// Tables holds the unit's `table` declarations (docs/SPEC-TABLES.md), keyed by
 	// name. Tables live on the evolution-tolerant TABLE wire, not the packet
 	// wire: they are deliberately absent from Structs, from File.Decls and
 	// from the wire projection, so the packet backends and the protocol id
@@ -54,7 +54,7 @@ type File struct {
 
 	// Tables is the file's `table` declarations in declaration order — kept
 	// beside Decls, not inside, so the packet backends' traversals never
-	// meet one (SPEC-TABLES.md).
+	// meet one (docs/SPEC-TABLES.md).
 	Tables []*Struct
 }
 
@@ -108,7 +108,7 @@ type UnionVariant struct {
 }
 
 // Struct is a `type` declaration — or, when IsTable is set, a `table`
-// declaration (SPEC-TABLES.md), which shares the resolved body shape but
+// declaration (docs/SPEC-TABLES.md), which shares the resolved body shape but
 // lives in Unit.Tables/File.Tables instead of the packet decl stream.
 type Struct struct {
 	Name    string
@@ -188,12 +188,12 @@ type Field struct {
 	Name  string
 	Guard string // "" or "if !at_rest" — branch context, kept as a comment
 
-	// WasName is the `was = "old_name"` rename alias (SPEC-TABLES.md): the
+	// WasName is the `was = "old_name"` rename alias (docs/SPEC-TABLES.md): the
 	// field's TABLE-wire id derives from this name instead of Name, so wire
 	// identity survives a rename. Table fields only; "" when unset.
 	WasName string
 
-	// JsonKey is the `json = "key"` text-form key (SPEC-TABLES.md §16.3): the
+	// JsonKey is the `json = "key"` text-form key (docs/SPEC-TABLES.md §16.3): the
 	// key the JSON walk reads and writes this field under, so a declaration
 	// can meet an existing text. Table fields only; "" means the field's own
 	// name is the key. It moves no wire byte — keys are the text's business,
@@ -206,7 +206,7 @@ type Field struct {
 	ArrayMin   int64 // ArrayCounted range form; 0 otherwise
 
 	// KeyEnum is the enum an ENUM-KEYED array is keyed by — the `[E]T`
-	// spelling (SPEC-TABLES.md §2.4). The field is an ArrayFixed of E.Max
+	// spelling (docs/SPEC-TABLES.md §2.4). The field is an ArrayFixed of E.Max
 	// elements, ONE PER NAMED VARIANT: None is the null key, so nothing is
 	// stored for it and the storage SHIFTS LEFT — the key k lives at index
 	// k-1. On the TABLE wire the slots ride keyed by variant id under their
@@ -273,14 +273,14 @@ type FieldType struct {
 	Ref      Decl   // TNamed: *Struct, *Enum, *Flags or *Union
 
 	// Pointer marks a `*T` field: a POINTER to a table, not a by-value
-	// nesting (SPEC-TABLES.md). Only ever set on a TNamed field whose Ref is
+	// nesting (docs/SPEC-TABLES.md). Only ever set on a TNamed field whose Ref is
 	// a table, declared inside a table body — the checker refuses every other
 	// spelling by name. A pointer's presence is what makes its owner a
 	// VARIABLE-LENGTH table (ir.VariableTables).
 	Pointer bool
 
 	// Optional marks a `?T` field: an OPTIONAL by-value field carrying a
-	// generated `<name>_present` bool beside its value (SPEC-TABLES.md
+	// generated `<name>_present` bool beside its value (docs/SPEC-TABLES.md
 	// §2.3). Table bodies only, and never on a pointer, an array, a string,
 	// bytes or a union — the checker refuses each by name. The holder stays
 	// FIXED-SIZE: an optional costs one bool and no allocation.

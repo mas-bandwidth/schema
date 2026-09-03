@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The C# TABLE-wire test project (SPEC-TABLES.md): compiles the generated
+  <!-- The C# TABLE-wire test project (docs/SPEC-TABLES.md): compiles the generated
        table C# for the tables corpus and the two-generation evolution pair and
        runs src/Program.cs — the C# twin of test/tables/main.cpp's fixed-class
        half. No test framework, exit code = verdict (the family rule), and
@@ -16,7 +16,7 @@
        nothing declares the block form, it is emitted on the side, and a
        consumer that never reads a block compiles none of it — not a type, not
        a constant, and not the `unsafe` the form needs to point at memory
-       another language wrote (SPEC-TABLES.md §2.2, §19). test/cs-block is the
+       another language wrote (docs/SPEC-TABLES.md §2.2, §19). test/cs-block is the
        leg that does compile them. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -44,7 +44,7 @@
     <Compile Include="../../build/tables-generated-cs/examples/*.cs" Exclude="../../build/tables-generated-cs/examples/*Block.cs;../../build/tables-generated-cs/examples/*Cook.cs" />
     <Compile Include="../../build/tables-generated-cs/v1/*.cs" Exclude="../../build/tables-generated-cs/v1/*Block.cs;../../build/tables-generated-cs/v1/*Cook.cs" />
     <Compile Include="../../build/tables-generated-cs/v2/*.cs" Exclude="../../build/tables-generated-cs/v2/*Block.cs;../../build/tables-generated-cs/v2/*Cook.cs" />
-    <!-- the three-way T / ?T / *T set (SPEC-TABLES.md §2.3, §3.1). P2 is
+    <!-- the three-way T / ?T / *T set (docs/SPEC-TABLES.md §2.3, §3.1). P2 is
          POINTERED, so this backend refuses it by name and the leg reads P2's
          C++-written golden bytes instead of generating it. -->
     <Compile Include="../../build/tables-generated-cs/p1/*.cs" Exclude="../../build/tables-generated-cs/p1/*Block.cs;../../build/tables-generated-cs/p1/*Cook.cs" />

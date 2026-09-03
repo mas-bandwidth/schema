@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — the TABLE wire (SPEC-TABLES.md): evolution-tolerant, neutral
+// package tabledemo — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
 // bytes, no serialize dependency. Tables version by field id, never by the
 // unit's protocol id.
 
@@ -12,7 +12,7 @@ namespace Tabledemo
 {
 
     // table GunnerSettings — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class GunnerSettings
     {
         public float Reaction = 0.2f;
@@ -22,7 +22,7 @@ namespace Tabledemo
     }
 
     // table ShipEntry — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class ShipEntry
     {
         public byte[] DisplayName = new byte[32]; // string(32): max length, used length beside it
@@ -36,7 +36,7 @@ namespace Tabledemo
     }
 
     // table GlobalSettings — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class GlobalSettings
     {
         public uint TickRate = 60;
@@ -47,7 +47,7 @@ namespace Tabledemo
     }
 
     // table PackConfig — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class PackConfig
     {
         public uint Version = 1;
@@ -77,7 +77,7 @@ namespace Tabledemo
     {
         // ShipType on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(ShipType value, out ushort id)
         {
             switch (value)
@@ -104,7 +104,7 @@ namespace Tabledemo
 
         // Difficulty on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(Difficulty value, out ushort id)
         {
             switch (value)
@@ -758,13 +758,13 @@ namespace Tabledemo
                 {
                     // KIND 16, not 14: a keyed body and a positional one are
                     // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
                     w.Put16(0x2d39); w.Put8(16); // ships (keyed by ShipType)
                     int lenAt = w.Offset; w.Put32(0);
                     w.Put8(13); w.Put32(pairs);
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (SPEC-TABLES.md §3.2)
+                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
                     for (int i = 0; i < 3; i++)
                     {
                         long elemBytes = ShipEntryMeasure(value.Ships.Slots[i]);
@@ -793,13 +793,13 @@ namespace Tabledemo
                 {
                     // KIND 16, not 14: a keyed body and a positional one are
                     // incompatible, so a reader of the other kind must see a kind
-                    // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+                    // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
                     w.Put16(0xb2eb); w.Put8(16); // thresholds (keyed by Difficulty)
                     int lenAt = w.Offset; w.Put32(0);
                     w.Put8(4); w.Put32(pairs);
                     // ASCENDING BY VARIANT ORDINAL, which is slot order — this
                     // writer's choice, and a reader must not rely on it: every
-                    // slot is found by its key (SPEC-TABLES.md §3.2)
+                    // slot is found by its key (docs/SPEC-TABLES.md §3.2)
                     for (int i = 0; i < 3; i++)
                     {
                         if (value.Thresholds.Slots[i] == 0) { continue; } // a default slot elides
@@ -916,7 +916,7 @@ namespace Tabledemo
                                     // name can fold to, so a body carrying one is DAMAGED, not
                                     // merely foreign. Framing damage stops this body, keeps what
                                     // it decoded, and the parent reads on past the length
-                                    // (SPEC-TABLES.md §3.2, §4).
+                                    // (docs/SPEC-TABLES.md §3.2, §4).
                                     r.Report.Malformed = true;
                                     break;
                                 }
@@ -968,7 +968,7 @@ namespace Tabledemo
                                     // name can fold to, so a body carrying one is DAMAGED, not
                                     // merely foreign. Framing damage stops this body, keeps what
                                     // it decoded, and the parent reads on past the length
-                                    // (SPEC-TABLES.md §3.2, §4).
+                                    // (docs/SPEC-TABLES.md §3.2, §4).
                                     r.Report.Malformed = true;
                                     break;
                                 }
@@ -1053,7 +1053,7 @@ namespace Tabledemo
             return PackConfigLoadBody(ref r, value);
         }
 
-        // ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----
+        // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo GunnerSettingsTableInfo;
         public static TableTypeInfo GunnerSettingsTableType()

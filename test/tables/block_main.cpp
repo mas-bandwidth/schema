@@ -1,5 +1,5 @@
 /*
-    The BLOCK FORM's C++ leg (SPEC-TABLES.md §19, §19.5).
+    The BLOCK FORM's C++ leg (docs/SPEC-TABLES.md §19, §19.5).
 
     This is the PRODUCER half of the two-language gate. It:
 
@@ -458,12 +458,12 @@ int main( int argc, char ** argv )
     {
         if ( got_starts[i] != want_starts[i] )
         {
-            printf( "FAILED: array %d starts at %llu, want %llu (SPEC-TABLES.md §19.1's worked table)\n",
+            printf( "FAILED: array %d starts at %llu, want %llu (docs/SPEC-TABLES.md §19.1's worked table)\n",
                     i, (unsigned long long) got_starts[i], (unsigned long long) want_starts[i] );
             failures++;
         }
     }
-    check( RenderFrameBlockBytes( block ) == 577472, "the used extent is 577,472 (SPEC-TABLES.md §19.1)" );
+    check( RenderFrameBlockBytes( block ) == 577472, "the used extent is 577,472 (docs/SPEC-TABLES.md §19.1)" );
     check( RenderFrameBlockMaxBytes == 7879488, "the storage is 7,879,488 bytes: every array at its declared maximum" );
 
     block.projection->version = RenderVersion;
@@ -519,7 +519,7 @@ int main( int argc, char ** argv )
         const int64_t bytes = RenderFrameBlockBytes( block );
         check( RenderFrameBlockBytes( wide ) == bytes, "the two blocks have the same used extent" );
         check( memcmp( storage.base, wide_storage.base, (size_t) bytes ) == 0,
-               "the multi-threaded fill is BYTE-IDENTICAL to the serial fill (SPEC-TABLES.md §19.5)" );
+               "the multi-threaded fill is BYTE-IDENTICAL to the serial fill (docs/SPEC-TABLES.md §19.5)" );
         wide_storage.Destroy();
     }
 
@@ -693,7 +693,7 @@ int main( int argc, char ** argv )
 
         if ( refused != forgeries )
         {
-            printf( "FAILED: the forgery battery refused %d of %d (SPEC-TABLES.md §19.2's WHOLE check)\n", refused, forgeries );
+            printf( "FAILED: the forgery battery refused %d of %d (docs/SPEC-TABLES.md §19.2's WHOLE check)\n", refused, forgeries );
             failures++;
         }
         check( forged.base == NULL, "a refused forgery points at nothing, rather than at rows it cannot read" );
@@ -799,7 +799,7 @@ int main( int argc, char ** argv )
             rows[i].label_length = (int32_t) strlen( rows[i].label );
             for ( int s = 0; s < 4; s++ ) { rows[i].slots[s] = (uint16_t) ( i * 4 + s ); }
             // by KEY, never by storage index: the accessor is the only place
-            // the shift appears (SPEC-TABLES.md §2.4)
+            // the shift appears (docs/SPEC-TABLES.md §2.4)
             for ( int t = 1; t <= 4; t++ ) { rows[i].teams[ (Team) t ] = (uint8_t) ( i + t ); }
             rows[i].counter = i * 9;
             rows[i].counter_present = ( i % 2 ) == 1;

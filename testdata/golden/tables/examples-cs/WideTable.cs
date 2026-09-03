@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — the TABLE wire (SPEC-TABLES.md): evolution-tolerant, neutral
+// package tabledemo — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
 // bytes, no serialize dependency. Tables version by field id, never by the
 // unit's protocol id.
 
@@ -12,7 +12,7 @@ namespace Tabledemo
 {
 
     // table WideBlob — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class WideBlob
     {
         public byte[] Label = new byte[70000]; // string(70000): max length, used length beside it
@@ -219,7 +219,7 @@ namespace Tabledemo
             return WideBlobLoadBody(ref r, value);
         }
 
-        // ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----
+        // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo WideBlobTableInfo;
         public static TableTypeInfo WideBlobTableType()

@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package tabledemo — protocol id 0x9924bf6d375ec24d (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
 #pragma once
@@ -31,13 +31,13 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
-// ---- reflection (tables only, SPEC-TABLES.md) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id/kind, storage offset, bounds, ranges, enum names and branch guards —
@@ -49,7 +49,7 @@ struct TableTypeInfo;
 // One arm of a union field: where its payload sits inside the union's storage
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
-// is spelled twice (SPEC-TABLES.md §8).
+// is spelled twice (docs/SPEC-TABLES.md §8).
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
@@ -91,14 +91,14 @@ struct TableFieldInfo
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
     const char * (*enum_name)( uint64_t value );
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
@@ -322,7 +322,7 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace tabledemo {
 
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on — the type wire's protocol id, every record's
 // layout as the compiler's own C ABI model computes it, and the facts that
 // decide what a load PUTS in those slots. It is the number a cook's header
@@ -345,14 +345,14 @@ inline constexpr uint64_t BuildVersion = 0x89c17e3f4a1f6255ull;
 
 namespace tabledemo {
 
-// ---- the cooked form (SPEC-TABLES.md §7) ----
+// ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 //
 // A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 // order. Every word of the header is a u64 written in the byte order the cook
 // was produced in, and the header is 64 bytes:
 //
 //     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
-//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//     8  build_version       the unit's id (docs/SPEC-TABLES.md §20)
 //    16  byte_order          1 little, 2 big — the order that WROTE the file
 //    24  data_length         the region's bytes, rounded up to alignment
 //    32  attribution_length  the directory's bytes, or 0
@@ -399,7 +399,7 @@ inline constexpr uint64_t TableCookByteOrder = 1; // little
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
-// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+// describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
 inline constexpr uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
@@ -500,7 +500,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 namespace tabledemo {
 
 // table TeamConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct TeamConfig {
     int32_t spawn_count = 4;
     char banner[16 + 1] = {}; // string(16): max length, used length beside it
@@ -508,14 +508,14 @@ struct TeamConfig {
 };
 
 // table GunnerConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct GunnerConfig {
     float reaction = 0.2f;
     bool tracking = false;
 };
 
 // table TurretConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct TurretConfig {
     float damage = 10.0f;
     float cooldown = 0.5f;
@@ -524,7 +524,7 @@ struct TurretConfig {
 };
 
 // table HullConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct HullConfig {
     float health = 100.0f;
     float mass = 1.0f;
@@ -532,7 +532,7 @@ struct HullConfig {
 };
 
 // table KeyedConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct KeyedConfig {
     TableKeyed<TeamConfig, Team> teams; // [Team]: one slot per named variant, keyed by the value
     TableKeyed<HullConfig, Hull> hulls; // [Hull]: one slot per named variant, keyed by the value
@@ -541,7 +541,7 @@ struct KeyedConfig {
 
 // Weapon on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef TABLEDEMO_SCHEMA_TABLE_ENUM_WEAPON
 #define TABLEDEMO_SCHEMA_TABLE_ENUM_WEAPON
 inline bool TableEnumId( Weapon value, uint16_t & id )
@@ -570,7 +570,7 @@ inline bool TableEnumValue( uint16_t id, Weapon & out )
 
 // Team on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef TABLEDEMO_SCHEMA_TABLE_ENUM_TEAM
 #define TABLEDEMO_SCHEMA_TABLE_ENUM_TEAM
 inline bool TableEnumId( Team value, uint16_t & id )
@@ -599,7 +599,7 @@ inline bool TableEnumValue( uint16_t id, Team & out )
 
 // Hull on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef TABLEDEMO_SCHEMA_TABLE_ENUM_HULL
 #define TABLEDEMO_SCHEMA_TABLE_ENUM_HULL
 inline bool TableEnumId( Hull value, uint16_t & id )
@@ -626,7 +626,7 @@ inline bool TableEnumValue( uint16_t id, Hull & out )
 }
 #endif // TABLEDEMO_SCHEMA_TABLE_ENUM_HULL
 
-// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void TeamConfigReset( TeamConfig & value );
 inline void GunnerConfigReset( GunnerConfig & value );
@@ -1042,13 +1042,13 @@ inline bool HullConfigSaveBody( TableWriter & w, const HullConfig & value )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
-            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             w.put16( 0x48ad ); w.put8( 16 ); // turrets (keyed by Weapon)
             int64_t len_at_turrets = w.offset; w.put32( 0 );
             w.put8( 13 ); w.put32( pairs_turrets );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
-            // slot is found by its key (SPEC-TABLES.md §3.2)
+            // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
                 int64_t elem_bytes = TurretConfigMeasure( value.turrets.slots[i] );
@@ -1142,7 +1142,7 @@ inline bool HullConfigLoadBody( TableReader & r, HullConfig & value )
                             // name can fold to, so a body carrying one is DAMAGED, not
                             // merely foreign. Framing damage stops this body, keeps what
                             // it decoded, and the parent reads on past the length
-                            // (SPEC-TABLES.md §3.2, §4).
+                            // (docs/SPEC-TABLES.md §3.2, §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -1234,13 +1234,13 @@ inline bool KeyedConfigSaveBody( TableWriter & w, const KeyedConfig & value )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
-            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             w.put16( 0x9ae1 ); w.put8( 16 ); // teams (keyed by Team)
             int64_t len_at_teams = w.offset; w.put32( 0 );
             w.put8( 13 ); w.put32( pairs_teams );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
-            // slot is found by its key (SPEC-TABLES.md §3.2)
+            // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
                 int64_t elem_bytes = TeamConfigMeasure( value.teams.slots[i] );
@@ -1271,13 +1271,13 @@ inline bool KeyedConfigSaveBody( TableWriter & w, const KeyedConfig & value )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
-            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             w.put16( 0xeff5 ); w.put8( 16 ); // hulls (keyed by Hull)
             int64_t len_at_hulls = w.offset; w.put32( 0 );
             w.put8( 13 ); w.put32( pairs_hulls );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
-            // slot is found by its key (SPEC-TABLES.md §3.2)
+            // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
                 int64_t elem_bytes = HullConfigMeasure( value.hulls.slots[i] );
@@ -1357,7 +1357,7 @@ inline bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & value )
                             // name can fold to, so a body carrying one is DAMAGED, not
                             // merely foreign. Framing damage stops this body, keeps what
                             // it decoded, and the parent reads on past the length
-                            // (SPEC-TABLES.md §3.2, §4).
+                            // (docs/SPEC-TABLES.md §3.2, §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -1409,7 +1409,7 @@ inline bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & value )
                             // name can fold to, so a body carrying one is DAMAGED, not
                             // merely foreign. Framing damage stops this body, keeps what
                             // it decoded, and the parent reads on past the length
-                            // (SPEC-TABLES.md §3.2, §4).
+                            // (docs/SPEC-TABLES.md §3.2, §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -1497,13 +1497,13 @@ inline bool ScoreBoardSaveBody( TableWriter & w, const ScoreBoard & value )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
-            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             w.put16( 0x443f ); w.put8( 16 ); // per_team (keyed by Team)
             int64_t len_at_per_team = w.offset; w.put32( 0 );
             w.put8( 4 ); w.put32( pairs_per_team );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
-            // slot is found by its key (SPEC-TABLES.md §3.2)
+            // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
                 if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
@@ -1571,7 +1571,7 @@ inline bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & value )
                             // name can fold to, so a body carrying one is DAMAGED, not
                             // merely foreign. Framing damage stops this body, keeps what
                             // it decoded, and the parent reads on past the length
-                            // (SPEC-TABLES.md §3.2, §4).
+                            // (docs/SPEC-TABLES.md §3.2, §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -1613,7 +1613,7 @@ inline bool ScoreBoardLoad( ScoreBoard & value, const uint8_t * buffer, int64_t 
     return ScoreBoardLoadBody( r, value );
 }
 
-// ---- the cooked form: point at a cook (SPEC-TABLES.md §7) ----
+// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
 // TeamConfigOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
@@ -1759,41 +1759,41 @@ static_assert( std::is_standard_layout<KeyedConfig>::value, "KeyedConfig must st
 static_assert( std::is_trivially_copyable<ScoreBoard>::value, "ScoreBoard must stay relocatable" );
 static_assert( std::is_standard_layout<ScoreBoard>::value, "ScoreBoard must stay standard-layout for offsetof" );
 
-// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----
+// ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
 // The compiler derived every number below from the declaration and folded it
 // into the BUILD VERSION; these asserts are this compiler saying whether it
 // agrees. The model is not self-evidently right — on 32-bit System V
 // alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
 // rather than assumed.
-static_assert( sizeof( TeamConfig ) == 28, "TeamConfig's sizeof moved: the build version was taken over 28, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( TeamConfig ) == 4, "TeamConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TeamConfig, spawn_count ) == 0, "TeamConfig's field spawn_count moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TeamConfig, banner ) == 4, "TeamConfig's field banner moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( GunnerConfig ) == 8, "GunnerConfig's sizeof moved: the build version was taken over 8, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( GunnerConfig ) == 4, "GunnerConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GunnerConfig, reaction ) == 0, "GunnerConfig's field reaction moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GunnerConfig, tracking ) == 4, "GunnerConfig's field tracking moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( TurretConfig ) == 20, "TurretConfig's sizeof moved: the build version was taken over 20, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( TurretConfig ) == 4, "TurretConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TurretConfig, damage ) == 0, "TurretConfig's field damage moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TurretConfig, cooldown ) == 4, "TurretConfig's field cooldown moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TurretConfig, gunner ) == 8, "TurretConfig's field gunner moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( HullConfig ) == 68, "HullConfig's sizeof moved: the build version was taken over 68, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( HullConfig ) == 4, "HullConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( HullConfig, health ) == 0, "HullConfig's field health moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( HullConfig, mass ) == 4, "HullConfig's field mass moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( HullConfig, turrets ) == 8, "HullConfig's field turrets moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( KeyedConfig ) == 300, "KeyedConfig's sizeof moved: the build version was taken over 300, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( KeyedConfig ) == 4, "KeyedConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( KeyedConfig, teams ) == 0, "KeyedConfig's field teams moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( KeyedConfig, hulls ) == 84, "KeyedConfig's field hulls moved: the build version was taken over offset 84 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( KeyedConfig, scores ) == 288, "KeyedConfig's field scores moved: the build version was taken over offset 288 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( ScoreBoard ) == 12, "ScoreBoard's sizeof moved: the build version was taken over 12, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( ScoreBoard ) == 4, "ScoreBoard's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ScoreBoard, per_team ) == 0, "ScoreBoard's field per_team moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( TeamConfig ) == 28, "TeamConfig's sizeof moved: the build version was taken over 28, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( TeamConfig ) == 4, "TeamConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( TeamConfig, spawn_count ) == 0, "TeamConfig's field spawn_count moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( TeamConfig, banner ) == 4, "TeamConfig's field banner moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( GunnerConfig ) == 8, "GunnerConfig's sizeof moved: the build version was taken over 8, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( GunnerConfig ) == 4, "GunnerConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerConfig, reaction ) == 0, "GunnerConfig's field reaction moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerConfig, tracking ) == 4, "GunnerConfig's field tracking moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( TurretConfig ) == 20, "TurretConfig's sizeof moved: the build version was taken over 20, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( TurretConfig ) == 4, "TurretConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( TurretConfig, damage ) == 0, "TurretConfig's field damage moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( TurretConfig, cooldown ) == 4, "TurretConfig's field cooldown moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( TurretConfig, gunner ) == 8, "TurretConfig's field gunner moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( HullConfig ) == 68, "HullConfig's sizeof moved: the build version was taken over 68, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( HullConfig ) == 4, "HullConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( HullConfig, health ) == 0, "HullConfig's field health moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( HullConfig, mass ) == 4, "HullConfig's field mass moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( HullConfig, turrets ) == 8, "HullConfig's field turrets moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( KeyedConfig ) == 300, "KeyedConfig's sizeof moved: the build version was taken over 300, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( KeyedConfig ) == 4, "KeyedConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( KeyedConfig, teams ) == 0, "KeyedConfig's field teams moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( KeyedConfig, hulls ) == 84, "KeyedConfig's field hulls moved: the build version was taken over offset 84 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( KeyedConfig, scores ) == 288, "KeyedConfig's field scores moved: the build version was taken over offset 288 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( ScoreBoard ) == 12, "ScoreBoard's sizeof moved: the build version was taken over 12, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( ScoreBoard ) == 4, "ScoreBoard's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ScoreBoard, per_team ) == 0, "ScoreBoard's field per_team moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 
-// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
+// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * TeamConfigTableType();
 inline const TableTypeInfo * GunnerConfigTableType();
@@ -1864,45 +1864,45 @@ inline const TableTypeInfo * ScoreBoardTableType()
     return &info;
 }
 
-// ---- the text form (SPEC-TABLES.md §16) ----
+// ---- the text form (docs/SPEC-TABLES.md §16) ----
 
 // TeamConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // KeyedTable.cpp; link it to use them.
 bool TeamConfigFromJson( TeamConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t TeamConfigToJsonMeasure( const TeamConfig & value );
 int64_t TeamConfigToJson( const TeamConfig & value, char * buffer, int64_t capacity );
 
 // GunnerConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // KeyedTable.cpp; link it to use them.
 bool GunnerConfigFromJson( GunnerConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t GunnerConfigToJsonMeasure( const GunnerConfig & value );
 int64_t GunnerConfigToJson( const GunnerConfig & value, char * buffer, int64_t capacity );
 
 // TurretConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // KeyedTable.cpp; link it to use them.
 bool TurretConfigFromJson( TurretConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t TurretConfigToJsonMeasure( const TurretConfig & value );
 int64_t TurretConfigToJson( const TurretConfig & value, char * buffer, int64_t capacity );
 
 // HullConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // KeyedTable.cpp; link it to use them.
 bool HullConfigFromJson( HullConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t HullConfigToJsonMeasure( const HullConfig & value );
 int64_t HullConfigToJson( const HullConfig & value, char * buffer, int64_t capacity );
 
 // KeyedConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // KeyedTable.cpp; link it to use them.
 bool KeyedConfigFromJson( KeyedConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t KeyedConfigToJsonMeasure( const KeyedConfig & value );
 int64_t KeyedConfigToJson( const KeyedConfig & value, char * buffer, int64_t capacity );
 
 // ScoreBoard in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // KeyedTable.cpp; link it to use them.
 bool ScoreBoardFromJson( ScoreBoard & value, const char * text, int64_t bytes, TableReport * report );
 int64_t ScoreBoardToJsonMeasure( const ScoreBoard & value );

@@ -1,4 +1,4 @@
-// The BLOCK FORM's FORGERY FUZZER, C# side (SPEC-TABLES.md §19.2, §19.5) — the
+// The BLOCK FORM's FORGERY FUZZER, C# side (docs/SPEC-TABLES.md §19.2, §19.5) — the
 // twin of test/tables/block_fuzz_main.cpp, over the same seed blocks.
 //
 // The C++ leg writes a valid block per count vector into build/block-fuzz/ with
@@ -215,7 +215,7 @@ static class Fuzz
 
             if (stride != field.Stride)
             {
-                Defect("an opened block carries a pitch that is not this build's own (SPEC-TABLES.md §19.3)");
+                Defect("an opened block carries a pitch that is not this build's own (docs/SPEC-TABLES.md §19.3)");
             }
             if (element == null || element.Size != stride)
             {
@@ -236,7 +236,7 @@ static class Fuzz
             }
             if ((offsetOf % startAlignment) != 0)
             {
-                Defect("an opened block's array does not start aligned for its element (SPEC-TABLES.md §19.1)");
+                Defect("an opened block's array does not start aligned for its element (docs/SPEC-TABLES.md §19.1)");
             }
             if (stride != 0 && count > (ulong.MaxValue - offsetOf) / stride)
             {
@@ -506,7 +506,7 @@ static class Fuzz
                 }
                 else if (block.Base != null || block.Bytes != 0)
                 {
-                    Defect("a refused block points at something rather than at nothing (SPEC-TABLES.md §19.2)");
+                    Defect("a refused block points at something rather than at nothing (docs/SPEC-TABLES.md §19.2)");
                 }
                 return result;
             },
@@ -546,7 +546,7 @@ static class Fuzz
                 }
                 else if (block.Base != null || block.Bytes != 0)
                 {
-                    Defect("a refused block points at something rather than at nothing (SPEC-TABLES.md §19.2)");
+                    Defect("a refused block points at something rather than at nothing (docs/SPEC-TABLES.md §19.2)");
                 }
                 return result;
             },
@@ -578,7 +578,7 @@ static class Fuzz
                 }
                 else if (block.Base != null || block.Bytes != 0)
                 {
-                    Defect("a refused block points at something rather than at nothing (SPEC-TABLES.md §19.2)");
+                    Defect("a refused block points at something rather than at nothing (docs/SPEC-TABLES.md §19.2)");
                 }
                 return result;
             },
@@ -867,7 +867,7 @@ static class Fuzz
 
         Console.WriteLine("block forgery fuzzer (C#): " + mutantsRun + " mutants over " + units.Length
                           + " units, " + mutantsOpened
-                          + " opened and walked whole, none escaped the extent (SPEC-TABLES.md §19.2, §19.5)");
+                          + " opened and walked whole, none escaped the extent (docs/SPEC-TABLES.md §19.2, §19.5)");
         return true;
     }
 }

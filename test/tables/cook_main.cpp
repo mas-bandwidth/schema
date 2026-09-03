@@ -1,5 +1,5 @@
 /*
-    THE COOKED FORM's C++ READ SIDE, under test (SPEC-TABLES.md §7).
+    THE COOKED FORM's C++ READ SIDE, under test (docs/SPEC-TABLES.md §7).
 
     `schema cook` writes the file and the generated <Root>Open points at it, and
     the two were written from the page independently: the tool in Go, this side
@@ -17,7 +17,7 @@
       fixedvalues <root> <cook>   that instance read back OUT of the cook, value
                                   for value: the VALUE crossing, which the fixed
                                   class can have because its wire has no pointers
-      usage  <root> <cook>        USAGE.md's cook example, compiled and run, so
+      usage  <root> <cook>        docs/USAGE.md's cook example, compiled and run, so
                                   the documented surface goes red with the code
       golden <root> <cook>        every node the C++ side reaches through its own
                                   derefs is a node the cook's ATTRIBUTION part
@@ -166,7 +166,7 @@ static uint64_t data_offset_of( uint64_t alignment )
     return ( CookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
 }
 
-// The node type id (SPEC-TABLES.md §3.1, §7.3): fnv1a64 over the TABLE'S NAME.
+// The node type id (docs/SPEC-TABLES.md §3.1, §7.3): fnv1a64 over the TABLE'S NAME.
 // Written out here because the oracle must derive it from the declaration's own
 // name rather than read it back out of the file it is checking.
 static uint64_t fnv1a64( const char * s )
@@ -595,7 +595,7 @@ static void walk_storage( const uint8_t * storage, const graphdemo::TableTypeInf
 
 
 // ---------------------------------------------------------------------------
-// the directory — the ORACLE (SPEC-TABLES.md §7.1)
+// the directory — the ORACLE (docs/SPEC-TABLES.md §7.1)
 // ---------------------------------------------------------------------------
 //
 // One entry per numbered node, in index order, each `offset (u64), type id
@@ -738,7 +738,7 @@ static void mode_golden( const Root * root, const char * path, bool as_dump )
         for ( uint64_t at = used; at < next; at++ )
         {
             if ( region[at] != 0 )
-                fail( "the byte at region offset %llu covers no field and is 0x%02x, not zero (SPEC-TABLES.md §7.2)",
+                fail( "the byte at region offset %llu covers no field and is 0x%02x, not zero (docs/SPEC-TABLES.md §7.2)",
                       (unsigned long long) at, (unsigned) region[at] );
         }
     }
@@ -858,7 +858,7 @@ static void mode_fixedvalues( const Root * root, const char * path )
 }
 
 // ---------------------------------------------------------------------------
-// mode: usage — USAGE.md's cook example, compiled and run
+// mode: usage — docs/USAGE.md's cook example, compiled and run
 // ---------------------------------------------------------------------------
 //
 // The example a reader is handed has to be one that builds: this is that text,
@@ -901,7 +901,7 @@ static void mode_usage( const Root * root, const char * path )
     const int nodes = usage_example( file.base, file.length );
     if ( nodes <= 0 )
         fail( "USAGE's example did not open the cook, or found no chain in it" );
-    printf( "cook usage example: USAGE.md's C++ compiles and runs — %d chain nodes off Scene.head\n", nodes );
+    printf( "cook usage example: docs/USAGE.md's C++ compiles and runs — %d chain nodes off Scene.head\n", nodes );
     file.destroy();
     free( source );
 }
@@ -1238,7 +1238,7 @@ static void mode_fuzz( const Root * root, const char * path, uint64_t seed, int6
     }
 
     printf( "cook forgery fuzzer: %s over %s — %lld mutants (%lld header, %lld data), %lld opened, "
-            "none read past the length the caller passed (SPEC-TABLES.md §7, §7.5)\n",
+            "none read past the length the caller passed (docs/SPEC-TABLES.md §7, §7.5)\n",
             root->name, path, (long long) mutants, (long long) header_mutants,
             (long long) data_mutants, (long long) opened );
     free( source );

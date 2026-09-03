@@ -1,5 +1,5 @@
 // Package tabletext is the compiler-side instance model and text form for the
-// TABLE wire (SPEC-TABLES.md §16): an IR-driven reader and writer of §16's
+// TABLE wire (docs/SPEC-TABLES.md §16): an IR-driven reader and writer of §16's
 // JSON, over an in-memory instance built from the same IR the emitters
 // consume.
 //
@@ -19,7 +19,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Report is the read report both forms share (SPEC-TABLES.md §4, §16.2):
+// Report is the read report both forms share (docs/SPEC-TABLES.md §4, §16.2):
 // silence — every counter zero and Malformed false — means the data matched
 // this schema exactly.
 type Report struct {
@@ -31,7 +31,7 @@ type Report struct {
 }
 
 // Add folds another report into this one, which is how a pack over a tree of
-// files reports once (SPEC-TABLES.md §17.3).
+// files reports once (docs/SPEC-TABLES.md §17.3).
 func (r *Report) Add(o Report) {
 	r.Unknown += o.Unknown
 	r.KindMismatch += o.KindMismatch
@@ -57,7 +57,7 @@ type Cell struct {
 	Str []byte    // string / bytes payload, at its used extent
 	Tab *Instance // a nested table or type, or a union arm's payload
 
-	// Node is a `*T` POINTER field's referent (SPEC-TABLES.md §2.1, §3.1), and
+	// Node is a `*T` POINTER field's referent (docs/SPEC-TABLES.md §2.1, §3.1), and
 	// nil is NULL — a pointer takes no specified default, so null is the only
 	// thing an absence could mean. It is deliberately not Tab: a pointee is a
 	// NODE with an identity, written once however many slots name it, while Tab
@@ -76,7 +76,7 @@ type Field struct {
 	Def *ir.Field
 
 	// Present is the `<field>_present` companion of a `?T` field
-	// (SPEC-TABLES.md §2.3). PRESENCE, not content, decides whether the field
+	// (docs/SPEC-TABLES.md §2.3). PRESENCE, not content, decides whether the field
 	// rides.
 	Present bool
 
@@ -92,7 +92,7 @@ type Field struct {
 // Instance is one table or type value with its fields in declaration order.
 // A fresh instance holds exactly what the generated struct's member
 // initializers hold, so a field the text or the wire never mentions keeps the
-// default an absent field takes (SPEC-TABLES.md §4).
+// default an absent field takes (docs/SPEC-TABLES.md §4).
 type Instance struct {
 	Def    *ir.Struct
 	Fields []Field
@@ -189,7 +189,7 @@ func (m *Model) elementZero(f *ir.Field) Cell {
 }
 
 // FieldDefaultCell is the value a field elides against on the write side — the
-// same literal the generated NSDMI carries (SPEC-TABLES.md §3, §4).
+// same literal the generated NSDMI carries (docs/SPEC-TABLES.md §3, §4).
 func (m *Model) FieldDefaultCell(f *ir.Field) Cell { return m.fieldDefault(f) }
 
 // fieldDefault is a non-array field's declared default — the same literal the
@@ -292,7 +292,7 @@ func KindWidth(kind int) int {
 	case ir.TableKindPointer:
 		// a POINTER INDEX is four bytes, and it is one row in the fixed-width
 		// skip rule — which is the whole of what spending a distinct kind costs
-		// (SPEC-TABLES.md §3, §3.1)
+		// (docs/SPEC-TABLES.md §3, §3.1)
 		return 4
 	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64:
 		return 8
@@ -302,7 +302,7 @@ func KindWidth(kind int) int {
 
 // ImpliedRange is the range a declaration implies without declaring one:
 // `bits(N)` declares its bound by its WIDTH, `[0, 2^N - 1]`, and a value past
-// it clamps and counts exactly as a declared `| max` would (SPEC-TABLES.md
+// it clamps and counts exactly as a declared `| max` would (docs/SPEC-TABLES.md
 // §16.2). The generated descriptors carry it in the same `has_range` columns a
 // declared range uses, so the two implementations clamp on the same numbers in
 // the same order. ok is false when the field implies nothing.
@@ -427,7 +427,7 @@ func (inst *Instance) GuardHolds(terms []GuardTerm) bool {
 	return true
 }
 
-// FieldByKey finds the field a text key names (SPEC-TABLES.md §16.3).
+// FieldByKey finds the field a text key names (docs/SPEC-TABLES.md §16.3).
 func (inst *Instance) FieldByKey(key string) (*Field, bool) {
 	i, ok := inst.byKey[key]
 	if !ok {
@@ -446,7 +446,7 @@ func (inst *Instance) FieldIndexByKey(key string) (int, bool) {
 // ---- enum-keyed arrays: the slot <-> variant mapping ----
 
 // An enum-keyed array's STORAGE holds E.Max slots, ONE PER NAMED VARIANT
-// (SPEC-TABLES.md §2.4): None is the null key, so nothing is stored for it and
+// (docs/SPEC-TABLES.md §2.4): None is the null key, so nothing is stored for it and
 // the storage SHIFTS LEFT — the key k lives at slot k-1. Every rule that
 // follows is one consequence of that: a None key never rides on the wire, a
 // stored key of 0 is malformed, a "None" key in a text is unknown and counted,

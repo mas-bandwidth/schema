@@ -1,6 +1,6 @@
-// The BUILD VERSION (SPEC-TABLES.md §20): the low 64 bits of SHA-256 over the
+// The BUILD VERSION (docs/SPEC-TABLES.md §20): the low 64 bits of SHA-256 over the
 // unit's COOK PROJECTION, which is exactly how the protocol id is taken over
-// the wire-shape projection (SPEC.md §3.1), for exactly its reason — what an
+// the wire-shape projection (docs/SPEC.md §3.1), for exactly its reason — what an
 // id depends on has to be printable, readable and diffable, and a fact missing
 // from it has to be a review question rather than an implementation detail.
 //
@@ -27,7 +27,7 @@ import (
 )
 
 // BuildVersionForm is the cook projection's own FORM VERSION, and the COOK
-// FORM's too (SPEC-TABLES.md §20.2). Bump it when this rendering changes, and
+// FORM's too (docs/SPEC-TABLES.md §20.2). Bump it when this rendering changes, and
 // bump it when the cook's own form changes — the region's pack order, the node
 // directory's encoding, the header's shape — because without a version for
 // those a cook's bytes could diverge with the id unmoved.
@@ -44,7 +44,7 @@ func blockPrologueFacts() string {
 	return strings.Join(out, ",")
 }
 
-// TableKindPointer is a `*T` reference slot's wire kind (SPEC-TABLES.md §3.1):
+// TableKindPointer is a `*T` reference slot's wire kind (docs/SPEC-TABLES.md §3.1):
 // a pointer rides as a u32 index into the node table, and §20.2 renders it as
 // kind 17 with `type=` naming the pointee.
 const TableKindPointer = 17
@@ -56,7 +56,7 @@ func BuildVersion(u *Unit) uint64 {
 	return binary.BigEndian.Uint64(sum[24:])
 }
 
-// CookProjection renders the unit's cook projection (SPEC-TABLES.md §20.2).
+// CookProjection renders the unit's cook projection (docs/SPEC-TABLES.md §20.2).
 //
 // ASCII, every line terminated by one "\n", no blank lines; tokens separated
 // by exactly one space; a nested line indented four spaces. Ids are four

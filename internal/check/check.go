@@ -41,7 +41,7 @@ type checker struct {
 	flagsD   map[string]*ir.Flags
 	structs  map[string]*ir.Struct
 	unions   map[string]*ir.Union
-	tables   map[string]*ir.Struct // `table` declarations (SPEC-TABLES.md)
+	tables   map[string]*ir.Struct // `table` declarations (docs/SPEC-TABLES.md)
 
 	// the table closure — tables plus every struct one reaches — computed by
 	// checkTables and consumed by checkClaimedNames (closure members grow
@@ -776,7 +776,7 @@ func (c *checker) resolveBodies() {
 				c.structs[d.Name] = st
 			case *ast.TableDecl:
 				// tables share the struct shape but live beside the packet
-				// decls, never among them (SPEC-TABLES.md): the packet wire,
+				// decls, never among them (docs/SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
 				c.tables[d.Name] = &ir.Struct{Name: d.Name, IsTable: true}
 			case *ast.UnionDecl:
@@ -851,7 +851,7 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		case *ast.TypeDecl:
 			un.Variants = append(un.Variants, ir.UnionVariant{Name: v.Name, Type: v.Type, Ref: c.structs[v.Type]})
 		case *ast.TableDecl:
-			c.errf(v.TypePos, "%s is a table, not a union payload — a payload is a declared `type`; tables nest in tables directly (SPEC-TABLES.md)", v.Type)
+			c.errf(v.TypePos, "%s is a table, not a union payload — a payload is a declared `type`; tables nest in tables directly (docs/SPEC-TABLES.md)", v.Type)
 		case *ast.EnumDecl, *ast.FlagsDecl:
 			c.errf(v.TypePos, "%s is not a union payload — a payload is a declared type; wrap the value in a type (SPEC §4.8)", v.Type)
 		case *ast.UnionDecl:
@@ -916,7 +916,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				items = append(items, br)
 			case *ast.ConstField:
 				if inTable {
-					c.errf(item.Pos, "const(value, bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "const(value, bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
 					continue
 				}
 				bits, ok := c.evalWidth(item.Bits, "const width")
@@ -934,7 +934,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				items = append(items, &ir.ConstItem{Value: v, Bits: bits}) // wire-only: no storage
 			case *ast.ReservedItem:
 				if inTable {
-					c.errf(item.Pos, "reserved(bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "reserved(bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
 					continue
 				}
 				if bits, ok := c.evalWidth(item.Bits, "reserved width"); ok {
@@ -942,7 +942,7 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				}
 			case *ast.AlignItem:
 				if inTable {
-					c.errf(item.Pos, "align is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (SPEC-TABLES.md)", owner)
+					c.errf(item.Pos, "align is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table %s (docs/SPEC-TABLES.md)", owner)
 					continue
 				}
 				items = append(items, &ir.AlignItem{})
@@ -1067,7 +1067,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.structs[f.Type.Name]}
 		case *ast.TableDecl:
 			if !inTable {
-				c.errf(f.Type.Pos, "%s is a table, not a wire type — tables live on the TABLE wire and cannot ride in a `type`; declare the field's type with `type`, or move the declaring type to a `table` (SPEC-TABLES.md)", f.Type.Name)
+				c.errf(f.Type.Pos, "%s is a table, not a wire type — tables live on the TABLE wire and cannot ride in a `type`; declare the field's type with `type`, or move the declaring type to a `table` (docs/SPEC-TABLES.md)", f.Type.Name)
 				return nil
 			}
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.tables[f.Type.Name], Pointer: f.Type.Pointer}
@@ -1083,7 +1083,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 	}
 
-	// the OPTIONAL prefix (SPEC-TABLES.md §2.3)
+	// the OPTIONAL prefix (docs/SPEC-TABLES.md §2.3)
 	if f.Type.Optional {
 		if !c.checkOptionalSpelling(f, out, inTable) {
 			return nil
@@ -1100,7 +1100,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 		// an ENUM-KEYED array: the bound NAMES a declared enum rather than
 		// evaluating to a count — `ships [ShipType]ShipConfig`, one slot per
-		// variant, indexed by the variant (SPEC-TABLES.md §2.4)
+		// variant, indexed by the variant (docs/SPEC-TABLES.md §2.4)
 		if !c.resolveKeyBound(f, out) {
 			return nil
 		}
@@ -1108,7 +1108,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		case out.KeyEnum != "":
 			// ONE SLOT PER NAMED VARIANT and not one more: None is the null
 			// key, so nothing is stored for it and the storage SHIFTS LEFT —
-			// the key k lives at index k-1 (SPEC-TABLES.md §2.4). The bound is
+			// the key k lives at index k-1 (docs/SPEC-TABLES.md §2.4). The bound is
 			// E.Max, the same count `[E.Max]T` resolves to, so the two
 			// spellings share one projection and one protocol id.
 			out.Array = ir.ArrayFixed
@@ -1152,7 +1152,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 	c.resolveAttrs(f, out)
 
 	if out.WasName != "" && !inTable {
-		c.errf(f.Pos, "field %s: was is a table-wire concept — it aliases a renamed field's wire id, and only table fields have wire ids; a `type`'s wire is positional, so a rename there moves no bit (SPEC-TABLES.md)", f.Name)
+		c.errf(f.Pos, "field %s: was is a table-wire concept — it aliases a renamed field's wire id, and only table fields have wire ids; a `type`'s wire is positional, so a rename there moves no bit (docs/SPEC-TABLES.md)", f.Name)
 		return nil
 	}
 	// `json` outside a table CLOSURE is refused in checkTables, where the
@@ -1328,36 +1328,36 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 		case "min", "max", "resolution":
 			// validated below
 		case "was":
-			// rename aliasing (SPEC-TABLES.md): the field's TABLE-wire id
+			// rename aliasing (docs/SPEC-TABLES.md): the field's TABLE-wire id
 			// stays the hash of the OLD name, so identity survives the
 			// rename. Table fields only — enforced by resolveField, which
 			// knows the owner's kind.
 			lit, ok := a.Value.(*ast.StringLit)
 			if !ok {
-				c.errf(a.Pos, `was takes the field's old name as a quoted string, e.g. was = "velocity" (SPEC-TABLES.md)`)
+				c.errf(a.Pos, `was takes the field's old name as a quoted string, e.g. was = "velocity" (docs/SPEC-TABLES.md)`)
 				continue
 			}
 			if lit.Value == "" {
-				c.errf(a.Pos, "was = \"\" names nothing — was records the field's old name after a rename (SPEC-TABLES.md)")
+				c.errf(a.Pos, "was = \"\" names nothing — was records the field's old name after a rename (docs/SPEC-TABLES.md)")
 				continue
 			}
 			if lit.Value == f.Name {
-				c.errf(a.Pos, "field %s: was = %q names the field's own current name — was records the OLD name after a rename; drop the attribute until one happens (SPEC-TABLES.md)", f.Name, lit.Value)
+				c.errf(a.Pos, "field %s: was = %q names the field's own current name — was records the OLD name after a rename; drop the attribute until one happens (docs/SPEC-TABLES.md)", f.Name, lit.Value)
 				continue
 			}
 			out.WasName = lit.Value
 		case "json":
-			// the text form's key (SPEC-TABLES.md §16.4): the one attribute
+			// the text form's key (docs/SPEC-TABLES.md §16.4): the one attribute
 			// the JSON walk adds, so a declaration can meet an existing text.
 			// Table fields only — enforced below, where the owner's kind is
 			// known — and it moves no wire byte.
 			lit, ok := a.Value.(*ast.StringLit)
 			if !ok {
-				c.errf(a.Pos, `json takes the field's text key as a quoted string, e.g. json = "type" (SPEC-TABLES.md §16.4)`)
+				c.errf(a.Pos, `json takes the field's text key as a quoted string, e.g. json = "type" (docs/SPEC-TABLES.md §16.4)`)
 				continue
 			}
 			if lit.Value == "" {
-				c.errf(a.Pos, "json = \"\" names nothing — json records the key this field reads and writes in the text form (SPEC-TABLES.md §16.4)")
+				c.errf(a.Pos, "json = \"\" names nothing — json records the key this field reads and writes in the text form (docs/SPEC-TABLES.md §16.4)")
 				continue
 			}
 			out.JsonKey = lit.Value
@@ -1604,7 +1604,7 @@ func (c *checker) checkCycles() {
 		if st := c.tables[name]; st != nil {
 			// tables join the composition graph exactly as types do: nesting
 			// is by value, so a table holding itself — directly or through a
-			// chain — has infinite size (SPEC-TABLES.md, the §4.6 rule).
+			// chain — has infinite size (docs/SPEC-TABLES.md, the §4.6 rule).
 			// POINTER edges are exempt and carry no size: `next *Node` inside
 			// Node is finite, and recursion through pointers is the whole
 			// point of the freedom tables were given.
@@ -1663,7 +1663,7 @@ func (c *checker) checkCycles() {
 	}
 }
 
-// ---- tables (SPEC-TABLES.md) ----
+// ---- tables (docs/SPEC-TABLES.md) ----
 
 // closureMember resolves a closure name to its resolved struct — a table or
 // a plain type.
@@ -1675,7 +1675,7 @@ func (c *checker) closureMember(name string) *ir.Struct {
 }
 
 // checkTables enforces the table closure's wire capability and the field-id
-// uniqueness the TABLE wire's identity scheme requires (SPEC-TABLES.md).
+// uniqueness the TABLE wire's identity scheme requires (docs/SPEC-TABLES.md).
 //
 // Capability: a `table` and everything it references, transitively, must stay
 // on table-wire kinds — plain fixed-width scalars, length-prefixed
@@ -1745,15 +1745,15 @@ func (c *checker) checkTables() {
 			what = "table"
 		}
 		if st.IsTable && slices.Contains(tableBuilderMembers, name) {
-			c.errf(pos, "table %s: the name collides with a member of the generated %sBuilder — a member function hides the type name it shares, and the header would not compile; rename the table (SPEC-TABLES.md §6.2)",
+			c.errf(pos, "table %s: the name collides with a member of the generated %sBuilder — a member function hides the type name it shares, and the header would not compile; rename the table (docs/SPEC-TABLES.md §6.2)",
 				name, name)
 		}
-		// the TEXT form's keys (SPEC-TABLES.md §16.4): two fields of one
+		// the TEXT form's keys (docs/SPEC-TABLES.md §16.4): two fields of one
 		// closure member whose keys collide are indistinguishable in a JSON
 		// object, exactly as colliding ids are on the wire — refused once,
 		// naming both, whether the collision comes from a `json` attribute
 		// or from an attribute meeting a plain field name.
-		// The BLOCK FORM's generated PROLOGUE (SPEC-TABLES.md §19.1): every
+		// The BLOCK FORM's generated PROLOGUE (docs/SPEC-TABLES.md §19.1): every
 		// fixed table's block projection opens with `magic`,
 		// `build_version` and `byte_order`, generated exactly as an optional's `_present`
 		// companion is — so a field may not be named after either half. The
@@ -1764,7 +1764,7 @@ func (c *checker) checkTables() {
 		if st.IsTable {
 			for _, f := range st.Fields {
 				if f.Name == "magic" || f.Name == "build_version" || f.Name == "byte_order" {
-					c.errf(pos, "table %s: field %s collides with the block form's generated prologue — `magic`, `build_version` and `byte_order` open every block projection, as `<field>_present` is generated beside an optional's value; rename the field (SPEC-TABLES.md §19.1, §11)",
+					c.errf(pos, "table %s: field %s collides with the block form's generated prologue — `magic`, `build_version` and `byte_order` open every block projection, as `<field>_present` is generated beside an optional's value; rename the field (docs/SPEC-TABLES.md §19.1, §11)",
 						name, f.Name)
 				}
 			}
@@ -1774,7 +1774,7 @@ func (c *checker) checkTables() {
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
 			if prev, dup := seenKey[key]; dup {
-				c.errf(pos, "%s %s: fields %s and %s collide on the JSON key %q — rename one, or give one a different json key (SPEC-TABLES.md §16.4)",
+				c.errf(pos, "%s %s: fields %s and %s collide on the JSON key %q — rename one, or give one a different json key (docs/SPEC-TABLES.md §16.4)",
 					what, name, describeTableJsonField(prev), describeTableJsonField(f), key)
 				continue
 			}
@@ -1789,7 +1789,7 @@ func (c *checker) checkTables() {
 				// u32 slot. Identity still applies — the id check runs below.
 				id := ir.TableFieldId(f)
 				if prev, dup := seen[id]; dup {
-					c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%04x — rename one (SPEC-TABLES.md)",
+					c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%04x — rename one (docs/SPEC-TABLES.md)",
 						what, name, describeTableField(prev), describeTableField(f), id)
 					continue
 				}
@@ -1804,7 +1804,7 @@ func (c *checker) checkTables() {
 				bad = fixedSpelling(f.Type.Signed) + "(I, F)"
 			}
 			if bad != "" {
-				c.errf(pos, "%s.%s: %s has no table-wire kind, and %s %s is in a table's closure — a `table` and everything it references must stay on table-wire kinds (SPEC-TABLES.md)",
+				c.errf(pos, "%s.%s: %s has no table-wire kind, and %s %s is in a table's closure — a `table` and everything it references must stay on table-wire kinds (docs/SPEC-TABLES.md)",
 					name, f.Name, bad, what, name)
 				continue
 			}
@@ -1814,14 +1814,14 @@ func (c *checker) checkTables() {
 					// a u16 arm id, then the selected arm length-prefixed —
 					// skippable, elidable (None), kind-mismatch-safe. An
 					// ARRAY of unions is the remaining named follow-on.
-					c.errf(pos, "%s.%s: an array of unions may not sit on a table-closure path yet — wrap the union in a type, or ask for the pass (SPEC-TABLES.md)",
+					c.errf(pos, "%s.%s: an array of unions may not sit on a table-closure path yet — wrap the union in a type, or ask for the pass (docs/SPEC-TABLES.md)",
 						name, f.Name)
 					continue
 				}
 			}
 			id := ir.TableFieldId(f)
 			if prev, dup := seen[id]; dup {
-				c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%04x — rename one (SPEC-TABLES.md)",
+				c.errf(pos, "%s %s: fields %s and %s collide on table-wire id 0x%04x — rename one (docs/SPEC-TABLES.md)",
 					what, name, describeTableField(prev), describeTableField(f), id)
 				continue
 			}
@@ -1833,7 +1833,7 @@ func (c *checker) checkTables() {
 }
 
 // checkJsonKeysInClosure refuses `json = "key"` on a field no table closure
-// reaches (SPEC-TABLES.md §16.4). The text form is the table closure's — a
+// reaches (docs/SPEC-TABLES.md §16.4). The text form is the table closure's — a
 // `type` a table nests has one and may carry the attribute; a type nothing in
 // a closure reaches has no text form for a key to name.
 func (c *checker) checkJsonKeysInClosure() {
@@ -1848,7 +1848,7 @@ func (c *checker) checkJsonKeysInClosure() {
 		}
 		for _, f := range st.Fields {
 			if f.JsonKey != "" {
-				c.errf(pos, "type %s: field %s carries json = %q, but no table reaches %s — the text form is the table closure's, and a type outside one has none (SPEC-TABLES.md §16.4)",
+				c.errf(pos, "type %s: field %s carries json = %q, but no table reaches %s — the text form is the table closure's, and a type outside one has none (docs/SPEC-TABLES.md §16.4)",
 					name, f.Name, f.JsonKey, name)
 			}
 		}
@@ -1867,7 +1867,7 @@ func sortedKeys[V any](m map[string]V) []string {
 }
 
 // checkTableFileDag refuses a cross-file reference CYCLE among a unit's table
-// closure (SPEC-TABLES.md §11): if a declaration in file A reaches one in file
+// closure (docs/SPEC-TABLES.md §11): if a declaration in file A reaches one in file
 // B, nothing in B may reach back into A.
 //
 // The rule is LANGUAGE-NEUTRAL and so it lives here, in the front end, not in
@@ -1955,7 +1955,7 @@ func (c *checker) checkTableFileDag() {
 				}
 			}
 			closing := edgeFrom[path[len(path)-1]+" -> "+base]
-			c.errf(closing.pos, "%s closes a cross-file table reference cycle: %s -> %s — a unit's table files form a DAG by reference, so if a declaration in one file reaches one in another, nothing there may reach back; move a declaration so the cross-file graph is acyclic (SPEC-TABLES.md §11)",
+			c.errf(closing.pos, "%s closes a cross-file table reference cycle: %s -> %s — a unit's table files form a DAG by reference, so if a declaration in one file reaches one in another, nothing there may reach back; move a declaration so the cross-file graph is acyclic (docs/SPEC-TABLES.md §11)",
 				closing.decl, strings.Join(path[at:], " -> "), base)
 			return false
 		case done:
@@ -1990,7 +1990,7 @@ func (c *checker) checkTableFileDag() {
 }
 
 // checkTableVariantIdentity enforces the table wire's variant identity
-// (SPEC-TABLES.md §5): an enum value rides as the name hash of its variant and
+// (docs/SPEC-TABLES.md §5): an enum value rides as the name hash of its variant and
 // a union body opens with the name hash of its arm, so the ids within one
 // enum, and within one union, must be distinct — and a value with no name has
 // no identity to ride under.
@@ -2018,7 +2018,7 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 		for _, f := range st.Fields {
 			// an enum-keyed array reaches its KEY enum without naming it as a
 			// field type, and the key rides under a variant hash exactly as a
-			// value does (SPEC-TABLES.md §3.2) — so the key is a closure
+			// value does (docs/SPEC-TABLES.md §3.2) — so the key is a closure
 			// vocabulary, and both §5 refusals are owed to it
 			if f.KeyEnumRef != nil {
 				if _, seen := enums[f.KeyEnum]; !seen {
@@ -2053,14 +2053,14 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 	for _, name := range sortedKeys(enums) {
 		e := enums[name]
 		if e.Max > int64(len(e.Variants)) {
-			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s reaches it, putting %s in a table closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (SPEC-TABLES.md §5)",
+			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s reaches it, putting %s in a table closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (docs/SPEC-TABLES.md §5)",
 				name, e.Max, reachedBy[name], name)
 		}
 		seen := map[uint16]string{}
 		for _, v := range e.Variants {
 			id := ir.VariantId(v)
 			if prev, dup := seen[id]; dup {
-				c.errf(pos(name), "enum %s: variants %s and %s collide on table-wire id 0x%04x, and %s reaches it, putting %s in a table closure — rename one (SPEC-TABLES.md §5)",
+				c.errf(pos(name), "enum %s: variants %s and %s collide on table-wire id 0x%04x, and %s reaches it, putting %s in a table closure — rename one (docs/SPEC-TABLES.md §5)",
 					name, prev, v, id, reachedBy[name], name)
 				continue
 			}
@@ -2073,7 +2073,7 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 		for _, v := range un.Variants {
 			id := ir.VariantId(v.Name)
 			if prev, dup := seen[id]; dup {
-				c.errf(pos(name), "union %s: arms %s and %s collide on table-wire id 0x%04x, and %s reaches it, putting %s in a table closure — rename one (SPEC-TABLES.md §5)",
+				c.errf(pos(name), "union %s: arms %s and %s collide on table-wire id 0x%04x, and %s reaches it, putting %s in a table closure — rename one (docs/SPEC-TABLES.md §5)",
 					name, prev, v.Name, id, reachedBy[name], name)
 				continue
 			}
@@ -2083,71 +2083,71 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 }
 
 // checkPointerSpelling enforces the `*T` spelling's rules, each refused by
-// name (SPEC-TABLES.md §11). The founding line: types remain VALUE semantics;
+// name (docs/SPEC-TABLES.md §11). The founding line: types remain VALUE semantics;
 // tables ALLOW POINTER semantics — so a pointer is a table-to-table edge
 // declared inside a table body, and nowhere else.
 func (c *checker) checkPointerSpelling(f *ast.Field, inTable bool, d ast.Decl) bool {
 	if !inTable {
-		c.errf(f.Type.Pos, "field %s: *%s is a pointer, and pointers are a TABLE construct — types remain value semantics, tables allow pointer semantics; nest the field by value, or move the declaring type to a `table` (SPEC-TABLES.md)",
+		c.errf(f.Type.Pos, "field %s: *%s is a pointer, and pointers are a TABLE construct — types remain value semantics, tables allow pointer semantics; nest the field by value, or move the declaring type to a `table` (docs/SPEC-TABLES.md)",
 			f.Name, f.Type.Name)
 		return false
 	}
 	if _, isTable := d.(*ast.TableDecl); !isTable {
-		c.errf(f.Type.Pos, "field %s: *%s points at a %s, and a pointer may only target a `table` — %s is value-semantics data with no independent identity to point at; nest it by value, or declare %s as a table (SPEC-TABLES.md)",
+		c.errf(f.Type.Pos, "field %s: *%s points at a %s, and a pointer may only target a `table` — %s is value-semantics data with no independent identity to point at; nest it by value, or declare %s as a table (docs/SPEC-TABLES.md)",
 			f.Name, f.Type.Name, declKindName(d), f.Type.Name, f.Type.Name)
 		return false
 	}
 	if f.Array != nil {
-		c.errf(f.Type.Pos, "field %s: an array of pointers is a named follow-on — declare a bounded array of tables by value, or a pointer to a table that holds the array (SPEC-TABLES.md §15)", f.Name)
+		c.errf(f.Type.Pos, "field %s: an array of pointers is a named follow-on — declare a bounded array of tables by value, or a pointer to a table that holds the array (docs/SPEC-TABLES.md §15)", f.Name)
 		return false
 	}
 	if f.Default != nil {
-		c.errf(f.Pos, "field %s: a pointer field takes no specified default — a fresh pointer is null, and null is the only value a default could name (SPEC-TABLES.md)", f.Name)
+		c.errf(f.Pos, "field %s: a pointer field takes no specified default — a fresh pointer is null, and null is the only value a default could name (docs/SPEC-TABLES.md)", f.Name)
 		return false
 	}
 	return true
 }
 
 // checkOptionalSpelling enforces the `?T` spelling's rules, each refused by
-// name (SPEC-TABLES.md §11). An optional is a table-body construct: it costs
+// name (docs/SPEC-TABLES.md §11). An optional is a table-body construct: it costs
 // one presence bool beside the value, and PRESENCE — not content — decides
 // whether the field rides.
 func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable bool) bool {
 	spelling := "?" + scalarSpelling(f.Type)
 	if !inTable {
-		c.errf(f.Type.Pos, "field %s: %s is an OPTIONAL field, and optionals are a TABLE construct — a `type`'s wire is positional and every field always rides, so there is no absence to express; drop the ?, or move the declaring type to a `table` (SPEC-TABLES.md §2.3)",
+		c.errf(f.Type.Pos, "field %s: %s is an OPTIONAL field, and optionals are a TABLE construct — a `type`'s wire is positional and every field always rides, so there is no absence to express; drop the ?, or move the declaring type to a `table` (docs/SPEC-TABLES.md §2.3)",
 			f.Name, spelling)
 		return false
 	}
 	if f.Type.Pointer {
-		c.errf(f.Type.Pos, "field %s: %s marks a pointer optional, and a pointer is ALREADY optional — null is its absence, and it rides exactly as an absent optional does; drop the ? (SPEC-TABLES.md §2.3)",
+		c.errf(f.Type.Pos, "field %s: %s marks a pointer optional, and a pointer is ALREADY optional — null is its absence, and it rides exactly as an absent optional does; drop the ? (docs/SPEC-TABLES.md §2.3)",
 			f.Name, spelling)
 		return false
 	}
 	if f.Array != nil {
-		c.errf(f.Type.Pos, "field %s: ? on an ARRAY is a named follow-on — a counted array's count already carries emptiness, and a fixed array's slots are all present by construction; wrap the array in a table and make that optional (SPEC-TABLES.md §15)", f.Name)
+		c.errf(f.Type.Pos, "field %s: ? on an ARRAY is a named follow-on — a counted array's count already carries emptiness, and a fixed array's slots are all present by construction; wrap the array in a table and make that optional (docs/SPEC-TABLES.md §15)", f.Name)
 		return false
 	}
 	switch out.Type.Kind {
 	case ir.TString, ir.TBytes:
-		c.errf(f.Type.Pos, "field %s: ? on %s is a named follow-on — the generated length companion already carries emptiness, and a second presence bit beside it would be two answers to one question; wrap it in a table and make that optional (SPEC-TABLES.md §15)",
+		c.errf(f.Type.Pos, "field %s: ? on %s is a named follow-on — the generated length companion already carries emptiness, and a second presence bit beside it would be two answers to one question; wrap it in a table and make that optional (docs/SPEC-TABLES.md §15)",
 			f.Name, scalarName(out.Type.Kind))
 		return false
 	}
 	if _, isUnion := out.Type.Ref.(*ir.Union); isUnion {
-		c.errf(f.Type.Pos, "field %s: %s marks a union optional, and a union is ALREADY optional — its None arm IS the absence, and an empty union elides exactly as an absent optional does; drop the ? (SPEC-TABLES.md §2.3)",
+		c.errf(f.Type.Pos, "field %s: %s marks a union optional, and a union is ALREADY optional — its None arm IS the absence, and an empty union elides exactly as an absent optional does; drop the ? (docs/SPEC-TABLES.md §2.3)",
 			f.Name, spelling)
 		return false
 	}
 	if f.Default != nil {
-		c.errf(f.Pos, "field %s: an optional field takes no specified default — PRESENCE is the only default an optional has, and an absent optional reads as absent with its value at the type's own zero (SPEC-TABLES.md §2.3)", f.Name)
+		c.errf(f.Pos, "field %s: an optional field takes no specified default — PRESENCE is the only default an optional has, and an absent optional reads as absent with its value at the type's own zero (docs/SPEC-TABLES.md §2.3)", f.Name)
 		return false
 	}
 	return true
 }
 
 // resolveKeyBound recognises the ENUM-KEYED array bound — a `[Name]T` whose
-// Name is a declared ENUM rather than a constant (SPEC-TABLES.md §2.4). The
+// Name is a declared ENUM rather than a constant (docs/SPEC-TABLES.md §2.4). The
 // two spellings never overlap, because an enum is declared: `[Name]` naming a
 // const is the fixed array it has always been, and `[Name]` naming an enum is
 // one slot per variant, keyed by the variant. Returns false when the bound is
@@ -2159,7 +2159,7 @@ func (c *checker) resolveKeyBound(f *ast.Field, out *ir.Field) bool {
 	}
 	switch c.astDecls[name].(type) {
 	case *ast.FlagsDecl:
-		c.errf(pos, "field %s: [%s] names a `flags` declaration, and a keyed array is keyed by a VARIANT — a mask holds any set of bits at once, so it names no single slot; key the array by an enum, or size it with a constant (SPEC-TABLES.md §2.4)",
+		c.errf(pos, "field %s: [%s] names a `flags` declaration, and a keyed array is keyed by a VARIANT — a mask holds any set of bits at once, so it names no single slot; key the array by an enum, or size it with a constant (docs/SPEC-TABLES.md §2.4)",
 			f.Name, name)
 		return false
 	case *ast.EnumDecl:
@@ -2167,7 +2167,7 @@ func (c *checker) resolveKeyBound(f *ast.Field, out *ir.Field) bool {
 		return true // a const name, or an undefined one evalInt diagnoses
 	}
 	if f.Array.Kind != ast.ArrayFixed {
-		c.errf(pos, "field %s: a bounded enum-keyed array is refused — [%s] is COMPLETE by construction, one slot per variant, so [..%s] and [A..%s] name a count that cannot vary; spell it [%s] (SPEC-TABLES.md §2.4)",
+		c.errf(pos, "field %s: a bounded enum-keyed array is refused — [%s] is COMPLETE by construction, one slot per variant, so [..%s] and [A..%s] name a count that cannot vary; spell it [%s] (docs/SPEC-TABLES.md §2.4)",
 			f.Name, name, name, name, name)
 		return false
 	}
@@ -2452,7 +2452,7 @@ func (c *checker) checkTargetNames() {
 							register(item.Pos, item.Name, goExportName(item.Name)+"Count", "the generated count companion")
 						}
 						// an optional's presence bool is storage too, and it
-						// claims its name (SPEC-TABLES.md §2.3)
+						// claims its name (docs/SPEC-TABLES.md §2.3)
 						if item.Type.Optional {
 							register(item.Pos, item.Name, goExportName(item.Name)+"Present", "the generated presence companion")
 						}
@@ -2525,7 +2525,7 @@ func (c *checker) checkClaimedNames() {
 	add("Result", "the unit's generated Result alias (Rust form)", unitPos)
 	if len(c.tables) > 0 {
 		// The TABLE-wire runtime the generated table sources define once per
-		// package (SPEC-TABLES.md) — claimed only when a unit declares a
+		// package (docs/SPEC-TABLES.md) — claimed only when a unit declares a
 		// table, so table-free units keep their whole namespace.
 		//
 		// The list is not written here: internal/tablenames is the ONE
@@ -2533,7 +2533,7 @@ func (c *checker) checkClaimedNames() {
 		// emitters actually emit. A second copy of it in this file is exactly
 		// how the C# runtime's names came to be unclaimed in the first place.
 		for _, gen := range tablenames.Claimed() {
-			add(gen, "the generated TABLE-wire runtime (SPEC-TABLES.md)", unitPos)
+			add(gen, "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)", unitPos)
 		}
 	}
 
@@ -2646,7 +2646,7 @@ func (c *checker) checkClaimedNames() {
 			}
 		case *ast.TableDecl:
 			// a table generates its storage struct plus the Table codec and
-			// descriptor family — no packet-wire symbols (SPEC-TABLES.md)
+			// descriptor family — no packet-wire symbols (docs/SPEC-TABLES.md)
 			c.addTableSymbols(add, name, d.DeclPos())
 			// A BLOCK-FORM table claims two more per out-of-line array,
 			// because its row accessors are named after its fields: <Table>
@@ -2655,7 +2655,7 @@ func (c *checker) checkClaimedNames() {
 			// contiguous view (§11, §19.2). This part of the set moves with
 			// the declaration, which is why §11 states it as a rule.
 			if st := c.tables[name]; st != nil {
-				why := fmt.Sprintf("%s's generated block row accessors (SPEC-TABLES.md §11, §19.2)", name)
+				why := fmt.Sprintf("%s's generated block row accessors (docs/SPEC-TABLES.md §11, §19.2)", name)
 				for _, f := range st.Fields {
 					if !ir.BlockOutOfLine(f) {
 						continue
@@ -2673,7 +2673,7 @@ func (c *checker) checkClaimedNames() {
 // member. The table surface is NAME-FIRST — <Name>Measure, <Name>Save,
 // <Name>Load, <Name>Builder — so a table's whole surface autocompletes under
 // its own name, while the TYPE wire stays verb-first (WriteX/ReadX): the verb
-// position tells a reader which wire the call site is on (SPEC-TABLES.md).
+// position tells a reader which wire the call site is on (docs/SPEC-TABLES.md).
 // Tables and types share ONE symbol table, and that is exactly what makes the
 // unprefixed surface collision-free: a declaration colliding with any of
 // these spellings is refused at the source.
@@ -2692,14 +2692,14 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // claims. The mutable-life suffixes (Builder, LoadMeasure, At) are
 // claimed for EVERY closure member, not only pointer-bearing ones: a table
 // gains or loses pointers as an edit, and a name that was free yesterday must
-// not become a collision tomorrow (SPEC-TABLES.md).
+// not become a collision tomorrow (docs/SPEC-TABLES.md).
 // The BLOCK spellings are claimed on the same terms: nothing declares the
 // block form, every fixed table has one, and a table gains and loses the form
 // as its closure gains and loses a pointer — so a name that was free yesterday
 // must not become a collision tomorrow (§11).
 // Open is the COOK's read side and the C++ table backend emits it, for every
 // TABLE, because every table cooks and any table may be a cook's root
-// (SPEC-TABLES.md §7). Cook and CookMeasure are the WRITE side and no backend
+// (docs/SPEC-TABLES.md §7). Cook and CookMeasure are the WRITE side and no backend
 // emits one — a build that writes a cook runs `schema cook` — and the claim is
 // held while that emitter is absent, on the same rule: freeing a name now is a
 // collision the day it lands. OpenWalk is NOT claimed: it named wire v1's
@@ -2716,7 +2716,7 @@ var tableGeneratedVerbs = []string{
 	// rather than a nested namespace of their own: a generated namespace named
 	// by a common noun is a collision class no refusal can close, because it
 	// collides with declarations in OTHER units of the same assembly and this
-	// compiler sees one unit (SPEC-TABLES.md §19.2).
+	// compiler sees one unit (docs/SPEC-TABLES.md §19.2).
 	"Row", "BlockProjection",
 }
 
@@ -2779,7 +2779,7 @@ func (c *checker) assemble() {
 				u.Structs[d.Name] = st
 			case *ast.TableDecl:
 				// tables assemble BESIDE the decl stream, never into it
-				// (SPEC-TABLES.md): File.Decls and Unit.Structs feed the
+				// (docs/SPEC-TABLES.md): File.Decls and Unit.Structs feed the
 				// packet backends and the wire projection, and a table must
 				// move neither a generated packet byte nor the protocol id
 				tbl := c.tables[d.Name]

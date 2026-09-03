@@ -1,4 +1,4 @@
-// The NEGATIVE CONTROL for the text form (SPEC-TABLES.md §16.5).
+// The NEGATIVE CONTROL for the text form (docs/SPEC-TABLES.md §16.5).
 //
 // A green round-trip suite is worth nothing until the suite has been shown
 // capable of going red. This binary is built against a DELIBERATELY SABOTAGED

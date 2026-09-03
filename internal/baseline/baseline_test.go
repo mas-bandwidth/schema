@@ -1,4 +1,4 @@
-// The tables baseline's gate (SPEC-TABLES.md §18.6): one fixture pair per
+// The tables baseline's gate (docs/SPEC-TABLES.md §18.6): one fixture pair per
 // refusal class and per warn class, each with its negative controls.
 //
 // TWO KINDS OF NEGATIVE CONTROL, because a gate can be wrong in two ways.
@@ -259,7 +259,7 @@ func TestRefusals(t *testing.T) {
 			control: replace(t, "enum Grade { Bronze, Silver, Gold }", "enum Grade { Bronze, Argent, Silver, Gold }"),
 		},
 		{
-			// SPEC-TABLES.md §4 states outright that this edit is NOT a kind
+			// docs/SPEC-TABLES.md §4 states outright that this edit is NOT a kind
 			// mismatch — both ride as kind 7 — so the runtime cannot report
 			// it, which is the definition of this baseline's job
 			name:    "an enum-typed field replaced by its raw storage integer",
@@ -322,7 +322,7 @@ func TestRefusals(t *testing.T) {
 		},
 		{
 			// the keyed body and the positional body are different wire kinds
-			// (SPEC-TABLES.md §3.2), so a reader meeting the other skips —
+			// (docs/SPEC-TABLES.md §3.2), so a reader meeting the other skips —
 			// and the values are silently gone
 			name:    "an array changed from the keyed spelling to the positional one",
 			edited:  replace(t, "    per_grade [Grade]int32", "    per_grade [4]int32"),
@@ -815,7 +815,7 @@ func TestAbsorbedEdits(t *testing.T) {
 		{"a bounded array made fixed", replace(t, "slots   [..Slots]int32", "slots   [Slots]int32")},
 		{"a field moved under a guard", replace(t, "    hits    int32", "    guard   bool\n    if guard\n    {\n        hits int32\n    }")},
 		{"a table added", baseSrc + "\ntable Extra\n{\n    x int32 = 1\n}\n"},
-		// T, ?T and *T are one framing (SPEC-TABLES.md §3.1): presence is
+		// T, ?T and *T are one framing (docs/SPEC-TABLES.md §3.1): presence is
 		// recorded in the file and judged on nothing
 		{"a field made optional", replace(t, "    boost   Buff", "    boost   ?Buff")},
 		{"an optional field made plain", replace(t, "    gunner ?Buff", "    gunner Buff")},
@@ -835,7 +835,7 @@ func TestAbsorbedEdits(t *testing.T) {
 // TestKeyEnumIsCovered: an enum-keyed array's key enum reaches the closure
 // only through the array, never through a field's own type — and its variants
 // are wire identities all the same, because the slots ride under their name
-// ids (SPEC-TABLES.md §3.2). A projection that forgot it would leave every
+// ids (docs/SPEC-TABLES.md §3.2). A projection that forgot it would leave every
 // keyed collection's vocabulary uncovered.
 func TestKeyEnumIsCovered(t *testing.T) {
 	const src = `package keyed
@@ -877,7 +877,7 @@ table Loadout
 }
 
 // TestKeyedBoundIsNotJudgedAsAnExtent: a keyed array's bound IS its key
-// enum's size, and its slots ride under variant name ids (SPEC-TABLES.md
+// enum's size, and its slots ride under variant name ids (docs/SPEC-TABLES.md
 // §3.2) — an unknown key is skipped and counted `unknown`, with no bounded
 // prefix and nothing clamped. The enum walk already says what went and by
 // name, so the extent row must not say it a second time in the wrong words.

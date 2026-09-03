@@ -1,4 +1,4 @@
-// The BLOCK FORM in C# (SPEC-TABLES.md §19): the READ half, emitted ON THE
+// The BLOCK FORM in C# (docs/SPEC-TABLES.md §19): the READ half, emitted ON THE
 // SIDE into <Base>Block.cs.
 //
 // NOTHING DECLARES IT. Every fixed table has a block form; a consumer compiles
@@ -117,7 +117,7 @@ func (g *blockGen) emit() {
 			g.emitBlockHandle(bl)
 			continue
 		}
-		g.hf("// table %s has NO block form: %s (SPEC-TABLES.md §19).\n", st.Name, g.blocks.SkippedReason(st.Name))
+		g.hf("// table %s has NO block form: %s (docs/SPEC-TABLES.md §19).\n", st.Name, g.blocks.SkippedReason(st.Name))
 		g.hf("// Its wire (§3) is unaffected — only this projection is absent, and it is\n")
 		g.hf("// absent by construction rather than by refusal.\n\n")
 	}
@@ -129,7 +129,7 @@ func (g *blockGen) assemble() []byte {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (SPEC-TABLES.md §19): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half.\n", g.unit.Package)
 	h.WriteString("//\n")
 	h.WriteString("// NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on\n")
 	h.WriteString("// the side: compile this file only if you read a block. The unit's\n")
@@ -152,7 +152,7 @@ func (g *blockGen) assemble() []byte {
 		b.WriteString("// The BLITTABLE records: one per record the block form touches, laid out to\n")
 		b.WriteString("// the C ABI with GENERATED PADDING FIELDS wherever the layout has interior\n")
 		b.WriteString("// padding and a Size that pins the trailing padding — both are needed\n")
-		b.WriteString("// (SPEC-TABLES.md §19.3). Explicit padding is chosen over LayoutKind.Explicit\n")
+		b.WriteString("// (docs/SPEC-TABLES.md §19.3). Explicit padding is chosen over LayoutKind.Explicit\n")
 		b.WriteString("// because Sequential is the form every blittable path handles best, and over\n")
 		b.WriteString("// relying on a padding-free field order because that is discipline, and\n")
 		b.WriteString("// discipline is what this form exists to delete.\n")
@@ -179,7 +179,7 @@ func (g *blockGen) emitBlittable(name string) {
 		return
 	}
 	g.sf("// %s — a block row, or a record one nests by value. `Row` is a CLAIMED\n", name)
-	g.sf("// suffix (SPEC-TABLES.md §11), so no declaration in the unit can take it.\n")
+	g.sf("// suffix (docs/SPEC-TABLES.md §11), so no declaration in the unit can take it.\n")
 	g.sf("[StructLayout(LayoutKind.Sequential, Pack = 1, Size = %d)]\n", ml.Size)
 	g.sf("public unsafe struct %sRow\n{\n", name)
 	g.emitBlittableFields(ml, 0, false)
@@ -191,14 +191,14 @@ func (g *blockGen) emitProjection(bl *ir.BlockLayout) {
 	g.sf("// %s — the block PROJECTION: the table's own instance as it sits at the\n", name)
 	g.sf("// front of a block, opening with the generated PROLOGUE and carrying, per\n")
 	g.sf("// out-of-line array, the triple that says where its rows are. It is a record\n")
-	g.sf("// like any other and follows the same C ABI rule (SPEC-TABLES.md §19.3).\n")
+	g.sf("// like any other and follows the same C ABI rule (docs/SPEC-TABLES.md §19.3).\n")
 	g.sf("//\n")
 	g.sf("// It is a SEPARATE record from <Table>Row: a table can be both a block root\n")
 	g.sf("// and another block's row, and the two differ by the prologue.\n")
 	g.sf("[StructLayout(LayoutKind.Sequential, Pack = 1, Size = %d)]\n", bl.Projection.Size)
 	g.sf("public unsafe struct %sBlockProjection\n{\n", name)
 	g.sf("    public ulong Magic;        // generated: identifies a schema block\n")
-	g.sf("    public ulong BuildVersion; // generated: the unit's build version (SPEC-TABLES.md §20)\n")
+	g.sf("    public ulong BuildVersion; // generated: the unit's build version (docs/SPEC-TABLES.md §20)\n")
 	g.sf("    public ulong ByteOrder;    // generated: 1 little, 2 big\n")
 	g.emitBlittableFields(&bl.Projection, ir.BlockPrologueBytes, true)
 	g.sf("}\n\n")
@@ -208,7 +208,7 @@ func (g *blockGen) emitProjection(bl *ir.BlockLayout) {
 // with generated padding between them.
 //
 // `projection` is the whole of what decides whether a bounded array becomes a
-// TRIPLE or stays INLINE, and it is load-bearing (SPEC-TABLES.md §2.7): DEPTH
+// TRIPLE or stays INLINE, and it is load-bearing (docs/SPEC-TABLES.md §2.7): DEPTH
 // ONE, BOUNDED ONLY — only the block-form TABLE'S OWN bounded arrays of
 // structs are laid out of line, and every array at any depth inside a row or
 // inside a record a row nests is inline storage exactly where it always was.
@@ -322,7 +322,7 @@ func csFixedBufferPrimitive(typ string) bool {
 
 // blittableType maps a field's declared type to its C# blittable spelling. A
 // bool is ONE byte under the managed model, which is what this form asserts
-// (SPEC-TABLES.md §19.3).
+// (docs/SPEC-TABLES.md §19.3).
 func (g *blockGen) blittableType(t ir.FieldType) string { return csBlittableType(g.unit, t) }
 
 // csBlittableType maps a field's declared type to its C# blittable spelling,
@@ -380,7 +380,7 @@ func csBlittableType(u *ir.Unit, t ir.FieldType) string {
 	return "byte"
 }
 
-// ---- the layout check (SPEC-TABLES.md §19.3) ----
+// ---- the layout check (docs/SPEC-TABLES.md §19.3) ----
 
 // emitLayoutCheck emits the generated check, run once, asserting each type's
 // size and each field's offset against the same constants the C++ side
@@ -388,7 +388,7 @@ func csBlittableType(u *ir.Unit, t ir.FieldType) string {
 // initialization and throws naming the type, the field, the expected offset
 // and the one THIS runtime produced.
 func (g *blockGen) emitLayoutCheck() {
-	g.rf("// The LAYOUT CONTRACT's C# half (SPEC-TABLES.md §19.3), run ONCE: every size\n")
+	g.rf("// The LAYOUT CONTRACT's C# half (docs/SPEC-TABLES.md §19.3), run ONCE: every size\n")
 	g.rf("// and offset the C++ side static_asserts, asserted here against the MANAGED\n")
 	g.rf("// model — Unsafe.SizeOf and address arithmetic on a stack instance, never\n")
 	g.rf("// Marshal.SizeOf or Marshal.OffsetOf. The two models disagree on the field\n")
@@ -427,13 +427,13 @@ func (g *blockGen) emitLayoutCheck() {
 	g.rf("        if (got != want)\n        {\n")
 	g.rf("            throw new InvalidOperationException(\n")
 	g.rf("                \"schema block layout: \" + what + \" is \" + got + \" bytes in this runtime and \" + want +\n")
-	g.rf("                \" in the schema the C++ side asserts — the two sides disagree about the bytes (SPEC-TABLES.md §19.3)\");\n")
+	g.rf("                \" in the schema the C++ side asserts — the two sides disagree about the bytes (docs/SPEC-TABLES.md §19.3)\");\n")
 	g.rf("        }\n    }\n\n")
 	g.rf("    private static void Offset(string what, long got, long want)\n    {\n")
 	g.rf("        if (got != want)\n        {\n")
 	g.rf("            throw new InvalidOperationException(\n")
 	g.rf("                \"schema block layout: \" + what + \" sits at \" + got + \" in this runtime and \" + want +\n")
-	g.rf("                \" in the schema the C++ side asserts — the two sides disagree about the bytes (SPEC-TABLES.md §19.3)\");\n")
+	g.rf("                \" in the schema the C++ side asserts — the two sides disagree about the bytes (docs/SPEC-TABLES.md §19.3)\");\n")
 	g.rf("        }\n    }\n")
 	g.rf("}\n\n")
 }
@@ -468,7 +468,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 // blockFieldAddress spells the address of one field of the stack probe. It
 // takes `projection` for the same reason emitBlittableFields does: a bounded
 // array of structs is a TRIPLE in a projection and INLINE everywhere else, and
-// the two have different addresses to take (SPEC-TABLES.md §2.7).
+// the two have different addresses to take (docs/SPEC-TABLES.md §2.7).
 func (g *blockGen) blockFieldAddress(f *ir.Field, projection bool) string {
 	name := ir.GoExportName(f.Name)
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
@@ -490,7 +490,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	name := bl.Table.Name
 	pkg := capitalize(g.unit.Package)
 	g.hf("// %s's block: a pointer and a length, and then rows in place. Opening one\n", name)
-	g.hf("// is ONE check and no copy; reading a row is one add (SPEC-TABLES.md §19.2).\n")
+	g.hf("// is ONE check and no copy; reading a row is one add (docs/SPEC-TABLES.md §19.2).\n")
 	g.hf("//\n")
 	g.hf("// The bytes belong to the CONSUMER — a managed array it pinned, a NativeArray,\n")
 	g.hf("// or memory the producer handed across. Nothing here allocates.\n")
@@ -504,7 +504,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("        TableBlockLayout.Verify();\n")
 	g.hf("    }\n\n")
 	g.hf("    // The storage a PRODUCER of this block allocates, sized from the declared\n")
-	g.hf("    // maxima (SPEC-TABLES.md §19.1). A C# consumer does not allocate a block —\n")
+	g.hf("    // maxima (docs/SPEC-TABLES.md §19.1). A C# consumer does not allocate a block —\n")
 	g.hf("    // the bytes are handed to it — but it caps by this: a playback buffer, a\n")
 	g.hf("    // recording, a scratch copy all size from the generated constant rather\n")
 	g.hf("    // than from a number a person wrote down beside it.\n")
@@ -516,7 +516,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.hf("    // %s: the constants this build asserts against. A consumer INDEXES with\n", a.Field.Name)
-		g.hf("    // what it read from the instance, never with these (SPEC-TABLES.md §19.2).\n")
+		g.hf("    // what it read from the instance, never with these (docs/SPEC-TABLES.md §19.2).\n")
 		g.hf("    public const long %sStride = %d;\n", field, a.Stride)
 		g.hf("    public const long %sMax = %d;\n", field, a.Max)
 		g.hf("    public const long %sProjectionOffset = %d;\n\n", field, a.TripleOffset)
@@ -545,7 +545,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 
 func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	name := bl.Table.Name
-	g.hf("    // Open checks once and points, and this is the WHOLE check (SPEC-TABLES.md\n")
+	g.hf("    // Open checks once and points, and this is the WHOLE check (docs/SPEC-TABLES.md\n")
 	g.hf("    // §19.2): the magic read bytewise, the BYTE ORDER the prologue carries\n")
 	g.hf("    // against this build's own, the BUILD VERSION against this build's own,\n")
 	g.hf("    // each array's pitch, its offset_of, its COUNT against the declared\n")
@@ -610,7 +610,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.hf("        return true;\n    }\n\n")
 }
 
-// emitBlockDescriptors is the REFLECTIVE half (SPEC-TABLES.md §8, §19.2): the
+// emitBlockDescriptors is the REFLECTIVE half (docs/SPEC-TABLES.md §8, §19.2): the
 // projection offset of every field, the offsets of the three members inside
 // each triple, and the element's own descriptor beside them. A consumer
 // holding these reads the facts out of an instance and points at rows, with no
@@ -727,7 +727,7 @@ func blockRuntime(buildVersion uint64) string {
 	return `// What a table knows about ONE of its out-of-line arrays: where the rows
 // start, how many there are, and how far apart they sit. Sixteen bytes with no
 // interior padding, sitting at the array field's own position in the
-// projection (SPEC-TABLES.md §2.7). A consumer reads all three FROM THE
+// projection (docs/SPEC-TABLES.md §2.7). A consumer reads all three FROM THE
 // INSTANCE, never from its own constants — that is the difference between a
 // generated pair of structs and an ABI (§19.2).
 [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 16)]
@@ -738,7 +738,7 @@ public struct TableBlockTriple
     public uint Stride;    // the pitch the consumer indexes with, from the data
 }
 
-// One array's rows, ITERATED at the pitch the instance gives (SPEC-TABLES.md
+// One array's rows, ITERATED at the pitch the instance gives (docs/SPEC-TABLES.md
 // §19.2). A call site never spells the pitch arithmetic itself, for the same
 // reason a keyed array's call sites should not re-derive their own slot rule:
 // the idiom written at every call site is the one written wrong somewhere.
@@ -790,7 +790,7 @@ public unsafe readonly struct TableBlockRows<T> where T : unmanaged
     }
 }
 
-// ---- reflection over a block (SPEC-TABLES.md §8, §19.2) ----
+// ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 //
 // The descriptors are the mechanism, and they are what retires a hand-kept
 // mirror: a consumer holding them reads the triples out of an instance and
@@ -826,7 +826,7 @@ public sealed class TableBlockFieldInfo
 public sealed class TableBlockInfo
 {
     public string Name;
-    public ulong BuildVersion; // the unit's (SPEC-TABLES.md §20)
+    public ulong BuildVersion; // the unit's (docs/SPEC-TABLES.md §20)
     public int Size;           // the record's own size: a projection's, or a row's
     public int Align;
     public int NumFields;
@@ -837,7 +837,7 @@ public sealed class TableBlockInfo
 // namespace-level functions — and this is the block form's slice of it.
 public static partial class Schema
 {
-    // THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the
+    // THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the
     // bytes this build produces depend on — the type wire's protocol id, every
     // table's layout keyed by wire id, every table's meaning (defaults,
     // ranges, enum and union vocabularies, keyed the same way), and the
@@ -850,7 +850,7 @@ public static partial class Schema
     // this and never the protocol id; a type edit moves both.
     public const ulong BuildVersion = ` + fmt.Sprintf("0x%016xUL", buildVersion) + `;
 
-    // The block's magic (SPEC-TABLES.md §19.1), read BYTEWISE: it is the one
+    // The block's magic (docs/SPEC-TABLES.md §19.1), read BYTEWISE: it is the one
     // field read without assuming the order the rest of the block is in.
     public const ulong TableBlockMagic = 0x4b4c42414d484353UL;
 

@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package tabledemo — protocol id 0x9924bf6d375ec24d (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
 #pragma once
@@ -31,13 +31,13 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
-// ---- reflection (tables only, SPEC-TABLES.md) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id/kind, storage offset, bounds, ranges, enum names and branch guards —
@@ -49,7 +49,7 @@ struct TableTypeInfo;
 // One arm of a union field: where its payload sits inside the union's storage
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
-// is spelled twice (SPEC-TABLES.md §8).
+// is spelled twice (docs/SPEC-TABLES.md §8).
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
@@ -91,14 +91,14 @@ struct TableFieldInfo
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
     const char * (*enum_name)( uint64_t value );
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
@@ -322,7 +322,7 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace tabledemo {
 
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on — the type wire's protocol id, every record's
 // layout as the compiler's own C ABI model computes it, and the facts that
 // decide what a load PUTS in those slots. It is the number a cook's header
@@ -345,14 +345,14 @@ inline constexpr uint64_t BuildVersion = 0x89c17e3f4a1f6255ull;
 
 namespace tabledemo {
 
-// ---- the cooked form (SPEC-TABLES.md §7) ----
+// ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 //
 // A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 // order. Every word of the header is a u64 written in the byte order the cook
 // was produced in, and the header is 64 bytes:
 //
 //     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
-//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//     8  build_version       the unit's id (docs/SPEC-TABLES.md §20)
 //    16  byte_order          1 little, 2 big — the order that WROTE the file
 //    24  data_length         the region's bytes, rounded up to alignment
 //    32  attribution_length  the directory's bytes, or 0
@@ -399,7 +399,7 @@ inline constexpr uint64_t TableCookByteOrder = 1; // little
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
-// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+// describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
 inline constexpr uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
@@ -500,7 +500,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 namespace tabledemo {
 
 // table WeaponConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct WeaponConfig {
     float damage = 21.0f;
     float speed = 500.0f;
@@ -511,7 +511,7 @@ struct WeaponConfig {
 };
 
 // table LoadoutConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct LoadoutConfig {
     Grade grade = Grade::Silver;
     Grade grades[4] = {}; // used count beside it; count in [0, 4]
@@ -525,7 +525,7 @@ struct LoadoutConfig {
 };
 
 // table ProfileConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct ProfileConfig {
     char name[32 + 1] = {}; // string(32): max length, used length beside it
     int32_t name_length = 0;
@@ -548,7 +548,7 @@ struct ProfileConfig {
 };
 
 // table RootConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RootConfig {
     char version_note[16 + 1] = {}; // string(16): max length, used length beside it
     int32_t version_note_length = 0;
@@ -560,7 +560,7 @@ struct RootConfig {
 
 // Grade on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef TABLEDEMO_SCHEMA_TABLE_ENUM_GRADE
 #define TABLEDEMO_SCHEMA_TABLE_ENUM_GRADE
 inline bool TableEnumId( Grade value, uint16_t & id )
@@ -587,7 +587,7 @@ inline bool TableEnumValue( uint16_t id, Grade & out )
 }
 #endif // TABLEDEMO_SCHEMA_TABLE_ENUM_GRADE
 
-// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void WeaponConfigReset( WeaponConfig & value );
 inline void LoadoutConfigReset( LoadoutConfig & value );
@@ -743,7 +743,7 @@ inline bool WeaponConfigSaveBody( TableWriter & w, const WeaponConfig & value )
     if ( value.effect.type != EffectType::None )
     {
         w.put16( 0xe33a ); w.put8( 15 ); // effect
-        // the ARM ID is the hash of the arm's NAME (SPEC-TABLES.md §5), so
+        // the ARM ID is the hash of the arm's NAME (docs/SPEC-TABLES.md §5), so
         // arms may be added anywhere, removed and reordered
         switch ( value.effect.type )
         {
@@ -864,7 +864,7 @@ inline bool WeaponConfigLoadBody( TableReader & r, WeaponConfig & value )
                 if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
                 {
                     TableReader sub( r.buffer + r.offset, body_len, r.report );
-                    switch ( arm_id ) // the arm's NAME hash (SPEC-TABLES.md §5)
+                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                     {
                         case 0xeae6: // buff
                             value.effect.type = EffectType::Buff;
@@ -879,7 +879,7 @@ inline bool WeaponConfigLoadBody( TableReader & r, WeaponConfig & value )
                             // the body is skipped by its length, never misdecoded. The
                             // reset is explicit, not the prefill's: a repeated field id
                             // must not leave an arm decoded by an earlier occurrence
-                            // standing (SPEC-TABLES.md §4).
+                            // standing (docs/SPEC-TABLES.md §4).
                             value.effect.type = EffectType::None;
                             r.report->unknown++;
                             break;
@@ -2132,7 +2132,7 @@ inline bool DebuffLoad( Debuff & value, const uint8_t * buffer, int64_t bytes, T
     return DebuffLoadBody( r, value );
 }
 
-// ---- the cooked form: point at a cook (SPEC-TABLES.md §7) ----
+// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
 // WeaponConfigOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
@@ -2255,62 +2255,62 @@ static_assert( std::is_standard_layout<Buff>::value, "Buff must stay standard-la
 static_assert( std::is_trivially_copyable<Debuff>::value, "Debuff must stay relocatable" );
 static_assert( std::is_standard_layout<Debuff>::value, "Debuff must stay standard-layout for offsetof" );
 
-// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----
+// ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
 // The compiler derived every number below from the declaration and folded it
 // into the BUILD VERSION; these asserts are this compiler saying whether it
 // agrees. The model is not self-evidently right — on 32-bit System V
 // alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
 // rather than assumed.
-static_assert( sizeof( WeaponConfig ) == 28, "WeaponConfig's sizeof moved: the build version was taken over 28, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( WeaponConfig ) == 4, "WeaponConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( WeaponConfig, damage ) == 0, "WeaponConfig's field damage moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( WeaponConfig, speed ) == 4, "WeaponConfig's field speed moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( WeaponConfig, penetration ) == 8, "WeaponConfig's field penetration moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( WeaponConfig, channel ) == 12, "WeaponConfig's field channel moved: the build version was taken over offset 12 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( WeaponConfig, homing ) == 16, "WeaponConfig's field homing moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( WeaponConfig, effect ) == 20, "WeaponConfig's field effect moved: the build version was taken over offset 20 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( LoadoutConfig ) == 176, "LoadoutConfig's sizeof moved: the build version was taken over 176, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( LoadoutConfig ) == 8, "LoadoutConfig's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( LoadoutConfig, grade ) == 0, "LoadoutConfig's field grade moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( LoadoutConfig, grades ) == 1, "LoadoutConfig's field grades moved: the build version was taken over offset 1 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( LoadoutConfig, podium ) == 12, "LoadoutConfig's field podium moved: the build version was taken over offset 12 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( LoadoutConfig, perks ) == 16, "LoadoutConfig's field perks moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( LoadoutConfig, primary ) == 24, "LoadoutConfig's field primary moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( LoadoutConfig, backups ) == 52, "LoadoutConfig's field backups moved: the build version was taken over offset 52 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( LoadoutConfig, attachments ) == 108, "LoadoutConfig's field attachments moved: the build version was taken over offset 108 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( ProfileConfig ) == 304, "ProfileConfig's sizeof moved: the build version was taken over 304, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( ProfileConfig ) == 8, "ProfileConfig's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, name ) == 0, "ProfileConfig's field name moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, icon ) == 40, "ProfileConfig's field icon moved: the build version was taken over offset 40 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, experience ) == 60, "ProfileConfig's field experience moved: the build version was taken over offset 60 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, tilt ) == 64, "ProfileConfig's field tilt moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, heading ) == 66, "ProfileConfig's field heading moved: the build version was taken over offset 66 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, timestamp ) == 72, "ProfileConfig's field timestamp moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, badge ) == 80, "ProfileConfig's field badge moved: the build version was taken over offset 80 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, port ) == 82, "ProfileConfig's field port moved: the build version was taken over offset 82 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, epoch ) == 88, "ProfileConfig's field epoch moved: the build version was taken over offset 88 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, precision ) == 96, "ProfileConfig's field precision moved: the build version was taken over offset 96 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, ratings ) == 104, "ProfileConfig's field ratings moved: the build version was taken over offset 104 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, has_loadout ) == 120, "ProfileConfig's field has_loadout moved: the build version was taken over offset 120 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ProfileConfig, loadout ) == 128, "ProfileConfig's field loadout moved: the build version was taken over offset 128 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RootConfig ) == 1480, "RootConfig's sizeof moved: the build version was taken over 1480, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RootConfig ) == 8, "RootConfig's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RootConfig, version_note ) == 0, "RootConfig's field version_note moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RootConfig, weapons ) == 24, "RootConfig's field weapons moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RootConfig, profiles ) == 256, "RootConfig's field profiles moved: the build version was taken over offset 256 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Attachment ) == 8, "Attachment's sizeof moved: the build version was taken over 8, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Attachment ) == 4, "Attachment's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Attachment, slot ) == 0, "Attachment's field slot moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Attachment, power ) == 4, "Attachment's field power moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Buff ) == 4, "Buff's sizeof moved: the build version was taken over 4, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Buff ) == 4, "Buff's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Buff, multiplier ) == 0, "Buff's field multiplier moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Debuff ) == 4, "Debuff's sizeof moved: the build version was taken over 4, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Debuff ) == 4, "Debuff's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Debuff, amount ) == 0, "Debuff's field amount moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( WeaponConfig ) == 28, "WeaponConfig's sizeof moved: the build version was taken over 28, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( WeaponConfig ) == 4, "WeaponConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( WeaponConfig, damage ) == 0, "WeaponConfig's field damage moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( WeaponConfig, speed ) == 4, "WeaponConfig's field speed moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( WeaponConfig, penetration ) == 8, "WeaponConfig's field penetration moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( WeaponConfig, channel ) == 12, "WeaponConfig's field channel moved: the build version was taken over offset 12 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( WeaponConfig, homing ) == 16, "WeaponConfig's field homing moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( WeaponConfig, effect ) == 20, "WeaponConfig's field effect moved: the build version was taken over offset 20 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( LoadoutConfig ) == 176, "LoadoutConfig's sizeof moved: the build version was taken over 176, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( LoadoutConfig ) == 8, "LoadoutConfig's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( LoadoutConfig, grade ) == 0, "LoadoutConfig's field grade moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( LoadoutConfig, grades ) == 1, "LoadoutConfig's field grades moved: the build version was taken over offset 1 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( LoadoutConfig, podium ) == 12, "LoadoutConfig's field podium moved: the build version was taken over offset 12 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( LoadoutConfig, perks ) == 16, "LoadoutConfig's field perks moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( LoadoutConfig, primary ) == 24, "LoadoutConfig's field primary moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( LoadoutConfig, backups ) == 52, "LoadoutConfig's field backups moved: the build version was taken over offset 52 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( LoadoutConfig, attachments ) == 108, "LoadoutConfig's field attachments moved: the build version was taken over offset 108 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( ProfileConfig ) == 304, "ProfileConfig's sizeof moved: the build version was taken over 304, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( ProfileConfig ) == 8, "ProfileConfig's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, name ) == 0, "ProfileConfig's field name moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, icon ) == 40, "ProfileConfig's field icon moved: the build version was taken over offset 40 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, experience ) == 60, "ProfileConfig's field experience moved: the build version was taken over offset 60 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, tilt ) == 64, "ProfileConfig's field tilt moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, heading ) == 66, "ProfileConfig's field heading moved: the build version was taken over offset 66 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, timestamp ) == 72, "ProfileConfig's field timestamp moved: the build version was taken over offset 72 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, badge ) == 80, "ProfileConfig's field badge moved: the build version was taken over offset 80 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, port ) == 82, "ProfileConfig's field port moved: the build version was taken over offset 82 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, epoch ) == 88, "ProfileConfig's field epoch moved: the build version was taken over offset 88 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, precision ) == 96, "ProfileConfig's field precision moved: the build version was taken over offset 96 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, ratings ) == 104, "ProfileConfig's field ratings moved: the build version was taken over offset 104 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, has_loadout ) == 120, "ProfileConfig's field has_loadout moved: the build version was taken over offset 120 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ProfileConfig, loadout ) == 128, "ProfileConfig's field loadout moved: the build version was taken over offset 128 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RootConfig ) == 1480, "RootConfig's sizeof moved: the build version was taken over 1480, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RootConfig ) == 8, "RootConfig's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RootConfig, version_note ) == 0, "RootConfig's field version_note moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RootConfig, weapons ) == 24, "RootConfig's field weapons moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RootConfig, profiles ) == 256, "RootConfig's field profiles moved: the build version was taken over offset 256 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Attachment ) == 8, "Attachment's sizeof moved: the build version was taken over 8, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Attachment ) == 4, "Attachment's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Attachment, slot ) == 0, "Attachment's field slot moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Attachment, power ) == 4, "Attachment's field power moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Buff ) == 4, "Buff's sizeof moved: the build version was taken over 4, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Buff ) == 4, "Buff's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Buff, multiplier ) == 0, "Buff's field multiplier moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Debuff ) == 4, "Debuff's sizeof moved: the build version was taken over 4, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Debuff ) == 4, "Debuff's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Debuff, amount ) == 0, "Debuff's field amount moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 
-// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
+// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * WeaponConfigTableType();
 inline const TableTypeInfo * LoadoutConfigTableType();
@@ -2409,52 +2409,52 @@ inline const TableTypeInfo * DebuffTableType()
     return &info;
 }
 
-// ---- the text form (SPEC-TABLES.md §16) ----
+// ---- the text form (docs/SPEC-TABLES.md §16) ----
 
 // WeaponConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // TablesTable.cpp; link it to use them.
 bool WeaponConfigFromJson( WeaponConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t WeaponConfigToJsonMeasure( const WeaponConfig & value );
 int64_t WeaponConfigToJson( const WeaponConfig & value, char * buffer, int64_t capacity );
 
 // LoadoutConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // TablesTable.cpp; link it to use them.
 bool LoadoutConfigFromJson( LoadoutConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t LoadoutConfigToJsonMeasure( const LoadoutConfig & value );
 int64_t LoadoutConfigToJson( const LoadoutConfig & value, char * buffer, int64_t capacity );
 
 // ProfileConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // TablesTable.cpp; link it to use them.
 bool ProfileConfigFromJson( ProfileConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t ProfileConfigToJsonMeasure( const ProfileConfig & value );
 int64_t ProfileConfigToJson( const ProfileConfig & value, char * buffer, int64_t capacity );
 
 // RootConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // TablesTable.cpp; link it to use them.
 bool RootConfigFromJson( RootConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RootConfigToJsonMeasure( const RootConfig & value );
 int64_t RootConfigToJson( const RootConfig & value, char * buffer, int64_t capacity );
 
 // Attachment in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // TablesTable.cpp; link it to use them.
 bool AttachmentFromJson( Attachment & value, const char * text, int64_t bytes, TableReport * report );
 int64_t AttachmentToJsonMeasure( const Attachment & value );
 int64_t AttachmentToJson( const Attachment & value, char * buffer, int64_t capacity );
 
 // Buff in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // TablesTable.cpp; link it to use them.
 bool BuffFromJson( Buff & value, const char * text, int64_t bytes, TableReport * report );
 int64_t BuffToJsonMeasure( const Buff & value );
 int64_t BuffToJson( const Buff & value, char * buffer, int64_t capacity );
 
 // Debuff in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // TablesTable.cpp; link it to use them.
 bool DebuffFromJson( Debuff & value, const char * text, int64_t bytes, TableReport * report );
 int64_t DebuffToJsonMeasure( const Debuff & value );

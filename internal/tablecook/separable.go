@@ -1,5 +1,5 @@
 // THE ATTRIBUTION IS SEPARABLE, and this is what that costs to say in bytes
-// (SPEC-TABLES.md §6.3, §7).
+// (docs/SPEC-TABLES.md §6.3, §7).
 //
 // Nothing that READS a structure touches the directory: a deref is one add on a
 // self-relative offset, in a locked region and a loaded one alike. `LoadMeasure`

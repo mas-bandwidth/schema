@@ -1,4 +1,4 @@
-// Graph.schema — the POINTER corpus (SPEC-TABLES.md §2). Types remain value
+// Graph.schema — the POINTER corpus (docs/SPEC-TABLES.md §2). Types remain value
 // semantics; tables allow pointer semantics, and this unit exercises every
 // consequence: recursion through a pointer edge, a tree, an optional
 // subtable, aliasing, a variable table nested by value, a bounded array of

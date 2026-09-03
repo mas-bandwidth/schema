@@ -1,4 +1,4 @@
-// The text form's WRITE half (SPEC-TABLES.md §16.1): one instance as one JSON
+// The text form's WRITE half (docs/SPEC-TABLES.md §16.1): one instance as one JSON
 // text — every field, in declaration order, defaults included, because a text
 // is for people and tools and a text that elides is a text a reader has to
 // know the schema to complete.
@@ -32,7 +32,7 @@ func (w *writer) line(depth int) {
 	}
 }
 
-// Write renders one instance as one JSON text (SPEC-TABLES.md §16.3). It fails
+// Write renders one instance as one JSON text (docs/SPEC-TABLES.md §16.3). It fails
 // where a value has no text spelling at all — a non-finite float, an enum value
 // or union tag no variant names, a flags bit no variant names — which measure
 // and save refuse for the same reason (§5), and where the structure is nested
@@ -51,7 +51,7 @@ func (m *Model) writeValue(w *writer, inst *Instance, depth int) error {
 	// must agree about which structures are legal or one of them recurses
 	// away on a structure the other refuses.
 	if depth > maxJsonDepth {
-		return fmt.Errorf("table %s: nested past the depth cap of %d — a pointer chain's nesting depth is its length (SPEC-TABLES.md §3.1)", inst.Def.Name, maxJsonDepth)
+		return fmt.Errorf("table %s: nested past the depth cap of %d — a pointer chain's nesting depth is its length (docs/SPEC-TABLES.md §3.1)", inst.Def.Name, maxJsonDepth)
 	}
 	guards := Guards(inst.Def)
 	any := false
@@ -61,7 +61,7 @@ func (m *Model) writeValue(w *writer, inst *Instance, depth int) error {
 			continue
 		}
 		// an OPTIONAL field writes its key only when present: presence IS the
-		// presence, and an absent key is the absence (SPEC-TABLES.md §16.2)
+		// presence, and an absent key is the absence (docs/SPEC-TABLES.md §16.2)
 		if fv.Def.Type.Optional && !fv.Present {
 			continue
 		}
@@ -125,7 +125,7 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 }
 
 // writeKeyed renders an enum-keyed array as an OBJECT keyed by variant name
-// (SPEC-TABLES.md §2.4, §16.2). Every slot the array KEYS is written, as a
+// (docs/SPEC-TABLES.md §2.4, §16.2). Every slot the array KEYS is written, as a
 // fixed array writes every element — the slots ARE the value. None keys no
 // slot, so the storage holds none for it and nothing is written for it.
 func (m *Model) writeKeyed(w *writer, fv *Field, depth int) error {
@@ -143,7 +143,7 @@ func (m *Model) writeKeyed(w *writer, fv *Field, depth int) error {
 		w.line(depth + 1)
 		name := EnumName(f.KeyEnumRef, KeyedSlotValue(f, slot))
 		if name == "" {
-			return fmt.Errorf("enum-keyed array %s: slot %d belongs to no variant of %s — a slot with no name has no text spelling (SPEC-TABLES.md §3.2)", f.Name, slot, f.KeyEnum)
+			return fmt.Errorf("enum-keyed array %s: slot %d belongs to no variant of %s — a slot with no name has no text spelling (docs/SPEC-TABLES.md §3.2)", f.Name, slot, f.KeyEnum)
 		}
 		writeString(w, []byte(name))
 		w.raw(": ")
@@ -164,7 +164,7 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 			return nil
 		}
 		if int(cell.U) > len(un.Variants) {
-			return fmt.Errorf("union %s: tag %d names no arm — the writer refuses it, exactly as measure does (SPEC-TABLES.md §5)", un.Name, cell.U)
+			return fmt.Errorf("union %s: tag %d names no arm — the writer refuses it, exactly as measure does (docs/SPEC-TABLES.md §5)", un.Name, cell.U)
 		}
 		arm := un.Variants[cell.U-1]
 		w.put('{')
@@ -185,7 +185,7 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 	if st := StructOf(f); st != nil {
 		if f.Type.Pointer {
 			// a pointer is an object, or `null` — and a NULL POINTER IS NULL
-			// (SPEC-TABLES.md §16.2). Materializing a pointee here would both
+			// (docs/SPEC-TABLES.md §16.2). Materializing a pointee here would both
 			// lie about the value and, for a self-referential table, never
 			// terminate.
 			if cell.Tab == nil {
@@ -205,7 +205,7 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		// wire identity: the writer REFUSES rather than writing None over it
 		name := EnumName(e, int64(cell.U))
 		if name == "" {
-			return fmt.Errorf("enum %s: value %d names no variant — the writer refuses it, exactly as measure does (SPEC-TABLES.md §5)", e.Name, cell.U)
+			return fmt.Errorf("enum %s: value %d names no variant — the writer refuses it, exactly as measure does (docs/SPEC-TABLES.md §5)", e.Name, cell.U)
 		}
 		writeString(w, []byte(name))
 		return nil
@@ -223,7 +223,7 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 				continue
 			}
 			if bit >= len(fl.Variants) {
-				return fmt.Errorf("flags %s: bit %d names no variant — a bit with no name has no text spelling (SPEC-TABLES.md §16.2)", fl.Name, bit)
+				return fmt.Errorf("flags %s: bit %d names no variant — a bit with no name has no text spelling (docs/SPEC-TABLES.md §16.2)", fl.Name, bit)
 			}
 			if !first {
 				w.put(',')
@@ -302,7 +302,7 @@ func utf8Sequence(s []byte) int {
 // §8.1). The read path is byte-transparent — the wire imposes no encoding (§3)
 // and a string may hold anything — so the WRITER is where that obligation is
 // met: a byte that is not part of a well-formed sequence is written as U+FFFD,
-// one per bad byte, and never raw (SPEC-TABLES.md §16.3). The cost is stated
+// one per bad byte, and never raw (docs/SPEC-TABLES.md §16.3). The cost is stated
 // plainly: for a string holding invalid UTF-8 the round trip is NOT
 // byte-identical, because the alternative is emitting a text that is not JSON.
 func writeString(w *writer, s []byte) {
@@ -383,7 +383,7 @@ func writeBase64(w *writer, data []byte) {
 // already apply to an enum value no variant names (§5).
 func writeFloat(w *writer, value float64, single bool) error {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
-		return fmt.Errorf("float %v has no JSON spelling — the writer refuses it rather than losing it silently (SPEC-TABLES.md §16.2)", value)
+		return fmt.Errorf("float %v has no JSON spelling — the writer refuses it rather than losing it silently (docs/SPEC-TABLES.md §16.2)", value)
 	}
 	low, high := 15, 17
 	if single {
@@ -448,7 +448,7 @@ func expDigits(exp int) string {
 	return sign + strconv.Itoa(exp)
 }
 
-// ---- the packer's two entry points (SPEC-TABLES.md §17.1) ----
+// ---- the packer's two entry points (docs/SPEC-TABLES.md §17.1) ----
 
 // WriteValue renders ONE FIELD's value as the text a `<field>.json` carries.
 func (m *Model) WriteValue(fv *Field) ([]byte, error) {

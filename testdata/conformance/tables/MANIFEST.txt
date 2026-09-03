@@ -1,4 +1,4 @@
-# THE TABLES CONFORMANCE MANIFEST (SPEC-TABLES.md §3, §7, §16, §19).
+# THE TABLES CONFORMANCE MANIFEST (docs/SPEC-TABLES.md §3, §7, §16, §19).
 #
 # The registry every language driver reads. It is DATA: a port implements the
 # driver contract in test/conformance/README.md, points it at this file, and
@@ -80,7 +80,7 @@ report p3_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_optional_empty.bin
 block block_render blockdemo testdata/wire/tables/block_render.bin
 block block_padded blockdemo testdata/wire/tables/block_padded.bin
 
-# THE COOKED FILES (SPEC-TABLES.md §7). The fixture itself is materialised by
+# THE COOKED FILES (docs/SPEC-TABLES.md §7). The fixture itself is materialised by
 # test/cookgen, which is deterministic, so what is pinned here is the canonical
 # NODE DUMP: one line per node and one per leaf, the same walk in every
 # language, byte-compared. A record laid out one byte differently INSIDE a node
@@ -91,7 +91,7 @@ cook Album    graphdemo testdata/conformance/tables/cook/Album.dump
 cook TreeNode graphdemo testdata/conformance/tables/cook/TreeNode.dump
 cook ListNode graphdemo testdata/conformance/tables/cook/ListNode.dump
 
-# THE BLOCK FORGERY BATTERY as data (SPEC-TABLES.md §19.2), pinned from
+# THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
 # word of an otherwise valid block image, resolved to a byte offset.
 #

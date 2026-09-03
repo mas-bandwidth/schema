@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — the TABLE wire (SPEC-TABLES.md): evolution-tolerant, neutral
+// package tabledemo — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
 // bytes, no serialize dependency. Tables version by field id, never by the
 // unit's protocol id.
 //
@@ -137,7 +137,7 @@ namespace Tabledemo
         public int KindMismatch;   // known id, changed type — skipped, never misdecoded
         public int Clamped;        // out-of-range values clamped to declared bounds
         // duplicate is the TEXT FORM's counter and the WIRE NEVER RAISES IT
-        // (SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
+        // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
         // whose last occurrence wins, silently. It rides on this struct because a
         // caller has one report type, not two — so a wire read always leaves it
         // zero, and it is here for the JSON walk that has not been ported yet.
@@ -145,7 +145,7 @@ namespace Tabledemo
         public bool Malformed;     // framing damage; decode stopped, partial result kept
     }
 
-    // ---- reflection (tables only, SPEC-TABLES.md §8) ----
+    // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
     //
     // Static field descriptors for every type in the table closure: name, wire
     // id and kind, bounds, ranges, the enum/union vocabulary and its wire ids,
@@ -176,13 +176,13 @@ namespace Tabledemo
         public long EnumMax;        // enums: highest valid value (None = 0 always valid);
                                     // unions: the arm count (tag range [0, EnumMax]); else -1
         public Func<ulong, string> EnumName;  // enums: value -> name; unions: tag -> arm name; else null
-        // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+        // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
         // hash of the variant's name; for a union, the hash of the arm's name.
         // 0 is the reserved id — an enum's None, a union's empty. null for every
         // other kind. Walk [0, EnumMax] to enumerate a vocabulary and its ids.
         public Func<ulong, ushort> VariantId;
 
-        // an ENUM-KEYED array (SPEC-TABLES.md §2.4, §8): the array has one slot
+        // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
         // per variant of KeyTypeName, indexed by the variant's value, and its
         // slots ride under variant ids rather than positions. KeyName and KeyId
         // are the key's vocabulary — walk [0, ArrayBound) to print slots by name.
@@ -355,7 +355,7 @@ namespace Tabledemo
     }
 
     // table Patrol — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class Patrol
     {
         public bool Active;
@@ -384,7 +384,7 @@ namespace Tabledemo
     // one slice per generated file.
     public static partial class Schema
     {
-        // the IEEE-754 bit patterns the wire carries for f32 and f64 (SPEC-TABLES.md §3)
+        // the IEEE-754 bit patterns the wire carries for f32 and f64 (docs/SPEC-TABLES.md §3)
         public static float TableBitsToFloat(uint bits)
         {
             return BitConverter.Int32BitsToSingle(unchecked((int)bits));
@@ -617,7 +617,7 @@ namespace Tabledemo
             return PatrolLoadBody(ref r, value);
         }
 
-        // ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----
+        // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo PatrolTableInfo;
         public static TableTypeInfo PatrolTableType()

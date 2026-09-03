@@ -1,4 +1,4 @@
-// Tables.schema — the tables corpus (SPEC-TABLES.md): a config-like root
+// Tables.schema — the tables corpus (docs/SPEC-TABLES.md): a config-like root
 // table whose closure exercises every table-wire kind. A root table with
 // nested subtables IS a format: this file is the shape of a game's
 // config/assets bin, spelled with generic names. The envelope around it

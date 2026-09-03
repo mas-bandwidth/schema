@@ -1,5 +1,5 @@
 // P1.schema — the PRE-POINTER side of the pointer evolution pair
-// (SPEC-TABLES.md §3): `link` nests Link BY VALUE, and Link has no `next`.
+// (docs/SPEC-TABLES.md §3): `link` nests Link BY VALUE, and Link has no `next`.
 // P2 turns the same field into a pointer and gives Link a pointer of its own.
 // A pointer rides with exactly a by-value nesting's framing, so both
 // directions must read.

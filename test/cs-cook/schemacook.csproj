@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- THE COOKED FORM's C# READ SIDE, under test (SPEC-TABLES.md §7, §7.5).
+  <!-- THE COOKED FORM's C# READ SIDE, under test (docs/SPEC-TABLES.md §7, §7.5).
 
        `schema cook` writes the file and the generated <Root>Cook.Open points at
        it, and the two were written from the page independently: the tool in Go,
@@ -30,7 +30,7 @@
     <AssemblyName>schemacooktest</AssemblyName>
     <!-- Overridable so the Makefile's NEGATIVE CONTROLS can point this leg at a
          sabotaged copy of the generated sources and require it to go red
-         (SPEC-TABLES.md §7.5's negative-control rule). -->
+         (docs/SPEC-TABLES.md §7.5's negative-control rule). -->
     <CookGeneratedDir Condition="'$(CookGeneratedDir)' == ''">../../build/tables-generated-cs/pointers</CookGeneratedDir>
   </PropertyGroup>
 

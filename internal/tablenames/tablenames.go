@@ -1,5 +1,5 @@
 // Package tablenames is THE registry of unit-level names the generated
-// TABLE-wire runtimes define (SPEC-TABLES.md §11).
+// TABLE-wire runtimes define (docs/SPEC-TABLES.md §11).
 //
 // It exists because the same list is needed in two places that must never
 // disagree: the CHECKER claims these names when a unit declares a table, so no
@@ -68,7 +68,7 @@ var registry = []Name{
 	{Name: "TableEnumId", By: Cpp | Cs, What: "an enum value -> its table-wire variant id"},
 	{Name: "TableEnumValue", By: Cpp | Cs, What: "a table-wire variant id -> its enum value"},
 
-	// the ENUM-KEYED array's storage type (SPEC-TABLES.md §2.4). C++ spells it
+	// the ENUM-KEYED array's storage type (docs/SPEC-TABLES.md §2.4). C++ spells it
 	// a class template and C# a generic class; both put it at unit level, and
 	// both emit it ONLY into a unit that declares a keyed array — but the
 	// claim is unconditional on a unit declaring a table, for the same reason
@@ -106,7 +106,7 @@ var registry = []Name{
 	{Name: "TableBitsToDouble", By: Cs, What: "u64 bits -> double"},
 	{Name: "TableDoubleToBits", By: Cs, What: "double -> u64 bits"},
 
-	// the VARIABLE-LENGTH runtime (SPEC-TABLES.md §6): the arena, the region
+	// the VARIABLE-LENGTH runtime (docs/SPEC-TABLES.md §6): the arena, the region
 	// and the reference slot. C++ only today — the C# backend carries the
 	// fixed class and refuses a pointered unit by name (§11).
 	// TableRef carries a SECOND, unrelated meaning in C#: a field descriptor's
@@ -121,7 +121,7 @@ var registry = []Name{
 	{Name: "TableBuilder", By: Cpp, What: "the mutable life's base"},
 	{Name: "TableRegion", By: Cpp, What: "the locked, packed region"},
 
-	// the BLOCK FORM's runtime (SPEC-TABLES.md §19), emitted into
+	// the BLOCK FORM's runtime (docs/SPEC-TABLES.md §19), emitted into
 	// <Base>Block.h / <Base>Block.cs and into no Table source at all. Claimed
 	// whenever a unit declares a table, on the same terms as everything above:
 	// nothing declares the block form, every fixed table has one, and a table
@@ -144,7 +144,7 @@ var registry = []Name{
 	{Name: "table_block_read64", By: Cpp, What: "the prologue read BYTEWISE"},
 	{Name: "table_block_align", By: Cpp, What: "round an offset up to an alignment"},
 
-	// the COOKED FORM's read runtime (SPEC-TABLES.md §7), emitted into
+	// the COOKED FORM's read runtime (docs/SPEC-TABLES.md §7), emitted into
 	// <Base>Table.h of a unit that declares a variable-length table — a cook's
 	// root is one — and into no value-only unit's header at all. Claimed
 	// whenever a unit declares a table, on the same terms as the
@@ -157,7 +157,7 @@ var registry = []Name{
 	{Name: "TableCookMaxAlign", By: Cpp | Cs, What: "the greatest region alignment a cooked header may name"},
 	{Name: "table_cook_read64", By: Cpp, What: "the cooked header read BYTEWISE"},
 
-	// the COOK's C# half (SPEC-TABLES.md §7, §19.2's road). C# has no include
+	// the COOK's C# half (docs/SPEC-TABLES.md §7, §19.2's road). C# has no include
 	// guard, so the read runtime is emitted ONCE per unit into the cook home's
 	// <Base>Cook.cs — and because one assembly sees every file, a declaration
 	// taking one of these names anywhere in the unit collides with it.
@@ -168,11 +168,11 @@ var registry = []Name{
 	{Name: "TableCookFieldInfo", By: Cs, What: "a cooked field's reflection descriptor"},
 	{Name: "TableCookStorage", By: Cs, What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
 
-	// the unit's BUILD VERSION (SPEC-TABLES.md §20): the one digest a block
+	// the unit's BUILD VERSION (docs/SPEC-TABLES.md §20): the one digest a block
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is
 	// claimed here because it is a unit-level name the generated block sources
 	// define.
-	{Name: "BuildVersion", By: Cpp, What: "the unit's build version (SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++ puts it at namespace scope, so the claim is the union"},
+	{Name: "BuildVersion", By: Cpp, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++ puts it at namespace scope, so the claim is the union"},
 }
 
 // All returns the whole registry, sorted by name.

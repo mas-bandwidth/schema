@@ -1,6 +1,6 @@
 // THE WALK: every node the C# side reaches, through its OWN derefs — and the
 // DIRECTORY, which is the tool's independent statement of where every node is
-// (SPEC-TABLES.md §7.1, §7.5).
+// (docs/SPEC-TABLES.md §7.1, §7.5).
 //
 // Generic over the cook descriptors, which is the whole point of them: a
 // pointer slot is eight bytes at `Offset` holding the SIGNED SELF-RELATIVE
@@ -285,7 +285,7 @@ static unsafe class Header
         return (ulong)(Bytes + (long)alignment - 1) & ~(alignment - 1);
     }
 
-    // The node type id (SPEC-TABLES.md §3.1, §7.3): fnv1a64 over the TABLE'S
+    // The node type id (docs/SPEC-TABLES.md §3.1, §7.3): fnv1a64 over the TABLE'S
     // NAME. Derived here from the declaration's own name rather than read back
     // out of the file the oracle is checking.
     public static ulong Fnv1a64(string s)

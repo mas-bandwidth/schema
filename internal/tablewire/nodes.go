@@ -1,4 +1,4 @@
-// The FLAT NODE TABLE's numbering (SPEC-TABLES.md §3.1), which is also the
+// The FLAT NODE TABLE's numbering (docs/SPEC-TABLES.md §3.1), which is also the
 // order a region is packed in (§6.3) and therefore the order a COOK lays its
 // nodes out in (§7).
 //
@@ -74,7 +74,7 @@ func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open m
 			return false
 		}
 		if open[target] {
-			err = fmt.Errorf("data cycle: %s.%s reaches %s, which is still open — a cycle is refused at save and at Lock, and nothing recurses away (SPEC-TABLES.md §3.1)", inst.Def.Name, field, target.Def.Name)
+			err = fmt.Errorf("data cycle: %s.%s reaches %s, which is still open — a cycle is refused at save and at Lock, and nothing recurses away (docs/SPEC-TABLES.md §3.1)", inst.Def.Name, field, target.Def.Name)
 			return false
 		}
 		if _, seen := g.index[target]; seen {

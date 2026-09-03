@@ -1,6 +1,6 @@
 // The VARIABLE-LENGTH table runtime, emitted once per package and only when
 // the unit declares a table with a pointer anywhere in its by-value closure
-// (SPEC-TABLES.md §2). A unit of pointer-free tables emits none of this and
+// (docs/SPEC-TABLES.md §2). A unit of pointer-free tables emits none of this and
 // its generated output is byte-identical to a build with this file deleted —
 // that zero-cost property is the point of deriving the mode.
 //
@@ -27,7 +27,7 @@ func tableArenaRuntime(pkg string) string {
 
 namespace ` + pkg + ` {
 
-// ---- variable-length tables: tuning constants (SPEC-TABLES.md) ----
+// ---- variable-length tables: tuning constants (docs/SPEC-TABLES.md) ----
 //
 // The segment size and the count multiply to exactly 2^32: the u32 reference
 // is the arena's hard ceiling, and these constants saturate it rather than

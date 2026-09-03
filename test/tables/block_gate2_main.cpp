@@ -1,5 +1,5 @@
 /*
-    GATE 2's C++ half (SPEC-TABLES.md §12.1): the per-frame WRITE, generated
+    GATE 2's C++ half (docs/SPEC-TABLES.md §12.1): the per-frame WRITE, generated
     form against the hand-written scatter it replaces.
 
     THE BAR, in the owner's words: the generated form must be the SAME SPEED,
@@ -456,7 +456,7 @@ int main( int argc, char ** argv )
     const double generated = median( generated_us );
     const double ratio = generated / hand;
 
-    printf( "gate 2, the per-frame C++ WRITE (SPEC-TABLES.md §12.1)\n" );
+    printf( "gate 2, the per-frame C++ WRITE (docs/SPEC-TABLES.md §12.1)\n" );
     printf( "  hand-written scatter : %8.2f us/frame (median of %d)\n", hand, samples );
     printf( "  generated block form : %8.2f us/frame (median of %d)\n", generated, samples );
     printf( "  ratio (generated/hand): %.3f\n", ratio );

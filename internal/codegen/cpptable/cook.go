@@ -1,4 +1,4 @@
-// The COOKED FORM's read side in C++ (SPEC-TABLES.md §7): <Name>Open, which
+// The COOKED FORM's read side in C++ (docs/SPEC-TABLES.md §7): <Name>Open, which
 // matches a header and POINTS.
 //
 // Cooking is fundamentally an optimization, and this file is the half that
@@ -49,7 +49,7 @@ func buildVersionConstant(pkg string, buildVersion uint64) string {
 
 namespace ` + pkg + ` {
 
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on — the type wire's protocol id, every record's
 // layout as the compiler's own C ABI model computes it, and the facts that
 // decide what a load PUTS in those slots. It is the number a cook's header
@@ -79,14 +79,14 @@ func tableCookRuntime(pkg string) string {
 
 namespace ` + pkg + ` {
 
-// ---- the cooked form (SPEC-TABLES.md §7) ----
+// ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 //
 // A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 // order. Every word of the header is a u64 written in the byte order the cook
 // was produced in, and the header is 64 bytes:
 //
 //     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
-//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//     8  build_version       the unit's id (docs/SPEC-TABLES.md §20)
 //    16  byte_order          1 little, 2 big — the order that WROTE the file
 //    24  data_length         the region's bytes, rounded up to alignment
 //    32  attribution_length  the directory's bytes, or 0
@@ -133,7 +133,7 @@ inline constexpr uint64_t TableCookByteOrder = 1; // little
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
-// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+// describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
 inline constexpr uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
@@ -234,7 +234,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 }
 
 // emitCookSurface emits one table's <Name>Open — the RUNTIME's only entry point
-// into a cooked file (SPEC-TABLES.md §7).
+// into a cooked file (docs/SPEC-TABLES.md §7).
 //
 // EVERY TABLE GETS ONE. A cook's root is a table, any table: the tool's
 // `--root` names one and refuses a `type`, which is not a node and has no type
@@ -250,7 +250,7 @@ func (g *tableGen) emitCookSurface(members []*ir.Struct) {
 			continue // a `type` is not a node and cannot be a cook's root
 		}
 		if first {
-			g.pf("// ---- the cooked form: point at a cook (SPEC-TABLES.md §7) ----\n\n")
+			g.pf("// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----\n\n")
 			first = false
 		}
 		g.emitCookOpen(st)
@@ -293,7 +293,7 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 }
 
 // emitCookLayoutAsserts is this backend's half of the LAYOUT CONTRACT
-// (SPEC-TABLES.md §20.3) for the COOK closure: the compiler computes each
+// (docs/SPEC-TABLES.md §20.3) for the COOK closure: the compiler computes each
 // record's layout from the declaration and folds it into the build version,
 // and this backend emits code asserting that ITS OWN compiler agrees. A
 // disagreement is a BUILD ERROR naming the record, the field and both offsets
@@ -322,7 +322,7 @@ func (g *tableGen) emitCookLayoutAsserts(members []*ir.Struct) {
 	if len(laid) == 0 {
 		return
 	}
-	g.pf("// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----\n")
+	g.pf("// ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----\n")
 	g.pf("//\n")
 	g.pf("// The compiler derived every number below from the declaration and folded it\n")
 	g.pf("// into the BUILD VERSION; these asserts are this compiler saying whether it\n")
@@ -331,12 +331,12 @@ func (g *tableGen) emitCookLayoutAsserts(members []*ir.Struct) {
 	g.pf("// rather than assumed.\n")
 	for _, st := range laid {
 		ml := ir.RecordLayout(g.unit, st)
-		g.pf("static_assert( sizeof( %s ) == %d, \"%s's sizeof moved: the build version was taken over %d, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)\" );\n",
+		g.pf("static_assert( sizeof( %s ) == %d, \"%s's sizeof moved: the build version was taken over %d, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)\" );\n",
 			st.Name, ml.Size, st.Name, ml.Size)
-		g.pf("static_assert( alignof( %s ) == %d, \"%s's alignof moved: the build version was taken over %d (SPEC-TABLES.md §20.3)\" );\n",
+		g.pf("static_assert( alignof( %s ) == %d, \"%s's alignof moved: the build version was taken over %d (docs/SPEC-TABLES.md §20.3)\" );\n",
 			st.Name, ml.Align, st.Name, ml.Align)
 		for _, fl := range ml.Fields {
-			g.pf("static_assert( offsetof( %s, %s ) == %d, \"%s's field %s moved: the build version was taken over offset %d (SPEC-TABLES.md §20.3)\" );\n",
+			g.pf("static_assert( offsetof( %s, %s ) == %d, \"%s's field %s moved: the build version was taken over offset %d (docs/SPEC-TABLES.md §20.3)\" );\n",
 				st.Name, fl.Field.Name, fl.Offset, st.Name, fl.Field.Name, fl.Offset)
 		}
 	}

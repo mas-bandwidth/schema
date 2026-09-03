@@ -37,7 +37,7 @@ var trees = []struct{ root, dir string }{
 }
 
 // The corpus trees pack, and they pack SILENTLY: nothing in them is unknown to
-// the schema, nothing is the wrong shape, nothing is cut down (SPEC-TABLES.md
+// the schema, nothing is the wrong shape, nothing is cut down (docs/SPEC-TABLES.md
 // §17.3).
 func TestPackCorpusIsSilent(t *testing.T) {
 	c, u := corpus(t)
@@ -57,7 +57,7 @@ func TestPackCorpusIsSilent(t *testing.T) {
 	}
 }
 
-// `unpack` -> `pack` is byte-stable (SPEC-TABLES.md §17.2), and so is the
+// `unpack` -> `pack` is byte-stable (docs/SPEC-TABLES.md §17.2), and so is the
 // second lap: the text form loses nothing the wire carried.
 func TestUnpackThenPackIsByteStable(t *testing.T) {
 	c, u := corpus(t)
@@ -100,7 +100,7 @@ func byteStable(t *testing.T, c *compiler.Compiler, u *ir.Unit, root, dir string
 	}
 }
 
-// The root may simply be one `<Root>.json` (SPEC-TABLES.md §17.1's last rule),
+// The root may simply be one `<Root>.json` (docs/SPEC-TABLES.md §17.1's last rule),
 // and it packs to the same bytes the field tree does.
 func TestRootAsOneFile(t *testing.T) {
 	c, u := corpus(t)
@@ -181,7 +181,7 @@ func TestRootAsOneFile(t *testing.T) {
 }
 
 // A tree that does not mirror the table is REPORTED rather than guessed at
-// (SPEC-TABLES.md §17.3), and each refusal names the file and the reason.
+// (docs/SPEC-TABLES.md §17.3), and each refusal names the file and the reason.
 func TestHostileTreesAreRefused(t *testing.T) {
 	cases := []struct {
 		tree string
@@ -221,7 +221,7 @@ func TestUnknownRootIsRefused(t *testing.T) {
 }
 
 // The HOSTILE-VALUE corpus, over the same manifest the backend half of the gate
-// reads (SPEC-TABLES.md §16.2, §16.3, §17.5): one tree per rule the text form
+// reads (docs/SPEC-TABLES.md §16.2, §16.3, §17.5): one tree per rule the text form
 // states, each with the outcome the rule requires. Two clean trees prove the
 // happy path and nothing else; this is where the rules bite.
 func TestHostileValueCorpus(t *testing.T) {
@@ -352,7 +352,7 @@ func TestHiddenEntries(t *testing.T) {
 
 // A VARIABLE-LENGTH root is refused by name on BOTH verbs, and unpack refuses
 // before it writes anything: its text form reads through a builder, a named
-// follow-on (SPEC-TABLES.md §16.1, §15).
+// follow-on (docs/SPEC-TABLES.md §16.1, §15).
 func TestVariableRootRefusedOnBothVerbs(t *testing.T) {
 	c := compiler.New()
 	paths, err := compiler.GatherPaths([]string{"../../tables/pointers"})
@@ -390,7 +390,7 @@ func TestVariableRootRefusedOnBothVerbs(t *testing.T) {
 	}
 }
 
-// A PINNED TEXT (SPEC-TABLES.md §16.5): what `unpack` writes for each corpus
+// A PINNED TEXT (docs/SPEC-TABLES.md §16.5): what `unpack` writes for each corpus
 // root, committed byte for byte. A round trip alone cannot see a vocabulary
 // error — reader and writer share the name function, so a wrong spelling round
 // trips perfectly — and it cannot see the pretty-print contract drift either.

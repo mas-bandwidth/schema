@@ -1,4 +1,4 @@
-// THE COOKED FORM (SPEC-TABLES.md §7): the header, the data part and the
+// THE COOKED FORM (docs/SPEC-TABLES.md §7): the header, the data part and the
 // attribution part, and the two directions between a cook and the wire.
 //
 // Cooking is fundamentally an OPTIMIZATION, and every rule here is a
@@ -286,7 +286,7 @@ const NotMaterialized = uint64(0xFFFFFFFFFFFFFFFF)
 // order, position `i` describing node index `i + 1`.
 func (h Header) Directory(file []byte) ([]DirectoryEntry, error) {
 	if h.AttribLength == 0 {
-		return nil, fmt.Errorf("this cook carries no ATTRIBUTION part, so there is nothing to check it against: the header records its length as zero and the file is just data (SPEC-TABLES.md §7)")
+		return nil, fmt.Errorf("this cook carries no ATTRIBUTION part, so there is nothing to check it against: the header records its length as zero and the file is just data (docs/SPEC-TABLES.md §7)")
 	}
 	if h.AttribLength%directoryEntry != 0 {
 		return nil, fmt.Errorf("the attribution part is %d bytes, which is not a whole number of %d-byte directory entries", h.AttribLength, directoryEntry)

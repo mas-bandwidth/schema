@@ -1,4 +1,4 @@
-// GATE 2's C# half (SPEC-TABLES.md §12.1): the per-frame READ, generated form
+// GATE 2's C# half (docs/SPEC-TABLES.md §12.1): the per-frame READ, generated form
 // against the hand-written mirror it replaces.
 //
 // THE BAR, in the owner's words: the generated form must be the SAME SPEED, or
@@ -250,7 +250,7 @@ static class Gate2
             double generatedMedian = Median(generatedUs);
             double ratio = generatedMedian / handMedian;
 
-            Console.WriteLine("gate 2, the per-frame C# READ (SPEC-TABLES.md §12.1)");
+            Console.WriteLine("gate 2, the per-frame C# READ (docs/SPEC-TABLES.md §12.1)");
             Console.WriteLine("  hand-written mirror  : " + handMedian.ToString("F3") + " us/frame (median of " + Samples + ")");
             Console.WriteLine("  generated block form : " + generatedMedian.ToString("F3") + " us/frame (median of " + Samples + ")");
             Console.WriteLine("  ratio (generated/hand): " + ratio.ToString("F3"));

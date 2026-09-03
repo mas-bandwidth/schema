@@ -1,4 +1,4 @@
-// Command relative turns benchmark CSVs into the tables PERFORMANCE.md carries:
+// Command relative turns benchmark CSVs into the tables docs/PERFORMANCE.md carries:
 // absolute per-language rates, THE RELATIVE TABLE (everything as a percentage
 // of C — the reference, ruled by Glenn 2026-08-17: "make C the reference. It
 // is the 100%. C++ is measured against C."), and A/B deltas between two runs.

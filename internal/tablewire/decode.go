@@ -1,4 +1,4 @@
-// The wire's READ half (SPEC-TABLES.md §4): any reader reads any data, and
+// The wire's READ half (docs/SPEC-TABLES.md §4): any reader reads any data, and
 // the differences are reported, never fatal. Unknown ids are skipped by their
 // length and counted, a kind mismatch is skipped rather than misdecoded,
 // out-of-range values clamp, framing damage stops the damaged nesting level
@@ -117,7 +117,7 @@ func (r *wireReader) skip(kind uint8) bool {
 // wireKind is the kind byte a field's payload rides under. It is
 // ir.TableFieldKind with the one case that function does not see: a POINTER
 // field rides as a NODE INDEX under its own kind `17`, because a body that may
-// be named twice cannot also sit inline at one of its names (SPEC-TABLES.md
+// be named twice cannot also sit inline at one of its names (docs/SPEC-TABLES.md
 // §3.1). `*T` and a by-value `T` are therefore no longer one framing: `T` and
 // `?T` share kind `13`, and an edit between a pointer and either of the others
 // — or between a pointer and a plain `uint32` — is §4's kind mismatch, counted
@@ -185,7 +185,7 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 		}
 		if fv.Def.Type.Optional {
 			// the field rode, so it is PRESENT — content decides nothing here
-			// either (SPEC-TABLES.md §2.3)
+			// either (docs/SPEC-TABLES.md §2.3)
 			fv.Present = true
 		}
 	}
@@ -198,7 +198,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		// A pointer field's payload is a NUMBER: it is bounds-checked and
 		// stored, never followed. There is no traversal on the load path, and
 		// therefore no traversal bound — no depth cap, no visited set, no
-		// ordering rule on the indices (SPEC-TABLES.md §3.1).
+		// ordering rule on the indices (docs/SPEC-TABLES.md §3.1).
 		if !r.has(4) {
 			r.report.Malformed = true
 			return false
@@ -334,7 +334,7 @@ func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 }
 
 // keyed places an enum-keyed array's pairs BY VARIANT ID, so a slot lands by
-// name however the enum moved (SPEC-TABLES.md §3.2). A key this reader cannot
+// name however the enum moved (docs/SPEC-TABLES.md §3.2). A key this reader cannot
 // name is skipped by its length and counted unknown; a slot the writer never
 // sent keeps its declared default; a key of 0 is None, which keys no slot,
 // and is framing damage.

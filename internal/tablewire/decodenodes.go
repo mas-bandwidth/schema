@@ -1,4 +1,4 @@
-// LOAD IS A SCAN, and that is the whole of its bound (SPEC-TABLES.md §3.1).
+// LOAD IS A SCAN, and that is the whole of its bound (docs/SPEC-TABLES.md §3.1).
 // Reading follows no reference: the records are walked once to learn what each
 // node IS, and once to decode each body into its own storage, so a forward
 // index resolves without scratch. Every record is visited a fixed number of
