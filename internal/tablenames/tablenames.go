@@ -51,6 +51,8 @@ const (
 	// nothing (internal/codegen/ctable's `sym`); what is left is what a
 	// consumer reads and writes.
 	C
+	// Elixir is the Elixir table backend (internal/codegen/elixirtable).
+	Elixir
 )
 
 // Name is one spelling the generated table runtimes carry, and the backends
@@ -276,7 +278,13 @@ var registry = []Name{
 	// slipping in under a regex that could not see it.
 	{Name: "TableId", By: Rust, What: "the TableEnum trait's value -> wire id half", Scoped: true},
 	{Name: "TableValue", By: Rust, What: "the TableEnum trait's wire id -> value half", Scoped: true},
-	{Name: "TableRuntime", By: Rust, What: "the unit's shared table runtime MODULE", Scoped: true},
+	// NOT scoped, because of ELIXIR: a Rust module named table_runtime is
+	// private to the crate and no declaration can reach it, but the Elixir
+	// emitter's <Package>.TableRuntime is a MODULE at unit level and a
+	// declaration named TableRuntime lowers to exactly that spelling. The
+	// claim is the UNION over the backends, never the intersection, so the
+	// name is claimed for all of them.
+	{Name: "TableRuntime", By: Rust | Elixir, What: "the unit's shared table runtime — a Rust crate module, an Elixir unit-level module"},
 	{Name: "TableRelocatable", By: Rust, What: "the relocatability assert's const fn", Scoped: true},
 	{Name: "TableBlockByteswap64", By: Rust, What: "the block magic's byte-order swap", Scoped: true},
 	{Name: "TableJsonRead", By: Rust, What: "the text form's read entry point", Scoped: true},
@@ -411,11 +419,23 @@ var registry = []Name{
 	{Name: "tableJsonWriteValue", By: Go, What: "one step of the text form's generic walk (§16)"},
 	{Name: "tableUnionArms", By: Go, What: "the unit's union-field shapes, one slice"},
 
+	// ---- the ELIXIR backend's own unit-level MODULES
+	// (internal/codegen/elixirtable) ----
+	//
+	// An Elixir declaration lowers to a module under the unit's own namespace,
+	// so every module the emitter defines at that level is a name a
+	// declaration could collide with — which is why these are claimed and why
+	// the Elixir scan looks for MODULE SEGMENTS rather than for a Table*
+	// prefix. The two accelerators carry their own runtimes because a VARIABLE
+	// unit gets no table runtime at all (§11) and still has both of them.
+	{Name: "BlockRuntime", By: Elixir, What: "the BLOCK form's shared runtime module (docs/SPEC-TABLES.md §19)"},
+	{Name: "CookRuntime", By: Elixir, What: "the COOKED form's shared runtime module (docs/SPEC-TABLES.md §7)"},
+
 	// the unit's BUILD VERSION (docs/SPEC-TABLES.md §20): the one digest a block
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is
 	// claimed here because it is a unit-level name the generated block sources
 	// define.
-	{Name: "BuildVersion", By: Cpp | Rust | Go | Java, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust and Java put it at unit scope — Java in a file of its own name — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
+	{Name: "BuildVersion", By: Cpp | Rust | Go | Java | Elixir, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java and Elixir put it at unit scope — Java in a file of its own name, Elixir as a module — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 
 	// ---- THE C BACKEND's own spellings (internal/codegen/ctable) ----
 	//

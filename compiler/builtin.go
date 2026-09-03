@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
@@ -23,10 +24,10 @@ import (
 )
 
 // refuseTables is the named refusal every target without a table backend
-// gives a unit that declares tables (docs/SPEC-TABLES.md): C, C++, C#, Go, Rust
-// and Java carry table backends today, and each remaining per-language one is a
-// named follow-on — refused loudly here rather than silently emitting a unit
-// with the tables missing.
+// gives a unit that declares tables (docs/SPEC-TABLES.md): C, C++, C#, Go, Rust,
+// Java and Elixir carry table backends today, and each remaining per-language
+// one is a named follow-on — refused loudly here rather than silently emitting
+// a unit with the tables missing.
 func refuseTables(u *ir.Unit, target string) error {
 	if len(u.Tables) == 0 {
 		return nil
@@ -36,7 +37,7 @@ func refuseTables(u *ir.Unit, target string) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return fmt.Errorf("unit declares tables (%s) — tables are C, C++, C#, Go, Rust and Java only today, and the %s table backend is a named follow-on; generate with --lang c, --lang cpp, --lang cs, --lang go, --lang rust or --lang java, or move the tables to their own unit (docs/SPEC-TABLES.md)",
+	return fmt.Errorf("unit declares tables (%s) — tables are C, C++, C#, Go, Rust, Java and Elixir only today, and the %s table backend is a named follow-on; generate with --lang c, --lang cpp, --lang cs, --lang go, --lang rust, --lang java or --lang elixir, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), target)
 }
 
@@ -78,10 +79,25 @@ type elixirTarget struct{}
 func (elixirTarget) Names() []string { return []string{"elixir"} }
 
 func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTables(u, "elixir"); err != nil {
+	files, err := elixir.Generate(u)
+	if err != nil {
 		return nil, err
 	}
-	return elixir.Generate(u)
+	// units that declare tables ALSO get <Base>Table.ex per file — the
+	// TABLE-wire codecs, the reflection descriptors, the text form and the two
+	// accelerators' READ side (docs/SPEC-TABLES.md); a table-free unit's output
+	// is byte-identical to what the packet emitter alone produces.
+	tables, err := elixirtable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file whose basename collides with a generated table module; rename one file (docs/SPEC-TABLES.md §11)", name)
+		}
+		files[name] = data
+	}
+	return files, nil
 }
 
 // cTarget emits C99 (SPEC §6.1).

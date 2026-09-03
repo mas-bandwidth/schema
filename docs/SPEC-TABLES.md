@@ -153,15 +153,66 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++ and C, and C#, Go, Rust and Java for the FIXED class.**
-C++ is the reference, and its generated text is the C-like dialect of
+**Backend status: C++ and C, and C#, Go, Rust, Java and Elixir for the FIXED
+class.** C++ is the reference, and its generated text is the C-like dialect of
 `serialize.h` — C header spellings, no STL, every call into the C library
-behind a hook the program can define (§13.9). C++ and C carry both classes; C#, Go, Rust and Java carry the fixed class
-(§6.1) — optionals, enum-keyed arrays, the text form (§16) and all — and each
-refuses a unit whose closure declares a pointer, naming its variable class as a
-follow-on. Every other backend refuses a unit that declares tables at all, by
-name, with this document cited. The remaining per-language backends are named
-follow-ons (§15).
+behind a hook the program can define (§13.9). C++ and C carry both classes; C#,
+Go, Rust, Java and Elixir carry the fixed class (§6.1) — optionals, enum-keyed
+arrays, the text form (§16) and all — and each refuses a unit whose closure
+declares a pointer, naming its variable class as a follow-on. Every other
+backend refuses a unit that declares tables at all, by name, with this document
+cited. The remaining per-language backends are named follow-ons (§15).
+
+**ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
+than of the port.** A BEAM term has no layout a producer could write, so this
+backend never produces a block or a cook: it OPENS one another build wrote and
+reads every slot at its offset. The tolerant wire and the text form are whole —
+measure, save, load, the report, `FromJson` and `ToJson` — because those are
+about bytes and not about addresses. Seven spellings are the language's and
+each is named where it is spelled: the READ REPORT is a value the caller
+threads, because the BEAM has no mutable struct; STORAGE is SPEC §6.1's Elixir
+column, so a `string(N)` is a binary whose `byte_size` IS the used length and an
+array is a list whose `length` IS the count, with no companion to keep in step;
+a `?T` is `nil` when absent; an enum-keyed array's slots are a TUPLE on a
+`table`, so a slot is reached in constant time, and the packet emitter's LIST on
+a `type`, whose struct is the packet emitter's and whose storage this wire
+changes nothing about — a walk rather than a reach, stated at the accessor's
+own site; a non-finite float travels as `{:nonfinite, bits}`, the convention
+the packet emitter already established; every refusal is `{:ok, result}` or
+`:error` with a bang form beside each writer, the packet emitter's reader
+verdict and its writer contract; and `Open` — both the block's and the cook's —
+takes a `lead` beside the bytes — how many bytes past an aligned base the
+caller's buffer begins — because §7 and §19.2 check the alignment of the BASE
+and a BEAM binary has no address a caller can observe or place. That last one
+is an ADDITION and not a subtraction: stating the fact makes the check a real
+one, where the alternative is a leg that cannot refuse an unaligned base at
+all, and `make tables-elixir-block-lead` holds the rule over every lead in
+0..64 with a negative control that drops the check from the emitter.
+
+**And what a reading-tier leg cannot claim, said plainly.** "The read path
+allocates nothing" is a claim about a language with caller-owned buffers, and
+Elixir has none: a decoded value IS an allocation and a sub-binary over the
+caller's bytes is a small one. What the leg holds instead is that the COUNT per
+iteration does not move — heap words, refc-binary allocations and reductions,
+pinned per case, re-pinned deliberately, with a negative control that reds it —
+which is the same instrument the Rust leg's allocation audit uses and a
+different number.
+
+**THE SOAK BESIDE IT GATES ON A FLOOR, and the reason generalizes past this
+port.** A managed runtime's memory readings are not levels: a process's heap
+size is CAPACITY a collection may leave grown, and a binary allocator's figure
+counts CARRIERS, so a corpus with one large instance in it reads bimodally
+forever without leaking a byte. A gate on the last sample, or on any sample,
+therefore reds for the runtime rather than for the code. A LEAK does one thing
+no carrier and no grown heap can imitate: it lifts the MINIMUM. So the gate
+compares the floor of the first third of the samples against the floor of the
+last third, and the two negative controls are different sabotages on purpose —
+a generated load that allocates more and frees it reds the COUNT and lifts no
+floor, and one that retains a copy of its bytes reds the FLOOR. Both sabotage
+the EMITTER through `go build -overlay`, as the fuzz controls do, because a
+control that sabotages the instrument's own loop proves the reading responds
+and not that a leak in generated code would be found. Two instruments, two
+questions, and neither one answers the other's.
 
 **The RUST backend's own three divergences**, each forced by the language and
 each named where it is spelled rather than discovered in the source. The
@@ -289,7 +340,15 @@ byte-swapped and its order word is not this reader's — which is what the two
 FOREIGN surfaces ask for, and `make tables-java-order` holds the same property
 over a whole big-endian cook the tool wrote.
 
-**The BLOCK FORM (§2.7, §19) is live in C++, C#, Go, Rust, Java and C**, and it took C++ and
+**ELIXIR's byte order is the reader's too, and by the language's own means**:
+every bitstring segment the generated code matches names its endianness —
+`little-unsigned-64` and the rest — so `BlockRuntime`'s magic and byte-order
+words and `CookRuntime`'s are constants, and the host's order is never
+consulted anywhere in the port. A big-endian BEAM reads the same bytes to the
+same terms. The two FOREIGN surfaces hold the refusal, and no order gate stands
+beside them because there is no platform query for one to catch.
+
+**The BLOCK FORM (§2.7, §19) is live in C++, C, C#, Go, Rust, Java and Elixir**, and it took C++ and
 C# TOGETHER to land, because the form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path
@@ -307,9 +366,13 @@ generated padding as C#'s do and the layout contract as the refusing `init()`
 above; Java emits `<Table>Block.java` per block-form table and `<Name>Row.java`
 per record, whose generated ACCESSORS read each field at its offset because
 there is no struct to lay out, with the layout contract as the
-accessors-against-descriptors check above; and C emits `<Base>Block.h` and
+accessors-against-descriptors check above; C emits `<Base>Block.h` and
 `<Base>Block.c` on the C++ pair's terms, with the layout contract asserted at
-compile time under C99's own means (§20.3). **The unit's
+compile time under C99's own means (§20.3); and **Elixir emits `<Base>Block.ex`
+beside `BlockRuntime.ex`, and it is the READING TIER** — there is no projection
+record and no layout assert, because a BEAM term has no layout to assert, so the
+descriptors ARE the mechanism and the typed accessors read each row field at its
+offset out of a SUB-BINARY the runtime shares rather than copies. **The unit's
 shared runtime is named by the PACKAGE in every port, so file order cannot
 reach it (§19.2)** — and in Java the package IS the unit scope, so each runtime
 type is a file of its own name and no rule is needed at all. The READ side is what the ported backends carry: a block is
@@ -2154,12 +2217,14 @@ orders, over the same IR the emitters consume — and `wire → cook → wire` i
 byte-identical over the corpus, which is what proves the accelerator loses no
 fact. Every port emits the entry point for EVERY TABLE (below) — a root is any
 table — in its own idiom: the C++ backend `<Root>Open`, the C# backend
-`<Root>Cook.Open`, the Java backend `<Root>Cook.open`. A game points at a cook
-the tooling produced, whichever language it reads from. The WRITE side
-(`Cook` and `CookMeasure`, §7.6) is emitted by the C++ backend for every FIXED
-table, and its bytes are the tool's, byte for byte, in both byte orders; a
-pointered root's writer and every other language's are named follow-ons (§15),
-and until they land those builds run the tool.
+`<Root>Cook.Open`, the Java backend `<Root>Cook.open`, and the Elixir backend
+`cook_open_<root>`, which takes a `lead` beside the bytes for the base-alignment
+check a BEAM binary cannot carry (§7.1's alignment word, and the backend status
+in §2). A game points at a cook the tooling produced, whichever language it
+reads from. The WRITE side (`Cook` and `CookMeasure`, §7.6) is emitted by the
+C++ backend for every FIXED table, and its bytes are the tool's, byte for byte,
+in both byte orders; a pointered root's writer and every other language's are
+named follow-ons (§15), and until they land those builds run the tool.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -3825,11 +3890,12 @@ in build version (§20.5).
   enums are in scope on the same terms.
 - Tables under a backend that carries none (status, above) — refused with the
   follow-on named, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Go and Java backends** —
-  the ports carry the fixed class on the wire; their variable class there (the
-  arena, the builder, the region, the node-table codec) is a named follow-on, and
-  a pointered unit gets no `<Base>Table.cs`, no `<Base>Table.go` and no
-  `<Base>Table.java` at all, with the refusal NAMED in every source the unit does
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Go, Rust, Java and
+  Elixir backends** — every port carries the fixed class on the wire; their
+  variable class there (the arena, the builder, the region, the node-table
+  codec) is a named follow-on, and a pointered unit gets no `<Base>Table.cs`, no
+  `<Base>Table.go`, no `<base>_table.rs`, no `<Base>Table.java` and no
+  `<Base>Table.ex` at all, with the refusal NAMED in every source the unit does
   emit rather than left as a missing symbol.
 
   **The refusal is of the WIRE and of nothing else, and the distinction is the
@@ -3838,12 +3904,14 @@ in build version (§20.5).
   match, and neither needs one line of the codec the variable class is missing.
   So a pointered unit's block and cook sources ARE emitted in every port —
   `<Base>Block.cs` and `<Base>Cook.cs`, `<Base>Block.go` and `<Base>Cook.go`,
-  Java's `<Table>Block.java`, `<Table>Cook.java` and `<Name>Row.java`; its
-  `<Root>Cook.Open`, its `<Root>Open` and its `<Root>Cook.open` open its cooked
-  assets in full, and what a consumer cannot do in any of those languages is
-  `Measure`, `Save` and `Load` over the tolerant wire.
+  `<base>_block.rs` and `<base>_cook.rs`, Java's `<Table>Block.java`,
+  `<Table>Cook.java` and `<Name>Row.java`, and Elixir's `<Base>Block.ex` and
+  `<Base>Cook.ex`; its `<Root>Cook.Open`, its `<Root>Open`, its
+  `<Root>Cook.open` and its `cook_open_<root>` open its cooked assets in full,
+  and what a consumer cannot do in any of those languages is `Measure`, `Save`
+  and `Load` over the tolerant wire.
   **This is what lets §7's "a root is any table, and every table gets one" hold
-  in C# and Go too**, which a whole-unit refusal made impossible to say.
+  in every port**, which a whole-unit refusal made impossible to say.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
   outside a table body; a specified default on a pointer field; and an
@@ -4108,6 +4176,22 @@ in build version (§20.5).
     text walk claims nothing**, for C#'s reason in Go's spelling: every function
     the walk defines is unexported, and a schema declaration always generates an
     exported name, so the two sets cannot meet.
+
+    **ELIXIR UNSCOPES ONE AND ADDS TWO, and the collision class is the
+    language's own.** A declaration lowers to a MODULE under the unit's
+    namespace, so what a schema can collide with is exactly the set of
+    unit-level module segments the emitter defines — not a `Table*` prefix,
+    which would have been blind to three of the four this backend spells.
+    `TableRuntime` is a private crate module in Rust, which no declaration can
+    reach, and a `<Package>.TableRuntime` module in Elixir, which one lowers to
+    exactly: the claim is the UNION, so the name is claimed for every target.
+    The two additions are `BlockRuntime` and `CookRuntime`, the two
+    accelerators' shared runtimes, which are their own modules because a
+    VARIABLE unit gets no table runtime at all (above) and still has both
+    accelerators. **Elixir's own text walk claims nothing beyond
+    `TableRuntime`**: every function it spells is a function of that module,
+    reached through its owner, and a declaration lowers to a module rather than
+    to a function of one.
 
   **The view's own unit-scope spellings are refused as declaration names in
   every unit, always** (§8.3): `UnitView`, `UnitViewInfo`, `ViewType`,
@@ -5293,13 +5377,14 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class, in C++, C#, Rust, Java and C.** No
-backend implements the variable class's text form yet — a pointered unit
-gets no `FromJson`, refused by name with this section cited, never emitted
-with the function missing — and the second walker it needs, emitted only in
-units that declare a pointer, is tracked as schema#275. In C#, Rust and Java
-that refusal is already made one level up: a pointered unit gets no table source
-at all (§11), so it has no text form for the same reason it has no wire codec.
+**Backend status for this section: the FIXED class, in C++, C, C#, Go, Rust,
+Java and Elixir.** No backend implements the variable class's text form yet — a
+pointered unit gets no `FromJson`, refused by name with this section cited,
+never emitted with the function missing — and the second walker it needs,
+emitted only in units that declare a pointer, is tracked as schema#275. In C#,
+Go, Rust, Java and Elixir that refusal is already made one level up: a pointered
+unit gets no table source at all (§11), so it has no text form for the same
+reason it has no wire codec.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++
@@ -5330,6 +5415,35 @@ reads zero. The instrument matters as much as the number: an earlier soak
 gated on LIVE BYTES, which answers "does this leak", and a formatter that
 allocated and freed the same bytes every iteration read +0 there for an hour.
 The count is what the claim is about.
+
+**ELIXIR'S WALK CANNOT CLAIM ZERO AND DOES NOT**, and the same instrument is
+what it holds instead. The BEAM owns allocation: there is no caller-owned
+buffer for a text to be written into and no mutable struct for a read to fill,
+so a decoded value IS an allocation. `make tables-elixir-alloc-audit` counts
+what ONE iteration costs on three counters the BEAM keeps — heap words per
+PROCESS, through `:erlang.trace/3` on `:garbage_collection` summed over the
+loop's own collections; refc-binary allocations, through `binary_alloc`'s own
+call counter in `:erlang.system_info/1`, which is the payload the heap count
+cannot see; and reductions — and gates each case against a PINNED budget,
+re-pinned deliberately the way a wire golden is, with
+`make tables-elixir-alloc-negative-control` sabotaging the emitter so every
+generated load allocates sixteen refc binaries and a thousand-cell list more
+and requiring both memory columns of every case to red. A number that cannot go red is not a gate, and a
+claim a language cannot make is better stated than approximated. The readers'
+fuzz oracle beside it, `make tables-elixir-fuzz`, takes `SEED=` and
+`ELIXIR_FUZZ_N=` as every other leg's does and prints the seed it ran, so a
+find reproduces from its own output; its negative control removes both extent
+bounds from the emitted block reader, because removing one leaves the oracle
+green under some seeds and a control whose verdict depends on the seed is not a
+control.
+
+**Elixir's float spelling is C's, digit for digit, and its READ is a single
+correctly-rounded conversion at the field's own width.** Erlang has no `strtof`
+and converting a decimal through a double rounds TWICE — the two roundings part
+company between `FLT_MAX` and the float32 rounding midpoint, and again at the
+subnormal end — so the walk converts over exact integers instead. `%.*g` is
+reproduced through Erlang's own scientific and fixed formatters, because the
+goldens are its bytes.
 
 **Rust's walk is a UNIT's, on the same terms C#'s is**, and for the same
 reason: a unit is one crate, so a second copy would be a duplicate definition

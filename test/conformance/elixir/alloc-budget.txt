@@ -1,0 +1,50 @@
+# THE ALLOCATION BUDGET of the Elixir table leg, pinned (make tables-elixir-alloc-pin).
+#
+# <case> <heap words> <binary_alloc calls> <reductions>, all per iteration
+#
+# One iteration is one wire load, one wire save, one text read and one text
+# write of that instance. The count comes from the BEAM's own cumulative
+# figure for the heap words a collection RECLAIMED: a loop bracketed by two
+# full collections allocated exactly that, plus whatever is still live at the
+# end. It is a COUNT per iteration and not a drift figure — a path that
+# allocates and frees the same words every iteration reads +0 drift for an
+# hour and is still allocating.
+#
+# The floor is not zero and is not claimed to be — Elixir has no caller-owned
+# buffer and no mutable struct, so a decoded value IS an allocation. What this
+# file holds is that the figure does not MOVE.
+#
+# THE THREE COLUMNS ARE GATED DIFFERENTLY, and the reason is what each one is.
+#
+# HEAP WORDS is a property of the terms the code builds and is measured
+# PER PROCESS, through :erlang.trace/3 on :garbage_collection: the same
+# source on the same OTP allocates the same words on any 64-bit machine. It
+# is gated at 64 words plus one in ten thousand of the figure, which is the
+# collector's own jitter with room, and far under the negative control's
+# two thousand.
+#
+# BINARY_ALLOC CALLS is the refc binary's own cumulative counter, from
+# :erlang.system_info({:allocator, :binary_alloc}). It is VM-WIDE — there is
+# no per-process one — so it carries a small slack for another process's
+# handful, and it is a small integer per iteration rather than thousands, so
+# the slack is small too.
+#
+# REDUCTIONS is the scheduler's own accounting and a different OTP build
+# counts them differently, so that column is gated at a quarter: loose enough
+# to cross a machine, tight enough that an accidental quadratic cannot hide.
+root_full 21761 84 24261
+root_default 755 0 779
+profile_elide 11260 46 12511
+loadout_full 9962 38 10463
+wide_blob 7914934 9 11358881
+archive 22416 84 25890
+keyed_config 19206 122 20443
+keyed_default 15538 106 17600
+v1_cfg 11533 18 12935
+v1_seams 11097 18 12272
+v2_cfg 13209 17 14807
+v2_seams 12970 28 14292
+chain_value 1091 1 1031
+chain_value_empty 743 0 897
+chain_optional 1091 1 1030
+chain_optional_empty 809 0 938

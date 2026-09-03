@@ -1,0 +1,28 @@
+#!/bin/sh
+# THE ELIXIR LEG's driver (test/conformance/README.md).
+#
+# A driver is a COMMAND, not a binary, so a leg can be assembled from what a
+# backend already has. This one starts ONE BEAM per surface over the unit
+# modules the Makefile has already compiled to .beam — the runtime's start-up is
+# the whole of this leg's cost, and the two-minute rule (#320) is what that
+# shape is for.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+set -e
+BEAM_PATH="${BEAM_PATH:-$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin}"
+PATH="$BEAM_PATH:$PATH"
+export PATH
+# The driver's own modules are COMPILED with the corpus, not compiled per run:
+# a BEAM boot is 0.26 s and compiling this script at every start was another
+# 0.4 s on top of it, twelve times over. The two-minute rule (#320) is what that
+# is measured against.
+# ELIXIR_TABLES_EBIN lets the negative control point the same driver at a
+# sabotaged build of the corpus (Makefile: conformance-negative-control-elixir).
+EBIN="${ELIXIR_TABLES_EBIN:-build/elixir-tables-ebin}"
+export EBIN
+exec elixir --erl "+B -noinput" -pa "$EBIN" \
+	-e 'Driver.main(System.argv())' -- "$@"

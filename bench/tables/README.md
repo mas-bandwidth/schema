@@ -111,6 +111,19 @@ cross-family division refuses on its own (§5.3) — a tolerant-wire number and 
 bitpacked-wire number are not the same measurement and the tools say so
 without anyone remembering to.
 
+## The legs, and what each one's number means
+
+| leg | tier | what the number is |
+|---|---|---|
+| `cpp` | the reference | the bar every other row divides against |
+| `cs`, `go`, `rust` | native or JIT | same shape, same corpus, a codec compiled to machine code |
+| `elixir` | the READING TIER | what the BEAM costs: `save` allocates its own result because there is no caller-owned buffer, and `load` builds a term per field. About 37x C++ on write and 33x on round-trip, measured — a PAIRING CHECK, not a sitting (`results/2026-09-03-pairing-elixir-arm64-macbook.md`), with the lever named against #174 |
+
+**A reading-tier row is a number to be REPORTED, not a number to be matched.**
+The ladder in docs/SPEC-TABLES.md sets the bar for a language that can hold
+bytes; a language whose values are the runtime's holds a different one, and
+saying so is the point of the row.
+
 ## Running
 
     bench/tables/run.sh                    every registered leg -> bench/tables/results/

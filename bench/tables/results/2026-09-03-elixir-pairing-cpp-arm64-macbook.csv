@@ -1,0 +1,20 @@
+# schema TABLES bench results (bench/tables/README.md)
+# date: 2026-09-03T09:14:23Z
+# host: macbook  arch: arm64  os: Darwin 25.6.0
+# cpu: Apple M2
+# build: Release
+# corpus: bench/corpus/BenchTable.schema (one fixed table on the tolerant wire, docs/SPEC-TABLES.md §3)
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# dotnet: 10.0.400
+# rounds: 3
+# pinning: none (macOS has no taskset)
+# noise: unlabelled
+# schema commit: 0a6cfd46-dirty (port-elixir-tables)
+# serialize.cs commit: 1439c6f (main)  (the closure's type codecs only — no line of the measured table path enters it)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_table,write,400000,2391,1,1822255,1822255,1822255,4155.17,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,649655,649655,649655,1481.37,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,1866437,1866437,1866437,4255.92,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,629358,629358,629358,1435.09,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,1847022,1847022,1847022,4211.64,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,620880,620880,620880,1415.75,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown

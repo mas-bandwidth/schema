@@ -1452,6 +1452,25 @@ tree mirrors the schema tree a person navigates.
   emitted once per unit rather than once per translation unit behind a
   guard. Every unit emits one further file per unit, `<Package>View.cs`, on
   the same terms as the C++ pair above.
+- **Elixir:** one `.ex` file per schema file, carrying one `defmodule` per
+  declaration under the unit's own namespace plus the file-scope module
+  `<Ns>.<Base>` for constants, flags masks and the file's codecs. A unit that
+  declares TABLES grows one further file per schema file — `<Base>Table.ex`
+  with the table wire's codecs, its reflection descriptors and its TEXT FORM
+  (SPEC-TABLES.md §16) — the two ACCELERATORS' READ side beside it,
+  `<Base>Block.ex` (§19) and `<Base>Cook.ex` (§7), and three per-UNIT runtimes:
+  `TableRuntime.ex` with the shared wire runtime and the text form's one
+  generic walk, `BlockRuntime.ex` and `CookRuntime.ex`. `BuildVersion.ex`
+  (SPEC-TABLES.md §20) is always emitted and belongs to neither accelerator,
+  because a build version answers "which build?" and not "which form?". Each
+  runtime is named for the PACKAGE and not for a file, on the rule §19.2 states
+  for every port: a unit's modules compile into one application, so a second
+  copy would be a duplicate module rather than C++'s harmless re-inclusion
+  behind a guard. **The two accelerators are READ-ONLY here**, and that is the
+  language rather than the port: a BEAM term has no layout a producer could
+  write, so this backend opens a block or a cook another build wrote and reads
+  every slot at its offset. A table-free unit grows none of it, and its packet
+  modules are byte-identical either way.
 - **JavaScript:** one ES module per schema file, cross-file `import`s derived
   from actual references; classes whose constructors initialize every member
   in declaration order (specified defaults live in construction; `ZeroX` is
@@ -1708,9 +1727,9 @@ internal/check/        resolver, constant folding, shape checks, dominance rule,
 internal/format/       schemafmt
 internal/codegen/      c/  cpp/  csharp/  dart/  elixir/  golang/  java/  js/
                        rust/ — registered on the driver through the public
-                       generator interface; cpptable/, cstable/ and
-                       rusttable/ are the table emitters three of those
-                       backends carry
+                       generator interface; cpptable/, cstable/, gotable/,
+                       rusttable/ and elixirtable/ are the table emitters five
+                       of those backends carry
                        (SPEC-TABLES.md)
 internal/fuzz/         compiler fuzzing (gate 6)
 internal/publicapi/    the acceptance gate: an external module, public API only

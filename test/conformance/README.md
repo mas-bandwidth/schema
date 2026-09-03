@@ -35,6 +35,15 @@ pitch one is why `forgery` is separate from both: it removes a CHECK rather than
 moving a value, so the reader still READS correctly and has stopped REFUSING —
 which no valid image can show you.
 
+**A PER-BACKEND WALK CONTROL, one per port with a text form**, because a
+walker's break is the backend's and not the data's:
+`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic
+and `conformance-negative-control-elixir` breaks the Elixir walk's KEY, which is
+what stands in for an offset in a language whose fields have none — the read
+places every scalar under a name the instance does not have. Each has the same
+second half, and it is the point: `json-read` goes red and `json-write` stays
+green, which is what says the break is the READER's.
+
 ## The shape
 
 A driver is a **command**, not a binary — so a leg can be assembled from what a
@@ -194,12 +203,19 @@ gap is real and the matrix says so rather than a parser papering over it.
 The registry today:
 
 ```
-cpp  test/conformance/cpp/driver
-cs   test/conformance/cs/driver
-go   test/conformance/go/driver
-rust test/conformance/rust/driver
-java test/conformance/java/driver
+cpp    test/conformance/cpp/driver
+cs     test/conformance/cs/driver
+go     test/conformance/go/driver
+rust   test/conformance/rust/driver
+java   test/conformance/java/driver
+elixir test/conformance/elixir/driver
 ```
+
+**THE ELIXIR LEG's shape, because its cost is all start-up.** Its driver's own
+modules are compiled to `.beam` WITH the unit corpus rather than at every start:
+an `.exs` compiled per invocation cost 0.4 s on top of the BEAM's own 0.26 s
+boot, twelve times over. The leg answers all twelve surfaces in 5.6 s, and none
+of that is the cases.
 
 The first driver in the registry is the **reference leg**: `make conformance-pin`
 takes the cook dumps, the block row dumps and both forgery batteries' offsets
