@@ -371,6 +371,13 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		w.u32(uint32(len(body)))
 		w.raw(body)
 	default:
+		if ir.TableKindWide(kind) {
+			// the raw integer at the kind's width, two's complement, little-endian —
+			// sixteen bytes low half first for the 128-bit kinds, the type wire's
+			// own order (docs/SPEC-TABLES.md §3)
+			w.raw(tabletext.WideBytes(tabletext.WideValue(cell), kind))
+			return nil
+		}
 		w.width(tabletext.KindWidth(kind), cell.U)
 	}
 	return nil
@@ -411,6 +418,8 @@ func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 		return float32(cell.F) == float32(def.F)
 	case f.Type.Kind == ir.TFloat64:
 		return cell.F == def.F
+	case ir.TableKindWide(ir.TableScalarKind(f)):
+		return tabletext.WideValue(cell).Cmp(tabletext.WideValue(&def)) == 0
 	case f.Type.Kind == ir.TInt && f.Type.Signed:
 		return cell.I == def.I
 	}

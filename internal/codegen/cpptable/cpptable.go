@@ -51,23 +51,18 @@ const (
 	// (docs/SPEC-TABLES.md §3.1), distinct from kind 13 so that an edit between
 	// a by-value nesting and a pointer is an ordinary kind mismatch.
 	tkNodeIndex = ir.TableKindPointer
+	// the scalars the TYPE wire carries (docs/SPEC-TABLES.md §3): the 128-bit
+	// integers and the fixed-point family, one kind per storage width and
+	// signedness, riding as the RAW scaled integer at the storage width
+	tkI128      = ir.TableKindI128
+	tkU128      = ir.TableKindU128
+	tkFixed128  = ir.TableKindFixed128
+	tkUFixed128 = ir.TableKindUFixed128
 )
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
 
-func tableKindWidth(kind int) int {
-	switch kind {
-	case tkBool, tkI8, tkU8:
-		return 1
-	case tkI16, tkU16:
-		return 2
-	case tkI32, tkU32, tkF32:
-		return 4
-	case tkI64, tkU64, tkF64:
-		return 8
-	}
-	return 0
-}
+func tableKindWidth(kind int) int { return ir.TableKindWidth(kind) }
 
 func tablePut(width int) string { return fmt.Sprintf("put%d", width*8) }
 func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
@@ -413,6 +408,14 @@ struct TableUnionInfo
     const TableUnionArmInfo * arms;
 };
 
+// The exact raw range of a wide-kind field (docs/SPEC-TABLES.md §8.2): two 128-bit
+// values as 64-bit lanes, low lane first, two's complement for the signed kinds.
+struct TableWideRange
+{
+    uint64_t lo[2];
+    uint64_t hi[2];
+};
+
 ` + pointerForward + `struct TableFieldInfo
 {
     const char * name;      // schema field name, e.g. "health"
@@ -432,6 +435,16 @@ struct TableUnionInfo
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
     double range_max;
+    // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
+    // field's F — its storage holds units × 2^F — and wide is the declared
+    // range on that RAW scale, exact, as two 128-bit two's-complement values
+    // in 64-bit lanes (low lane first). NULL where the declaration bounds
+    // nothing (a bare uint128) and for every other kind; frac_bits is 0 for
+    // every kind that is not fixed-point. range_min/range_max still carry
+    // the declared bounds as doubles — whole units for a fixed field — for
+    // a walker that only shows them.
+    uint8_t frac_bits;
+    const TableWideRange * wide;
     int64_t enum_max;       // enums: highest valid value (None = 0 always valid);
                             // unions: the arm count (tag range [0, enum_max]);
                             // flags: the highest declared BIT INDEX; else -1
@@ -499,6 +512,8 @@ struct TableWriter
     ` + forceInline + ` void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     ` + forceInline + ` void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
     ` + forceInline + ` void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
+    ` + forceInline + ` void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     ` + forceInline + ` void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
@@ -522,16 +537,20 @@ struct TableReader
     ` + forceInline + ` uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
     ` + forceInline + ` uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
     ` + forceInline + ` uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    ` + forceInline + ` void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
     {
         switch ( kind )
         {
-            case 1: case 2: case 6: return has( 1 ) ? ( offset += 1, true ) : false;
-            case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 17: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
-            case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
+            // the fixed-width kinds, each by its width: 18-29 are the 128-bit integers and
+            // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
+            case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
+            case 4: case 8: case 10: case 17: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
+            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 12: case 13: case 14: case 16:
             {
                 if ( !has( 4 ) ) return false;
@@ -700,6 +719,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
 		}
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
+		if unitHas128(u, closure) {
+			// the 128-bit storage type is serialize's pair — native __int128
+			// where the compiler has it, the emulated two-lane struct where
+			// it does not (docs/SPEC-TABLES.md §3): the one thing a Table
+			// header takes from serialize.h, and only a unit whose closure
+			// declares a 128-bit field takes it
+			h.WriteString("#include \"serialize.h\" // serialize::int128_t / uint128_t: the 128-bit storage\n")
+		}
 		names := make([]string, 0, len(g.includes))
 		for n := range g.includes {
 			names = append(names, n)
@@ -839,4 +866,25 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 		}
 	}
 	return order
+}
+
+// unitHas128 reports whether any closure member declares a 128-bit field —
+// an int128, a uint128, or a fixed of 128 bits — which is what decides whether
+// the Table header includes serialize.h for the storage type.
+func unitHas128(u *ir.Unit, closure map[string]bool) bool {
+	for name := range closure {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+				return true
+			}
+		}
+	}
+	return false
 }

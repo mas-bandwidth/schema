@@ -195,6 +195,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	if err := ir.RefuseWideTableKinds(u, "Go"); err != nil {
+		return nil, err
+	}
 	blocks := ir.Blocks(u)
 	out, err := generateBlockFiles(u, blocks)
 	if err != nil {

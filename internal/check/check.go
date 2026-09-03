@@ -1889,18 +1889,6 @@ func (c *checker) checkTables() {
 				seen[id] = f
 				continue
 			}
-			var bad string
-			switch {
-			case f.Type.Kind == ir.TInt && f.Type.Width == 128:
-				bad = "int128/uint128"
-			case f.Type.Kind == ir.TFixed:
-				bad = fixedSpelling(f.Type.Signed) + "(I, F)"
-			}
-			if bad != "" {
-				c.errf(pos, "%s.%s: %s has no table-wire kind, and %s %s is in a table's closure — a `table` and everything it references must stay on table-wire kinds (docs/SPEC-TABLES.md)",
-					name, f.Name, bad, what, name)
-				continue
-			}
 			if f.Type.Kind == ir.TNamed {
 				if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Array != ir.ArrayNone {
 					// a SCALAR union field rides the table wire as kUnion:

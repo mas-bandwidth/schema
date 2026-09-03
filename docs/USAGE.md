@@ -2363,9 +2363,13 @@ through descriptor offsets. Generated `static_assert`s enforce it.
 Tables are generated for `--lang cpp` and `--lang cs` today — C++ carries
 both classes, C# the fixed class, and a pointered unit is refused by name
 under C#; every other target refuses a unit that declares tables at all, by
-name. What stays off the table wire: `fixed`, `int128`/`uint128` (no neutral
-table kind), and `const`/`reserved`/`align`
-(bit-position constructs — the table wire has no bit positions). Extents have
+name. Every scalar the type wire carries rides in a table: `fixed`/`ufixed`
+as their raw scaled integer under a fixed kind of their storage width, with
+the whole-unit bounds clamping on the raw scale and the text in whole units
+(`1.5`), and `int128`/`uint128` under kinds of their own, sixteen bytes low
+half first (SPEC-TABLES.md §3, §16.2). What stays off the table wire:
+`const`/`reserved`/`align` (bit-position constructs — the table wire has no
+bit positions). Extents have
 no wire ceiling: string and bytes byte lengths and array counts ride in
 uint32, so the only limit is the language's own int32 storage cap.
 
@@ -2443,10 +2447,11 @@ file is renamed or a declaration moves between files.
 
 What the view does not carry: descriptions, UI hints, semantics for a type
 tag (the tags are listed; their meaning is yours), and the packet wire's bit
-layout. And one field kind is listed but not decodable: `fixed`, `ufixed`,
-`int128` and `uint128` have no table-wire kind, so they arrive with
-`kind == 0` — name, declared spelling, offset and size, enough to show the
-field and not enough to read or write its value generically.
+layout. Every declared scalar arrives under its table-wire kind, the
+fixed-point family and the 128-bit integers included: a fixed field carries
+its `F` in `frac_bits` and its exact raw range in `wide`, which is what lets
+the text form read and write it without a double on the path (SPEC-TABLES.md
+§8.1).
 
 ### The text form: JSON in and out of one table
 

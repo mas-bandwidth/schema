@@ -395,6 +395,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	if err := ir.RefuseWideTableKinds(u, "JavaScript"); err != nil {
+		return nil, err
+	}
 	if err := refuseFileCollisions(u); err != nil {
 		return nil, err
 	}

@@ -777,10 +777,12 @@ seven megabytes" is the normal state of affairs, not a defect. The block form
 exists precisely so a game never materialises that struct: it reads the
 projection (§19.2). The by-value form is for tooling and for the wire.
 
-The exclusions, each refused by name: `fixed`/`ufixed` and the 128-bit
-family have no table-wire kind; `const`/`reserved`/`align` describe bit
-positions, and the table wire has none; and arrays of unions are a named
-follow-on. **Extents have no wire ceiling**: lengths and counts ride as u32
+**Every scalar the type wire carries rides in a table**: `fixed`, `ufixed`
+and the 128-bit integers have kinds of their own (§3), a fixed field's
+whole-unit bounds clamp on the raw scale (§4), and its text is the value in
+whole units (§16.2). The exclusions, each refused by name: `const`/`reserved`/`align`
+describe bit positions, and the table wire has none; and arrays of unions are
+a named follow-on. **Extents have no wire ceiling**: lengths and counts ride as u32
 (§3), so the only limit is the language's own — a string, bytes or array
 extent lives in int32 storage (SPEC §4.3), and that cap is what a too-large
 extent is refused against.
@@ -1752,7 +1754,8 @@ schema's codebase:
 - **The kinds are a closed set**, and these are their numbers: `1` bool,
   `2` i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64,
   `10` f32, `11` f64, `12` string, `13` table, `14` array, `15` union,
-  `16` enum-keyed array, `17` pointer index.
+  `16` enum-keyed array, `17` pointer index, `18` i128, `19` u128,
+  `20`–`24` fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128.
 - **Payloads**, one row per kind. `L` is a u32 byte length; `N` is a u32
   element count. Nothing is aligned and nothing is padded.
 
@@ -1768,6 +1771,24 @@ schema's codebase:
   | `15` union | `arm id (u16)`, and when it is not 0, `L` then `L` bytes of arm body |
   | `16` enum-keyed array | `L`, then the body: `element kind (u8)`, `N` = the number of SLOTS PRESENT, then N pairs of `variant id (u16)`, `L (u32)`, `L` bytes of element (§3.2) |
   | `17` pointer index | 4 bytes, the u32 node index (§3.1) |
+  | `18` i128, `19` u128 | 16 bytes: the low 64-bit half, then the high half — two's complement for `18`; little-endian throughout, which is the type wire's own order for the family (SPEC.md §4.3) |
+  | `20`–`24` fixed8/16/32/64/128 | 1/2/4/8/16 bytes, the RAW scaled integer of a `fixed(I, F)` whose storage is that width (I + F bits), two's complement |
+  | `25`–`29` ufixed8/16/32/64/128 | 1/2/4/8/16 bytes, the raw scaled integer of a `ufixed(I, F)` of that width, unsigned |
+
+  **The scalars the type wire brought ride as their STORAGE and nothing
+  else.** A `fixed(I, F)` value is the integer its storage holds — units ×
+  2^F — at the storage width, exactly as the type wire carries it before
+  its range compression (SPEC.md §4.3); the `(I, F)` and the whole-unit
+  bounds stay in the schema, as a ranged integer's bounds do. A 128-bit
+  integer is its sixteen bytes, low half first. **The kinds are distinct
+  from the integers' for the reason kind `17` is distinct from `8`**: a
+  `fixed(16, 16)` and an `int32` are the same four bytes and not the same
+  number, so a field moved between them is a reported edit (§4) rather than
+  a value read at the wrong scale. There is one kind per storage width and
+  signedness because a skipper knows a scalar's width from its kind byte
+  alone (below), and nothing about `F` rides: `F` is a declaration-side
+  fact, invisible on the wire like a compressed float's resolution, and the
+  baseline is what guards a change to it (§4.1, §18).
 
   **An array's ELEMENT KIND is part of its identity, not only its framing.**
   For kinds `14` and `16` a reader compares the element kind it declares
@@ -1818,7 +1839,7 @@ schema's codebase:
     reader accepts it.
 - **Skipping a field you cannot name** needs the kind byte and nothing
   else, which is what makes an unknown field survivable (§4). Three rules
-  cover the set: kinds `1`–`11` and `17` skip their fixed width; kinds
+  cover the set: kinds `1`–`11` and `17`–`29` skip their fixed width; kinds
   `12`, `13`, `14` and `16` read `L` and skip `L` bytes; kind `15` reads
   the `u16` arm id and stops there if it is 0, else reads `L` and skips
   `L` bytes.
@@ -1873,10 +1894,12 @@ schema's codebase:
   one value on the wire (§2.3, §3.1).
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
-  narrowest unsigned kind that holds it, compressed floats as f32, and a
-  `flags` mask as `u64`. The bounds and resolutions stay on the
-  DECLARATION side, where they validate and clamp on load (§4) — they
-  never change what the bytes look like.
+  narrowest unsigned kind that holds it, compressed floats as f32, a
+  `flags` mask as `u64`, a `fixed(I, F)` or `ufixed(I, F)` as the fixed
+  kind of its storage width, and `int128`/`uint128` as `i128`/`u128`. The
+  bounds, resolutions and a fixed field's `F` stay on the DECLARATION side,
+  where they validate and clamp on load (§4) — they never change what the
+  bytes look like.
 - **An enum value rides as u16 — kind `7` — carrying the hash of its
   VARIANT NAME**, folded exactly as a field id is, whatever the
   declaration-side storage width. The implicit `None` rides as `0`, the
@@ -2357,7 +2380,12 @@ tolerance is the versioning model:
   `16`). A repeated key is `duplicate`, last wins; a descending key is
   `malformed`, the map keeping its ascending prefix.
 - **Out-of-range value** (bounds tightened since the writer): clamped to
-  the reader's declared bounds, counted.
+  the reader's declared bounds, counted. **A fixed field clamps on the RAW
+  scale**: its declared bounds are whole units (SPEC.md §4.6) and the wire
+  carries units × 2^F, so the reader clamps the raw value to `[A << F,
+  B << F]` — the same event, the same counter, and the value lands exactly
+  on the bound. A 128-bit integer clamps to its declared bounds in 128
+  bits; a bare `uint128` declares none and clamps at nothing.
 - **A GUARD added or removed around an existing field**: the READ is
   faithful in both directions — a field is found by its id whatever branch
   now encloses it, so a reader whose build added `if g { x }` still loads
@@ -2432,7 +2460,7 @@ change data, or add a new field and leave the old one alone.
 
 ### 4.1 The silent class, in full
 
-Almost every edit lands in the read report. **Exactly three do not**, and
+Almost every edit lands in the read report. **Exactly four do not**, and
 naming the whole set is the point of this subsection — a person reading a
 save game that came back wrong needs the whole of it, and the third member is
 the one the committed baseline (§18) exists to refuse:
@@ -2453,6 +2481,12 @@ the one the committed baseline (§18) exists to refuse:
    every id survives. The kinds are coarser than the declaration side, so
    the wire cannot see WHICH declaration a field names. This is the class
    §18 exists for, and §18.3 states the standard each vocabulary is held to.
+4. **A fixed field's `F` moved.** A `fixed(16, 16)` and a `fixed(8, 24)`
+   ride under one kind — the kind carries the width and the signedness, and
+   `F` is a declaration-side fact like a resolution (§3) — so a stored raw
+   value reads back at the new scale with no counter to fire. It is the
+   first member's shape at a scalar: the same bytes now mean something
+   else.
 
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
@@ -2488,17 +2522,17 @@ directions — the value comes back, the report is silent, and the silence is
 honest, because nothing was lost on the way in. The loss, if it comes, is
 on the way OUT: a reader whose guard is false elides the field on its next
 save. So it is not a silent decoding edit, and the enumeration above stays
-at three; it is a round-trip hazard, and a tool that loads, edits and stores
+at four; it is a round-trip hazard, and a tool that loads, edits and stores
 a file — the save-game cycle §18 exists for — should be read as carrying
-it. A person whose file came back wrong needs the three above; a person whose
+it. A person whose file came back wrong needs the four above; a person whose
 tool rewrote a file needs this one.
 
-Each of the three has its own answer:
+Each of the four has its own answer:
 
 - **Flags** are answered by DISCIPLINE, stated as law: **append at the end,
   never insert or reorder**, and retire a name in place rather than freeing
   its bit.
-- **All three** are answered by MACHINERY, opt-in: the committed tables
+- **All four** are answered by MACHINERY, opt-in: the committed tables
   baseline (§18) is the history the compiler does not keep, and it
   refuses every one of them until the baseline moves with a recorded reason. It
   refuses the spelling changes above too, at compile time, ahead of the
@@ -2521,6 +2555,7 @@ only.
 | a field's wire KIND, or an array's ELEMENT kind, changed | `kind_mismatch` | **refuses** | **moves** |
 | an array changed between keyed and positional, or its KEY enum swapped | `kind_mismatch` | **refuses** | **moves** |
 | a declared RANGE tightened | `clamped` | passes | **moves** |
+| a fixed field's `F` moved under the same storage width | silent — the kind carries the width and the signedness, and `F` is a declaration-side fact like a resolution (§3) | **refuses** — the `frac=` token is a fixed fact (§18.1) | **moves** |
 | an `enum`'s or a `union`'s variant order or names moved | `unknown` for a name this reader lacks; a reorder is silent and safe | warns on a removal or a vanished name | **moves** |
 | a field added, removed or reordered | `unknown` for an id this reader lacks; an absent field defaults | passes | **moves** |
 | a field renamed under `was` | silent, and nothing is lost | passes | no — `was` holds the wire id fixed |
@@ -3570,6 +3605,7 @@ fields would get wrong:
 | declaration | pieces, in order |
 |---|---|
 | a scalar, an enum, a `flags` | the value at its storage width |
+| a 128-bit scalar (`int128`, `uint128`, a `fixed` or `ufixed` of 128 bits) | SIXTEEN BYTES AT SIXTEEN — the C ABI's natural alignment for a 128-bit integer, and the one a table's C++ storage spells out (`alignas( 16 )`) where its storage is serialize's emulated pair rather than native `__int128`, so every compiler lays the record out the same way (§19.3). The slot holds the value in the cook's byte order: the low 64-bit half first in a little-endian cook, the high half first — each half big-endian — in a big-endian one, exactly as a `u64` is one eight-byte lane. A narrower `fixed` is its raw integer at its storage width, like any scalar |
 | `string(N)` | `char[N + 1]`, then `int32` used length |
 | `bytes(N)` | `uint8[N]`, then `int32` used length |
 | `[N]T` | `N` elements at the element's `sizeof` |
@@ -4221,6 +4257,17 @@ always clamped to it (§4); carrying it in the descriptor is what lets a
 generic walker apply the same bound without re-deriving it from a type
 name.
 
+**A wide-kind field carries its SCALE and its EXACT RAW RANGE** (§3): a
+fixed field's `F` (`frac_bits`, 0 for every other kind), and the declared
+range on the raw scale — a fixed field's whole-unit bounds shifted by `F`, a
+128-bit integer's bounds as declared — as two 128-bit two's-complement
+values in 64-bit lanes (`wide`, NULL where the declaration bounds nothing,
+which is a bare `uint128`, and for every kind below `18`). The `double`
+range columns still carry the declared bounds for a walker that only shows
+them — whole units for a fixed field — and the two exact columns are what
+let the text form (§16) read and write these kinds without a double on the
+path, and without parsing `type_name`.
+
 **An optional field carries its presence companion.** `optional` marks the
 field and `present_offset` names the `<field>_present` bool, exactly as
 `counted` and `count_offset` name a count companion — so a walker can read
@@ -4374,41 +4421,17 @@ declaration that carries no table wire.
 `Measure`/`Save`/`Load`, no text form and no baseline row from having one.
 The view says what may be inspected, and nothing about what may be written.
 
-**A field with no table-wire kind is DESCRIBED, never refused.** The
-no-table-wire-kind set is `fixed`, `ufixed` AND the 128-bit family
-(`int128`, `uint128`) — the exclusions §2 names, refused inside a table body
-(§11) and declared freely by a `type` outside every table closure. A view
-over such a type describes them: `kind` is `0`, the reserved value no
-declared kind spells; `type_name` carries the declared spelling
-(`fixed(2, 30)`, `uint128`); and `offset` and `elem_size` locate the storage.
-A unit generates its view whatever it declares, so a packet-only declaration
-is a listing rather than a refusal — the corpus's fixed-point and 128-bit
-unit is 27 such fields.
-
-**The kind function must be corrected before it can answer that, and the
-correction belongs with the view.** The rule that fills the kind column
-dispatches an integer on its width and lets the widths it does not name fall
-to the 64-bit answer — correct while every caller was a table body, where a
-128-bit field cannot appear, and wrong the moment a view over a packet-only
-type calls it: eight fields of the corpus's 128-bit unit answer a 64-bit
-kind today, each describing a 16-byte field as an 8-byte one. The view is
-what makes that path reachable, so `0` for the whole set above is this
-section's rule, and the emitters' shared kind function names 128 explicitly
-rather than defaulting it.
-
-**Kind 0 DESCRIBES; it does not decode.** What a kind-0 field hands a
-generic walker is its name, its declared spelling as text, its offset, its
-size and its declared range as two `double`s — enough to LIST the field and
-show where it lives, and not enough to read or write its value. There is no
-numeric-shape column: no signedness, no `I`, no `F`, no storage width, so
-nothing decodes those bytes without parsing `type_name`, which is a schema
-file in disguise. The range columns do not close it either: they are
-`double`s, so a bound past 2^53 — a `uint128`'s declared maximum, say — does
-not survive the column, and it rounds UP, which is the one direction an
-editor must never clamp to. So: a kind-0 field is DESCRIBABLE and is not
-generically readable or writable, and the typed descriptor form that would
-close it is a named follow-on (§15). Nothing in this section claims
-sufficiency for it.
+**Every declared scalar has a table-wire kind, and the view describes each
+under it.** A `fixed`, a `ufixed` or a 128-bit integer in a packet-only
+`type` is listed exactly as one in a table closure is: `kind` is its wire
+kind (§3), `type_name` its declared spelling (`fixed(2, 30)`, `uint128`),
+`offset` and `elem_size` its storage, and `frac_bits` and `wide` its scale
+and exact raw range (§8.1) — enough to read and write the value generically,
+which is what the text form does with them (§16.2). `0` stays the reserved
+kind no declaration spells. The emitters' shared kind function names 128
+explicitly rather than letting a width it does not name fall to the 64-bit
+answer, and the view is one of the two callers that makes that path
+reachable.
 
 **A field of a type NO TABLE CLOSURE REACHES carries no table-wire
 identity**: its `id` column is `0` and its `json` column is NULL. Those two
@@ -4778,11 +4801,10 @@ in build version (§20.5).
 
 ## 11. Refused by name
 
-- `table` bodies containing `fixed`/`ufixed` or the 128-bit family (§2 —
-  no wire kind), `const`/`reserved`/`align` (§2 — no bit positions), or
-  arrays of unions (§2 — named follow-on). Extents have no wire ceiling
-  (§3); an extent past the language's own int32 storage cap is refused
-  there, not here.
+- `table` bodies containing `const`/`reserved`/`align` (§2 — no bit
+  positions), or arrays of unions (§2 — named follow-on). Extents have no
+  wire ceiling (§3); an extent past the language's own int32 storage cap is
+  refused there, not here.
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name (§5).
 - Id collisions, hash or `was`-induced (§5).
@@ -6225,17 +6247,6 @@ inspects everything in the schema built:
   and the compressed-float parameters a `type` rides under (SPEC §6.1),
   beside the declaration facts §8 carries. It is what a packet inspector
   would want and what a table-shaped descriptor cannot express.
-- **THE TYPED DESCRIPTOR FORM for the kind-0 set** (§8.2), which is what
-  would turn describing a `fixed`, `ufixed` or 128-bit field into reading
-  and writing one. Three things it needs, and none is decided here: the
-  numeric SHAPE as columns rather than as text — signedness, `I`, `F` and
-  the storage width, so a walker decodes the bytes without parsing
-  `type_name`; BOUNDS that survive the value — the range columns are
-  `double`s, and a 128-bit bound is not representable in one, so the pair
-  either widens or grows a second form; and a decision about whether the
-  same columns serve the packet wire's own kinds, which is the follow-on
-  above. Until it lands, §8.2's rule stands as written: kind 0 describes,
-  and does not decode.
 - **BUILD IDENTITY in the registry** (§8.6). It carries the unit's package
   and protocol id and nothing else about the build that produced it; what
   else identifies a build — a compiler version, a build stamp — is settled
@@ -6268,7 +6279,25 @@ inspects everything in the schema built:
   body, and nothing here decides whether it rides under the arm's length as a
   kind `17` field would, or as an index in the length's place. A table arm
   that HOLDS a pointer serves today (`tables/stream`).
-- `fixed` and 128-bit table-wire kinds, if a need ever materializes.
+- **THE WIDE KINDS IN EVERY OTHER BACKEND** (§3): the fixed-point family
+  and the 128-bit integers ride in the C++ reference and the tool, and each
+  port lands them as a row on schema#366 against the same corpus —
+  `tables/scalars` and its evolved twin — whose instances, report cases,
+  hostile trees and cooks every other leg answers ABSENT per case until it
+  does. Until then a port REFUSES a unit that declares one, by name, naming
+  every wide field and this follow-on, rather than emitting a second wire
+  for a kind it does not carry; `make tables-ports-refuse-wide-scalars`
+  holds the eight refusals.
+- **`alignas( 16 )` ON A 128-BIT FIELD OF A CLOSURE `type`** (§7.2, §19.3).
+  A table's own storage spells the alignment the model gives a 128-bit
+  scalar; a closure `type`'s struct comes from the packet header, whose
+  emitter the C/C++ lock freezes (schema#170), so a `type` declaring an
+  `int128`, a `uint128` or a 128-bit `fixed` inside a table closure is laid
+  out by the compiler's own rule there — sixteen on native `__int128`, eight
+  on serialize's emulated pair — and the cook-layout asserts refuse the
+  build on the compiler that disagrees rather than cooking a record the
+  model did not describe. The one-line change to the packet emitter lands
+  when the lock lifts; the corpus declares no such `type` until it does.
 - **THE REST OF THE C++ DIALECT** (§13.9), four pieces, each its own change:
   `<atomic>` out of a pointered unit's header, behind a `__atomic_*` /
   `_Interlocked*` shim the msvc and big-endian legs prove; `<new>` out of the
@@ -6528,6 +6557,8 @@ Per kind:
 |---|---|---|
 | integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` clamps and counts |
 | `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold is `kind_mismatch`, never stored as infinity |
+| `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS | the spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. Written as the shortest EXACT decimal with at least one fractional digit; read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction is `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
+| `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted |
@@ -6570,6 +6601,20 @@ infinity is never stored. **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a clamped
 value.
+
+**The wide kinds convert EXACTLY, and nothing on their path is a double.**
+A fixed field's token is the value in whole units; the reader scales it by
+2^F and places the result only if it is an integer — `0.1` in Q16.16 is
+`kind_mismatch`, `0.0000152587890625` is raw `1` — and the writer prints
+the raw value back as the shortest decimal that is exactly the value, which
+is finite because a dyadic fraction has at most F decimal digits. A 128-bit
+integer's token is its digits. A magnitude past 128 bits saturates to the
+kind's domain and counts as `clamped`, as an int64 field saturates at
+INT64_MAX; then the declared range clamps on the raw scale (§4) and counts
+again if it fires. A negative token in an unsigned field clamps to zero,
+and `-0` is zero. Both engines that hold this form — the generated walk and
+the tool's — land the same bytes and the same counters on every tree of the
+hostile corpus, which is what makes the rule one rule.
 
 **`null`** is `kind_mismatch` for every kind except the two where absence
 is a value: a `?T` reads `null` as ABSENT, and a pointer reads it as null.
@@ -6666,6 +6711,16 @@ touching a stored file.
   depth cap, unknown keys, duplicate keys at every kind including arrays,
   clamped strings at a multi-byte boundary, a union with two keys, an
   enum-keyed object keyed `"None"`, a lone surrogate.
+- **The wide kinds, both ways.** Twenty trees over `tables/scalars`: a
+  fraction finer than F, the exact fraction, integral forms of a fixed,
+  every field on its bound, a negative into an unsigned, an exponent past
+  any magnitude and one below any resolution, the 128-bit maximum and one
+  past it, a 128-bit range only 128 bits hold, and the same rules at array
+  elements and inside a nested type — each with a hand-authored verdict
+  that the generated walk and the tool both meet, byte for byte and counter
+  for counter. And the instances: the same root at values that fill the
+  storage, at its bounds and at its defaults, pinned by the reference and
+  read back by the tool through the wire, the text and both cook orders.
 - Guards in every configuration, including nested and negated ones, and a
   text whose keys precede their guards.
 - **Negative control, per backend, on the same arithmetic.** With the
@@ -7147,7 +7202,9 @@ members sorted, each member's fields in declaration order, one fact per
 line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
 bounded or enum-keyed, with the bound's EVALUATED value and, for a keyed
 array, the KEY enum it names), string and bytes capacity, presence of an
-optional, the specified default as exact canonical text, and the `was`
+optional, a fixed field's `F` (`frac=`, the one wire-invisible fact a wide
+kind has, §4.1), the specified default as exact canonical text — a fixed
+default as the RAW integer its storage holds — and the `was`
 alias; then each enum's variants in order with their ids, each flags'
 variants in positional order, and each union's arms in order with their ids
 and payloads.
@@ -7895,6 +7952,17 @@ leaves it implementation-defined, so the generated `static_assert`s carry it
 like every other layout fact: a platform where it differs fails the build
 loudly instead of writing rows the other side cannot read.
 
+**A 128-bit scalar is SIXTEEN AT SIXTEEN by spelling, not by luck.** The
+model gives `int128`, `uint128` and a 128-bit `fixed` the C ABI's natural
+alignment for a 128-bit integer (§7.2); native `__int128` has it already and
+serialize's emulated pair — two `uint64_t` lanes, the storage on a compiler
+without the native type — does not, so a table's storage struct writes
+`alignas( 16 )` on every such member and the asserts hold it. A closure
+`type` declaring one is laid out by the packet header, which does not spell
+the alignment yet (§15): there the asserts are the whole of the contract,
+and a compiler whose pair is eight-aligned fails the build at the assert
+rather than cooking a record the model did not describe.
+
 **`Size` is the element's `sizeof`, never its pitch.** Making the struct as
 wide as the pitch would make the two sides' size asserts compare different
 numbers, so a row that had quietly grown past its width would still pass. The
@@ -8308,7 +8376,7 @@ lines are what it produces:
 
 ```
 record <Name> sizeof=<n> alignof=<n>
-    field <id> kind=<n> offset=<n> size=<n>
+    field <id> kind=<n> [ frac=<n> ] offset=<n> size=<n>
         [ type=<Name> | enum=<Name> | union=<Name> ]
         [ elem=<n> ] [ array=fixed|bounded|keyed ] [ bound=<n> ] [ key=<Name> ]
         [ stride=<n> ] [ optional=true ]
@@ -8317,6 +8385,9 @@ record <Name> sizeof=<n> alignof=<n>
 
 **The optional tokens appear in that order and only where the fact exists**,
 and they are one line on the wire — the display above is wrapped for reading.
+`frac=` is a fixed field's `F`: the slot holds units × 2^F, so the scale
+is a meaning fact like a bound (§20.1, group 3) and rides beside the kind;
+a fixed field's `default=` is the raw integer its slot holds.
 The REFERENT tokens are the load-bearing half and they mirror §18.1's, for
 §18.1's stated reason — *"a field that names a declaration records WHICH KIND
 of declaration it names"*:

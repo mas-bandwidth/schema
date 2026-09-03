@@ -94,6 +94,7 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"kind":    RuleFixed,  // a changed kind is skipped by every old reader, and the value is silently gone
 	"elem":    RuleFixed,  // an array's element kind is that same fact, one level in
 	"default": RuleFixed,  // an elided field MEANS the reader's default (docs/SPEC-TABLES.md §4)
+	"frac":    RuleFixed,  // a fixed field's raw value under a moved F is a different number, and no counter can fire
 	"bound":   RuleShrink, // a count past the reader's bound keeps the prefix and counts clamped
 	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
 	"array":   RulePass,   // fixed and bounded frame identically on the wire (docs/SPEC-TABLES.md §3)
@@ -738,6 +739,8 @@ func tokenNoun(key string) string {
 		return "array element kind"
 	case "default":
 		return "specified default"
+	case "frac":
+		return "fractional bits"
 	case "bound":
 		return "array bound"
 	case "size":

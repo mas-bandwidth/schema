@@ -112,6 +112,14 @@ struct TableUnionInfo
     const TableUnionArmInfo * arms;
 };
 
+// The exact raw range of a wide-kind field (docs/SPEC-TABLES.md §8.2): two 128-bit
+// values as 64-bit lanes, low lane first, two's complement for the signed kinds.
+struct TableWideRange
+{
+    uint64_t lo[2];
+    uint64_t hi[2];
+};
+
 // the arena's allocation front, defined with the variable-length runtime
 // below; a descriptor names it only through a pointer parameter.
 struct TableWorker;
@@ -145,6 +153,16 @@ struct TableFieldInfo
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
     double range_max;
+    // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
+    // field's F — its storage holds units × 2^F — and wide is the declared
+    // range on that RAW scale, exact, as two 128-bit two's-complement values
+    // in 64-bit lanes (low lane first). NULL where the declaration bounds
+    // nothing (a bare uint128) and for every other kind; frac_bits is 0 for
+    // every kind that is not fixed-point. range_min/range_max still carry
+    // the declared bounds as doubles — whole units for a fixed field — for
+    // a walker that only shows them.
+    uint8_t frac_bits;
+    const TableWideRange * wide;
     int64_t enum_max;       // enums: highest valid value (None = 0 always valid);
                             // unions: the arm count (tag range [0, enum_max]);
                             // flags: the highest declared BIT INDEX; else -1
@@ -217,6 +235,8 @@ struct TableWriter
     GRAPHDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     GRAPHDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
     GRAPHDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
+    GRAPHDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     GRAPHDEMO_TABLE_INLINE void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
@@ -240,16 +260,20 @@ struct TableReader
     GRAPHDEMO_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
     GRAPHDEMO_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
     GRAPHDEMO_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    GRAPHDEMO_TABLE_INLINE void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
     {
         switch ( kind )
         {
-            case 1: case 2: case 6: return has( 1 ) ? ( offset += 1, true ) : false;
-            case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 17: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
-            case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
+            // the fixed-width kinds, each by its width: 18-29 are the 128-bit integers and
+            // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
+            case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
+            case 4: case 8: case 10: case 17: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
+            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 12: case 13: case 14: case 16:
             {
                 if ( !has( 4 ) ) return false;
@@ -1349,6 +1373,15 @@ inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableBy
     {
         for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
     }
+}
+
+// A 128-bit store as two lanes: sixteen bytes, the low lane first in the
+// little order and the high lane first — each lane big-endian — in the big
+// order, exactly as a u64 is one lane of eight (docs/SPEC-TABLES.md §7.2).
+inline void table_cook_put128( uint8_t * at, uint64_t lo, uint64_t hi, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little ) { table_cook_put( at, lo, 8, order ); table_cook_put( at + 8, hi, 8, order ); }
+    else { table_cook_put( at, hi, 8, order ); table_cook_put( at + 8, lo, 8, order ); }
 }
 
 // A buffer piece: the USED bytes and nothing else. The tail is already zero —
@@ -8514,72 +8547,72 @@ extern const TableTypeInfo DepotTableInfo;
 extern const TableTypeInfo AlbumTableInfo;
 
 inline const TableFieldInfo MetaTableFields[] = {
-    { "build", "build", "int32", 0x3138, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( Meta::build ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "tag", "tag", "string", 0xbc64, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( Meta::tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "build", "build", "int32", 0x3138, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( Meta::build ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "tag", "tag", "string", 0xbc64, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( Meta::tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo MetaTableInfo = { "Meta", (uint32_t) sizeof( Meta ), 2, MetaTableFields, +[]( void * p ) { MetaReset( *(Meta *) p ); }, false };
 inline const TableTypeInfo * MetaTableType() { return &MetaTableInfo; }
 
 inline const TableFieldInfo SettingsTableFields[] = {
-    { "quality", "quality", "int32", 0xcaf3, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( Settings::quality ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "label", "label", "string", 0xe16a, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( Settings::label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "quality", "quality", "int32", 0xcaf3, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( Settings::quality ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "label", "label", "string", 0xe16a, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( Settings::label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo SettingsTableInfo = { "Settings", (uint32_t) sizeof( Settings ), 2, SettingsTableFields, +[]( void * p ) { SettingsReset( *(Settings *) p ); }, false };
 inline const TableTypeInfo * SettingsTableType() { return &SettingsTableInfo; }
 
 inline const TableFieldInfo ListNodeTableFields[] = {
-    { "value", "value", "int32", 0x9194, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ListNode, value ), (uint32_t) sizeof( ListNode::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ListNode::name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "next", "next", "ListNode", 0xd15e, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "value", "value", "int32", 0x9194, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ListNode, value ), (uint32_t) sizeof( ListNode::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ListNode::name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "next", "next", "ListNode", 0xd15e, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo ListNodeTableInfo = { "ListNode", (uint32_t) sizeof( ListNode ), 3, ListNodeTableFields, +[]( void * p ) { ListNodeReset( *(ListNode *) p ); }, true };
 inline const TableTypeInfo * ListNodeTableType() { return &ListNodeTableInfo; }
 
 inline const TableFieldInfo TreeNodeTableFields[] = {
-    { "label", "label", "string", 0xe16a, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( TreeNode, label ), (uint32_t) sizeof( TreeNode::label ), (uint32_t) offsetof( TreeNode, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "left", "left", "TreeNode", 0xfe3a, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "right", "right", "TreeNode", 0x5506, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "label", "label", "string", 0xe16a, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( TreeNode, label ), (uint32_t) sizeof( TreeNode::label ), (uint32_t) offsetof( TreeNode, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "left", "left", "TreeNode", 0xfe3a, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "right", "right", "TreeNode", 0x5506, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo TreeNodeTableInfo = { "TreeNode", (uint32_t) sizeof( TreeNode ), 3, TreeNodeTableFields, +[]( void * p ) { TreeNodeReset( *(TreeNode *) p ); }, true };
 inline const TableTypeInfo * TreeNodeTableType() { return &TreeNodeTableInfo; }
 
 inline const TableFieldInfo LayerTableFields[] = {
-    { "depth", "depth", "int32", 0x609f, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( Layer::depth ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "head", "head", "ListNode", 0x79aa, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "depth", "depth", "int32", 0x609f, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( Layer::depth ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "head", "head", "ListNode", 0x79aa, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo LayerTableInfo = { "Layer", (uint32_t) sizeof( Layer ), 2, LayerTableFields, +[]( void * p ) { LayerReset( *(Layer *) p ); }, true };
 inline const TableTypeInfo * LayerTableType() { return &LayerTableInfo; }
 
 inline const TableFieldInfo SceneTableFields[] = {
-    { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Scene, name ), (uint32_t) sizeof( Scene::name ), (uint32_t) offsetof( Scene, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "version", "version", "int32", 0xe8e6, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, version ), (uint32_t) sizeof( Scene::version ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 99.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "head", "head", "ListNode", 0x79aa, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "tree", "tree", "TreeNode", 0x595e, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, tree ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "settings", "settings", "Settings", 0x130e, 17, false, true, []( const void * slot ) -> const void * { return (const void *) SettingsAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) SettingsEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, settings ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &SettingsTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "alias", "alias", "ListNode", 0xfc71, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "ground", "ground", "Layer", 0x5bdf, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, ground ), (uint32_t) sizeof( Scene::ground ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "layers", "layers", "Layer", 0x1ee8, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( Scene::layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "meta", "meta", "Meta", 0xcea6, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( Scene::meta ), 0xffffffffu, 0xffffffffu, &MetaTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Scene, name ), (uint32_t) sizeof( Scene::name ), (uint32_t) offsetof( Scene, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "version", "version", "int32", 0xe8e6, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, version ), (uint32_t) sizeof( Scene::version ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 99.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "head", "head", "ListNode", 0x79aa, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "tree", "tree", "TreeNode", 0x595e, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, tree ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "settings", "settings", "Settings", 0x130e, 17, false, true, []( const void * slot ) -> const void * { return (const void *) SettingsAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) SettingsEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, settings ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &SettingsTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "alias", "alias", "ListNode", 0xfc71, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "ground", "ground", "Layer", 0x5bdf, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, ground ), (uint32_t) sizeof( Scene::ground ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "layers", "layers", "Layer", 0x1ee8, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( Scene::layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "meta", "meta", "Meta", 0xcea6, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( Scene::meta ), 0xffffffffu, 0xffffffffu, &MetaTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo SceneTableInfo = { "Scene", (uint32_t) sizeof( Scene ), 9, SceneTableFields, +[]( void * p ) { SceneReset( *(Scene *) p ); }, true };
 inline const TableTypeInfo * SceneTableType() { return &SceneTableInfo; }
 
 inline const TableFieldInfo DepotTableFields[] = {
-    { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( Depot::name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "banks", "banks", "Layer", 0x7f34, 13, true, false, NULL, NULL, false, false, (int32_t) Tier::Max, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( Depot::banks.slots[0] ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, "Tier", +[]( uint64_t v ) { return EnumName( Tier( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Tier( v ), id ); return id; }, NULL, "" },
-    { "spare", "spare", "Meta", 0x3a4f, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( Depot::spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &MetaTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "head", "head", "ListNode", 0x79aa, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( Depot::name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "banks", "banks", "Layer", 0x7f34, 13, true, false, NULL, NULL, false, false, (int32_t) Tier::Max, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( Depot::banks.slots[0] ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, "Tier", +[]( uint64_t v ) { return EnumName( Tier( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Tier( v ), id ); return id; }, NULL, "" },
+    { "spare", "spare", "Meta", 0x3a4f, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( Depot::spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &MetaTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "head", "head", "ListNode", 0x79aa, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo DepotTableInfo = { "Depot", (uint32_t) sizeof( Depot ), 4, DepotTableFields, +[]( void * p ) { DepotReset( *(Depot *) p ); }, true };
 inline const TableTypeInfo * DepotTableType() { return &DepotTableInfo; }
 
 inline const TableFieldInfo AlbumTableFields[] = {
-    { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( Album::name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "tint", "tint", "Colour", 0x82b9, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( Album::tint ), 0xffffffffu, 0xffffffffu, &ColourTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "stamp", "stamp", "Stamp", 0x0dc6, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( Album::stamp ), 0xffffffffu, 0xffffffffu, &StampTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "marker", "marker", "Marker", 0x866f, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( Album::marker ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "pin", "pin", "Marker", 0x69d5, 17, false, true, []( const void * slot ) -> const void * { return (const void *) MarkerAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) MarkerEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "head", "head", "ListNode", 0x79aa, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "name", "name", "string", 0x30df, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( Album::name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "tint", "tint", "Colour", 0x82b9, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( Album::tint ), 0xffffffffu, 0xffffffffu, &ColourTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "stamp", "stamp", "Stamp", 0x0dc6, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( Album::stamp ), 0xffffffffu, 0xffffffffu, &StampTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "marker", "marker", "Marker", 0x866f, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( Album::marker ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "pin", "pin", "Marker", 0x69d5, 17, false, true, []( const void * slot ) -> const void * { return (const void *) MarkerAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) MarkerEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "head", "head", "ListNode", 0x79aa, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 6, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true };
 inline const TableTypeInfo * AlbumTableType() { return &AlbumTableInfo; }

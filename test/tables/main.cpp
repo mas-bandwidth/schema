@@ -35,6 +35,7 @@
 #include "StreamTable.h"
 #include "M1Table.h"
 #include "M2Table.h"
+#include "ScalarsTable.h"
 
 static int failures = 0;
 
@@ -3093,6 +3094,9 @@ static void test_golden_reload()
     reload_table_golden( "v1_cfg", tblv1::CfgLoad, tblv1::CfgSave );
     reload_table_golden( "v1_seams", tblv1::CfgLoad, tblv1::CfgSave );
     reload_table_golden( "v2_cfg", tblv2::CfgLoad, tblv2::CfgSave );
+    reload_table_golden( "scalars_full", scalardemo::SimStateLoad, scalardemo::SimStateSave );
+    reload_table_golden( "scalars_default", scalardemo::SimStateLoad, scalardemo::SimStateSave );
+    reload_table_golden( "scalars_edges", scalardemo::SimStateLoad, scalardemo::SimStateSave );
     reload_table_golden( "v2_seams", tblv2::CfgLoad, tblv2::CfgSave );
     reload_table_golden( "chain_value", tblp1::ChainLoad, tblp1::ChainSave );
     reload_table_golden( "chain_value_empty", tblp1::ChainLoad, tblp1::ChainSave );
@@ -3178,6 +3182,56 @@ static void build_golden_wide( tabledemo::WideBlob & blob )
     for ( int32_t i = 0; i < 100; i++ ) { blob.payload[i] = (uint8_t) ( i * 7 + 3 ); }
     blob.samples_count = 70000;
     for ( int32_t i = 0; i < 70000; i++ ) { blob.samples[i] = (uint16_t) ( i * 37 + 11 ); }
+}
+
+// THE WIDE SCALARS (docs/SPEC-TABLES.md §3): every fixed width and signedness,
+// the 128-bit integers, and each as an element and a nested field, at values
+// that fill the wide storage — raw values above 2^63, a 128-bit range only
+// 128 bits hold, the unsigned maximum. The same instance is the text
+// testdata/conformance/tables/json/scalars_full.json, and the tool packs that
+// text to these bytes (the conformance harness compares both ways).
+static void build_golden_scalars( scalardemo::SimState & s )
+{
+    s.tilt = -127;                                        // -7.9375 in Q4.4
+    s.angle = -11796479;                                  // -179.9999847412109375 in Q16.16
+    s.position = 1966047232ll;                            // 29999.5 in Q48.16
+    s.reach = serialize::int128_t( -65535950848ll );      // -999999.25 in Q112.16
+    s.ticks = 1000000;
+    s.ratio = 239;                                        // 14.9375 in UQ4.4
+    s.speed = 65470464u;                                  // 999.0 in UQ16.16
+    s.span = 18446744073709486079ull;                     // 281474976710654.9999847412109375 in UQ48.16
+    s.mass = serialize::uint128_t( 131071967232ull );     // 1999999.5 in UQ112.16
+    s.frames = 4294967295u;
+    s.flux = -( serialize::int128_t( 1 ) << 100 );        // -1267650600228229401496703205376
+    s.energy = 4999999999ll;
+    s.entity_id = ~serialize::uint128_t( 0 );             // 2^128 - 1
+    s.scale = -32768;                                     // -0.5 in Q16.16
+    s.samples[0] = 98304; s.samples[1] = -524288; s.samples[2] = 524287;
+    s.weights_count = 2; s.weights[0] = 128; s.weights[1] = 25600;
+    s.axes[scalardemo::Axis::X] = -429496729600ll;        // -100.0 in Q32.32
+    s.axes[scalardemo::Axis::Z] = 429496729599ll;         // 99.99999999976716935634613037109375
+    s.seeds_count = 2; s.seeds[0] = 1; s.seeds[1] = serialize::uint128_t( 1 ) << 64;
+    s.pose.x = -32768; s.pose.y = 802816; s.pose.heading = 23592959u;
+    s.spawn_present = true; s.spawn.heading = 65536;
+}
+
+// the same declaration at its BOUNDS: every field on a declared limit, the
+// raw values at the storage edges the clamps are emitted against
+static void build_golden_scalars_edges( scalardemo::SimState & s )
+{
+    s.tilt = -128; s.angle = 11796480; s.position = -1966080000ll;
+    s.reach = serialize::int128_t( 65536000000ll );
+    s.ticks = 0; s.ratio = 240; s.speed = 65536000u; s.span = 18446744073709486080ull;
+    s.mass = serialize::uint128_t( 131072000000ull ); s.frames = 0;
+    s.flux = serialize::int128_t( 1 ) << 100;
+    s.energy = -5000000000ll;
+    s.entity_id = serialize::uint128_t( 1 ) << 127;
+    s.scale = 524288; // 8.0
+    s.samples[0] = -524288; s.samples[1] = 524288; s.samples[2] = 0;
+    s.weights_count = 4; s.weights[0] = 0; s.weights[1] = 25600; s.weights[2] = 1; s.weights[3] = 255;
+    s.axes[scalardemo::Axis::Y] = 429496729600ll;
+    s.seeds_count = 1; s.seeds[0] = 0;
+    s.pose.x = 1966080000ll; s.pose.y = -1966080000ll; s.pose.heading = 23592960u;
 }
 
 static void build_golden_v1( tblv1::Cfg & cfg )
@@ -3290,6 +3344,26 @@ static void test_golden_wire()
         int64_t wrote = tblv2::CfgSave( cfg, buffer, sizeof( buffer ) );
         CHECK( wrote > 0 && wrote == tblv2::CfgMeasure( cfg ) );
         pin_table_golden( "v2_cfg", buffer, wrote );
+    }
+    {
+        static scalardemo::SimState s;
+        build_golden_scalars( s );
+        int64_t wrote = scalardemo::SimStateSave( s, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == scalardemo::SimStateMeasure( s ) );
+        pin_table_golden( "scalars_full", buffer, wrote );
+    }
+    {
+        static scalardemo::SimState s; // every default: the two specified ones elide with the rest
+        int64_t wrote = scalardemo::SimStateSave( s, buffer, sizeof( buffer ) );
+        CHECK( wrote == 2 );
+        pin_table_golden( "scalars_default", buffer, wrote );
+    }
+    {
+        static scalardemo::SimState s;
+        build_golden_scalars_edges( s );
+        int64_t wrote = scalardemo::SimStateSave( s, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == scalardemo::SimStateMeasure( s ) );
+        pin_table_golden( "scalars_edges", buffer, wrote );
     }
 }
 

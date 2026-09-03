@@ -95,6 +95,14 @@ struct TableUnionInfo
     const TableUnionArmInfo * arms;
 };
 
+// The exact raw range of a wide-kind field (docs/SPEC-TABLES.md §8.2): two 128-bit
+// values as 64-bit lanes, low lane first, two's complement for the signed kinds.
+struct TableWideRange
+{
+    uint64_t lo[2];
+    uint64_t hi[2];
+};
+
 struct TableFieldInfo
 {
     const char * name;      // schema field name, e.g. "health"
@@ -114,6 +122,16 @@ struct TableFieldInfo
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // NOTE: int64 ranges beyond 2^53 lose precision here
     double range_max;
+    // the WIDE kinds (18-29, docs/SPEC-TABLES.md §3, §8.2): frac_bits is a fixed
+    // field's F — its storage holds units × 2^F — and wide is the declared
+    // range on that RAW scale, exact, as two 128-bit two's-complement values
+    // in 64-bit lanes (low lane first). NULL where the declaration bounds
+    // nothing (a bare uint128) and for every other kind; frac_bits is 0 for
+    // every kind that is not fixed-point. range_min/range_max still carry
+    // the declared bounds as doubles — whole units for a fixed field — for
+    // a walker that only shows them.
+    uint8_t frac_bits;
+    const TableWideRange * wide;
     int64_t enum_max;       // enums: highest valid value (None = 0 always valid);
                             // unions: the arm count (tag range [0, enum_max]);
                             // flags: the highest declared BIT INDEX; else -1
@@ -181,6 +199,8 @@ struct TableWriter
     TABLEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     TABLEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
     TABLEDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
+    TABLEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
     TABLEDEMO_TABLE_INLINE void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
@@ -204,16 +224,20 @@ struct TableReader
     TABLEDEMO_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
     TABLEDEMO_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
     TABLEDEMO_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    TABLEDEMO_TABLE_INLINE void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
     {
         switch ( kind )
         {
-            case 1: case 2: case 6: return has( 1 ) ? ( offset += 1, true ) : false;
-            case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 17: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
-            case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
+            // the fixed-width kinds, each by its width: 18-29 are the 128-bit integers and
+            // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
+            case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
+            case 4: case 8: case 10: case 17: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
+            case 5: case 9: case 11: case 23: case 28: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
             case 12: case 13: case 14: case 16:
             {
                 if ( !has( 4 ) ) return false;
@@ -548,6 +572,15 @@ inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableBy
     {
         for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
     }
+}
+
+// A 128-bit store as two lanes: sixteen bytes, the low lane first in the
+// little order and the high lane first — each lane big-endian — in the big
+// order, exactly as a u64 is one lane of eight (docs/SPEC-TABLES.md §7.2).
+inline void table_cook_put128( uint8_t * at, uint64_t lo, uint64_t hi, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little ) { table_cook_put( at, lo, 8, order ); table_cook_put( at + 8, hi, 8, order ); }
+    else { table_cook_put( at, hi, 8, order ); table_cook_put( at + 8, lo, 8, order ); }
 }
 
 // A buffer piece: the USED bytes and nothing else. The tail is already zero —
@@ -2210,8 +2243,8 @@ inline const TableTypeInfo * ScoreBoardTableType();
 inline const TableTypeInfo * TeamConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "spawn_count", "spawn_count", "int32", 0x3668, 4, false, false, false, 0, (uint32_t) offsetof( TeamConfig, spawn_count ), (uint32_t) sizeof( TeamConfig::spawn_count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "banner", "banner", "string", 0x80e4, 12, false, true, false, 16, (uint32_t) offsetof( TeamConfig, banner ), (uint32_t) sizeof( TeamConfig::banner ), (uint32_t) offsetof( TeamConfig, banner_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "spawn_count", "spawn_count", "int32", 0x3668, 4, false, false, false, 0, (uint32_t) offsetof( TeamConfig, spawn_count ), (uint32_t) sizeof( TeamConfig::spawn_count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "banner", "banner", "string", 0x80e4, 12, false, true, false, 16, (uint32_t) offsetof( TeamConfig, banner ), (uint32_t) sizeof( TeamConfig::banner ), (uint32_t) offsetof( TeamConfig, banner_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TeamConfig", (uint32_t) sizeof( TeamConfig ), 2, fields, +[]( void * p ) { TeamConfigReset( *(TeamConfig *) p ); } };
     return &info;
@@ -2220,8 +2253,8 @@ inline const TableTypeInfo * TeamConfigTableType()
 inline const TableTypeInfo * GunnerConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "reaction", "reaction", "float32", 0x900f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, reaction ), (uint32_t) sizeof( GunnerConfig::reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "tracking", "tracking", "bool", 0x53d5, 1, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, tracking ), (uint32_t) sizeof( GunnerConfig::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "reaction", "reaction", "float32", 0x900f, 10, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, reaction ), (uint32_t) sizeof( GunnerConfig::reaction ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "tracking", "tracking", "bool", 0x53d5, 1, false, false, false, 0, (uint32_t) offsetof( GunnerConfig, tracking ), (uint32_t) sizeof( GunnerConfig::tracking ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "GunnerConfig", (uint32_t) sizeof( GunnerConfig ), 2, fields, +[]( void * p ) { GunnerConfigReset( *(GunnerConfig *) p ); } };
     return &info;
@@ -2230,9 +2263,9 @@ inline const TableTypeInfo * GunnerConfigTableType()
 inline const TableTypeInfo * TurretConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "damage", "damage", "float32", 0x15a9, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, damage ), (uint32_t) sizeof( TurretConfig::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "cooldown", "cooldown", "float32", 0x2230, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, cooldown ), (uint32_t) sizeof( TurretConfig::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "gunner", "gunner", "GunnerConfig", 0x2bc9, 13, false, false, true, 0, (uint32_t) offsetof( TurretConfig, gunner ), (uint32_t) sizeof( TurretConfig::gunner ), 0xffffffffu, (uint32_t) offsetof( TurretConfig, gunner_present ), GunnerConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "damage", "damage", "float32", 0x15a9, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, damage ), (uint32_t) sizeof( TurretConfig::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "cooldown", "cooldown", "float32", 0x2230, 10, false, false, false, 0, (uint32_t) offsetof( TurretConfig, cooldown ), (uint32_t) sizeof( TurretConfig::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "gunner", "gunner", "GunnerConfig", 0x2bc9, 13, false, false, true, 0, (uint32_t) offsetof( TurretConfig, gunner ), (uint32_t) sizeof( TurretConfig::gunner ), 0xffffffffu, (uint32_t) offsetof( TurretConfig, gunner_present ), GunnerConfigTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "TurretConfig", (uint32_t) sizeof( TurretConfig ), 3, fields, +[]( void * p ) { TurretConfigReset( *(TurretConfig *) p ); } };
     return &info;
@@ -2241,9 +2274,9 @@ inline const TableTypeInfo * TurretConfigTableType()
 inline const TableTypeInfo * HullConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "health", "health", "float32", 0x8617, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, health ), (uint32_t) sizeof( HullConfig::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "mass", "mass", "float32", 0xe7a6, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, mass ), (uint32_t) sizeof( HullConfig::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "turrets", "turrets", "TurretConfig", 0x48ad, 13, true, false, false, (int32_t) Weapon::Max, (uint32_t) offsetof( HullConfig, turrets ), (uint32_t) sizeof( HullConfig::turrets.slots[0] ), 0xffffffffu, 0xffffffffu, TurretConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Weapon", +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Weapon( v ), id ); return id; }, NULL, "" },
+        { "health", "health", "float32", 0x8617, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, health ), (uint32_t) sizeof( HullConfig::health ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "mass", "mass", "float32", 0xe7a6, 10, false, false, false, 0, (uint32_t) offsetof( HullConfig, mass ), (uint32_t) sizeof( HullConfig::mass ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "turrets", "turrets", "TurretConfig", 0x48ad, 13, true, false, false, (int32_t) Weapon::Max, (uint32_t) offsetof( HullConfig, turrets ), (uint32_t) sizeof( HullConfig::turrets.slots[0] ), 0xffffffffu, 0xffffffffu, TurretConfigTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, "Weapon", +[]( uint64_t v ) { return EnumName( Weapon( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Weapon( v ), id ); return id; }, NULL, "" },
     };
     static const TableTypeInfo info = { "HullConfig", (uint32_t) sizeof( HullConfig ), 3, fields, +[]( void * p ) { HullConfigReset( *(HullConfig *) p ); } };
     return &info;
@@ -2252,9 +2285,9 @@ inline const TableTypeInfo * HullConfigTableType()
 inline const TableTypeInfo * KeyedConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "teams", "teams", "TeamConfig", 0x9ae1, 13, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( KeyedConfig, teams ), (uint32_t) sizeof( KeyedConfig::teams.slots[0] ), 0xffffffffu, 0xffffffffu, TeamConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
-        { "hulls", "hulls", "HullConfig", 0xeff5, 13, true, false, false, (int32_t) Hull::Max, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( KeyedConfig::hulls.slots[0] ), 0xffffffffu, 0xffffffffu, HullConfigTableType(), false, 0.0, 0.0, -1, NULL, NULL, "Hull", +[]( uint64_t v ) { return EnumName( Hull( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Hull( v ), id ); return id; }, NULL, "" },
-        { "scores", "scores", "ScoreBoard", 0xdcf3, 13, false, false, false, 0, (uint32_t) offsetof( KeyedConfig, scores ), (uint32_t) sizeof( KeyedConfig::scores ), 0xffffffffu, 0xffffffffu, ScoreBoardTableType(), false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "teams", "teams", "TeamConfig", 0x9ae1, 13, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( KeyedConfig, teams ), (uint32_t) sizeof( KeyedConfig::teams.slots[0] ), 0xffffffffu, 0xffffffffu, TeamConfigTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
+        { "hulls", "hulls", "HullConfig", 0xeff5, 13, true, false, false, (int32_t) Hull::Max, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( KeyedConfig::hulls.slots[0] ), 0xffffffffu, 0xffffffffu, HullConfigTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, "Hull", +[]( uint64_t v ) { return EnumName( Hull( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Hull( v ), id ); return id; }, NULL, "" },
+        { "scores", "scores", "ScoreBoard", 0xdcf3, 13, false, false, false, 0, (uint32_t) offsetof( KeyedConfig, scores ), (uint32_t) sizeof( KeyedConfig::scores ), 0xffffffffu, 0xffffffffu, ScoreBoardTableType(), false, 0.0, 0.0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
     };
     static const TableTypeInfo info = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 3, fields, +[]( void * p ) { KeyedConfigReset( *(KeyedConfig *) p ); } };
     return &info;
@@ -2263,7 +2296,7 @@ inline const TableTypeInfo * KeyedConfigTableType()
 inline const TableTypeInfo * ScoreBoardTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "per_team", "per_team", "int32", 0x443f, 4, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( ScoreBoard::per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100000.0, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
+        { "per_team", "per_team", "int32", 0x443f, 4, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( ScoreBoard::per_team[0] ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100000.0, 0, NULL, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint16_t { uint16_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "" },
     };
     static const TableTypeInfo info = { "ScoreBoard", (uint32_t) sizeof( ScoreBoard ), 1, fields, +[]( void * p ) { ScoreBoardReset( *(ScoreBoard *) p ); } };
     return &info;

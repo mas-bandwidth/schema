@@ -466,3 +466,47 @@ json-hostile label-type-mismatch            graphdemo Scene       testdata/confo
 json-hostile label-dropped-definition       graphdemo Scene       testdata/conformance/tables/json-hostile/label-dropped-definition       0,0,1,0,false
 json-hostile label-in-unknown-key           graphdemo Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key           1,0,0,0,false
 json-hostile shared-node-by-label           graphdemo Scene       testdata/conformance/tables/json-hostile/shared-node-by-label           0,0,0,0,false
+
+# THE WIDE SCALARS (docs/SPEC-TABLES.md §3, §16.2): every scalar the type wire
+# carries, in a table — the fixed-point family at every width and signedness,
+# the 128-bit integers, each as an element and a nested field. The unit is the
+# C++ reference's and the tool's; every other leg answers these ABSENT until it
+# lands the kinds (§15). scalars2 is the same root as a later build reads it:
+# a fixed respelled as an integer and a 128-bit narrowed to 64 (kind
+# mismatches), two ranges tightened (clamps on the raw scale), two fields gone.
+unit scalars     tables/scalars
+unit tblscalars2 test/tables/Scalars2.schema
+instance scalars_full    scalars SimState testdata/wire/tables/scalars_full.bin
+instance scalars_default scalars SimState testdata/wire/tables/scalars_default.bin
+instance scalars_edges   scalars SimState testdata/wire/tables/scalars_edges.bin
+report scalars_full_as_2  tblscalars2 SimState testdata/wire/tables/scalars_full.bin
+report scalars_edges_as_2 tblscalars2 SimState testdata/wire/tables/scalars_edges.bin
+cook-write scalars_full    testdata/conformance/tables/cook-write/scalars_full.cook    testdata/conformance/tables/cook-write/scalars_full-be.cook
+cook-write scalars_default testdata/conformance/tables/cook-write/scalars_default.cook testdata/conformance/tables/cook-write/scalars_default-be.cook
+cook-write scalars_edges   testdata/conformance/tables/cook-write/scalars_edges.cook   testdata/conformance/tables/cook-write/scalars_edges-be.cook
+
+# the text form's rules at the wide kinds (§16.2): a fixed takes any number
+# token whose value is EXACTLY representable in its Q I.F and refuses a finer
+# one as the wrong shape, never rounding; out of range clamps on the raw scale;
+# a magnitude past 128 bits saturates and counts; a 128-bit integer takes any
+# integral token, exact past 2^53
+json-hostile fixed-fraction-too-fine  scalars SimState testdata/conformance/tables/json-hostile/fixed-fraction-too-fine  0,1,0,0,false
+json-hostile fixed-exact-fraction     scalars SimState testdata/conformance/tables/json-hostile/fixed-exact-fraction     0,0,0,0,false
+json-hostile fixed-integral-token     scalars SimState testdata/conformance/tables/json-hostile/fixed-integral-token     0,0,0,0,false
+json-hostile fixed-over-range         scalars SimState testdata/conformance/tables/json-hostile/fixed-over-range         0,0,3,0,false
+json-hostile fixed-huge-exponent      scalars SimState testdata/conformance/tables/json-hostile/fixed-huge-exponent      0,0,3,0,false
+json-hostile fixed-below-resolution   scalars SimState testdata/conformance/tables/json-hostile/fixed-below-resolution   0,2,0,0,false
+json-hostile fixed-negative-zero      scalars SimState testdata/conformance/tables/json-hostile/fixed-negative-zero      0,0,0,0,false
+json-hostile fixed-at-bound           scalars SimState testdata/conformance/tables/json-hostile/fixed-at-bound           0,0,0,0,false
+json-hostile ufixed-negative          scalars SimState testdata/conformance/tables/json-hostile/ufixed-negative          0,0,2,0,false
+json-hostile fixed-array-elements     scalars SimState testdata/conformance/tables/json-hostile/fixed-array-elements     0,2,2,0,false
+json-hostile fixed-wrong-shape        scalars SimState testdata/conformance/tables/json-hostile/fixed-wrong-shape        0,2,0,0,false
+json-hostile int128-beyond-int64      scalars SimState testdata/conformance/tables/json-hostile/int128-beyond-int64      0,0,0,0,false
+json-hostile int128-over-range        scalars SimState testdata/conformance/tables/json-hostile/int128-over-range        0,0,2,0,false
+json-hostile int128-fractional        scalars SimState testdata/conformance/tables/json-hostile/int128-fractional        0,1,0,0,false
+json-hostile int128-integral-forms    scalars SimState testdata/conformance/tables/json-hostile/int128-integral-forms    0,0,0,0,false
+json-hostile uint128-max              scalars SimState testdata/conformance/tables/json-hostile/uint128-max              0,0,0,0,false
+json-hostile uint128-over             scalars SimState testdata/conformance/tables/json-hostile/uint128-over             0,0,2,0,false
+json-hostile uint128-negative         scalars SimState testdata/conformance/tables/json-hostile/uint128-negative         0,0,1,0,false
+json-hostile int128-saturated-below   scalars SimState testdata/conformance/tables/json-hostile/int128-saturated-below   0,0,2,0,false
+json-hostile fixed-nested-type        scalars SimState testdata/conformance/tables/json-hostile/fixed-nested-type        0,1,1,0,false

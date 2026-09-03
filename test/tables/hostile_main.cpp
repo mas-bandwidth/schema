@@ -37,6 +37,8 @@
 #include "TablesTable.h"
 // the POINTERED unit: §16.7's rows name Scene, whose text reads into a builder
 #include "GraphTable.h"
+// the WIDE-SCALAR unit: the fixed-point family and the 128-bit integers (§3)
+#include "ScalarsTable.h"
 
 static int failures = 0;
 static int checked = 0;
@@ -80,20 +82,23 @@ static bool parse_expected( const char * text, Expected & out )
     return true;
 }
 
-static bool same_report( const TableReport & got, const Expected & want )
+// each unit spells its own TableReport, so the compare is generic over it
+template <typename R>
+static bool same_report( const R & got, const Expected & want )
 {
     return got.unknown == want.unknown && got.kind_mismatch == want.kind_mismatch &&
            got.clamped == want.clamped && got.duplicate == want.duplicate &&
            got.malformed == want.malformed;
 }
 
-// one case, for whichever root the manifest names. The two roots share every
-// line of this check, so the template is the whole of the difference.
-template <typename T>
+// one case, for whichever root the manifest names. The roots share every line
+// of this check, so the template is the whole of the difference; R is the
+// unit's own TableReport, deduced from the codec.
+template <typename T, typename R>
 static void check_case( const char * name, const char * text, long text_size,
                         const uint8_t * packed, long size, bool refused, const Expected & want,
-                        bool ( *from_json )( T &, const char *, int64_t, TableReport * ),
-                        bool ( *load )( T &, const uint8_t *, int64_t, TableReport * ),
+                        bool ( *from_json )( T &, const char *, int64_t, R * ),
+                        bool ( *load )( T &, const uint8_t *, int64_t, R * ),
                         int64_t ( *measure )( const T & ),
                         int64_t ( *save )( const T &, uint8_t *, int64_t ) )
 {
@@ -101,7 +106,7 @@ static void check_case( const char * name, const char * text, long text_size,
 
     // 1. the same text, through the generated walk
     T from_text;
-    TableReport text_report;
+    R text_report;
     bool text_ok = from_json( from_text, text, text_size, &text_report );
     if ( refused )
     {
@@ -157,7 +162,7 @@ static void check_case( const char * name, const char * text, long text_size,
 
     // 3. and the bytes load clean
     T value;
-    TableReport report;
+    R report;
     if ( !load( value, packed, size, &report ) )
     {
         printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );
@@ -380,6 +385,12 @@ int main( int argc, char ** argv )
         else if ( strcmp( root, "Scene" ) == 0 )
         {
             check_scene_case( name, (const char *) text, text_size, packed, size, refused, want );
+        }
+        else if ( strcmp( root, "SimState" ) == 0 )
+        {
+            check_case<scalardemo::SimState>( name, (const char *) text, text_size, packed, size, refused, want,
+                                              scalardemo::SimStateFromJson, scalardemo::SimStateLoad,
+                                              scalardemo::SimStateMeasure, scalardemo::SimStateSave );
         }
         else
         {

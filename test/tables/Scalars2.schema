@@ -1,0 +1,45 @@
+// Scalars2.schema — SimState as a LATER build reads it (docs/SPEC-TABLES.md §4):
+// `angle` respelled as a plain integer, so the stored fixed32 is a KIND
+// MISMATCH; `position` and `speed` with tighter bounds, so stored values past
+// them CLAMP on the raw scale; `flux` narrowed to a 64-bit int, another kind
+// mismatch; `entity_id` and `ticks` gone, so they count as unknown ids; the
+// rest unchanged and read faithfully.
+package scalardemo2
+
+const MaxWorldUnits = 30000
+
+enum Axis { X, Y, Z }
+
+type Pose
+{
+    x       fixed(48, 16) = 0.5 | min = -MaxWorldUnits, max = MaxWorldUnits
+    y       fixed(48, 16)       | min = -MaxWorldUnits, max = MaxWorldUnits
+    heading ufixed(16, 16)      | min = 0, max = 360
+}
+
+table SimState
+{
+    tilt     fixed(4, 4)    | min = -8, max = 7
+    angle    int32          | min = -180, max = 180
+    position fixed(48, 16)  | min = -1000, max = 1000
+    reach    fixed(112, 16) | min = -1000000, max = 1000000
+
+    ratio  ufixed(4, 4)    | min = 0, max = 15
+    speed  ufixed(16, 16)  | min = 0, max = 10
+    span   ufixed(48, 16)  | min = 0, max = 281474976710655
+    mass   ufixed(112, 16) | min = 0, max = 2000000
+    frames ufixed(32, 0)   | min = 0, max = 4294967295
+
+    flux   int64         | min = -5000000000, max = 5000000000
+    energy int128 = -250 | min = -5000000000, max = 5000000000
+
+    scale fixed(16, 16) = 1.0 | min = -8, max = 8
+
+    samples [3]fixed(16, 16)    | min = -8, max = 8
+    weights [..4]ufixed(8, 8)   | min = 0, max = 100
+    axes    [Axis]fixed(32, 32) | min = -100, max = 100
+    seeds   [..2]uint128
+
+    pose  Pose
+    spawn ?Pose
+}

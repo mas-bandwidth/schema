@@ -279,6 +279,13 @@ func renderField(f *ir.Field) Field {
 		add("array", "bounded")
 		add("bound", strconv.FormatInt(f.ArrayBound, 10))
 	}
+	if f.Type.Kind == ir.TFixed {
+		// a fixed field's SCALE. The kind fixes the width and the signedness;
+		// F is the one wire-invisible fact left, and a stored raw value under
+		// a moved F reads as a different number with no counter to fire —
+		// the same class a changed default is in (docs/SPEC-TABLES.md §4.1, §18.1)
+		add("frac", strconv.Itoa(f.Type.FracBits))
+	}
 	if f.Type.Size != 0 {
 		add("size", strconv.FormatInt(f.Type.Size, 10))
 	}

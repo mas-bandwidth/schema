@@ -9,6 +9,7 @@
 package tablecook
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 
@@ -143,7 +144,20 @@ func (r *regionReader) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 	case ir.TFloat64:
 		cell.F = math.Float64frombits(r.ord.Uint64(r.buf[at:]))
 		return nil
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if kind := ir.TableScalarKind(f); ir.TableKindWide(kind) {
+			n := int64(ir.TableKindWidth(kind))
+			le := make([]byte, n)
+			if r.ord == binary.LittleEndian {
+				copy(le, r.buf[at:at+n])
+			} else {
+				for i := range le {
+					le[i] = r.buf[at+n-1-int64(i)]
+				}
+			}
+			cell.Wide = tabletext.WideFromBytes(le, kind)
+			return nil
+		}
 		r.width(cell, at, int64(t.Width)/8, t.Signed)
 		return nil
 	case ir.TBits:

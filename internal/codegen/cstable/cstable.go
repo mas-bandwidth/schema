@@ -269,6 +269,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	if err := ir.RefuseWideTableKinds(u, "C#"); err != nil {
+		return nil, err
+	}
 	// The two ACCELERATORS are emitted ON THE SIDE and neither needs a wire
 	// codec: the BLOCK form (§19) points at bytes a producer wrote, and the
 	// COOK (§7) points at a region the tooling wrote. Both are pure readers

@@ -82,6 +82,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return nil, nil
 	}
+	if err := ir.RefuseWideTableKinds(u, "Rust"); err != nil {
+		return nil, err
+	}
 	out := map[string][]byte{}
 
 	variable := ir.VariableTables(u)
