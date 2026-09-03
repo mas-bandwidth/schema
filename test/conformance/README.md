@@ -171,10 +171,11 @@ it is now measured rather than assumed.
 
 **The Go leg is ONE process per surface and no more**, because its `cook` and
 `cook-forgery` are answered in the same binary as everything else rather than
-delegated: ten execs of a native binary, about a second for all 260 cases. It
-is the cheapest shape a leg can have under this contract, and the C++ and C#
-legs cost what they do because each was assembled from a binary that already
-existed — which the contract exists to allow.
+delegated: twelve execs of a native binary, under a second for all 268 cases —
+the only leg that got no slower as the battery grew. It is the cheapest shape a
+leg can have under this contract, and the C++ and C# legs cost what they do
+because each was assembled from a binary that already existed — which the
+contract exists to allow.
 
 So the data can grow a great deal before it matters, and the budget left for
 six more languages is most of the two minutes. Nine languages each starting a
