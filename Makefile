@@ -3704,6 +3704,20 @@ tables-elixir-soak: build/conformance/manifest.txt
 # — which on the BEAM has teeth, because a bad binary match raises.
 ELIXIR_FUZZ_N ?= 20000
 
+# THE SOAK's OWN negative control, and it is a DIFFERENT sabotage from the
+# audit's on purpose: the audit's extra allocation is freed every iteration and
+# lifts no floor, which is exactly why the two instruments both exist. This one
+# RETAINS a binary per iteration, so the floor rises and the soak must say so.
+.PHONY: tables-elixir-soak-negative-control
+tables-elixir-soak-negative-control: build/conformance/manifest.txt
+	@if SOAK_SABOTAGE=leak BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+			build/conformance/manifest.txt soak 30 > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the soak passed while a binary was retained every iteration"; \
+		exit 1; \
+	else \
+		echo "elixir soak negative control: a retained binary per iteration lifts the floor and reds the soak"; \
+	fi
+
 .PHONY: tables-elixir-fuzz
 tables-elixir-fuzz: build/conformance/manifest.txt
 	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
@@ -3741,6 +3755,7 @@ tables-elixir-release:
 	$(MAKE) tables-elixir-alloc-audit
 	$(MAKE) tables-elixir-alloc-negative-control
 	$(MAKE) tables-elixir-soak SOAK_SECONDS=$(ELIXIR_RELEASE_SOAK_SECONDS)
+	$(MAKE) tables-elixir-soak-negative-control
 	$(MAKE) tables-elixir-bench-gate
 
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml

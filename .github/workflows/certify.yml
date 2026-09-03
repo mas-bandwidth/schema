@@ -139,10 +139,9 @@ jobs:
       # the author's machine; on CI cargo is on PATH, so point it somewhere
       # harmless. DART, JAVA/JAVAC and ELIXIR/MIX likewise default to the
       # repo-local dist/ toolchains; on CI setup-dart, setup-java and
-      # setup-beam put the pinned versions on PATH. ELIXIRC joins ELIXIR/MIX for the
-      # same reason: its Makefile default is the repo-local dist/ too.
+      # setup-beam put the pinned versions on PATH.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix ELIXIRC=elixirc
+        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix
 
       # The committed generated/ tree is what this repo treats as ground
       # truth — findings are receipted against its line numbers. `make test`
@@ -237,7 +236,7 @@ jobs:
           echo "$targets"
           for t in $targets; do
             echo "::group::$t"
-            make "$t" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix ELIXIRC=elixirc
+            make "$t" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix
             echo "::endgroup::"
           done
 
@@ -331,7 +330,7 @@ jobs:
       # built — cheap enough to repeat per leg rather than invent a narrower
       # target with different semantics.
       - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix ELIXIRC=elixirc
+        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix
 
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest

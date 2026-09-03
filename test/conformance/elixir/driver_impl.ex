@@ -797,71 +797,105 @@ defmodule Audit do
     Enum.each(cases, &once/1)
     :erlang.garbage_collect()
     base = {live(), :erlang.memory(:binary)}
-    loop(cases, deadline, base, 0, System.monotonic_time(:millisecond))
+    # THE INTERVAL IS DERIVED FROM THE DURATION, so a run of any length gives
+    # the verdict below enough samples to take a floor from. Sixty samples puts
+    # twenty in each third, and the binary reading's high mode is 18% of them:
+    # the chance a whole third misses the low mode is 0.18^20, which is nothing.
+    # A fixed ten seconds gave a forty-five-second run six samples and two per
+    # third, and that reds on a clean tree about three times in a hundred.
+    interval = max(div(seconds * 1000, 60), 1000)
+    loop(cases, deadline, base, 0, System.monotonic_time(:millisecond), interval, [])
   end
 
-  defp loop(cases, deadline, base, iterations, next_print) do
+  defp loop(cases, deadline, base, iterations, next_print, interval, readings) do
     now = System.monotonic_time(:millisecond)
 
     cond do
       now >= deadline ->
-        report(base, iterations)
-        verdict(base, iterations)
+        verdict(iterations, [report(base, iterations) | readings])
 
       now >= next_print ->
-        report(base, iterations)
-        loop(cases, deadline, base, iterations, now + 10_000)
+        loop(cases, deadline, base, iterations, now + interval, interval,
+             [report(base, iterations) | readings])
 
       true ->
         Enum.each(cases, &once/1)
-        loop(cases, deadline, base, iterations + 1, next_print)
+        loop(cases, deadline, base, iterations + 1, next_print, interval, readings)
     end
   end
 
-  # THE VERDICT, and it is a CHECK rather than a sentence. The live heap must
-  # not have moved at all; the system's binary memory is allowed the slack a
-  # LARGE REFC BINARY IN FLIGHT takes, which is what a sample caught mid-corpus
-  # sees — the corpus carries a 70 KB payload — so the reading is the MINIMUM of
-  # three, which no in-flight allocation survives.
+  # THE VERDICT, and it is a CHECK rather than a sentence. Both columns are
+  # gated the same way, and the way is the FLOOR.
+  #
+  # NEITHER READING IS A LEVEL. The process's total_heap_size is its heap
+  # CAPACITY, which a collection may leave grown; :erlang.memory(:binary) counts
+  # the binary allocator's CARRIERS, and the corpus's largest instance carries
+  # 70,000-byte fields, so a carrier holding it is most of a megabyte. The binary
+  # reading is BIMODAL for exactly that reason — about a kilobyte or about
+  # 855 KB, measured at 18% of 272 samples over an hour — and it is bimodal from
+  # the first minute and never grows. A single sample of either column, taken at
+  # the wrong moment, says nothing.
+  #
+  # What a LEAK does to either series is unambiguous: it lifts the FLOOR. So the
+  # gate compares the MINIMUM of the first third of the samples against the
+  # minimum of the last third. A carrier the allocator happens to be holding
+  # cannot move a minimum, and neither can a heap the last collection happened to
+  # leave grown; a byte leaked per iteration can, and over an hour of 18,000
+  # iterations it moves it by 18 KB.
+  @heap_slack 1_024
   @binary_slack 65_536
 
-  defp verdict({base_live, base_bin}, iterations) do
-    :erlang.garbage_collect()
-    live_drift = live() - base_live
-
-    bin_drift =
-      Enum.min(
-        Enum.map(1..3, fn _ ->
-          Process.sleep(100)
-          :erlang.garbage_collect()
-          :erlang.memory(:binary) - base_bin
-        end)
-      )
+  defp verdict(iterations, readings) do
+    series = Enum.reverse(readings)
+    third = max(div(length(series), 3), 1)
+    early = Enum.take(series, third)
+    late = Enum.take(series, -third)
+    heap = floor_rise(early, late, 0)
+    binary = floor_rise(early, late, 1)
 
     cond do
-      live_drift > 0 ->
-        IO.puts(:stderr, "SOAK FAILED: the live heap grew #{live_drift} words over #{iterations} iterations")
+      heap > @heap_slack ->
+        IO.puts(
+          :stderr,
+          "SOAK FAILED: the live-heap FLOOR rose #{heap} words over #{iterations} iterations — " <>
+            "a collection that left the heap grown cannot move a minimum, so this is a leak"
+        )
+
         System.halt(1)
 
-      bin_drift > @binary_slack ->
-        IO.puts(:stderr, "SOAK FAILED: binary memory grew #{bin_drift} bytes over #{iterations} iterations")
+      binary > @binary_slack ->
+        IO.puts(
+          :stderr,
+          "SOAK FAILED: the binary-memory FLOOR rose #{binary} bytes over #{iterations} " <>
+            "iterations — a carrier cannot move a minimum, so this is a leak"
+        )
+
         System.halt(1)
 
       true ->
         IO.puts(
-          "soak: #{iterations} iterations, heap flat (#{live_drift} words) and binary memory " <>
-            "flat (#{bin_drift} bytes against the warm baseline)"
+          "soak: #{iterations} iterations over #{length(series)} samples — the live-heap floor " <>
+            "moved #{heap} words and the binary-memory floor #{binary} bytes"
         )
     end
   end
 
+  defp floor_rise(early, late, column) do
+    Enum.min(Enum.map(late, &elem(&1, column))) - Enum.min(Enum.map(early, &elem(&1, column)))
+  end
+
+  # one sample, and the pair it returns is what the verdict takes its floors from
   defp report({base_live, base_bin}, iterations) do
     :erlang.garbage_collect()
+    heap = live() - base_live
+    bin = :erlang.memory(:binary) - base_bin
 
     IO.puts(
-      "  #{iterations} iterations: live heap #{live() - base_live} words, " <>
-        "binary #{:erlang.memory(:binary) - base_bin} bytes (both against the warm baseline)"
+      "  #{iterations} iterations: live heap #{heap} words, " <>
+        "binary #{bin} bytes (both against the warm baseline)"
     )
+
+    {heap, bin}
   end
 
   defp live do
@@ -911,11 +945,21 @@ defmodule Audit do
     if apply(c.mod, c.save, [from_text]) != c.wire, do: raise("#{c.name}: the text read drifted")
     if apply(c.mod, c.to_json, [value]) != c.text, do: raise("#{c.name}: the text write drifted")
 
-    if System.get_env("SOAK_SABOTAGE") == "1" do
-      # THE NEGATIVE CONTROL: one extra allocation per iteration, which must
-      # take every case over its pinned budget
-      _ = :binary.copy(<<0>>, 64)
-      _ = List.duplicate(0, 64)
+    case System.get_env("SOAK_SABOTAGE") do
+      # THE AUDIT's negative control: one extra allocation per iteration, freed
+      # again immediately, which must take every case over its pinned budget
+      "1" ->
+        _ = :binary.copy(<<0>>, 64)
+        _ = List.duplicate(0, 64)
+
+      # THE SOAK's negative control, and it has to be a DIFFERENT sabotage: the
+      # audit's is freed every iteration and lifts no floor, which is the whole
+      # reason the two instruments exist. This one RETAINS, so the floor rises.
+      "leak" ->
+        :erlang.put(:leak, [:binary.copy(<<0>>, 8192) | :erlang.get(:leak) || []])
+
+      _ ->
+        :ok
     end
 
     :ok

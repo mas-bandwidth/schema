@@ -247,7 +247,7 @@ jobs:
 
       # The BEAM toolchain, the same versions as the Makefile's dist/ pins. The
       # generated Elixir is self-contained, so this is the leg's ONLY dependency.
-      # No ELIXIRC override is needed below: the Makefile's default prefixes the
+      # No ELIXIRC override is needed: the Makefile's default prefixes the
       # repo-local dist/ onto PATH and falls through to the toolchain this step
       # installed, which is the same mechanism ELIXIR and MIX already use.
       - uses: erlef/setup-beam@v1
