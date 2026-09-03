@@ -636,7 +636,9 @@ Removing a variant frees no bit either — retire the name, keep the position.
 ### Save and load
 
 Generation produces `<Base>Table.h` beside the packet headers — plain byte
-code with **no serialize dependency**, includable from any translation unit.
+code with **no serialize dependency**, includable from any translation unit
+(a unit declaring a 128-bit field takes one thing from `serialize.h`: the
+128-bit storage type, `serialize::int128_t` / `uint128_t`).
 The encode surface is a measure/save split, and the caller owns every buffer
 (generated code allocates nothing):
 

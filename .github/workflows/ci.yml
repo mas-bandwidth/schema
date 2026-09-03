@@ -328,6 +328,12 @@ jobs:
           qemu-s390x --version | head -1
           dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
+      # The one sibling the C++ battery needs, header-only, at the pin every
+      # other job uses: a table unit declaring a 128-bit field takes its
+      # storage type (serialize::int128_t / uint128_t) from serialize.h.
+      - name: Check out the serialize runtime (pinned release)
+        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+
       # The battery on the target, then the control that proves it can fail.
       # BE_CXX and BE_CC name the pinned compilers: the exact-version package
       # installs the SUFFIXED drivers, and the Makefile's unsuffixed defaults

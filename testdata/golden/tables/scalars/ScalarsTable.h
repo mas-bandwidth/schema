@@ -3,8 +3,8 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package scalardemo — protocol id 0x01ba84a4cbd2143a (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
-// dependency — includable from any TU.
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): includable from
+// any TU — the one thing taken from serialize.h is the 128-bit storage type.
 
 #pragma once
 

@@ -1,1 +1,2 @@
-{"targets": "build/conformance-harness build/conformance-cpp build/schema_test_cook"}
+{"targets": "build/conformance-harness build/conformance-cpp build/schema_test_cook",
+ "runtime": "serialize", "runtime_tag": "SERIALIZE_TAG"}
