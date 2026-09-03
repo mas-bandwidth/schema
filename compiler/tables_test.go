@@ -1,6 +1,7 @@
 // Tests for the tables generation surface (docs/SPEC-TABLES.md): the C, C++,
-// C#, Go and Rust targets grow table sources, every other target refuses BY
-// NAME, non-table output is byte-identical with or without tables, and the
+// C#, Go, JavaScript and Rust targets grow table sources, every other target
+// refuses BY NAME, non-table output is byte-identical with or without tables,
+// and the
 // generated codecs allocate nothing.
 package compiler
 
@@ -81,15 +82,15 @@ table Keyed
 
 // TestTablelessTargetsRefuseTables: a unit declaring tables is refused by name
 // under every target that carries no table backend — loudly, never by silently
-// dropping the tables. c, cpp, cs, go and rust all carry one
+// dropping the tables. c, cpp, cs, go, js and rust all carry one
 // (docs/SPEC-TABLES.md, backend status).
 func TestTablelessTargetsRefuseTables(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, tableSrc)
-	for _, target := range []string{"dart", "js"} {
+	for _, target := range []string{"dart"} {
 		if _, err := c.Generate(u, target, Options{}); err == nil {
 			t.Errorf("--lang %s accepted a unit with tables — it must refuse by name", target)
-		} else if !strings.Contains(err.Error(), "C, C++, C#, Go, Rust, Java and Elixir only") || !strings.Contains(err.Error(), "Config") {
+		} else if !strings.Contains(err.Error(), "C, C++, C#, Go, JavaScript, Rust, Java and Elixir only") || !strings.Contains(err.Error(), "Config") {
 			t.Errorf("--lang %s refusal does not name the rule and the tables: %v", target, err)
 		}
 	}

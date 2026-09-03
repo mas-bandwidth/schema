@@ -51,7 +51,9 @@ backend already has rather than from a second copy of it. Some registered
 drivers are shell scripts that dispatch: the C++ one answers the table and block
 surfaces from `build/conformance-cpp` and hands the two COOK surfaces to
 `build/schema_test_cook`, which already opens that unit and already runs that
-battery. Others are one binary that answers everything — see "Registering a
+battery. Others are one binary that answers everything, and the JavaScript one
+answers every surface from one module, because a node process starts in tens of
+milliseconds and there was nothing to assemble — see "Registering a
 language" below, where both shapes are stated.
 
 ```
@@ -101,7 +103,7 @@ absences are ordinary.
 "done" means for the tables layer, and an absence — per surface or per case — is
 the row of work that is left, named where it can be seen. The variable class's
 instances read `+4a` on the wire surfaces and `+3a` on the text surfaces in
-five languages today — the reference answers them all — and become part of the
+six languages today — the reference answers them all — and become part of the
 count as schema#349 lands them, one language at a time, with nothing in this
 data or this contract moving as they do.
 
@@ -112,6 +114,13 @@ same way would be telling a port to implement nothing in particular. The C#
 leg is the worked example: it registered with `json-read` and `json-write`
 ABSENT, and both cells moved to `pass 18/18` when the C# walk landed — nothing
 in the data or in this contract moved with them.
+
+**A DRIVER MAY TAKE ITS GENERATED TREE FROM THE ENVIRONMENT**, and the
+JavaScript leg does (`SCHEMA_JS_GENERATED`). That is not a contract change — the
+harness still hands a manifest, a surface and an output directory and nothing
+else — but it is what lets `conformance-negative-control-js` point the SAME
+driver at a sabotaged copy of the generated modules and require the matrix to go
+red. A leg whose generated tree is baked in has nothing for a control to aim at.
 
 ## The surfaces
 

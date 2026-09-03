@@ -94,6 +94,25 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
 		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
+		// THE PER-ENUM IDENTITY PAIR (docs/SPEC-TABLES.md §5, §11). C++ and C#
+		// overload the pair on the enum's own type; JavaScript has no
+		// overloading and no nested scope to hide it in, so each enum brings
+		// TWO module-level bindings named after it. Claimed for every enum of
+		// a unit that declares a table, whether or not any field has that type
+		// — a name free today must not become a collision the day a table
+		// gains one.
+		{name: "a declaration colliding with an enum's table identity id", want: "identity pair",
+			src: "package t\nenum Grade { A, B }\ntable Tab { g Grade }\ntype TableEnumIdGrade { y int32 }\n"},
+		{name: "a declaration colliding with an enum's table identity value", want: "identity pair",
+			src: "package t\nenum Grade { A, B }\ntable Tab { g Grade }\ntype TableEnumValueGrade { y int32 }\n"},
+		{name: "the identity pair is claimed for an enum no table field names", want: "identity pair",
+			src: "package t\nenum Grade { A, B }\ntable Tab { x int32 }\ntype TableEnumIdGrade { y int32 }\n"},
+		{name: "a declaration colliding with the text form's generic walk", want: "generated TABLE-wire runtime",
+			src: "package t\ntable Tab { x int32 }\ntype TableJson { y int32 }\n"},
+		{name: "a declaration colliding with the block layout check", want: "generated TABLE-wire runtime",
+			src: "package t\ntable Tab { x int32 }\ntype TableBlockLayout { y int32 }\n"},
+		{name: "a declaration colliding with the bit helpers' scratch", want: "generated TABLE-wire runtime",
+			src: "package t\ntable Tab { x int32 }\ntype TableBitsScratch { y int32 }\n"},
 
 		// THE RUST CONSTANT SPACE (docs/SPEC-TABLES.md §11). Rust spells a
 		// constant SCREAMING_SNAKE, and the spelling is MANY-TO-ONE:

@@ -1,0 +1,31 @@
+#!/bin/sh
+# THE JAVASCRIPT LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        check node and the generated modules are here
+#   leg run [args]   node bench/tables/js/main.mjs
+#
+# There is nothing to compile: the generated table modules name no runtime
+# (`make tables-js-standalone` gates that), so the leg is the runner plus what
+# the compiler emitted.
+set -e
+
+GEN=generated/bench/tables/js
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.js" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    command -v node >/dev/null 2>&1 || { echo "no node" >&2; exit 2; }
+    ;;
+run)
+    shift
+    exec node bench/tables/js/main.mjs "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

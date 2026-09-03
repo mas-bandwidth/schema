@@ -2698,6 +2698,20 @@ func (c *checker) checkClaimedNames() {
 			for _, v := range d.Variants {
 				addRust(ir.RustConstName(name)+"_"+ir.RustConstName(v.Text), whyC, v.Pos, name+v.Text)
 			}
+			if len(c.tables) > 0 {
+				// the JavaScript table backend's per-enum identity pair
+				// (docs/SPEC-TABLES.md §5, §11): C++ and C# overload the pair on
+				// the enum's own type and JavaScript has no overloading, so its
+				// spelling takes the enum's name in its own — one module-level
+				// binding per enum, and a declaration of that name would be a
+				// second binding for it. Claimed for EVERY enum of a unit that
+				// declares a table, on the standing rule the runtime names
+				// already follow: a name free today must not become a collision
+				// the day a table gains a field of this type.
+				whyIdentity := fmt.Sprintf("enum %s's generated TABLE-wire identity pair (JavaScript form)", name)
+				add("TableEnumId"+name, whyIdentity, d.Pos)
+				add("TableEnumValue"+name, whyIdentity, d.Pos)
+			}
 		case *ast.UnionDecl:
 			// the union's generated surface (SPEC §4.8): the <Name>Type tag
 			// enum with None/Max and one constant per variant (flat in Go),
@@ -2819,7 +2833,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // validating walk, and §7's Open is a header match with no walk in it, so the
 // name went with the design.
 var tableGeneratedVerbs = []string{
-	"Measure", "MeasureBody", "Save", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
+	"Measure", "MeasureBody", "Save", "SaveInto", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
 	"Reset", "LoadMeasure", "LoadBuilder", "TableType", "Builder",
 	"At", "Emplace", "Pack", "PackMeasure",
 	// the FLAT NODE TABLE's own spellings (docs/SPEC-TABLES.md §3.1): the

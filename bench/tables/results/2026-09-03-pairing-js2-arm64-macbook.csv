@@ -1,0 +1,112 @@
+# schema TABLES bench results (bench/tables/README.md)
+# date: 2026-09-03T11:35:58Z
+# host: macbook  arch: arm64  os: Darwin 25.6.0
+# cpu: Apple M2
+# build: Release
+# corpus: bench/corpus/BenchTable.schema (one fixed table on the tolerant wire, docs/SPEC-TABLES.md §3)
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# dotnet: 10.0.400
+# rounds: 7
+# pinning: none (macOS has no taskset)
+# noise: PAIRING CHECK — MacBook Air (M2), interactive desktop, no core reservation. Not a certification sitting.
+# schema commit: 8b6c125 (port-js-tables)
+# serialize.cs commit: 1439c6f (main)  (the closure's type codecs only — no line of the measured table path enters it)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_table,write,400000,2391,1,2296951,2296951,2296951,5237.59,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,763905,763905,763905,1741.88,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2335036,2335036,2335036,5324.43,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,810911,810911,810911,1849.07,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2365799,2365799,2365799,5394.58,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,810620,810620,810620,1848.40,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2402113,2402113,2402113,5477.38,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,817030,817030,817030,1863.02,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2380007,2380007,2380007,5426.98,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,814217,814217,814217,1856.61,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2382757,2382757,2382757,5433.25,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,782551,782551,782551,1784.40,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2296154,2296154,2296154,5235.77,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,783981,783981,783981,1787.66,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cs,bench_table,write,400000,2391,1,310694,310694,310694,708.46,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,203826,203826,203826,464.77,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,333018,333018,333018,759.36,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,209232,209232,209232,477.10,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,331168,331168,331168,755.14,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,207555,207555,207555,473.27,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,334778,334778,334778,763.37,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,205446,205446,205446,468.46,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,320536,320536,320536,730.90,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,209183,209183,209183,476.99,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,333747,333747,333747,761.02,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,210363,210363,210363,479.68,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,334050,334050,334050,761.71,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,210072,210072,210072,479.01,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+go,bench_table,write,400000,2391,1,335412,335412,335412,764.82,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,221192,221192,221192,504.37,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,343731,343731,343731,783.79,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,217887,217887,217887,496.83,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,334140,334140,334140,761.92,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,228853,228853,228853,521.84,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,345703,345703,345703,788.29,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,207067,207067,207067,472.16,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,304970,304970,304970,695.40,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,225744,225744,225744,514.75,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,343125,343125,343125,782.41,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,217816,217816,217816,496.67,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,329718,329718,329718,751.84,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,211724,211724,211724,482.78,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+js,bench_table,write,100000,2391,1,362363,362363,362363,826.27,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,round_trip,100000,2391,1,205558,205558,205558,468.72,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,write,100000,2391,1,372322,372322,372322,848.98,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,round_trip,100000,2391,1,183634,183634,183634,418.73,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,write,100000,2391,1,293626,293626,293626,669.54,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,round_trip,100000,2391,1,197832,197832,197832,451.10,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,write,100000,2391,1,381876,381876,381876,870.77,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,round_trip,100000,2391,1,221983,221983,221983,506.17,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,write,100000,2391,1,376547,376547,376547,858.62,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,round_trip,100000,2391,1,207780,207780,207780,473.79,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,write,100000,2391,1,376403,376403,376403,858.29,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,round_trip,100000,2391,1,176769,176769,176769,403.08,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,write,100000,2391,1,339367,339367,339367,773.84,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+js,bench_table,round_trip,100000,2391,1,200719,200719,200719,457.69,0.00,2f7567e1e25ba918,table,esm,contract,default,unknown
+rust,bench_table,write,400000,2391,1,2101231,2101231,2101231,4791.30,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,round_trip,400000,2391,1,661381,661381,661381,1508.10,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,write,400000,2391,1,2043625,2043625,2043625,4659.95,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,round_trip,400000,2391,1,663269,663269,663269,1512.41,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,write,400000,2391,1,2054263,2054263,2054263,4684.20,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,round_trip,400000,2391,1,624413,624413,624413,1423.81,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,write,400000,2391,1,1705126,1705126,1705126,3888.09,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,round_trip,400000,2391,1,621626,621626,621626,1417.45,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,write,400000,2391,1,2113013,2113013,2113013,4818.17,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,round_trip,400000,2391,1,661164,661164,661164,1507.61,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,write,400000,2391,1,2068923,2068923,2068923,4717.63,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,round_trip,400000,2391,1,656885,656885,656885,1497.85,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,write,400000,2391,1,2060316,2060316,2060316,4698.01,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+rust,bench_table,round_trip,400000,2391,1,626845,626845,626845,1429.35,0.00,2f7567e1e25ba918,table,crate,always,O3,unknown
+java,bench_table,write,400000,2391,1,1550883,1550883,1550883,3536.38,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,round_trip,400000,2391,1,474160,474160,474160,1081.20,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,write,400000,2391,1,1549771,1549771,1549771,3533.84,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,round_trip,400000,2391,1,403341,403341,403341,919.71,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,write,400000,2391,1,1458338,1458338,1458338,3325.35,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,round_trip,400000,2391,1,434513,434513,434513,990.79,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,write,400000,2391,1,1448843,1448843,1448843,3303.70,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,round_trip,400000,2391,1,445041,445041,445041,1014.80,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,write,400000,2391,1,1516437,1516437,1516437,3457.83,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,round_trip,400000,2391,1,459004,459004,459004,1046.64,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,write,400000,2391,1,1563448,1563448,1563448,3565.03,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,round_trip,400000,2391,1,469236,469236,469236,1069.97,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,write,400000,2391,1,1557935,1557935,1557935,3552.46,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+java,bench_table,round_trip,400000,2391,1,422800,422800,422800,964.08,0.00,2f7567e1e25ba918,table,class,contract,default,unknown
+c,bench_table,write,400000,2391,1,2330867,2330867,2330867,5314.92,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,794952,794952,794952,1812.68,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2241399,2241399,2241399,5110.92,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,803405,803405,803405,1831.95,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2171942,2171942,2171942,4952.54,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,816127,816127,816127,1860.96,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2206045,2206045,2206045,5030.30,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,813132,813132,813132,1854.13,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2166249,2166249,2166249,4939.56,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,740151,740151,740151,1687.72,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2214754,2214754,2214754,5050.16,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,820284,820284,820284,1870.44,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2006068,2006068,2006068,4574.31,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,750432,750432,750432,1711.16,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
