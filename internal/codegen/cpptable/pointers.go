@@ -136,8 +136,8 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	if vars := g.varMembers(members); len(vars) > 0 {
 		g.pf("// ---- pointer-graph walkers: pack (Lock), size (Load) ----\n\n")
 		for _, st := range vars {
-			g.pf("template <typename Ctx> inline int64_t %sPackMeasure( const Ctx & ctx, const %s & value, int32_t depth );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool %sPack( const Ctx & ctx, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );\n", st.Name, st.Name, st.Name)
+			g.pf("template <typename Ctx> inline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value, int32_t depth );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );\n", st.Name, st.Name, st.Name)
 			g.pf("inline int64_t %sLoadMeasureBody( TableReader & r, int32_t depth );\n", st.Name)
 		}
 		g.pf("\n")
@@ -229,13 +229,14 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 // the packed form — Lock's sizing half.
 func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 	g.pf("// %sPackMeasure: the packed region bytes of everything %s POINTS AT.\n", st.Name, st.Name)
-	g.pf("// Aliasing is not preserved: two pointers to one node pack as two nodes,\n")
-	g.pf("// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).\n")
-	g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, const %s & value, int32_t depth )\n{\n", st.Name, st.Name)
-	g.pf("    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap\n")
+	g.pf("// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a\n")
+	g.pf("// node two references name is measured ONCE and packed once, and a\n")
+	g.pf("// reference to a node whose descent is still open is a data cycle, refused.\n")
+	g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value, int32_t depth )\n{\n", st.Name, st.Name)
+	g.pf("    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap\n")
 	g.pf("    int64_t bytes = 0;\n")
 	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
-		g.pf("    (void) ctx; (void) value; // no pointers below this node\n")
+		g.pf("    (void) ctx; (void) seen; (void) value; // no pointers below this node\n")
 	}
 	for _, f := range pointerFields(st) {
 		t := f.Type.Name
@@ -244,14 +245,23 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 		g.pf("        if ( pointee != NULL )\n        {\n")
 		// a pointer TARGET always has walkers (ir.PointerTargets feeds them), so
 		// there is no walker-less arm to write here
-		g.pf("            int64_t inner = %sPackMeasure( ctx, *pointee, depth + 1 );\n", t)
-		g.pf("            if ( inner < 0 ) { return -1; }\n")
-		g.pf("            bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
+		g.pf("            bool taken = false;\n")
+		g.pf("            int64_t slot = 0;\n")
+		g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );\n")
+		g.pf("            if ( entry == NULL ) { return -1; } // the map could not grow\n")
+		g.pf("            if ( !taken )\n            {\n")
+		g.pf("                if ( entry->open != 0 ) { return -1; } // a data cycle\n")
+		g.pf("            }\n            else\n            {\n")
+		g.pf("                int64_t inner = %sPackMeasure( ctx, seen, *pointee, depth + 1 );\n", t)
+		g.pf("                if ( inner < 0 ) { return -1; }\n")
+		g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
+		g.pf("                bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
+		g.pf("            }\n")
 		g.pf("        }\n    }\n")
 	}
 	for _, f := range g.byValueVariableFields(st) {
 		g.emitVariableByValueWalk(f, func(expr string) {
-			g.pf("        int64_t inner = %sPackMeasure( ctx, %s, depth );\n", f.Type.Name, expr)
+			g.pf("        int64_t inner = %sPackMeasure( ctx, seen, %s, depth );\n", f.Type.Name, expr)
 			g.pf("        if ( inner < 0 ) { return -1; }\n")
 			g.pf("        bytes += inner;\n")
 		})
@@ -286,14 +296,17 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 	g.pf("// %sPack: copy src into dst (already placed), then lay every pointee out\n", st.Name)
 	g.pf("// depth-first behind it, in FIELD ORDER, by bump allocation.\n")
 	g.pf("//\n")
-	g.pf("// The pre-order is what makes a region simple to reason about: a child\n")
-	g.pf("// always lands after the slot naming it, so region deltas are strictly\n")
-	g.pf("// positive and a packed region cannot contain a cycle.\n")
-	g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )\n{\n", st.Name, st.Name, st.Name)
+	g.pf("// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and\n")
+	g.pf("// where it landed, so a node's FIRST reference lays it out and every later\n")
+	g.pf("// reference points BACK at that one body. A region delta therefore has no\n")
+	g.pf("// required sign (§6.3), and sharing and a back-reference are one fact. A\n")
+	g.pf("// reference to a node whose descent is still OPEN is a cycle, and this\n")
+	g.pf("// refuses it rather than packing one.\n")
+	g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )\n{\n", st.Name, st.Name, st.Name)
 	g.pf("    if ( depth > kTableMaxDepth ) { return false; }\n")
 	g.pf("    memcpy( (void *) &dst, (const void *) &src, sizeof( %s ) ); // trivially copyable, by construction\n", st.Name)
 	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
-		g.pf("    (void) ctx; (void) base; (void) capacity; (void) used;\n")
+		g.pf("    (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;\n")
 	}
 	for _, f := range pointerFields(st) {
 		t := f.Type.Name
@@ -301,12 +314,22 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 		g.pf("        dst.%s.value = 0; // %s\n", f.Name, f.Name)
 		g.pf("        const %s * pointee = %sAt( ctx, src.%s );\n", t, t, f.Name)
 		g.pf("        if ( pointee != NULL )\n        {\n")
-		g.pf("            int64_t at = TableAlignUp64( used );\n")
-		g.pf("            if ( at + (int64_t) sizeof( %s ) > capacity ) { return false; }\n", t)
-		g.pf("            used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
-		g.pf("            %s * child = new ( base + at ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", t, t)
-		g.pf("            dst.%s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.%s );\n", f.Name, f.Name)
-		g.pf("            if ( !%sPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }\n", t)
+		g.pf("            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit\n")
+		g.pf("            bool taken = false;\n")
+		g.pf("            int64_t slot = 0;\n")
+		g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );\n")
+		g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
+		g.pf("            if ( !taken )\n            {\n")
+		g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
+		g.pf("                dst.%s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.%s ); // the one body it already has\n", f.Name, f.Name)
+		g.pf("            }\n            else\n            {\n")
+		g.pf("                if ( at + (int64_t) sizeof( %s ) > capacity ) { return false; }\n", t)
+		g.pf("                used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
+		g.pf("                %s * child = new ( base + at ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", t, t)
+		g.pf("                dst.%s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.%s );\n", f.Name, f.Name)
+		g.pf("                if ( !%sPack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }\n", t)
+		g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
+		g.pf("            }\n")
 		g.pf("        }\n    }\n")
 	}
 	for _, f := range g.byValueVariableFields(st) {
@@ -318,7 +341,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 func (g *tableGen) emitVariableByValueWalkPack(f *ir.Field) {
 	t := f.Type.Name
 	call := func(srcExpr, dstExpr string) {
-		g.pf("        if ( !%sPack( ctx, %s, %s, base, capacity, used, depth ) ) { return false; }\n", t, srcExpr, dstExpr)
+		g.pf("        if ( !%sPack( ctx, seen, %s, %s, base, capacity, used, depth ) ) { return false; }\n", t, srcExpr, dstExpr)
 	}
 	switch f.Array {
 	case ir.ArrayNone:
@@ -484,16 +507,34 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( root_ref.null() ) { return false; }\n")
 	g.pf("    TableArenaCtx ctx = { &arena };\n")
 	g.pf("    const %s & root = *(const %s *) TableArenaAt( arena, (uint32_t) root_ref.value );\n", n, n)
-	g.pf("    int64_t below = %sPackMeasure( ctx, root, 1 );\n", n)
-	g.pf("    if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth\n")
+	g.pf("    // The ROOT takes the map's first entry: it is packed at offset 0, and its\n")
+	g.pf("    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).\n")
+	g.pf("    TablePackMap seen;\n")
+	g.pf("    TablePackMapInit( seen );\n")
+	g.pf("    bool root_taken = false;\n")
+	g.pf("    int64_t root_slot = 0;\n")
+	g.pf("    int64_t below = -1;\n")
+	g.pf("    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )\n    {\n")
+	g.pf("        below = %sPackMeasure( ctx, seen, root, 1 );\n", n)
+	g.pf("    }\n")
+	g.pf("    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth\n")
 	g.pf("    int64_t total = TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n", n)
 	g.pf("    uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate\n")
-	g.pf("    if ( packed == NULL ) { return false; }\n")
+	g.pf("    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }\n")
 	g.pf("    memset( packed, 0, (size_t) total );\n")
 	g.pf("    int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
 	g.pf("    %s * destination = new ( packed ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", n, n)
-	g.pf("    if ( !%sPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )\n    {\n", n)
+	g.pf("    // The pack walk RE-DERIVES the same numbering rather than carrying the\n")
+	g.pf("    // measure's — nothing passes between them, which is what makes\n")
+	g.pf("    // `used == total` below a real check and not a tautology (§3.1). The\n")
+	g.pf("    // map keeps the capacity the measure paid for, so the second walk\n")
+	g.pf("    // rehashes nothing.\n")
+	g.pf("    TablePackMapReset( seen );\n")
+	g.pf("    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||\n")
+	g.pf("         !%sPack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )\n    {\n", n)
+	g.pf("        TablePackMapShutdown( seen );\n")
 	g.pf("        free( packed );\n        return false;\n    }\n")
+	g.pf("    TablePackMapShutdown( seen );\n")
 	g.pf("    region = packed;\n")
 	g.pf("    region_bytes = total;\n")
 	g.pf("    arena.locked = true; // MONOTONIC: there is no unlock\n")

@@ -241,7 +241,7 @@ tables-zero-cost: build/tables-generated/.stamp
 	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
 	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
 	          build/tables-generated/p3/*Table.h; do \
-		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure" $$f; then \
+		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|kTableMaxDepth|TablePack|is_pointer|Builder|PackMeasure|LoadMeasure" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
@@ -1795,6 +1795,38 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
+# The NEGATIVE CONTROL for the SHARED NODE (docs/SPEC-TABLES.md §6.2). Lock's
+# whole claim is that its walk carries one entry per node, so a node two
+# references name is packed ONCE and both references resolve to it. A pack that
+# duplicates reads correct through either reference — every field is right, the
+# graph is walkable, the region relocates — which is exactly why the defect
+# lived under a green suite until the byte count was measured.
+#
+# It sabotages the EMITTER's identity map into a permanent miss, so every visit
+# is a first visit, and requires THE TABLES SUITE ITSELF to go red. The
+# sabotaged emitter reaches the compiler through `go build -overlay`, so no
+# tracked file is ever written to.
+.PHONY: tables-shared-node-negative-control
+tables-shared-node-negative-control: bin/schema
+	@mkdir -p build
+	@sed -e 's|taken = entry->key != key;|taken = true; // SABOTAGED: every visit is a first visit|' \
+		internal/codegen/cpptable/arena.go > build/cpptable-no-identity.gotext
+	@cmp -s build/cpptable-no-identity.gotext internal/codegen/cpptable/arena.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/build/cpptable-no-identity.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-no-identity-overlay.json
+	@go build -overlay=build/cpptable-no-identity-overlay.json -o build/schema-no-identity ./cmd/schema
+	@rm -rf build/tables-no-identity && mkdir -p build/tables-no-identity
+	$(call tables_generate,./build/schema-no-identity,build/tables-no-identity)
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-no-identity) \
+		test/tables/main.cpp $$(ls build/tables-no-identity/*/*Table.cpp) -o build/schema_test_tables_no_identity
+	@if ./build/schema_test_tables_no_identity > build/tables-no-identity.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a pack with no identity map left the tables suite GREEN"; exit 1; \
+	fi
+	@grep -q "^FAIL test/tables/main.cpp" build/tables-no-identity.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-no-identity.log; exit 1; }
+	@echo "negative control: a pack with no identity map turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-no-identity.log) failures"
+
 # The NEGATIVE CONTROL for a keyed array's ITERATION RANGE (docs/SPEC-TABLES.md
 # §2.4). The iteration's whole promise is that it walks EVERY stored slot and
 # yields the KEY it holds, 1..E.Max; an off-by-one at either end reads as an
@@ -2563,6 +2595,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-go-fuzz-extent-negative-control
 	$(MAKE) tables-go-fuzz-maximum-negative-control
 	$(MAKE) tables-json-keyed-dup-negative-control
+	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-keyed-none-refusal-ndebug
 	$(MAKE) tables-keyed-none-refusal-negative-control
