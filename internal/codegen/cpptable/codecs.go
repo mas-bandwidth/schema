@@ -163,11 +163,20 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 
 func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	if f.Type.Pointer {
-		// a pointer is FOUR BYTES and no address: an arena offset while the
+		// a pointer is EIGHT BYTES and no address: an arena offset while the
 		// builder is mutable, a self-relative delta once packed. That is what
-		// keeps a pointer-bearing table relocatable in both forms.
+		// keeps a pointer-bearing table relocatable in both forms. An ARRAY
+		// of pointers is that slot per element (docs/SPEC-TABLES.md §2.1).
 		g.noteRef(f.Type.Name)
-		g.pf("    TableRef %s; // *%s — null until assigned\n", f.Name, f.Type.Name)
+		switch f.Array {
+		case ir.ArrayFixed:
+			g.pf("    TableRef %s[%d]; // [%d]*%s — every slot null until assigned\n", f.Name, f.ArrayBound, f.ArrayBound, f.Type.Name)
+		case ir.ArrayCounted:
+			g.pf("    TableRef %s[%d]; // [..%d]*%s — used count beside it; every slot null until assigned\n", f.Name, f.ArrayBound, f.ArrayBound, f.Type.Name)
+			g.pf("    int32_t %s_count = 0;\n", f.Name)
+		default:
+			g.pf("    TableRef %s; // *%s — null until assigned\n", f.Name, f.Type.Name)
+		}
 		return
 	}
 	typ, selfInit := g.cppFieldType(f.Type)
@@ -264,7 +273,15 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	if f.Type.Pointer {
-		g.pf("    value.%s.value = 0; // *%s — null\n", f.Name, f.Type.Name)
+		switch f.Array {
+		case ir.ArrayNone:
+			g.pf("    value.%s.value = 0; // *%s — null\n", f.Name, f.Type.Name)
+		default:
+			g.pf("    for ( int32_t i = 0; i < %d; i++ ) { value.%s[i].value = 0; } // [%d]*%s — every slot null\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+			if f.Array == ir.ArrayCounted {
+				g.pf("    value.%s_count = 0;\n", f.Name)
+			}
+		}
 		return
 	}
 	typ, selfInit := g.cppFieldType(f.Type)
@@ -548,6 +565,20 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        }\n")
 		g.pf("        if ( pairs_%s > 0 ) { bytes += 3 + 4 + 5 + body_%s; } // %s\n", f.Name, f.Name, f.Name)
 		g.pf("    }\n")
+	case f.Type.Pointer && f.Array == ir.ArrayCounted:
+		// an ARRAY OF POINTERS (docs/SPEC-TABLES.md §2.1, §3.1): kind 14 with element
+		// kind 17, N, then N node indices. CONTENT decides, as for any by-value
+		// array: an empty one elides, and a live slot rides as its index, null as 0.
+		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+		g.pf("    if ( value.%s_count > 0 ) { bytes += 3 + 4 + 5 + 4 * (int64_t) value.%s_count; } // %s: [..%d]*%s\n", f.Name, f.Name, f.Name, f.ArrayBound, f.Type.Name)
+	case f.Type.Pointer && f.Array == ir.ArrayFixed:
+		// a FIXED array of pointers holding only null is all-default and elides;
+		// one non-null slot makes it ride whole, every slot as its index (§3.1)
+		g.pf("    {\n")
+		g.pf("        bool any_%s = false;\n", f.Name)
+		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %sAt( ctx, value.%s[i] ) != NULL ) { any_%s = true; break; } }\n", f.ArrayBound, f.Type.Name, f.Name, f.Name)
+		g.pf("        if ( any_%s ) { bytes += 3 + 4 + 5 + 4 * %d; } // %s: [%d]*%s\n", f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		g.pf("    }\n")
 	case f.Type.Pointer:
 		t := f.Type.Name
 		g.pf("    {\n")
@@ -799,6 +830,31 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("            }\n")
 		g.pf("            w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n", f.Name, f.Name)
 		g.pf("        }\n    }\n")
+	case f.Type.Pointer && f.Array != ir.ArrayNone:
+		// an ARRAY OF POINTERS (§2.1, §3.1): the array framing with element kind
+		// 17, one node index per slot, null as 0. A counted array rides its live
+		// slots when it has any; a fixed one rides whole when any slot is non-null.
+		count := fmt.Sprintf("value.%s_count", f.Name)
+		if f.Array == ir.ArrayCounted {
+			g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+		} else {
+			count = strconv.FormatInt(f.ArrayBound, 10)
+			g.pf("    {\n")
+			g.pf("        bool any_%s = false;\n", f.Name)
+			g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %sAt( ctx, value.%s[i] ) != NULL ) { any_%s = true; break; } }\n", f.ArrayBound, f.Type.Name, f.Name, f.Name)
+			g.pf("        if ( any_%s )\n        {\n", f.Name)
+		}
+		g.pf("        w.put16( 0x%04x ); w.put8( %d ); // %s\n", id, tkArray, f.Name)
+		g.pf("        w.put32( uint32_t( 5 + 4 * (int64_t) %s ) );\n", count)
+		g.pf("        w.put8( %d ); w.put32( uint32_t( %s ) ); // element kind 17: node indices\n", tkNodeIndex, count)
+		g.pf("        for ( int32_t i = 0; i < %s; i++ )\n        {\n", count)
+		g.emitTableWriteElement(f, tkNodeIndex, fmt.Sprintf("value.%s[i]", f.Name), "            ")
+		g.pf("        }\n")
+		if f.Array == ir.ArrayFixed {
+			g.pf("        }\n")
+		}
+		g.pf("    }\n")
 	case f.Type.Pointer:
 		t := f.Type.Name
 		g.pf("    {\n")
@@ -929,6 +985,12 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%s{\n%s    int64_t elem_len_at = w.offset; w.put32( 0 );\n", ind, ind)
 		g.pf("%s    if ( !%s ) return false;\n", ind, g.saveCall(f.Type.Name, expr))
 		g.pf("%s    w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );\n%s}\n", ind, ind)
+	case tkNodeIndex:
+		// one slot of an array of pointers: its node index, null as 0 (§3.1)
+		g.pf("%s{\n%s    const %s * slot_pointee = %sAt( ctx, %s );\n", ind, ind, f.Type.Name, f.Type.Name, expr)
+		g.pf("%s    uint32_t slot_index = 0;\n", ind)
+		g.pf("%s    if ( slot_pointee != NULL && !TableNumberingIndex( numbering, (const void *) slot_pointee, slot_index ) ) { return false; }\n", ind)
+		g.pf("%s    w.put32( slot_index );\n%s}\n", ind, ind)
 	default:
 		width := tableKindWidth(kind)
 		cast := fmt.Sprintf("uint%d_t", width*8)
@@ -1080,7 +1142,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s        sub.offset += elem_len;\n", ind)
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.pf("%sr.offset = body_end; // unread pairs and slack skip via the length\n", ind)
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		t := f.Type.Name
 		g.pf("%s// A POINTER FIELD'S PAYLOAD IS A NUMBER (docs/SPEC-TABLES.md §3.1): it is\n", ind)
 		g.pf("%s// bounds-checked and resolved through the numbering, never FOLLOWED, so\n", ind)
@@ -1178,6 +1240,11 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 // without stopping the parent decode.
 func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 	switch kind {
+	case tkNodeIndex:
+		// one slot of an array of pointers: a node index, bounds-checked and
+		// resolved through the numbering, never followed (§3.1)
+		g.pf("%sif ( !sub.has( 4 ) ) { r.report->malformed = true; break; }\n", ind)
+		g.pf("%sTableNodeResolve( nodes, value.%s[i], sub.get32(), 0x%016xull, r.report ); // *%s\n", ind, f.Name, ir.TableTypeId(f.Type.Name), f.Type.Name)
 	case tkTable:
 		g.pf("%sif ( !sub.has( 4 ) ) { r.report->malformed = true; break; }\n", ind)
 		g.pf("%suint32_t elem_len = sub.get32();\n", ind)
@@ -1413,7 +1480,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 			}
 
 			elemSizeOverride := ""
-			if f.Type.Pointer {
+			if f.Type.Pointer && f.Array == ir.ArrayNone {
 				// a pointer's storage IS the reference slot: offset names it,
 				// elem_size is the slot's width, and there is no companion
 				elemSizeOverride = "(uint32_t) sizeof( TableRef )"

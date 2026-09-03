@@ -715,9 +715,26 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
 inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
-    if ( f->kind == 17 )
+    if ( f->kind == 17 && !f->is_array )
     {
         return TableJsonWritePointer( out, storage, f, depth );
+    }
+    if ( f->kind == 17 )
+    {
+        // an ARRAY OF POINTERS (§2.1): the pointer row per element — the
+        // pointee's object in place, null, or ` + "`&node`" + ` for a shared one (§16.7)
+        int32_t count = TableJsonCount( base, f );
+        if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+        out.put( '[' );
+        for ( int32_t i = 0; i < count; i++ )
+        {
+            if ( i > 0 ) { out.put( ',' ); }
+            out.line( depth + 1 );
+            if ( !TableJsonWritePointer( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) ) { return false; }
+        }
+        out.line( depth );
+        out.put( ']' );
+        return true;
     }
     if ( f->kind == 12 )
     {
@@ -1643,6 +1660,24 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 in.report->clamped++;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
+            else if ( f->kind == 17 )
+            {
+                // an element of an ARRAY OF POINTERS (§2.1): null is a null slot, an
+                // object is the pointee in place or an ` + "`&node`" + ` reference (§16.7)
+                char got = TableJsonValueShape( in );
+                if ( got == 'z' )
+                {
+                    if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+                    TableJsonSetRaw( storage + (int64_t) placed * f->elem_size, f->elem_size, 0 );
+                }
+                else if ( got != 'o' )
+                {
+                    in.report->kind_mismatch++;
+                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                }
+                else if ( !TableJsonReadPointer( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return false; }
+                placed++;
+            }
             else if ( TableJsonValueShape( in ) != shape )
             {
                 in.report->kind_mismatch++;
@@ -1749,7 +1784,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             // whatever its value — with one exception the page names: a JSON
             // null, which reads as ABSENT rather than as a value.
             char got = TableJsonValueShape( in );
-            if ( f->kind == 17 )
+            if ( f->kind == 17 && !f->is_array )
             {
                 // a pointer: null is a null pointer, an object is the pointee
                 // in place or an ` + "`&node`" + ` reference to one (§16.7), and anything

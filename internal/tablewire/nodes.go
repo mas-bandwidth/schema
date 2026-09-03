@@ -121,8 +121,25 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			continue
 		}
 		if f.Type.Pointer {
-			if fv.Cell.Node != nil && !visit(fv.Cell.Node, f.Name) {
-				return
+			// a pointer field, or an ARRAY of them (§2.1): every live slot is an
+			// edge, in index order, and a null slot is not
+			switch f.Array {
+			case ir.ArrayNone:
+				if fv.Cell.Node != nil && !visit(fv.Cell.Node, f.Name) {
+					return
+				}
+			case ir.ArrayFixed:
+				for k := range fv.Elems {
+					if fv.Elems[k].Node != nil && !visit(fv.Elems[k].Node, f.Name) {
+						return
+					}
+				}
+			case ir.ArrayCounted:
+				for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
+					if fv.Elems[k].Node != nil && !visit(fv.Elems[k].Node, f.Name) {
+						return
+					}
+				}
 			}
 			continue
 		}

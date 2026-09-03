@@ -103,6 +103,7 @@ instance m2_close             tblm2       Msg         testdata/wire/tables/m2_cl
 instance m2_open              tblm2       Msg         testdata/wire/tables/m2_open.bin
 instance stream_chain         streamdemo  Feed        testdata/wire/tables/stream_chain.bin
 instance stream_header        streamdemo  Feed        testdata/wire/tables/stream_header.bin
+instance stream_parts         streamdemo  Feed        testdata/wire/tables/stream_parts.bin
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -202,6 +203,7 @@ cook-write m1_open                testdata/conformance/tables/cook-write/m1_open
 cook-write m2_open                testdata/conformance/tables/cook-write/m2_open.cook testdata/conformance/tables/cook-write/m2_open-be.cook
 cook-write stream_chain           testdata/conformance/tables/cook-write/stream_chain.cook testdata/conformance/tables/cook-write/stream_chain-be.cook
 cook-write stream_header          testdata/conformance/tables/cook-write/stream_header.cook testdata/conformance/tables/cook-write/stream_header-be.cook
+cook-write stream_parts           testdata/conformance/tables/cook-write/stream_parts.cook testdata/conformance/tables/cook-write/stream_parts-be.cook
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
@@ -440,6 +442,8 @@ json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/con
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
 json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    refused
 json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown 1,0,0,0,false
+json-hostile pointer-array-element-shape    streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-element-shape    0,1,0,0,false
+json-hostile pointer-array-shared-label     streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-shared-label     0,0,0,0,false
 json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,false
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
 json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false

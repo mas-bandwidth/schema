@@ -164,7 +164,7 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		w.putBool(p.Offset, fv.Present)
 	}
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return w.ref(value.Offset, f, fv.Cell.Node)
 	case f.Type.Kind == ir.TString:
 		// char[N+1]: the used bytes, then a zero tail — the terminator the
@@ -234,6 +234,9 @@ func (w *regionWriter) ref(at int64, f *ir.Field, target *tabletext.Instance) er
 // the scalar itself.
 func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) error {
 	t := f.Type
+	if t.Pointer {
+		return w.ref(at, f, cell.Node) // an element of an array of pointers (§2.1)
+	}
 	switch t.Kind {
 	case ir.TBool:
 		w.putBool(at, cell.B)

@@ -608,7 +608,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 func (in *reader) readField(fv *Field, depth int) bool {
 	f := fv.Def
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return in.readPointer(fv, depth)
 	case f.Type.Kind == ir.TString:
 		bound := int(f.Type.Size)
@@ -668,7 +668,12 @@ func (in *reader) scanLabel() (uint64, bool) {
 // REFERENCE; any other key is a node named once, its object in place. The same walk in the generated C++ allocates the node in
 // the builder's arena; here it is an instance.
 func (in *reader) readPointer(fv *Field, depth int) bool {
-	st := StructOf(fv.Def)
+	return in.readPointerCell(&fv.Cell, StructOf(fv.Def), depth)
+}
+
+// readPointerCell places one pointer SLOT — a field's cell, or an element of an
+// array of pointers (§2.1) — from its object or null.
+func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 	if in.graph == nil || st == nil {
 		in.bad = true
 		return false
@@ -688,7 +693,7 @@ func (in *reader) readPointer(fv *Field, depth int) bool {
 	if c == '}' {
 		// an empty object: a node at its defaults, named once
 		in.pos++
-		fv.Cell.Node = in.m.New(st)
+		cell.Node = in.m.New(st)
 		return true
 	}
 	if c == 0 {
@@ -708,8 +713,8 @@ func (in *reader) readPointer(fv *Field, depth int) bool {
 		// a node named once: the pointee's object in place, and this key is
 		// its first field — unless it is the reserved prefix under a spelling
 		// this form does not have, which readTableKeys refuses
-		fv.Cell.Node = in.m.New(st)
-		return in.readTableKeys(fv.Cell.Node, depth+1, key)
+		cell.Node = in.m.New(st)
+		return in.readTableKeys(cell.Node, depth+1, key)
 	}
 	label, ok := in.scanLabel()
 	if !ok {
@@ -747,13 +752,13 @@ func (in *reader) readPointer(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		fv.Cell.Node = nil
+		cell.Node = nil
 		switch {
 		case entry.st == nil:
 		case entry.st != st:
 			in.report.KindMismatch++
 		default:
-			fv.Cell.Node = entry.node
+			cell.Node = entry.node
 		}
 		return true
 	}
@@ -761,12 +766,12 @@ func (in *reader) readPointer(fv *Field, depth int) bool {
 	// its fields. The entry is OPEN until the object closes, so a reference to
 	// the label from inside the node's own fields is refused as the cycle it
 	// is; the node and its table are filled in at the close.
-	fv.Cell.Node = in.m.New(st)
+	cell.Node = in.m.New(st)
 	in.graph[label] = labelEntry{open: true}
-	if !in.readTableKeys(fv.Cell.Node, depth+1, nil) {
+	if !in.readTableKeys(cell.Node, depth+1, nil) {
 		return false
 	}
-	in.graph[label] = labelEntry{node: fv.Cell.Node, st: st}
+	in.graph[label] = labelEntry{node: cell.Node, st: st}
 	return true
 }
 
@@ -896,6 +901,13 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 			if !in.skipValue(depth + 1) {
 				return false
 			}
+		case f.Type.Pointer && in.valueShape() == 'z':
+			// a null element of an array of pointers is a null slot (§16.2)
+			if !in.literal("null") {
+				return false
+			}
+			fv.Elems[placed] = Cell{}
+			placed++
 		case in.valueShape() != shape:
 			in.report.KindMismatch++
 			if !in.skipValue(depth + 1) {
@@ -1018,6 +1030,9 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		return in.readUnion(cell, un, depth)
 	}
 	if st := StructOf(f); st != nil {
+		if f.Type.Pointer {
+			return in.readPointerCell(cell, st, depth) // an element of an array of pointers (§2.1)
+		}
 		cell.Tab = in.m.New(st)
 		return in.readTable(cell.Tab, depth+1)
 	}

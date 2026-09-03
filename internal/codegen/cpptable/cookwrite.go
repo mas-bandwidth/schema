@@ -267,9 +267,20 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 	case f.Type.Pointer:
 		// the self-relative delta of §6.3, or a refusal for a node the numbering
 		// did not reach; the pointee is resolved through the same context the
-		// numbering walked, so the two agree on which node a slot names
+		// numbering walked, so the two agree on which node a slot names. An
+		// ARRAY of pointers is that slot per element (§2.1), all N written, a
+		// slot past a counted array's live count riding as it lies (§7.2).
 		t := f.Type.Name
-		g.pf("    if ( !table_cook_ref( region, at + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", value.Offset, t, name, f.Name)
+		if f.Array == ir.ArrayNone {
+			g.pf("    if ( !table_cook_ref( region, at + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", value.Offset, t, name, f.Name)
+		} else {
+			g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: an array of pointers, every slot\n    {\n", f.ArrayBound, f.Name)
+			g.pf("        if ( !table_cook_ref( region, at + %d + i * 8, (const void *) %sAt( ctx, %s[ i ] ), order ) ) { return false; }\n", value.Offset, t, name)
+			g.pf("    }\n")
+			if f.Array == ir.ArrayCounted {
+				g.pf("    table_cook_put( at + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", pieces[1].Offset, name)
+			}
+		}
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		// the buffer, then the int32 used length beside it — two pieces, each
 		// aligned on its own, which is what the generated record declares

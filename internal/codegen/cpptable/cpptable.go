@@ -65,6 +65,8 @@ func tableKindWidth(kind int) int {
 		return 4
 	case tkI64, tkU64, tkF64:
 		return 8
+	case tkNodeIndex:
+		return 4 // a node index: the element of an array of pointers (§3.1)
 	}
 	return 0
 }

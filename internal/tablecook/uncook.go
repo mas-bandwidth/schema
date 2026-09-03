@@ -83,19 +83,8 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		fv.Present = r.buf[pieces[len(pieces)-1].Offset] != 0
 	}
 	switch {
-	case f.Type.Pointer:
-		delta := int64(r.ord.Uint64(r.buf[value.Offset:]))
-		if delta == RefNull {
-			fv.Cell.Node = nil
-			return nil
-		}
-		target := value.Offset + delta
-		slot := r.entryAt(target)
-		if slot < 0 {
-			return fmt.Errorf("field %s: the reference resolves to offset %d, which the directory does not name", f.Name, target)
-		}
-		fv.Cell.Node = r.nodes[slot]
-		return nil
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		return r.ref(value.Offset, f, &fv.Cell)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		n := int64(int32(r.ord.Uint32(r.buf[pieces[1].Offset:])))
 		bound := f.Type.Size
@@ -131,8 +120,28 @@ func (r *regionReader) slots(at int64, f *ir.Field, elems []tabletext.Cell, n in
 	return nil
 }
 
+// ref reads one reference slot — a field's, or an element of an array of
+// pointers (§2.1): the self-relative delta, resolved through the directory.
+func (r *regionReader) ref(at int64, f *ir.Field, cell *tabletext.Cell) error {
+	delta := int64(r.ord.Uint64(r.buf[at:]))
+	if delta == RefNull {
+		cell.Node = nil
+		return nil
+	}
+	target := at + delta
+	slot := r.entryAt(target)
+	if slot < 0 {
+		return fmt.Errorf("field %s: the reference resolves to offset %d, which the directory does not name", f.Name, target)
+	}
+	cell.Node = r.nodes[slot]
+	return nil
+}
+
 func (r *regionReader) element(at int64, f *ir.Field, cell *tabletext.Cell) error {
 	t := f.Type
+	if t.Pointer {
+		return r.ref(at, f, cell)
+	}
 	switch t.Kind {
 	case ir.TBool:
 		cell.B = r.buf[at] != 0

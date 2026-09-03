@@ -1128,6 +1128,13 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		}
 		switch {
 		case out.KeyEnum != "":
+			if out.Type.Pointer {
+				// a KEYED array of pointers is a named follow-on (docs/SPEC-TABLES.md
+				// §2.4, §15); the bounded spellings `[N]*T` and `[..N]*T` serve (§2.1)
+				c.errf(f.Type.Pos, "field %s: [%s]*%s is a named follow-on — an enum-keyed array of pointers; declare [..N]*%s or [N]*%s, or key an array of tables by value (docs/SPEC-TABLES.md §2.4, §15)",
+					f.Name, out.KeyEnum, f.Type.Name, f.Type.Name, f.Type.Name)
+				return nil
+			}
 			// ONE SLOT PER NAMED VARIANT and not one more: None is the null
 			// key, so nothing is stored for it and the storage SHIFTS LEFT —
 			// the key k lives at index k-1 (docs/SPEC-TABLES.md §2.4). The bound is
@@ -2177,10 +2184,6 @@ func (c *checker) checkPointerSpelling(f *ast.Field, inTable bool, d ast.Decl) b
 	if _, isTable := d.(*ast.TableDecl); !isTable {
 		c.errf(f.Type.Pos, "field %s: *%s points at a %s, and a pointer may only target a `table` — %s is value-semantics data with no independent identity to point at; nest it by value, or declare %s as a table (docs/SPEC-TABLES.md)",
 			f.Name, f.Type.Name, declKindName(d), f.Type.Name, f.Type.Name)
-		return false
-	}
-	if f.Array != nil {
-		c.errf(f.Type.Pos, "field %s: an array of pointers is a named follow-on — declare a bounded array of tables by value, or a pointer to a table that holds the array (docs/SPEC-TABLES.md §15)", f.Name)
 		return false
 	}
 	if f.Default != nil {
