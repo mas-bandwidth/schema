@@ -4,19 +4,18 @@ name: CI
 # about the CODE IN THE DIFF, and every one of them fits the owner's rule for
 # CI that runs on each pull request: one to two minutes.
 #
-# MEASURED, on this file's own runs on the branch that introduced it (runs
-# 33738350231 and 33738576428): the gate answers END TO END in 2:00, and the
-# slowest job is `big-endian` at 1:56 and 2:00. Every other job is under 75 s
-# — msvc 1:14, windows 0:59, conformance 0:24 to 1:00 per leg, go-test 0:44,
-# lint 0:37, vuln 0:33, generated 0:22, shape-gate 0:18, cpp-lock 0:07.
+# MEASURED, on this file's own run on the branch that introduced it (run
+# 33740084214): the gate answers END TO END in 1:54. Per job — big-endian
+# 1:49, msvc 1:27, windows 0:49, conformance 0:21 to 0:41 per leg, go-test
+# 0:37, lint 0:37, vuln 0:30, shape-gate 0:22, generated 0:16, cpp-lock 0:06.
 #
 # `big-endian` IS THE BINDING CONSTRAINT, and it is worth naming rather than
-# rounding away: 95 s of its 116 is `make tables-big-endian-negative`, which
+# rounding away: 87 s of its 109 is `make tables-big-endian-negative`, which
 # cross-compiles the tables battery for s390x, runs it under qemu, and then
-# compiles it a SECOND time for the negative control. It fits the rule with
-# nothing to spare. The next job that wants a place on this gate takes the
-# budget from somewhere, and the honest place to look first is that second
-# compile.
+# compiles it a SECOND time for the negative control. Building its six
+# binaries in parallel bought 14 s of that; the rest is the control's own two
+# compiles, which are serial by construction. The next job that wants a place
+# on this gate takes the budget from somewhere, and that is where to look.
 #
 # CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
 # both OSes, every `tables-<lang>-release` target. It runs on every push to
