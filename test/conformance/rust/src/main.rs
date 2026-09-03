@@ -320,13 +320,6 @@ fn codecs() -> Vec<Codec> {
     ]
 }
 
-fn find_codec<'a>(rows: &'a [Codec], unit: &str, root: &str) -> &'a Codec {
-    match rows.iter().find(|c| c.unit == unit && c.root == root) {
-        Some(c) => c,
-        None => fail(&format!("no codec for {unit}.{root}")),
-    }
-}
-
 /// The row for a (unit, root), or `None` where this backend has none: Rust
 /// refuses a pointered unit's wire by name (§11), so the cases over one are a
 /// missing FEATURE and the driver says so per case.
@@ -341,9 +334,9 @@ fn spill_absent(dir: &str, name: &str) {
     spill(dir, &format!("{name}.absent"), &[]);
 }
 
-/// `no_text` marks an instance the corpus carries on the WIRE only: the
-/// variable class has no text form yet (docs/SPEC-TABLES.md §16.2), so the TEXT
-/// surfaces skip it rather than reporting a form nobody has.
+/// `no_text` marks an instance the corpus carries on the WIRE only — past the
+/// text form's depth cap by the form's own rule (docs/SPEC-TABLES.md §16.7) —
+/// so no leg is asked for its text.
 fn no_text(f: &[String]) -> bool {
     f.len() > 5 && f[5] == "no-text"
 }
@@ -628,7 +621,10 @@ fn surface_json_read(manifest: &Manifest, out: &str) {
         if no_text(f) {
             continue;
         }
-        let codec = find_codec(&rows, &f[2], &f[3]);
+        let Some(codec) = codec_for(&rows, &f[2], &f[3]) else {
+            spill_absent(out, &f[1]);
+            continue;
+        };
         let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
         let text = slurp(&path);
         let mut report = Report::default();
@@ -645,7 +641,10 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
         if no_text(f) {
             continue;
         }
-        let codec = find_codec(&rows, &f[2], &f[3]);
+        let Some(codec) = codec_for(&rows, &f[2], &f[3]) else {
+            spill_absent(out, &format!("{}.json", f[1]));
+            continue;
+        };
         let wire = slurp(&f[4]);
         let mut report = Report::default();
         match (codec.json_write)(&wire, &mut report) {
@@ -669,7 +668,10 @@ fn surface_block_dump(manifest: &Manifest, out: &str) {
 fn surface_json_hostile(manifest: &Manifest, out: &str) {
     let rows = codecs();
     for f in manifest.of_kind("json-hostile") {
-        let codec = find_codec(&rows, &f[2], &f[3]);
+        let Some(codec) = codec_for(&rows, &f[2], &f[3]) else {
+            spill_absent(out, &f[1]);
+            continue;
+        };
         // the tree is what `schema pack` reads, so the text is <tree>/<root>.json (§17)
         let text = slurp(&format!("{}/{}.json", f[4], f[3]));
         let mut report = Report::default();
@@ -1143,7 +1145,15 @@ fn surface_soak(manifest: &Manifest, seconds: u64) {
     }
     let mut cases = Vec::new();
     for f in manifest.of_kind("instance") {
-        let codec = find_codec(&rows, &f[2], &f[3]);
+        // an instance this backend has no codec for, or no text for, is not
+        // one it can walk: the pointered class is ABSENT here (§11), and the
+        // corpus carries the deep chain on the wire alone (§16.7)
+        if no_text(f) {
+            continue;
+        }
+        let Some(codec) = codec_for(&rows, &f[2], &f[3]) else {
+            continue;
+        };
         cases.push(Case {
             name: &f[1],
             codec,
@@ -1281,7 +1291,14 @@ fn surface_alloc_audit(manifest: &Manifest) {
     let mut worst = 0u64;
     println!("{:<24} {:>12}", "instance", "allocations");
     for f in manifest.of_kind("instance") {
-        let codec = find_codec(&rows, &f[2], &f[3]);
+        // the pointered class is ABSENT here (§11), and the deep chain has no
+        // text (§16.7): neither is a path this backend has to audit
+        if no_text(f) {
+            continue;
+        }
+        let Some(codec) = codec_for(&rows, &f[2], &f[3]) else {
+            continue;
+        };
         let wire = slurp(&f[4]);
         let text = slurp(&format!("testdata/conformance/tables/json/{}.json", f[1]));
         // one warm call, then the measured one

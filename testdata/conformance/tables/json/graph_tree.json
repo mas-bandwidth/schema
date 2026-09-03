@@ -1,0 +1,40 @@
+{
+  "name": "tree",
+  "version": 2,
+  "head": {
+    "value": 1,
+    "name": "a",
+    "next": {
+      "value": 2,
+      "name": "",
+      "next": null
+    }
+  },
+  "tree": {
+    "label": "top",
+    "left": {
+      "label": "left",
+      "left": null,
+      "right": null
+    },
+    "right": {
+      "label": "right",
+      "left": null,
+      "right": null
+    }
+  },
+  "settings": {
+    "quality": 3,
+    "label": "mid"
+  },
+  "alias": null,
+  "ground": {
+    "depth": 0,
+    "head": null
+  },
+  "layers": [],
+  "meta": {
+    "build": 1,
+    "tag": ""
+  }
+}

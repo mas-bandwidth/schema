@@ -8,10 +8,9 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring> // the prefill's scalar-array fills
-#include <cstddef> // offsetof, for the reflection descriptors
-#include <type_traits> // the enforced relocatability asserts
+#include <stdint.h>
+#include <string.h> // the prefill's scalar-array fills
+#include <stddef.h> // offsetof, for the reflection descriptors
 
 #include "Constants.h"
 
@@ -242,7 +241,7 @@ namespace blockhome {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x3de2d055d5640b6aull;
+static const uint64_t BuildVersion = 0x3de2d055d5640b6aull;
 
 } // namespace blockhome
 
@@ -287,7 +286,7 @@ static const int64_t kTableCookHeaderBytes = 64;
 // OTHER order — or something that is not a cook. All three answers but the
 // first refuse, and a cook and a BLOCK are separated here too, because a
 // form's identity belongs in its magic rather than in a second digest.
-inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 
 // THIS BUILD's byte order, as the header's own word carries it. The magic is
 // what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -299,16 +298,16 @@ inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 // GENERATION input, little for every target schema generates for today, so
 // two builds of one schema for two orders emit the same id.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-inline constexpr uint64_t TableCookByteOrder = 2; // big
+static const uint64_t TableCookByteOrder = 2; // big
 #else
-inline constexpr uint64_t TableCookByteOrder = 1; // little
+static const uint64_t TableCookByteOrder = 1; // little
 #endif
 
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
 // describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
-inline constexpr uint64_t TableCookMaxAlign = 64;
+static const uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
 // bytes, in this machine's order"; every compiler this repo builds under folds

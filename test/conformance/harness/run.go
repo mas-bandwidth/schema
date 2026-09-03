@@ -168,7 +168,7 @@ func deriveManifest(m *Manifest, path string) error {
 		if i.NoText {
 			// the marker travels: a driver has to know which instances the
 			// corpus carries on the wire alone, so that its TEXT surfaces skip
-			// them rather than reporting a form nobody has yet (§16.2)
+			// them rather than writing a text the form refuses (§16.7)
 			marker = " no-text"
 		}
 		fmt.Fprintf(&b, "instance %s %s %s %s%s\n", i.Name, i.Unit, i.Root, i.Wire, marker)
@@ -215,7 +215,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	case "wire", "json-read":
 		for _, i := range m.Instances {
 			if i.NoText && surface == "json-read" {
-				continue // no text to read it FROM (§16.2, schema#275)
+				continue // no text to read it FROM (§16.7)
 			}
 			want, err := os.ReadFile(i.Wire)
 			if err != nil {
@@ -226,7 +226,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	case "json-write":
 		for _, i := range m.Instances {
 			if i.NoText {
-				continue // the corpus owes this one a text; no leg is asked for one
+				continue // the form has no text for this one; no leg is asked for one
 			}
 			want, err := os.ReadFile(i.JSON)
 			if err != nil {

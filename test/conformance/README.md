@@ -100,9 +100,10 @@ absences are ordinary.
 **THE MATRIX IS THE COMPLETION TRACKER.** Green cells over total cells is what
 "done" means for the tables layer, and an absence — per surface or per case — is
 the row of work that is left, named where it can be seen. The variable class's
-four instances read `+4a` in five languages today and become part of the count
-as schema#349 lands them, one language at a time, with nothing in this data or
-this contract moving as they do.
+instances read `+4a` on the wire surfaces and `+3a` on the text surfaces in
+five languages today — the reference answers them all — and become part of the
+count as schema#349 lands them, one language at a time, with nothing in this
+data or this contract moving as they do.
 
 **Absent is not failure, and the distinction is the whole reason the matrix
 exists.** A backend with no text form is missing a FEATURE; a backend whose text

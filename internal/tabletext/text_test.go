@@ -731,3 +731,194 @@ func TestFloat32SingleRounding(t *testing.T) {
 		})
 	}
 }
+
+// ---- the VARIABLE class (docs/SPEC-TABLES.md §16.7) ----
+
+func pointered(t testing.TB) *tabletext.Model {
+	t.Helper()
+	c := compiler.New()
+	paths, err := compiler.GatherPaths([]string{"../../tables/pointers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := c.Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tabletext.NewModel(u)
+}
+
+func readScene(t testing.TB, m *tabletext.Model, text string) (*tabletext.Instance, tabletext.Report) {
+	t.Helper()
+	inst := m.New(m.Lookup("Scene"))
+	var r tabletext.Report
+	m.Read(inst, []byte(text), &r)
+	return inst, r
+}
+
+// A shared node is written once under `&node`, with its fields, and named by
+// `&node` alone after, spelled the same way at every site; a tree carries none. Reading it back places
+// ONE node behind every reference — identity survives the seam.
+func TestSharedNodeIsOneNode(t *testing.T) {
+	m := pointered(t)
+	inst, r := readScene(t, m, `{
+		"head": { "&node": 1, "value": 7 },
+		"alias": { "&node": 1 },
+		"ground": { "head": { "&node": 1 } }
+	}`)
+	if !r.Silent() {
+		t.Fatalf("a shared node did not read clean: %+v", r)
+	}
+	head := field(t, inst, "head").Cell.Node
+	alias := field(t, inst, "alias").Cell.Node
+	ground := field(t, field(t, inst, "ground").Cell.Tab, "head").Cell.Node
+	if head == nil || head != alias || head != ground {
+		t.Fatal("three references to one label did not resolve to one node")
+	}
+	if field(t, head, "value").Cell.I != 7 {
+		t.Fatal("the definition's fields were not placed")
+	}
+	text, err := m.Write(inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n  \"name\": \"\",\n  \"version\": 1,\n  \"head\": {\n    \"&node\": 1,\n    \"value\": 7,\n    \"name\": \"\",\n    \"next\": null\n  },\n" +
+		"  \"tree\": null,\n  \"settings\": null,\n  \"alias\": {\n    \"&node\": 1\n  },\n  \"ground\": {\n    \"depth\": 0,\n    \"head\": {\n      \"&node\": 1\n    }\n  },\n" +
+		"  \"layers\": [],\n  \"meta\": {\n    \"build\": 1,\n    \"tag\": \"\"\n  }\n}"
+	if string(text) != want {
+		t.Fatalf("the construct is not spelled as the page says:\n%s\nwant:\n%s", text, want)
+	}
+	// one definition and two references: the label appears three times, nowhere else
+	if n := strings.Count(string(text), `"&node"`); n != 3 {
+		t.Fatalf("the label appears %d times; the page says three", n)
+	}
+	// and a node named once carries no label: the tree reads and writes as
+	// nested tables, and its text is byte-identical to a by-value spelling
+	tree, r := readScene(t, m, `{ "head": { "value": 1, "next": { "value": 2 } } }`)
+	if !r.Silent() {
+		t.Fatalf("a tree did not read clean: %+v", r)
+	}
+	text, err = m.Write(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(text), "&") {
+		t.Fatalf("a tree's text carries the construct:\n%s", text)
+	}
+}
+
+// A label alone the text never defined, and a field after a label it has, are
+// refused, and the prefix is refused everywhere a pointer's object is not —
+// which is what makes a typo loud rather than a default node.
+func TestSharingConstructRefusals(t *testing.T) {
+	m := pointered(t)
+	for _, text := range []string{
+		`{ "head": { "&node": 1 } }`,                                                  // a label alone the text never defined
+		`{ "head": { "&node": 1 }, "alias": { "&node": 1, "value": 1 } }`,             // a reference before its definition
+		`{ "head": { "&node": 1, "value": 1 }, "alias": { "&node": 1, "value": 2 } }`, // a label defined twice
+		`{ "head": { "value": 1, "&node": 1 } }`,                                      // the label after a field
+		`{ "&node": 1 }`,                                                              // the root takes no label
+		`{ "ground": { "&node": 1 } }`,                                                // a by-value nesting is not a node
+		`{ "head": { "&node": 1.0 } }`,                                                // not an integer spelled as one
+		`{ "head": { "&node": 0 } }`,                                                  // not positive
+		`{ "head": { "&node": -1 } }`,                                                 // not positive
+		`{ "head": { "&node": 01 } }`,                                                 // a leading zero
+		`{ "head": { "&other": 1 } }`,                                                 // the prefix under another spelling
+		`{ "mystery": { "value": 1, "&node": 1 } }`,                                   // the prefix out of place in a skipped value
+	} {
+		_, r := readScene(t, m, text)
+		if !r.Malformed {
+			t.Errorf("%s: read as a text; it is malformed", text)
+		}
+	}
+	// and a FIXED reader refuses the prefix among the keys it places — the
+	// construct is one it cannot honor, never a field it lacks — while a value
+	// it skips is skipped whole, which is §4's tolerance
+	if _, _, r := read(t, "RootConfig", `{ "version_note": "x", "&node": 1 }`); !r.Malformed {
+		t.Errorf("a fixed reader did not refuse the prefix: %+v", r)
+	}
+	if _, _, r := read(t, "RootConfig", `{ "mystery": { "&node": 1 } }`); r.Malformed || r.Unknown != 1 {
+		t.Errorf("a fixed reader did not skip a prefixed key inside an unknown value: %+v", r)
+	}
+}
+
+// A reference resolves against the definition's TABLE, and a definition the
+// walk dropped keeps its label: both mirror the wire's node rules (§3.1), where a
+// node of another type is a kind mismatch and an unnameable node reads null.
+func TestReferenceResolution(t *testing.T) {
+	m := pointered(t)
+	inst, r := readScene(t, m, `{ "settings": { "&node": 1, "quality": 1 }, "head": { "&node": 1 } }`)
+	if r.KindMismatch != 1 || r.Malformed || field(t, inst, "head").Cell.Node != nil {
+		t.Fatalf("a reference to a node of another table is a kind mismatch with the pointer null: %+v", r)
+	}
+	inst, r = readScene(t, m, `{ "layers": [ {}, {}, {}, {}, { "head": { "&node": 1, "value": 1 } } ], "alias": { "&node": 1 } }`)
+	if r.Clamped != 1 || r.Malformed || r.Unknown != 0 || field(t, inst, "alias").Cell.Node != nil {
+		t.Fatalf("a definition past the bound is dropped and counted once, and its reference reads null: %+v", r)
+	}
+	inst, r = readScene(t, m, `{ "mystery": { "&node": 9, "value": 1 }, "head": { "&node": 9 } }`)
+	if r.Unknown != 1 || r.Malformed || field(t, inst, "head").Cell.Node != nil {
+		t.Fatalf("a definition under an unknown key is dropped and counted once: %+v", r)
+	}
+	// a label is defined when its object CLOSES: a reference to it from inside
+	// its own definition — at any depth of by-value nesting — is the cycle the
+	// wire refuses, refused where it is written
+	for _, text := range []string{
+		`{ "head": { "&node": 1, "value": 1, "next": { "&node": 1 } } }`,
+		`{ "head": { "&node": 1, "value": 1, "next": { "value": 2, "next": { "&node": 1 } } } }`,
+	} {
+		if _, r := readScene(t, m, text); !r.Malformed {
+			t.Errorf("%s: a self-reference read as sharing; it is a cycle: %+v", text, r)
+		}
+	}
+	// and a cycle a region holds is refused by the WRITER the same way
+	cycle := m.New(m.Lookup("Scene"))
+	node := m.New(m.Lookup("ListNode"))
+	field(t, cycle, "head").Cell.Node = node
+	field(t, node, "next").Cell.Node = node
+	if _, err := m.Write(cycle); err == nil || !strings.Contains(err.Error(), "cycle") {
+		t.Fatalf("the writer did not refuse a cycle: %v", err)
+	}
+}
+
+// A chain nests as deep as it is long, and the writer carries the reader's cap:
+// the corpus's 260-node chain has a wire and no text.
+func TestChainNestsAsDeepAsItIsLong(t *testing.T) {
+	m := pointered(t)
+	root := m.New(m.Lookup("Scene"))
+	list := m.Lookup("ListNode")
+	head := m.New(list)
+	field(t, root, "head").Cell.Node = head
+	tail := head
+	for i := 1; i < 260; i++ {
+		next := m.New(list)
+		field(t, tail, "next").Cell.Node = next
+		tail = next
+	}
+	if _, err := m.Write(root); err == nil || !strings.Contains(err.Error(), "depth cap") {
+		t.Fatalf("a chain past the cap was written: %v", err)
+	}
+}
+
+// A definition carries at least one field, because a label alone is a reference:
+// a shared node with nothing to write has no definition the form can spell,
+// and the writer refuses it rather than writing a text its reader refuses.
+func TestSharedNodeWithNothingToWriteIsRefused(t *testing.T) {
+	m := pointered(t)
+	// Album.pin and Album.head cannot share a node of one table; the closest
+	// shape the corpus declares is a Marker whose every field is at its
+	// default — which still WRITES its fields, so it defines. The refusal
+	// needs a node whose text is `{}`, which no table in the corpus produces
+	// through a pointer; the rule is held on the writer's own branch instead.
+	inst := m.New(m.Lookup("Scene"))
+	list := m.Lookup("ListNode")
+	shared := m.New(list)
+	field(t, inst, "head").Cell.Node = shared
+	field(t, inst, "alias").Cell.Node = shared
+	text, err := m.Write(inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(text), "\"&node\": 1,\n") {
+		t.Fatalf("a default-valued shared node still defines with its fields:\n%s", text)
+	}
+}

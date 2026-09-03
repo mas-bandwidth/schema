@@ -5163,88 +5163,379 @@ static void pin_graph_golden( const char * name, graphdemo::SceneBuilder & build
     pin_table_golden( name, locked, from_region );
 }
 
+// The four graph instances the corpus pins, each built into a caller's
+// builder: the goldens pin them on the wire, and the text form's tests below
+// round-trip the same graphs through their text.
+
+// A TREE: a chain of list nodes and a binary tree of tree nodes, every
+// reference naming a node nothing else names.
+static void build_graph_tree( graphdemo::SceneBuilder & builder )
+{
+    graphdemo::Scene * root = builder.GetRoot();
+    set_string( root->name, root->name_length, "tree" );
+    root->version = 2;
+    graphdemo::TableSlot<graphdemo::ListNode> a = builder.Alloc<graphdemo::ListNode>();
+    graphdemo::TableSlot<graphdemo::ListNode> b = builder.Alloc<graphdemo::ListNode>();
+    a->value = 1;
+    set_string( a->name, a->name_length, "a" );
+    b->value = 2;
+    a->next = b;
+    root->head = a;
+    graphdemo::TableSlot<graphdemo::TreeNode> top = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> left = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> right = builder.Alloc<graphdemo::TreeNode>();
+    set_string( top->label, top->label_length, "top" );
+    set_string( left->label, left->label_length, "left" );
+    set_string( right->label, right->label_length, "right" );
+    top->left = left;
+    top->right = right;
+    root->tree = top;
+    graphdemo::TableSlot<graphdemo::Settings> settings = builder.Alloc<graphdemo::Settings>();
+    settings->quality = 3;
+    set_string( settings->label, settings->label_length, "mid" );
+    root->settings = settings;
+}
+
+// A SHARED NODE, twice over: one list node named from `head` and from
+// `alias`, and a DIAMOND in the tree whose closing reference names a node
+// already numbered. One index, one record, both times.
+static void build_graph_shared( graphdemo::SceneBuilder & builder )
+{
+    graphdemo::Scene * root = builder.GetRoot();
+    set_string( root->name, root->name_length, "shared" );
+    graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
+    shared->value = 7;
+    set_string( shared->name, shared->name_length, "one" );
+    root->head = shared;
+    root->alias = shared;
+    graphdemo::TableSlot<graphdemo::TreeNode> top = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> left = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> leaf = builder.Alloc<graphdemo::TreeNode>();
+    set_string( leaf->label, leaf->label_length, "leaf" );
+    top->left = left;
+    top->right = leaf;
+    left->left = leaf;
+    root->tree = top;
+    root->ground.depth = 1;
+    root->ground.head = shared; // and again, from a by-value nesting
+}
+
+// MAXIMAL DEPTH: a chain far past anything a nesting-based form could carry,
+// which under the flat table is a flat list of records.
+static void build_graph_deep( graphdemo::SceneBuilder & builder )
+{
+    graphdemo::Scene * root = builder.GetRoot();
+    set_string( root->name, root->name_length, "deep" );
+    graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+    head->value = 0;
+    root->head = head;
+    graphdemo::ListNode * tail = head;
+    for ( int i = 1; i < 260; i++ )
+    {
+        graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+        node->value = i;
+        tail->next = node;
+        tail = node;
+    }
+}
+
 static void pin_graph_goldens()
 {
-    // A TREE: a chain of list nodes and a binary tree of tree nodes, every
-    // reference naming a node nothing else names.
     {
         graphdemo::SceneBuilder builder;
-        graphdemo::Scene * root = builder.GetRoot();
-        set_string( root->name, root->name_length, "tree" );
-        root->version = 2;
-        graphdemo::TableSlot<graphdemo::ListNode> a = builder.Alloc<graphdemo::ListNode>();
-        graphdemo::TableSlot<graphdemo::ListNode> b = builder.Alloc<graphdemo::ListNode>();
-        a->value = 1;
-        set_string( a->name, a->name_length, "a" );
-        b->value = 2;
-        a->next = b;
-        root->head = a;
-        graphdemo::TableSlot<graphdemo::TreeNode> top = builder.Alloc<graphdemo::TreeNode>();
-        graphdemo::TableSlot<graphdemo::TreeNode> left = builder.Alloc<graphdemo::TreeNode>();
-        graphdemo::TableSlot<graphdemo::TreeNode> right = builder.Alloc<graphdemo::TreeNode>();
-        set_string( top->label, top->label_length, "top" );
-        set_string( left->label, left->label_length, "left" );
-        set_string( right->label, right->label_length, "right" );
-        top->left = left;
-        top->right = right;
-        root->tree = top;
-        graphdemo::TableSlot<graphdemo::Settings> settings = builder.Alloc<graphdemo::Settings>();
-        settings->quality = 3;
-        set_string( settings->label, settings->label_length, "mid" );
-        root->settings = settings;
+        build_graph_tree( builder );
         pin_graph_golden( "graph_tree", builder );
     }
-
-    // A SHARED NODE, twice over: one list node named from `head` and from
-    // `alias`, and a DIAMOND in the tree whose closing reference names a node
-    // already numbered. One index, one record, both times.
     {
         graphdemo::SceneBuilder builder;
-        graphdemo::Scene * root = builder.GetRoot();
-        set_string( root->name, root->name_length, "shared" );
-        graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
-        shared->value = 7;
-        set_string( shared->name, shared->name_length, "one" );
-        root->head = shared;
-        root->alias = shared;
-        graphdemo::TableSlot<graphdemo::TreeNode> top = builder.Alloc<graphdemo::TreeNode>();
-        graphdemo::TableSlot<graphdemo::TreeNode> left = builder.Alloc<graphdemo::TreeNode>();
-        graphdemo::TableSlot<graphdemo::TreeNode> leaf = builder.Alloc<graphdemo::TreeNode>();
-        set_string( leaf->label, leaf->label_length, "leaf" );
-        top->left = left;
-        top->right = leaf;
-        left->left = leaf;
-        root->tree = top;
-        root->ground.depth = 1;
-        root->ground.head = shared; // and again, from a by-value nesting
+        build_graph_shared( builder );
         pin_graph_golden( "graph_shared", builder );
     }
-
     // AN EMPTY ROOT: every pointer null and every value at its default, so
     // nothing rides at all and the save is the terminator alone.
     {
         graphdemo::SceneBuilder builder;
         pin_graph_golden( "graph_empty", builder );
     }
-
-    // MAXIMAL DEPTH: a chain far past anything a nesting-based form could
-    // carry, which under the flat table is a flat list of records.
     {
         graphdemo::SceneBuilder builder;
-        graphdemo::Scene * root = builder.GetRoot();
-        set_string( root->name, root->name_length, "deep" );
-        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
-        head->value = 0;
-        root->head = head;
-        graphdemo::ListNode * tail = head;
-        for ( int i = 1; i < 260; i++ )
-        {
-            graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
-            node->value = i;
-            tail->next = node;
-            tail = node;
-        }
+        build_graph_deep( builder );
         pin_graph_golden( "graph_deep", builder );
+    }
+}
+
+// ---- THE VARIABLE CLASS's TEXT FORM (docs/SPEC-TABLES.md §16.7) --------------
+//
+// The same text as the fixed class's, read into a builder and written from a
+// region's const root, with ONE construct for what a tree cannot say: a node
+// named more than once is defined once under `&node`, with its fields, and named
+// by `&node` alone after.
+// The wire is the arbiter here as it is for the fixed class — a text that
+// round-trips through it has lost nothing, identity included, because a shared
+// node written twice would come back as two records.
+
+// one graph, through its text and back: ToJson from the locked region, FromJson
+// into a fresh builder, and the builder's save is the region's save
+static void check_graph_text_round_trip( const char * what, void ( *build )( graphdemo::SceneBuilder & ) )
+{
+    graphdemo::SceneBuilder builder;
+    if ( build != NULL ) { build( builder ); }
+    std::vector<uint8_t> wire( (size_t) graphdemo::SceneMeasure( builder ) );
+    CHECK( graphdemo::SceneSave( builder, wire.data(), (int64_t) wire.size() ) == (int64_t) wire.size() );
+    CHECK( builder.Lock() );
+
+    int64_t size = graphdemo::SceneToJsonMeasure( builder.AsConst() );
+    if ( size < 0 ) { printf( "FAIL %s: ToJsonMeasure refused\n", what ); failures++; return; }
+    // measure == write at EXACT capacity, one byte short refuses, and a roomy
+    // write is the same bytes — the fixed class's contract, carried across
+    std::vector<char> text( (size_t) size );
+    CHECK( graphdemo::SceneToJson( builder.AsConst(), text.data(), size ) == size );
+    if ( size > 0 )
+    {
+        std::vector<char> tight( (size_t) size - 1 );
+        CHECK( graphdemo::SceneToJson( builder.AsConst(), tight.data(), size - 1 ) == -1 );
+    }
+    std::vector<char> roomy( (size_t) size + 64 );
+    CHECK( graphdemo::SceneToJson( builder.AsConst(), roomy.data(), size + 64 ) == size );
+    CHECK( memcmp( roomy.data(), text.data(), (size_t) size ) == 0 );
+
+    graphdemo::SceneBuilder back;
+    graphdemo::TableReport report;
+    if ( !graphdemo::SceneFromJson( back, text.data(), size, &report ) )
+    {
+        printf( "FAIL %s: FromJson refused its own text\n", what );
+        failures++;
+        return;
+    }
+    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
+         report.duplicate != 0 || report.malformed )
+    {
+        printf( "FAIL %s: a text this build wrote reported %d/%d/%d/%d/%d\n", what,
+                report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
+                (int) report.malformed );
+        failures++;
+    }
+    int64_t again = graphdemo::SceneMeasure( back );
+    if ( again != (int64_t) wire.size() )
+    {
+        printf( "FAIL %s: the round trip changed the wire's size, %lld against %lld\n", what,
+                (long long) again, (long long) wire.size() );
+        failures++;
+        return;
+    }
+    std::vector<uint8_t> back_wire( (size_t) again );
+    CHECK( graphdemo::SceneSave( back, back_wire.data(), again ) == again );
+    if ( memcmp( wire.data(), back_wire.data(), (size_t) again ) != 0 )
+    {
+        printf( "FAIL %s: round trip changed the wire\n", what );
+        failures++;
+    }
+}
+
+static void test_json_variable_class()
+{
+    check_graph_text_round_trip( "graph_tree", build_graph_tree );
+    check_graph_text_round_trip( "graph_shared", build_graph_shared );
+    check_graph_text_round_trip( "graph_empty", NULL );
+
+    // THE PINNED TEXT of the shared graph: the construct's spelling, at every
+    // site, against a literal — a round trip cannot see a spelling that reader
+    // and writer share
+    {
+        graphdemo::SceneBuilder builder;
+        build_graph_shared( builder );
+        // the SEVEN slots the literal spells — two nodes named once, two
+        // definitions, three references — counted in the graph before it packs
+        int slots = 0;
+        {
+            graphdemo::Scene * root = builder.GetRoot();
+            graphdemo::ListNode * head = graphdemo::ListNodeAt( builder.arena, root->head );
+            graphdemo::TreeNode * top = graphdemo::TreeNodeAt( builder.arena, root->tree );
+            graphdemo::TreeNode * left = graphdemo::TreeNodeAt( builder.arena, top->left );
+            graphdemo::TreeNode * leaf = graphdemo::TreeNodeAt( builder.arena, top->right );
+            const graphdemo::TableRef * refs[] = { &root->head, &root->tree, &root->settings, &root->alias, &root->ground.head,
+                                                   &head->next, &top->left, &top->right, &left->left, &left->right, &leaf->left, &leaf->right };
+            for ( size_t i = 0; i < sizeof( refs ) / sizeof( refs[0] ); i++ ) { if ( !refs[i]->null() ) { slots++; } }
+            for ( int i = 0; i < root->layers_count; i++ ) { if ( !root->layers[i].head.null() ) { slots++; } }
+        }
+        CHECK( builder.Lock() );
+        static const char * expected =
+            "{\n"
+            "  \"name\": \"shared\",\n"
+            "  \"version\": 1,\n"
+            "  \"head\": {\n"
+            "    \"&node\": 1,\n"
+            "    \"value\": 7,\n"
+            "    \"name\": \"one\",\n"
+            "    \"next\": null\n"
+            "  },\n"
+            "  \"tree\": {\n"
+            "    \"label\": \"\",\n"
+            "    \"left\": {\n"
+            "      \"label\": \"\",\n"
+            "      \"left\": {\n"
+            "        \"&node\": 2,\n"
+            "        \"label\": \"leaf\",\n"
+            "        \"left\": null,\n"
+            "        \"right\": null\n"
+            "      },\n"
+            "      \"right\": null\n"
+            "    },\n"
+            "    \"right\": {\n"
+            "      \"&node\": 2\n"
+            "    }\n"
+            "  },\n"
+            "  \"settings\": null,\n"
+            "  \"alias\": {\n"
+            "    \"&node\": 1\n"
+            "  },\n"
+            "  \"ground\": {\n"
+            "    \"depth\": 1,\n"
+            "    \"head\": {\n"
+            "      \"&node\": 1\n"
+            "    }\n"
+            "  },\n"
+            "  \"layers\": [],\n"
+            "  \"meta\": {\n"
+            "    \"build\": 1,\n"
+            "    \"tag\": \"\"\n"
+            "  }\n"
+            "}\n";
+        int64_t size = graphdemo::SceneToJsonMeasure( builder.AsConst() );
+        CHECK( size == (int64_t) strlen( expected ) );
+        // the counts the page states: two definitions and three references,
+        // and four nodes on the wire held by seven slots
+        {
+            int labels = 0;
+            for ( const char * at = strstr( expected, "\"&node\"" ); at != NULL; at = strstr( at + 1, "\"&node\"" ) ) { labels++; }
+            CHECK( labels == 5 );
+            CHECK( slots == 7 );
+            CHECK( labels + 2 == slots ); // every slot but the two named-once nodes carries the label
+            int64_t attribution = 0;
+            std::vector<uint8_t> wire( (size_t) graphdemo::SceneMeasure( builder.AsConst() ) );
+            CHECK( graphdemo::SceneSave( builder.AsConst(), wire.data(), (int64_t) wire.size() ) == (int64_t) wire.size() );
+            graphdemo::SceneLoadMeasure( wire.data(), (int64_t) wire.size(), &attribution );
+            CHECK( attribution == 5 * (int64_t) sizeof( graphdemo::TableNodeDirEntry ) ); // four records and the root
+        }
+        if ( size > 0 )
+        {
+            std::vector<char> text( (size_t) size + 1 );
+            CHECK( graphdemo::SceneToJson( builder.AsConst(), text.data(), size ) == size );
+            text[(size_t) size] = 0;
+            if ( strcmp( text.data(), expected ) != 0 )
+            {
+                printf( "FAIL json variable pinned text: ToJson does not spell what the page says\n--- got ---\n%s\n--- want ---\n%s\n",
+                        text.data(), expected );
+                failures++;
+            }
+        }
+    }
+
+    // A CHAIN NESTS AS DEEP AS IT IS LONG, and the writer carries the reader's
+    // cap: the 260-node chain has a wire and no text
+    {
+        graphdemo::SceneBuilder builder;
+        build_graph_deep( builder );
+        CHECK( builder.Lock() );
+        CHECK( graphdemo::SceneToJsonMeasure( builder.AsConst() ) == -1 );
+    }
+
+    // A CYCLE IS REFUSED as the wire refuses it. Lock refuses one, so a region
+    // holding one has to be made by hand: the tree's region, with its first
+    // list node pointed back at itself through the region's self-relative slot.
+    {
+        graphdemo::SceneBuilder builder;
+        build_graph_tree( builder );
+        CHECK( builder.Lock() );
+        std::vector<uint8_t> region( builder.Region(), builder.Region() + builder.RegionBytes() );
+        graphdemo::Scene * root = (graphdemo::Scene *) region.data();
+        graphdemo::ListNode * a = graphdemo::ListNodeAt( root->head );
+        CHECK( a != NULL );
+        a->next.value = (int64_t) ( (uint8_t *) a - (uint8_t *) &a->next );
+        CHECK( graphdemo::ListNodeAt( a->next ) == a );
+        CHECK( graphdemo::SceneToJsonMeasure( root ) == -1 );
+        CHECK( graphdemo::SceneMeasure( (const graphdemo::Scene *) root ) == -1 ); // and the wire agrees
+    }
+
+    // THE CONSTRUCT'S OWN EDGES: `&node` with fields after it defines, `&node` alone
+    // refers, and the other two readings are refused — each the reserved key
+    // at the FIRST position of a pointer's object and nothing
+    // else; the prefix is refused everywhere else
+    {
+        static const char * refused[] = {
+            "{ \"head\": { \"&node\": 1 } }",                                        // a label alone the text never defined
+            "{ \"head\": { \"&node\": 1 }, \"alias\": { \"&node\": 1, \"value\": 1 } }",   // a reference before its definition
+            "{ \"head\": { \"&node\": 1, \"value\": 1, \"next\": { \"&node\": 1 } } }",   // a reference from inside its own definition: the cycle, refused where written
+            "{ \"head\": { \"&node\": 1, \"value\": 1, \"next\": { \"value\": 2, \"next\": { \"&node\": 1 } } } }", // and at any depth
+            "{ \"head\": { \"&node\": 18446744073709551616, \"value\": 1 } }",   // a label past a u64
+            "{ \"head\": { \"&node\": -1, \"value\": 1 } }",                       // a signed label
+            "{ \"head\": { \"&node\": 1, \"value\": 1 }, \"alias\": { \"&node\": 1, \"value\": 2 } }", // a label defined twice
+            "{ \"head\": { \"value\": 1, \"&node\": 1 } }",                          // the label after a field
+            "{ \"&node\": 1 }",                                                       // the root takes no label
+            "{ \"ground\": { \"&node\": 1 } }",                                       // a by-value nesting is not a node
+            "{ \"head\": { \"&node\": 1.0 } }",                                       // not an integer spelled as one
+            "{ \"head\": { \"&node\": 0 } }",                                         // not positive
+            "{ \"head\": { \"&node\": 01 } }",                                        // a leading zero
+            "{ \"head\": { \"&other\": 1 } }",                                      // the prefix under another spelling
+            "{ \"mystery\": { \"value\": 1, \"&node\": 1 } }",                        // the prefix out of place in a skipped value
+        };
+        for ( size_t i = 0; i < sizeof( refused ) / sizeof( refused[0] ); i++ )
+        {
+            graphdemo::SceneBuilder builder;
+            graphdemo::TableReport report;
+            bool ok = graphdemo::SceneFromJson( builder, refused[i], (int64_t) strlen( refused[i] ), &report );
+            if ( ok || !report.malformed )
+            {
+                printf( "FAIL json variable: %s read as a text; it is malformed\n", refused[i] );
+                failures++;
+            }
+        }
+        // and a FIXED reader refuses the prefix among the keys it places — a
+        // construct it cannot honor, never a field it lacks — while a value it
+        // skips is skipped whole, which is §4's tolerance
+        {
+            tabledemo::Attachment value;
+            tabledemo::TableReport report;
+            const char * text = "{ \"slot\": 1, \"&node\": 1 }";
+            CHECK( !tabledemo::AttachmentFromJson( value, text, (int64_t) strlen( text ), &report ) );
+            CHECK( report.malformed );
+            tabledemo::TableReport skipped;
+            const char * inside = "{ \"mystery\": { \"&node\": 1 } }";
+            CHECK( tabledemo::AttachmentFromJson( value, inside, (int64_t) strlen( inside ), &skipped ) );
+            CHECK( !skipped.malformed && skipped.unknown == 1 );
+        }
+    }
+
+    // RESOLUTION mirrors the wire's node rules (§3.1): a reference to a node of
+    // another table is a kind mismatch with the pointer null, and a definition
+    // the walk dropped keeps its label — its reference reads null, the drop
+    // counted once where it happened
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::TableReport report;
+        const char * text = "{ \"settings\": { \"&node\": 1, \"quality\": 1 }, \"head\": { \"&node\": 1 } }";
+        CHECK( graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.kind_mismatch == 1 && !report.malformed && report.unknown == 0 );
+        CHECK( builder.GetRoot()->head.null() && !builder.GetRoot()->settings.null() );
+    }
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::TableReport report;
+        const char * text = "{ \"layers\": [ {}, {}, {}, {}, { \"head\": { \"&node\": 1, \"value\": 1 } } ], \"alias\": { \"&node\": 1 } }";
+        CHECK( graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.clamped == 1 && !report.malformed && report.unknown == 0 );
+        CHECK( builder.GetRoot()->alias.null() );
+    }
+    // a shared node read back IS one node: the two slots hold one arena offset
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::TableReport report;
+        const char * text = "{ \"head\": { \"&node\": 1, \"value\": 7 }, \"alias\": { \"&node\": 1 } }";
+        CHECK( graphdemo::SceneFromJson( builder, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 && !report.malformed );
+        graphdemo::Scene * root = builder.GetRoot();
+        CHECK( !root->head.null() && root->head.value == root->alias.value );
+        CHECK( graphdemo::ListNodeAt( builder.arena, root->head )->value == 7 );
     }
 }
 
@@ -5454,6 +5745,7 @@ int main()
     test_json_keyed_duplicate_keys();
     test_json_pinned_keyed_and_optional();
     test_json_pinned_text();
+    test_json_variable_class();
     test_json_fuzz_tokenizer();
 
     if ( failures > 0 )

@@ -1,0 +1,41 @@
+{
+  "name": "shared",
+  "version": 1,
+  "head": {
+    "&node": 1,
+    "value": 7,
+    "name": "one",
+    "next": null
+  },
+  "tree": {
+    "label": "",
+    "left": {
+      "label": "",
+      "left": {
+        "&node": 2,
+        "label": "leaf",
+        "left": null,
+        "right": null
+      },
+      "right": null
+    },
+    "right": {
+      "&node": 2
+    }
+  },
+  "settings": null,
+  "alias": {
+    "&node": 1
+  },
+  "ground": {
+    "depth": 1,
+    "head": {
+      "&node": 1
+    }
+  },
+  "layers": [],
+  "meta": {
+    "build": 1,
+    "tag": ""
+  }
+}

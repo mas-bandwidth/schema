@@ -1826,6 +1826,17 @@ func (c *checker) checkTables() {
 		seenKey := map[string]*ir.Field{}
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
+			// THE `&` PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+			// §16.7). It is what makes the sharing construct something a fixed
+			// table's text can never produce, so a reader meeting one knows it
+			// is not a field it lacks and refuses instead of skipping it. The
+			// whole prefix is reserved, not the one spelling, so a later
+			// construct cannot collide with a key a schema already declares.
+			if strings.HasPrefix(key, "&") {
+				c.errf(pos, "%s %s: field %s takes the JSON key %q, and a key beginning with `&` is reserved to the text form — `&node` is how a shared node is labeled (docs/SPEC-TABLES.md §16.7, §16.4); choose another key",
+					what, name, describeTableJsonField(f), key)
+				continue
+			}
 			if prev, dup := seenKey[key]; dup {
 				c.errf(pos, "%s %s: fields %s and %s collide on the JSON key %q — rename one, or give one a different json key (docs/SPEC-TABLES.md §16.4)",
 					what, name, describeTableJsonField(prev), describeTableJsonField(f), key)

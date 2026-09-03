@@ -147,9 +147,9 @@ func spillAbsent(dir, name string) error {
 	return os.WriteFile(filepath.Join(dir, name+".absent"), nil, 0o644)
 }
 
-// noText marks an instance the corpus carries on the WIRE only: the variable
-// class has no text form yet (docs/SPEC-TABLES.md §16.2), so the TEXT surfaces
-// skip it rather than reporting a form nobody has.
+// noText marks an instance the corpus carries on the WIRE only — past the text
+// form's depth cap by the form's own rule (docs/SPEC-TABLES.md §16.7) — so no
+// leg is asked for its text.
 func noText(f line) bool { return len(f) > 5 && f[5] == "no-text" }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +238,12 @@ func surfaceJsonRead(lines []line, out string) error {
 		}
 		c := findCodec(f[2], f[3])
 		if c == nil || c.fromJson == nil {
-			return fmt.Errorf("no text form for %s.%s", f[2], f[3])
+			// Go refuses a pointered unit's wire by name (§11), so it has no
+			// text form for one either and says so per case
+			if err := spillAbsent(out, f[1]); err != nil {
+				return err
+			}
+			continue
 		}
 		text, err := os.ReadFile("testdata/conformance/tables/json/" + f[1] + ".json")
 		if err != nil {
@@ -271,7 +276,10 @@ func surfaceJsonWrite(lines []line, out string) error {
 		}
 		c := findCodec(f[2], f[3])
 		if c == nil || c.toJson == nil {
-			return fmt.Errorf("no text form for %s.%s", f[2], f[3])
+			if err := spillAbsent(out, f[1]+".json"); err != nil {
+				return err
+			}
+			continue
 		}
 		wire, err := os.ReadFile(f[4])
 		if err != nil {
@@ -393,7 +401,10 @@ func surfaceJsonHostile(lines []line, out string) error {
 		}
 		c := findCodec(f[2], f[3])
 		if c == nil || c.fromJson == nil {
-			return fmt.Errorf("no text form for %s.%s", f[2], f[3])
+			if err := spillAbsent(out, f[1]); err != nil {
+				return err
+			}
+			continue
 		}
 		text, err := os.ReadFile(f[4] + "/" + f[3] + ".json")
 		if err != nil {

@@ -119,9 +119,9 @@ static uint8_t * slurp( const char * path, size_t * bytes )
    what the leg did answer (test/conformance/README.md). */
 static int spill_absent( const char * dir, const char * name );
 
-/* no_text marks an instance the corpus carries on the WIRE only: the variable
-   class has no text form yet (docs/SPEC-TABLES.md 16.2), so the TEXT surfaces
-   skip it rather than reporting a form nobody has. */
+/* no_text marks an instance the corpus carries on the WIRE only — past the text
+   form's depth cap by the form's own rule (docs/SPEC-TABLES.md 16.7) — so no
+   leg is asked for its text. */
 static int no_text( const Line * f )
 {
     return f->count > 5 && strcmp( f->field[5], "no-text" ) == 0;
@@ -272,7 +272,8 @@ static int surface_json_read( const char * out )
         ConformanceReport report;
         if ( strcmp( f->field[0], "instance" ) != 0 || no_text( f ) ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
-        if ( codec == NULL ) { return 1; }
+        /* the C port carries no text form for a pointered unit (16.7), and says so per case */
+        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
         snprintf( path, sizeof( path ), "testdata/conformance/tables/json/%s.json", f->field[1] );
         text = slurp( path, &bytes );
         if ( text == NULL ) { fprintf( stderr, "driver: cannot read %s\n", path ); return 1; }
@@ -302,7 +303,8 @@ static int surface_json_write( const char * out )
         int ok;
         if ( strcmp( f->field[0], "instance" ) != 0 || no_text( f ) ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
-        if ( codec == NULL ) { return 1; }
+        snprintf( name, sizeof( name ), "%s.json", f->field[1] );
+        if ( codec == NULL ) { if ( !spill_absent( out, name ) ) { return 1; } continue; }
         wire = slurp( f->field[4], &bytes );
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
@@ -340,7 +342,7 @@ static int surface_json_hostile( const char * out )
         int n, ok;
         if ( strcmp( f->field[0], "json-hostile" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f->field[2], f->field[3] ); return 1; }
+        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
         /* the tree is what `schema pack` reads, so the text is <tree>/<root>.json (§17) */
         snprintf( path, sizeof( path ), "%s/%s.json", f->field[4], f->field[3] );
         text = slurp( path, &bytes );

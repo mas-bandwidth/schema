@@ -56,6 +56,10 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { a int32 | json = b }\n"},
 		{name: "json with an empty string", want: "json = \"\" names nothing",
 			src: "package t\ntable Tab { a int32 | json = \"\" }\n"},
+		// the `&` prefix is the text form's (§16.7): `&node` is how a
+		// shared node is named, so no field may take a key that begins with it
+		{name: "json key with the reserved prefix", want: "a key beginning with `&` is reserved to the text form",
+			src: "package t\ntable Tab { a int32 | json = \"&a\" }\n"},
 		{name: "effective wire ids collide (was aliases a live sibling)", want: "collide on table-wire id",
 			src: "package t\ntable Tab {\n    a int32 | was = \"b\"\n    b int32\n}\n"},
 		{name: "a table nesting itself is a composition cycle", want: "type composition cycle",

@@ -1755,6 +1755,14 @@ func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInf
 				break
 			}
 		}
+		if keyLength > 0 && key[0] == '&' {
+			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+			// 16.7): never a field this build lacks, always a construct it
+			// cannot honor. MALFORMED and refused, never counted as unknown.
+			in.report.Malformed = true
+			in.bad = true
+			return false
+		}
 		if index < 0 {
 			in.report.Unknown++
 			if !in.skipValue(depth + 1) {

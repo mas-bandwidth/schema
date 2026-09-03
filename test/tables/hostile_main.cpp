@@ -35,6 +35,8 @@
 
 #include "PackTable.h"
 #include "TablesTable.h"
+// the POINTERED unit: §16.7's rows name Scene, whose text reads into a builder
+#include "GraphTable.h"
 
 static int failures = 0;
 static int checked = 0;
@@ -196,6 +198,118 @@ static void check_case( const char * name, const char * text, long text_size,
     free( resaved );
 }
 
+// the same three questions over the VARIABLE class (docs/SPEC-TABLES.md §16.7):
+// the text reads into a BUILDER, the bytes it saves are compared with the pack's,
+// and the pack's bytes load into a REGION and re-save byte-identically
+static bool same_graph_report( const graphdemo::TableReport & got, const Expected & want )
+{
+    return got.unknown == want.unknown && got.kind_mismatch == want.kind_mismatch &&
+           got.clamped == want.clamped && got.duplicate == want.duplicate &&
+           got.malformed == want.malformed;
+}
+
+static void check_scene_case( const char * name, const char * text, long text_size,
+                              const uint8_t * packed, long size, bool refused, const Expected & want )
+{
+    checked++;
+
+    // 1. the same text, through the generated walk, into a builder
+    graphdemo::SceneBuilder from_text;
+    graphdemo::TableReport text_report;
+    bool text_ok = graphdemo::SceneFromJson( from_text, text, text_size, &text_report );
+    if ( refused )
+    {
+        if ( text_ok && !text_report.malformed )
+        {
+            printf( "FAIL %s: the manifest says the text is refused; FromJson accepted it\n", name );
+            failures++;
+        }
+        return;
+    }
+    if ( !text_ok )
+    {
+        printf( "FAIL %s: FromJson refused a text schema pack accepted\n", name );
+        failures++;
+        return;
+    }
+    if ( !same_graph_report( text_report, want ) )
+    {
+        printf( "FAIL %s: FromJson reports %d,%d,%d,%d,%d; the manifest (and schema pack) say %d,%d,%d,%d,%d\n",
+                name, text_report.unknown, text_report.kind_mismatch, text_report.clamped,
+                text_report.duplicate, (int) text_report.malformed,
+                want.unknown, want.kind_mismatch, want.clamped, want.duplicate, (int) want.malformed );
+        failures++;
+    }
+
+    // 2. and the bytes the builder saves are the bytes schema pack wrote
+    int64_t from_text_size = graphdemo::SceneMeasure( from_text );
+    if ( from_text_size != size )
+    {
+        printf( "FAIL %s: FromJson -> Save is %lld bytes, schema pack wrote %ld\n",
+                name, (long long) from_text_size, size );
+        failures++;
+    }
+    else
+    {
+        uint8_t * text_bytes = (uint8_t *) malloc( (size_t) from_text_size );
+        if ( graphdemo::SceneSave( from_text, text_bytes, from_text_size ) != from_text_size ||
+             memcmp( text_bytes, packed, (size_t) size ) != 0 )
+        {
+            for ( long i = 0; i < size; i++ )
+            {
+                if ( text_bytes[i] != packed[i] )
+                {
+                    printf( "FAIL %s: one text, two wires — first difference at %ld: pack 0x%02x, FromJson 0x%02x\n",
+                            name, i, packed[i], text_bytes[i] );
+                    break;
+                }
+            }
+            failures++;
+        }
+        free( text_bytes );
+    }
+
+    // 3. and the bytes load clean, into a region, and re-save
+    int64_t region_bytes = graphdemo::SceneLoadMeasure( packed, size );
+    uint8_t * region = (uint8_t *) calloc( 1, (size_t) region_bytes );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * value = graphdemo::SceneLoad( region, region_bytes, packed, size, &report );
+    if ( value == NULL )
+    {
+        printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );
+        failures++;
+        free( region );
+        return;
+    }
+    if ( report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 ||
+         report.duplicate != 0 || report.malformed )
+    {
+        printf( "FAIL %s: the backend's Load reports unknown=%d kind_mismatch=%d clamped=%d duplicate=%d "
+                "malformed=%d for bytes the engine called clean\n",
+                name, report.unknown, report.kind_mismatch, report.clamped,
+                report.duplicate, (int) report.malformed );
+        failures++;
+        free( region );
+        return;
+    }
+    int64_t again = graphdemo::SceneMeasure( value );
+    if ( again != size )
+    {
+        printf( "FAIL %s: resave is %lld bytes, pack wrote %ld\n", name, (long long) again, size );
+        failures++;
+        free( region );
+        return;
+    }
+    uint8_t * resaved = (uint8_t *) malloc( (size_t) again );
+    if ( graphdemo::SceneSave( value, resaved, again ) != again || memcmp( resaved, packed, (size_t) again ) != 0 )
+    {
+        printf( "FAIL %s: resave differs from what pack wrote\n", name );
+        failures++;
+    }
+    free( resaved );
+    free( region );
+}
+
 int main( int argc, char ** argv )
 {
     if ( argc < 3 )
@@ -262,6 +376,10 @@ int main( int argc, char ** argv )
         {
             check_case<PackConfig>( name, (const char *) text, text_size, packed, size, refused, want,
                                     PackConfigFromJson, PackConfigLoad, PackConfigMeasure, PackConfigSave );
+        }
+        else if ( strcmp( root, "Scene" ) == 0 )
+        {
+            check_scene_case( name, (const char *) text, text_size, packed, size, refused, want );
         }
         else
         {

@@ -37,6 +37,11 @@ import (
 //
 // An entry that names NO part of the root is left exactly where it is: it is
 // not this tool's, and `pack` names it if it does not belong.
+//
+// A VARIABLE root is written as ONE `<Root>.json` whichever shape is asked
+// for (§17.2): its shared nodes are named by labels a text owns (§16.7), and a
+// tree of fields would split them across texts that cannot name each other's
+// nodes — which is the tree `pack` refuses for the same reason.
 func Unpack(m *tabletext.Model, root string, wire []byte, dir string) (tabletext.Report, error) {
 	return unpack(m, root, wire, dir, false)
 }
@@ -50,10 +55,8 @@ func UnpackOneFile(m *tabletext.Model, root string, wire []byte, dir string) (ta
 	return unpack(m, root, wire, dir, true)
 }
 
-// ReadReport decodes one wire as one root and answers the §4 report. It writes
-// nothing, so it takes the VARIABLE class the text form refuses: the decode
-// reads a pointered root correctly — the node table and all — and it is only
-// the TEXT that has no spelling for a reference yet (§16.2, schema#374).
+// ReadReport decodes one wire as one root and answers the §4 report, writing
+// nothing.
 func ReadReport(m *tabletext.Model, root string, wire []byte) (tabletext.Report, error) {
 	st := m.Unit.Tables[root]
 	if st == nil {
@@ -75,14 +78,7 @@ func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bo
 	if st == nil {
 		return tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
 	}
-	if err := tablewire.RefuseVariable(m, st); err != nil {
-		// UNPACK refuses the variable class exactly as PACK does (schema#374).
-		// The decode below reads a pointered root correctly — the node table
-		// and all — but the text writer has no spelling for a reference, so
-		// every pointer would reach the page as null with a SILENT report and
-		// no pack to catch it. The refusal comes back before a file is written.
-		return tabletext.Report{}, err
-	}
+	oneFile = oneFile || m.IsVariable(root)
 	inst := m.New(st)
 	var report tabletext.Report
 	// the refusal comes back BEFORE anything is written: a root this engine

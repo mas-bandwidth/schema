@@ -28,12 +28,12 @@ type Instance struct {
 	Root string
 	Wire string
 	JSON string
-	// NoText marks an instance the corpus carries on the WIRE and not yet as
-	// TEXT (docs/SPEC-TABLES.md §16.2): the variable class has no text form in
-	// any implementation, the tool refuses a variable root in both directions,
-	// and a JSON golden nothing can write is a golden nothing holds. The
-	// marker is the corpus saying which half it owes, and schema#275 removes
-	// it rather than the harness quietly tolerating a missing file.
+	// NoText marks an instance the corpus carries on the WIRE alone, by the
+	// text form's own rule (docs/SPEC-TABLES.md §16.7): a pointer chain nests
+	// in the text as deep as it is long, and past the depth cap the writer
+	// refuses it in every implementation. The marker is the corpus saying so
+	// on the instance's own line, rather than the harness quietly tolerating a
+	// missing file.
 	NoText bool
 }
 

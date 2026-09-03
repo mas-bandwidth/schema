@@ -2065,6 +2065,15 @@ namespace Blockdemo
                     {
                         if (Same(key.Slice(0, keyLength), info.Fields[i].Json)) { index = i; break; }
                     }
+                    if (keyLength > 0 && key[0] == (byte)'&')
+                    {
+                        // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+                        // 16.7): never a field this build lacks, always a construct it
+                        // cannot honor. MALFORMED and refused, never counted as unknown.
+                        input.Report.Malformed = true;
+                        input.Bad = true;
+                        return false;
+                    }
                     if (index < 0)
                     {
                         input.Report.Unknown++;

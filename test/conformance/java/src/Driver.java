@@ -216,9 +216,9 @@ public final class Driver {
         spill(out, name + ".absent", new byte[0]);
     }
 
-    // noText marks an instance the corpus carries on the WIRE only: the
-    // variable class has no text form yet (docs/SPEC-TABLES.md 16.2), so the
-    // TEXT surfaces skip it rather than reporting a form nobody has.
+    // noText marks an instance the corpus carries on the WIRE only — past the
+    // text form's depth cap by the form's own rule (docs/SPEC-TABLES.md 16.7) —
+    // so no leg is asked for its text.
     private static boolean noText(String[] f) {
         return f.length > 5 && f[5].equals("no-text");
     }
@@ -310,7 +310,7 @@ public final class Driver {
             if (codec == null) {
                 // Java refuses a pointered unit's wire by name (11), so it has
                 // no codec here and says so per case
-                spillAbsent(out, f[1]);
+                spillAbsent(out, f[1] + ".json");
                 continue;
             }
             byte[] wire = Files.readAllBytes(Paths.get(f[4]));

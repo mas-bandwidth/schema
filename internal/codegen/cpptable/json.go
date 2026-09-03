@@ -19,8 +19,19 @@ import (
 // tableJsonWalk wraps the walker in its package guard. The package name is in
 // the guard and the namespace and NOWHERE inside the markers, so the gate
 // between them is a strict byte comparison across every header of the corpus.
-func tableJsonWalk(pkg string) string {
+//
+// The walk meets a POINTER through three adapters it declares and does not
+// define (docs/SPEC-TABLES.md §16.7). Their definitions sit outside the gated
+// region and say what the UNIT is: a unit that declares no pointer answers
+// with three stubs no field ever reaches, and a pointered unit answers with the
+// graph half — the builder's reader, the region's writer and the `&node` map —
+// which carries its own gate across the pointered units of the corpus.
+func tableJsonWalk(pkg string, variable bool) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_JSON"
+	adapters := tableJsonFixedAdapters
+	if variable {
+		adapters = tableJsonGraphSource
+	}
 	// The include guard is LOAD-BEARING in a .cpp, which is not where a reader
 	// expects to find one — hence the comment riding with it. It is what lets
 	// several same-package .cpp files be concatenated into one translation
@@ -35,32 +46,88 @@ func tableJsonWalk(pkg string) string {
 		"// definitions to be token-identical, and the generic-walk gate is what\n" +
 		"// proves that, byte for byte, across every generated .cpp.\n" +
 		"#ifndef " + guard + "\n#define " + guard + "\n\nnamespace " + pkg + " {\n\n" +
+		tableJsonAdapterDeclarations +
 		tableJsonWalkSource +
+		"\n" + adapters +
 		"\n} // namespace " + pkg + "\n\n#endif // " + guard + "\n"
 }
 
-// emitJsonSurface emits one closure member's text-form surface: three thin
-// wrappers over the generic walk. FIXED-SIZE members only — a
-// VARIABLE-LENGTH table is never held by value, and reading one from a text
-// wants the builder and the two reference encodings (§6.3) threaded through
-// a descriptor-driven walk, which is a named follow-on (§16.6), not a cheap
-// add-on. The refusal is by absence and it is loud: no <Name>FromJson exists
-// to call.
+// tableJsonAdapterDeclarations is what the walk knows about a pointer: three
+// functions it calls at a `*T` slot and at an `&`-prefixed key, declared here
+// and defined after the walk by whichever half the unit carries.
+const tableJsonAdapterDeclarations = `// ---- the pointer adapters (docs/SPEC-TABLES.md §16.7) ----
+//
+// The walk below is ONE walk, byte-identical in every generated .cpp, and a
+// pointer is the one kind it cannot walk alone: reading one needs the
+// builder's arena and writing one needs a region's deref, and neither exists
+// in a unit that declares no pointer. So the walk calls these three and does
+// not define them. A unit with no pointer defines them as stubs no field ever
+// reaches; a pointered unit defines them in the graph half that follows the
+// walk.
+
+struct TableJsonIn;
+struct TableJsonOut;
+
+// a pointer field's object, or the ` + "`&node`" + ` reference standing in for it, into
+// the slot; the cursor is on the opening brace
+inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
+// the node a pointer slot names, in place — or as ` + "`&node`" + ` when it is shared
+inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
+// the FIRST key of an object the walk is skipping begins with ` + "`&`" + `: the cursor is
+// on its value. A dropped definition still takes its label (§16.7); a fixed reader
+// skips the value whole, as it skips everything else it does not place.
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t depth );
+
+`
+
+// tableJsonFixedAdapters answers for a unit that declares no pointer: no field
+// has kind 17, so the two slot adapters are never reached, and an `&` key in a
+// skipped value is the reserved prefix meeting a reader that cannot honor it.
+const tableJsonFixedAdapters = `// ---- this unit declares no pointer ----
+//
+// Every field's kind is one the walk above places by itself, so the two slot
+// adapters are unreachable and say so. The prefix adapter is reachable — a
+// text may carry ` + "`&node`" + ` inside a value this reader skips — and the value is
+// skipped whole: what a reader does not place it does not police, which is
+// §4's tolerance (docs/SPEC-TABLES.md §16.7).
+
+inline bool TableJsonReadPointer( TableJsonIn & in, void *, const TableFieldInfo *, int32_t )
+{
+    in.report->malformed = true;
+    in.bad = true;
+    return false;
+}
+
+inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFieldInfo *, int32_t )
+{
+    return false;
+}
+
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t depth )
+{
+    return TableJsonSkipValue( in, depth + 1 );
+}
+`
+
 // emitJsonDeclarations puts one closure member's text-form surface in the
 // HEADER: three declarations and nothing else. The definitions, and the walker
 // they call, live in the generated <Base>Table.cpp — so a translation unit
 // that includes the header to use the wire codecs or the descriptors pays
 // nothing for a form it never calls (docs/SPEC-TABLES.md §16.1, owner's ruling).
+//
+// A VARIABLE-LENGTH member is never held by value, so its three take the forms
+// the class is held in (§16.7): FromJson reads into a BUILDER, whose arena is
+// where every node comes from, and ToJson writes from the CONST root of a
+// region, which is what Lock and Load both produce — with the allocator its
+// identity map uses, defaulted to the program's pair as Measure and Save are.
 func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	if g.isVar(st.Name) {
-		// docs/SPEC-TABLES.md §16.1 states the builder surface for this class —
-		// <Name>FromJson( builder, ... ) — and this backend does not carry it
-		// yet (schema#275). The refusal is by ABSENCE and it is loud: there is
-		// no function to call, so nothing silently reads a pointered table as
-		// an empty one.
-		g.pf("// %s is VARIABLE-LENGTH. Its text form reads through the builder\n", st.Name)
-		g.pf("// (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:\n")
-		g.pf("// no %sFromJson and no %sToJson exist to call.\n\n", st.Name, st.Name)
+		g.pf("// %s in and out of a JSON text (docs/SPEC-TABLES.md §16.7): read into a\n", st.Name)
+		g.pf("// builder, written from a region's const root. A node named more than once\n")
+		g.pf("// carries `&node` in the text. Defined in %sTable.cpp; link it to use them.\n", g.file.Base)
+		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
+		g.pf("int64_t %sToJsonMeasure( const %s * root, TableAllocator allocator = TableDefaultAllocator() );\n", st.Name, st.Name)
+		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );\n\n", st.Name, st.Name)
 		return
 	}
 	g.pf("// %s in and out of a JSON text — one instance, one text, the generic\n", st.Name)
@@ -75,6 +142,14 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 // each a thin wrapper naming a descriptor and nothing else.
 func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 	if g.isVar(st.Name) {
+		g.pf("bool %sFromJson( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
+		g.pf("    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed\n")
+		g.pf("    return TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+		g.pf("int64_t %sToJsonMeasure( const %s * root, TableAllocator allocator )\n{\n", st.Name, st.Name)
+		g.pf("    return TableJsonWriteGraph( root, %sTableType(), NULL, 0, allocator );\n}\n\n", st.Name)
+		g.pf("int64_t %sToJson( const %s * root, char * buffer, int64_t capacity, TableAllocator allocator )\n{\n", st.Name, st.Name)
+		g.pf("    return TableJsonWriteGraph( root, %sTableType(), buffer, capacity, allocator );\n}\n\n", st.Name)
 		return
 	}
 	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
@@ -271,6 +346,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
     if ( f->is_array ) return 'a';
     if ( f->arms != NULL ) return 'o';         // union: an object with ONE key
     if ( f->kind == 13 ) return 'o';           // nested table or type
+    if ( f->kind == 17 ) return 'o';           // a pointer: the pointee's object in place, or null (§16.7)
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
     if ( f->kind == 1 ) return 'b';
@@ -331,6 +407,7 @@ struct TableJsonOut
     int64_t capacity;
     int64_t offset;
     bool overflow;
+    void * graph; // the pointered write's identity map (§16.7); NULL for a fixed table
 
     void raw( const char * data, int64_t count )
     {
@@ -638,6 +715,10 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
 inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
+    if ( f->kind == 17 )
+    {
+        return TableJsonWritePointer( out, storage, f, depth );
+    }
     if ( f->kind == 12 )
     {
         TableJsonWriteString( out, (const char *) storage, TableJsonCount( base, f ) );
@@ -699,12 +780,13 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     return TableJsonWriteScalar( out, storage, f, depth );
 }
 
-// One instance, every field, in DECLARATION ORDER, defaults included — a
-// text is for people and tools, and a text that elides is a text a reader
-// has to know the schema to complete.
-inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth )
+// One instance's fields, in DECLARATION ORDER, defaults included — a text is
+// for people and tools, and a text that elides is a text a reader has to know
+// the schema to complete. ` + "`any`" + ` says whether the object is already open on
+// entry — a shared node's ` + "`&node`" + ` opens it before the fields (§16.7) — and
+// whether it is open on return.
+inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth, bool & any )
 {
-    bool any = false;
     for ( int32_t i = 0; i < info->num_fields; i++ )
     {
         const TableFieldInfo * f = &info->fields[i];
@@ -717,11 +799,6 @@ inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const Ta
         {
             continue;
         }
-        // ---- SEAM (schema#260): an OPTIONAL field writes its key only when
-        // ---- present — skip here on !optional_present, since presence is the
-        // ---- presence and an absent key is the absence. The enum-keyed half
-        // ---- (schema#255) is not here: an object keyed by variant name is a
-        // ---- SHAPE, so it lands in TableJsonShape and TableJsonWriteField.
         if ( !any ) { out.put( '{' ); }
         else { out.put( ',' ); }
         any = true;
@@ -730,6 +807,17 @@ inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const Ta
         out.raw( ": ", 2 );
         if ( !TableJsonWriteField( out, base, f, depth + 1 ) ) { return false; }
     }
+    return true;
+}
+
+// One instance as one object. The writer carries the reader's depth cap
+// (§16.2): a pointer chain nests as deep as it is long (§16.7), and a text the
+// writer produced past the cap would be a text the reader refuses.
+inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth )
+{
+    if ( depth > kTableJsonMaxDepth ) { return false; }
+    bool any = false;
+    if ( !TableJsonWriteFields( out, base, info, depth, any ) ) { return false; }
     if ( !any )
     {
         out.raw( "{}", 2 );
@@ -748,7 +836,8 @@ struct TableJsonIn
     int64_t size;
     int64_t pos;
     TableReport * report;
-    bool bad; // the text is not JSON: the walk stops and keeps what it placed
+    bool bad;     // the text is not JSON: the walk stops and keeps what it placed
+    void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
 };
 
 inline void TableJsonSpace( TableJsonIn & in )
@@ -1085,6 +1174,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
 {
     if ( depth > kTableJsonMaxDepth ) { in.bad = true; return false; }
     in.pos++; // the opening bracket
+    bool first = true;
     for ( ;; )
     {
         char c = TableJsonPeek( in );
@@ -1092,10 +1182,30 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
         if ( c == 0 ) { in.bad = true; return false; }
         if ( close == '}' )
         {
-            if ( !TableJsonScanString( in, NULL, 0, NULL ) ) { return false; }
+            // the key is kept, because a skipped OBJECT may still be a
+            // pointer's: an ` + "`&node`" + ` opening it names a node the storage could
+            // not hold, and the numbering has to survive the drop (§16.7).
+            // Anywhere but first, the prefix is the reserved key out of place
+            // — in a pointered unit; a fixed unit skips the value whole.
+            char key[kTableJsonMaxKey];
+            int32_t key_length = 0;
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
             in.pos++;
+            if ( key[0] == '&' && in.graph != NULL )
+            {
+                if ( !first ) { in.report->malformed = true; in.bad = true; return false; }
+                if ( !TableJsonSkippedAmpersand( in, key, depth ) ) { return false; }
+                first = false;
+                c = TableJsonPeek( in );
+                if ( c == ',' ) { in.pos++; continue; }
+                if ( c == close ) { in.pos++; return true; }
+                in.bad = true;
+                return false;
+            }
         }
+        first = false;
         if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         c = TableJsonPeek( in );
         if ( c == ',' ) { in.pos++; continue; }   // a trailing comma is accepted
@@ -1558,6 +1668,8 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     return TableJsonReadScalar( in, storage, f, depth );
 }
 
+inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key );
+
 // ONE table object: keys are field keys, unknown ones are skipped and
 // counted, a repeated key is last-wins and counted. The instance is already
 // at its declared defaults when this is entered, so a key the text never
@@ -1567,24 +1679,56 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
     if ( depth > kTableJsonMaxDepth ) { in.bad = true; return false; }
     if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
     in.pos++;
+    return TableJsonReadTableKeys( in, base, info, depth, NULL );
+}
+
+// The keys of an object whose brace is already consumed. A pointer's object
+// opens the same way a table's does, but its FIRST key may be ` + "`&node`" + ` (§16.7)
+// and the adapter that reads it has to scan the key to know — so it hands the
+// key it scanned in as ` + "`first_key`" + `, with the colon consumed, and this places
+// it before scanning the rest.
+inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
+{
     // duplicate tracking, bounded and allocation-free: a table with more
     // fields than this still reads, its repeats simply stop being counted
     uint64_t seen[8] = {};
     for ( ;; )
     {
-        char c = TableJsonPeek( in );
-        if ( c == '}' ) { in.pos++; return true; }
-        if ( c == 0 ) { in.bad = true; return false; }
         char key[kTableJsonMaxKey];
-        int32_t key_length = 0;
-        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
-        key[key_length] = 0;
-        if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
-        in.pos++;
+        char c = 0;
+        if ( first_key != NULL )
+        {
+            memcpy( key, first_key, strlen( first_key ) + 1 ); // scanned into a buffer this size by the caller
+            first_key = NULL;
+        }
+        else
+        {
+            c = TableJsonPeek( in );
+            if ( c == '}' ) { in.pos++; return true; }
+            if ( c == 0 ) { in.bad = true; return false; }
+            int32_t key_length = 0;
+            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            key[key_length] = 0;
+            if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
+            in.pos++;
+        }
         int32_t index = -1;
         for ( int32_t i = 0; i < info->num_fields; i++ )
         {
             if ( strcmp( info->fields[i].json, key ) == 0 ) { index = i; break; }
+        }
+        if ( key[0] == '&' )
+        {
+            // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+            // §16.7). No declaration may take a key beginning with it, so this
+            // is never a field this build lacks — it is the sharing construct
+            // somewhere it cannot stand: ` + "`&node`" + ` is the FIRST key of a pointer's
+            // object and nothing else, and the adapter that reads a pointer
+            // has consumed it before these keys are read. MALFORMED, refused
+            // and counted; never counted as unknown, never skipped.
+            in.report->malformed = true;
+            in.bad = true;
+            return false;
         }
         if ( index < 0 )
         {
@@ -1605,7 +1749,27 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
             // whatever its value — with one exception the page names: a JSON
             // null, which reads as ABSENT rather than as a value.
             char got = TableJsonValueShape( in );
-            if ( f->optional && got == 'z' )
+            if ( f->kind == 17 )
+            {
+                // a pointer: null is a null pointer, an object is the pointee
+                // in place or an ` + "`&node`" + ` reference to one (§16.7), and anything
+                // else is the wrong shape for the kind
+                if ( got == 'z' )
+                {
+                    if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+                    TableJsonSetRaw( (uint8_t *) base + f->offset, f->elem_size, 0 );
+                }
+                else if ( got != 'o' )
+                {
+                    in.report->kind_mismatch++;
+                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                }
+                else if ( !TableJsonReadPointer( in, (uint8_t *) base + f->offset, f, depth ) )
+                {
+                    return false;
+                }
+            }
+            else if ( f->optional && got == 'z' )
             {
                 if ( !TableJsonLiteral( in, "null" ) ) { return false; }
                 // absent, and back at its defaults: a repeated key whose last
@@ -1651,6 +1815,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     in.pos = 0;
     in.report = report != NULL ? report : &ignored;
     in.bad = false;
+    in.graph = NULL;
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {
@@ -1678,6 +1843,7 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     out.capacity = capacity;
     out.offset = 0;
     out.overflow = false;
+    out.graph = NULL;
     if ( !TableJsonWriteValue( out, value, info, 0 ) ) { return -1; }
     // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
     // §16.1). Every writer emits it — this walk, the C# walk and
@@ -1693,4 +1859,431 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
 }
 
 // ---- json walk: end ----
+`
+
+// tableJsonGraphSource is the VARIABLE class's half of the form, emitted only
+// in a unit that declares a pointer. It defines the three adapters the walk
+// calls and the two entry points a pointered table's wrappers name, and it is
+// gated the way the walk is: the same bytes in every pointered unit of the
+// corpus (`make tables-json-graph-walk`).
+const tableJsonGraphSource = `// ---- json graph walk: begin ----
+//
+// THE VARIABLE CLASS's half of the text form (docs/SPEC-TABLES.md §16.7). The
+// walk above places every kind but one; this defines the three adapters it
+// calls for that one, and the two entry points a pointered table's wrappers
+// name. The text is the fixed class's — a pointee is an object in place — and a
+// node named more than once carries ` + "`&node`" + `: defined once, with its fields,
+// and referenced after by ` + "`{ \"&node\": N }`" + ` alone.
+
+// ---- the identity map ----
+//
+// ONE map shape serves both directions. Writing keys it by a node's ADDRESS and
+// counts the slots that name the node, so the second pass knows at a node's
+// first occurrence whether it will be named again; reading keys it by the
+// text's own label and answers the node it defined. Open addressing, a
+// multiply-shift hash and quadrupling growth — TablePackMap's shape (§6.2), on
+// the same terms: proportional to nodes, never to bytes, on the authoring
+// side, and released before the call returns.
+
+struct TableJsonGraphEntry
+{
+    uint64_t key;               // a node's address (write) or a label (read); 0 is an empty slot
+    int64_t count;              // write: how many slots name this node
+    int64_t label;              // write: the ` + "`&node`" + ` label assigned at its first write, 0 until then
+    uint8_t open;               // the descent is still open: a reference here is a cycle (write), a self-reference (read)
+    uint32_t node;              // read: the node's arena offset; 0 for a definition the reader dropped
+    const TableTypeInfo * type; // read: the node's table; NULL for a dropped one
+};
+
+struct TableJsonGraphMap
+{
+    TableJsonGraphEntry * entries;
+    int64_t capacity;         // a power of two, or zero while empty
+    int64_t count;
+    TableAllocator allocator; // the caller's pair (§6.5): the builder's on read, the one handed to ToJson on write
+};
+
+inline void TableJsonGraphMapInit( TableJsonGraphMap & map, TableAllocator allocator )
+{
+    map.entries = NULL;
+    map.capacity = 0;
+    map.count = 0;
+    map.allocator = allocator;
+}
+
+inline void TableJsonGraphMapShutdown( TableJsonGraphMap & map )
+{
+    map.allocator.free( map.allocator.context, map.entries );
+    TableJsonGraphMapInit( map, map.allocator );
+}
+
+inline int64_t TableJsonGraphMapSlot( const TableJsonGraphMap & map, uint64_t key )
+{
+    uint64_t hash = key * 0x9E3779B97F4A7C15ull;
+    hash ^= hash >> 29;
+    int64_t mask = map.capacity - 1;
+    int64_t at = (int64_t) ( hash & (uint64_t) mask );
+    while ( map.entries[at].key != 0 && map.entries[at].key != key )
+    {
+        at = ( at + 1 ) & mask;
+    }
+    return at;
+}
+
+inline TableJsonGraphEntry * TableJsonGraphMapFind( TableJsonGraphMap & map, uint64_t key )
+{
+    if ( map.capacity == 0 ) { return NULL; }
+    TableJsonGraphEntry * entry = &map.entries[ TableJsonGraphMapSlot( map, key ) ];
+    return entry->key == key ? entry : NULL;
+}
+
+inline bool TableJsonGraphMapGrow( TableJsonGraphMap & map )
+{
+    TableJsonGraphMap grown;
+    grown.allocator = map.allocator;
+    grown.capacity = map.capacity != 0 ? map.capacity * 4 : 64;
+    grown.count = 0;
+    grown.entries = (TableJsonGraphEntry *) map.allocator.alloc( map.allocator.context, grown.capacity * (int64_t) sizeof( TableJsonGraphEntry ) ); // zeroed, by the pair's contract
+    if ( grown.entries == NULL ) { return false; }
+    for ( int64_t i = 0; i < map.capacity; i++ )
+    {
+        if ( map.entries[i].key == 0 ) { continue; }
+        grown.entries[ TableJsonGraphMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
+        grown.count++;
+    }
+    map.allocator.free( map.allocator.context, map.entries );
+    map = grown;
+    return true;
+}
+
+// the entry for a key, made if it was not there; ` + "`taken`" + ` says which. NULL is the
+// allocator refusing, and the walk refuses with it.
+inline TableJsonGraphEntry * TableJsonGraphMapReach( TableJsonGraphMap & map, uint64_t key, bool & taken )
+{
+    if ( ( map.count + 1 ) * 4 >= map.capacity * 3 ) // keep the load factor under three quarters
+    {
+        if ( !TableJsonGraphMapGrow( map ) ) { return NULL; }
+    }
+    TableJsonGraphEntry * entry = &map.entries[ TableJsonGraphMapSlot( map, key ) ];
+    taken = entry->key != key;
+    if ( taken )
+    {
+        entry->key = key;
+        map.count++;
+    }
+    return entry;
+}
+
+// ---- reading: into a builder ----
+
+struct TableJsonGraphIn
+{
+    TableWorker * worker;  // where every node comes from
+    TableJsonGraphMap labels; // a label -> the node it defined
+};
+
+// ` + "`&node`" + `'s value, the LABEL: a positive integer spelled as one — digits, no sign, no
+// fraction, no exponent, no leading zero (§16.7). Anything else is malformed.
+inline bool TableJsonScanLabel( TableJsonIn & in, uint64_t & label )
+{
+    TableJsonSpace( in );
+    if ( in.pos >= in.size || in.text[in.pos] < '1' || in.text[in.pos] > '9' )
+    {
+        in.report->malformed = true;
+        in.bad = true;
+        return false;
+    }
+    uint64_t value = 0;
+    while ( in.pos < in.size && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' )
+    {
+        uint64_t digit = (uint64_t) ( in.text[in.pos] - '0' );
+        if ( value > ( UINT64_MAX - digit ) / 10 )
+        {
+            in.report->malformed = true;
+            in.bad = true;
+            return false;
+        }
+        value = value * 10 + digit;
+        in.pos++;
+    }
+    label = value;
+    return true;
+}
+
+// A pointer's object. Its FIRST key decides what it is: ` + "`&node`" + ` naming a label not
+// yet defined, with fields after it, is a DEFINITION; ` + "`&node`" + ` naming one already
+// defined, alone, is a REFERENCE; any other key is a node named once, its
+// object in place. The node comes from the
+// builder's arena, and the slot holds its arena offset (§6.3).
+inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    if ( graph == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    // the pointee nests one level down, exactly as a by-value table does, and
+    // takes the same cap: a chain nests as deep as it is long (§16.7)
+    if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
+    if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
+    in.pos++;
+    char c = TableJsonPeek( in );
+    if ( c == '}' )
+    {
+        // an empty object: a node at its defaults, named once
+        in.pos++;
+        void * node = f->emplace( *graph->worker, slot );
+        if ( node == NULL ) { in.report->malformed = true; in.bad = true; return false; } // the arena refused
+        return true;
+    }
+    if ( c == 0 ) { in.bad = true; return false; }
+    char key[kTableJsonMaxKey];
+    int32_t key_length = 0;
+    if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+    key[key_length] = 0;
+    if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
+    in.pos++;
+    if ( strcmp( key, "&node" ) != 0 )
+    {
+        // a node named once: the pointee's object in place, and this key is
+        // its first field — unless it is the reserved prefix under a spelling
+        // this form does not have, which ReadTableKeys refuses
+        void * node = f->emplace( *graph->worker, slot );
+        if ( node == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+        return TableJsonReadTableKeys( in, node, f->table, depth + 1, key );
+    }
+    uint64_t label = 0;
+    if ( !TableJsonScanLabel( in, label ) ) { return false; }
+    bool taken = false;
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->labels, label, taken );
+    if ( entry == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    // ONE SPELLING, and what follows the label says which half it is: fields
+    // after a label the text has not defined DEFINE it, and a label alone that
+    // the text has defined REFERS to it. The other two are malformed — a label
+    // alone that the text never defined, which would otherwise read as a default
+    // node under a silent report, and a field after a label already defined,
+    // which would be a second definition. That is what keeps a typo loud.
+    c = TableJsonPeek( in );
+    if ( c == ',' ) { in.pos++; c = TableJsonPeek( in ); }
+    bool bare = c == '}';
+    if ( bare == taken ) { in.report->malformed = true; in.bad = true; return false; }
+    if ( bare )
+    {
+        // A REFERENCE. A label is defined when its object CLOSES, so a
+        // reference met inside its own definition — at any depth of by-value
+        // nesting — names a node whose descent is still open: the cycle the
+        // wire refuses (§3.1), refused here where it is written. A definition
+        // the reader dropped names no node, so the slot stays null with
+        // nothing more counted — the drop was counted where it happened. A
+        // node of another table than the slot declares is a kind mismatch, as
+        // on the wire.
+        in.pos++;
+        if ( entry->open != 0 ) { in.report->malformed = true; in.bad = true; return false; }
+        TableRef ref;
+        if ( entry->type == NULL )
+        {
+            memcpy( slot, &ref, sizeof( ref ) );
+            return true;
+        }
+        if ( entry->type != f->table )
+        {
+            memcpy( slot, &ref, sizeof( ref ) );
+            in.report->kind_mismatch++;
+            return true;
+        }
+        ref.value = (int64_t) entry->node;
+        memcpy( slot, &ref, sizeof( ref ) );
+        return true;
+    }
+    // A DEFINITION: the node is allocated, the label is its, and the keys after
+    // ` + "`&node`" + ` are its fields. The entry is OPEN until the object closes, so a
+    // reference to the label from inside the node's own fields is refused as
+    // the cycle it is; the node and its table are filled in at the close.
+    void * node = f->emplace( *graph->worker, slot );
+    if ( node == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    entry->open = 1;
+    if ( !TableJsonReadTableKeys( in, node, f->table, depth + 1, NULL ) ) { return false; }
+    entry = TableJsonGraphMapFind( graph->labels, label ); // the map may have grown under the descent
+    if ( entry == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    TableRef ref;
+    memcpy( &ref, slot, sizeof( ref ) );
+    entry->node = (uint32_t) ref.value;
+    entry->type = f->table;
+    entry->open = 0;
+    return true;
+}
+
+// An ` + "`&`" + `-prefixed key opening an object the walk is SKIPPING — a value past an
+// array's bound, an unknown key's value, a value of the wrong shape. A
+// definition in there still takes its label, so the numbering survives whatever
+// the storage could not hold (§16.7): the label is registered with no node, and a
+// reference to it reads null. Any other prefixed key is the reserved prefix
+// out of place.
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    if ( graph == NULL || strcmp( key, "&node" ) != 0 ) { in.report->malformed = true; in.bad = true; return false; }
+    uint64_t label = 0;
+    if ( !TableJsonScanLabel( in, label ) ) { return false; }
+    bool taken = false;
+    if ( TableJsonGraphMapReach( graph->labels, label, taken ) == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    return true; // a fresh entry is node 0, type NULL: a definition with no node
+}
+
+// ---- writing: from a region's const root ----
+
+struct TableJsonGraphOut
+{
+    TableJsonGraphMap nodes; // a node's address -> how many slots name it, and its ` + "`&node`" + ` once assigned
+    bool counting;           // PASS ONE: count the references, refuse a cycle, emit nothing
+    int64_t next_label;
+};
+
+// The node a slot names: null as ` + "`null`" + `, a node named once as its object in
+// place, and a node named more than once under the construct. Which of the
+// last two it is was learned in pass one; pass two spells it.
+inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
+{
+    TableJsonGraphOut * graph = (TableJsonGraphOut *) out.graph;
+    if ( graph == NULL ) { return false; }
+    const void * node = f->resolve( slot );
+    if ( node == NULL )
+    {
+        out.raw( "null", 4 );
+        return true;
+    }
+    bool taken = false;
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->nodes, (uint64_t) (uintptr_t) node, taken );
+    if ( entry == NULL ) { return false; }
+    if ( graph->counting )
+    {
+        // PASS ONE: one visit per node, every slot that names it counted, and
+        // a reference to a node whose descent is still open is a cycle —
+        // refused here as the wire refuses it (§3.1)
+        entry->count++;
+        if ( !taken ) { return entry->open == 0; }
+        entry->open = 1;
+        if ( !TableJsonWriteValue( out, node, f->table, depth ) ) { return false; }
+        entry = TableJsonGraphMapFind( graph->nodes, (uint64_t) (uintptr_t) node ); // the map may have grown under the descent
+        if ( entry == NULL ) { return false; }
+        entry->open = 0;
+        return true;
+    }
+    // PASS TWO: a node named once is its object in place; a node named more
+    // than once is DEFINED at its first occurrence — ` + "`&node`" + ` first, then its
+    // fields — and REFERENCED by ` + "`&node`" + ` alone after that, spelled the same way at
+    // every site. Labels run from 1 in first-write order and are the text's own,
+    // so a stray number in a hand-edited text is most often one never defined.
+    if ( entry->count <= 1 )
+    {
+        return TableJsonWriteValue( out, node, f->table, depth );
+    }
+    if ( depth > kTableJsonMaxDepth ) { return false; }
+    if ( entry->label != 0 )
+    {
+        out.put( '{' );
+        out.line( depth + 1 );
+        out.raw( "\"&node\": ", 9 );
+        TableJsonWriteUnsigned( out, (uint64_t) entry->label );
+        out.line( depth );
+        out.put( '}' );
+        return true;
+    }
+    entry->label = ++graph->next_label;
+    out.put( '{' );
+    out.line( depth + 1 );
+    out.raw( "\"&node\": ", 9 );
+    TableJsonWriteUnsigned( out, (uint64_t) entry->label );
+    bool any = true;
+    int64_t before = out.offset;
+    if ( !TableJsonWriteFields( out, node, f->table, depth, any ) ) { return false; }
+    // a definition carries at least one field, because a label alone is a
+    // reference: a shared node with nothing to write has no definition this
+    // form can spell, and the writer refuses it as it refuses any value it
+    // cannot spell (§16.3)
+    if ( out.offset == before ) { return false; }
+    out.line( depth );
+    out.put( '}' );
+    return true;
+}
+
+// ---- the two entry points a pointered table's wrappers name ----
+
+// The text into the builder's root. Every node the text names is allocated in
+// the builder's arena through the field's own Emplace; the label map is the
+// walk's, released before this returns. The root itself takes no label — nothing
+// may name it (§16.7) — so an ` + "`&node`" + ` at the root is refused like any other key
+// of the prefix.
+inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport ignored;
+    if ( worker.arena == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; }
+    TableJsonGraphIn graph;
+    graph.worker = &worker;
+    TableJsonGraphMapInit( graph.labels, worker.arena->allocator );
+    TableJsonIn in;
+    in.text = text;
+    in.size = bytes;
+    in.pos = 0;
+    in.report = report != NULL ? report : &ignored;
+    in.bad = false;
+    in.graph = &graph;
+    info->reset( root );
+    if ( text == NULL || bytes < 0 )
+    {
+        in.report->malformed = true;
+        return false;
+    }
+    bool ok = TableJsonReadTable( in, root, info, 0 );
+    if ( ok )
+    {
+        TableJsonSpace( in );
+        if ( in.pos != in.size ) { in.bad = true; } // trailing rubbish is not one text
+    }
+    TableJsonGraphMapShutdown( graph.labels );
+    if ( in.bad || !ok )
+    {
+        in.report->malformed = true;
+        return false;
+    }
+    return true;
+}
+
+// The text of a region's const root: measured when the buffer is NULL, written
+// when it is not, over one code path. Two passes over one walk — the first
+// counts how many slots name each node and refuses a cycle, the second writes
+// — so a node's first occurrence knows whether it will be named again. The
+// ROOT's entry is open for the whole first pass, so a reference back at it is
+// the cycle it is (§3.1), and it takes no label.
+inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * info, char * buffer, int64_t capacity, TableAllocator allocator )
+{
+    if ( root == NULL ) { return -1; }
+    TableJsonGraphOut graph;
+    TableJsonGraphMapInit( graph.nodes, allocator );
+    graph.counting = true;
+    graph.next_label = 0;
+    bool taken = false;
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph.nodes, (uint64_t) (uintptr_t) root, taken );
+    if ( entry == NULL ) { TableJsonGraphMapShutdown( graph.nodes ); return -1; }
+    entry->open = 1;
+    TableJsonOut count;
+    count.buffer = NULL;
+    count.capacity = 0;
+    count.offset = 0;
+    count.overflow = false;
+    count.graph = &graph;
+    bool ok = TableJsonWriteValue( count, root, info, 0 );
+    graph.counting = false;
+    TableJsonOut out;
+    out.buffer = buffer;
+    out.capacity = capacity;
+    out.offset = 0;
+    out.overflow = false;
+    out.graph = &graph;
+    if ( ok ) { ok = TableJsonWriteValue( out, root, info, 0 ); }
+    TableJsonGraphMapShutdown( graph.nodes );
+    if ( !ok ) { return -1; }
+    out.put( '\n' ); // the canonical text ends with exactly one newline (§16.1)
+    if ( out.overflow ) { return -1; }
+    return out.offset;
+}
+
+// ---- json graph walk: end ----
 `

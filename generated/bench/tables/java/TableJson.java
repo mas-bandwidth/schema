@@ -1340,6 +1340,14 @@ public final class TableJson {
             for (int i = 0; i < info.numFields; i++) {
                 if (same(in.key, keyLength, info.fields[i].json)) { index = i; break; }
             }
+            if (keyLength > 0 && in.key[0] == (byte) '&') {
+                // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
+                // 16.7): never a field this build lacks, always a construct it
+                // cannot honor. MALFORMED and refused, never counted as unknown.
+                in.report.malformed = true;
+                in.bad = true;
+                return false;
+            }
             if (index < 0) {
                 in.report.unknown++;
                 if (!skipValue(in, depth + 1)) { return false; }

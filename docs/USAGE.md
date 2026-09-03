@@ -2460,6 +2460,49 @@ Every writer ends the text with exactly one newline, and every reader accepts a
 text with or without one — so a text is the same text in a file, in a diff and
 in a pipe.
 
+**A pointered table has the same text**, read into its builder and written
+from a region's const root, in C++:
+
+```cpp
+SceneBuilder builder;
+TableReport report;
+SceneFromJson( builder, text, text_bytes, &report );   // every node lands in the arena
+builder.Lock();
+
+int64_t size = SceneToJsonMeasure( builder.AsConst() );
+SceneToJson( builder.AsConst(), buffer, size );
+```
+
+A pointer is spelled as the nested object it points at, or `null`, so a
+tree-shaped scene reads like any fixed table's text. The one thing a tree
+cannot say is sharing, and it gets one construct: a node named more than once
+is written once with `"&node": N` as its first key and its fields after it, and
+every later slot that names it holds `{ "&node": N }` and nothing else.
+
+```json
+{
+  "head": {
+    "&node": 1,
+    "value": 7,
+    "next": null
+  },
+  "alias": {
+    "&node": 1
+  }
+}
+```
+
+The label is the text's counterpart of the wire's node index: the text's own,
+numbered from 1 in the order the writer meets shared nodes, written only where
+a node is shared, and the definition comes before every reference in document
+order; a label alone that the text never defined, or a field after a label it
+has already defined, is malformed — so a typo is loud rather than a silent
+extra node. No field may take a key beginning with `&`, which is
+what lets a reader know the construct on sight. A cycle is refused on the way
+out, as `Save` refuses it, and a pointer chain nests as deep as it is long, so
+the reader's depth cap bounds it. `schema pack` and `schema unpack` take a
+pointered root as one `<Root>.json`.
+
 `FromJson` places what the text mentions and leaves the rest at its declared
 defaults, exactly as an absent field on the wire does; unknown keys, wrong
 JSON types and out-of-range numbers land in the same report the wire uses,

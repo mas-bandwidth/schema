@@ -109,6 +109,10 @@ struct TableUnionInfo
     const TableUnionArmInfo * arms;
 };
 
+// the arena's allocation front, defined with the variable-length runtime
+// below; a descriptor names it only through a pointer parameter.
+struct TableWorker;
+
 struct TableFieldInfo
 {
     const char * name;      // schema field name, e.g. "health"
@@ -118,6 +122,15 @@ struct TableFieldInfo
     uint8_t kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     bool is_array;          // fixed or counted array (bytes included)
     bool is_pointer;        // a *T pointer field: storage is an 8-byte TableRef; the target is a table
+    // THE TWO THE TEXT FORM NEEDS (docs/SPEC-TABLES.md §16.7), and they
+    // are here for the same reason is_pointer is: the walk is ONE walk
+    // over descriptors and cannot spell a target's own <T>At or
+    // <T>Emplace. `resolve` reads a slot in a REGION and answers the
+    // node it names, or NULL; `emplace` allocates one in a BUILDER's
+    // arena and points the slot at it. NULL on every field that is not
+    // a pointer, and emitted only in a unit that declares one.
+    const void * (*resolve)( const void * slot );
+    void * (*emplace)( TableWorker & worker, void * slot );
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
@@ -2647,14 +2660,14 @@ extern const TableTypeInfo TallyTableInfo;
 extern const TableTypeInfo MarkerTableInfo;
 
 inline const TableFieldInfo TallyTableFields[] = {
-    { "hits", "hits", "int32", 0xb723, 4, false, false, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "hits", "hits", "int32", 0xb723, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo TallyTableInfo = { "Tally", (uint32_t) sizeof( Tally ), 1, TallyTableFields, +[]( void * p ) { TallyReset( *(Tally *) p ); }, false };
 inline const TableTypeInfo * TallyTableType() { return &TallyTableInfo; }
 
 inline const TableFieldInfo MarkerTableFields[] = {
-    { "label", "label", "string", 0xe16a, 12, false, false, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "note", "note", "Tally", 0x9da7, 17, false, true, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "label", "label", "string", 0xe16a, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "note", "note", "Tally", 0x9da7, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TallyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TallyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo MarkerTableInfo = { "Marker", (uint32_t) sizeof( Marker ), 2, MarkerTableFields, +[]( void * p ) { MarkerReset( *(Marker *) p ); }, true };
 inline const TableTypeInfo * MarkerTableType() { return &MarkerTableInfo; }
@@ -2668,8 +2681,11 @@ bool TallyFromJson( Tally & value, const char * text, int64_t bytes, TableReport
 int64_t TallyToJsonMeasure( const Tally & value );
 int64_t TallyToJson( const Tally & value, char * buffer, int64_t capacity );
 
-// Marker is VARIABLE-LENGTH. Its text form reads through the builder
-// (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
-// no MarkerFromJson and no MarkerToJson exist to call.
+// Marker in and out of a JSON text (docs/SPEC-TABLES.md §16.7): read into a
+// builder, written from a region's const root. A node named more than once
+// carries `&node` in the text. Defined in MarksTable.cpp; link it to use them.
+bool MarkerFromJson( MarkerBuilder & builder, const char * text, int64_t bytes, TableReport * report );
+int64_t MarkerToJsonMeasure( const Marker * root, TableAllocator allocator = TableDefaultAllocator() );
+int64_t MarkerToJson( const Marker * root, char * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() );
 
 } // namespace graphdemo

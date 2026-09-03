@@ -66,17 +66,19 @@ instance chain_optional       tblp3     Chain         testdata/wire/tables/chain
 instance chain_optional_empty tblp3     Chain         testdata/wire/tables/chain_optional_empty.bin
 
 # THE VARIABLE CLASS (§3.1), and the four shapes the numbering has to get right.
-# Marked `no-text` because §16 has no spelling for a reference yet and the tool
-# refuses a variable root in both directions (§16.2, schema#374, schema#275) —
-# so the corpus carries these on the WIRE and says which half it still owes.
+# Three carry a text (§16.7): a tree reads and writes as nested tables, and
+# graph_shared is the one a tree cannot spell — one list node named from `head`,
+# from `alias` and from a by-value nesting, and a diamond whose closing
+# reference names a node already numbered. Four nodes held by seven slots, the
+# shared two under `&node`, and the tool's own cook of these bytes agrees.
 #
-# graph_shared is the one a tree-shaped form cannot represent: one list node
-# named from `head`, from `alias` and from a by-value nesting, and a diamond
-# whose closing reference names a node already numbered. Five nodes for eight
-# references, and the tool's own cook of these bytes agrees.
-instance graph_tree           graphdemo Scene         testdata/wire/tables/graph_tree.bin   no-text
-instance graph_shared         graphdemo Scene         testdata/wire/tables/graph_shared.bin no-text
-instance graph_empty          graphdemo Scene         testdata/wire/tables/graph_empty.bin  no-text
+# graph_deep is `no-text` BY THE FORM'S OWN RULE: a chain nests in the text as
+# deep as it is long (§16.7), and 260 nodes is past the depth cap every walk
+# carries (§16.2), so the writer refuses it in the reference and in the tool
+# alike. It rides the wire, which has no such bound.
+instance graph_tree           graphdemo Scene         testdata/wire/tables/graph_tree.bin
+instance graph_shared         graphdemo Scene         testdata/wire/tables/graph_shared.bin
+instance graph_empty          graphdemo Scene         testdata/wire/tables/graph_empty.bin
 instance graph_deep           graphdemo Scene         testdata/wire/tables/graph_deep.bin   no-text
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
@@ -336,6 +338,12 @@ json-hostile bits-over-range              tabledemo RootConfig  testdata/conform
 json-hostile bytes-not-base64             tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-not-base64             0,1,0,0,false
 json-hostile bytes-overlong               tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-overlong               0,0,1,0,false
 json-hostile comment-refused              tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-refused              refused
+# THE RESERVED PREFIX (§16.7): a key beginning with `&` is how a shared node is
+# named, and no declaration may take one — so a FIXED reader meeting it is not
+# meeting a field it lacks. It refuses, counted, rather than skipping the key
+# and reading a shared graph as a tree with an empty object at every reference.
+json-hostile reserved-ampersand-key       tabledemo RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key       refused
+json-hostile reserved-ampersand-in-skipped-value tabledemo RootConfig testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value 1,0,0,0,false
 json-hostile dup-key                      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key                      0,0,0,1,false
 json-hostile dup-key-array                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-array                0,0,0,1,false
 json-hostile dup-key-placeable            tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable            0,0,0,1,false
@@ -394,3 +402,25 @@ json-hostile trailing-commas              tabledemo RootConfig  testdata/conform
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
 json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false
 json-hostile unknown-key                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/unknown-key                  1,0,0,0,false
+
+# THE SHARING CONSTRUCT'S OWN EDGES (docs/SPEC-TABLES.md §16.7), over the
+# pointered root: `&node` is a LABEL — with fields after it, it defines a node
+# once; alone, it names that node again; the other two readings are refused — the FIRST key of a
+# pointer's object and nothing else. Three rows are not refusals, and they are the differential's
+# point — both engines have to place the same graph and count the same event.
+json-hostile label-undefined                graphdemo Scene       testdata/conformance/tables/json-hostile/label-undefined                refused
+json-hostile label-defined-twice            graphdemo Scene       testdata/conformance/tables/json-hostile/label-defined-twice            refused
+json-hostile label-before-definition        graphdemo Scene       testdata/conformance/tables/json-hostile/label-before-definition        refused
+json-hostile label-not-first-key            graphdemo Scene       testdata/conformance/tables/json-hostile/label-not-first-key            refused
+json-hostile label-on-the-root              graphdemo Scene       testdata/conformance/tables/json-hostile/label-on-the-root              refused
+json-hostile label-in-by-value-nesting      graphdemo Scene       testdata/conformance/tables/json-hostile/label-in-by-value-nesting      refused
+json-hostile label-not-an-integer           graphdemo Scene       testdata/conformance/tables/json-hostile/label-not-an-integer           refused
+json-hostile label-zero                     graphdemo Scene       testdata/conformance/tables/json-hostile/label-zero                     refused
+json-hostile label-negative                 graphdemo Scene       testdata/conformance/tables/json-hostile/label-negative                 refused
+json-hostile label-leading-zero             graphdemo Scene       testdata/conformance/tables/json-hostile/label-leading-zero             refused
+json-hostile label-overflow                 graphdemo Scene       testdata/conformance/tables/json-hostile/label-overflow                 refused
+json-hostile label-self-reference           graphdemo Scene       testdata/conformance/tables/json-hostile/label-self-reference           refused
+json-hostile label-type-mismatch            graphdemo Scene       testdata/conformance/tables/json-hostile/label-type-mismatch            0,1,0,0,false
+json-hostile label-dropped-definition       graphdemo Scene       testdata/conformance/tables/json-hostile/label-dropped-definition       0,0,1,0,false
+json-hostile label-in-unknown-key           graphdemo Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key           1,0,0,0,false
+json-hostile shared-node-by-label           graphdemo Scene       testdata/conformance/tables/json-hostile/shared-node-by-label           0,0,0,0,false
