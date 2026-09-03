@@ -1,5 +1,11 @@
 # 2026-09-03 — the Go leg joins the tables bench — PAIRING CHECK, not a sitting
 
+**SUPERSEDED by `2026-09-03-pairing-go2-arm64-macbook.md`.** The C++ arm
+measured here is the pre-#350 one. #350 forced the generated C++ bodies and
+the writer primitives inline and took the C++ write arm from 0.322 to 1.454 M
+msg/s, so the go/cpp ratios below (0.82 write, 0.78 round-trip) describe an
+arm that no longer exists. The Go numbers are unchanged and still stand.
+
 **Read the label first.** This board is a PAIRING CHECK on a MacBook Air (M2):
 an interactive desktop, no core reservation, other workers building on the same
 machine, macOS so no `taskset`. It says the three legs agree, that the gates

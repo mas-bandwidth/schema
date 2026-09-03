@@ -4577,6 +4577,20 @@ inspects everything in the schema built:
   it has no wire codec.
 - **The variable class in a ported backend** — the arena, the region, the
   cooked form and the pointer surface — after that port's fixed class.
+- **THE CURSOR HOISTED OUT OF THE WRITER, in the GO backend** — the port's
+  generated `…SaveBody` calls the writer's puts, and each put loads
+  `Buffer`, `Capacity` and `Offset` from the writer and stores `Offset` back.
+  Go INLINES those puts already, and the round-trip survives the inlining:
+  Go has no `restrict` and does not separate a `[]byte`'s payload from the
+  struct that names it, so the store through `Buffer` is assumed to alias the
+  writer. This is the same defect #350 removed in C++, where forcing the
+  bodies inline was enough for clang to disambiguate; in Go there is no flag —
+  `-gcflags=all=-l=4` moves the leg by nothing outside noise. The shape that
+  fixes it is generated, not a switch: carry the cursor in locals across a
+  whole body, merge the per-field bounds checks into one, and write back once.
+  **Measured worth: 1.42x on the write body** over the mechanism in isolation
+  (92 fields of `tag16, kind8, value32`, output asserted byte-identical),
+  which is the reason it is named rather than guessed at.
 - **The TEXT FORM for the variable class** (§16.1) — a second walker that
   fills a builder rather than an instance, emitted only in units that
   declare a pointer, so a pointer-free unit carries nothing for it. The
