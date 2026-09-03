@@ -406,7 +406,8 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("   data, defined in the .c beside this header. A consumer holding this reads\n")
 	g.pf("   the triples out of an instance and points at rows, with no hand-written\n")
 	g.pf("   struct per table. */\n")
-	g.pf("extern const TableBlockInfo %sBlockType;\n\n", name)
+	g.pf("extern const TableBlockInfo %s;\n", g.sym(name, "block_info"))
+	g.pf("static SCHEMA_UNUSED const TableBlockInfo * %sBlockType( void ) { return &%s; }\n\n", name, g.sym(name, "block_info"))
 
 	g.emitBlockLayoutAsserts(bl)
 	g.emitBlockFillPath(bl)
@@ -426,7 +427,9 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("   and ship together — so a consumer older than its producer is not a case. A\n")
 	g.pf("   mismatch is a refusal; regenerate both sides. Data that must outlive the\n")
 	g.pf("   build that wrote it takes the wire (§3), which this same table still has. */\n")
-	g.pf("int %sBlockOpen( %sBlock * block, void * base, int64_t bytes );\n\n", name, name)
+	g.pf("int %s( %sBlock * block, void * base, int64_t bytes );\n", g.sym(name, "block_open"), name)
+	g.pf("static SCHEMA_UNUSED int %sBlockOpen( %sBlock * block, void * base, int64_t bytes )\n{\n", name, name)
+	g.pf("    return %s( block, base, bytes );\n}\n\n", g.sym(name, "block_open"))
 
 	g.pf("/* ---- the block form of table %s: end ---- */\n\n", name)
 }
@@ -626,7 +629,7 @@ func (g *tableGen) emitBlockDefinitions(bl *ir.BlockLayout) {
 
 func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	name := bl.Table.Name
-	g.pf("int %sBlockOpen( %sBlock * block, void * base, int64_t bytes )\n{\n", name, name)
+	g.pf("int %s( %sBlock * block, void * base, int64_t bytes )\n{\n", g.sym(name, "block_open"), name)
 	g.pf("    const uint8_t * raw;\n    uint64_t magic;\n    %sBlockProjection * projection;\n    int64_t used, padding;\n", name)
 	g.pf("    block->base = NULL;\n    block->projection = NULL;\n    block->bytes = 0;\n")
 	g.pf("    if ( base == NULL || bytes < %d ) { return 0; }\n", bl.Projection.Size)
@@ -716,11 +719,11 @@ func (g *tableGen) emitBlockDescriptors(bl *ir.BlockLayout) {
 		g.pf("   column is the address of one of these whatever order the records fall in —\n")
 		g.pf("   which is how a self- or mutually-referential record graph stays constant\n")
 		g.pf("   data instead of a lazy link. */\n")
-		g.pf("static const TableBlockInfo %sBlockRows[%d];\n\n", name, rowCount)
+		g.pf("static const TableBlockInfo %s[%d];\n\n", g.sym(name, "block_rows"), rowCount)
 	}
 	g.pf("/* Every record's field table, concatenated: the projection's, then each\n")
 	g.pf("   row's. One name for the whole graph (docs/SPEC-TABLES.md §11). */\n")
-	g.pf("static const TableBlockFieldInfo %sBlockFields[] = {\n", name)
+	g.pf("static const TableBlockFieldInfo %s[] = {\n", g.sym(name, "block_fields"))
 	g.pf("    /* %s (the projection) */\n", name)
 	g.emitBlockRecordFields(name, &bl.Projection, bl, records)
 	spans[""] = span{0, len(bl.Projection.Fields)}
@@ -738,20 +741,20 @@ func (g *tableGen) emitBlockDescriptors(bl *ir.BlockLayout) {
 	g.pf("};\n\n")
 
 	if rowCount > 0 {
-		g.pf("static const TableBlockInfo %sBlockRows[%d] = {\n", name, rowCount)
+		g.pf("static const TableBlockInfo %s[%d] = {\n", g.sym(name, "block_rows"), rowCount)
 		for _, r := range records {
 			ml := g.blocks.Layout(r)
 			if ml == nil {
 				continue
 			}
 			s := spans[r]
-			g.pf("    { \"%s\", BuildVersion, %du, %du, %d, %sBlockFields + %d },\n",
-				r, ml.Size, ml.Align, len(ml.Fields), name, s.start)
+			g.pf("    { \"%s\", BuildVersion, %du, %du, %d, %s + %d },\n",
+				r, ml.Size, ml.Align, len(ml.Fields), g.sym(name, "block_fields"), s.start)
 		}
 		g.pf("};\n\n")
 	}
-	g.pf("const TableBlockInfo %sBlockType = { \"%s\", BuildVersion, %du, %du, %d, %sBlockFields };\n\n",
-		name, name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields), name)
+	g.pf("const TableBlockInfo %s = { \"%s\", BuildVersion, %du, %du, %d, %s };\n\n",
+		g.sym(name, "block_info"), name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields), g.sym(name, "block_fields"))
 }
 
 // emitBlockRecordFields emits one record's rows of the concatenated field
@@ -761,7 +764,7 @@ func (g *tableGen) emitBlockRecordFields(owner string, ml *ir.MemberLayout, bl *
 	rowIndex := func(record string) string {
 		for i, r := range records {
 			if r == record {
-				return fmt.Sprintf("&%sBlockRows[%d]", owner, i)
+				return fmt.Sprintf("&%s[%d]", g.sym(owner, "block_rows"), i)
 			}
 		}
 		return "NULL"

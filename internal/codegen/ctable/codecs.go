@@ -232,7 +232,7 @@ func (g *tableGen) emitTableResetDeclarations(members []*ir.Struct) {
 	g.pf("/* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */\n\n")
 	for _, st := range members {
 		g.pf("static SCHEMA_UNUSED void %sReset( %s * value );\n", st.Name, st.Name)
-		g.pf("static SCHEMA_UNUSED void %sResetRaw( void * storage );\n", st.Name)
+		g.pf("static SCHEMA_UNUSED void %s( void * storage );\n", g.sym(st.Name, "reset_raw"))
 	}
 	g.pf("\n")
 }
@@ -249,7 +249,7 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 	// the descriptor's reset column, which is typed void * and cannot be the
 	// typed entry above: a function pointer conversion is not a cast a caller
 	// may then CALL through. Two spellings, one body.
-	g.pf("static SCHEMA_UNUSED void %sResetRaw( void * storage ) { %sReset( (%s *) storage ); }\n\n", st.Name, st.Name, st.Name)
+	g.pf("static SCHEMA_UNUSED void %s( void * storage ) { %sReset( (%s *) storage ); }\n\n", g.sym(st.Name, "reset_raw"), st.Name, st.Name)
 }
 
 func (g *tableGen) emitTableResetField(f *ir.Field) {
@@ -618,9 +618,12 @@ func (g *tableGen) emitEnumElementCheck(f *ir.Field, expr, count, ind, onBad str
 	if e == nil {
 		return
 	}
-	g.pf("%s{\n%s    int32_t i;\n", ind, ind)
-	g.pf("%s    for ( i = 0; i < %s; i++ ) /* %s: every element must be nameable */\n%s    {\n", ind, count, f.Name, ind)
-	g.emitEnumIdSwitch(e, expr, "element_id", ind+"        ", onBad)
+	// `element_i`, not `i`: this loop is emitted INSIDE another that already
+	// has one, and -Wshadow rides on every tables leg (docs/SPEC-TABLES.md
+	// §19.5's flags) — a warning here is a build failure in a consumer's tree.
+	g.pf("%s{\n%s    int32_t element_i;\n", ind, ind)
+	g.pf("%s    for ( element_i = 0; element_i < %s; element_i++ ) /* %s: every element must be nameable */\n%s    {\n", ind, count, f.Name, ind)
+	g.emitEnumIdSwitch(e, strings.ReplaceAll(expr, "[i]", "[element_i]"), "element_id", ind+"        ", onBad)
 	g.pf("%s        (void) element_id;\n", ind)
 	g.pf("%s    }\n%s}\n", ind, ind)
 }
@@ -1240,11 +1243,13 @@ func bigToDouble(v *big.Int) string {
 	return formatFloat(f, false)
 }
 
-// vocabularySymbol names one field's variant table inside <Base>Table.c. It is
-// a member of the owner's claimed <Name>TableVocabulary family, so a schema
-// declaring the owner's name already reserves it (docs/SPEC-TABLES.md §11).
-func vocabularySymbol(owner, field, what string) string {
-	return owner + "TableVocabulary_" + field + "_" + what
+// vocabularySymbol names one field's variant table inside <Base>Table.c.
+// Internal, and spelled the way every other generated symbol with a linker
+// name is (see sym): the package, the owner, the field, and a trailing
+// underscore. Nothing a schema can declare collides with it, which is why the
+// vocabularies claim no name of their own (docs/SPEC-TABLES.md §11).
+func (g *tableGen) vocabularySymbol(owner, field, what string) string {
+	return g.sym(owner, ir.RustSnake(field)+"_"+what)
 }
 
 // emitTableDescriptor emits <X>TableInfo and its field table into
@@ -1258,8 +1263,8 @@ func vocabularySymbol(owner, field, what string) string {
 func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	if len(st.Fields) == 0 {
-		g.pf("const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %sResetRaw%s };\n\n",
-			st.Name, st.Name, st.Name, st.Name, g.modeColumn(st))
+		g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s };\n\n",
+			g.sym(st.Name, "info"), st.Name, st.Name, g.sym(st.Name, "reset_raw"), g.modeColumn(st))
 		return
 	}
 	// the vocabularies first: an enum's values, a union's arms and a flags
@@ -1268,13 +1273,13 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	for _, f := range st.Fields {
 		g.emitFieldVocabulary(st, f)
 	}
-	g.pf("static const TableFieldInfo %sTableFields[] = {\n", st.Name)
+	g.pf("static const TableFieldInfo %s[] = {\n", g.sym(st.Name, "fields"))
 	for _, f := range st.Fields {
 		g.emitFieldDescriptor(st, f, guards[f.Name])
 	}
 	g.pf("};\n\n")
-	g.pf("const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %sResetRaw%s };\n\n",
-		st.Name, st.Name, st.Name, len(st.Fields), st.Name, st.Name, g.modeColumn(st))
+	g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), %d, %s, %s%s };\n\n",
+		g.sym(st.Name, "info"), st.Name, st.Name, len(st.Fields), g.sym(st.Name, "fields"), g.sym(st.Name, "reset_raw"), g.modeColumn(st))
 }
 
 // emitFieldVocabulary emits one field's variant table, its key table and its
@@ -1285,7 +1290,7 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		if f.Type.Kind != ir.TNamed {
 			break
 		}
-		g.pf("static const TableVariantInfo %s[] = {\n", vocabularySymbol(st.Name, f.Name, "variants"))
+		g.pf("static const TableVariantInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "variants"))
 		names := map[int64]string{0: "None"}
 		for i, v := range ref.Variants {
 			names[int64(i)+1] = v
@@ -1311,7 +1316,7 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		// a flags mask is the wire's one POSITIONAL vocabulary
 		// (docs/SPEC-TABLES.md §4): its variants are BIT POSITIONS, so the
 		// table names bits and carries no per-variant wire id.
-		g.pf("static const TableVariantInfo %s[] = {\n", vocabularySymbol(st.Name, f.Name, "variants"))
+		g.pf("static const TableVariantInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "variants"))
 		for _, v := range ref.Variants {
 			g.pf("    { \"%s\", 0 },\n", v)
 		}
@@ -1320,28 +1325,28 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		if f.Type.Kind != ir.TNamed || f.Array != ir.ArrayNone {
 			break
 		}
-		g.pf("static const TableVariantInfo %s[] = {\n", vocabularySymbol(st.Name, f.Name, "variants"))
+		g.pf("static const TableVariantInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "variants"))
 		g.pf("    { \"None\", 0 },\n")
 		for _, v := range ref.Variants {
 			g.pf("    { \"%s\", 0x%04x },\n", v.Name, ir.VariantId(v.Name))
 		}
 		g.pf("};\n")
-		g.pf("static const TableUnionArmInfo %s[] = {\n", vocabularySymbol(st.Name, f.Name, "arms"))
+		g.pf("static const TableUnionArmInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "arms"))
 		g.pf("    { 0, NULL },\n")
 		for _, v := range ref.Variants {
 			g.noteRef(v.Type)
-			g.pf("    { (uint32_t) offsetof( %s, as.%s ), &%sTableInfo },\n", ref.Name, v.Name, v.Type)
+			g.pf("    { (uint32_t) offsetof( %s, as.%s ), &%s },\n", ref.Name, v.Name, g.sym(v.Type, "info"))
 		}
 		g.pf("};\n")
 		g.pf("static const TableUnionInfo %s = { (uint32_t) offsetof( %s, type ), (uint32_t) sizeof( ( (%s *) 0 )->type ), %s };\n",
-			vocabularySymbol(st.Name, f.Name, "union"), ref.Name, ref.Name, vocabularySymbol(st.Name, f.Name, "arms"))
+			g.vocabularySymbol(st.Name, f.Name, "union"), ref.Name, ref.Name, g.vocabularySymbol(st.Name, f.Name, "arms"))
 	}
 	if f.KeyEnum != "" && f.KeyEnumRef != nil {
 		// the KEY's vocabulary on an enum-keyed array (docs/SPEC-TABLES.md §8),
 		// indexed by the KEY — a walker stepping [0, array_bound) asks about
 		// index + 1 and prints slots by name without the schema files
 		key := f.KeyEnumRef
-		g.pf("static const TableVariantInfo %s[] = {\n", vocabularySymbol(st.Name, f.Name, "keys"))
+		g.pf("static const TableVariantInfo %s[] = {\n", g.vocabularySymbol(st.Name, f.Name, "keys"))
 		names := map[int64]string{0: "None"}
 		for i, v := range key.Variants {
 			names[int64(i)+1] = v
@@ -1413,7 +1418,7 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 	}
 	table := "NULL"
 	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
-		table = "&" + f.Type.Name + "TableInfo"
+		table = "&" + g.sym(f.Type.Name, "info")
 		g.noteRef(f.Type.Name)
 	}
 
@@ -1444,20 +1449,20 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
-			variants = vocabularySymbol(st.Name, f.Name, "variants")
+			variants = g.vocabularySymbol(st.Name, f.Name, "variants")
 			hasIds = "1"
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", len(ref.Variants)-1)
-			variants = vocabularySymbol(st.Name, f.Name, "variants")
+			variants = g.vocabularySymbol(st.Name, f.Name, "variants")
 		}
 	case *ir.Union:
 		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
 			enumMax = fmt.Sprintf("%d", len(ref.Variants))
-			variants = vocabularySymbol(st.Name, f.Name, "variants")
+			variants = g.vocabularySymbol(st.Name, f.Name, "variants")
 			hasIds = "1"
-			arms = "&" + vocabularySymbol(st.Name, f.Name, "union")
+			arms = "&" + g.vocabularySymbol(st.Name, f.Name, "union")
 		}
 	}
 
@@ -1469,7 +1474,7 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 	keyTypeName, keys, keyMax := "NULL", "NULL", "-1"
 	if f.KeyEnum != "" && f.KeyEnumRef != nil {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
-		keys = vocabularySymbol(st.Name, f.Name, "keys")
+		keys = g.vocabularySymbol(st.Name, f.Name, "keys")
 		keyMax = fmt.Sprintf("%d", f.KeyEnumRef.Max)
 		g.noteRef(f.KeyEnum)
 	}

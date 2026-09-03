@@ -1,0 +1,15 @@
+#!/bin/sh
+# THE C LEG's driver (test/conformance/README.md).
+#
+# One native binary answers every surface. C has no namespaces, so the seven
+# units the corpus names each get a translation unit of their own inside it —
+# see test/conformance/c/driver.h — and the harness sees one command.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+set -e
+
+exec build/conformance-c "$@"

@@ -3329,7 +3329,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/p3/*.java test/conformance/java/src/Driver.java
 
 .PHONY: conformance
-conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook \
+conformance: build/conformance-harness build/conformance-cpp build/conformance-c build/schema_test_cook \
 		build-conformance-cs build-cs-cook build/conformance-go build/conformance-rust \
 		build-conformance-java
 	JAVA=$(JAVA) ./build/conformance-harness run
@@ -3705,4 +3705,65 @@ conformance-negative-control-java-block: build/conformance-harness
 	@grep -m1 "java / forgery" $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/log
 	@echo "negative control: one missing pitch check in the Java block Open turns the harness RED on forgery alone"
 
-.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-go conformance-negative-control-go-walk conformance-negative-control-java conformance-negative-control-java-block build-conformance-cs build-conformance-java
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-go conformance-negative-control-go-walk conformance-negative-control-java conformance-negative-control-java-block conformance-negative-control-c conformance-negative-control-c-foreign build-conformance-cs build-conformance-java
+
+# THE C TABLES LEG (docs/SPEC-TABLES.md, test/conformance/README.md) ----------
+#
+# The same corpus the C++ leg generates, in C. It goes into its own build
+# directory rather than beside the C++ output because both emitters write
+# <Base>Table.h — one name, two languages — and a shared directory would have
+# them overwrite each other.
+#
+# UNIT PER DIRECTORY IS LOAD-BEARING HERE and not a convention: C has no
+# namespaces, so tblv1's Cfg and tblv2's Cfg are one struct name, and every
+# unit's Table header defines the same TableReport. Two units can be LINKED
+# together — the generated externals carry the package (internal/codegen/ctable's
+# `sym`) — but they cannot be INCLUDED into one translation unit, which is what
+# the conformance driver's file-per-unit shape is about.
+build/tables-generated-c/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+	@mkdir -p build/tables-generated-c
+	./bin/schema generate --lang c --out build/tables-generated-c/examples tables/examples
+	./bin/schema generate --lang c --out build/tables-generated-c/pointers tables/pointers
+	./bin/schema generate --lang c --out build/tables-generated-c/block tables/block
+	./bin/schema generate --lang c --out build/tables-generated-c/blockhome tables/blockhome
+	./bin/schema generate --lang c --out build/tables-generated-c/v1 test/tables/V1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/v2 test/tables/V2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/p1 test/tables/P1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/p2 test/tables/P2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/p3 test/tables/P3.schema
+	./bin/schema generate --lang c --out build/tables-generated-c/jsonkeys test/tables/JsonKeys.schema
+	@touch $@
+
+# -Werror on purpose: generated headers are included by the CONSUMER's
+# translation units, so a warning here is a build failure in their tree, not
+# ours. The flags are the type wire's C leg's, clause for clause.
+TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
+	-O2 -ffp-contract=off
+
+C_CONFORMANCE_SOURCES = test/conformance/c/main.c \
+	test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
+	test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c \
+	test/conformance/c/unit_tblp3.c test/conformance/c/unit_blockdemo.c \
+	test/conformance/c/unit_graphdemo.c \
+	build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
+	build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
+	build/tables-generated-c/examples/PackTable.c build/tables-generated-c/examples/GuardedTable.c \
+	build/tables-generated-c/examples/RangesTable.c \
+	build/tables-generated-c/v1/V1Table.c build/tables-generated-c/v2/V2Table.c \
+	build/tables-generated-c/p1/P1Table.c build/tables-generated-c/p3/P3Table.c \
+	build/tables-generated-c/block/RenderBlock.c build/tables-generated-c/block/RenderTable.c \
+	build/tables-generated-c/block/PaddedBlock.c build/tables-generated-c/block/PaddedTable.c \
+	build/tables-generated-c/pointers/GraphTable.c build/tables-generated-c/pointers/MarksTable.c \
+	build/tables-generated-c/pointers/PartsTable.c
+
+# Each unit's translation unit gets ONLY its own unit on the include path, which
+# is what keeps two units' identically-named headers from meeting. The driver's
+# own headers come from test/conformance/c.
+C_CONFORMANCE_INCLUDES := -Itest/conformance/c -Ibuild/tables-generated-c/examples \
+	-Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c/v2 \
+	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
+	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers
+
+build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $@ -lm

@@ -49,9 +49,13 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	g.pf("/* %s in and out of a JSON text — one instance, one text, the generic\n", st.Name)
 	g.pf("   walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in\n")
 	g.pf("   %sTable.c; compile it to use them. */\n", g.file.Base)
-	g.pf("int %sFromJson( %s * value, const char * text, int64_t bytes, TableReport * report );\n", st.Name, st.Name)
-	g.pf("int64_t %sToJsonMeasure( const %s * value );\n", st.Name, st.Name)
-	g.pf("int64_t %sToJson( const %s * value, char * buffer, int64_t capacity );\n\n", st.Name, st.Name)
+	g.pf("int %s( %s * value, const char * text, int64_t bytes, TableReport * report );\n", g.sym(st.Name, "from_json"), st.Name)
+	g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity );\n", g.sym(st.Name, "to_json"), st.Name)
+	g.pf("static SCHEMA_UNUSED int %sFromJson( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("    return %s( value, text, bytes, report );\n}\n", g.sym(st.Name, "from_json"))
+	g.pf("static SCHEMA_UNUSED int64_t %sToJsonMeasure( const %s * value ) { return %s( value, NULL, 0 ); }\n", st.Name, st.Name, g.sym(st.Name, "to_json"))
+	g.pf("static SCHEMA_UNUSED int64_t %sToJson( const %s * value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
+	g.pf("    return %s( value, buffer, capacity );\n}\n\n", g.sym(st.Name, "to_json"))
 }
 
 // emitJsonDefinitions puts the same member's three definitions in the .c, each
@@ -60,12 +64,10 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		return
 	}
-	g.pf("int %sFromJson( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
-	g.pf("    return TableJsonRead( value, &%sTableInfo, text, bytes, report );\n}\n\n", st.Name)
-	g.pf("int64_t %sToJsonMeasure( const %s * value )\n{\n", st.Name, st.Name)
-	g.pf("    return TableJsonWrite( value, &%sTableInfo, NULL, 0 );\n}\n\n", st.Name)
-	g.pf("int64_t %sToJson( const %s * value, char * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
-	g.pf("    return TableJsonWrite( value, &%sTableInfo, buffer, capacity );\n}\n\n", st.Name)
+	g.pf("int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.sym(st.Name, "from_json"), st.Name)
+	g.pf("    return TableJsonRead( value, &%s, text, bytes, report );\n}\n\n", g.sym(st.Name, "info"))
+	g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity )\n{\n", g.sym(st.Name, "to_json"), st.Name)
+	g.pf("    return TableJsonWrite( value, &%s, buffer, capacity );\n}\n\n", g.sym(st.Name, "info"))
 }
 
 // tableJsonWalkSource is the walker. It reads and writes ONLY the columns

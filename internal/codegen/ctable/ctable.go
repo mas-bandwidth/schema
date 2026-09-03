@@ -596,11 +596,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.pf("   whole reflection surface is immutable — read it from any thread, any\n")
 			g.pf("   time. */\n\n")
 			for _, st := range members {
-				g.pf("extern const TableTypeInfo %sTableInfo;\n", st.Name)
+				g.pf("extern const TableTypeInfo %s;\n", g.sym(st.Name, "info"))
 			}
 			g.pf("\n")
 			for _, st := range members {
-				g.pf("static SCHEMA_UNUSED const TableTypeInfo * %sTableType( void ) { return &%sTableInfo; }\n", st.Name, st.Name)
+				g.pf("static SCHEMA_UNUSED const TableTypeInfo * %sTableType( void ) { return &%s; }\n", st.Name, g.sym(st.Name, "info"))
 			}
 			g.pf("\n")
 			// the TEXT form's surface (docs/SPEC-TABLES.md §16), DECLARED here
@@ -783,4 +783,23 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 		}
 	}
 	return order
+}
+
+// sym is the LINKER spelling of a generated symbol with external linkage.
+//
+// C has no namespaces, and the reference's separation of two generations of
+// one schema — tblv1::Cfg beside tblv2::Cfg — is a namespace. Two such units
+// linked into one program would collide on every external name derived from a
+// type, so every external this backend emits carries the PACKAGE and a
+// trailing underscore, the same "reserved by the generator" marker the packet
+// emitter's own helpers use (schema_utf8_valid_).
+//
+// Nothing a consumer types looks like this. The name-first surface §11 states
+// — <Name>Load, <Name>FromJson, <Name>TableType, <Name>BlockOpen — is emitted
+// as `static` in the header and forwards to these, so a call site reads the
+// same in C as in C++ while the LINKER sees one symbol per (package, type).
+// Two units still cannot meet in ONE TRANSLATION UNIT, which is the packet
+// emitter's stated limit and unchanged by any of this.
+func (g *tableGen) sym(name, what string) string {
+	return "schema_" + g.unit.Package + "_" + ir.RustSnake(name) + "_" + what + "_"
 }
