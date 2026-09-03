@@ -19,7 +19,7 @@
 //
 // The reference is internal/codegen/cpptable and this port mirrors it: the
 // same wire, the same report, the same descriptor CONTENT, the same refusals.
-// Four spellings differ, because C has no C++ to spell them with, and each is
+// Five spellings differ, because C has no C++ to spell them with, and each is
 // the C form of one C++ mechanism rather than a new idea.
 //
 //   - NO OVERLOAD SET FOR ENUM IDENTITY. C++ emits one TableEnumId/
@@ -48,6 +48,17 @@
 //     header, so a translation unit that includes the header for the codecs
 //     pays for neither. Compiling <Base>Table.c is what a consumer of the
 //     descriptors or the text form does.
+//
+//   - THE LINKER AND THE PREPROCESSOR ARE TWO MORE NAMESPACES, and C++ has
+//     neither problem. Every external this backend emits carries the package —
+//     schema_<package>_<type>_<what>_ — because two units whose type names
+//     collide have to LINK together, which is what the conformance driver does
+//     with two generations of one schema; the name-first surface §11 states is
+//     `static` in the header and forwards to them. And every MACRO it defines
+//     leads with SCHEMA_, because a schema's constants, enum variants and flag
+//     masks are #defines in this target and a collision there is a silent
+//     rewrite rather than a redeclaration error (internal/check's
+//     cReservedMacros refuses a declaration that spells one).
 package ctable
 
 import (
