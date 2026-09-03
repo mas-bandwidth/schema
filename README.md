@@ -13,7 +13,7 @@ Features:
 
 1. Define constants, enums, flags, types and tables in one language.
 2. Generate fast bit-packed serialization for struct types that don't need versioning (eg. client/server messages and state)
-3. Generate tables that support versioning for messages, data, assets, save game files and everything else!
+3. Generate versioned for messages, data, assets, save game files and everything else!
 4. Supports recursive table definitions (pointer to table in table) for full data structure support.
 5. Cooks to fast binary formats at runtime for tool pipelines and asset loading.
 
