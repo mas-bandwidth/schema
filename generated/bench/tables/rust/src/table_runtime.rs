@@ -269,30 +269,41 @@ impl<'a> TableReader<'a> {
         v
     }
 
+    // The multi-byte reads take ONE range check and one load, not one check
+    // per byte: first_chunk is the safe spelling of "the next N bytes as an
+    // array", and a checked index per byte is what the generated codec's
+    // has() has already answered. The fallback is unreachable in generated
+    // code — every get is preceded by its has — and it is a zero rather than
+    // a panic because a reader that met framing damage should stop on the
+    // report, not on an abort.
     #[inline]
     pub fn get16(&mut self) -> u16 {
-        let v = u16::from_le_bytes([self.buffer[self.offset], self.buffer[self.offset + 1]]);
+        let v = match self.buffer[self.offset..].first_chunk::<2>() {
+            Some(bytes) => u16::from_le_bytes(*bytes),
+            None => 0,
+        };
         self.offset += 2;
         v
     }
 
     #[inline]
     pub fn get32(&mut self) -> u32 {
-        let v = u32::from_le_bytes([
-            self.buffer[self.offset],
-            self.buffer[self.offset + 1],
-            self.buffer[self.offset + 2],
-            self.buffer[self.offset + 3],
-        ]);
+        let v = match self.buffer[self.offset..].first_chunk::<4>() {
+            Some(bytes) => u32::from_le_bytes(*bytes),
+            None => 0,
+        };
         self.offset += 4;
         v
     }
 
     #[inline]
     pub fn get64(&mut self) -> u64 {
-        let lo = self.get32() as u64;
-        let hi = self.get32() as u64;
-        lo | (hi << 32)
+        let v = match self.buffer[self.offset..].first_chunk::<8>() {
+            Some(bytes) => u64::from_le_bytes(*bytes),
+            None => 0,
+        };
+        self.offset += 8;
+        v
     }
 
     // the rest of this body, as its own reader: the sub-reader a nested
