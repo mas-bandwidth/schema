@@ -369,6 +369,7 @@ pub fn table_entity_measure(value: &TableEntity) -> i64 {
     bytes
 }
 
+#[inline(always)]
 pub fn table_entity_save_body(w: &mut TableWriter, value: &TableEntity) -> bool {
     if value.entity_id != 0 {
         w.put16(0x5a13);
@@ -457,6 +458,7 @@ pub fn table_entity_save(value: &TableEntity, buffer: &mut [u8]) -> i64 {
     w.offset as i64 // == table_entity_measure(value)
 }
 
+#[inline(always)]
 pub fn table_entity_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableEntity) -> bool {
     table_entity_reset(value); // restore declared defaults in place, then overlay
     loop {
@@ -825,6 +827,7 @@ pub fn table_stat_measure(value: &TableStat) -> i64 {
     bytes
 }
 
+#[inline(always)]
 pub fn table_stat_save_body(w: &mut TableWriter, value: &TableStat) -> bool {
     if value.stat_id != 0 {
         w.put16(0xfb6c);
@@ -849,6 +852,7 @@ pub fn table_stat_save(value: &TableStat, buffer: &mut [u8]) -> i64 {
     w.offset as i64 // == table_stat_measure(value)
 }
 
+#[inline(always)]
 pub fn table_stat_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableStat) -> bool {
     table_stat_reset(value); // restore declared defaults in place, then overlay
     loop {
@@ -1085,6 +1089,7 @@ pub fn table_mixed_measure(value: &TableMixed) -> i64 {
     bytes
 }
 
+#[inline(always)]
 pub fn table_mixed_save_body(w: &mut TableWriter, value: &TableMixed) -> bool {
     if value.protocol_magic != 0 {
         w.put16(0xae30);
@@ -1327,6 +1332,7 @@ pub fn table_mixed_save(value: &TableMixed, buffer: &mut [u8]) -> i64 {
     w.offset as i64 // == table_mixed_measure(value)
 }
 
+#[inline(always)]
 pub fn table_mixed_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableMixed) -> bool {
     table_mixed_reset(value); // restore declared defaults in place, then overlay
     loop {
@@ -2155,6 +2161,7 @@ pub fn table_hit_event_measure(value: &TableHitEvent) -> i64 {
     bytes
 }
 
+#[inline(always)]
 pub fn table_hit_event_save_body(w: &mut TableWriter, value: &TableHitEvent) -> bool {
     if value.target_id != 0 {
         w.put16(0xdf6a);
@@ -2189,6 +2196,7 @@ pub fn table_hit_event_save(value: &TableHitEvent, buffer: &mut [u8]) -> i64 {
     w.offset as i64 // == table_hit_event_measure(value)
 }
 
+#[inline(always)]
 pub fn table_hit_event_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableHitEvent) -> bool {
     table_hit_event_reset(value); // restore declared defaults in place, then overlay
     loop {
@@ -2328,6 +2336,7 @@ pub fn table_chat_event_measure(value: &TableChatEvent) -> i64 {
     bytes
 }
 
+#[inline(always)]
 pub fn table_chat_event_save_body(w: &mut TableWriter, value: &TableChatEvent) -> bool {
     if value.channel != 0 {
         w.put16(0x7366);
@@ -2352,6 +2361,7 @@ pub fn table_chat_event_save(value: &TableChatEvent, buffer: &mut [u8]) -> i64 {
     w.offset as i64 // == table_chat_event_measure(value)
 }
 
+#[inline(always)]
 pub fn table_chat_event_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TableChatEvent) -> bool {
     table_chat_event_reset(value); // restore declared defaults in place, then overlay
     loop {
@@ -2447,6 +2457,7 @@ pub fn table_pickup_event_measure(value: &TablePickupEvent) -> i64 {
     bytes
 }
 
+#[inline(always)]
 pub fn table_pickup_event_save_body(w: &mut TableWriter, value: &TablePickupEvent) -> bool {
     if value.item_id != 0 {
         w.put16(0xec67);
@@ -2471,6 +2482,7 @@ pub fn table_pickup_event_save(value: &TablePickupEvent, buffer: &mut [u8]) -> i
     w.offset as i64 // == table_pickup_event_measure(value)
 }
 
+#[inline(always)]
 pub fn table_pickup_event_load_body(r: &mut TableReader, report: &mut TableReport, value: &mut TablePickupEvent) -> bool {
     table_pickup_event_reset(value); // restore declared defaults in place, then overlay
     loop {

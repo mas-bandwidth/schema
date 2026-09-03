@@ -158,6 +158,14 @@ pub fn table_double_to_bits(value: f64) -> u64 {
 
 // TableWriter writes the wire IN PLACE, into the caller's slice. Nothing
 // here allocates.
+//
+// EVERY PRIMITIVE IS FORCE-INLINED, and so is every fixed-class body that
+// calls one (#343): out of line, a writer's cursor round-trips through memory
+// at every put, and the two halves do not add up but multiply — only a body
+// with no call boundary in it lets the cursor stay in registers and lets
+// adjacent constant framing bytes merge into one store. The C++ reference
+// carries the same rule, spelled as a per-package macro because it has three
+// compilers to name; Rust has one attribute.
 pub struct TableWriter<'a> {
     pub buffer: &'a mut [u8],
     pub offset: usize,
@@ -165,7 +173,7 @@ pub struct TableWriter<'a> {
 }
 
 impl<'a> TableWriter<'a> {
-    #[inline]
+    #[inline(always)]
     pub fn new(buffer: &'a mut [u8]) -> TableWriter<'a> {
         TableWriter {
             buffer,
@@ -174,7 +182,7 @@ impl<'a> TableWriter<'a> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn raw(&mut self, data: &[u8]) {
         if self.offset + data.len() > self.buffer.len() {
             self.overflow = true;
@@ -184,7 +192,7 @@ impl<'a> TableWriter<'a> {
         self.offset += data.len();
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn put8(&mut self, v: u8) {
         if self.offset + 1 > self.buffer.len() {
             self.overflow = true;
@@ -194,7 +202,7 @@ impl<'a> TableWriter<'a> {
         self.offset += 1;
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn put16(&mut self, v: u16) {
         if self.offset + 2 > self.buffer.len() {
             self.overflow = true;
@@ -204,7 +212,7 @@ impl<'a> TableWriter<'a> {
         self.offset += 2;
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn put32(&mut self, v: u32) {
         if self.offset + 4 > self.buffer.len() {
             self.overflow = true;
@@ -214,7 +222,7 @@ impl<'a> TableWriter<'a> {
         self.offset += 4;
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn put64(&mut self, v: u64) {
         if self.offset + 8 > self.buffer.len() {
             self.overflow = true;
@@ -226,7 +234,7 @@ impl<'a> TableWriter<'a> {
 
     // patch a length word already written: the nested-body framing writes a
     // placeholder, fills the body, then comes back for the count.
-    #[inline]
+    #[inline(always)]
     pub fn patch32(&mut self, at: usize, v: u32) {
         if at + 4 > self.buffer.len() {
             self.overflow = true;
@@ -252,17 +260,17 @@ pub struct TableReader<'a> {
 }
 
 impl<'a> TableReader<'a> {
-    #[inline]
+    #[inline(always)]
     pub fn new(buffer: &'a [u8]) -> TableReader<'a> {
         TableReader { buffer, offset: 0 }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn has(&self, bytes: u64) -> bool {
         self.offset as u64 + bytes <= self.buffer.len() as u64
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get8(&mut self) -> u8 {
         let v = self.buffer[self.offset];
         self.offset += 1;
@@ -276,7 +284,7 @@ impl<'a> TableReader<'a> {
     // code — every get is preceded by its has — and it is a zero rather than
     // a panic because a reader that met framing damage should stop on the
     // report, not on an abort.
-    #[inline]
+    #[inline(always)]
     pub fn get16(&mut self) -> u16 {
         let v = match self.buffer[self.offset..].first_chunk::<2>() {
             Some(bytes) => u16::from_le_bytes(*bytes),
@@ -286,7 +294,7 @@ impl<'a> TableReader<'a> {
         v
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get32(&mut self) -> u32 {
         let v = match self.buffer[self.offset..].first_chunk::<4>() {
             Some(bytes) => u32::from_le_bytes(*bytes),
@@ -296,7 +304,7 @@ impl<'a> TableReader<'a> {
         v
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn get64(&mut self) -> u64 {
         let v = match self.buffer[self.offset..].first_chunk::<8>() {
             Some(bytes) => u64::from_le_bytes(*bytes),
@@ -308,7 +316,7 @@ impl<'a> TableReader<'a> {
 
     // the rest of this body, as its own reader: the sub-reader a nested
     // decode runs in.
-    #[inline]
+    #[inline(always)]
     pub fn sub(&self, bytes: usize) -> TableReader<'a> {
         TableReader::new(&self.buffer[self.offset..self.offset + bytes])
     }

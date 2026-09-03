@@ -655,6 +655,18 @@ func (g *gen) emitMeasureKeyed(f *ir.Field, kind, width int) {
 // ---- save ----
 
 func (g *gen) emitSave(st *ir.Struct) {
+	// FORCE-INLINED, and the C++ reference carries the same rule (#343): out of
+	// line a writer's cursor round-trips through memory at every put, and only
+	// a body with no call boundary in it lets it stay in registers and lets
+	// adjacent constant framing bytes merge into one store.
+	//
+	// THE RECURSION GUARD IS THE CLASS LINE. A fixed table nests BY VALUE, so
+	// its save/load call graph is a DAG — a by-value cycle would be an
+	// infinite size_of, which the checker refuses — and forcing it flat always
+	// terminates. The VARIABLE class reaches a pointee through a recursive
+	// walk, and this backend emits no wire surface for it at all (§11), so
+	// there is no recursive body here to force.
+	g.pf("#[inline(always)]\n")
 	g.pf("pub fn %s(w: &mut TableWriter, value: &%s) -> bool {\n", fn(st.Name, "save_body"), st.Name)
 	guards := guardExprs(st)
 	for _, f := range st.Fields {
@@ -888,6 +900,7 @@ func (g *gen) scalarToWire(f *ir.Field, expr string) string {
 // ---- load ----
 
 func (g *gen) emitLoad(st *ir.Struct) {
+	g.pf("#[inline(always)]\n")
 	g.pf("pub fn %s(r: &mut TableReader, report: &mut TableReport, value: &mut %s) -> bool {\n",
 		fn(st.Name, "load_body"), st.Name)
 	g.pf("    %s(value); // restore declared defaults in place, then overlay\n", fn(st.Name, "reset"))
