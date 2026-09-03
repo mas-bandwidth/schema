@@ -34,11 +34,11 @@ Escape barrier: `std::hint::black_box` on the written buffer and every
 decoded value. Streams borrow their buffers, so per-iteration construction
 is free — the C++ shape exactly. The generic driver monomorphizes, but it
 does NOT inline like the C++ template reference, and the difference is
-measured: `#[inline(always)]` on a generated spine is honoured only into the
+measured: `#[inline(always)]` on a generated spine is honored only into the
 `Fn::call` shim standing between the driver and the spine, and LLVM then
 prices that shim against its caller and refuses it, so every generated call
 in a timed loop is an out-of-line call entered with an unknown stream
-position. clang honours `always_inline` unconditionally, so the C and C++
+position. clang honors `always_inline` unconditionally, so the C and C++
 legs never see that regime. Rebuilding this leg with
 `RUSTFLAGS="-C llvm-args=--inline-threshold=5000"` — a diagnostic, not a
 shipped flag — moves the generated rows 2.3x on the same binary. Equalizing that discipline is a named open item on

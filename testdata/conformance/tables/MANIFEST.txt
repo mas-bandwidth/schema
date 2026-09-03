@@ -22,7 +22,7 @@
 #            file is hand-authored.
 #
 #   cook     <case> <unit> <root> <dump file>
-#            a cooked file (§7) — materialised by test/cookgen, which is
+#            a cooked file (§7) — materialized by test/cookgen, which is
 #            deterministic — and the canonical node dump its Open must produce,
 #            byte for byte. <case> names the FIXTURE and <root> the table it is
 #            opened at: one root can have more than one fixture.
@@ -33,7 +33,7 @@
 #   forgery  <name> <kind> <subject> <base> <offset> <width> <value> <extent> <verdict> <label>
 #            one damaged fixture and the verdict every implementation owes it.
 #            A forgery is a PATCH over a base fixture, because a patch is what a
-#            person can review; the harness materialises the file, and a driver
+#            person can review; the harness materializes the file, and a driver
 #            only ever meets a path and the extent its caller claims.
 #
 # Wire files are REFERENCED where they already live rather than copied: the
@@ -141,7 +141,7 @@ report m2_open_as_m1  tblm1 Msg testdata/wire/tables/m2_open.bin
 block block_render blockdemo testdata/wire/tables/block_render.bin testdata/conformance/tables/block/block_render.dump
 block block_padded blockdemo testdata/wire/tables/block_padded.bin testdata/conformance/tables/block/block_padded.dump
 
-# THE COOKED FILES (docs/SPEC-TABLES.md §7). The fixture itself is materialised by
+# THE COOKED FILES (docs/SPEC-TABLES.md §7). The fixture itself is materialized by
 # test/cookgen, which is deterministic, so what is pinned here is the canonical
 # NODE DUMP: one line per node and one per leaf, the same walk in every
 # language, byte-compared. A record laid out one byte differently INSIDE a node
@@ -152,7 +152,7 @@ cook Album       graphdemo Album    testdata/conformance/tables/cook/Album.dump
 cook TreeNode    graphdemo TreeNode testdata/conformance/tables/cook/TreeNode.dump
 cook ListNode    graphdemo ListNode testdata/conformance/tables/cook/ListNode.dump
 # and the VALUED chain, which is why <case> and <root> are two columns: the five
-# above are value-initialised, so their dumps lock every offset, every deref and
+# above are value-initialized, so their dumps lock every offset, every deref and
 # every visit order and almost no VALUES. This one carries a value in every
 # non-pointer leaf, so the same walk locks what a reader READS as well.
 cook SceneValued graphdemo Scene    testdata/conformance/tables/cook/SceneValued.dump

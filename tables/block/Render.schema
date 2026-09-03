@@ -16,7 +16,7 @@
 //
 // RenderShip carries two `bool`s beside its scalars on purpose — the case
 // where C#'s two layout models disagree (§19.3, §19.5), pinned so a port
-// cannot pick the marshalling model and pass.
+// cannot pick the marshaling model and pass.
 
 package blockdemo
 

@@ -1366,7 +1366,7 @@ func (g *tableGen) emitFieldDescriptor(st *ir.Struct, f *ir.Field, guard string)
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
-	// `( (T *) 0 )->field`, never a materialised value: an unevaluated member
+	// `( (T *) 0 )->field`, never a materialized value: an unevaluated member
 	// access names the type without an object, where a braced temporary makes
 	// the compiler build a whole value of T to take the size of one member.
 	elemSize := fmt.Sprintf("(uint32_t) sizeof( ( (%s *) 0 )->%s )", st.Name, f.Name)

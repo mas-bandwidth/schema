@@ -50,7 +50,7 @@
 # it too must be recorded by hand.
 # One narrow variant does recover on its own: the action trims and lowercases
 # both sides before comparing, while the gate below is exact, so a signature
-# differing only in capitalisation or surrounding whitespace satisfies the
+# differing only in capitalization or surrounding whitespace satisfies the
 # action but never reaches it. Commenting `recheck` re-runs the action, which
 # then finds that comment and records it normally.
 #

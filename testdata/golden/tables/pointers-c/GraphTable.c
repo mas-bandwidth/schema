@@ -474,7 +474,7 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
         length = snprintf( text, sizeof( text ), "%.*g", digits, value );
         if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
         if ( digits >= high ) { break; }
-        /* the round-trip check runs BEFORE the decimal point is normalised:
+        /* the round-trip check runs BEFORE the decimal point is normalized:
            the token still carries whatever point snprintf just produced */
         if ( single )
         {
@@ -1773,7 +1773,7 @@ const TableTypeInfo schema_graphdemo_depot_info_ = { "Depot", (uint32_t) sizeof(
 
 static const TableFieldInfo schema_graphdemo_album_fields_[] = {
     { "name", "name", "string", 0x30df, 12, 0, 0, 1, 0, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( ( (Album *) 0 )->name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
-    { "tint", "tint", "Colour", 0x82b9, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( ( (Album *) 0 )->tint ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_colour_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
+    { "tint", "tint", "Color", 0x82b9, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( ( (Album *) 0 )->tint ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_color_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
     { "stamp", "stamp", "Stamp", 0x0dc6, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( ( (Album *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_stamp_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
     { "marker", "marker", "Marker", 0x866f, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( ( (Album *) 0 )->marker ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },
     { "pin", "pin", "Marker", 0x69d5, 13, 0, 1, 0, 0, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, -1, NULL, 0, NULL, NULL, -1, NULL, "" },

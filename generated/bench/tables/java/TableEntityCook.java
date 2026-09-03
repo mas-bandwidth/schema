@@ -147,7 +147,7 @@ public final class TableEntityCook {
     //
     // IT TAKES THE TARGET'S SIZE, and that is not decoration. C++, C# and Rust
     // hand back a pointer and let the walk decide, because a cook is trusted
-    // input and an out-of-region deref there is undefined behaviour a sanitizer
+    // input and an out-of-region deref there is undefined behavior a sanitizer
     // catches. Java has none to preserve: an unchecked deref is an
     // ArrayIndexOutOfBoundsException escaping into a caller that asked a
     // question. Bounding the target's START alone does not prevent that — it

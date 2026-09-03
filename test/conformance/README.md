@@ -14,9 +14,9 @@ make conformance-pin                 rewrite the half the reference leg writes
 make conformance-negative-control    prove the harness can go red
 ```
 
-**Seven negative controls stand behind it, and each localises a different
+**Seven negative controls stand behind it, and each localizes a different
 thing** — a harness that has never gone red is watching nothing, and one that
-goes red everywhere localises nothing:
+goes red everywhere localizes nothing:
 
 | control | what it breaks | what must go red | what must stay green |
 |---|---|---|---|
@@ -64,7 +64,7 @@ language" below, where both shapes are stated.
 - **The working directory is the repository root.** Every path in the manifest
   is repo-relative, so a driver never resolves one itself.
 - **`<manifest>` is a DERIVED manifest** the harness writes into `build/`: the
-  committed one with the materialised fixture paths folded in and **every
+  committed one with the materialized fixture paths folded in and **every
   expected answer removed**. A driver cannot pass by reading the answer.
 - **`list`** prints the surfaces this backend implements, one per line, to
   stdout.

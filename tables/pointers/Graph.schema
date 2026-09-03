@@ -88,7 +88,7 @@ table Depot
 table Album
 {
     name   string(16)
-    tint   Colour
+    tint   Color
     stamp  Stamp
     marker Marker
     pin    *Marker

@@ -1,7 +1,7 @@
 // `harness run` — the gate, and the matrix it prints.
 //
 // One process per (language, surface). The driver is handed a DERIVED manifest
-// — the committed one with the materialised fixture paths folded in, and with
+// — the committed one with the materialized fixture paths folded in, and with
 // every expected answer REMOVED — an output directory, and nothing else. The
 // harness holds the expectations and does the comparing, so a driver cannot
 // pass by reading the answer.
@@ -62,10 +62,10 @@ func readDrivers(path string) ([]driver, error) {
 	return out, nil
 }
 
-// materialise writes the fixtures a driver cannot be handed as committed text:
+// materialize writes the fixtures a driver cannot be handed as committed text:
 // the cooked files, which test/cookgen produces deterministically, and the
 // forged images, which are patches over a base fixture.
-func materialise(m *Manifest, work string) error {
+func materialize(m *Manifest, work string) error {
 	fixtures := filepath.Join(work, "fixtures")
 	if err := os.RemoveAll(fixtures); err != nil {
 		return err
@@ -140,7 +140,7 @@ func materialise(m *Manifest, work string) error {
 // GENERATOR, not of the conformance data, and a driver never sees it.
 //
 // `--values` is what makes SceneValued a value gate rather than a structure
-// one: without it every node is value-initialised, so the dump locks every
+// one: without it every node is value-initialized, so the dump locks every
 // offset, every deref and every visit order and almost no VALUES, because there
 // are almost none in it.
 var cookShape = map[string][]string{
@@ -153,11 +153,11 @@ var cookShape = map[string][]string{
 }
 
 // deriveManifest writes what a driver reads: the committed lines plus the
-// materialised paths, with every expected answer withheld.
+// materialized paths, with every expected answer withheld.
 func deriveManifest(m *Manifest, path string) error {
 	var b strings.Builder
 	b.WriteString("# DERIVED, by `harness run` — do not edit, do not commit.\n")
-	b.WriteString("# The committed manifest with the materialised fixture paths folded in and\n")
+	b.WriteString("# The committed manifest with the materialized fixture paths folded in and\n")
 	b.WriteString("# every expected answer removed. testdata/conformance/tables/FORMAT.md states\n")
 	b.WriteString("# both shapes.\n\n")
 	for _, u := range m.Units {
@@ -335,7 +335,7 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 	if err != nil {
 		return false, err
 	}
-	if err := materialise(m, work); err != nil {
+	if err := materialize(m, work); err != nil {
 		return false, err
 	}
 	derived := filepath.Join(work, "manifest.txt")

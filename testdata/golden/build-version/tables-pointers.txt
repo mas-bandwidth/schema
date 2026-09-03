@@ -1,16 +1,16 @@
-0xe7c54936602ceeca
+0x987bfec39c1c9f7c
 schema-build-version 1
-protocol 79242c6a555d3a60
+protocol 137b390d2dd13473
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Album sizeof=88 alignof=8
     field 30df kind=12 offset=0 size=24 bound=16
-    field 82b9 kind=13 offset=24 size=3 type=Colour
+    field 82b9 kind=13 offset=24 size=3 type=Color
     field 0dc6 kind=13 offset=28 size=20 type=Stamp
     field 866f kind=13 offset=48 size=24 type=Marker
     field 69d5 kind=17 offset=72 size=8 type=Marker
     field 79aa kind=17 offset=80 size=8 type=ListNode
-record Colour sizeof=3 alignof=1
+record Color sizeof=3 alignof=1
     field b019 kind=6 offset=0 size=1
     field c40a kind=6 offset=1 size=1
     field cae9 kind=6 offset=2 size=1

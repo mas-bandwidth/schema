@@ -108,7 +108,7 @@ type TableCookFieldInfo struct {
 	PresentOffset int32 // an optional's presence bool, or -1
 	Storage       TableCookStorage
 	// Record is the record this field NAMES, behind a function so the table
-	// stays constructible in any order — Go refuses an initialisation cycle
+	// stays constructible in any order — Go refuses an initialization cycle
 	// among package-level variables, and the DESCRIPTOR graph is cyclic by
 	// design: a record's field column can name its own record. A cooked REGION
 	// is never cyclic; schema cook refuses one by name (§3.1).
@@ -163,7 +163,7 @@ type TableStatRow struct {
 }
 
 // THE LAYOUT CONTRACT for the cook closure (docs/SPEC-TABLES.md §20.3), run
-// ONCE at package initialisation: a cooked region is laid out by the
+// ONCE at package initialization: a cooked region is laid out by the
 // compiler's C ABI model, so a runtime that lays one of these records out
 // differently would read a cook at the wrong offsets and never know.
 func init() {
@@ -222,7 +222,7 @@ var tableCookRecords = make([]TableCookInfo, 2)
 // refuses a cyclic wire by name, §3.1.)
 // The links are written once, before any consumer runs, and nothing mutates
 // them after: the descriptor surface is immutable from then on, readable from
-// any goroutine at any time with no synchronisation.
+// any goroutine at any time with no synchronization.
 func init() {
 	tableCookRecords[0] = TableCookInfo{
 		Name: "TableEntity", Size: 64, Align: 8, NumFields: 14,

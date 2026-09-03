@@ -191,7 +191,7 @@ func (g *tableGen) emitArenaResetHook(members []*ir.Struct) {
 	g.pf("// TableWorker::Alloc is a template and cannot name a member's Reset, so\n")
 	g.pf("// the arena reaches it through this overload set by argument-dependent\n")
 	g.pf("// lookup. It is how a node born in raw arena storage comes to hold the\n")
-	g.pf("// declared defaults without value-initialising the whole aggregate.\n\n")
+	g.pf("// declared defaults without value-initializing the whole aggregate.\n\n")
 	for _, st := range members {
 		g.pf("inline void TableReset( %s & value ) { %sReset( value ); }\n", st.Name, st.Name)
 	}

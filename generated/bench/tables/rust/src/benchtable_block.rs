@@ -107,7 +107,7 @@ impl TableEntityBlock {
     // EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is
     // unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged
     // offset_of near 2^63 must refuse, and an addition that carried past
-    // the top of the type would be the undefined behaviour the check after
+    // the top of the type would be the undefined behavior the check after
     // it was supposed to catch.
     ///
     /// # Safety
@@ -501,7 +501,7 @@ impl TableStatBlock {
     // EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is
     // unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged
     // offset_of near 2^63 must refuse, and an addition that carried past
-    // the top of the type would be the undefined behaviour the check after
+    // the top of the type would be the undefined behavior the check after
     // it was supposed to catch.
     ///
     /// # Safety

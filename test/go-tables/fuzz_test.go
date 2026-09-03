@@ -287,7 +287,7 @@ func checkWhole(t *testing.T, unit, describe string, index int, base unsafe.Poin
 		}
 		// and READ every byte of every row, through the bounds-checked view: a
 		// walk that would step outside panics here rather than reading a
-		// neighbour
+		// neighbor
 		for i := a.offsetOf; i < a.offsetOf+rows; i++ {
 			sink ^= view[i]
 		}

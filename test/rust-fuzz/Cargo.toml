@@ -17,5 +17,5 @@ graphdemo = { path = "../../build/tables-generated-rust/graphdemo" }
 
 [profile.dev]
 # the fuzzer's budget is measured against a gate's wall, and the ORACLE is
-# what costs — an unoptimised build would be measuring the debug build
+# what costs — an unoptimized build would be measuring the debug build
 opt-level = 2

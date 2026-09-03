@@ -12,7 +12,7 @@ later version. The full text follows below.
 As a special exception, the copyright holders give you permission to use,
 modify, and distribute the OUTPUT of this program — the code it generates from
 schema files you provide — under terms of your choice, without those terms
-being affected in any way by the licence of this program.
+being affected in any way by the license of this program.
 
 The output of this program is not a derivative work of this program. Running
 this compiler over schema files you own does not place the generated
@@ -23,10 +23,10 @@ closed-source software.
 This permission applies to the generated output only. It does not apply to
 this program itself: modifying the compiler, or conveying it (including making
 a modified version available to users over a network, per AGPL section 13),
-remains subject to the licence below.
+remains subject to the license below.
 
-This exception is modelled on the long-standing practice for compiler-like
-tools whose output is not covered by the tool's own licence — for example the
+This exception is modeled on the long-standing practice for compiler-like
+tools whose output is not covered by the tool's own license — for example the
 Bison parser exception and the GCC Runtime Library Exception.
 
 

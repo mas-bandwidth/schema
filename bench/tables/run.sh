@@ -81,7 +81,7 @@ else
         echo "# dotnet: $(dotnet --version 2>/dev/null || echo 'not present')"
         echo "# rounds: $ROUNDS"
         echo "# pinning: $( [ "$(uname -s)" = Linux ] && echo "taskset -c ${BENCH_CPU:-unset}" || echo "none (macOS has no taskset)" )"
-        echo "# noise: ${BENCH_NOISE:-unlabelled}"
+        echo "# noise: ${BENCH_NOISE:-unlabeled}"
         echo "# schema commit: $(commit_of .)"
         echo "# serialize.cs commit: $(commit_of "${SERIALIZE_CS:-../serialize.cs}")  (the closure's type codecs only — no line of the measured table path enters it)"
     } >> "$OUT"

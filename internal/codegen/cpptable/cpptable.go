@@ -455,7 +455,7 @@ struct TableUnionInfo
     const char * (*key_name)( uint64_t value );
     uint16_t (*key_id)( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
-    // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
+    // descriptor stays CONSTANT-INITIALIZED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * (*arms)();
@@ -645,7 +645,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.pf("inline const TableTypeInfo * %sTableType();\n", st.Name)
 			}
 			if anyVariable {
-				g.pf("// The descriptors are CONSTANT-INITIALISED data, and a field's target is\n")
+				g.pf("// The descriptors are CONSTANT-INITIALIZED data, and a field's target is\n")
 				g.pf("// the ADDRESS of another descriptor. These declarations are what let a\n")
 				g.pf("// self- or mutually-referential graph — Node naming itself through *Node —\n")
 				g.pf("// be expressed as constant data instead of a lazy link, which could not\n")

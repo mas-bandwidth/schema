@@ -5,7 +5,7 @@
 // this file only if it uses one, and <Base>Table.cs carries not one symbol of
 // it. The C++ side is the producer (§19.1's builder) and this side is the
 // consumer: it POINTS at bytes another language wrote and reads rows in place,
-// with no marshalling and no copy at the boundary.
+// with no marshaling and no copy at the boundary.
 //
 // Two ways to read one block, and both come from one declaration (§19.2):
 // the DESCRIPTORS, which carry the projection's own layout and retire a
@@ -15,9 +15,9 @@
 //
 // THE LAYOUT MODEL IS NAMED (§19.3): every size and offset asserted here is
 // the MANAGED unmanaged-struct model — what Span and pointer arithmetic
-// actually index with — never the interop marshalling model. The consequence
+// actually index with — never the interop marshaling model. The consequence
 // stated plainly: a `bool` in a row is ONE byte, one in C++ and one here, four
-// under default marshalling. Pack and Size set the managed layout too, despite
+// under default marshaling. Pack and Size set the managed layout too, despite
 // reading as interop attributes, which is exactly why they are the mechanism.
 //
 // ALLOCATION: none of it. The bytes belong to the consumer — a managed array,
@@ -170,7 +170,7 @@ func (g *blockGen) assemble() []byte {
 	h.WriteString("// project that compiles this file sets AllowUnsafeBlocks.\n")
 	h.WriteString("//\n")
 	h.WriteString("// Every size and offset below is the MANAGED unmanaged-struct model — what\n")
-	h.WriteString("// Span and pointer arithmetic index with — never the interop marshalling\n")
+	h.WriteString("// Span and pointer arithmetic index with — never the interop marshaling\n")
 	h.WriteString("// model (§19.3). A bool in a row is ONE byte.\n\n")
 	h.WriteString("using System;\n")
 	h.WriteString("using System.Runtime.CompilerServices;\n")

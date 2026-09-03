@@ -218,7 +218,7 @@ func (w *cookWalk) storage(storage unsafe.Pointer, typ *graphdemo.TableCookInfo,
 		case graphdemo.TableCookStorageRecord:
 			// a nested record — by value, or every slot of an array of them. A
 			// COUNTED array writes all N slots (§7.2), and a slot past the live
-			// count holds the value-initialised element, whose pointer slots are
+			// count holds the value-initialized element, whose pointer slots are
 			// zero: walking all of them is what the check does too.
 			slots := int32(1)
 			if f.IsArray {

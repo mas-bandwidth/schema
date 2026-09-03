@@ -410,11 +410,11 @@ var registry = []Name{
 	// is one claim, and the emitters index into it.
 	{Name: "tableBlockLayoutOffset", By: Go, What: "the block layout contract's offset refusal"},
 	{Name: "tableBlockLayoutSize", By: Go, What: "the block layout contract's size refusal"},
-	{Name: "tableBlockNativeOrder", By: Go, What: "this machine's byte order, read once at package initialisation"},
+	{Name: "tableBlockNativeOrder", By: Go, What: "this machine's byte order, read once at package initialization"},
 	{Name: "tableBlockRecords", By: Go, What: "the unit's whole block descriptor graph, one slice"},
 	{Name: "tableCookLayoutOffset", By: Go, What: "the cook layout contract's offset refusal"},
 	{Name: "tableCookLayoutSize", By: Go, What: "the cook layout contract's size refusal"},
-	{Name: "tableCookNativeOrder", By: Go, What: "this machine's byte order, read once at package initialisation"},
+	{Name: "tableCookNativeOrder", By: Go, What: "this machine's byte order, read once at package initialization"},
 	{Name: "tableCookRecords", By: Go, What: "the unit's whole cooked-record descriptor graph, one slice"},
 	{Name: "tableJsonBase64Alphabet", By: Go, What: "the base64 alphabet a `bytes` field rides under"},
 	{Name: "tableJsonBytes", By: Go, What: "one step of the text form's generic walk (§16)"},
@@ -570,7 +570,7 @@ var registry = []Name{
 	// lives in <Base>Table.c beside the unit's own header, so every one of its
 	// spellings could collide with a declaration in that unit. They are one
 	// family with one job, and the registry lists them rather than filtering
-	// them: a scan that has to recognise a prefix is a scan that goes blind the
+	// them: a scan that has to recognize a prefix is a scan that goes blind the
 	// day a name leaves the family.
 	{Name: "table_json_base64_alphabet", By: C, What: "the text form's walk"},
 	{Name: "table_json_count", By: C, What: "the text form's walk"},

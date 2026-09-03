@@ -67,7 +67,7 @@ fn site() -> &'static mut Site {
 }
 
 // A defect the ORACLE saw: report and STOP. A fuzzer that keeps going after the
-// first find reports the same class N times and minimises none of them.
+// first find reports the same class N times and minimizes none of them.
 fn defect(what: &str) -> ! {
     let s = site();
     let seed = unsafe { RUN_SEED };

@@ -1,6 +1,6 @@
 // `harness pin` — the goldens a driver writes rather than the engine.
 //
-// Two artefacts cannot come from the compiler's own engine, because what they
+// Two artifacts cannot come from the compiler's own engine, because what they
 // describe is a RUNTIME's read rather than a file's content: the cook's
 // canonical node dump (docs/SPEC-TABLES.md §7.5) and the block forgery battery
 // resolved to byte offsets (§19.2). Both are pinned from the REFERENCE leg —
@@ -29,7 +29,7 @@ func pin(m *Manifest, driversPath, work, cookDir string) error {
 	}
 	reference := drivers[0]
 
-	if err := materialise(m, work); err != nil {
+	if err := materialize(m, work); err != nil {
 		return err
 	}
 	derived := filepath.Join(work, "manifest.txt")
@@ -114,7 +114,7 @@ func pin(m *Manifest, driversPath, work, cookDir string) error {
 			}
 		}
 		if fixture == "" {
-			return fmt.Errorf("the cook battery is based on %q, which no cook line materialises", f.Base)
+			return fmt.Errorf("the cook battery is based on %q, which no cook line materializes", f.Base)
 		}
 		fmt.Println()
 		cmd := exec.Command("build/schema_test_cook", "emit-forgeries", f.Subject, fixture)

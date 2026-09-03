@@ -264,7 +264,7 @@ static void walk_storage( Walk * w, const uint8_t * storage, const TableTypeInfo
             }
             /* THE DELTA IS DATA, so it is added as an INTEGER and bounded
                BEFORE it becomes a pointer. `slot + delta` is what reads
-               naturally and it is undefined behaviour: a forged delta near
+               naturally and it is undefined behavior: a forged delta near
                2^63 overflows the pointer itself, and the range check after it
                is then examining a value the standard never promised. Unsigned
                addition wraps by definition, and a wrapped offset lands outside

@@ -5,7 +5,7 @@
 // this module only if it reads one, and <Base>Table.js carries not one symbol
 // of it. The C++ side is the producer (§19.1's builder) and this side is a
 // consumer: it POINTS at bytes another language wrote and reads rows in place,
-// with no marshalling and no copy at the boundary.
+// with no marshaling and no copy at the boundary.
 //
 // THE READING TIER HAS NO BUILDER, and the reason is the language's: §19.1's
 // builder places rows at a pitch it controls, and JavaScript controls no

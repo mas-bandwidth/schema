@@ -353,7 +353,7 @@ struct Aligned
     // the bytes it carries: that is the fact row nine and row ten of the
     // battery are about, and a file alone cannot carry it. The allocation is
     // the claim, so a reader that walks past what it was given walks into a
-    // sanitizer's redzone rather than into a neighbour.
+    // sanitizer's redzone rather than into a neighbor.
     bool create( const std::vector<uint8_t> & data, int64_t extent )
     {
         // the allocation IS the claim, and the claim may be shorter than the

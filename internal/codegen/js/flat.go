@@ -1647,7 +1647,7 @@ var numExact = new(big.Int).Lsh(big.NewInt(1), 53)
 
 // emitReadWideOffsetNum decodes a wide OFFSET field of more than 64 bits
 // whose high half is small enough to be a Number, doing the range refusal
-// and the offset in the NUMBER domain and materialising exactly ONE BigInt
+// and the offset in the NUMBER domain and materializing exactly ONE BigInt
 // for the high half. It reports whether it emitted; a shape it cannot prove
 // falls through to the general wide path unchanged.
 //

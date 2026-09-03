@@ -64,7 +64,7 @@ licensed. Unexplained slowness is still a defect, in every rung.
 differ.** The wire and the cooked form are **read-hot and write-cold**: they
 are written once, offline, by a tool or a build pipeline (§7's pipeline
 paragraph says where that runs and how its output is addressed), and read by
-the game. Optimise their readers; their writers are a build cost. **The
+the game. Optimize their readers; their writers are a build cost. **The
 BLOCK FORM (§19) is the one form hot on BOTH sides** — written every frame in
 one language and read every frame in another — so it is the hottest path
 tables have, and the fastest-correct mission bites hardest there. §12.1 is
@@ -83,7 +83,7 @@ reason, and the reasons do not transfer:
   result and points at it. The reader does no parse because the writer
   already did every part of it.
 - **The block form (§19)** — both sides GENERATED against one layout the
-  compiler settled, so the producer goes wide with nothing to synchronise and
+  compiler settled, so the producer goes wide with nothing to synchronize and
   the consumer indexes rows at a pitch it reads. Nothing is discovered at
   frame time because everything was decided at build time.
 
@@ -341,7 +341,7 @@ so rather than pretending.** C++, C# and Rust each have a runtime layout that
 can disagree with the compiler's model, and each asserts against it —
 `static_assert`, a check at type initialization, a const assert over
 `offset_of!`. Java has no record layout at all, so there is no second model to
-check against and a check that claimed one would be theatre.
+check against and a check that claimed one would be theater.
 `TableBlockLayout` and `TableCookLayout` assert the one disagreement the
 language CAN have: the ACCESSORS' offsets against the DESCRIPTORS', two
 derivations the generator makes separately, so a walker reading a row through
@@ -367,7 +367,7 @@ ceiling by hitting it.
 size)` inside the region — and answers "no target" otherwise, the same answer it
 gives a null. C++, C# and Rust hand back a pointer and let the walk decide,
 because a cook is trusted input and an out-of-region deref there is undefined
-behaviour a sanitizer catches. Java has none to preserve: an unchecked deref is
+behavior a sanitizer catches. Java has none to preserve: an unchecked deref is
 an exception escaping into a caller that asked a question, which is what the
 readers' fuzz oracle forbids.
 
@@ -774,7 +774,7 @@ struct's bytes behind a header, which means mostly-unused array tails on
 disk. And the WIRE is small where the struct is not — elision writes only the
 live rows (§3) — so "the file is a few hundred kilobytes and the struct is
 seven megabytes" is the normal state of affairs, not a defect. The block form
-exists precisely so a game never materialises that struct: it reads the
+exists precisely so a game never materializes that struct: it reads the
 projection (§19.2). The by-value form is for tooling and for the wire.
 
 The exclusions, each refused by name: `fixed`/`ufixed` and the 128-bit
@@ -904,7 +904,7 @@ enum is keyed.
   ends the program rather than reading something. **THE GUARD IS SYMMETRIC**
   because the storage is: one slot per NAMED variant and nothing else, so
   `None` names none of them and neither does a key past `E.Max`. **There is
-  NO undefined-behaviour path here in any build** — which is the whole reason
+  NO undefined-behavior path here in any build** — which is the whole reason
   the compare is unconditional, because a build that skipped it would read one
   element BEFORE the array at one end and past its END at the other.
   The cost is one perfectly-predicted compare on a path that reads config —
@@ -2182,7 +2182,7 @@ one node on the wire, in a builder and in a region alike (§6.3).
 **A data cycle is refused at SAVE FROM A BUILDER, and the refusal is
 free.** The numbering walk carries one entry per reachable node — that
 map IS identity; a node must know its index to be named twice — so
-colouring each entry while its descent is open costs one bit: a reference
+coloring each entry while its descent is open costs one bit: a reference
 to an entry still open is a cycle, named, and measure, save, `Cook` and
 `Lock` all return failure. Nothing recurses away. The map is proportional
 to NODES, never to bytes, and it lives on the AUTHORING side, where §6.5
@@ -2962,7 +2962,7 @@ The builder is designed to go wide, lock-free by ownership:
   as `malformed` an `N` whose entries cannot fit in the map's `L` (six bytes
   each at least: an entry's `L` and its terminator); a fixed unit and a
   map-free pointered unit keep the one scan.
-- **`LoadMeasure`'s answer is also the DEFENCE, and a caller is expected
+- **`LoadMeasure`'s answer is also the DEFENSE, and a caller is expected
   to bound it.** The smallest legal record is fourteen wire bytes and it
   commands `sizeof( T )` region bytes, so a wire can ask for far more
   memory than it occupies. The caller owns the allocation precisely so it
@@ -3880,7 +3880,7 @@ every clause above by construction.
   `Open` runs on whatever bytes a disk hands back — including a corrupt one, a
   truncated one, a file from a build that moved — and what these hold is that
   refusing is CLEAN: no crash, no read past the `length` the caller passed, no
-  undefined behaviour inside the check. They do not shape the runtime, and they
+  undefined behavior inside the check. They do not shape the runtime, and they
   ask `Open` to validate nothing.
   - **THE FUZZER**, seeded, with the oracle §7 actually promises. A mutation
     inside the HEADER must be refused, or open onto a data part that is still
@@ -3965,7 +3965,7 @@ every clause above by construction.
     big-endian cook NATIVELY — is **UNPROVEN in C# and stays unproven until a
     big-endian .NET exists**; there is no such runtime to run it on. The C++ leg
     proves that half on s390x, and nothing about a C# consumer's big-endian
-    behaviour may be inferred from it.
+    behavior may be inferred from it.
   - **THE LAYOUT CONTRACT AT START-UP**: `TableCookLayout.Verify()` run as its
     own mode, before any cook is opened, so §20.3's C# half is a gate on every
     run rather than a throw the first time somebody opens a cook in a game.
@@ -4185,16 +4185,16 @@ its declared defaults, in place. A generic walker that FILLS a value has to
 be able to establish the defaults an absent field takes, and it holds no
 type to spell; this is the one thing the columns cannot express without a
 function. It calls `<Name>Reset`, the same named prefill the wire's read
-path calls, and neither materialises a temporary.
+path calls, and neither materializes a temporary.
 
 **`<Name>Reset` establishes the defaults ONE MEMBER AT A TIME**, and fills
-an array from its own first element rather than initialising the array as a
+an array from its own first element rather than initializing the array as a
 whole. A table is a bounded record whose declared maximum can be
 megabytes, and the cost of establishing its defaults has to grow with the
 number of DECLARATIONS, not with the number of bytes — some compilers
-expand a whole-object initialisation of a large aggregate element by
+expand a whole-object initialization of a large aggregate element by
 element, and charge tens of seconds for it per translation unit. For the
-same reason an array of a self-initialising element type carries no
+same reason an array of a self-initializing element type carries no
 redundant `= {}`: the element type's own member initializers already say
 what an element starts as.
 
@@ -4336,7 +4336,7 @@ compile-time refusals those ids bring (§11) apply to EVERY unit, as the
 25 generated spellings do, because a unit gains and loses pointers as an
 edit and a name that was free yesterday must not become a collision
 tomorrow. A self-referential pointer resolves to its own type's
-descriptor. Where pointers exist the descriptors are CONSTANT-INITIALISED
+descriptor. Where pointers exist the descriptors are CONSTANT-INITIALIZED
 data and a target is the ADDRESS of another descriptor, so `Node` naming
 itself through `*Node` is expressible directly: no first-use link, which
 could not have been written both race-free and recursion-safe, and no
@@ -4555,7 +4555,7 @@ const UnitViewInfo * UnitView();
   would be the one artifact in the tree that did. Name order is stable under
   both, it is still one byte comparison for §8.7, and grouping a listing by
   file stays one pass over the `file` column.
-- **It is constant data.** In C++ the whole registry is constant-initialised
+- **It is constant data.** In C++ the whole registry is constant-initialized
   and `UnitView()` returns its address: a lookup, never a parse, and no
   mutable state on the surface — the property §8.1 already holds for
   descriptors, carried up to the unit. In C# the registry is a static
@@ -4756,7 +4756,7 @@ held by construction:
   settled from the counts in one pass over the table's out-of-line arrays
   before any worker runs, so every row's address is known ahead of the fill;
   N workers then own disjoint index ranges and write with no per-row
-  synchronisation and no lock. A generated fill path that allocates, locks or
+  synchronization and no lock. A generated fill path that allocates, locks or
   takes an atomic does not conform, and §19.1 states that as a refuser rather
   than as an aspiration. The builder's rejected models (§14) all exist because a
   general structure cannot know its bound; a block-form table declares one,
@@ -5260,7 +5260,7 @@ has already failed the gate, however clean the declaration reads. The block
 form (§2.7, §19) is the shape that answers it, and the pitch is the
 load-bearing part: **striding is what makes the interop fast** — blittable
 rows at a fixed pitch that both generated sides index with, with no
-marshalling and no copy AT THE BOUNDARY. (What a consumer then does with a
+marshaling and no copy AT THE BOUNDARY. (What a consumer then does with a
 row is its own business: the one that exists copies rows into a pool so its
 jobs can take them, and that copy is the consumer's design, not the form's.)
 
@@ -5268,7 +5268,7 @@ jobs can take them, and that copy is the consumer's design, not the form's.)
 leaves: bounded arrays of fixed-size records, no pointer anywhere in the
 closure. The block's storage is sized from the declared maxima and its layout
 is settled from the counts before any worker starts, so N workers fill
-disjoint row ranges with no lock, no atomic and no per-row synchronisation —
+disjoint row ranges with no lock, no atomic and no per-row synchronization —
 and that is an OBLIGATION on the implementation, not a permission to the
 caller (§9, §19.1). The consumer maps the block,
 checks it once, and reads each array at the pitch the instance gives it. The
@@ -5558,7 +5558,7 @@ convenience:
   is what lives there today: a body of non-template, non-constant code that
   every consumer would otherwise re-parse. The storage structs, the wire
   codecs and the reflection descriptors stay in the header, because they
-  are respectively inlineable, template-parameterised over a context, and
+  are respectively inlineable, template-parameterized over a context, and
   constant data a tool reads directly.
 - **What may follow it, and on what evidence.** Any further table runtime
   that is neither a template nor constant data is a CANDIDATE for the same
@@ -5630,7 +5630,7 @@ Owner rulings, 2026-09-02, in the order given.
   neither is new machinery.
 - **What the stride buys, first**: "striding is necessary for fast interop
   between C++ and C#" — "so that's the real thing here." The pitch is the
-  point: blittable records both generated sides point at, no marshalling and
+  point: blittable records both generated sides point at, no marshaling and
   no copy (§12.1, §19).
 - **What a DECLARED stride would also have bought**: "the benefit of striding
   is that i can add new fields at the end of types/tables, without C#
@@ -6190,11 +6190,11 @@ inspects everything in the schema built:
   by-value struct (§2.2's price), and a consumer that wants a block must then
   build one. A load path that decodes a wire directly into a block's storage
   would let a tool read a file and hand a block across the boundary without
-  materialising the large struct at all. It is a second decoder, and nothing
+  materializing the large struct at all. It is a second decoder, and nothing
   about it is decided here.
 - **A block's own TEXT FORM** (§16). A block-form table has a wire and
   therefore already has `ToJson`/`FromJson` over its by-value form; whether a
-  BLOCK in hand should be textualisable without first loading it by value is
+  BLOCK in hand should be textualizable without first loading it by value is
   the open part, and it is a convenience rather than a gap.
 - **Cross-endian blocks.** A block carries its byte order in its magic and
   refuses a foreign one, exactly as a cook does; swapping one would be the
@@ -6480,7 +6480,7 @@ reason: a unit is one crate, so a second copy would be a duplicate definition
 rather than C++'s harmless re-inclusion behind a guard. It lives in
 `table_runtime.rs` and `make tables-rust-walk` is the gate — the walker's
 source, byte-identical across every unit of the corpus, with nothing
-normalised away but the generated banner. Where C++ must cross the runtime's
+normalized away but the generated banner. Where C++ must cross the runtime's
 DECIMAL POINT twice, Rust's float formatting and parsing are locale-free and
 the walk consults no locale at all; C's `%.*g` is reproduced digit for digit
 so the goldens are the same bytes. Storage is reached the way C++ reaches it —
@@ -6581,7 +6581,7 @@ infers nothing from them:
   (§3), so a text and a wire of the same instance describe the same fields.
 - **Reading** places every key it can name, in whatever order the text
   gives them, and never lets a guard's position in the object decide
-  whether a key is honoured. A field placed under a false guard is elided
+  whether a key is honored. A field placed under a false guard is elided
   again on the way out, so the wire never sees it.
 
 That order-independence is the whole reason the rule is stated this way: a
@@ -6673,7 +6673,7 @@ touching a stored file.
   on the first table that has two fields. A backend whose fields have no
   offset sabotages what stands in for one — in C#, the FIELD INDEX the read
   path looks a descriptor up by, so one key's value lands in its
-  neighbour's — and the control's second half is what makes it a control:
+  neighbor's — and the control's second half is what makes it a control:
   the conformance matrix must go red on `json-read` and stay green
   everywhere else, `json-write` included, which is what says the break is
   the READER's.
@@ -7458,7 +7458,7 @@ declaration does not spell:**
   indexes with and it must come from the data rather than from the consumer's
   own constant (§19.2) — and because the pitch is `sizeof`, a consumer's rows
   are CONTIGUOUS, which is what lets C# reinterpret the byte range as a span
-  of blittable rows with no marshalling and no copy (§12.1, §19.2).
+  of blittable rows with no marshaling and no copy (§12.1, §19.2).
 - **A TABLE, NOT A NEW KIND OF TABLE.** A table in its block form keeps
   everything an ordinary fixed table has: `Measure`, `Save` and `Load` over
   the tolerant wire (§3), its cook (§7), its reflection descriptors (§8), its
@@ -7606,7 +7606,7 @@ page says so here rather than leaving a caller to find it at sixty hertz.
 ```cpp
 RenderShip * ships = RenderFrameShips( block );   // the array's typed base
 
-// N workers, disjoint index ranges, no synchronisation of any kind:
+// N workers, disjoint index ranges, no synchronization of any kind:
 ships[i].position = ...;
 ```
 
@@ -7616,7 +7616,7 @@ ships[i].position = ...;
   no lock and no atomic**, and the build fails if one appears, on the model
   §2.2 already uses for the zero-cost gate. A backend may not satisfy this
   requirement with a serial `Begin` that allocates, or an accessor that
-  synchronises. It is held twice over: by that refuser, and by a real
+  synchronizes. It is held twice over: by that refuser, and by a real
   multi-threaded fill in the corpus (§19.5) whose result is byte-identical to
   a serial one.
 - **An accessor is one add**, `block base + offset_of`, typed as the element.
@@ -7881,10 +7881,10 @@ agrees:
 it is not pedantry — C# has two layout models and they disagree on the field
 kinds this form uses. The asserts and the accessors use the model that
 `Span` and pointer arithmetic actually index with (`Unsafe.SizeOf<T>` and its
-equivalents), **not** the interop marshalling model (`Marshal.SizeOf`,
+equivalents), **not** the interop marshaling model (`Marshal.SizeOf`,
 `Marshal.OffsetOf`). The consequence to state plainly: **a `bool` in a row is
 ONE byte** — one byte in C++ and one in the managed model, four under default
-marshalling. A contract that did not say which model it asserted could pass
+marshaling. A contract that did not say which model it asserted could pass
 on one measurement and garble on the other. **`Pack` and `Size` set the
 MANAGED layout too**, despite reading as interop attributes, which is exactly
 why they are the mechanism here and not a contradiction of the sentence
@@ -8055,7 +8055,7 @@ difference between a form and a convention.
   allocation is named rather than absorbed: in the reading tier's first port
   that is one BigInt per 64-bit FIELD read, and nothing else — a 64-bit number
   the FORM's own framing carries (a block array's `offset_of`, a cook
-  reference's delta) gets no such licence, because those are the two hottest
+  reference's delta) gets no such license, because those are the two hottest
   lines the accelerators have and a per-row or per-edge allocation on them is
   the defect this instrument exists to find. It found both.
 

@@ -8,9 +8,9 @@
 package graphdemo
 
 // native-mapped, and referenced from another file: the storage there spells
-// ::ColourMath, so every generated call on it — the codecs and the Open walk
+// ::ColorMath, so every generated call on it — the codecs and the Open walk
 // alike — goes through a derived-to-base conversion
-type Colour | cpp_native = ColourMath, cpp_include = "graph_colour.h"
+type Color | cpp_native = ColorMath, cpp_include = "graph_color.h"
 {
     r uint8
     g uint8

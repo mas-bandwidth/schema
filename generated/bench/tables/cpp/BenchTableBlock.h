@@ -204,7 +204,7 @@ struct TableBlockFieldInfo
     uint32_t elem_size;      // ONE slot's size; the field's own when it holds one value
     uint32_t present_offset; // the presence companion, or 0xffffffff
     // the ELEMENT's or the nested record's own layout, behind a function so the
-    // whole table stays constant-initialised. NULL when the field is a scalar.
+    // whole table stays constant-initialized. NULL when the field is a scalar.
     // Following it is how a walker DESCENDS: an out-of-line array's rows, and a
     // nested record's fields, are both reached through this one column.
     const TableBlockInfo * (*element)();
@@ -389,7 +389,7 @@ static_assert( offsetof( TableEntityBlock::Projection, firing ) == 81, "TableEnt
 // to the caller (docs/SPEC-TABLES.md §19.1). Nothing between these markers
 // allocates, locks or takes an atomic; the Makefile's block-fill-refuser gate
 // fails the build if one appears. The parallelism itself lives in the
-// caller's loop — N workers, disjoint index ranges, no synchronisation of any
+// caller's loop — N workers, disjoint index ranges, no synchronization of any
 // kind — and keeping this surface free of those three is what MAKES it
 // possible.
 
@@ -554,7 +554,7 @@ static_assert( offsetof( TableStatBlock::Projection, delta ) == 28, "TableStat's
 // to the caller (docs/SPEC-TABLES.md §19.1). Nothing between these markers
 // allocates, locks or takes an atomic; the Makefile's block-fill-refuser gate
 // fails the build if one appears. The parallelism itself lives in the
-// caller's loop — N workers, disjoint index ranges, no synchronisation of any
+// caller's loop — N workers, disjoint index ranges, no synchronization of any
 // kind — and keeping this surface free of those three is what MAKES it
 // possible.
 

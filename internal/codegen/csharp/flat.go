@@ -33,7 +33,7 @@
 //  2. EVERY PIECE IS MASKED TO ITS WIDTH. BitWriter.WriteBitsUnchecked opens
 //     with `value &= (uint)((1UL << bits) - 1)` — the per-field form TRUNCATES
 //     a too-wide value rather than refusing it. The flat form must mask too,
-//     or a value with bits above its field width would corrupt its neighbours
+//     or a value with bits above its field width would corrupt its neighbors
 //     in the chunk instead of being truncated. This is the invariant #198
 //     lost; it is enforced here at the single place a piece's value
 //     expression is built (flatMasked), never at the call sites.
@@ -296,7 +296,7 @@ func (g *gen) flatWriteFieldPiece(item *ir.FieldItem) (flatPiece, bool) {
 
 // flatWriteBarePiece is a bare integer at its storage width. Signed values
 // cast through the same-width unsigned first — a sign extension into the
-// chunk word would corrupt its neighbours, exactly as it would in C++.
+// chunk word would corrupt its neighbors, exactly as it would in C++.
 func (g *gen) flatWriteBarePiece(item *ir.FieldItem, name string) (flatPiece, bool) {
 	f := item.F
 	w := int64(f.Type.Width)

@@ -26,7 +26,7 @@
 //     fixed".
 //   * A record that does not survive Load -> Save byte-identically.
 //   * Two records that are equal. §2.7 rotates 64 buffers so no single buffer
-//     can be memorised; 64 copies of one instance would defeat that silently.
+//     can be memorized; 64 copies of one instance would defeat that silently.
 //
 // The vary mapping is the type corpus's LCG (Knuth MMIX), one step per field,
 // so records decorrelate field by field rather than sharing one seed's low

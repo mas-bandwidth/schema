@@ -722,7 +722,7 @@ static class Program
         Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "enum insert new data: load");
         Check(!report.Malformed, "enum insert new data: not malformed");
         Check(report.Unknown == 1, "enum insert new data: an id this reader cannot name");
-        Check(outCfg.Grade == V1.Grade.None, "enum insert new data: None, never a neighbour's variant");
+        Check(outCfg.Grade == V1.Grade.None, "enum insert new data: None, never a neighbor's variant");
 
         V2.Cfg gold = new V2.Cfg();
         gold.Grade = V2.Grade.Gold; // ordinal 3 in V2, 2 in V1
@@ -785,7 +785,7 @@ static class Program
         Check(V1.Schema.CfgLoad(outCfg, new ReadOnlySpan<byte>(wire, 0, (int)bytes), report), "union insert new data: load");
         Check(!report.Malformed, "union insert new data: not malformed");
         Check(report.Unknown == 1, "union insert new data: an arm id V1 cannot name");
-        Check(outCfg.Effect.Type == V1.EffectType.None, "union insert new data: empty, never a neighbour's arm");
+        Check(outCfg.Effect.Type == V1.EffectType.None, "union insert new data: empty, never a neighbor's arm");
 
         V2.Cfg ward = new V2.Cfg();
         ward.Effect.Type = V2.EffectType.Ward; // tag 3 in V2, 2 in V1
@@ -930,7 +930,7 @@ static class Program
         Check(!report.Malformed && report.Unknown == 1, "unnameable element read: one unknown");
         Check(outCfg.GradesCount == 3, "unnameable element read: count");
         Check(outCfg.Grades[0] == V1.Grade.Gold, "unnameable element read: first element");
-        Check(outCfg.Grades[1] == V1.Grade.None, "unnameable element read: never a neighbour's variant");
+        Check(outCfg.Grades[1] == V1.Grade.None, "unnameable element read: never a neighbor's variant");
         Check(outCfg.Grades[2] == V1.Grade.Bronze, "unnameable element read: the element after it decodes");
     }
 

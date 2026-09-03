@@ -90,7 +90,7 @@ What does reach this leg is #174's SECOND avenue, in its own words: **"iodata
 shapes revisited under literal widths."** `save` builds one iolist cell per
 field and flattens once; a run of adjacent fields whose framing bytes are
 literals could merge into one construction. The obstacle is named too —
-ELISION makes adjacency a runtime fact (§3), so which fields are neighbours is
+ELISION makes adjacency a runtime fact (§3), so which fields are neighbors is
 not knowable at generation time. That is the pass, and it is unexplored.
 
 And #174's third: **"an honest floor statement."** This board is that, for the

@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package graphdemo — protocol id 0x79242c6a555d3a60 (packets only: tables version by field id, not by protocol id)
+   package graphdemo — protocol id 0x137b390d2dd13473 (packets only: tables version by field id, not by protocol id)
    The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
    dependency — includable from any TU. Compile the .c beside this header
    to use the reflection descriptors or the text form. */
@@ -353,7 +353,7 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 /* The storage index a key names, with the None refusal that stands in EVERY
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
-   behaviour in the configuration a game ships. */
+   behavior in the configuration a game ships. */
 static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )
@@ -597,7 +597,7 @@ static SCHEMA_UNUSED uint32_t table_arena_grab_slab( TableArena * arena )
             if ( table_atomic_load_ptr( &arena->segments[segment] ) == NULL )
             {
                 /* calloc, NOT malloc: Lock copies whole nodes, PADDING
-                   INCLUDED, so anything uninitialised here reaches a packed
+                   INCLUDED, so anything uninitialized here reaches a packed
                    region. It costs nothing measurable: a fresh segment is
                    untouched pages either way, and calloc has the kernel hand
                    them over zeroed. */
@@ -722,7 +722,7 @@ typedef struct TableSink
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0xe7c54936602ceecaull
+#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x987bfec39c1c9f7cull
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
@@ -893,8 +893,8 @@ typedef struct Stamp {
 
 static SCHEMA_UNUSED void stamp_reset( Stamp * value );
 static SCHEMA_UNUSED void schema_graphdemo_stamp_reset_raw_( void * storage );
-static SCHEMA_UNUSED void colour_reset( Colour * value );
-static SCHEMA_UNUSED void schema_graphdemo_colour_reset_raw_( void * storage );
+static SCHEMA_UNUSED void color_reset( Color * value );
+static SCHEMA_UNUSED void schema_graphdemo_color_reset_raw_( void * storage );
 
 static SCHEMA_UNUSED void stamp_reset( Stamp * value )
 {
@@ -905,23 +905,23 @@ static SCHEMA_UNUSED void stamp_reset( Stamp * value )
 
 static SCHEMA_UNUSED void schema_graphdemo_stamp_reset_raw_( void * storage ) { stamp_reset( (Stamp *) storage ); }
 
-static SCHEMA_UNUSED void colour_reset( Colour * value )
+static SCHEMA_UNUSED void color_reset( Color * value )
 {
     value->r = 0;
     value->g = 0;
     value->b = 0;
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_colour_reset_raw_( void * storage ) { colour_reset( (Colour *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_color_reset_raw_( void * storage ) { color_reset( (Color *) storage ); }
 
 /* ---- codecs: measure/save/load per closure member ---- */
 
 static SCHEMA_UNUSED int64_t stamp_measure( const Stamp * value );
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int stamp_save_body( TableWriter * w, const Stamp * value );
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int stamp_load_body( TableReader * r, Stamp * value );
-static SCHEMA_UNUSED int64_t colour_measure( const Colour * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_save_body( TableWriter * w, const Colour * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_load_body( TableReader * r, Colour * value );
+static SCHEMA_UNUSED int64_t color_measure( const Color * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int color_save_body( TableWriter * w, const Color * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int color_load_body( TableReader * r, Color * value );
 
 static SCHEMA_UNUSED int64_t stamp_measure( const Stamp * value )
 {
@@ -1028,7 +1028,7 @@ static SCHEMA_UNUSED int stamp_load( Stamp * value, const uint8_t * buffer, int6
     return stamp_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t colour_measure( const Colour * value )
+static SCHEMA_UNUSED int64_t color_measure( const Color * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->r != 0 ) { bytes += 3 + 1; } /* r */
@@ -1037,7 +1037,7 @@ static SCHEMA_UNUSED int64_t colour_measure( const Colour * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_save_body( TableWriter * w, const Colour * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int color_save_body( TableWriter * w, const Color * value )
 {
     if ( value->r != 0 )
     {
@@ -1058,16 +1058,16 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_save_body( TableWr
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t colour_save( const Colour * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t color_save( const Color * value, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w = table_writer_make( buffer, capacity );
-    if ( !colour_save_body( &w, value ) ) { return -1; }
-    return w.offset; /* == colour_measure( value ) */
+    if ( !color_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == color_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_load_body( TableReader * r, Colour * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int color_load_body( TableReader * r, Color * value )
 {
-    colour_reset( value ); /* prefill declared defaults in place, then overlay */
+    color_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
@@ -1134,13 +1134,13 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_load_body( TableRe
     }
 }
 
-static SCHEMA_UNUSED int colour_load( Colour * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int color_load( Color * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
     r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
-    return colour_load_body( &r, value );
+    return color_load_body( &r, value );
 }
 
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
@@ -1192,11 +1192,11 @@ SCHEMA_TABLE_STATIC_ASSERT( Stamp_sizeof, sizeof( Stamp ) == 20, "Stamp's sizeof
 SCHEMA_TABLE_STATIC_ASSERT( Stamp_alignof, SCHEMA_TABLE_ALIGNOF( Stamp ) == 4, "Stamp's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( Stamp_tag_offset, offsetof( Stamp, tag ) == 0, "Stamp's field tag moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( Stamp_seq_offset, offsetof( Stamp, seq ) == 16, "Stamp's field seq moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_sizeof, sizeof( Colour ) == 3, "Colour's sizeof moved: the build version was taken over 3, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_alignof, SCHEMA_TABLE_ALIGNOF( Colour ) == 1, "Colour's alignof moved: the build version was taken over 1 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_r_offset, offsetof( Colour, r ) == 0, "Colour's field r moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_g_offset, offsetof( Colour, g ) == 1, "Colour's field g moved: the build version was taken over offset 1 (docs/SPEC-TABLES.md §20.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( Colour_b_offset, offsetof( Colour, b ) == 2, "Colour's field b moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_sizeof, sizeof( Color ) == 3, "Color's sizeof moved: the build version was taken over 3, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_alignof, SCHEMA_TABLE_ALIGNOF( Color ) == 1, "Color's alignof moved: the build version was taken over 1 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_r_offset, offsetof( Color, r ) == 0, "Color's field r moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_g_offset, offsetof( Color, g ) == 1, "Color's field g moved: the build version was taken over offset 1 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( Color_b_offset, offsetof( Color, b ) == 2, "Color's field b moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
 
 /* ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
@@ -1207,10 +1207,10 @@ SCHEMA_TABLE_STATIC_ASSERT( Colour_b_offset, offsetof( Colour, b ) == 2, "Colour
    time. */
 
 extern const TableTypeInfo schema_graphdemo_stamp_info_;
-extern const TableTypeInfo schema_graphdemo_colour_info_;
+extern const TableTypeInfo schema_graphdemo_color_info_;
 
 static SCHEMA_UNUSED const TableTypeInfo * stamp_table_type( void ) { return &schema_graphdemo_stamp_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * colour_table_type( void ) { return &schema_graphdemo_colour_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * color_table_type( void ) { return &schema_graphdemo_color_info_; }
 
 /* ---- the text form (docs/SPEC-TABLES.md §16) ---- */
 
@@ -1229,19 +1229,19 @@ static SCHEMA_UNUSED int64_t stamp_to_json( const Stamp * value, char * buffer, 
     return schema_graphdemo_stamp_to_json_( value, buffer, capacity );
 }
 
-/* Colour in and out of a JSON text — one instance, one text, the generic
+/* Color in and out of a JSON text — one instance, one text, the generic
    walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
    PartsTable.c; compile it to use them. */
-int schema_graphdemo_colour_from_json_( Colour * value, const char * text, int64_t bytes, TableReport * report );
-int64_t schema_graphdemo_colour_to_json_( const Colour * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int colour_from_json( Colour * value, const char * text, int64_t bytes, TableReport * report )
+int schema_graphdemo_color_from_json_( Color * value, const char * text, int64_t bytes, TableReport * report );
+int64_t schema_graphdemo_color_to_json_( const Color * value, char * buffer, int64_t capacity );
+static SCHEMA_UNUSED int color_from_json( Color * value, const char * text, int64_t bytes, TableReport * report )
 {
-    return schema_graphdemo_colour_from_json_( value, text, bytes, report );
+    return schema_graphdemo_color_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t colour_to_json_measure( const Colour * value ) { return schema_graphdemo_colour_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t colour_to_json( const Colour * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t color_to_json_measure( const Color * value ) { return schema_graphdemo_color_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t color_to_json( const Color * value, char * buffer, int64_t capacity )
 {
-    return schema_graphdemo_colour_to_json_( value, buffer, capacity );
+    return schema_graphdemo_color_to_json_( value, buffer, capacity );
 }
 
 

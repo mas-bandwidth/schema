@@ -1,6 +1,6 @@
 # bench — cross-language serialize profiling harness
 
-Measures two families per language, every row labelled with its family
+Measures two families per language, every row labeled with its family
 (§1 of the standard):
 
 - **`gen`** — the schema-GENERATED code against its serialize runtime: write

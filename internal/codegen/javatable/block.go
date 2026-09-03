@@ -18,7 +18,7 @@
 // DISAGREE with the compiler's model, and they static_assert or throw on the
 // disagreement. Java has no record layout at all — the offsets are constants
 // this emitter wrote — so there is no second model to check against, and saying
-// otherwise would be theatre. What TableBlockLayout does check is real and is
+// otherwise would be theater. What TableBlockLayout does check is real and is
 // the only disagreement this language can have: the ACCESSORS' offsets against
 // the DESCRIPTORS' offsets, two derivations the emitter makes separately
 // (ir.BlockFieldPieceOffsets and ir.BlockFieldOf), plus each array's pitch
@@ -568,7 +568,7 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
 	b.WriteString("// model, and they static_assert or throw on the disagreement. Java has no\n")
 	b.WriteString("// record layout at all — the offsets are constants the generator wrote — so\n")
 	b.WriteString("// there is no second model to check against, and a check that pretended\n")
-	b.WriteString("// otherwise would be theatre.\n")
+	b.WriteString("// otherwise would be theater.\n")
 	b.WriteString("//\n")
 	b.WriteString("// What IS checked is the one disagreement this language can have, and it is a\n")
 	b.WriteString("// real one: the ACCESSORS' offsets against the DESCRIPTORS' offsets. The two\n")

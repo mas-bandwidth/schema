@@ -518,7 +518,7 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("    // EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is\n")
 	b.pf("    // unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged\n")
 	b.pf("    // offset_of near 2^63 must refuse, and an addition that carried past\n")
-	b.pf("    // the top of the type would be the undefined behaviour the check after\n")
+	b.pf("    // the top of the type would be the undefined behavior the check after\n")
 	b.pf("    // it was supposed to catch.\n")
 	b.pf("    ///\n    /// # Safety\n    /// `base` must point at `bytes` readable bytes that outlive the handle.\n")
 	b.pf("    pub unsafe fn open(base: *const u8, bytes: i64) -> Option<%sBlock> {\n", name)

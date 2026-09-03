@@ -3304,7 +3304,7 @@ func TablePickupEventTableType() *TableTypeInfo { return &TablePickupEventTableI
 // initialization cycle among package-level variables. An init body is not
 // part of that analysis, so the graph is expressible whatever a schema
 // declares. Nothing mutates them afterwards: the surface is immutable from
-// here on, readable from any goroutine with no synchronisation.
+// here on, readable from any goroutine with no synchronization.
 func init() {
 	tableUnionArms[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(TableEvent{}.Type)), TagSize: uint32(unsafe.Sizeof(TableEvent{}.Type)), Arms: []TableUnionArmInfo{
 		{Offset: 0, Table: nil},

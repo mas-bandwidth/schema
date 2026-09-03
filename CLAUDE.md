@@ -231,7 +231,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   collides with nothing, and refusing it would take a name from every schema for
   free. `compiler`'s `TestCGeneratorMacrosAreOwned` holds the two halves
   together by naming every declaration with one prefix and looking at what is
-  left — a scan that recognises no spelling and no family.
+  left — a scan that recognizes no spelling and no family.
 - **Instrument honesty**: harness defects crowned the wrong winner once (v1's "C# beats
   C++ batch read" was a per-iteration alloc in every OTHER runner) — the harness is code
   and rots too. Relative tables move when the DENOMINATOR moves (v4's widening was C++
@@ -242,7 +242,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   benched on a single shared core measures tier-up contention, not codegen** (EPYC v5:
   ten of twelve C# write medians sat at tier-0, spreads to 385%, and one row was
   uniformly slow at 11.6% spread — so a low spread does not clear a row; proven by a
-  labelled `DOTNET_TieredCompilation=0` intervention, 1.98–4.90x). On a single core,
+  labeled `DOTNET_TieredCompilation=0` intervention, 1.98–4.90x). On a single core,
   settle or disable the tier and LABEL the config divergence; medians-against-min is
   the tell to check first.
 

@@ -189,7 +189,7 @@ struct TableBlockFieldInfo
     uint32_t elem_size;      // ONE slot's size; the field's own when it holds one value
     uint32_t present_offset; // the presence companion, or 0xffffffff
     // the ELEMENT's or the nested record's own layout, behind a function so the
-    // whole table stays constant-initialised. NULL when the field is a scalar.
+    // whole table stays constant-initialized. NULL when the field is a scalar.
     // Following it is how a walker DESCENDS: an out-of-line array's rows, and a
     // nested record's fields, are both reached through this one column.
     const TableBlockInfo * (*element)();
@@ -555,7 +555,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("// to the caller (docs/SPEC-TABLES.md §19.1). Nothing between these markers\n")
 	g.pf("// allocates, locks or takes an atomic; the Makefile's block-fill-refuser gate\n")
 	g.pf("// fails the build if one appears. The parallelism itself lives in the\n")
-	g.pf("// caller's loop — N workers, disjoint index ranges, no synchronisation of any\n")
+	g.pf("// caller's loop — N workers, disjoint index ranges, no synchronization of any\n")
 	g.pf("// kind — and keeping this surface free of those three is what MAKES it\n")
 	g.pf("// possible.\n\n")
 
@@ -685,7 +685,7 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 		g.pf("        // EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is\n")
 		g.pf("        // unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged\n")
 		g.pf("        // offset_of near 2^63 must refuse, and an addition that carried past\n")
-		g.pf("        // the top of the type would be the undefined behaviour the check\n")
+		g.pf("        // the top of the type would be the undefined behavior the check\n")
 		g.pf("        // after it was supposed to catch.\n")
 		g.pf("        const uint64_t offset_of = projection->%s.offset_of;\n", a.Field.Name)
 		g.pf("        const uint64_t count = projection->%s.count;\n", a.Field.Name)

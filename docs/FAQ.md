@@ -107,7 +107,7 @@ It also says what those extra bytes buy, because they are not waste: Protobuf's
 overhead is field-number evolution, FlatBuffers' and Cap'n Proto's is zero-copy
 access. If you need either, that is a fair price and schema does not offer it.
 The values encoded are deliberately large and non-zero — a mostly-zero packet
-would favour Cap'n Proto's packing far more than it favours schema.
+would favor Cap'n Proto's packing far more than it favors schema.
 
 ## So what is actually novel here?
 
@@ -188,12 +188,12 @@ itself and run it as a service, and the AGPL applies to those modifications.
 
 **That carve-out is not a README paragraph — it is an ADDITIONAL PERMISSION at
 the top of [LICENSE](../LICENSE) itself**, which is where it has legal force. Point
-your legal team at the file rather than at this answer. It is modelled on the
+your legal team at the file rather than at this answer. It is modeled on the
 long-standing practice for compiler-like tools whose output is not covered by
-the tool's own licence: the Bison parser exception and the GCC Runtime Library
+the tool's own license: the Bison parser exception and the GCC Runtime Library
 Exception.
 
-If you need something beyond that — a commercial licence, or a written
+If you need something beyond that — a commercial license, or a written
 assurance for a procurement process — open an issue.
 
 ## Who maintains this? What if you stop?

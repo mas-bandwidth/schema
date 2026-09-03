@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package graphdemo — protocol id 0x79242c6a555d3a60 (packets only: tables version by field id, not by protocol id)
+   package graphdemo — protocol id 0x137b390d2dd13473 (packets only: tables version by field id, not by protocol id)
    The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
    dependency — includable from any TU. Compile the .c beside this header
    to use the reflection descriptors or the text form. */
@@ -355,7 +355,7 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 /* The storage index a key names, with the None refusal that stands in EVERY
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
-   behaviour in the configuration a game ships. */
+   behavior in the configuration a game ships. */
 static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )
@@ -599,7 +599,7 @@ static SCHEMA_UNUSED uint32_t table_arena_grab_slab( TableArena * arena )
             if ( table_atomic_load_ptr( &arena->segments[segment] ) == NULL )
             {
                 /* calloc, NOT malloc: Lock copies whole nodes, PADDING
-                   INCLUDED, so anything uninitialised here reaches a packed
+                   INCLUDED, so anything uninitialized here reaches a packed
                    region. It costs nothing measurable: a fresh segment is
                    untouched pages either way, and calloc has the kernel hand
                    them over zeroed. */
@@ -724,7 +724,7 @@ typedef struct TableSink
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0xe7c54936602ceecaull
+#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x987bfec39c1c9f7cull
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
@@ -963,7 +963,7 @@ typedef struct Depot {
 typedef struct Album {
     char name[16 + 1]; /* string(16): N + 1 for the terminator the wire does not carry */
     int32_t name_length;
-    Colour tint;
+    Color tint;
     Stamp stamp;
     Marker marker;
     TableRef pin; /* *Marker — null until assigned */
@@ -1070,7 +1070,7 @@ static SCHEMA_UNUSED void album_reset( Album * value )
 {
     memset( value->name, 0, sizeof( value->name ) );
     value->name_length = 0;
-    colour_reset( &value->tint );
+    color_reset( &value->tint );
     stamp_reset( &value->stamp );
     marker_reset( &value->marker );
     value->pin.value = 0; /* *Marker — null */
@@ -2693,7 +2693,7 @@ static SCHEMA_UNUSED int64_t album_measure_body( const TableCtx * ctx, const Alb
     if ( value->name_length < 0 || value->name_length > 16 ) { return -1; } /* storage invariant */
     if ( value->name_length > 0 ) { bytes += 3 + 4 + value->name_length; } /* name */
     {
-        int64_t body_tint = colour_measure( &value->tint );
+        int64_t body_tint = color_measure( &value->tint );
         if ( body_tint < 0 ) { return -1; }
         if ( body_tint > 2 ) { bytes += 3 + 4 + body_tint; } /* tint: all-default nested elides */
     }
@@ -2743,13 +2743,13 @@ static SCHEMA_UNUSED int album_save_body( const TableCtx * ctx, TableWriter * w,
         table_writer_raw( w, value->name, value->name_length );
     }
     {
-        int64_t body_tint = colour_measure( &value->tint );
+        int64_t body_tint = color_measure( &value->tint );
         if ( body_tint < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_tint > 2 ) /* all-default nested elides */
         {
             table_writer_put16( w, 0x82b9 ); table_writer_put8( w, 13 ); /* tint */
             table_writer_put32( w, (uint32_t) body_tint );
-            if ( !colour_save_body( w, &value->tint ) ) { return 0; }
+            if ( !color_save_body( w, &value->tint ) ) { return 0; }
         }
     }
     {
@@ -2847,7 +2847,7 @@ static SCHEMA_UNUSED int album_load_body( TableReader * r, TableSink * sink, Alb
                 if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
                     TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
-                    colour_load_body( &sub, &value->tint );
+                    color_load_body( &sub, &value->tint );
                 }
                 r->offset += body_len;
                 break;

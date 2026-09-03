@@ -17,8 +17,8 @@
 //
 // WHERE JAVA DIVERGES, and it is one place: a REFERENCE IS BOUNDS-CHECKED. C++
 // and C# hand back a pointer and let the walk decide, because a cook is trusted
-// input and an out-of-region delta there is undefined behaviour a sanitizer
-// catches. Java has no undefined behaviour to preserve: an unchecked deref is an
+// input and an out-of-region delta there is undefined behavior a sanitizer
+// catches. Java has no undefined behavior to preserve: an unchecked deref is an
 // ArrayIndexOutOfBoundsException escaping into a caller that asked a question,
 // which is precisely what the fuzzers' oracle forbids. So `at` answers -1 for a
 // delta that leaves the region, exactly as it answers -1 for a null, and the
@@ -463,7 +463,7 @@ func (g *cookGen) emitAt() {
 	g.f("    //\n")
 	g.f("    // IT TAKES THE TARGET'S SIZE, and that is not decoration. C++, C# and Rust\n")
 	g.f("    // hand back a pointer and let the walk decide, because a cook is trusted\n")
-	g.f("    // input and an out-of-region deref there is undefined behaviour a sanitizer\n")
+	g.f("    // input and an out-of-region deref there is undefined behavior a sanitizer\n")
 	g.f("    // catches. Java has none to preserve: an unchecked deref is an\n")
 	g.f("    // ArrayIndexOutOfBoundsException escaping into a caller that asked a\n")
 	g.f("    // question. Bounding the target's START alone does not prevent that — it\n")

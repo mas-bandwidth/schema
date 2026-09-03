@@ -147,7 +147,7 @@ are K ops/s, not M msg/s; the rt rows above are M msg/s like the main grid.)
    coverage. The pass was aggregated as two internally-consistent groups
    (cpp/c/js and go/rust/cs); rows keep their own ids in the archived CSV.
    Cross-group ratios in this report are the era's own reduction and would
-   be refused by the rel tool under §5.3 — labelled here, exactly once.
+   be refused by the rel tool under §5.3 — labeled here, exactly once.
    **Follow-up owed:** real_packet rows for the go/rust/cs runners, after
    which one pass carries one id again.
 2. **js is inline=unknown / linkage=esm by design.** A JIT leg has no AOT

@@ -283,7 +283,7 @@ emit_preamble() {
         echo "# dart: ${DART_VERSION:-not present} (generated codecs, zero runtime dependency; AOT executable)"
         echo "# elixir: ${ELIXIR_VERSION:-not present} (generated codecs, zero runtime dependency; pinned BEAM toolchain)"
         echo "# pinning: $PIN_DESC"
-        echo "# noise: ${BENCH_NOISE:-unlabelled}"
+        echo "# noise: ${BENCH_NOISE:-unlabeled}"
         # the schema commit carries its BRANCH, exactly as every runtime line
         # below does. A sweep that silently measured the wrong tree is a
         # failure mode this repo has already had, and a CSV that records only
@@ -459,7 +459,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = rust ]; then
             # the §3.5 override manifests (plus --target-dir target, so the
             # binary stays at bench/rust/target/release/benchrust) otherwise
             # BENCH_OPT stamps the level into the runner's CSV opt column (the
-            # cargo analogue of the C/C++ -DBENCH_OPT), and
+            # cargo analog of the C/C++ -DBENCH_OPT), and
             # CARGO_PROFILE_RELEASE_OPT_LEVEL is what actually BUILDS at that
             # level. Both, or the pair lies in one direction or the other: the
             # stamp without the profile names a level that was not built, and
@@ -597,7 +597,7 @@ fi
 # schema-GENERATED code, the estate's one benchmark subject (schema#196).
 #
 # REFUSAL (#175, F4): a headline section with ZERO rows exits non-zero. The
-# old blender dropped every row it did not recognise and printed an empty
+# old blender dropped every row it did not recognize and printed an empty
 # section at exit 0 — a leg that produced rows looked identical to a leg that
 # produced none. ----
 if [ "$QUICK" = 1 ]; then

@@ -477,7 +477,7 @@ int main( int argc, char ** argv )
     // ---- gate: a REAL multi-threaded fill, byte-identical to the serial one ----
     //
     // N workers fill DISJOINT index ranges of every array with no lock, no
-    // atomic and no per-row synchronisation, over their own storage, and the
+    // atomic and no per-row synchronization, over their own storage, and the
     // two extents are compared byte for byte. Under the sanitizer leg a race
     // in the fill is what the leg exists to find.
     {
@@ -531,7 +531,7 @@ int main( int argc, char ** argv )
         for ( int i = 0; i < counts.ships; i++ )
         {
             // FIELD BY FIELD, not memcmp: a generated table struct is an
-            // aggregate with member initialisers, so a value-initialised twin
+            // aggregate with member initializers, so a value-initialized twin
             // carries UNSPECIFIED padding and a whole-row compare would be
             // comparing bytes nobody defines. What the fill wrote is the
             // fields; what the block's padding holds is §19.1's business, and
@@ -682,7 +682,7 @@ int main( int argc, char ** argv )
         //     so it passed both start checks, and the extent arithmetic then
         //     added one row's pitch to it in int64_t: the addition the check
         //     after it was supposed to catch WAS the overflow, which is
-        //     undefined behaviour rather than a refusal. Every term of that
+        //     undefined behavior rather than a refusal. Every term of that
         //     arithmetic is unsigned and bounded before it is added now.
         {
             const uint64_t saved = block.projection->cameras.offset_of;

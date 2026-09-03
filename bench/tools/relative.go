@@ -18,7 +18,7 @@
 // another measurement, not a flag.
 //
 // Two captioned escapes exist, per §3.4 and §3.1: --label-checks and
-// --cross-linkage print the ratio anyway, labelled with the contract
+// --cross-linkage print the ratio anyway, labeled with the contract
 // difference it includes. Everything else refuses.
 //
 // The headline statistic is max_msgs_per_sec (§2.2): interference only ever
@@ -99,7 +99,7 @@ var (
 // §3.4's three checks values, each with the semantics its caption must name.
 // The refusal logic never consults this map — ANY two differing values
 // refuse without --label-checks, a value this map has never heard of
-// included — it exists so a labelled ratio says what each side's number
+// included — it exists so a labeled ratio says what each side's number
 // actually paid for, not just which token it carried.
 var checksMeaning = map[string]string{
 	"removed":  "debug asserts and bounds/range checks compile out",

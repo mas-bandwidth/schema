@@ -19,7 +19,7 @@
 //
 // THE LAYOUT MODEL IS NAMED (§19.3): every size and offset here is the MANAGED
 // unmanaged-struct model — what Span and pointer arithmetic index with — never
-// the interop marshalling model. A `bool` in a cooked record is ONE byte.
+// the interop marshaling model. A `bool` in a cooked record is ONE byte.
 //
 // ALLOCATION: none, on open or on read. The bytes belong to the consumer — an
 // mmap, a NativeArray, a pinned array — and this side takes a pointer and a
@@ -310,7 +310,7 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// or neither — one without the other leaves those records undefined.\n")
 	h.WriteString("//\n")
 	h.WriteString("// Every size and offset below is the MANAGED unmanaged-struct model — what Span\n")
-	h.WriteString("// and pointer arithmetic index with — never the interop marshalling model\n")
+	h.WriteString("// and pointer arithmetic index with — never the interop marshaling model\n")
 	h.WriteString("// (§19.3). A bool in a cooked record is ONE byte.\n\n")
 	h.WriteString("using System;\n")
 	h.WriteString("using System.Runtime.CompilerServices;\n")

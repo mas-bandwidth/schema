@@ -298,7 +298,7 @@ const minConst = 32
 
 // wireConstants — the byte size of every committed golden, and its bit count.
 // Derived from the goldens themselves, which are the corpus's own authority,
-// so no comment format or emitter behaviour has to hold for this to be right.
+// so no comment format or emitter behavior has to hold for this to be right.
 // The exact bit total is additionally read from the schema's `= N bits` trailer
 // where the corpus states one.
 func wireConstants(root string) (map[int]string, error) {

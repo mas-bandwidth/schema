@@ -12,7 +12,7 @@ package benchtable;
 // model, and they static_assert or throw on the disagreement. Java has no
 // record layout at all — the offsets are constants the generator wrote — so
 // there is no second model to check against, and a check that pretended
-// otherwise would be theatre.
+// otherwise would be theater.
 //
 // What IS checked is the one disagreement this language can have, and it is a
 // real one: the ACCESSORS' offsets against the DESCRIPTORS' offsets. The two

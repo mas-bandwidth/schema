@@ -108,7 +108,7 @@ func (h Hostile) Verdict() string {
 
 // Cook is a cooked file (docs/SPEC-TABLES.md §7) and the canonical node dump its
 // Open must produce. The CASE and the ROOT are two columns because one root can
-// have more than one fixture: the valued chain and the value-initialised one
+// have more than one fixture: the valued chain and the value-initialized one
 // are the same table read two ways.
 type Cook struct {
 	Case string
@@ -153,7 +153,7 @@ type Patch struct {
 
 // Forgery is one damaged fixture and the verdict every implementation owes it.
 // A forgery is carried as a PATCH over a base fixture rather than as a whole
-// file: the patch is what a person can review, and the harness materialises the
+// file: the patch is what a person can review, and the harness materializes the
 // file so a driver only ever meets a path.
 type Forgery struct {
 	Name    string
@@ -174,7 +174,7 @@ type Forgery struct {
 	Extent  int64
 	Verdict string // "refuse" or "open"
 	Label   string
-	File    string // filled in by the harness once materialised
+	File    string // filled in by the harness once materialized
 }
 
 // parsePatches reads the three PARALLEL columns a forgery's patch is spelled

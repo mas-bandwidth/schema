@@ -109,7 +109,7 @@ int conformance_cook_open( const char * root, const uint8_t * data, size_t bytes
  * its base sits — 0 an aligned base, 1..63 that many bytes past one, and a
  * negative pointer means no buffer at all. A driver allocates EXACTLY the
  * claim, copies what fits and zeroes the rest, so a reader that walks past what
- * it was given walks into a sanitizer's redzone rather than into a neighbour. */
+ * it was given walks into a sanitizer's redzone rather than into a neighbor. */
 typedef struct ConformanceBuffer
 {
     uint8_t * allocation;

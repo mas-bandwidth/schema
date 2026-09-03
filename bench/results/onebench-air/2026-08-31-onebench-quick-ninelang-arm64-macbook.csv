@@ -15,7 +15,7 @@
 # dart: Dart SDK version: 3.13.2 (stable) (Tue Aug 25 01:01:12 2026 -0700) on "macos_arm64" (generated codecs, zero runtime dependency; AOT executable)
 # elixir: 1.20.4 (generated codecs, zero runtime dependency; pinned BEAM toolchain)
 # pinning: none
-# noise: unlabelled
+# noise: unlabeled
 # schema commit: df5756e
 # serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
 # serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]

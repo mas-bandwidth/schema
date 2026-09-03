@@ -521,7 +521,7 @@ static void test_evolution_enum_insert_new_data()
     CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 1 );                 // an id this reader cannot name
-    CHECK( out.grade == tblv1::Grade::None );     // never a neighbour's variant
+    CHECK( out.grade == tblv1::Grade::None );     // never a neighbor's variant
 
     // a variant V1 DOES know, whose ordinal moved: it lands correctly
     tblv2::Cfg gold;
@@ -588,7 +588,7 @@ static void test_evolution_union_insert_new_data()
     CHECK( tblv1::CfgLoad( out, wire, bytes, &report ) );
     CHECK( !report.malformed );
     CHECK( report.unknown == 1 );                          // an arm id V1 cannot name
-    CHECK( out.effect.type == tblv1::EffectType::None );   // empty, never a neighbour's arm
+    CHECK( out.effect.type == tblv1::EffectType::None );   // empty, never a neighbor's arm
 
     // an arm V1 DOES know, whose tag moved: it lands correctly
     tblv2::Cfg ward;
@@ -731,7 +731,7 @@ static void test_unnameable_enum_refused()
 }
 
 // the READ side of an enum array: an element id this build cannot name lands
-// on None and counts, and its neighbours decode normally
+// on None and counts, and its neighbors decode normally
 static void test_unnameable_enum_element_read()
 {
     const tblv1::TableFieldInfo * grades = v1_field( tblv1::CfgTableType(), "grades" );
@@ -755,7 +755,7 @@ static void test_unnameable_enum_element_read()
     CHECK( !report.malformed && report.unknown == 1 );
     CHECK( out.grades_count == 3 );
     CHECK( out.grades[0] == tblv1::Grade::Gold );
-    CHECK( out.grades[1] == tblv1::Grade::None );   // never a neighbour's variant
+    CHECK( out.grades[1] == tblv1::Grade::None );   // never a neighbor's variant
     CHECK( out.grades[2] == tblv1::Grade::Bronze ); // and the element after it decodes
 }
 
@@ -1855,7 +1855,7 @@ static void test_pointer_reflection()
 
 // ---- B2: Lock is deterministic on a DIRTIED heap ----
 //
-// Lock memcpys whole nodes, struct PADDING included. Value-initialising a node
+// Lock memcpys whole nodes, struct PADDING included. Value-initializing a node
 // zeroes its members and not its padding, so before the arena's segments were
 // zeroed this test passed only when the allocator happened to hand back fresh
 // zero pages — and the region carried heap bytes.
@@ -1980,7 +1980,7 @@ static void test_descriptors_are_constant()
 // owns no pointer target — plus a VARIABLE table from Marks.schema. The Open
 // walk for each lives in its DECLARING file's header, so a file-scoped
 // emission rule leaves Parts's two undefined and the referencing header will
-// not compile. Colour is native-mapped as well, so the walk is reached through
+// not compile. Color is native-mapped as well, so the walk is reached through
 // a derived-to-base conversion.
 
 static void test_cross_file_pointer_unit()
@@ -1989,8 +1989,8 @@ static void test_cross_file_pointer_unit()
     graphdemo::Album * album = builder.GetRoot();
     set_string( album->name, album->name_length, "cross" );
 
-    // a native-mapped TYPE from another file: the storage speaks ::ColourMath
-    album->tint = ColourMath( 10, 20, 30 );
+    // a native-mapped TYPE from another file: the storage speaks ::ColorMath
+    album->tint = ColorMath( 10, 20, 30 );
     CHECK( album->tint.packed() == 0x0A141Eu );
 
     // a FIXED table from a file with no variable table of its own
@@ -2029,7 +2029,7 @@ static void test_cross_file_pointer_unit()
     // every cross-file member survives the compaction
     CHECK( strcmp( locked->name, "cross" ) == 0 );
     CHECK( locked->tint.r == 10 && locked->tint.g == 20 && locked->tint.b == 30 );
-    CHECK( locked->tint.packed() == 0x0A141Eu ); // the native behaviour still rides
+    CHECK( locked->tint.packed() == 0x0A141Eu ); // the native behavior still rides
     CHECK( strcmp( locked->stamp.tag, "s1" ) == 0 && locked->stamp.seq == 42 );
     CHECK( strcmp( locked->marker.label, "by-val" ) == 0 );
     CHECK( graphdemo::TallyAt( locked->marker.note )->hits == 7 );
@@ -2781,7 +2781,7 @@ static void test_keyed_and_optional_in_a_variable_table()
     free( region );
 }
 
-// ---- the same ground, RANDOMISED. One pinned shape proves the walks agree
+// ---- the same ground, RANDOMIZED. One pinned shape proves the walks agree
 // ---- on one shape; this sweeps which slots ride, how long each slot's chain
 // ---- is, the string lengths and the optional's presence, and asserts the
 // ---- five properties every shape owes: measure == save, LoadMeasure sizes a
