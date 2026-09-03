@@ -1783,8 +1783,8 @@ schema's codebase:
   integer is its sixteen bytes, low half first. **The kinds are distinct
   from the integers' for the reason kind `17` is distinct from `8`**: a
   `fixed(16, 16)` and an `int32` are the same four bytes and not the same
-  number, so a field moved between them is a reported edit (§4) rather than
-  a value read at the wrong scale. There is one kind per storage width and
+  number, so a field moved between them is a reported edit — `kind_mismatch`,
+  §4 — rather than a value read at the wrong scale. There is one kind per storage width and
   signedness because a skipper knows a scalar's width from its kind byte
   alone (below), and nothing about `F` rides: `F` is a declaration-side
   fact, invisible on the wire like a compressed float's resolution, and the
@@ -3605,7 +3605,7 @@ fields would get wrong:
 | declaration | pieces, in order |
 |---|---|
 | a scalar, an enum, a `flags` | the value at its storage width |
-| a 128-bit scalar (`int128`, `uint128`, a `fixed` or `ufixed` of 128 bits) | SIXTEEN BYTES AT SIXTEEN — the C ABI's natural alignment for a 128-bit integer, and the one a table's C++ storage spells out (`alignas( 16 )`) where its storage is serialize's emulated pair rather than native `__int128`, so every compiler lays the record out the same way (§19.3). The slot holds the value in the cook's byte order: the low 64-bit half first in a little-endian cook, the high half first — each half big-endian — in a big-endian one, exactly as a `u64` is one eight-byte lane. A narrower `fixed` is its raw integer at its storage width, like any scalar |
+| a 128-bit scalar (`int128`, `uint128`, a `fixed` or `ufixed` of 128 bits) | SIXTEEN BYTES AT SIXTEEN — the C ABI's natural alignment for a 128-bit integer, and the one a table's C++ storage spells out (`alignas( 16 )`) on every such member, so serialize's emulated pair — not naturally sixteen-aligned — lays out exactly as native `__int128` does, and every compiler lays the record out the same way (§19.3). The slot holds the value in the cook's byte order: the low 64-bit half first in a little-endian cook, the high half first — each half big-endian — in a big-endian one, exactly as a `u64` is one eight-byte lane. A narrower `fixed` is its raw integer at its storage width, like any scalar |
 | `string(N)` | `char[N + 1]`, then `int32` used length |
 | `bytes(N)` | `uint8[N]`, then `int32` used length |
 | `[N]T` | `N` elements at the element's `sizeof` |
@@ -7177,11 +7177,12 @@ where implementations drift apart.
 
 **An optional committed projection of a unit's table closure, and the check
 that refuses the edits the wire cannot report.** §4.1 names those edits:
-exactly three — a changed specified default, a moved flags variant, and a
-referent that cannot stand in for the one it replaces. The compiler retains
+exactly four — a changed specified default, a moved flags variant, a fixed
+field's F moved under one kind, and a referent that cannot stand in for the
+one it replaces. The compiler retains
 no history and cannot see any of them on its own. The baseline IS that
 history, in a text file a person can read in a diff. It refuses more than
-those three (§18.2), because an edit the wire DOES report is still an edit a
+those four (§18.2), because an edit the wire DOES report is still an edit a
 save game may not survive, and a refusal a person overrides deliberately is
 cheaper than a counter nobody reads. **§4.1's table is where the three frames
 are set beside each other** — what a reader is told, what this file refuses,
