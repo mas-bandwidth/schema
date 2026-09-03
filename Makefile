@@ -27,6 +27,9 @@ SCHEMAS_TABLES_BLOCK := $(wildcard tables/block/*.schema) $(wildcard tables/bloc
 # the MESSAGE corpora (docs/SPEC-TABLES.md §2.6): a union whose arms are tables,
 # fixed in tables/messages and with a variable arm in tables/stream
 SCHEMAS_TABLES_MESSAGES := $(wildcard tables/messages/*.schema) $(wildcard tables/stream/*.schema)
+# the BYTE BUFFER corpus (docs/SPEC-TABLES.md §2.5): a blob at its used size,
+# pointed at — C++ and the tool carry it, every port refuses the unit by name
+SCHEMAS_TABLES_BLOBS := $(wildcard tables/blobs/*.schema)
 SCHEMAS_TABLES_SCALARS := $(wildcard tables/scalars/*.schema)
 
 # The soak length every leg's soak takes, in seconds. The hour is the release
@@ -91,6 +94,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/blockhome tables/blockhome
 	$(1) generate --lang cpp --out $(2)/messages tables/messages
 	$(1) generate --lang cpp --out $(2)/stream tables/stream
+	$(1) generate --lang cpp --out $(2)/blobs tables/blobs
 	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
