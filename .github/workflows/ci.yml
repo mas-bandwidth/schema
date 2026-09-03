@@ -299,9 +299,11 @@ jobs:
           dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
       # The battery on the target, then the control that proves it can fail.
-      # BE_CXX names the pinned compiler: the exact-version package installs
-      # the SUFFIXED driver, and the Makefile's unsuffixed default is for a
-      # workstation that installed the metapackage.
+      # BE_CXX and BE_CC name the pinned compilers: the exact-version package
+      # installs the SUFFIXED drivers, and the Makefile's unsuffixed defaults
+      # are for a workstation that installed the metapackage. The C leg needs
+      # the C driver because the tolerant wire has a C reader too, and the
+      # g++ cross package pulls its gcc sibling in.
       #
       # -j BECAUSE THIS IS THE JOB AT THE BOUND. Six independent binaries hang
       # off `tables-big-endian` — the tables corpus, the block driver both
@@ -309,7 +311,7 @@ jobs:
       # bin/schema and the generated tree, which make builds once. The runner
       # has four cores and the leg was spending them one at a time.
       - name: the big-endian leg, and its negative control
-        run: make -j"$(nproc)" tables-big-endian-negative BE_CXX=s390x-linux-gnu-g++-13
+        run: make -j"$(nproc)" tables-big-endian-negative BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
       # And the GO table leg on the same target. Go cross-compiles, so the
       # conformance driver is one env var away from a big-endian binary, and
