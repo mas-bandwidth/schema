@@ -27,9 +27,9 @@ If this work helps you, please support it: **[Become a supporter](https://www.pa
 
 1. Define constants, enums, flags, types and tables in one language.
 2. Generate fast bit-packed serialization for struct types that do not need versioning, such as client/server packets and state.
-3. Generate versioned tables for messages, data, assets, save game files and everything else.
-4. Tables can point at tables, so trees and graphs are tables too.
-5. Cook tables to a binary format the game runtime loads for tool pipelines and asset loading.
+3. _coming soon_ -- Generate versioned tables for messages, data, assets, save game files and everything else.
+4. _coming soon_ -- Tables can point at tables, so trees and graphs are tables too.
+5. _coming soon_ -- Cook tables to a binary format the game runtime loads for tool pipelines and asset loading.
 
 Supported languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.
 
