@@ -611,6 +611,27 @@ MIRI_MAX_SEED_BYTES ?= 4224
 # warning must not turn this red — that is version drift breaking a gate, the
 # thing the estate's pins exist to prevent — and a warning breaks no
 # consumer's build. What a denied lint does is exactly what this catches.
+# THE ACCELERATOR FEATURES (docs/SPEC-TABLES.md §19). §19's rule is that the
+# block form costs nothing unless you reach for it — in C++ by not including
+# the header, and here by not enabling the cargo feature. Both are ON by
+# default, so a consumer that says nothing gets the whole surface and the
+# saving is opt-in.
+#
+# The gate is that all four combinations BUILD: a wire-only consumer, a cook
+# consumer, a block consumer, and everything. It is not a formality — the
+# first cut of it found two real couplings, the unit's BUILD VERSION and its
+# blittable RECORDS, each of which belongs to neither accelerator and had been
+# sitting inside one of them.
+.PHONY: tables-rust-features
+tables-rust-features: build/tables-generated-rust/.stamp
+	@for unit in build/tables-generated-rust/*/; do \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features cook ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features block ) || exit 1; \
+	done
+	@echo "rust feature gate: wire-only, cook-only, block-only and everything all build"
+
 .PHONY: tables-rust-clippy
 tables-rust-clippy: build/tables-generated-rust/.stamp
 	@for unit in build/tables-generated-rust/*/; do \
@@ -672,6 +693,43 @@ SOAK_SECONDS ?= 3600
 .PHONY: tables-rust-soak
 tables-rust-soak: conformance
 	./build/conformance-rust build/conformance/manifest.txt soak $(SOAK_SECONDS)
+
+# THE ALLOCATION AUDIT: every instance of the corpus, every generated read and
+# write path, counted at the global allocator with this driver's own buffers
+# hoisted out of the measured region — so what the number measures is the
+# CODEC. The claim it holds is docs/USAGE.md's: the generated code allocates
+# nothing beyond the value and the buffers the caller passed.
+.PHONY: tables-rust-alloc-audit
+tables-rust-alloc-audit: conformance
+	./build/conformance-rust build/conformance/manifest.txt alloc-audit
+
+# ITS NEGATIVE CONTROL, and the soak's. A gate that has never fired proves
+# nothing, and the LIVE-BYTE gate could not fire on this class at all: live
+# bytes answer "does this leak", and a path that allocates and frees the same
+# bytes every iteration reads +0 there forever — which is exactly how 74
+# allocations per ToJson sat under a green soak. SOAK_SABOTAGE puts ONE
+# allocation per iteration inside the measured region and both gates must go
+# red on it.
+.PHONY: tables-rust-alloc-negative-control
+tables-rust-alloc-negative-control: conformance
+	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt alloc-audit \
+			> build/rust-alloc-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the allocation audit stayed green with one allocation per iteration"; \
+		exit 1; \
+	fi
+	@grep -q "allocates on a read or write path" build/rust-alloc-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the audit went red, but not on the allocation"; \
+		  cat build/rust-alloc-control.log; exit 1; }
+	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt soak 5 \
+			> build/rust-soak-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the soak stayed green with one allocation per iteration"; \
+		exit 1; \
+	fi
+	@grep -q "allocation(s) on the read and write paths" build/rust-soak-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the allocation"; \
+		  cat build/rust-soak-control.log; exit 1; }
+	@grep -m1 "allocation(s) on the read and write paths" build/rust-soak-control.log
+	@echo "rust allocation negative control: one allocation per iteration turns BOTH gates red"
 
 .PHONY: tables-rust-fuzz
 tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
@@ -2211,7 +2269,7 @@ generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 generated/bench/tables/rust/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/rust/src
 	./bin/schema generate --lang rust --out generated/bench/tables/rust/src bench/corpus/BenchTable.schema
-	@printf '[package]\nname = "benchtable"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' > generated/bench/tables/rust/Cargo.toml
+	@printf '[package]\nname = "benchtable"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' > generated/bench/tables/rust/Cargo.toml
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
@@ -2315,7 +2373,10 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-rust-walk
 	$(MAKE) tables-rust-clippy
+	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
+	$(MAKE) tables-rust-alloc-audit
+	$(MAKE) tables-rust-alloc-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.
@@ -2607,7 +2668,7 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 		name=$${unit%%:*}; path=$${unit#*:}; \
 		rm -rf build/tables-generated-rust/$$name/src; \
 		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path || exit 1; \
-		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
 			> build/tables-generated-rust/$$name/Cargo.toml; \
 	done
 	@touch $@

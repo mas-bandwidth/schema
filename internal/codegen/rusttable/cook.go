@@ -43,8 +43,6 @@ func (g *gen) cookModule() []byte {
 	b.WriteString("use crate::*;\n\n")
 
 	g.body.Reset()
-	g.emitCookRows(roots)
-	g.emitCookLayout(roots, false)
 	g.emitCookDescriptors(roots)
 	for _, st := range roots {
 		g.emitCookHandle(st)
@@ -52,6 +50,54 @@ func (g *gen) cookModule() []byte {
 	b.WriteString(g.body.String())
 	return []byte(b.String())
 }
+
+// recordsModule is the unit's BLITTABLE RECORDS for one file, and it is always
+// compiled because BOTH accelerators are built from it: a cooked record IS the
+// blittable row (§7.2, §19.3), so the family belongs to neither of the two
+// cargo features that switch a form off. The layout contract travels with the
+// records for the same reason — it is the thing being asserted.
+func (g *gen) recordsModule() []byte {
+	roots := g.cookRoots()
+	if len(roots) == 0 {
+		return nil
+	}
+	any := false
+	for _, st := range roots {
+		if g.cookable(st.Name) {
+			any = true
+			break
+		}
+	}
+	if !any {
+		return nil
+	}
+
+	var b strings.Builder
+	b.WriteString(g.banner)
+	b.WriteString(header(g.file.Base, g.unit.Package,
+		"the BLITTABLE RECORDS both accelerators are built from (docs/SPEC-TABLES.md §7.2, §19.3)"))
+	b.WriteString(recordsModuleBanner)
+	b.WriteString("use crate::*;\n\n")
+
+	g.body.Reset()
+	g.emitCookRows(roots)
+	g.emitCookLayout(roots, false)
+	b.WriteString(g.body.String())
+	return []byte(b.String())
+}
+
+const recordsModuleBanner = `//
+// Every size and offset below is the C ABI model #[repr(C)] commits to, and
+// every one of them is asserted AT COMPILE TIME against the layout the
+// compiler derived. A bool in one of these records is ONE byte.
+//
+// The module is not behind either accelerator's cargo feature: a cooked record
+// IS the blittable row, so a build with only the block form and a build with
+// only the cooked form want the same structs.
+
+#![allow(unused_imports)]
+
+`
 
 // cookRoots is every closure member declared in this file that a cooked
 // region can hold: a root is ANY table, and a record is anything one reaches
@@ -77,7 +123,10 @@ func cookRuntimeModule(u *ir.Unit) []byte {
 	b.WriteString(header(runtimeSourceName(u), u.Package,
 		"the COOKED FORM's shared runtime (docs/SPEC-TABLES.md §7)"))
 	b.WriteString(cookModuleBanner)
-	fmt.Fprintf(&b, cookRuntime, ir.BuildVersion(u))
+	// the BUILD VERSION is the unit's and lives in its own always-compiled
+	// module (§20), so this runtime reaches it through the crate root
+	b.WriteString("use crate::*;\n\n")
+	b.WriteString(cookRuntime)
 	b.WriteString(cookDescriptorRuntime)
 	b.WriteString("// a bool in a cooked record is ONE byte, in this runtime as in the model\n")
 	b.WriteString("const _: () = assert!(core::mem::size_of::<bool>() == 1);\n")
@@ -111,16 +160,6 @@ const cookModuleBanner = `//
 // cookRuntime is the §7 read runtime, emitted once per unit. %d is the unit's
 // build version (§20).
 const cookRuntime = `// ---- the cooked form's read runtime (docs/SPEC-TABLES.md §7) ----
-
-// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the
-// bytes this build produces depend on — the type wire's protocol id, every
-// record's layout as the compiler's own C ABI model computes it, and the facts
-// that decide what a load PUTS in those slots. It is the number a cook's
-// header carries and the number Open compares, and the number a block's
-// prologue carries and BlockOpen compares: a build version answers "which
-// build?" and not "which form?", and what separates the two forms is their
-// MAGIC.
-pub const BUILD_VERSION: u64 = 0x%016x;
 
 // The cook's MAGIC (§7.1), read BYTEWISE before anything else: it is what
 // establishes the byte order every other header word is written in, and it is
@@ -698,3 +737,35 @@ func anyCookable(u *ir.Unit, closure map[string]bool) bool {
 	}
 	return false
 }
+
+// buildVersionModule is the unit's BUILD VERSION, alone, in a module that is
+// always compiled. It cannot live in either accelerator's runtime: §20 says a
+// build version answers "which build?" and not "which form?", both the block
+// form and the cooked form compare against it, and each of those is a cargo
+// feature a consumer may switch off. It cannot live in the table runtime
+// either — a VARIABLE unit has no wire surface (§11) and still has both
+// accelerators.
+func buildVersionModule(u *ir.Unit) []byte {
+	var b strings.Builder
+	b.WriteString(header(runtimeSourceName(u), u.Package,
+		"the unit's BUILD VERSION (docs/SPEC-TABLES.md §20)"))
+	b.WriteString(buildVersionSource)
+	fmt.Fprintf(&b, "pub const BUILD_VERSION: u64 = 0x%016x;\n", ir.BuildVersion(u))
+	return []byte(b.String())
+}
+
+const buildVersionSource = `//
+// ONE DIGEST over every fact the bytes this build produces depend on — the
+// type wire's protocol id, every record's layout as the compiler's own C ABI
+// model computes it, and the facts that decide what a load PUTS in those
+// slots. It is the number a cook's header carries and the number Open
+// compares, and the number a block's prologue carries and BlockOpen compares:
+// a build version answers "which build?" and not "which form?", and what
+// separates the two forms is their MAGIC.
+//
+// There are TWO ids in the design and they are not interchangeable: the
+// PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
+// what everything cooked or blocked is keyed by. A table edit moves this and
+// never the protocol id; a type edit moves both.
+
+`

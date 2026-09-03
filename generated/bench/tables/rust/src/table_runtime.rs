@@ -934,40 +934,127 @@ fn table_json_write_signed(out: &mut TableJsonOut, value: i64) {
 // below -4 or at least the precision and style f otherwise, then strip the
 // fraction's trailing zeros and a bare decimal point. The exponent field
 // carries a sign and at least two digits.
-fn table_json_format_g(value: f64, precision: usize) -> String {
+// THE NUMBER SINK, and it is a stack buffer because the alternative allocated.
+// This formatter used to build its digits with format!, which cost 74
+// allocations per ToJson of the corpus's root — against USAGE's own promise
+// that the text path allocates nothing beyond the instance the caller passed.
+// core::fmt writes a float through its own stack buffers, so a SINK that does
+// not allocate makes the whole formatter allocation-free.
+//
+// SIXTY-FOUR BYTES, the C++ walker's own char text[64], and it is provably
+// enough rather than generously chosen: style f is used only when the decimal
+// exponent is in [-4, precision), so the integer part is at most 18 digits and
+// the fraction at most 20, and style e is a mantissa of at most 18 plus four
+// characters of exponent. A write past it REFUSES, exactly as the C++ walker
+// refuses a snprintf that would not fit — a surprise is a refusal here, never
+// a truncated number.
+const TABLE_JSON_DIGITS: usize = 64;
+
+struct TableJsonDigits {
+    bytes: [u8; TABLE_JSON_DIGITS],
+    length: usize,
+}
+
+impl TableJsonDigits {
+    fn new() -> TableJsonDigits {
+        TableJsonDigits {
+            bytes: [0; TABLE_JSON_DIGITS],
+            length: 0,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.length = 0;
+    }
+
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.bytes[..self.length]).unwrap_or("")
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..self.length]
+    }
+
+    fn push(&mut self, b: u8) -> bool {
+        if self.length >= self.bytes.len() {
+            return false;
+        }
+        self.bytes[self.length] = b;
+        self.length += 1;
+        true
+    }
+
+    // strip the fraction's trailing zeros and then a bare decimal point, which
+    // is what %g does once it has converted
+    fn trim_fraction(&mut self) {
+        if !self.as_bytes().contains(&b'.') {
+            return;
+        }
+        while self.length > 0 && self.bytes[self.length - 1] == b'0' {
+            self.length -= 1;
+        }
+        if self.length > 0 && self.bytes[self.length - 1] == b'.' {
+            self.length -= 1;
+        }
+    }
+}
+
+impl core::fmt::Write for TableJsonDigits {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let end = self.length + s.len();
+        if end > self.bytes.len() {
+            return Err(core::fmt::Error);
+        }
+        self.bytes[self.length..end].copy_from_slice(s.as_bytes());
+        self.length = end;
+        Ok(())
+    }
+}
+
+// C's "%.*g", exactly, because the goldens are its bytes: convert to
+// precision significant digits, choose style e when the decimal exponent is
+// below -4 or at least the precision and style f otherwise, then strip the
+// fraction's trailing zeros and a bare decimal point. The exponent field
+// carries a sign and at least two digits.
+fn table_json_format_g(
+    out: &mut TableJsonDigits,
+    scratch: &mut TableJsonDigits,
+    value: f64,
+    precision: usize,
+) -> bool {
+    use core::fmt::Write;
     let precision = if precision == 0 { 1 } else { precision };
     // {:e} gives one digit before the point and the exponent of the value
     // ROUNDED to precision significant digits, which is the exponent C's %g
     // makes its style decision on.
-    let scientific = format!("{:.*e}", precision - 1, value);
+    scratch.clear();
+    if write!(scratch, "{:.*e}", precision - 1, value).is_err() {
+        return false;
+    }
+    let scientific = scratch.as_str();
     let (mantissa, exponent) = match scientific.split_once('e') {
-        Some((m, e)) => (m.to_string(), e.parse::<i32>().unwrap_or(0)),
-        None => (scientific.clone(), 0),
+        Some((m, e)) => (m, e.parse::<i32>().unwrap_or(0)),
+        None => (scientific, 0),
     };
+    out.clear();
     if exponent < -4 || exponent >= precision as i32 {
-        let mut digits = mantissa;
-        if digits.contains('.') {
-            while digits.ends_with('0') {
-                digits.pop();
-            }
-            if digits.ends_with('.') {
-                digits.pop();
+        for b in mantissa.as_bytes() {
+            if !out.push(*b) {
+                return false;
             }
         }
-        let sign = if exponent < 0 { '-' } else { '+' };
-        return format!("{}e{}{:02}", digits, sign, exponent.abs());
+        out.trim_fraction();
+        if !out.push(b'e') || !out.push(if exponent < 0 { b'-' } else { b'+' }) {
+            return false;
+        }
+        return write!(out, "{:02}", exponent.unsigned_abs()).is_ok();
     }
     let places = (precision as i32 - 1 - exponent).max(0) as usize;
-    let mut fixed = format!("{:.*}", places, value);
-    if fixed.contains('.') {
-        while fixed.ends_with('0') {
-            fixed.pop();
-        }
-        if fixed.ends_with('.') {
-            fixed.pop();
-        }
+    if write!(out, "{:.*}", places, value).is_err() {
+        return false;
     }
-    fixed
+    out.trim_fraction();
+    true
 }
 
 // A float writes at the SHORTEST precision that reads back as the same value
@@ -981,23 +1068,26 @@ fn table_json_write_float(out: &mut TableJsonOut, value: f64, single: bool) -> b
     }
     let low = if single { 6 } else { 15 };
     let high = if single { 9 } else { 17 };
+    let mut text = TableJsonDigits::new();
+    let mut scratch = TableJsonDigits::new();
     let mut digits = low;
-    let mut text;
     loop {
-        text = table_json_format_g(value, digits);
+        if !table_json_format_g(&mut text, &mut scratch, value, digits) {
+            return false;
+        }
         if digits >= high {
             break;
         }
         if single {
-            if text.parse::<f32>().map(|v| v as f64) == Ok(value) {
+            if text.as_str().parse::<f32>().map(|v| v as f64) == Ok(value) {
                 break;
             }
-        } else if text.parse::<f64>() == Ok(value) {
+        } else if text.as_str().parse::<f64>() == Ok(value) {
             break;
         }
         digits += 1;
     }
-    out.text(&text);
+    out.raw(text.as_bytes());
     true
 }
 

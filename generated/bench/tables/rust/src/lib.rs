@@ -16,15 +16,35 @@ pub use benchtable::*;
 
 // the TABLE surface (docs/SPEC-TABLES.md): emitted only for a unit that
 // declares tables, and glob re-exported like every other module.
+//
+// THE TWO ACCELERATORS ARE CARGO FEATURES, both ON by default, because
+// §19's rule for the block form is that it costs nothing unless you reach
+// for it — in C++ by not including the header, and here by not enabling
+// the feature. A consumer that wants only the tolerant wire builds with
+// default-features = false and compiles no block and no cook module at
+// all; a consumer that says nothing gets everything, so the default is
+// the whole surface and the saving is opt-in.
+#[cfg(feature = "block")]
 mod benchtable_block;
+#[cfg(feature = "block")]
 pub use benchtable_block::*;
+#[cfg(feature = "cook")]
 mod benchtable_cook;
+#[cfg(feature = "cook")]
 pub use benchtable_cook::*;
+mod benchtable_records;
+pub use benchtable_records::*;
 mod benchtable_table;
 pub use benchtable_table::*;
+#[cfg(feature = "block")]
 mod block_runtime;
+#[cfg(feature = "block")]
 pub use block_runtime::*;
+mod build_version;
+pub use build_version::*;
+#[cfg(feature = "cook")]
 mod cook_runtime;
+#[cfg(feature = "cook")]
 pub use cook_runtime::*;
 mod table_runtime;
 pub use table_runtime::*;

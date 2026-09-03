@@ -134,10 +134,25 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 	if len(extra) > 0 {
 		b.WriteString("\n// the TABLE surface (docs/SPEC-TABLES.md): emitted only for a unit that\n")
 		b.WriteString("// declares tables, and glob re-exported like every other module.\n")
+		b.WriteString("//\n")
+		b.WriteString("// THE TWO ACCELERATORS ARE CARGO FEATURES, both ON by default, because\n")
+		b.WriteString("// §19's rule for the block form is that it costs nothing unless you reach\n")
+		b.WriteString("// for it — in C++ by not including the header, and here by not enabling\n")
+		b.WriteString("// the feature. A consumer that wants only the tolerant wire builds with\n")
+		b.WriteString("// default-features = false and compiles no block and no cook module at\n")
+		b.WriteString("// all; a consumer that says nothing gets everything, so the default is\n")
+		b.WriteString("// the whole surface and the saving is opt-in.\n")
 		sorted := append([]string(nil), extra...)
 		sort.Strings(sorted)
 		for _, mod := range sorted {
-			fmt.Fprintf(&b, "mod %s;\npub use %s::*;\n", mod, mod)
+			switch {
+			case strings.HasSuffix(mod, "_block") || mod == "block_runtime":
+				fmt.Fprintf(&b, "#[cfg(feature = \"block\")]\nmod %s;\n#[cfg(feature = \"block\")]\npub use %s::*;\n", mod, mod)
+			case strings.HasSuffix(mod, "_cook") || mod == "cook_runtime":
+				fmt.Fprintf(&b, "#[cfg(feature = \"cook\")]\nmod %s;\n#[cfg(feature = \"cook\")]\npub use %s::*;\n", mod, mod)
+			default:
+				fmt.Fprintf(&b, "mod %s;\npub use %s::*;\n", mod, mod)
+			}
 		}
 	}
 	return []byte(b.String())

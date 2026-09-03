@@ -18,6 +18,7 @@
 
 use std::alloc::{GlobalAlloc, Layout, System, alloc_zeroed, dealloc};
 use std::fs;
+use std::hint::black_box;
 use std::io::Write;
 use std::path::Path;
 use std::process::exit;
@@ -147,6 +148,13 @@ struct Codec {
     json_read: fn(&[u8], &mut Report) -> Option<Vec<u8>>,
     // Load the wire bytes, then ToJson.
     json_write: fn(&[u8], &mut Report) -> Option<Vec<u8>>,
+    // EVERY GENERATED PATH, over buffers the caller already owns, returning
+    // the number of allocations the GENERATED code made. The value is boxed
+    // and the buffer sized BEFORE the counter is snapshotted, so what the
+    // count measures is the codec and not this driver: "every read path
+    // allocates nothing" is a claim about the generated code, and an
+    // instrument that counted the driver's own Vec could never read zero.
+    audit: fn(&[u8], &[u8], &mut Vec<u8>) -> u64,
 }
 
 // One row, spelled once. The crate, the storage type and the six generated
@@ -195,6 +203,34 @@ macro_rules! codec {
                     || $to_json_measure(&value),
                     |buffer| $to_json(&value, buffer),
                 )
+            },
+            audit: |wire, text, buffer| {
+                let mut value: Box<$ty> = Box::default();
+                let mut report = $krate::TableReport::default();
+                // the warm pass: the descriptors are built, the buffer is
+                // sized, and every one-time cost is paid before the count
+                // starts
+                $load(&mut value, wire, &mut report);
+                let wire_bytes = $measure(&value).max(0) as usize;
+                let text_bytes = $to_json_measure(&value).max(0) as usize;
+                buffer.resize(wire_bytes.max(text_bytes), 0);
+                let before = TOTAL_ALLOCATIONS.load(Ordering::Relaxed);
+                // THE MEASURED REGION: every generated read and write path,
+                // and not one allocation of this driver's own
+                let mut r = $krate::TableReport::default();
+                $load(&mut value, wire, &mut r);
+                black_box($measure(&value));
+                black_box($save(&value, buffer));
+                $from_json(&mut value, text, &mut r);
+                black_box($to_json_measure(&value));
+                black_box($to_json(&value, buffer));
+                if std::env::var_os("SOAK_SABOTAGE").is_some() {
+                    // THE NEGATIVE CONTROL: one allocation per iteration,
+                    // inside the measured region, so the gate has something to
+                    // find. A gate that has never fired proves nothing.
+                    black_box(Box::new(0u8));
+                }
+                TOTAL_ALLOCATIONS.load(Ordering::Relaxed) - before
             },
         }
     };
@@ -1050,11 +1086,30 @@ fn surface_soak(manifest: &Manifest, seconds: u64) {
 
     // one warm pass, so every lazily-built descriptor and every buffer this
     // driver owns exists before the baseline is taken
+    let mut audit_buffer: Vec<u8> = Vec::new();
     for case in cases.iter() {
         let mut report = Report::default();
         (case.codec.wire)(&case.wire, &mut report);
         (case.codec.json_read)(&case.text, &mut report);
         (case.codec.json_write)(&case.wire, &mut report);
+        (case.codec.audit)(&case.wire, &case.text, &mut audit_buffer);
+    }
+
+    // THE ALLOCATION GATE, and it is a different instrument from the drift
+    // one below. Live bytes answer "does this LEAK"; a path that allocated
+    // and freed the same bytes every iteration answers +0 there forever. The
+    // COUNT is what "every read path allocates nothing" actually claims, so
+    // it is gated separately and the first failing case names itself.
+    for case in cases.iter() {
+        let made = (case.codec.audit)(&case.wire, &case.text, &mut audit_buffer);
+        if made != 0 {
+            fail(&format!(
+                "{}: the generated code made {made} allocation(s) on the read and write paths — \
+                 docs/USAGE.md's claim is that it makes none beyond the value and the buffers \
+                 the caller passed",
+                case.name
+            ));
+        }
     }
 
     // the baseline is taken AFTER the first print, because stdout's own line
@@ -1065,6 +1120,7 @@ fn surface_soak(manifest: &Manifest, seconds: u64) {
         cases.len()
     );
     let baseline = LIVE_BYTES.load(Ordering::Relaxed);
+    let allocations_baseline = TOTAL_ALLOCATIONS.load(Ordering::Relaxed);
     let started = Instant::now();
     let deadline = started + Duration::from_secs(seconds);
     let mut next_report = started + Duration::from_secs(60.min(seconds));
@@ -1098,6 +1154,17 @@ fn surface_soak(manifest: &Manifest, seconds: u64) {
                 None => fail(&format!("{}: the text write refused", case.name)),
             }
         }
+        // and the same gate every iteration, so a path that allocates on the
+        // hundredth pass and not the first is caught too
+        for case in cases.iter() {
+            let made = (case.codec.audit)(&case.wire, &case.text, &mut audit_buffer);
+            if made != 0 {
+                fail(&format!(
+                    "{}: the generated code made {made} allocation(s) on the read and write paths",
+                    case.name
+                ));
+            }
+        }
         iterations += 1;
         let now = Instant::now();
         if now >= next_report {
@@ -1117,15 +1184,47 @@ fn surface_soak(manifest: &Manifest, seconds: u64) {
 
     let live = LIVE_BYTES.load(Ordering::Relaxed);
     let drift = live - baseline;
+    let allocations = TOTAL_ALLOCATIONS.load(Ordering::Relaxed) - allocations_baseline;
     println!(
         "soak: {iterations} iterations of {} instances over {seconds}s, live {live} bytes, drift {drift:+}",
         cases.len()
+    );
+    println!(
+        "soak: the generated read and write paths made 0 allocations across all of it; \
+         this driver's own buffers made {allocations}"
     );
     if drift != 0 {
         fail(&format!(
             "the soak's live allocated bytes moved by {drift:+} — a read path that allocates does not stay flat"
         ));
     }
+}
+
+// THE ALLOCATION AUDIT as its own mode, so the number in the PR body is one
+// command rather than a paragraph. Every instance of the corpus, every
+// generated read and write path, counted at the global allocator with the
+// driver's own buffers hoisted out of the measured region.
+fn surface_alloc_audit(manifest: &Manifest) {
+    let rows = codecs();
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut worst = 0u64;
+    println!("{:<24} {:>12}", "instance", "allocations");
+    for f in manifest.of_kind("instance") {
+        let codec = find_codec(&rows, &f[2], &f[3]);
+        let wire = slurp(&f[4]);
+        let text = slurp(&format!("testdata/conformance/tables/json/{}.json", f[1]));
+        // one warm call, then the measured one
+        (codec.audit)(&wire, &text, &mut buffer);
+        let made = (codec.audit)(&wire, &text, &mut buffer);
+        println!("{:<24} {made:>12}", f[1]);
+        worst = worst.max(made);
+    }
+    if worst != 0 {
+        fail("the generated code allocates on a read or write path");
+    }
+    println!(
+        "alloc audit: load, measure, save, from_json, to_json_measure and to_json — 0 allocations, every instance"
+    );
 }
 
 fn main() {
@@ -1143,6 +1242,10 @@ fn main() {
         println!(
             "wire\nreport\njson-read\njson-write\njson-hostile\ncook\nblock\nblock-dump\nforgery\ncook-forgery"
         );
+        return;
+    }
+    if surface == "alloc-audit" {
+        surface_alloc_audit(&manifest);
         return;
     }
     if args.len() < 4 {

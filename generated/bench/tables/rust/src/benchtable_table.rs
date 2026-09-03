@@ -258,7 +258,7 @@ pub fn table_mixed_reset(value: &mut TableMixed) {
     value.ack_bits = 0;
     value.session_id = 0;
     value.client_id = 0;
-    value.nonce = 0;
+    value.nonce = 1;
     value.world_time = 0;
     value.frame_tick = 0;
     value.server_time = 0.0;
@@ -957,7 +957,7 @@ pub fn table_mixed_measure(value: &TableMixed) -> i64 {
     if value.client_id != 0 {
         bytes += 3 + 4; // client_id
     }
-    if value.nonce != 0 {
+    if value.nonce != 1 {
         bytes += 3 + 8; // nonce
     }
     if value.world_time != 0 {
@@ -1121,7 +1121,7 @@ pub fn table_mixed_save_body(w: &mut TableWriter, value: &TableMixed) -> bool {
         w.put8(8); // client_id
         w.put32(value.client_id as u32);
     }
-    if value.nonce != 0 {
+    if value.nonce != 1 {
         w.put16(0x80f0);
         w.put8(9); // nonce
         w.put64(value.nonce as u64);

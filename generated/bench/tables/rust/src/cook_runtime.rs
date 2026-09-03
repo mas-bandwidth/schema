@@ -25,17 +25,9 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::manual_range_contains)]
 
-// ---- the cooked form's read runtime (docs/SPEC-TABLES.md §7) ----
+use crate::*;
 
-// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the
-// bytes this build produces depend on — the type wire's protocol id, every
-// record's layout as the compiler's own C ABI model computes it, and the facts
-// that decide what a load PUTS in those slots. It is the number a cook's
-// header carries and the number Open compares, and the number a block's
-// prologue carries and BlockOpen compares: a build version answers "which
-// build?" and not "which form?", and what separates the two forms is their
-// MAGIC.
-pub const BUILD_VERSION: u64 = 0xcbff64e49f311d0a;
+// ---- the cooked form's read runtime (docs/SPEC-TABLES.md §7) ----
 
 // The cook's MAGIC (§7.1), read BYTEWISE before anything else: it is what
 // establishes the byte order every other header word is written in, and it is

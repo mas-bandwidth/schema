@@ -68,6 +68,11 @@ const (
 	RuntimeModule      = "table_runtime"
 	BlockRuntimeModule = "block_runtime"
 	CookRuntimeModule  = "cook_runtime"
+	// BuildVersionModule is the unit's BUILD VERSION and nothing else. It is
+	// its own module because §20 says what it is: one digest answering "which
+	// build?" and not "which form?", so it belongs to neither accelerator.
+	// Both of them compare against it, and either may be switched off.
+	BuildVersionModule = "build_version"
 )
 
 // Generate returns module filename -> file contents for the unit's table
@@ -108,6 +113,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if anyCookable(u, closure) {
 		out[CookRuntimeModule+".rs"] = append([]byte(banner), cookRuntimeModule(u)...)
 	}
+	out[BuildVersionModule+".rs"] = append([]byte(banner), buildVersionModule(u)...)
 
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, variable: variable, closure: closure, blocks: blocks, banner: banner}
@@ -115,6 +121,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			if body := g.tableModule(); body != nil {
 				out[strings.ToLower(f.Base)+"_table.rs"] = body
 			}
+		}
+		if body := g.recordsModule(); body != nil {
+			out[strings.ToLower(f.Base)+"_records.rs"] = body
 		}
 		if body := g.cookModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_cook.rs"] = body

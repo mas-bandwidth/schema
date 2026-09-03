@@ -211,6 +211,7 @@ var registry = []Name{
 	{Name: "TableJsonNumber", By: Rust, What: "a scanned numeric token", Scoped: true},
 	{Name: "TableJsonSink", By: Rust, What: "where a scanned string goes, or nowhere", Scoped: true},
 	{Name: "TableJsonBase64", By: Rust, What: "the base64 alphabet a bytes(N) rides under", Scoped: true},
+	{Name: "TableJsonDigits", By: Rust, What: "the float writer's stack sink, so the text form allocates nothing", Scoped: true},
 
 	// SCOPED, Rust: the runtime's snake_case CRATE ITEMS. A schema declaration
 	// produces a type (its own spelling) or a SCREAMING_SNAKE constant, and

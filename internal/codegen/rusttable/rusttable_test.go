@@ -200,7 +200,8 @@ func TestValueOnlyUnitCarriesTheWholeSurface(t *testing.T) {
 			t.Errorf("the generated table module contains %q — it must stand alone", banned)
 		}
 	}
-	for _, want := range []string{"probe_cook.rs", "probe_block.rs", "block_runtime.rs",
+	for _, want := range []string{"probe_cook.rs", "probe_block.rs", "probe_records.rs",
+		"block_runtime.rs", BuildVersionModule + ".rs",
 		CookRuntimeModule + ".rs", RuntimeModule + ".rs"} {
 		if _, ok := out[want]; !ok {
 			t.Errorf("a fixed-class unit emitted no %s", want)
@@ -297,24 +298,38 @@ func TestRelocatableStorageIsAsserted(t *testing.T) {
 // the contract (§20.3), and Rust says so with a const block — which fails the
 // BUILD rather than a test.
 func TestCookLayoutIsAssertedAtCompileTime(t *testing.T) {
-	cook := string(generate(t, valueOnly)["probe_cook.rs"])
-	if cook == "" {
-		t.Fatal("no probe_cook.rs")
+	out := generate(t, valueOnly)
+	// THE RECORDS AND THEIR CONTRACT travel together, in a module BOTH
+	// accelerators are built from: a cooked record IS the blittable row
+	// (§7.2, §19.3), so the family belongs to neither cargo feature.
+	records := string(out["probe_records.rs"])
+	if records == "" {
+		t.Fatal("no probe_records.rs")
 	}
 	for _, want := range []string{
 		"pub struct ConfigRow",
 		"const _: () = assert!(core::mem::size_of::<ConfigRow>() ==",
 		"const _: () = assert!(core::mem::offset_of!(ConfigRow, label) ==",
+	} {
+		if !strings.Contains(records, want) {
+			t.Errorf("the record family is missing %q", want)
+		}
+	}
+	// a string's cooked buffer is char[N + 1] — the layout model's spelling,
+	// not the wire storage's [u8; N]
+	if !strings.Contains(records, "pub label: [u8; 25],") {
+		t.Error("a cooked string buffer is not the layout model's N + 1 bytes (§7.2)")
+	}
+	cook := string(out["probe_cook.rs"])
+	if cook == "" {
+		t.Fatal("no probe_cook.rs")
+	}
+	for _, want := range []string{
 		"pub struct ConfigCook",
 		"pub unsafe fn open(bytes: *const u8, length: u64) -> Option<ConfigCook>",
 	} {
 		if !strings.Contains(cook, want) {
 			t.Errorf("the cooked form is missing %q", want)
 		}
-	}
-	// a string's cooked buffer is char[N + 1] — the layout model's spelling,
-	// not the wire storage's [u8; N]
-	if !strings.Contains(cook, "pub label: [u8; 25],") {
-		t.Error("a cooked string buffer is not the layout model's N + 1 bytes (§7.2)")
 	}
 }
