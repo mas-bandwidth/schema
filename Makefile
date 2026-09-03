@@ -3997,6 +3997,7 @@ BE_CC ?= s390x-linux-gnu-gcc
 build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_main.c $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
 	$(BE_CC) -std=c99 -Wall -Wextra -Werror -Wshadow -O2 -ffp-contract=off -static \
+		-DSCHEMA_SOAK_NO_INTERPOSE \
 		$(C_CONFORMANCE_INCLUDES) \
 		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
@@ -4135,7 +4136,7 @@ tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/
 .PHONY: tables-c-soak-negative-control
 tables-c-soak-negative-control: build/tables-generated-c/.stamp
 	@rm -rf build/c-soak-sabotage && mkdir -p build/c-soak-sabotage
-	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            free( malloc( 1 ) ); /* SABOTAGED: one matched pair, invisible to a live-byte sample */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
+	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimiser deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
 		test/c-tables/soak_main.c > build/c-soak-sabotage/soak_main.c
 	@grep -q SABOTAGED build/c-soak-sabotage/soak_main.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }

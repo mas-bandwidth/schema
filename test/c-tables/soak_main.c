@@ -56,7 +56,16 @@ static int64_t live_bytes( void ) { return -1; } /* no allocator statistics here
  * so a call counted here is a call one of those made.
  */
 
-#if defined( __GLIBC__ )
+/* THE BIG-ENDIAN LEG TURNS THIS OFF, and the reason is the linker rather than
+   the endianness: that build is `-static`, and glibc keeps `malloc` and
+   `__libc_malloc` in ONE object file — so pulling the real allocator in pulls
+   the definition of `malloc` beside it and the link fails on a duplicate
+   symbol. The leg is a cross-endian WIRE gate (the golden re-save, byte for
+   byte); the allocation claim is the hosted soak's, where the interposition
+   links the ordinary way. */
+#if defined( SCHEMA_SOAK_NO_INTERPOSE )
+#define SCHEMA_SOAK_COUNTS 0
+#elif defined( __GLIBC__ )
 #define SCHEMA_SOAK_COUNTS 1
 extern void * __libc_malloc( size_t );
 extern void * __libc_calloc( size_t, size_t );
@@ -85,8 +94,15 @@ static void schema_soak_zone_free( void * p )
 
 /* counted only while the loop says so: the setup below allocates on purpose,
    and printf allocates a stdio buffer the first time it is called */
+#if SCHEMA_SOAK_COUNTS
 static int schema_soak_counting = 0;
 static uint64_t schema_soak_calls = 0;
+#else
+/* the flag still exists so the loop reads the same either way; nothing sets
+   it, and the report says the count went unmeasured */
+#define schema_soak_counting schema_soak_counting_unused
+static int schema_soak_counting_unused = 0;
+#endif
 
 #if SCHEMA_SOAK_COUNTS
 void * malloc( size_t n ) { if ( schema_soak_counting ) { schema_soak_calls++; } return SCHEMA_SOAK_REAL_MALLOC( n ); }
@@ -318,8 +334,13 @@ int main( int argc, char ** argv )
     printf( "c tables soak: ZERO allocator calls and allocations flat — the read and write paths "
             "allocate nothing (§2)\n" );
 #else
+#if defined( SCHEMA_SOAK_NO_INTERPOSE )
+    printf( "c tables soak: allocations flat; this build asked for no allocator interposition "
+            "(it is statically linked), so the CALL COUNT went unmeasured and only drift is gated\n" );
+#else
     printf( "c tables soak: allocations flat; this platform has no allocator interposition, so the "
             "CALL COUNT went unmeasured and only drift is gated\n" );
+#endif
 #endif
     for ( i = 0; i < num_cases; i++ )
     {
