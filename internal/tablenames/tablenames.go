@@ -88,9 +88,10 @@ var registry = []Name{
 	{Name: "table_double_to_bits", By: Cpp, What: "double -> u64 bits"},
 
 	// C#'s twins, plus the reader's in-place prefill. These are VERB-FIRST on
-	// purpose: §11 freezes the 26 name-first suffixes a closure member claims,
-	// and a port does not mint a 27th — so the reset joins the runtime family
-	// here instead, where it is claimed at unit level.
+	// purpose: §11 freezes the name-first suffixes a closure member claims
+	// (internal/check's tableGeneratedVerbs), and a port does not mint another —
+	// so the reset joins the runtime family here instead, where it is claimed at
+	// unit level.
 	// BOTH backends define TableReset, for the same reason and in two shapes:
 	// C# has no `<Name>Reset` and this IS its reset, while C++ has one per
 	// member and adds a verb-first overload set on top so the ARENA's generic

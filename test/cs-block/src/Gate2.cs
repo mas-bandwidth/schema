@@ -176,7 +176,12 @@ static class Gate2
     }
 
     // Returns true when the gate passes. The caller owns the exit code.
-    internal static unsafe bool Run(string goldenPath)
+    // smoke runs the CORRECTNESS half whole and does not enforce the timing
+    // band: the band is a paired same-sitting measurement and a shared CI
+    // runner has no quiet window, so a nightly leg enforcing it would report
+    // the runner's mood. What a nightly leg CAN prove is that this gate still
+    // builds and still reads the C++ half's frame through the generated form.
+    internal static unsafe bool Run(string goldenPath, bool smoke = false)
     {
         if (!File.Exists(goldenPath))
         {
@@ -214,9 +219,9 @@ static class Gate2
                 return false;
             }
 
-            const int Warmup = 2000;
-            const int Samples = 15;
-            const int Reads = 200;
+            int Warmup = smoke ? 50 : 2000;
+            int Samples = smoke ? 3 : 15;
+            int Reads = smoke ? 10 : 200;
 
             double sink = 0.0;
             for (int i = 0; i < Warmup; i++)
@@ -253,6 +258,11 @@ static class Gate2
 
             // THE BAR: the same speed, or not significantly slower.
             const double Band = 1.05;
+            if (smoke)
+            {
+                Console.WriteLine("GATE 2 (C# read) SMOKE: correctness held, the band NOT enforced — a shared runner has no quiet window");
+                return true;
+            }
             if (ratio > Band)
             {
                 Console.WriteLine("GATE 2 FAILED: the generated form is " + ((ratio - 1.0) * 100.0).ToString("F1") +

@@ -588,7 +588,8 @@ that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
 A table lives on its own wire — evolution-tolerant TLV, carried by C++ and by
-C# (the fixed class; C#'s pointer surface and text form are follow-ons). Field
+C# (the fixed class; C#'s pointer surface ON THE WIRE and its text form are
+follow-ons — its cook and block accelerators read a pointered unit today). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
@@ -1350,12 +1351,12 @@ puts the two back together when you want to check one.
 
 ### The build version: what a cooked asset is stored under
 
-*Live for the BLOCK form: `schema build-version [--facts]` prints the id and
-the projection it digests, both pinned as goldens, and the C++ and C# block
-backends emit `BuildVersion` and stamp it into every block's prologue. `schema
-cook` stamps the same id into every cooked header and `cook-check` reads it
-back — what is still owed, the constant beside `ProtocolId` in every backend
-and the generated `Open` that checks it, is SPEC-TABLES.md §20's status list.*
+*`schema build-version [--facts]` prints the id and the projection it digests,
+both pinned as goldens; the C++ and C# block backends emit `BuildVersion` and
+stamp it into every block's prologue; `schema cook` stamps the same id into
+every cooked header, and `cook-check`, the C++ `<Root>Open` and the C#
+`<Root>Cook.Open` each read it back and compare. What is still owed is
+SPEC-TABLES.md §20's status list.*
 
 A cook is only ever produced for one build, so something has to name which
 build. That is the **build version**: one digest over everything a cook's
@@ -1388,11 +1389,11 @@ side — but WHEN it tells you differs by language, and only C++ tells you at
 build time. C++ `static_assert`s every `sizeof`, `alignof` and `offsetof`,
 so a compiler that lays a record out differently fails the BUILD, naming the
 type and the field. C# has no `static_assert`: the generated
-`TableBlockLayout.Verify()` runs once at first use and THROWS, naming the
-type, the field, the offset it found and the offset the C++ side asserts —
-loud and early, but at run time. Both cover the records the block form
-reaches, not yet every record in the unit's table closure. SPEC-TABLES.md
-§20's status list carries both gaps as items 2 and 3.
+`TableBlockLayout.Verify()` and `TableCookLayout.Verify()` run once at first
+use and THROW, naming the type, the field, the offset it found and the offset
+the C++ side asserts — loud and early, but at run time. Both cover every
+cookable record of a unit that declares a table; what is still owed is
+SPEC-TABLES.md §20's status list.
 
 Two things it does not do:
 

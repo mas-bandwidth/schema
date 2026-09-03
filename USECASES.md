@@ -102,7 +102,7 @@ layout; the game memory-maps it and points at it with minimal fix-up.
   64-bit digest over every fact a cook's bytes depend on — the type wire's
   protocol id, every record's layout keyed by wire id, kind and referent, the
   facts that decide what a load PUTS in a slot, and the target's byte order —
-  so schema drift refuses at `Open` and ABI drift is meant to fail the build
+  so schema drift refuses at `Open` and ABI drift fails the build
   (§20.3). `Open` checks the magic, the byte order, the build version, every
   reserved word zero, the two part lengths and the base alignment — that is
   the whole check, and it is the runtime's only entry point — returning NULL
@@ -114,12 +114,17 @@ layout; the game memory-maps it and points at it with minimal fix-up.
   config-format example holding gate 1 (§12), the C# backend reads the same
   bytes the C++ tools write, and the dogfood carries a real game's two files
   on this wire end to end — 803 values byte-identical, every injected bit
-  flip refused rather than read as data. **The cook half is not built**: no
-  backend emits `Cook`, `CookMeasure` or `Open`, there is no cooked header,
-  `schema cook-check` does not exist, and addressing an artifact by
-  **(asset hash, build version)** is designed only. It lands with the variable
-  class's flat node encoding (§3.1), tracked by **#251**; the build version
-  itself is **#292** and is live for the block form.
+  flip refused rather than read as data. **The cook's READ half is proven
+  too**: `schema cook`, `schema cook-check` and `schema uncook` produce,
+  validate and read back the form in both byte orders, `wire → cook → wire` is
+  byte-identical over the corpus, and the C++ `<Root>Open` and the C#
+  `<Root>Cook.Open` both point at what the tool wrote — locked against the
+  tool's own attribution directory over seven roots, and against each other
+  byte for byte. What no generated runtime carries is the WRITE half, `Cook`
+  and `CookMeasure`: a build that writes a cook runs the tool (§7, §11).
+  Addressing an artifact by **(asset hash, build version)** is half live — the
+  build version is stamped in every cooked header and compared at `Open`; no
+  header field carries the asset hash (§7).
 
 ## 5. Render data written and read across two languages at runtime
 
@@ -142,13 +147,13 @@ sixty times a second or better.
   version refuses and both sides regenerate. The block carries no field ids,
   no lengths, no elision and no read report — §4's counters do not exist here,
   because none of the events they count can occur.
-- **Proof** — designed, not yet built, and the layout asserts above are the
-  largest missing piece: the tree carries no `sizeof`/`offsetof`
-  `static_assert` and the C# fixed class is not blittable yet (§20.3). §12.1
-  states the gate: both sides generated, the multi-threaded fill held by a
-  refuser, and the speed of the hand-written scatter it replaces.
-  **#288** tracks the gate; **#287** tracks the C# blittable struct form the
-  consumer needs.
+- **Proof** — both sides are generated and the layout contract is asserted:
+  C++ `static_assert`s every `sizeof`, `alignof` and `offsetof` of each block
+  projection and row, and the C# rows are blittable
+  `StructLayout(Sequential, Pack = 1, Size = N)` with a generated padding and a
+  once-run `TableBlockLayout.Verify()` (§20.3). §12.1 states the rest of the
+  gate: the multi-threaded fill held by a refuser, and the speed of the
+  hand-written scatter it replaces.
 
 ## 6. JSON parsed and packed into tables
 
@@ -240,8 +245,9 @@ reference.
   cycle refusal and the stale-leak and zero-cost gates beside it. §3.1's
   flat node encoding is the landed spec; the emitter still writes the
   nested form, and moving it over is tracked by **#251**. The variable
-  class exists in C++ only — C# refuses a pointered unit by name (§11) —
-  and the variable class's text form is a named follow-on (§15).
+  class's WIRE exists in C++ only — C# refuses that surface by name and
+  emits the pointered unit's cook and block accelerators regardless (§11)
+  — and the variable class's text form is a named follow-on (§15).
 
 ## 10. Config delivered from a backend into a running server
 
@@ -280,5 +286,5 @@ layout.
 
 The claim is held to this page's own standard: where an entry says
 **designed, not yet proven**, that capability is not being claimed. Today
-those are the message set (#258), the cook key (#292), the block form (#288,
-#287), and the flat node encoding's emitter (#251).
+those are the message set (#258), the cook key (#292), and the flat node
+encoding's emitter (#251).

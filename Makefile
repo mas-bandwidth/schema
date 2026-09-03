@@ -939,23 +939,17 @@ tables-cook-cli: bin/schema
 # THE BLOCK ZERO-COST GATE (SPEC-TABLES.md §2.2, §19), in its two halves.
 #
 # The first asks "did any block symbol leak into a Table source?" — a grep.
-# The second is the property §19 actually states, and it is the stronger one:
-# **the Table sources are BYTE-IDENTICAL with or without the Block files
-# existing.** The pins under testdata/golden/tables/ were written by the
-# PRE-BLOCK compiler (schema at f55e711, before this branch's emitters), so
-# the comparison is against a build that could not emit a Block file at all
-# rather than against this branch's own output. That is what makes it a proof
-# rather than a restatement.
+# The second is the property §19 actually states: **the Table sources are
+# BYTE-IDENTICAL with or without the Block files existing**, held by comparing
+# 38 of them against frozen pins under testdata/golden/tables/.
 #
-# They are ordinary goldens from here on: `make update-goldens` re-pins them
-# when a TABLE emitter legitimately changes, and a move under an unchanged
-# emitter is stop-the-line, exactly as it is for every other golden. **The
-# fourteen Table HEADERS were re-pinned when the cook's read side landed** (§7),
-# so their text is no longer the pre-block compiler's — git carries that
-# provenance, and the .cpp pins still are. Replacing the frozen pins with a
-# mechanical comparison against a corpus generated from a block-less emitter,
-# the way the negative controls already do it, is the follow-on that would give
-# the byte-identity half back its independence.
+# They are ordinary goldens: `make update-goldens` re-pins them when a TABLE
+# emitter legitimately changes, and a move under an unchanged emitter is
+# stop-the-line, exactly as it is for every other golden. What a frozen pin
+# cannot do is survive a legitimate Table-emitter change without being
+# re-pinned; schema#331 carries the follow-on that would replace it with a
+# mechanical comparison against a block-less emitter, the way the negative
+# controls below already build sabotaged ones.
 .PHONY: tables-block-zero-cost
 tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
@@ -965,12 +959,11 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 		fi; \
 	done
 	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
-# BuildVersion LEFT this grep when the cook's read side landed. It is not a
-# block symbol and never was: a build version answers "which build?" and not
-# "which form?", both accelerators carry it (SPEC-TABLES.md §20.6), and every
-# Table header now carries it because every table cooks (§7). What still holds
-# the block form to zero cost is the line above — no Table source carries one
-# BLOCK symbol — and the byte comparison below.
+# BuildVersion is NOT in that grep: it is not a block symbol — a build version
+# answers "which build?" and not "which form?", both accelerators carry it
+# (SPEC-TABLES.md §20.6), and every C++ Table header carries it because every
+# table cooks (§7). What holds the block form to zero cost is the line above —
+# no Table source carries one BLOCK symbol — and the byte comparison below.
 	@for f in build/tables-generated-cs/*/*Table.cs; do \
 		if grep -n "BuildVersion" $$f; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources carry BuildVersion, which is the BLOCK file's there: $$f"; exit 1; \
@@ -1002,7 +995,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	done; \
 	if [ "$$d" != "0" ]; then exit 1; fi; \
 	if [ "$$n" -lt 38 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 38 — the glob, not the property, is what broke"; exit 1; fi; \
-	echo "block zero-cost gate: $$n Table sources byte-identical to their pins (the .cpp half still the PRE-BLOCK compiler's text)"
+	echo "block zero-cost gate: $$n Table sources byte-identical to their pins"
 
 # THE BUILD VERSION IS ONE NUMBER (SPEC-TABLES.md §20.7): the constant each
 # backend emits, and the number `schema build-version` prints, are the same
@@ -1239,6 +1232,19 @@ build/schema_test_block_gate2: build/tables-generated/.stamp test/tables/block_g
 tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
 	./build/schema_test_block_gate2
 	cd test/cs-block && dotnet run -c Release -- --gate2
+
+# THE SMOKE, which is what CI runs (certification legs only, never a PR).
+# The gate above is a MEASUREMENT and its verdict belongs on a quiet box; a
+# gate nothing runs anywhere is a gate that rots, which is the other failure.
+# So the correctness half — the two arms agreeing byte for byte across all
+# nine sections, and the frame the C# half reads — runs on every push to main
+# and nightly, at a small N, with the 5% band NOT enforced and both halves
+# saying so. A drift in what the generated form WRITES goes red here; a slow
+# runner does not.
+.PHONY: tables-block-gate2-smoke
+tables-block-gate2-smoke: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
+	./build/schema_test_block_gate2 --smoke
+	cd test/cs-block && dotnet run -c Release -- --gate2-smoke
 # The NEGATIVE CONTROL for a KEYED object's duplicate counting
 # (SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
 # the missing count was invisible to every round-trip test — the value was

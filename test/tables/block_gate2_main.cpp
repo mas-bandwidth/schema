@@ -340,8 +340,18 @@ static double median( std::vector<double> & samples )
 
 int main( int argc, char ** argv )
 {
-    (void) argc;
-    (void) argv;
+    // --smoke runs the CORRECTNESS half whole and does not enforce the timing
+    // band. The band is a paired same-sitting measurement and a shared CI
+    // runner has no quiet window, so a nightly leg that enforced it would be
+    // reporting the runner's mood; what a nightly leg CAN prove is that this
+    // gate still builds, still agrees byte for byte with the hand-written
+    // mirror across every section, and still writes the frame the C# half
+    // reads. The numbers print either way, unjudged in smoke.
+    bool smoke = false;
+    for ( int i = 1; i < argc; i++ )
+    {
+        if ( strcmp( argv[i], "--smoke" ) == 0 ) { smoke = true; }
+    }
 
     RenderFrameBlockStorage generated_storage;
     RenderFrameBlockStorage hand_storage;
@@ -414,9 +424,9 @@ int main( int argc, char ** argv )
     }
 
     // Arms INTERLEAVED in one sitting, medians paired.
-    const int warmup = 50;
-    const int samples = 15;
-    const int frames = 20; // per sample, so one measurement is many frames
+    const int warmup = smoke ? 2 : 50;
+    const int samples = smoke ? 3 : 15;
+    const int frames = smoke ? 2 : 20; // per sample, so one measurement is many frames
 
     volatile uint64_t sink = 0;
     for ( int i = 0; i < warmup; i++ )
@@ -457,6 +467,13 @@ int main( int argc, char ** argv )
     // so anything inside it is noise and anything outside it is a defect to
     // explain or close, never a trade to license.
     const double band = 1.05;
+    if ( smoke )
+    {
+        printf( "GATE 2 (C++ write) SMOKE: correctness held, the band NOT enforced — a shared runner has no quiet window\n" );
+        generated_storage.Destroy();
+        hand_storage.Destroy();
+        return 0;
+    }
     if ( ratio > band )
     {
         printf( "GATE 2 FAILED: the generated form is %.1f%% slower than the hand-written scatter, past the %.0f%% band\n",
