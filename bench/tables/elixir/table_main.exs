@@ -48,7 +48,14 @@ defmodule TablesBench do
   @csv_suffix "mod,contract,default,unknown"
 
   def main(argv) do
-    opts = parse(argv, %{csv: false, runs: @max_num_runs, wire: "testdata/wire", variants: "bench/corpus/variants"})
+    opts =
+      parse(argv, %{
+        csv: false,
+        gate: false,
+        runs: @max_num_runs,
+        wire: "testdata/wire",
+        variants: "bench/corpus/variants"
+      })
     IO.puts(:stderr, "schema tables bench (elixir)")
 
     if opts.csv do
@@ -74,6 +81,12 @@ defmodule TablesBench do
 
   defp parse([], opts), do: opts
   defp parse(["--csv" | rest], opts), do: parse(rest, %{opts | csv: true})
+  # --gate runs the GOLDEN GATE and stops, without starting a clock. It is this
+  # leg's own verb, for the release gate the certification job runs: the gate is
+  # a correctness check — variant 0 against the pinned instance, and all 64
+  # loading, re-saving at the same length and coming back byte-identical — and a
+  # certification job does not need eight timed runs to learn that.
+  defp parse(["--gate" | rest], opts), do: parse(rest, %{opts | gate: true})
   defp parse(["--round", _k | rest], opts), do: parse(rest, %{opts | runs: 1})
   defp parse(["--wire-dir", d | rest], opts), do: parse(rest, %{opts | wire: d})
   defp parse(["--variant-dir", d | rest], opts), do: parse(rest, %{opts | variants: d})
@@ -116,10 +129,17 @@ defmodule TablesBench do
             Enum.zip(instances, variants)
             |> Enum.find(fn {inst, v} -> apply(mod, save, [inst]) != v end)
 
-          if bad != nil do
-            abort(state, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus")
-          else
-            measure(opts, state, name, iters, record, mod, load, save, instances, variants)
+          cond do
+            bad != nil ->
+              abort(state, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus")
+
+            opts.gate ->
+              IO.puts(:stderr, "#{name}: the golden gate passes — variant 0 is the pinned instance and " <>
+                                 "all #{@num_variants} round-trip at #{record} bytes")
+              state
+
+            true ->
+              measure(opts, state, name, iters, record, mod, load, save, instances, variants)
           end
       end
     end

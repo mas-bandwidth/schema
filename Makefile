@@ -3713,12 +3713,13 @@ tables-elixir-fuzz: build/conformance/manifest.txt
 # before any clock does — variant 0 is byte-compared to the pinned instance and
 # every one of the 64 variants must load, re-save at the same length and come
 # back byte-identical, so a leg that fails refuses to produce numbers. It is a
-# correctness check wearing a bench's clothes, which is why it belongs on a
-# gate at all.
+# correctness check wearing a bench's clothes, which is why it belongs on a gate
+# at all — and `--gate` is this leg's own verb for it, which stops there rather
+# than spending eight timed runs to learn the same thing.
 .PHONY: tables-elixir-bench-gate
 tables-elixir-bench-gate: generated/bench/tables/elixir/.stamp
 	bench/tables/elixir/leg build
-	bench/tables/elixir/leg run --round 0 > /dev/null
+	bench/tables/elixir/leg run --gate
 
 # THE ELIXIR RELEASE GATE (certify.yml's release-gates job finds it BY NAME, so
 # landing it is this target and nothing else — no edit to that file).
