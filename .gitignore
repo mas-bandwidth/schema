@@ -66,3 +66,8 @@ erl_crash.dump
 # the Go table gates leave a test binary behind when `go test` is run with a
 # profile flag; it is a build artifact and never a source
 /test/go-tables/schematables.test
+
+# `go build ./test/conformance/harness` run from the repository root drops the
+# binary here rather than in build/ — the Makefile always names `-o` and never
+# wants this file. It reached main once already (#345).
+/harness
