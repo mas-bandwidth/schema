@@ -1401,6 +1401,62 @@ differ: a by-value `T` at its defaults elides, a non-null pointer does not).
 Null pointers are simply absent. **Wire v1 is a tree**: two pointers to one
 node write two bodies and load as two nodes.
 
+**In C, the same shape without member functions.** C++'s builder methods are
+free functions under the root's name, and the two things C++ distinguishes by
+TYPE — which sink a node comes from, which encoding a walk is reading — are
+distinguished by a nullable member:
+
+```c
+SceneBuilder builder;
+TableSink sink;
+TableCtx ctx;
+Scene * root;
+int64_t wire_bytes, region_bytes;
+
+SceneBuilderInit( &builder );            /* the arena, and the root node */
+root = SceneBuilderRoot( &builder );     /* NULL once locked */
+
+sink.region = NULL;                      /* allocate in the ARENA */
+sink.worker = &builder.main;             /* one worker per thread (§6.4) */
+ListNode * head = ListNodeEmplace( &sink, &root->head );
+head->value = 1;
+
+/* the wire, straight out of the MUTABLE form: the ctx names the arena */
+ctx.arena = &builder.arena;
+wire_bytes = SceneMeasure( &ctx, root );
+SceneSave( &ctx, root, buffer, wire_bytes );
+
+SceneBuilderLock( &builder );            /* one way; there is no unlock */
+/* the const form is builder.region, builder.region_bytes bytes of it, and a
+   NULL context is what says "a packed region" to every walk */
+{
+    const Scene * packed = (const Scene *) builder.region;
+    const ListNode * first = ListNodeAt( NULL, &packed->head );
+    (void) first;
+}
+SceneBuilderShutdown( &builder );
+```
+
+Reading from the wire is the same three steps, and the caller owns the region:
+
+```c
+region_bytes = SceneLoadMeasure( wire, wire_size );   /* exact, reads no values */
+uint8_t * region = your_allocator( region_bytes );
+TableReport report;
+memset( &report, 0, sizeof( report ) );
+const Scene * scene = SceneLoad( region, region_bytes, wire, wire_size, &report );
+const ListNode * node = ListNodeAt( NULL, &scene->head );  /* one add */
+```
+
+**The builder's members ARE its accessors.** C++ has `AsConst`, `Region`,
+`RegionBytes` and `Locked`; C has `builder.region` — the packed const form,
+NULL until `Lock` succeeds — `builder.region_bytes`, and
+`builder.arena.locked`. `SceneBuilderRoot` returns NULL once locked, which is
+what sends you to `builder.region`.
+
+**`<T>At` and `<T>Emplace` exist only for a table something POINTS AT**, which
+is the same rule C++ follows: a table nobody points at needs neither.
+
 ### Byte buffers: `bytes(N)`
 
 A blob is `bytes(N)` — N bytes of inline storage in every instance, at a

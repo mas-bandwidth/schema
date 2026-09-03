@@ -261,10 +261,17 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
    constant framing bytes merge into one store.
 
    The spelling is FEATURE TESTED rather than assumed, exactly as the packet
-   emitter's own inlining demand is (SPEC §6.1's C column), and the macro is
-   package-scoped for the same reason the guard above is: a consumer compiles
-   several packages' Table.h files in one translation unit, and a macro every
-   one of them spelled the same way would be a redefinition. */
+   emitter's own inlining demand is (SPEC §6.1's C column).
+
+   IT CARRIES THE PACKAGE for the reason every other name here does, and that
+   reason is the LINKER rather than the preprocessor: two units of the same
+   schema family link into one program — two generations of one schema is the
+   case the conformance driver itself is — so nothing this backend emits may
+   be spelled the same way by two packages. They do NOT share a translation
+   unit and cannot: C has no namespace, so two units' headers in one TU
+   redefine TableReport, TableWriter and every other runtime name, which is the
+   packet emitter's standing limit (SPEC §6.1) and not something tables
+   changed. A per-package macro is what keeps the LINK legal. */
 #ifndef ` + forceInline + `
 #if defined( _MSC_VER )
 #define ` + forceInline + ` __forceinline
@@ -831,10 +838,11 @@ func (g *tableGen) sym(name, what string) string {
 	return "schema_" + g.unit.Package + "_" + ir.RustSnake(name) + "_" + what + "_"
 }
 
-// tableInlineMacro names the unit's force-inline macro. It is package-scoped
-// for the same reason the primitives guard is: a consumer compiles several
-// packages' Table.h files in one TU, and a macro every one of them spelled the
-// same way would be a redefinition.
+// tableInlineMacro names the unit's force-inline macro. It carries the package
+// for the reason every other emitted name does, and the reason is the LINKER:
+// two units of one schema family link into one program. Two units' headers
+// cannot share a translation unit at all — C has no namespace, so that is
+// dozens of redefinitions and the packet emitter's standing limit (SPEC §6.1).
 //
 // IT LEADS WITH SCHEMA_, and so does every other macro this backend defines.
 // C's preprocessor namespace is the one place a generated name and a DECLARED

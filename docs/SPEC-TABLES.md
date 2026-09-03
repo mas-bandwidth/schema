@@ -132,16 +132,21 @@ reach.
   allocates nothing for the same declaration.
 - **The variable-length class allocates by nature**, and assuming
   otherwise is foolish: the arena on build, the region on load. It allocates
-  through a **caller-provided allocator with malloc semantics** — C and C++
-  take the allocator; other languages take their platform's default — and it
-  allocates **at BUILD time, in bulk, never per record on the fill path**: a
+  **at BUILD time, in bulk, never per record on the fill path**: a
   worker carves its nodes out of a slab the arena already holds (§6.4), so
-  going wide costs no allocation and no lock per node. C++ keeps the
-  caller-owned form — `LoadMeasure` sizes the region and the caller supplies
-  it, `Builder` grows storage the caller owns — which is allocation with the
-  caller holding the pointer, not its absence. Other backends allocate inside
-  their runtime and say so. No port contorts itself toward zero allocation
-  for a variable-length table.
+  going wide costs no allocation and no lock per node.
+
+  **WHO CALLS THE ALLOCATOR IS PER FORM, and it is worth saying exactly.** The
+  arena's segments and `Lock`'s packed region are the RUNTIME's own calls —
+  `calloc` and `malloc` by name in both C++ and C — and a caller-provided
+  allocator is not threaded through them today. What the caller does own is the
+  REGION a load fills: `LoadMeasure` sizes it and the caller supplies it, which
+  is allocation with the caller holding the pointer. The BLOCK form (§19.1) is
+  the one surface that takes a caller-provided allocator with malloc semantics,
+  and there it is real: C++ takes an alloc/free pair with a context, C the same
+  three as a struct, used once at build time and never on the fill path. Other
+  backends allocate inside their runtime and say so. No port contorts itself
+  toward zero allocation for a variable-length table.
 - **EVERY READ PATH ALLOCATES NOTHING**, in every class, on every form. A
   load fills caller-owned storage, a region is caller-owned, `Open` and
   `BlockOpen` point at bytes the caller already has, and the reflection walk
@@ -450,10 +455,11 @@ each refused by name (§11):
 what to write instead: a bounded array of tables BY VALUE, or a pointer to a
 table that holds the array.
 
-A pointer's STORAGE is a four-byte relocatable reference — never a
+A pointer's STORAGE is an EIGHT-byte relocatable reference — never a
 machine address — which is what keeps §9's relocatability true with
 pointers in the struct. Its meaning depends on the form it sits in
-(§6.3).
+(§6.3), and its width is that section's: a four-byte slot bounded a region
+at 2 GiB, and the scale a cook exists for is larger than that.
 
 ### 2.2 The mode is derived, never declared
 
@@ -1038,9 +1044,9 @@ describes.
 as tooling (§17.1) — writes and reads the flat node table exactly as stated
 here, which is what lets `schema cook` produce a region from a wire (§7). What
 a reader of today's generated code finds instead is the earlier NESTED form:
-the C++
-table backend — the only one that accepts a pointered unit, since C# refuses
-one by name (§11) — writes a pointer field's pointee inline as a nested
+the C++ and C
+table backends — the two that accept a pointered unit, since C# refuses one by
+name (§11) — write a pointer field's pointee inline as a nested
 table body under kind `13`, not as a `u32` index under kind `17`. Kind `17`
 is not in the kind vocabulary any backend emits, and no node table rides.
 Three consequences follow, and they are the reasons the flat form is the
@@ -1873,6 +1879,44 @@ self-cycle and a two-node cycle are refused by `Lock`, `Measure` and `Save`
 alike, and the region relocates by `memcpy` with a back-reference in it. **The
 negative control** turns the identity map into a permanent miss and requires
 the tables suite to go red.
+
+**The C spelling of all of this** (§6.1's C column). C has no member
+functions, no overloading and no templates, so the same surface is free
+functions under the root's own name, and the two things C++ distinguishes by
+TYPE are distinguished by a nullable member here:
+
+```c
+SceneBuilder builder;                       /* the mutable life */
+SceneBuilderInit( &builder );               /* the arena, and the root node */
+Scene * root = SceneBuilderRoot( &builder );   /* NULL once locked */
+
+TableSink sink;                             /* WHERE a node comes from */
+sink.region = NULL;                         /* exactly one of the two is set */
+sink.worker = &builder.main;
+ListNode * node = ListNodeEmplace( &sink, &root->head );
+
+SceneBuilderLock( &builder );               /* one way; builder.region is the
+                                               packed region, builder.region_bytes
+                                               its length */
+SceneBuilderShutdown( &builder );           /* releases the arena and the region */
+```
+
+- **`TableSink`** carries a `region` and a `worker` and exactly one is
+  non-NULL: a region sink bump-allocates into the caller's exact region and
+  leaves slots self-relative, a worker allocates in the arena and leaves them
+  holding the arena offset. It is C's form of the SINK the reference threads
+  through its load path as a template parameter.
+- **`TableCtx`** carries an `arena` and says which encoding a WALK is reading:
+  a NULL ctx, or one whose arena is NULL, is a packed region. `<T>Measure` and
+  `<T>Save` take it, which is how one function covers what C++ spells as two
+  overloads — one for a region root, one for a builder.
+- **`<T>At( ctx, &slot )`** is the deref, and **`<T>Emplace( sink, &slot )`**
+  the allocation. Both are emitted only for a table something POINTS AT.
+- **The builder's members are the accessors.** C++ has `AsConst`, `Region`,
+  `RegionBytes` and `Locked`; C has `builder.region` (the packed const form,
+  NULL until `Lock` succeeds), `builder.region_bytes`, and
+  `builder.arena.locked`. Reading the const root after `Lock` is
+  `(const Scene *) builder.region` with a NULL context.
 
 ### 6.3 Two reference encodings, one slot
 
@@ -3752,7 +3796,8 @@ in build version (§20.5).
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
   each of these **24 suffixes**, and a declaration spelling one of them is
-  refused naming the collision:
+  refused naming the collision — the block form's nine and the C backend's
+  seven follow below, for **40 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody  Reset
@@ -3765,8 +3810,9 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the count and the spellings
-  here equal `tableGeneratedVerbs` exactly, because a claim the page states
+  checker's own, and this section is held to it: the three lists here — 24, then
+  the block form's nine, then the C backend's seven — are `tableGeneratedVerbs`
+  entire, spelling for spelling and 40 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
@@ -3814,6 +3860,17 @@ in build version (§20.5).
   ```
   Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen
   Counts  Row  BlockProjection
+  ```
+
+  **THE C BACKEND CLAIMS SEVEN MORE**, and the checker claims them on the same
+  terms. C++ and C# put these on a class — a builder's `Lock`, a storage's
+  `Create`, a block type's `Type` — and a member function claims nothing; C has
+  no members, so each is a free function under its owner's name (§6.1's C
+  column):
+
+  ```
+  BuilderInit  BuilderShutdown  BuilderLock  BuilderRoot
+  BlockStorageCreate  BlockStorageDestroy  BlockType
   ```
 
   **`Row` and `BlockProjection` are the C# BLITTABLE records' names** (§19.2),

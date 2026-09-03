@@ -28,8 +28,8 @@
 extern "C" {
 #endif
 
-#ifndef BENCHTABLE_SCHEMA_TABLE_PRIMITIVES
-#define BENCHTABLE_SCHEMA_TABLE_PRIMITIVES
+#ifndef SCHEMA_BENCHTABLE_TABLE_PRIMITIVES
+#define SCHEMA_BENCHTABLE_TABLE_PRIMITIVES
 
 /* THE CODEC DOES NOT DEPEND ON THE COMPILER'S INLINING BUDGET. A table of a
    realistic field count emits one large body per type, and the cursor a body
@@ -41,17 +41,24 @@ extern "C" {
    constant framing bytes merge into one store.
 
    The spelling is FEATURE TESTED rather than assumed, exactly as the packet
-   emitter's own inlining demand is (SPEC §6.1's C column), and the macro is
-   package-scoped for the same reason the guard above is: a consumer compiles
-   several packages' Table.h files in one translation unit, and a macro every
-   one of them spelled the same way would be a redefinition. */
-#ifndef BENCHTABLE_TABLE_INLINE
+   emitter's own inlining demand is (SPEC §6.1's C column).
+
+   IT CARRIES THE PACKAGE for the reason every other name here does, and that
+   reason is the LINKER rather than the preprocessor: two units of the same
+   schema family link into one program — two generations of one schema is the
+   case the conformance driver itself is — so nothing this backend emits may
+   be spelled the same way by two packages. They do NOT share a translation
+   unit and cannot: C has no namespace, so two units' headers in one TU
+   redefine TableReport, TableWriter and every other runtime name, which is the
+   packet emitter's standing limit (SPEC §6.1) and not something tables
+   changed. A per-package macro is what keeps the LINK legal. */
+#ifndef SCHEMA_BENCHTABLE_TABLE_INLINE
 #if defined( _MSC_VER )
-#define BENCHTABLE_TABLE_INLINE __forceinline
+#define SCHEMA_BENCHTABLE_TABLE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define BENCHTABLE_TABLE_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_BENCHTABLE_TABLE_INLINE inline __attribute__(( always_inline ))
 #else
-#define BENCHTABLE_TABLE_INLINE inline
+#define SCHEMA_BENCHTABLE_TABLE_INLINE inline
 #endif
 #endif
 
@@ -220,31 +227,31 @@ static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capa
     return w;
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
 {
     if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
     memcpy( w->buffer + w->offset, data, (size_t) bytes );
     w->offset += bytes;
 }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE void TableWriterPut16( TableWriter * w, uint16_t v )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void TableWriterPut16( TableWriter * w, uint16_t v )
 {
     uint8_t b[2];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
     TableWriterRaw( w, b, 2 );
 }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )
 {
     uint8_t b[4];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
     TableWriterRaw( w, b, 4 );
 }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE void TableWriterPut64( TableWriter * w, uint64_t v )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void TableWriterPut64( TableWriter * w, uint64_t v )
 {
     TableWriterPut32( w, (uint32_t) v );
     TableWriterPut32( w, (uint32_t) ( v >> 32 ) );
 }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
 {
     if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
     w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
@@ -269,22 +276,22 @@ static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_
     return r;
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE uint16_t TableReaderGet16( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint16_t TableReaderGet16( TableReader * r )
 {
     uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
     r->offset += 2;
     return v;
 }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )
 {
     uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
                | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
     r->offset += 4;
     return v;
 }
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE uint64_t TableReaderGet64( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE uint64_t TableReaderGet64( TableReader * r )
 {
     uint64_t lo = TableReaderGet32( r );
     uint64_t hi = TableReaderGet32( r );
@@ -338,10 +345,10 @@ static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcp
 static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
-#endif /* BENCHTABLE_SCHEMA_TABLE_PRIMITIVES */
+#endif /* SCHEMA_BENCHTABLE_TABLE_PRIMITIVES */
 
-#ifndef BENCHTABLE_SCHEMA_BUILD_VERSION
-#define BENCHTABLE_SCHEMA_BUILD_VERSION
+#ifndef SCHEMA_BENCHTABLE_BUILD_VERSION
+#define SCHEMA_BENCHTABLE_BUILD_VERSION
 
 /* THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
    this build produces depend on — the type wire's protocol id, every record's
@@ -355,12 +362,12 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define BuildVersion 0xcbff64e49f311d0aull
+#define SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE 0x4ecd277aba28ff2eull
 
-#endif /* BENCHTABLE_SCHEMA_BUILD_VERSION */
+#endif /* SCHEMA_BENCHTABLE_BUILD_VERSION */
 
-#ifndef BENCHTABLE_SCHEMA_TABLE_COOK
-#define BENCHTABLE_SCHEMA_TABLE_COOK
+#ifndef SCHEMA_BENCHTABLE_TABLE_COOK
+#define SCHEMA_BENCHTABLE_TABLE_COOK
 
 /* ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 
@@ -382,7 +389,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-#define kTableCookHeaderBytes 64
+static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -396,7 +403,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-#define TableCookMagic 0x4b4f4f434d484353ull
+static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -408,16 +415,16 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define TableCookByteOrder 2ull /* big */
+static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
 #else
-#define TableCookByteOrder 1ull /* little */
+static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-#define TableCookMaxAlign 64ull
+static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -465,7 +472,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        here, which is why the order never reaches a fix-up pass. */
     if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
     if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return NULL; }
+    if ( table_cook_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
     if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
@@ -511,7 +518,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
     return base;
 }
 
-#endif /* BENCHTABLE_SCHEMA_TABLE_COOK */
+#endif /* SCHEMA_BENCHTABLE_TABLE_COOK */
 
 /* table TableEntity — TABLE-wire storage: relocatable, bounded. C has no member
    initializers, so the declared defaults live in TableEntityReset and nowhere
@@ -636,7 +643,7 @@ static SCHEMA_UNUSED void TableMixedReset( TableMixed * value )
     value->ack_bits = 0;
     value->session_id = 0;
     value->client_id = 0;
-    value->nonce = 0;
+    value->nonce = 1ull;
     value->world_time = 0;
     value->frame_tick = 0;
     value->server_time = 0.0f;
@@ -697,23 +704,23 @@ static SCHEMA_UNUSED void schema_benchtable_table_pickup_event_reset_raw_( void 
 /* ---- codecs: measure/save/load per closure member ---- */
 
 static SCHEMA_UNUSED int64_t TableEntityMeasure( const TableEntity * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableEntitySaveBody( TableWriter * w, const TableEntity * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableEntityLoadBody( TableReader * r, TableEntity * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableEntitySaveBody( TableWriter * w, const TableEntity * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableEntityLoadBody( TableReader * r, TableEntity * value );
 static SCHEMA_UNUSED int64_t TableStatMeasure( const TableStat * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableStatSaveBody( TableWriter * w, const TableStat * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableStatLoadBody( TableReader * r, TableStat * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableStatSaveBody( TableWriter * w, const TableStat * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableStatLoadBody( TableReader * r, TableStat * value );
 static SCHEMA_UNUSED int64_t TableMixedMeasure( const TableMixed * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableMixedSaveBody( TableWriter * w, const TableMixed * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableMixedLoadBody( TableReader * r, TableMixed * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableMixedSaveBody( TableWriter * w, const TableMixed * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableMixedLoadBody( TableReader * r, TableMixed * value );
 static SCHEMA_UNUSED int64_t TableHitEventMeasure( const TableHitEvent * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableHitEventSaveBody( TableWriter * w, const TableHitEvent * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableHitEventLoadBody( TableReader * r, TableHitEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableHitEventSaveBody( TableWriter * w, const TableHitEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableHitEventLoadBody( TableReader * r, TableHitEvent * value );
 static SCHEMA_UNUSED int64_t TableChatEventMeasure( const TableChatEvent * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableChatEventSaveBody( TableWriter * w, const TableChatEvent * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableChatEventLoadBody( TableReader * r, TableChatEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableChatEventSaveBody( TableWriter * w, const TableChatEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableChatEventLoadBody( TableReader * r, TableChatEvent * value );
 static SCHEMA_UNUSED int64_t TablePickupEventMeasure( const TablePickupEvent * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TablePickupEventSaveBody( TableWriter * w, const TablePickupEvent * value );
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TablePickupEventLoadBody( TableReader * r, TablePickupEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TablePickupEventSaveBody( TableWriter * w, const TablePickupEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TablePickupEventLoadBody( TableReader * r, TablePickupEvent * value );
 
 static SCHEMA_UNUSED int64_t TableEntityMeasure( const TableEntity * value )
 {
@@ -760,7 +767,7 @@ static SCHEMA_UNUSED int64_t TableEntityMeasure( const TableEntity * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableEntitySaveBody( TableWriter * w, const TableEntity * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableEntitySaveBody( TableWriter * w, const TableEntity * value )
 {
     if ( value->entity_id != 0 )
     {
@@ -864,7 +871,7 @@ static SCHEMA_UNUSED int64_t TableEntitySave( const TableEntity * value, uint8_t
     return w.offset; /* == TableEntityMeasure( value ) */
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableEntityLoadBody( TableReader * r, TableEntity * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableEntityLoadBody( TableReader * r, TableEntity * value )
 {
     TableEntityReset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
@@ -1145,7 +1152,7 @@ static SCHEMA_UNUSED int64_t TableStatMeasure( const TableStat * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableStatSaveBody( TableWriter * w, const TableStat * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableStatSaveBody( TableWriter * w, const TableStat * value )
 {
     if ( value->stat_id != 0 )
     {
@@ -1168,7 +1175,7 @@ static SCHEMA_UNUSED int64_t TableStatSave( const TableStat * value, uint8_t * b
     return w.offset; /* == TableStatMeasure( value ) */
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableStatLoadBody( TableReader * r, TableStat * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableStatLoadBody( TableReader * r, TableStat * value )
 {
     TableStatReset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
@@ -1242,7 +1249,7 @@ static SCHEMA_UNUSED int64_t TableMixedMeasure( const TableMixed * value )
     if ( value->ack_bits != 0 ) { bytes += 3 + 4; } /* ack_bits */
     if ( value->session_id != 0 ) { bytes += 3 + 8; } /* session_id */
     if ( value->client_id != 0 ) { bytes += 3 + 4; } /* client_id */
-    if ( value->nonce != 0 ) { bytes += 3 + 8; } /* nonce */
+    if ( value->nonce != 1ull ) { bytes += 3 + 8; } /* nonce */
     if ( value->world_time != 0 ) { bytes += 3 + 8; } /* world_time */
     if ( value->frame_tick != 0 ) { bytes += 3 + 8; } /* frame_tick */
     if ( value->server_time != 0.0f ) { bytes += 3 + 4; } /* server_time */
@@ -1330,7 +1337,7 @@ static SCHEMA_UNUSED int64_t TableMixedMeasure( const TableMixed * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableMixedSaveBody( TableWriter * w, const TableMixed * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableMixedSaveBody( TableWriter * w, const TableMixed * value )
 {
     if ( value->protocol_magic != 0 )
     {
@@ -1362,7 +1369,7 @@ static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableMixedSaveBody( TableWriter
         TableWriterPut16( w, 0xd443 ); TableWriterPut8( w, 8 ); /* client_id */
         TableWriterPut32( w, (uint32_t) ( value->client_id ) );
     }
-    if ( value->nonce != 0 )
+    if ( value->nonce != 1ull )
     {
         TableWriterPut16( w, 0x80f0 ); TableWriterPut8( w, 9 ); /* nonce */
         TableWriterPut64( w, (uint64_t) ( value->nonce ) );
@@ -1552,7 +1559,7 @@ static SCHEMA_UNUSED int64_t TableMixedSave( const TableMixed * value, uint8_t *
     return w.offset; /* == TableMixedMeasure( value ) */
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableMixedLoadBody( TableReader * r, TableMixed * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableMixedLoadBody( TableReader * r, TableMixed * value )
 {
     TableMixedReset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
@@ -2188,7 +2195,7 @@ static SCHEMA_UNUSED int64_t TableHitEventMeasure( const TableHitEvent * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableHitEventSaveBody( TableWriter * w, const TableHitEvent * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableHitEventSaveBody( TableWriter * w, const TableHitEvent * value )
 {
     if ( value->target_id != 0 )
     {
@@ -2221,7 +2228,7 @@ static SCHEMA_UNUSED int64_t TableHitEventSave( const TableHitEvent * value, uin
     return w.offset; /* == TableHitEventMeasure( value ) */
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableHitEventLoadBody( TableReader * r, TableHitEvent * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableHitEventLoadBody( TableReader * r, TableHitEvent * value )
 {
     TableHitEventReset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
@@ -2324,7 +2331,7 @@ static SCHEMA_UNUSED int64_t TableChatEventMeasure( const TableChatEvent * value
     return bytes;
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableChatEventSaveBody( TableWriter * w, const TableChatEvent * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableChatEventSaveBody( TableWriter * w, const TableChatEvent * value )
 {
     if ( value->channel != 0 )
     {
@@ -2347,7 +2354,7 @@ static SCHEMA_UNUSED int64_t TableChatEventSave( const TableChatEvent * value, u
     return w.offset; /* == TableChatEventMeasure( value ) */
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TableChatEventLoadBody( TableReader * r, TableChatEvent * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TableChatEventLoadBody( TableReader * r, TableChatEvent * value )
 {
     TableChatEventReset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
@@ -2421,7 +2428,7 @@ static SCHEMA_UNUSED int64_t TablePickupEventMeasure( const TablePickupEvent * v
     return bytes;
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TablePickupEventSaveBody( TableWriter * w, const TablePickupEvent * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TablePickupEventSaveBody( TableWriter * w, const TablePickupEvent * value )
 {
     if ( value->item_id != 0 )
     {
@@ -2444,7 +2451,7 @@ static SCHEMA_UNUSED int64_t TablePickupEventSave( const TablePickupEvent * valu
     return w.offset; /* == TablePickupEventMeasure( value ) */
 }
 
-static SCHEMA_UNUSED BENCHTABLE_TABLE_INLINE int TablePickupEventLoadBody( TableReader * r, TablePickupEvent * value )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE int TablePickupEventLoadBody( TableReader * r, TablePickupEvent * value )
 {
     TablePickupEventReset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )

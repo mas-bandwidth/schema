@@ -37,6 +37,24 @@ import (
 // and a Block header includes the Table header beside it. One guard around one
 // text is what makes "both forms carry the same id" (§20.6) a fact of the
 // build rather than a redefinition in any translation unit that uses both.
+// buildVersionName is the unit's build version, spelled the way every macro
+// this backend emits is: SCHEMA_, the package, and what it is.
+//
+// IT IS NOT `BuildVersion`. An object-like macro carrying a common PascalCase
+// identifier rewrites that identifier EVERYWHERE in the consumer's translation
+// unit — `struct AppBuild { uint64_t BuildVersion; };` after the include stops
+// compiling — and no front end can refuse that, because the collision is with
+// the CONSUMER's own code rather than with a schema declaration. C++ scopes the
+// constant in a namespace and has no such exposure; C's preprocessor has no
+// scope at all, so the name carries one.
+//
+// It stays a MACRO rather than becoming a `static const`: the block form's
+// descriptors are constant data that name it in their initialisers, and a
+// `static const` is not a constant expression in C.
+func buildVersionName(pkg string) string {
+	return "SCHEMA_" + strings.ToUpper(pkg) + "_BUILD_VERSION_VALUE"
+}
+
 func buildVersionConstant(pkg string, buildVersion uint64) string {
 	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_BUILD_VERSION"
 	return `#ifndef ` + guard + `
@@ -54,7 +72,7 @@ func buildVersionConstant(pkg string, buildVersion uint64) string {
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define BuildVersion ` + fmt.Sprintf("0x%016xull", buildVersion) + `
+#define ` + buildVersionName(pkg) + ` ` + fmt.Sprintf("0x%016xull", buildVersion) + `
 
 #endif /* ` + guard + ` */
 `
@@ -88,7 +106,7 @@ func tableCookRuntime(pkg string) string {
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-#define kTableCookHeaderBytes 64
+static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -102,7 +120,7 @@ func tableCookRuntime(pkg string) string {
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-#define TableCookMagic 0x4b4f4f434d484353ull
+static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -114,16 +132,16 @@ func tableCookRuntime(pkg string) string {
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define TableCookByteOrder 2ull /* big */
+static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
 #else
-#define TableCookByteOrder 1ull /* little */
+static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-#define TableCookMaxAlign 64ull
+static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -171,7 +189,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        here, which is why the order never reaches a fix-up pass. */
     if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
     if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return NULL; }
+    if ( table_cook_read64( raw + 8 ) != ` + buildVersionName(pkg) + ` ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
     if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }

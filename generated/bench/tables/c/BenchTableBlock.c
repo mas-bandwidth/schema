@@ -34,7 +34,7 @@ int schema_benchtable_table_entity_block_open_( TableEntityBlock * block, void *
         (void) table_block_byteswap64( magic );
         return 0;
     }
-    if ( table_block_read64( raw + 8 ) != BuildVersion ) { return 0; }
+    if ( table_block_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return 0; }
     if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )
     {
         return 0; /* a block of the other byte order: the fix-up path is a named obligation */
@@ -73,7 +73,7 @@ static const TableBlockFieldInfo schema_benchtable_table_entity_block_fields_[] 
     { "firing", 81u, 1u, 1, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 1u, 0xffffffffu, NULL },
 };
 
-const TableBlockInfo schema_benchtable_table_entity_block_info_ = { "TableEntity", BuildVersion, 88u, 8u, 14, schema_benchtable_table_entity_block_fields_ };
+const TableBlockInfo schema_benchtable_table_entity_block_info_ = { "TableEntity", SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE, 88u, 8u, 14, schema_benchtable_table_entity_block_fields_ };
 
 /* ---- the block form of table TableStat: the open path and the descriptors ---- */
 
@@ -98,7 +98,7 @@ int schema_benchtable_table_stat_block_open_( TableStatBlock * block, void * bas
         (void) table_block_byteswap64( magic );
         return 0;
     }
-    if ( table_block_read64( raw + 8 ) != BuildVersion ) { return 0; }
+    if ( table_block_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return 0; }
     if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )
     {
         return 0; /* a block of the other byte order: the fix-up path is a named obligation */
@@ -125,5 +125,5 @@ static const TableBlockFieldInfo schema_benchtable_table_stat_block_fields_[] = 
     { "delta", 28u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
 };
 
-const TableBlockInfo schema_benchtable_table_stat_block_info_ = { "TableStat", BuildVersion, 32u, 8u, 2, schema_benchtable_table_stat_block_fields_ };
+const TableBlockInfo schema_benchtable_table_stat_block_info_ = { "TableStat", SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE, 32u, 8u, 2, schema_benchtable_table_stat_block_fields_ };
 

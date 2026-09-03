@@ -177,10 +177,11 @@ Stated so a reader knows what is not here, and why:
   is ordinary package code in the leg's binary and names no runtime at all.
 
 - **`relative rel` is C-referenced** (Glenn, 2026-08-17: *"make C the
-  reference"*), and C has no tables backend, so `rel` renders no tables row.
-  The tables board's reference is C++ — the ratio a port is held to — and this
-  board's own table carries it in prose. A `--reference` flag would serve both
-  boards from one renderer and is the right shape when a second port lands.
+  reference"*), and this board's reference is C++ — the ratio a port is held
+  to — so `rel` and the tables board disagree about the denominator. C now
+  carries a tables leg, so a `--reference` flag serving both boards from one
+  renderer is the shape this wants; until then the tables board's own table
+  carries the C++ ratio in prose.
 - **The tables emitters are not LOCKed** the way `bench/LOCK` locks the type
   emitters. The lock is a ruling about a profiling round, not a side effect of
   a board existing; it belongs to the round the owner opens after the first

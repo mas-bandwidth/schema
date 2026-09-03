@@ -43,10 +43,17 @@ extern "C" {
    constant framing bytes merge into one store.
 
    The spelling is FEATURE TESTED rather than assumed, exactly as the packet
-   emitter's own inlining demand is (SPEC §6.1's C column), and the macro is
-   package-scoped for the same reason the guard above is: a consumer compiles
-   several packages' Table.h files in one translation unit, and a macro every
-   one of them spelled the same way would be a redefinition. */
+   emitter's own inlining demand is (SPEC §6.1's C column).
+
+   IT CARRIES THE PACKAGE for the reason every other name here does, and that
+   reason is the LINKER rather than the preprocessor: two units of the same
+   schema family link into one program — two generations of one schema is the
+   case the conformance driver itself is — so nothing this backend emits may
+   be spelled the same way by two packages. They do NOT share a translation
+   unit and cannot: C has no namespace, so two units' headers in one TU
+   redefine TableReport, TableWriter and every other runtime name, which is the
+   packet emitter's standing limit (SPEC §6.1) and not something tables
+   changed. A per-package macro is what keeps the LINK legal. */
 #ifndef SCHEMA_BLOCKDEMO_TABLE_INLINE
 #if defined( _MSC_VER )
 #define SCHEMA_BLOCKDEMO_TABLE_INLINE __forceinline
@@ -377,7 +384,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define BuildVersion 0x863a8eebc1090dc6ull
+#define SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE 0x863a8eebc1090dc6ull
 
 #endif /* SCHEMA_BLOCKDEMO_BUILD_VERSION */
 
@@ -404,7 +411,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-#define kTableCookHeaderBytes 64
+static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -418,7 +425,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-#define TableCookMagic 0x4b4f4f434d484353ull
+static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -430,16 +437,16 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define TableCookByteOrder 2ull /* big */
+static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
 #else
-#define TableCookByteOrder 1ull /* little */
+static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-#define TableCookMaxAlign 64ull
+static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -487,7 +494,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        here, which is why the order never reaches a fix-up pass. */
     if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
     if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
-    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return NULL; }
+    if ( table_cook_read64( raw + 8 ) != SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
     if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }

@@ -27,8 +27,8 @@
 extern "C" {
 #endif
 
-#ifndef BENCHTABLE_SCHEMA_BUILD_VERSION
-#define BENCHTABLE_SCHEMA_BUILD_VERSION
+#ifndef SCHEMA_BENCHTABLE_BUILD_VERSION
+#define SCHEMA_BENCHTABLE_BUILD_VERSION
 
 /* THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
    this build produces depend on — the type wire's protocol id, every record's
@@ -42,12 +42,12 @@ extern "C" {
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define BuildVersion 0xcbff64e49f311d0aull
+#define SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE 0x4ecd277aba28ff2eull
 
-#endif /* BENCHTABLE_SCHEMA_BUILD_VERSION */
+#endif /* SCHEMA_BENCHTABLE_BUILD_VERSION */
 
-#ifndef BENCHTABLE_SCHEMA_BLOCK_PRIMITIVES
-#define BENCHTABLE_SCHEMA_BLOCK_PRIMITIVES
+#ifndef SCHEMA_BENCHTABLE_BLOCK_PRIMITIVES
+#define SCHEMA_BENCHTABLE_BLOCK_PRIMITIVES
 
 /* ---- the block form's runtime (docs/SPEC-TABLES.md §19) ---- */
 
@@ -96,9 +96,9 @@ static SCHEMA_UNUSED TableBlockAllocator TableBlockDefaultAllocator( void )
    big-endian fix-up path is a named obligation, not something a consumer
    improvises row by row. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define TableBlockByteOrder 2ull /* big */
+static SCHEMA_UNUSED const uint64_t TableBlockByteOrder = 2; /* big */
 #else
-#define TableBlockByteOrder 1ull /* little */
+static SCHEMA_UNUSED const uint64_t TableBlockByteOrder = 1; /* little */
 #endif
 
 /* Why Begin refused: the array, its count and its maximum (§19.1). Clamping a
@@ -191,7 +191,7 @@ typedef struct TableBlockInfo
    the producer's NATIVE order; a consumer that reads back the byte-swapped
    value has found a foreign byte order, and one that reads back anything else
    has not found a block at all. */
-#define TableBlockMagic 0x4b4c42414d484353ull
+static SCHEMA_UNUSED const uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
 
 static SCHEMA_UNUSED uint64_t table_block_byteswap64( uint64_t v )
 {
@@ -214,7 +214,7 @@ static SCHEMA_UNUSED int64_t table_block_align( int64_t offset, int64_t alignmen
     return ( offset + alignment - 1 ) / alignment * alignment;
 }
 
-#endif /* BENCHTABLE_SCHEMA_BLOCK_PRIMITIVES */
+#endif /* SCHEMA_BENCHTABLE_BLOCK_PRIMITIVES */
 
 /* table TableMixed has NO block form: TableMixed.game_event is a union, and a block's blittable C# form is Sequential with generated padding, which cannot overlay arms (docs/SPEC-TABLES.md §19).
    Its wire (§3) and its cook (§7) are unaffected — only this projection
@@ -363,7 +363,7 @@ static SCHEMA_UNUSED int TableEntityBlockBegin( TableEntityBlock * block, TableE
     block->base = storage->base;
     block->projection = (TableEntityBlockProjection *) (void *) storage->base;
     block->projection->magic = TableBlockMagic;
-    block->projection->build_version = BuildVersion;
+    block->projection->build_version = SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE;
     block->projection->byte_order = TableBlockByteOrder;
     offset = 88; /* sizeof the projection */
     block->bytes = table_block_align( offset, 64 );
@@ -527,7 +527,7 @@ static SCHEMA_UNUSED int TableStatBlockBegin( TableStatBlock * block, TableStatB
     block->base = storage->base;
     block->projection = (TableStatBlockProjection *) (void *) storage->base;
     block->projection->magic = TableBlockMagic;
-    block->projection->build_version = BuildVersion;
+    block->projection->build_version = SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE;
     block->projection->byte_order = TableBlockByteOrder;
     offset = 32; /* sizeof the projection */
     block->bytes = table_block_align( offset, 64 );

@@ -40,6 +40,61 @@ static int64_t live_bytes( void )
 static int64_t live_bytes( void ) { return -1; } /* no allocator statistics here */
 #endif
 
+/* ---- THE ALLOCATOR CALL COUNTER ----
+ *
+ * The live-byte sample below is a LEAK instrument and nothing more: it reads a
+ * number after the first iteration and again at the end, and a malloc/free
+ * PAIR inside the loop is invisible to it — the number returns to where it was
+ * before it is ever read. §2's claim is not "no leak", it is "the read and
+ * write paths ALLOCATE NOTHING", and only a call count says that.
+ *
+ * So the four entry points are interposed. Defining them in the executable is
+ * what puts them in front of this program's own calls, and each forwards to
+ * the platform's real allocator by a spelling that does NOT go back through
+ * malloc — dlsym would, and would recurse before it returned. Everything the
+ * loop calls is this backend's generated code and the driver's erased shims,
+ * so a call counted here is a call one of those made.
+ */
+
+#if defined( __GLIBC__ )
+#define SCHEMA_SOAK_COUNTS 1
+extern void * __libc_malloc( size_t );
+extern void * __libc_calloc( size_t, size_t );
+extern void * __libc_realloc( void *, size_t );
+extern void __libc_free( void * );
+#define SCHEMA_SOAK_REAL_MALLOC( n ) __libc_malloc( n )
+#define SCHEMA_SOAK_REAL_CALLOC( n, m ) __libc_calloc( n, m )
+#define SCHEMA_SOAK_REAL_REALLOC( p, n ) __libc_realloc( p, n )
+#define SCHEMA_SOAK_REAL_FREE( p ) __libc_free( p )
+#elif defined( __APPLE__ )
+#define SCHEMA_SOAK_COUNTS 1
+#define SCHEMA_SOAK_REAL_MALLOC( n ) malloc_zone_malloc( malloc_default_zone(), ( n ) )
+#define SCHEMA_SOAK_REAL_CALLOC( n, m ) malloc_zone_calloc( malloc_default_zone(), ( n ), ( m ) )
+#define SCHEMA_SOAK_REAL_REALLOC( p, n ) malloc_zone_realloc( malloc_default_zone(), ( p ), ( n ) )
+#define SCHEMA_SOAK_REAL_FREE( p ) schema_soak_zone_free( p )
+static void schema_soak_zone_free( void * p )
+{
+    malloc_zone_t * zone;
+    if ( p == NULL ) { return; }
+    zone = malloc_zone_from_ptr( p );
+    malloc_zone_free( zone != NULL ? zone : malloc_default_zone(), p );
+}
+#else
+#define SCHEMA_SOAK_COUNTS 0
+#endif
+
+/* counted only while the loop says so: the setup below allocates on purpose,
+   and printf allocates a stdio buffer the first time it is called */
+static int schema_soak_counting = 0;
+static uint64_t schema_soak_calls = 0;
+
+#if SCHEMA_SOAK_COUNTS
+void * malloc( size_t n ) { if ( schema_soak_counting ) { schema_soak_calls++; } return SCHEMA_SOAK_REAL_MALLOC( n ); }
+void * calloc( size_t n, size_t m ) { if ( schema_soak_counting ) { schema_soak_calls++; } return SCHEMA_SOAK_REAL_CALLOC( n, m ); }
+void * realloc( void * p, size_t n ) { if ( schema_soak_counting ) { schema_soak_calls++; } return SCHEMA_SOAK_REAL_REALLOC( p, n ); }
+void free( void * p ) { if ( schema_soak_counting ) { schema_soak_calls++; } SCHEMA_SOAK_REAL_FREE( p ); }
+#endif
+
 typedef struct Case
 {
     const char * unit;
@@ -186,6 +241,11 @@ int main( int argc, char ** argv )
     }
 
     before = live_bytes();
+    /* one untimed pass first, so a lazily-initialised stdio buffer or locale
+       table is charged to the setup rather than to the loop */
+    printf( "c tables soak: counting allocator calls over the measured loop\n" );
+    fflush( stdout );
+    schema_soak_counting = 1;
     start = time( NULL );
     for ( ;; )
     {
@@ -225,6 +285,7 @@ int main( int argc, char ** argv )
         if ( iterations == 1 ) { settled = live_bytes(); }
         if ( ( iterations & 0x3ff ) == 0 && difftime( time( NULL ), start ) >= seconds ) { break; }
     }
+    schema_soak_counting = 0;
     after = live_bytes();
 
     printf( "c tables soak: %llu iterations over %u cases in %.0f s\n",
@@ -243,7 +304,23 @@ int main( int argc, char ** argv )
                  (long long) settled, (long long) after, (unsigned long long) iterations );
         return 1;
     }
-    printf( "c tables soak: allocations FLAT — the read and write paths allocate nothing (§2)\n" );
+#if SCHEMA_SOAK_COUNTS
+    printf( "c tables soak: %llu allocator calls over %llu iterations\n",
+            (unsigned long long) schema_soak_calls, (unsigned long long) iterations );
+    if ( schema_soak_calls != 0 )
+    {
+        fprintf( stderr, "SOAK FAILED: the read and write paths made %llu allocator call(s) over %llu "
+                 "iterations — §2 says they allocate NOTHING, and a live-byte sample cannot see a "
+                 "malloc/free pair because the number returns to where it was\n",
+                 (unsigned long long) schema_soak_calls, (unsigned long long) iterations );
+        return 1;
+    }
+    printf( "c tables soak: ZERO allocator calls and allocations flat — the read and write paths "
+            "allocate nothing (§2)\n" );
+#else
+    printf( "c tables soak: allocations flat; this platform has no allocator interposition, so the "
+            "CALL COUNT went unmeasured and only drift is gated\n" );
+#endif
     for ( i = 0; i < num_cases; i++ )
     {
         free( loaded[i].wire );

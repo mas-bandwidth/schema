@@ -90,9 +90,9 @@ static SCHEMA_UNUSED TableBlockAllocator TableBlockDefaultAllocator( void )
    big-endian fix-up path is a named obligation, not something a consumer
    improvises row by row. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define TableBlockByteOrder 2ull /* big */
+static SCHEMA_UNUSED const uint64_t TableBlockByteOrder = 2; /* big */
 #else
-#define TableBlockByteOrder 1ull /* little */
+static SCHEMA_UNUSED const uint64_t TableBlockByteOrder = 1; /* little */
 #endif
 
 /* Why Begin refused: the array, its count and its maximum (§19.1). Clamping a
@@ -185,7 +185,7 @@ typedef struct TableBlockInfo
    the producer's NATIVE order; a consumer that reads back the byte-swapped
    value has found a foreign byte order, and one that reads back anything else
    has not found a block at all. */
-#define TableBlockMagic 0x4b4c42414d484353ull
+static SCHEMA_UNUSED const uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
 
 static SCHEMA_UNUSED uint64_t table_block_byteswap64( uint64_t v )
 {
@@ -554,7 +554,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("    block->base = storage->base;\n")
 	g.pf("    block->projection = (%sBlockProjection *) (void *) storage->base;\n", name)
 	g.pf("    block->projection->magic = TableBlockMagic;\n")
-	g.pf("    block->projection->build_version = BuildVersion;\n")
+	g.pf("    block->projection->build_version = %s;\n", buildVersionName(g.unit.Package))
 	g.pf("    block->projection->byte_order = TableBlockByteOrder;\n")
 	g.pf("    offset = %d; /* sizeof the projection */\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
@@ -644,7 +644,7 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("        (void) table_block_byteswap64( magic );\n")
 	g.pf("        return 0;\n")
 	g.pf("    }\n")
-	g.pf("    if ( table_block_read64( raw + 8 ) != BuildVersion ) { return 0; }\n")
+	g.pf("    if ( table_block_read64( raw + 8 ) != %s ) { return 0; }\n", buildVersionName(g.unit.Package))
 	g.pf("    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )\n")
 	g.pf("    {\n        return 0; /* a block of the other byte order: the fix-up path is a named obligation */\n    }\n")
 	g.pf("    projection = (%sBlockProjection *) base;\n", name)
@@ -748,13 +748,13 @@ func (g *tableGen) emitBlockDescriptors(bl *ir.BlockLayout) {
 				continue
 			}
 			s := spans[r]
-			g.pf("    { \"%s\", BuildVersion, %du, %du, %d, %s + %d },\n",
-				r, ml.Size, ml.Align, len(ml.Fields), g.sym(name, "block_fields"), s.start)
+			g.pf("    { \"%s\", %s, %du, %du, %d, %s + %d },\n",
+				r, buildVersionName(g.unit.Package), ml.Size, ml.Align, len(ml.Fields), g.sym(name, "block_fields"), s.start)
 		}
 		g.pf("};\n\n")
 	}
-	g.pf("const TableBlockInfo %s = { \"%s\", BuildVersion, %du, %du, %d, %s };\n\n",
-		g.sym(name, "block_info"), name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields), g.sym(name, "block_fields"))
+	g.pf("const TableBlockInfo %s = { \"%s\", %s, %du, %du, %d, %s };\n\n",
+		g.sym(name, "block_info"), name, buildVersionName(g.unit.Package), bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields), g.sym(name, "block_fields"))
 }
 
 // emitBlockRecordFields emits one record's rows of the concatenated field

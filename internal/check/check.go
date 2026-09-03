@@ -2964,7 +2964,7 @@ func (c *checker) cReservedMacros() map[string]bool {
 	}
 	for _, per := range []string{
 		"_TABLE_PRIMITIVES", "_TABLE_ARENA", "_TABLE_COOK", "_BLOCK_PRIMITIVES",
-		"_BUILD_VERSION", "_TABLE_INLINE",
+		"_BUILD_VERSION", "_BUILD_VERSION_VALUE", "_TABLE_INLINE",
 	} {
 		out["SCHEMA_"+pkg+per] = true
 	}
