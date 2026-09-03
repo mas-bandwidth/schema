@@ -62,3 +62,7 @@ tending/
 # a crashed BEAM run drops its dump wherever it ran
 erl_crash.dump
 /schema
+
+# the Go table gates leave a test binary behind when `go test` is run with a
+# profile flag; it is a build artifact and never a source
+/test/go-tables/schematables.test
