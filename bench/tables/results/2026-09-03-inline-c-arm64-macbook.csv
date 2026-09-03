@@ -1,0 +1,40 @@
+# schema TABLES bench results (bench/tables/README.md)
+# date: 2026-09-03T08:22:47Z
+# host: macbook  arch: arm64  os: Darwin 25.6.0
+# cpu: Apple M2
+# build: Release
+# corpus: bench/corpus/BenchTable.schema (one fixed table on the tolerant wire, docs/SPEC-TABLES.md §3)
+# c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# rounds: 7 (interleaved before/after per round, §2.4)
+# pinning: none (macOS has no taskset)
+# noise: PAIRING CHECK — the paired arms differ in ONE macro — MacBook Air (M2), interactive desktop, no core reservation, sibling port workers on the machine. Not a certification sitting.
+# schema commit: 3af203a (port-c-tables)
+before,bench_table,write,400000,2391,1,469413,469413,469413,1070.37,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,round_trip,400000,2391,1,322975,322975,322975,736.46,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,write,400000,2391,1,2388901,2388901,2388901,5447.26,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,round_trip,400000,2391,1,842013,842013,842013,1919.99,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,write,400000,2391,1,480908,480908,480908,1096.58,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,round_trip,400000,2391,1,337235,337235,337235,768.98,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,write,400000,2391,1,2409247,2409247,2409247,5493.65,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,round_trip,400000,2391,1,810979,810979,810979,1849.22,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,write,400000,2391,1,446040,446040,446040,1017.08,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,round_trip,400000,2391,1,341865,341865,341865,779.53,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,write,400000,2391,1,2317605,2317605,2317605,5284.68,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,round_trip,400000,2391,1,830463,830463,830463,1893.65,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,write,400000,2391,1,442472,442472,442472,1008.94,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,round_trip,400000,2391,1,331033,331033,331033,754.83,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,write,400000,2391,1,2318290,2318290,2318290,5286.25,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,round_trip,400000,2391,1,830851,830851,830851,1894.54,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,write,400000,2391,1,483511,483511,483511,1102.52,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,round_trip,400000,2391,1,345017,345017,345017,786.72,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,write,400000,2391,1,2388530,2388530,2388530,5446.41,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,round_trip,400000,2391,1,827821,827821,827821,1887.63,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,write,400000,2391,1,379566,379566,379566,865.50,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,round_trip,400000,2391,1,326865,326865,326865,745.33,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,write,400000,2391,1,2288827,2288827,2288827,5219.06,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,round_trip,400000,2391,1,843809,843809,843809,1924.08,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,write,400000,2391,1,482072,482072,482072,1099.24,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+before,bench_table,round_trip,400000,2391,1,334800,334800,334800,763.42,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,write,400000,2391,1,2332375,2332375,2332375,5318.36,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+after,bench_table,round_trip,400000,2391,1,833101,833101,833101,1899.67,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
