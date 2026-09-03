@@ -49,3 +49,30 @@ because it is the same mechanism: the cursor lives in the caller's
 reloads and re-stores it.
 
 Raw: `2026-09-03-inline-c-arm64-macbook.csv`.
+
+## The re-run on the rebased head (b8120af)
+
+Same corpus (`corpus_id 2f7567e1e25ba918`, 2391 bytes per record), same C++ leg
+— its last change is #350, which predates the board above — and the same
+interleaved shape: one warmup round discarded, seven measured, cpp and c
+alternating within each round.
+
+| lang | path | M msg/s (median) | spread | ratio to C++ |
+|---|---|---|---|---|
+| cpp | write | 1.662 | 20% | 1.000 |
+| c | write | 1.688 | 18% | 1.016 |
+| cpp | round_trip | 0.566 | 27% | 1.000 |
+| c | round_trip | 0.548 | 39% | 0.968 |
+
+**The spread is the finding, not the ratio.** Two sibling port workers were
+compiling on the same laptop throughout, so both legs ran a third slower than
+they did in the quieter window above and the round to round variation is an
+order of magnitude wider. At a 39% spread a 3% ratio is noise. What this
+confirms is the SIGN — the two legs are still within a few percent of each
+other on both rows, on a head that had thirty commits replayed under it — and
+nothing finer.
+
+The board above is the better-conditioned measurement of the same head and
+remains the one to read. Neither certifies anything: that is the box's job.
+
+Raw: `2026-09-03-pairing-c-rebased-arm64-macbook.csv`.
