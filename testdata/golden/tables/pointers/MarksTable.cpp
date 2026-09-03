@@ -8,9 +8,9 @@
 
 #include "MarksTable.h"
 
-#include <cstdio> // the text form: number formatting
-#include <cstdlib> // the text form: exact number conversion
-#include <clocale> // the text form: the runtime's decimal point
+#include <stdio.h> // the text form: number formatting
+#include <stdlib.h> // the text form: exact number conversion
+#include <locale.h> // the text form: the runtime's decimal point
 
 // The guard is not vestigial. Several graphdemo Table.cpp files may be
 // concatenated into ONE translation unit — a unity build — and without it
@@ -39,14 +39,14 @@ namespace graphdemo {
 // last-wins and counted; a key present with the wrong JSON type is skipped
 // and counted, never coerced.
 
-constexpr int32_t kTableJsonMaxDepth = 128;
+static const int32_t kTableJsonMaxDepth = 128;
 
 // A key longer than this cannot name a field, so it is skipped as unknown.
-constexpr int32_t kTableJsonMaxKey = 256;
+static const int32_t kTableJsonMaxKey = 256;
 
 // The longest numeric token the walk will convert. Anything longer is a
 // value no field can hold and counts as a kind mismatch.
-constexpr int32_t kTableJsonMaxNumber = 512;
+static const int32_t kTableJsonMaxNumber = 512;
 
 // The decimal point the C runtime is CURRENTLY using. Number conversion is
 // the one locale-sensitive corner of the grammar — JSON's point is always

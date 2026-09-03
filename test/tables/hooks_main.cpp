@@ -18,9 +18,9 @@
 //   counting TableAllocator, and the DEFAULT pair — schema_allocate /
 //   schema_release, which is where a bypassing call would land — is defined
 //   here to count separately. A single malloc, calloc, realloc or free left in
-//   the arena, the pack walk, the numbering, the region or the node directory
-//   would show up as a fallback count above zero, or as an alloc the counter
-//   never saw.
+//   the arena, the pack walk, the numbering, the region, the node directory or
+//   the cook's write side would show up as a fallback count above zero, or as
+//   an alloc the counter never saw.
 
 #include <setjmp.h>
 #include <stdio.h>
@@ -170,13 +170,22 @@ static void test_allocator_sees_everything()
         wrote = graphdemo::SceneSave( builder, wire, (int64_t) sizeof( wire ) );
         CHECK( wrote == need );
 
+        // the cook's write side (docs/SPEC-TABLES.md §7.6): its numbering and
+        // its offsets, through the builder's own pair, over the arena
+        static uint8_t cook[65536];
+        const int64_t cooked = graphdemo::SceneCookMeasure( builder );
+        CHECK( cooked > 0 && cooked <= (int64_t) sizeof( cook ) );
+        CHECK( graphdemo::SceneCook( builder, cook, (uint64_t) cooked, graphdemo::TableByteOrder::Little ) );
+
         // Lock: the pack map, its growth, and the packed region
         CHECK( builder.Lock() );
         CHECK( builder.RegionBytes() > 0 );
 
-        // and the same two walks over the LOCKED region
+        // and the same walks over the LOCKED region
         CHECK( graphdemo::SceneMeasure( builder ) == need );
         CHECK( graphdemo::SceneSave( builder, wire, (int64_t) sizeof( wire ) ) == need );
+        CHECK( graphdemo::SceneCookMeasure( builder ) == cooked );
+        CHECK( graphdemo::SceneCook( builder, cook, (uint64_t) cooked, graphdemo::TableByteOrder::Little ) );
     }
 
     // the tool path: a fresh builder loaded from the wire, whose node

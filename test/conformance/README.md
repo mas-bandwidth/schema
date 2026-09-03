@@ -265,15 +265,13 @@ the whole wall is: of the 1,608 cases in this table, the 1,340 the five NATIVE
 legs answer cost about four seconds between them — under a second each, even
 under this load — and the last 268 cost eighteen.
 
-**`cook-write` added 32 cases to the C++ leg alone** — sixteen instances in two
-byte orders — and the table above is NOT re-priced for them: they are answered
-inside `build/conformance-cpp`, a process that was already starting for the wire
-surfaces, so what they cost is a wire load and a memset per case in a leg the
+**`cook-write` added 40 cases to the C++ leg alone** — twenty instances in two
+byte orders, the four VARIABLE ones among them — and the table above is NOT
+re-priced for them: they are answered inside `build/conformance-cpp`, a process
+that was already starting for the wire surfaces, so what they cost is a wire
+load, a numbering walk for a pointered root and a memset per case in a leg the
 table already measures at a second. The row is left as it was measured rather
-than adjusted by arithmetic, which is what the sitting rule means. The four
-VARIABLE instances are not on the surface: the C++ backend writes a FIXED root's
-cook and no other, and the reference leg may not answer absent, so those lines
-join the manifest when the pointered writer lands (SPEC-TABLES.md §15).
+than adjusted by arithmetic, which is what the sitting rule means.
 
 **The C leg answers all 268 from one native binary**, which is the cheapest
 shape the contract allows and what puts its row among the fastest. A sixth leg

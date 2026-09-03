@@ -16,15 +16,17 @@
 // written at the offsets §20.3's model gives — the same model the region's
 // bytes, the static_asserts and the build version all come from.
 //
-// THE CLASS IS THE FIXED ONE. A fixed table is one struct (§6.1), so its cook
-// is one region of one node: the header, the record, and one directory entry.
-// A pointered root's Cook — the numbering, the region and the identity map —
-// is a named follow-on (§15), and the generated header says so where a reader
-// meets the table rather than leaving a missing symbol.
+// BOTH CLASSES. A fixed table is one struct (§6.1), so its cook is one region
+// of one node: the header, the record, and one directory entry. A pointered
+// root's cook is the region of §7.2 — the numbering walk of §3.1 carrying the
+// identity map of §6.2, every reachable node once at its own type's alignment,
+// a reference slot holding the self-relative delta of §6.3 — and its surface
+// takes a region root or a builder, as the wire's own entries do.
 package cpptable
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -83,6 +85,65 @@ inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, i
 }
 `
 
+// tableCookWriteVariableRuntime is the write side's POINTERED half, emitted
+// only into a unit that has a variable-length table — it names the numbering,
+// which a pointer-free unit does not carry (the zero-cost gate, §2.2). It
+// follows the arena runtime and the cook runtime in the header, because it is
+// built from both.
+//
+// Two names (§11): the region being written, and the one reference store.
+func tableCookWriteVariableRuntime(pkg string) string {
+	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_COOK_VARIABLE"
+	return `#ifndef ` + guard + `
+#define ` + guard + `
+
+namespace ` + pkg + ` {
+
+// ---- the cooked form's WRITE side for a POINTERED root (docs/SPEC-TABLES.md §7.6) ----
+//
+// A pointered root's cook is the region of §7.2: every node the numbering
+// reached (§3.1), once, at its own type's alignment, in index order, the root
+// at offset zero. This is that region while it is being laid out and written —
+// the tool's own Layout and Write, in one struct.
+//
+// The OFFSETS are one per node, the root's zero at position 0 and node index k
+// at position k - 1, which is the directory's own order (§6.3); they are the
+// one allocation the write makes beyond the numbering, and they go through the
+// same pair. A measure needs no offsets and leaves the pointer NULL.
+struct TableCookRegion
+{
+    const TableNumbering * numbering = NULL; // node -> index, from the walk that placed it
+    int64_t * offsets = NULL;                // index - 1 -> the node's region offset; NULL while measuring
+    int64_t count = 0;                       // nodes, the root included
+    int64_t bytes = 0;                       // the data part's length, rounded to align
+    int64_t align = 0;                       // the region's alignment: the nodes' greatest, never below eight
+    uint8_t * base = NULL;                   // where the data part is being written; NULL while measuring
+};
+
+// A reference slot: the SELF-RELATIVE delta from the slot's own address to the
+// node's start (§6.3), and zero for null. The node is found by the address the
+// numbering keyed it under, which is the same address the walk resolved through
+// the same context — so a reference the numbering does not carry is a slot the
+// walk never reached (a counted array's slot past its count, an absent
+// optional's value) holding a node the region will not hold, and it is refused
+// rather than written as a delta to nowhere.
+inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const void * pointee, TableByteOrder order )
+{
+    if ( pointee == NULL ) { table_cook_put( at, 0, 8, order ); return true; }
+    uint32_t index = 0;
+    if ( !TableNumberingIndex( *region.numbering, pointee, index ) ) { return false; }
+    if ( index == 0 || (int64_t) index > region.count ) { return false; }
+    const int64_t delta = region.offsets[index - 1] - (int64_t) ( at - region.base );
+    table_cook_put( at, (uint64_t) delta, 8, order );
+    return true;
+}
+
+} // namespace ` + pkg + `
+
+#endif // ` + guard + `
+`
+}
+
 // cookAlignUp rounds an offset up to an alignment, the way every layout rule on
 // the page does.
 func cookAlignUp(v, a int64) int64 {
@@ -110,26 +171,31 @@ func cookElementBytes(u *ir.Unit, f *ir.Field) int64 {
 	return end
 }
 
+// cookBodySignature is one record writer's declaration, without the trailing
+// semicolon or body. A FIXED member's takes the bytes and the value; a VARIABLE
+// member's also takes the resolution context its pointers resolve through and
+// the region being written, and answers whether every reference it holds was
+// one the numbering carried.
+func (g *tableGen) cookBodySignature(st *ir.Struct) string {
+	if g.isVar(st.Name) {
+		return fmt.Sprintf("template <typename Ctx> inline bool %sCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )", st.Name, st.Name)
+	}
+	return fmt.Sprintf("inline void %sCookBody( uint8_t * at, const %s & value, TableByteOrder order )", st.Name, st.Name)
+}
+
 // emitCookWriteSurface emits the write side for the members THIS FILE declares,
 // which is the rule §7 gives a member's walk: a record's writer is emitted by
 // the file that declares it, and a referencing file picks it up through the
 // header it already includes.
 func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 	var bodies []*ir.Struct
-	var deferred []*ir.Struct
 	for _, st := range members {
 		if ir.RecordLayout(g.unit, st) == nil {
 			continue
 		}
-		if g.isVar(st.Name) {
-			if st.IsTable {
-				deferred = append(deferred, st)
-			}
-			continue
-		}
 		bodies = append(bodies, st)
 	}
-	if len(bodies) == 0 && len(deferred) == 0 {
+	if len(bodies) == 0 {
 		return
 	}
 	g.pf("// ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----\n")
@@ -139,27 +205,21 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 	g.pf("// content-addressed by (asset hash, build version), so two writers of one\n")
 	g.pf("// instance produce ONE artifact or the pair means nothing.\n\n")
 	for _, st := range bodies {
-		g.pf("inline void %sCookBody( uint8_t * at, const %s & value, TableByteOrder order );\n", st.Name, st.Name)
+		g.pf("%s;\n", g.cookBodySignature(st))
 	}
-	if len(bodies) > 0 {
-		g.pf("\n")
-	}
+	g.pf("\n")
 	for _, st := range bodies {
 		g.emitCookWriteBody(st)
 	}
 	for _, st := range bodies {
-		if st.IsTable {
+		if !st.IsTable {
+			continue
+		}
+		if g.isVar(st.Name) {
+			g.emitCookWriteVariableRoot(st)
+		} else {
 			g.emitCookWriteRoot(st)
 		}
-	}
-	for _, st := range deferred {
-		// THE ABSENCE IS NAMED where a reader meets the table, rather than left
-		// as a missing symbol: a pointered root's writer is the numbering, the
-		// region and the identity map (§6.2, §6.3), which is a named follow-on.
-		g.pf("// %s is VARIABLE-LENGTH and has no %sCook: a pointered root's writer\n", st.Name, st.Name)
-		g.pf("// packs a region from a builder and numbers its nodes (§6.2, §6.3), and that\n")
-		g.pf("// half is a named follow-on (docs/SPEC-TABLES.md §15). %sOpen reads one today,\n", st.Name)
-		g.pf("// and `schema cook` writes one.\n\n")
 	}
 }
 
@@ -168,13 +228,24 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 // target's byte order.
 func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 	ml := ir.RecordLayout(g.unit, st)
-	g.pf("inline void %sCookBody( uint8_t * at, const %s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
+	variable := g.isVar(st.Name)
+	g.pf("%s\n{\n", g.cookBodySignature(st))
 	if len(ml.Fields) == 0 {
-		g.pf("    (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+		if variable {
+			g.pf("    (void) ctx; (void) region; (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+		} else {
+			g.pf("    (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+		}
+	}
+	if variable && len(ml.Fields) > 0 && len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+		g.pf("    (void) ctx; (void) region; // no reference below this node: the class was decided by a pointer elsewhere in its closure\n")
 	}
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
 		g.emitCookWriteField(st, fl.Field, fl.Offset)
+	}
+	if variable {
+		g.pf("    return true;\n")
 	}
 	g.pf("}\n\n")
 }
@@ -193,6 +264,12 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 		g.pf("    table_cook_put( at + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", p.Offset, name)
 	}
 	switch {
+	case f.Type.Pointer:
+		// the self-relative delta of §6.3, or a refusal for a node the numbering
+		// did not reach; the pointee is resolved through the same context the
+		// numbering walked, so the two agree on which node a slot names
+		t := f.Type.Name
+		g.pf("    if ( !table_cook_ref( region, at + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", value.Offset, t, name, f.Name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		// the buffer, then the int32 used length beside it — two pieces, each
 		// aligned on its own, which is what the generated record declares
@@ -256,11 +333,23 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent string) {
 		case *ir.Flags:
 			g.pf("%stable_cook_put( %s, (uint64_t) %s, 8, order ); // a mask rides raw, in every target\n", indent, at, value)
 		case *ir.Struct:
-			g.pf("%s%sCookBody( %s, %s, order );\n", indent, ref.Name, at, value)
+			g.pf("%s%s\n", indent, g.cookBodyCall(ref, at, value))
 		case *ir.Union:
 			g.emitCookWriteUnion(ref, at, value, indent)
 		}
 	}
+}
+
+// cookBodyCall renders a nested record's write through its own writer, as one
+// statement. A VARIABLE record's writer takes the context and the region and
+// can refuse, and it is only ever reached from inside a variable record — a
+// by-value nesting of a pointered table decides its owner's class (§2.2) — so
+// the two names it uses are in scope wherever the call lands.
+func (g *tableGen) cookBodyCall(ref *ir.Struct, at, value string) string {
+	if g.isVar(ref.Name) {
+		return fmt.Sprintf("if ( !%sCookBody( ctx, region, %s, %s, order ) ) { return false; }", ref.Name, at, value)
+	}
+	return fmt.Sprintf("%sCookBody( %s, %s, order );", ref.Name, at, value)
 }
 
 // emitCookWriteUnion writes the generated union: the TAG at the union's own
@@ -276,15 +365,15 @@ func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent string) {
 		if v.Ref == nil {
 			continue
 		}
-		g.pf("%s        case %sType::%s: %sCookBody( %s + %d, %s.%s, order ); break;\n",
-			indent, un.Name, ir.GoExportName(v.Name), v.Ref.Name, at, armOffset, value, v.Name)
+		g.pf("%s        case %sType::%s: %s break;\n", indent, un.Name, ir.GoExportName(v.Name),
+			g.cookBodyCall(v.Ref, fmt.Sprintf("%s + %d", at, armOffset), fmt.Sprintf("%s.%s", value, v.Name)))
 	}
 	g.pf("%s        default: break; // every byte outside the set arm stays zero\n", indent)
 	g.pf("%s    }\n%s}\n", indent, indent)
 }
 
-// emitCookWriteRoot emits one table's <Root>CookMeasure and <Root>Cook — the
-// whole file, header and attribution included, into the caller's bytes.
+// emitCookWriteRoot emits one FIXED table's <Root>CookMeasure and <Root>Cook —
+// the whole file, header and attribution included, into the caller's bytes.
 func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 	n := st.Name
 	ml := ir.RecordLayout(g.unit, st)
@@ -343,4 +432,172 @@ func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 	g.pf("    table_cook_put( raw + %d, 0x%016xull, 8, order );\n", attribOffset+8, ir.TableTypeId(st.Name))
 	g.pf("    return true;\n")
 	g.pf("}\n\n")
+}
+
+// emitCookWriteVariableRoot emits one POINTERED table's write side: the layout
+// pass over its numbering, the two context-templated entries, and the public
+// overloads over a region root and over a builder — the same two forms the
+// wire's Measure and Save take (§6.2), because a pointered root is a region
+// and a root pointer rather than a value.
+//
+// It mirrors the tool's cooker step for step: NUMBER the graph (§3.1), LAY the
+// nodes out at their own alignment in index order (§7.2), WRITE each record
+// piece by piece with every reference as a self-relative delta (§6.3), and
+// write the directory beside the data. The nodes a root can name are the
+// pointer-reachable set its load dispatch already switches over, so every type
+// this spells is one whose header the file already includes.
+func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
+	n := st.Name
+	ml := ir.RecordLayout(g.unit, st)
+	reachable := g.pointerReachable(st)
+
+	g.pf("// %sCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one\n", n)
+	g.pf("// numbering — the root at zero, then every node in index order at\n")
+	g.pf("// align_up( offset, alignof ) for its OWN type, no slack between them, the\n")
+	g.pf("// data length rounded to the greatest alignment among them and never below\n")
+	g.pf("// eight. The offsets go into the region's table when it has one, and are only\n")
+	g.pf("// summed when it does not (a measure). A type id the numbering carries that\n")
+	g.pf("// this root cannot name is the two walks disagreeing, and it is refused.\n")
+	g.pf("inline bool %sCookLayout( const TableNumbering & numbering, TableCookRegion & region )\n{\n", n)
+	g.pf("    region.numbering = &numbering;\n")
+	g.pf("    region.count = numbering.count + 1;\n")
+	g.pf("    int64_t offset = %d; // the root, at zero\n", ml.Size)
+	g.pf("    int64_t align = %d;\n", ir.RegionAlignOf(ml.Align))
+	g.pf("    if ( region.offsets != NULL ) { region.offsets[0] = 0; }\n")
+	g.pf("    for ( int64_t k = 0; k < numbering.count; k++ )\n    {\n")
+	g.pf("        int64_t size = 0;\n")
+	g.pf("        int64_t node_align = 0;\n")
+	g.pf("        switch ( numbering.entries[k].type_id )\n        {\n")
+	for _, t := range reachable {
+		tl := ir.RecordLayout(g.unit, t)
+		g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableTypeId(t.Name), tl.Size, tl.Align, t.Name)
+	}
+	g.pf("            default: return false;\n")
+	g.pf("        }\n")
+	g.pf("        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );\n")
+	g.pf("        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }\n")
+	g.pf("        offset += size;\n")
+	g.pf("        if ( node_align > align ) { align = node_align; }\n")
+	g.pf("    }\n")
+	g.pf("    region.bytes = ( offset + align - 1 ) & ~( align - 1 );\n")
+	g.pf("    region.align = align;\n")
+	g.pf("    return true;\n}\n\n")
+
+	g.pf("// %sCookMeasureFrom: the whole cooked file's bytes for one graph — the header,\n", n)
+	g.pf("// the data part and the attribution part (§7.1). IT DEPENDS ON THE VALUE,\n")
+	g.pf("// because the answer is the numbering: the depth-first walk of §3.1 is run\n")
+	g.pf("// here and run again by the write, and neither carries the other's (§7.6). A\n")
+	g.pf("// data cycle is refused by the walk and answers -1.\n")
+	g.pf("template <typename Ctx>\ninline int64_t %sCookMeasureFrom( const Ctx & ctx, const %s & root, TableAllocator allocator )\n{\n", n, n)
+	g.pf("    TableNumbering numbering;\n")
+	g.pf("    TableNumberingInit( numbering, allocator );\n")
+	g.pf("    TableCookRegion region;\n")
+	g.pf("    int64_t bytes = -1;\n")
+	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) && %sCookLayout( numbering, region ) )\n    {\n", n, n)
+	g.pf("        const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );\n")
+	g.pf("        bytes = data_offset + region.bytes + region.count * (int64_t) sizeof( TableNodeDirEntry );\n")
+	g.pf("    }\n")
+	g.pf("    TableNumberingShutdown( numbering );\n")
+	g.pf("    return bytes;\n}\n\n")
+
+	g.pf("// %sCookFrom: write one cooked file of a pointered graph, in the byte order\n", n)
+	g.pf("// the caller names. The bytes are `schema cook`'s, byte for byte (§7.6).\n")
+	g.pf("//\n")
+	g.pf("// THE CALLER OWNS THE OUTPUT and nothing is allocated toward it. What is\n")
+	g.pf("// allocated is the numbering — the identity map, the entry array and one\n")
+	g.pf("// offset per node — through the pair handed in, and released before this\n")
+	g.pf("// returns (§6.5, §13.9). A capacity short of the measure writes nothing.\n")
+	g.pf("//\n")
+	g.pf("// THE HEADER IS WRITTEN LAST. A reference the numbering did not carry is\n")
+	g.pf("// found while a body is being written, and a write that refuses there has\n")
+	g.pf("// already put bytes in the buffer; with no magic ahead of them, no Open can\n")
+	g.pf("// mistake them for a cook.\n")
+	g.pf("template <typename Ctx>\ninline bool %sCookFrom( const Ctx & ctx, const %s & root, void * out, uint64_t capacity, TableByteOrder order, TableAllocator allocator )\n{\n", n, n)
+	g.pf("    if ( out == NULL ) { return false; }\n")
+	g.pf("    TableNumbering numbering;\n")
+	g.pf("    TableNumberingInit( numbering, allocator );\n")
+	g.pf("    TableCookRegion region;\n")
+	g.pf("    bool ok = %sNumberFrom( ctx, numbering, root );\n", n)
+	g.pf("    if ( ok )\n    {\n")
+	g.pf("        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );\n")
+	g.pf("        ok = region.offsets != NULL && %sCookLayout( numbering, region );\n", n)
+	g.pf("    }\n")
+	g.pf("    if ( ok )\n    {\n")
+	g.pf("        const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );\n")
+	g.pf("        const int64_t attribution = region.count * (int64_t) sizeof( TableNodeDirEntry );\n")
+	g.pf("        const int64_t need = data_offset + region.bytes + attribution;\n")
+	g.pf("        ok = (uint64_t) need <= capacity;\n")
+	g.pf("        if ( ok )\n        {\n")
+	g.pf("            uint8_t * raw = (uint8_t *) out;\n")
+	g.pf("            memset( raw, 0, (size_t) need ); // EVERY BYTE NO FIELD COVERS IS ZERO (§7.2)\n")
+	g.pf("            region.base = raw + data_offset;\n")
+	g.pf("            // the DATA part: the root at the region's base, then every numbered\n")
+	g.pf("            // node at the offset the layout gave it, each through its own writer\n")
+	g.pf("            ok = %sCookBody( ctx, region, region.base, root, order );\n", n)
+	g.pf("            for ( int64_t k = 0; ok && k < numbering.count; k++ )\n            {\n")
+	g.pf("                uint8_t * at = region.base + region.offsets[k + 1];\n")
+	g.pf("                const void * node = numbering.entries[k].node;\n")
+	g.pf("                switch ( numbering.entries[k].type_id )\n                {\n")
+	for _, t := range reachable {
+		if g.isVar(t.Name) {
+			g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name, t.Name)
+		} else {
+			g.pf("                    case 0x%016xull: %sCookBody( at, *(const %s *) node, order ); break; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name, t.Name)
+		}
+	}
+	g.pf("                    default: ok = false; break;\n")
+	g.pf("                }\n            }\n")
+	g.pf("            // the ATTRIBUTION part: the node directory (§6.3), one entry per node\n")
+	g.pf("            // in index order, for `schema cook-check`\n")
+	g.pf("            uint8_t * entry = raw + data_offset + region.bytes;\n")
+	g.pf("            table_cook_put( entry, 0, 8, order );\n")
+	g.pf("            table_cook_put( entry + 8, 0x%016xull, 8, order ); // the root: fnv1a64( \"%s\" )\n", ir.TableTypeId(st.Name), n)
+	g.pf("            for ( int64_t k = 0; k < numbering.count; k++ )\n            {\n")
+	g.pf("                entry += sizeof( TableNodeDirEntry );\n")
+	g.pf("                table_cook_put( entry, (uint64_t) region.offsets[k + 1], 8, order );\n")
+	g.pf("                table_cook_put( entry + 8, numbering.entries[k].type_id, 8, order );\n")
+	g.pf("            }\n")
+	g.pf("            // and the HEADER (§7.1), every word a u64 in the order the file is\n")
+	g.pf("            // produced in; the two RESERVED words are the memset's zeros\n")
+	g.pf("            if ( ok )\n            {\n")
+	g.pf("                table_cook_put( raw + 0, TableCookMagic, 8, order );\n")
+	g.pf("                table_cook_put( raw + 8, BuildVersion, 8, order );\n")
+	g.pf("                table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );\n")
+	g.pf("                table_cook_put( raw + 24, (uint64_t) region.bytes, 8, order );\n")
+	g.pf("                table_cook_put( raw + 32, (uint64_t) attribution, 8, order );\n")
+	g.pf("                table_cook_put( raw + 40, (uint64_t) region.align, 8, order );\n")
+	g.pf("            }\n")
+	g.pf("        }\n")
+	g.pf("    }\n")
+	g.pf("    allocator.free( allocator.context, region.offsets );\n")
+	g.pf("    TableNumberingShutdown( numbering );\n")
+	g.pf("    return ok;\n}\n\n")
+
+	// The REGION overloads take the allocator the numbering runs on, defaulting
+	// to the hook pair, exactly as <Root>Measure and <Root>Save over a region do.
+	g.pf("// %sCookMeasure / %sCook over a REGION root — a locked builder's AsConst, a\n", n, n)
+	g.pf("// region %sLoad produced, or an opened cook — with the pair the numbering\n", n)
+	g.pf("// allocates through as an optional last argument, as the wire's own entries\n")
+	g.pf("// take it (§13.9).\n")
+	g.pf("inline int64_t %sCookMeasure( const %s * root, TableAllocator allocator = TableDefaultAllocator() )\n{\n", n, n)
+	g.pf("    if ( root == NULL ) { return -1; }\n")
+	g.pf("    TableRegionCtx ctx;\n")
+	g.pf("    return %sCookMeasureFrom( ctx, *root, allocator );\n}\n\n", n)
+	g.pf("inline bool %sCook( const %s * root, void * out, uint64_t capacity, TableByteOrder order, TableAllocator allocator = TableDefaultAllocator() )\n{\n", n, n)
+	g.pf("    if ( root == NULL ) { return false; }\n")
+	g.pf("    TableRegionCtx ctx;\n")
+	g.pf("    return %sCookFrom( ctx, *root, out, capacity, order, allocator );\n}\n\n", n)
+	// the BUILDER overloads name no allocator: the builder already carries one
+	g.pf("// and over a BUILDER, locked or not: the builder's own pair, and the arena\n")
+	g.pf("// encoding while it is still mutable (§6.3).\n")
+	g.pf("inline int64_t %sCookMeasure( const %sBuilder & builder )\n{\n", n, n)
+	g.pf("    if ( builder.region != NULL ) { return %sCookMeasure( builder.AsConst(), builder.arena.allocator ); }\n", n)
+	g.pf("    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed\n")
+	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
+	g.pf("    return %sCookMeasureFrom( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator );\n}\n\n", n, n)
+	g.pf("inline bool %sCook( const %sBuilder & builder, void * out, uint64_t capacity, TableByteOrder order )\n{\n", n, n)
+	g.pf("    if ( builder.region != NULL ) { return %sCook( builder.AsConst(), out, capacity, order, builder.arena.allocator ); }\n", n)
+	g.pf("    if ( builder.root_ref.null() ) { return false; } // the root allocation failed\n")
+	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
+	g.pf("    return %sCookFrom( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), out, capacity, order, builder.arena.allocator );\n}\n\n", n, n)
 }

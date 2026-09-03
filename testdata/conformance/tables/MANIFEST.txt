@@ -155,6 +155,13 @@ cook-write chain_value            testdata/conformance/tables/cook-write/chain_v
 cook-write chain_value_empty      testdata/conformance/tables/cook-write/chain_value_empty.cook testdata/conformance/tables/cook-write/chain_value_empty-be.cook
 cook-write chain_optional         testdata/conformance/tables/cook-write/chain_optional.cook testdata/conformance/tables/cook-write/chain_optional-be.cook
 cook-write chain_optional_empty   testdata/conformance/tables/cook-write/chain_optional_empty.cook testdata/conformance/tables/cook-write/chain_optional_empty-be.cook
+# the VARIABLE class: the numbering, the region layout and a shared node written
+# once (§7.6). graph_shared's five nodes for eight references is the case a
+# writer that duplicates a shared node cannot land on.
+cook-write graph_tree             testdata/conformance/tables/cook-write/graph_tree.cook testdata/conformance/tables/cook-write/graph_tree-be.cook
+cook-write graph_shared           testdata/conformance/tables/cook-write/graph_shared.cook testdata/conformance/tables/cook-write/graph_shared-be.cook
+cook-write graph_empty            testdata/conformance/tables/cook-write/graph_empty.cook testdata/conformance/tables/cook-write/graph_empty-be.cook
+cook-write graph_deep             testdata/conformance/tables/cook-write/graph_deep.cook testdata/conformance/tables/cook-write/graph_deep-be.cook
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one

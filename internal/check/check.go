@@ -2816,7 +2816,11 @@ var tableGeneratedVerbs = []string{
 	// LOAD needs about a wire type id
 	"Number", "NumberFrom", "MeasureWire", "SaveWire",
 	"NodeStorage", "NodePlace", "NodeAlloc", "NodeBody",
-	"Cook", "CookMeasure", "Open", "TableFields", "TableInfo",
+	// the cook's WRITE side (docs/SPEC-TABLES.md §7.6): the record writer every
+	// closure member gets, and the pointered root's layout pass and its two
+	// context-templated entries
+	"Cook", "CookMeasure", "CookBody", "CookLayout", "CookMeasureFrom", "CookFrom",
+	"Open", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
