@@ -472,31 +472,34 @@ enum is keyed.
   storage; the number has ONE home and it is inside the type. The
   descriptors' count column (§8.1) derives the same way.
 
-  **The accessor is `operator[]( E )`**: it takes a runtime key, ASSERTS
-  that it is not `None`, and SUBTRACTS ONE. A key in a data-driven program
-  IS a runtime value — an enum field read out of a file, a key handed in by
-  a tool, the key an iteration just yielded — so this is the form call
-  sites use, and a compile-time accessor taking the key as a template
-  parameter is not offered: it would serve only literal keys, which is not
-  where keys come from. **The shift is never written at a call site**: the
-  accessor is the only place it appears.
+  **The accessor is `operator[]( E )`**: it takes a runtime key, REFUSES
+  `None`, and SUBTRACTS ONE. A key in a data-driven program IS a runtime
+  value — an enum field read out of a file, a key handed in by a tool, the
+  key an iteration just yielded — so this is the form call sites use, and a
+  compile-time accessor taking the key as a template parameter is not
+  offered: it would serve only literal keys, which is not where keys come
+  from. **The shift is never written at a call site**: the accessor is the
+  only place it appears.
 
   ```cpp
-  fleet.ships[ ship_type ]   // runtime key: asserts key != None, reads slots[ key - 1 ]
+  fleet.ships[ ship_type ]   // runtime key: refuses None, reads slots[ key - 1 ]
   ```
 
-  **The assert is a DEBUG guard and it is COMPILED OUT UNDER `NDEBUG`** —
-  and its equivalent elsewhere — so a shipped C++ build carries no check on
-  a keyed index at all, and **an index by `None` there computes storage
-  index `−1` and reads ONE ELEMENT BEFORE THE ARRAY**. That is undefined
-  behaviour and it is a harder failure than the wrong-but-in-bounds slot an
-  unshifted storage would have given. It is stated rather than softened for
-  two reasons: C++ has no refusal an accessor returning `T &` can perform,
-  and an abort compiled into a shipped build trades a wrong read for a
-  crash nobody asked for. A port whose language CAN refuse does refuse in
-  every build — C#'s indexer throws — so the two ports differ exactly where
-  the languages do. **ITERATION is the safety**, below, and it is what a
-  consumer of a whole array should reach for.
+  **THE REFUSAL STANDS IN EVERY BUILD, in every port.** It is not a debug
+  guard and `NDEBUG` does not remove it: **indexing by `None` is a PROGRAM
+  ERROR in every configuration**, and the accessor ends the program rather
+  than reading something. **There is NO undefined-behaviour path here in
+  any build** — which is the whole reason the compare is unconditional,
+  because the storage shifts left and holds no slot for `None` to land in,
+  so a build that skipped it would read one element BEFORE the array.
+  The cost is one perfectly-predicted compare on a path that reads config,
+  which is not a price worth a class of silent corruption.
+
+  What varies is only how a language ends a program: C++ asserts — for the
+  message, where a debugger can read it — and then ABORTS, and the abort is
+  what stands under `NDEBUG`; C# throws. **ITERATION is still the surface a
+  consumer of a whole array should reach for**, below, because it needs no
+  key from the caller at all.
 
 - **ITERATION IS THE SAFETY**, and it is the form a consumer of a whole
   keyed array should reach for. The keyed type ITERATES EVERY SLOT — keys
@@ -556,7 +559,11 @@ enum is keyed.
   backends and every walk yields `E.Max` entries whose keys run `1 .. E.Max`;
   one negative control moves `begin()` off the first stored slot and another
   restores the `None` slot — storage `E.Max + 1` with no shift — and the
-  tables suite, the layout gate and the `sizeof` assertion go red.
+  tables suite, the layout gate and the `sizeof` assertion go red. **The
+  refusal is held in the configuration that would drop it**: a translation
+  unit compiled `-DNDEBUG` indexes a keyed array by `None` and must die, so
+  a refusal that ever became an assert again fails the gate rather than the
+  reader.
 
   The wire enforces the key rule from the other side regardless: a `None`
   key never rides (§3.2).

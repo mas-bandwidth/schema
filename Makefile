@@ -1143,6 +1143,47 @@ tables-keyed-iteration-negative-control: bin/schema
 		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-first-slot.log; exit 1; }
 	@echo "negative control: begin() past the first stored slot turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-first-slot.log) failures"
 
+# THE None REFUSAL, HELD UNDER -DNDEBUG (SPEC-TABLES.md §2.4). The refusal is
+# unconditional by ruling: indexing a keyed array by None is a program error in
+# EVERY configuration, because the shifted storage has no slot for None and a
+# build that let the index through would read one element BEFORE the array.
+#
+# The tables suite proves the refusal fires, but it compiles with asserts LIVE,
+# so it cannot tell an unconditional refusal from an assert. This gate compiles
+# ONE translation unit -DNDEBUG — the configuration a game ships, and the one
+# that removes an assert — and requires the None index to end the program
+# there too.
+.PHONY: tables-keyed-none-refusal-ndebug
+tables-keyed-none-refusal-ndebug: build/tables-generated/.stamp test/tables/keyed_none_ndebug_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -Ibuild/tables-generated/examples \
+		test/tables/keyed_none_ndebug_main.cpp -o build/schema_test_keyed_none_ndebug
+	./build/schema_test_keyed_none_ndebug
+
+# and its NEGATIVE CONTROL: put the refusal back to a bare assert — the shape
+# the ruling replaced — and the gate above must go RED, because -DNDEBUG then
+# removes it. A gate that only ever passes proves nothing about what it checks.
+.PHONY: tables-keyed-none-refusal-negative-control
+tables-keyed-none-refusal-negative-control: bin/schema test/tables/keyed_none_ndebug_main.cpp
+	@mkdir -p build
+	@sed -e 's|            abort();|            /* SABOTAGED: a debug-only guard again */|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-assert-only.gotext
+	@grep -q SABOTAGED build/cpptable-assert-only.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-assert-only.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-assert-only-overlay.json
+	@go build -overlay=build/cpptable-assert-only-overlay.json -o build/schema-assert-only ./cmd/schema
+	@rm -rf build/tables-assert-only && mkdir -p build/tables-assert-only
+	@./build/schema-assert-only generate --lang cpp --out build/tables-assert-only tables/examples
+	@$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -Ibuild/tables-assert-only \
+		test/tables/keyed_none_ndebug_main.cpp -o build/schema_test_keyed_none_assert_only
+	@if ./build/schema_test_keyed_none_assert_only > build/keyed-none-assert-only.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a debug-only guard left the -DNDEBUG gate GREEN"; exit 1; \
+	fi
+	@grep -q "the refusal was compiled out" build/keyed-none-assert-only.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the refusal"; cat build/keyed-none-assert-only.log; exit 1; }
+	@echo "negative control: a debug-only guard turns the -DNDEBUG refusal gate red"
+
 # The NEGATIVE CONTROL for the SHIFT itself (SPEC-TABLES.md §2.4, owner ruling
 # 2026-09-03). The storage holds E.Max slots with the key k at index k-1 and
 # nothing for None. Putting the None slot BACK — E.Max + 1 slots, no shift —
@@ -1666,6 +1707,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	cd test/cs-tables && dotnet run
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
+	$(MAKE) tables-keyed-none-refusal-ndebug
+	$(MAKE) tables-keyed-none-refusal-negative-control
 	$(MAKE) tables-keyed-shift-negative-control
 	$(MAKE) tables-block
 	$(MAKE) tables-block-fuzz

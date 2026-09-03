@@ -712,7 +712,7 @@ own `Max`. **C# indexes it by the ENUM VALUE**, as every port does, but the
 language has no non-boxing generic enum-to-int conversion — so the caller
 writes the cast, `fleet.Ships[(int)ShipType.Bomber]`. The cast, never the
 shift. The `None` refusal survives as a runtime guard on that indexer, and
-unlike C++'s `assert` it is **not** compiled out in release. Generated code
+it stands in every build, as the C++ abort does. Generated code
 walks `.Slots` directly and never pays for the guard.
 
 `foreach` walks every slot and yields the KEY, `1 .. E.Max`, beside the
@@ -855,15 +855,19 @@ takes no room, and the key `k` lives at index `k - 1`. The type is
 `TableKeyed<T, E>` and derives its extent from the enum: nothing outside the
 array names its size.
 
-**Iterate, and the slot rule never reaches your code.** Keys in a
-data-driven program are runtime values — an enum read out of a file, a key a
-tool hands you — so `operator[]` is the accessor every call site uses, and its
-assert is a debug guard that `NDEBUG` compiles out. A shipped build carries no
-check on a keyed index — and an index by `None` there computes `-1` and reads
-one element before the array. That is why iteration, not the assert, is where
-the safety lives: it yields the KEY, `1 .. Max`, so a consumer of the whole
-array writes no lower bound, no cast, no shift and no `Max` of its own.
-Iteration is const-correct, and a const keyed array yields const elements.
+**Indexing by `None` is refused in every build.** Keys in a data-driven
+program are runtime values — an enum read out of a file, a key a tool hands
+you — so `operator[]` is the accessor every call site uses, and it ends the
+program on `None` rather than reading something. This is **not** a debug
+guard: `NDEBUG` does not remove it, so there is no configuration in which a
+`None` key reads one element before the array. C++ asserts for the message
+and then aborts; C# throws. The cost is one predictable compare.
+
+**Iterate, and the key rule never reaches your code at all.** Iteration
+yields the KEY, `1 .. Max`, so a consumer of the whole array writes no lower
+bound, no cast, no shift and no `Max` of its own, and hands over no key to be
+refused. Iteration is const-correct, and a const keyed array yields const
+elements.
 
 The entry is a **proxy handed out by value** — a key beside a reference — so
 the spelling is `for ( auto [ key, element ] : keyed )`. `auto & [ ... ]` is a

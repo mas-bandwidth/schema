@@ -435,8 +435,9 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // cast: `hull.Turrets[(int)Weapon.Missile]`. The CAST is the port's; the SHIFT
 // is not — the indexer subtracts one exactly as C++'s does, so no call site in
 // any language spells it (§2.4). The None refusal survives as the runtime
-// guard, and unlike C++'s assert it is NOT compiled out in release, so the C#
-// guard is the stronger of the two at runtime.
+// guard, and it stands in EVERY build — as C++'s does (§2.4): the two ports
+// refuse the same key in the same configurations, differing only in how a
+// language ends a program.
 //
 // ITERATION carries over with the same RANGE and one difference in what it
 // hands out (§2.4): a struct enumerator over the whole storage, so `foreach`
@@ -467,7 +468,7 @@ const tableKeyedStorage = `// An ENUM-KEYED array's storage: E.Max slots, ONE PE
 //
 // NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
 // key of 0 is malformed, and INDEXING BY IT IS AN ERROR — a throw from the
-// indexer, which is NOT compiled out in release the way C++'s assert is.
+// indexer, which stands in every build exactly as the C++ abort does.
 //
 // ITERATION is the surface a consumer of the WHOLE array wants: foreach walks
 // every stored slot and yields the KEY, 1..E.Max, beside the element, so no

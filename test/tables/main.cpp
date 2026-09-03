@@ -2131,8 +2131,8 @@ static void test_keyed_round_trip()
 // (key, element) over the slots that can hold data. Iteration is that shape,
 // and it is where the key rule lives: the walk yields KEYS 1..E.Max over
 // storage 0..E.Max-1, so nothing out here spells a bound, a cast, a shift or
-// an E.Max of its own. The assert on operator[] is a debug guard that a
-// shipped build compiles out; this is not.
+// an E.Max of its own. The accessor REFUSES None in every build, so both
+// surfaces are safe in a shipped build; this one is safe without a key at all.
 
 // the sweep every keyed array in the corpus goes through: walk it, and prove
 // the keys are exactly 1..E.Max, ascending. Written once, against no
@@ -2251,14 +2251,16 @@ static void test_keyed_iteration()
     }
 }
 
-// ---- the None assert on operator[] is still there (SPEC-TABLES.md §2.4) ----
+// ---- operator[] REFUSES None, and in every build (SPEC-TABLES.md §2.4) ----
 //
-// The runtime guard is what a debug build has, and iteration is what a release
-// build has instead — so the guard is worth a test that shows it firing rather
-// than a comment claiming it does. A forked child indexes by None and must die
-// on the assert; the parent goes red if the child returns instead.
+// The refusal is unconditional — NDEBUG does not remove it — so it is worth a
+// test that shows it firing rather than a comment claiming it does. A forked
+// child indexes by None and must die; the parent goes red if the child returns
+// instead. This unit compiles with asserts LIVE, so it cannot tell the refusal
+// from an assert: `make tables-keyed-none-refusal-ndebug` is the half that
+// can, and its own negative control proves that gate has teeth.
 
-static void test_keyed_none_index_asserts()
+static void test_keyed_none_index_refused()
 {
     fflush( stdout );
     pid_t child = fork();
@@ -2269,13 +2271,13 @@ static void test_keyed_none_index_asserts()
         (void) quiet;
         tabledemo::KeyedConfig cfg;
         tabledemo::TeamConfig & none = cfg.teams[tabledemo::Team::None];
-        none.spawn_count = 1; // never reached: the accessor asserted
+        none.spawn_count = 1; // never reached: the accessor refused
         _exit( 0 );
     }
     CHECK( child > 0 );
     int status = 0;
     CHECK( waitpid( child, &status, 0 ) == child );
-    CHECK( WIFSIGNALED( status ) ); // the assert aborted the child
+    CHECK( WIFSIGNALED( status ) ); // the refusal ended the child
     if ( WIFEXITED( status ) )
     {
         printf( "FAIL keyed None index: the child returned %d — the assert is gone\n",
@@ -5017,7 +5019,7 @@ int main()
     test_optional_three_way_evolution();
     test_keyed_round_trip();
     test_keyed_iteration();
-    test_keyed_none_index_asserts();
+    test_keyed_none_index_refused();
     test_keyed_evolution_old_data();
     test_keyed_evolution_new_data();
     test_keyed_versus_positional_is_a_kind_mismatch();

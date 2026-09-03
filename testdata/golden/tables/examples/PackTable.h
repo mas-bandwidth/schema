@@ -12,7 +12,8 @@
 #include <cstring> // the prefill's scalar-array fills
 #include <cstddef> // offsetof, for the reflection descriptors
 #include <type_traits> // the enforced relocatability asserts
-#include <cassert> // the keyed accessor's None refusal
+#include <cassert> // the keyed accessor's None refusal, in a debug build
+#include <cstdlib> // and its abort, which NDEBUG does not remove
 #include <iterator> // the keyed iterator's traits typedefs
 
 #include "Pack.h"
@@ -211,14 +212,13 @@ struct TableReader
 // consumer could put one out of step with.
 //
 // NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
-// key of 0 is malformed, and INDEXING BY IT IS AN ERROR — an assert through
-// operator[], which cannot see a runtime key any earlier, and that assert is a
-// DEBUG guard, compiled out by -DNDEBUG. So a shipped build carries no check
-// on a keyed index at all, and an index by None there computes -1 and reads
-// ONE ELEMENT BEFORE THE ARRAY. ITERATION is where the safety lives:
-// begin()/end() walk every stored slot and yield the KEY, 1..E.Max, so a
-// consumer of the whole array writes no bound, no cast, no shift and no None
-// question.
+// key of 0 is malformed, and INDEXING BY IT IS A PROGRAM ERROR IN EVERY
+// CONFIGURATION — caught by operator[], which cannot see a runtime key any
+// earlier, and REFUSED UNCONDITIONALLY. NDEBUG does not remove the compare:
+// there is NO UB PATH here in any build. ITERATION is still the surface a
+// consumer of the whole array wants: begin()/end() walk every stored slot and
+// yield the KEY, 1..E.Max, so a call site writes no bound, no cast, no shift
+// and no None question.
 template <typename T, typename E>
 struct TableKeyed
 {
@@ -229,14 +229,30 @@ struct TableKeyed
 
     T & operator[]( E key )
     {
-        // None is the null key and keys no slot
-        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        RefuseNone( key );
         return slots[ (int32_t) key - 1 ];
     }
     const T & operator[]( E key ) const
     {
-        assert( key != E::None && "None is the null key of an enum-keyed array: it keys no slot" );
+        RefuseNone( key );
         return slots[ (int32_t) key - 1 ];
+    }
+
+    // THE REFUSAL, and it stands in EVERY BUILD. The storage shifts left and
+    // holds no slot for None, so a build that skipped this compare would index
+    // one element BEFORE the array — undefined behaviour in the configuration
+    // a game ships. A None key is a program error, so the accessor ends the
+    // program rather than reading something. The assert carries the message
+    // where a debugger can read it and NDEBUG removes that; the abort is what
+    // stands after it. The cost is one perfectly-predicted compare, on a path
+    // that reads config.
+    static void RefuseNone( E key )
+    {
+        if ( key == E::None )
+        {
+            assert( false && "None is the null key of an enum-keyed array: it keys no slot" );
+            abort();
+        }
     }
 
     // ---- iteration: keys 1..E.Max over storage 0..E.Max-1, key beside element ----

@@ -27,7 +27,7 @@ namespace Blockdemo
     //
     // NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
     // key of 0 is malformed, and INDEXING BY IT IS AN ERROR — a throw from the
-    // indexer, which is NOT compiled out in release the way C++'s assert is.
+    // indexer, which stands in every build exactly as the C++ abort does.
     //
     // ITERATION is the surface a consumer of the WHOLE array wants: foreach walks
     // every stored slot and yields the KEY, 1..E.Max, beside the element, so no
