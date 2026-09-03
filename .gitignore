@@ -35,6 +35,10 @@
 generated/**/.stamp
 /bench/rust/target/
 /bench/rust/Cargo.lock
+/bench/tables/rust/target/
+/bench/tables/rust/Cargo.lock
+/generated/bench/tables/rust/target/
+/generated/bench/tables/rust/Cargo.lock
 /bench/cs/bin/
 /bench/cs/obj/
 /bench/tables/cs/bin/

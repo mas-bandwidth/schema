@@ -2092,6 +2092,18 @@ generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
 	@touch $@
 
+# the Rust leg's generated crate: a unit is a Rust CRATE, so the corpus needs a
+# Cargo.toml beside its modules. The TABLE modules name no runtime — the
+# generated table surface carries no serialize dependency, which is the leg's
+# recorded linkage fact — but the unit's PACKET module does, because a table
+# closure's types are the packet backend's own and they carry their type-wire
+# codecs whether or not this bench calls one.
+generated/bench/tables/rust/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/rust/src
+	./bin/schema generate --lang rust --out generated/bench/tables/rust/src bench/corpus/BenchTable.schema
+	@printf '[package]\nname = "benchtable"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' > generated/bench/tables/rust/Cargo.toml
+	@touch $@
+
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
 	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
@@ -2344,7 +2356,7 @@ bench-table-check: build/schema_test_bench_table
 # estate's bench rules — core 15, server stopped, not live, blessed per run;
 # a run on a shared interactive machine is a pairing check and the board says
 # which one it is.
-bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp bench-table-check
+bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/rust/.stamp bench-table-check
 	bench/tables/run.sh
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
