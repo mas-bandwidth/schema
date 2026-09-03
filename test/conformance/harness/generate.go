@@ -53,12 +53,12 @@ func (u *units) get(key string) (*ir.Unit, error) {
 	}
 	paths, err := compiler.GatherPaths(args)
 	if err != nil {
-		return nil, fmt.Errorf("unit %s: %v", key, err)
+		return nil, fmt.Errorf("unit %s: %w", key, err)
 	}
 	u.c.FormatInPlace = false
 	unit, err := u.c.Load(paths)
 	if err != nil {
-		return nil, fmt.Errorf("loading unit %s: %v", key, err)
+		return nil, fmt.Errorf("loading unit %s: %w", key, err)
 	}
 	u.loaded[key] = unit
 	return unit, nil
@@ -74,7 +74,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(scratch)
+	defer func() { _ = os.RemoveAll(scratch) }()
 
 	written := map[string]bool{}
 	for _, inst := range m.Instances {
@@ -84,7 +84,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		}
 		wire, err := os.ReadFile(inst.Wire)
 		if err != nil {
-			return fmt.Errorf("%s: %v", inst.Name, err)
+			return fmt.Errorf("%s: %w", inst.Name, err)
 		}
 
 		// wire -> text
@@ -94,14 +94,14 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		}
 		report, err := u.c.UnpackOneFile(unit, inst.Root, wire, one)
 		if err != nil {
-			return fmt.Errorf("%s: unpack: %v", inst.Name, err)
+			return fmt.Errorf("%s: unpack: %w", inst.Name, err)
 		}
 		if !report.Silent() {
 			return fmt.Errorf("%s: its own writer's bytes do not read clean: %+v", inst.Name, report)
 		}
 		text, err := os.ReadFile(filepath.Join(one, inst.Root+".json"))
 		if err != nil {
-			return fmt.Errorf("%s: %v", inst.Name, err)
+			return fmt.Errorf("%s: %w", inst.Name, err)
 		}
 		// A golden carries EXACTLY the §16 text and nothing around it, the way
 		// a wire golden carries exactly the wire: `schema unpack` is writing a
@@ -115,7 +115,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		// a text that lost a field cannot pack to the bytes it came from
 		back, _, backReport, err := u.c.Pack(unit, inst.Root, one)
 		if err != nil {
-			return fmt.Errorf("%s: pack: %v", inst.Name, err)
+			return fmt.Errorf("%s: pack: %w", inst.Name, err)
 		}
 		if !backReport.Silent() {
 			return fmt.Errorf("%s: the text this step wrote does not read clean: %+v", inst.Name, backReport)
@@ -156,7 +156,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		}
 		wire, err := os.ReadFile(rc.Wire)
 		if err != nil {
-			return fmt.Errorf("%s: %v", rc.Name, err)
+			return fmt.Errorf("%s: %w", rc.Name, err)
 		}
 		one := filepath.Join(scratch, "report-"+rc.Name)
 		if err := os.MkdirAll(one, 0o755); err != nil {
@@ -164,7 +164,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		}
 		report, err := u.c.UnpackOneFile(unit, rc.Root, wire, one)
 		if err != nil {
-			return fmt.Errorf("%s: unpack: %v", rc.Name, err)
+			return fmt.Errorf("%s: unpack: %w", rc.Name, err)
 		}
 		counts := Counts{
 			Unknown:      report.Unknown,
@@ -201,7 +201,7 @@ func readReports(path string) (map[string]Counts, error) {
 		return nil, err
 	}
 	out := map[string]Counts{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -212,7 +212,7 @@ func readReports(path string) (map[string]Counts, error) {
 		}
 		c, err := ParseCounts(f[1])
 		if err != nil {
-			return nil, fmt.Errorf("%s: %v", path, err)
+			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 		out[f[0]] = c
 	}

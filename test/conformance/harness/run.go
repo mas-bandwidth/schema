@@ -10,6 +10,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,7 +39,7 @@ func readDrivers(path string) ([]driver, error) {
 		return nil, err
 	}
 	var out []driver
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -76,7 +77,7 @@ func materialise(m *Manifest, work string) (map[string]string, error) {
 		build := exec.Command("go", "build", "-o", cookgen, "./test/cookgen")
 		build.Stderr = os.Stderr
 		if err := build.Run(); err != nil {
-			return nil, fmt.Errorf("building cookgen: %v", err)
+			return nil, fmt.Errorf("building cookgen: %w", err)
 		}
 		for i := range m.Cooks {
 			c := &m.Cooks[i]
@@ -88,7 +89,7 @@ func materialise(m *Manifest, work string) (map[string]string, error) {
 			cmd := exec.Command(cookgen, args...)
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
-				return nil, fmt.Errorf("cooking %s: %v", c.Root, err)
+				return nil, fmt.Errorf("cooking %s: %w", c.Root, err)
 			}
 			c.File = out
 			base[c.Root] = out
@@ -253,7 +254,7 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 
 		listed, err := listSurfaces(d, derived)
 		if err != nil {
-			return false, fmt.Errorf("%s: %v", d.lang, err)
+			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
 		for _, s := range surfaces {
 			r := &result{total: len(want[s])}
@@ -306,10 +307,10 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("`%s list` failed: %v\n%s", strings.Join(argv, " "), err, stderr.String())
+		return nil, fmt.Errorf("`%s list` failed: %w\n%s", strings.Join(argv, " "), err, stderr.String())
 	}
 	out := map[string]bool{}
-	for _, line := range strings.Split(stdout.String(), "\n") {
+	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		if s := strings.TrimSpace(line); s != "" {
 			out[s] = true
 		}
@@ -327,10 +328,11 @@ func runDriver(d driver, manifest, surface, out string) (int, string, error) {
 	if err == nil {
 		return 0, stderr.String(), nil
 	}
-	if exit, ok := err.(*exec.ExitError); ok {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
 		return exit.ExitCode(), stderr.String(), nil
 	}
-	return 0, stderr.String(), fmt.Errorf("`%s`: %v", strings.Join(argv, " "), err)
+	return 0, stderr.String(), fmt.Errorf("`%s`: %w", strings.Join(argv, " "), err)
 }
 
 // describeDiff says WHERE, because "the bytes differ" over a 200 KB instance is

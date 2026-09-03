@@ -73,7 +73,7 @@ func pin(m *Manifest, driversPath, work, cookDir string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("emitting the block forgeries: %v", err)
+		return fmt.Errorf("emitting the block forgeries: %w", err)
 	}
 	return nil
 }

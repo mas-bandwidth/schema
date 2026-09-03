@@ -55,7 +55,7 @@ func ParseCounts(text string) (Counts, error) {
 	for i, p := range nums {
 		v, err := strconv.Atoi(parts[i])
 		if err != nil {
-			return c, fmt.Errorf("%q is not a counter: %v", parts[i], err)
+			return c, fmt.Errorf("%q is not a counter: %w", parts[i], err)
 		}
 		*p = v
 	}
@@ -144,7 +144,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	m := &Manifest{}
 	scan := bufio.NewScanner(file)
