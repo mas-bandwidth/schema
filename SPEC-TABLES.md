@@ -3588,19 +3588,6 @@ in build version (§20.5).
   It is a file-name collision rather than a declaration collision, so it is
   refused naming the FILE, and it is stated here because the view is what
   introduces a generated name that is not derived from a schema file's own.
-
-  **A FIXED TABLE claims two more per out-of-line array, because its
-  row accessors are named after its fields — and this claim is owed with the
-  block form too, on the same terms as the seven above** (schema#287): the
-  checker makes it today for neither. `<Table>` followed by the
-  PascalCase of the field's name is the accessor that hands back that
-  field's rows, and the same name with `Span` appended is the contiguous
-  view (§19.2) — so `RenderFrame` with a `ships` array claims
-  `RenderFrameShips` AND `RenderFrameShipsSpan`, and a declaration spelling
-  either is refused naming both. A language whose accessors are members
-  spells the same two names on the block type instead, and claims nothing at
-  file scope for them. This part of the set moves with the declaration,
-  which is why it is stated as a rule rather than as a list.
 - **A table named after a member of its generated builder** — a member
   function hides the type name it shares, so the header would not
   compile. The two accessors a real schema would plausibly hit were
