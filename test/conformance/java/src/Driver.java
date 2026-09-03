@@ -209,6 +209,20 @@ public final class Driver {
         spill(out, name, body.getBytes(StandardCharsets.UTF_8));
     }
 
+    // spillAbsent says this backend cannot answer THIS CASE — a feature it
+    // lacks, not a test it failed. The harness counts it and the matrix prints
+    // it beside what the leg did answer (test/conformance/README.md).
+    private static void spillAbsent(String out, String name) throws IOException {
+        spill(out, name + ".absent", new byte[0]);
+    }
+
+    // noText marks an instance the corpus carries on the WIRE only: the
+    // variable class has no text form yet (docs/SPEC-TABLES.md 16.2), so the
+    // TEXT surfaces skip it rather than reporting a form nobody has.
+    private static boolean noText(String[] f) {
+        return f.length > 5 && f[5].equals("no-text");
+    }
+
     private static String counters(Report r, boolean malformed) {
         if (malformed) {
             return r.unknown + "," + r.kindMismatch + "," + r.clamped + "," + r.duplicate + ",true\n";
@@ -222,8 +236,10 @@ public final class Driver {
         for (String[] f : kind("instance")) {
             Codec codec = find(f[2], f[3]);
             if (codec == null) {
-                System.err.println("driver: no codec for " + f[2] + "." + f[3]);
-                return 1;
+                // Java refuses a pointered unit's wire by name (11), so it has
+                // no codec here and says so per case
+                spillAbsent(out, f[1]);
+                continue;
             }
             byte[] wire = Files.readAllBytes(Paths.get(f[4]));
             Report report = new Report();
@@ -251,10 +267,15 @@ public final class Driver {
     // proves the reader against bytes this driver did not write.
     private static int surfaceJsonRead(String out) throws IOException {
         for (String[] f : kind("instance")) {
+            if (noText(f)) {
+                continue;
+            }
             Codec codec = find(f[2], f[3]);
             if (codec == null) {
-                System.err.println("driver: no codec for " + f[2] + "." + f[3]);
-                return 1;
+                // Java refuses a pointered unit's wire by name (11), so it has
+                // no codec here and says so per case
+                spillAbsent(out, f[1]);
+                continue;
             }
             byte[] text = Files.readAllBytes(Paths.get("testdata", "conformance", "tables", "json", f[1] + ".json"));
             Report report = new Report();
@@ -282,10 +303,15 @@ public final class Driver {
     // against a text a third implementation wrote.
     private static int surfaceJsonWrite(String out) throws IOException {
         for (String[] f : kind("instance")) {
+            if (noText(f)) {
+                continue;
+            }
             Codec codec = find(f[2], f[3]);
             if (codec == null) {
-                System.err.println("driver: no codec for " + f[2] + "." + f[3]);
-                return 1;
+                // Java refuses a pointered unit's wire by name (11), so it has
+                // no codec here and says so per case
+                spillAbsent(out, f[1]);
+                continue;
             }
             byte[] wire = Files.readAllBytes(Paths.get(f[4]));
             Report report = new Report();
@@ -315,8 +341,10 @@ public final class Driver {
         for (String[] f : kind("json-hostile")) {
             Codec codec = find(f[2], f[3]);
             if (codec == null) {
-                System.err.println("driver: no codec for " + f[2] + "." + f[3]);
-                return 1;
+                // Java refuses a pointered unit's wire by name (11), so it has
+                // no codec here and says so per case
+                spillAbsent(out, f[1]);
+                continue;
             }
             // the tree is what `schema pack` reads, so the text is
             // <tree>/<root>.json (§17)
@@ -333,8 +361,10 @@ public final class Driver {
         for (String[] f : kind("report")) {
             Codec codec = find(f[2], f[3]);
             if (codec == null) {
-                System.err.println("driver: no codec for " + f[2] + "." + f[3]);
-                return 1;
+                // Java refuses a pointered unit's wire by name (11), so it has
+                // no codec here and says so per case
+                spillAbsent(out, f[1]);
+                continue;
             }
             byte[] wire = Files.readAllBytes(Paths.get(f[4]));
             Report report = new Report();

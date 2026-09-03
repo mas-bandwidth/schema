@@ -35,7 +35,13 @@
 #include "V1Table.h"
 #include "V2Table.h"
 #include "P1Table.h"
+#include "P2Table.h"
 #include "P3Table.h"
+// the POINTERED unit (docs/SPEC-TABLES.md §6.2): a region and a root pointer,
+// never a value, which is why it gets its own row shape below
+#include "GraphTable.h"
+#include "MarksTable.h"
+#include "PartsTable.h"
 #include "RenderBlock.h"
 #include "PaddedBlock.h"
 
@@ -211,6 +217,55 @@ static const Codec codecs[] = {
     CODEC( "tblp1", tblp1, Chain ),
     CODEC( "tblp3", tblp3, Chain ),
 };
+
+// ---------------------------------------------------------------------------
+// the VARIABLE class's rows (docs/SPEC-TABLES.md §6.2)
+// ---------------------------------------------------------------------------
+//
+// A pointered root is not held by value: it is read through a REGION and a root
+// pointer, and the caller owns the region. So it cannot share the table above —
+// three of that row's columns take a `T &` that does not exist here — and it
+// gets its own, with the same erasure and the same one-loop-per-surface shape.
+struct VarCodec
+{
+    const char * unit;
+    const char * root;
+    const void * ( *load )( std::vector<uint8_t> &, const uint8_t *, int64_t, Report * );
+    int64_t ( *measure )( const void * );
+    int64_t ( *save )( const void *, uint8_t *, int64_t );
+};
+
+#define VARCODEC( unit_key, ns, type )                                                         \
+    {                                                                                          \
+        unit_key, #type,                                                                       \
+        []( std::vector<uint8_t> & region, const uint8_t * b, int64_t n, Report * r )           \
+            -> const void * {                                                                  \
+            int64_t need = ns::type##LoadMeasure( b, n );                                       \
+            region.assign( (size_t) need, 0 );                                                  \
+            ns::TableReport inner;                                                              \
+            const ns::type * root = ns::type##Load( region.data(), need, b, n, &inner );        \
+            copy_report( inner, r );                                                            \
+            return (const void *) root;                                                         \
+        },                                                                                     \
+        []( const void * v ) { return ns::type##Measure( (const ns::type *) v ); },             \
+        []( const void * v, uint8_t * b, int64_t n ) {                                          \
+            return ns::type##Save( (const ns::type *) v, b, n );                                \
+        }                                                                                      \
+    }
+
+static const VarCodec var_codecs[] = {
+    VARCODEC( "graphdemo", graphdemo, Scene ),
+    VARCODEC( "tblp2", tblp2, Chain ),
+};
+
+static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )
+{
+    for ( size_t i = 0; i < sizeof( var_codecs ) / sizeof( var_codecs[0] ); i++ )
+    {
+        if ( unit == var_codecs[i].unit && root == var_codecs[i].root ) { return &var_codecs[i]; }
+    }
+    return NULL;
+}
 
 static const Codec * find_codec( const std::string & unit, const std::string & root )
 {
@@ -517,10 +572,24 @@ static int surface_wire( const std::string & out )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "instance" ) continue;
-        const Codec * codec = find_codec( f[2], f[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
         std::vector<uint8_t> wire;
         if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            std::vector<uint8_t> region;
+            Report report;
+            const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
+            if ( root == NULL ) return 1;
+            int64_t size = variable->measure( root );
+            if ( size < 0 ) return 1;
+            scratch.assign( (size_t) size, 0 );
+            if ( variable->save( root, scratch.data(), size ) != size ) return 1;
+            if ( !spill( out, f[1], scratch.data(), (size_t) size ) ) return 1;
+            continue;
+        }
+        const Codec * codec = find_codec( f[2], f[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
 
         void * value = codec->make();
         codec->reset( value );
@@ -541,15 +610,24 @@ static int surface_report( const std::string & out )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "report" ) continue;
-        const Codec * codec = find_codec( f[2], f[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
         std::vector<uint8_t> wire;
         if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
-
-        void * value = codec->make();
-        codec->reset( value );
         Report report;
-        bool ok = codec->load( value, wire.data(), (int64_t) wire.size(), &report );
+        bool ok = false;
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            std::vector<uint8_t> region;
+            ok = variable->load( region, wire.data(), (int64_t) wire.size(), &report ) != NULL;
+        }
+        else
+        {
+            const Codec * codec = find_codec( f[2], f[3] );
+            if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+            void * value = codec->make();
+            codec->reset( value );
+            ok = codec->load( value, wire.data(), (int64_t) wire.size(), &report );
+        }
         char text[128];
         int n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%s\n",
                           report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
@@ -565,6 +643,7 @@ static int surface_json_read( const std::string & out )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "instance" ) continue;
+        if ( f.size() > 5 && f[5] == "no-text" ) continue; // wire only (§16.2)
         const Codec * codec = find_codec( f[2], f[3] );
         if ( codec == NULL ) return 1;
         std::vector<uint8_t> text;
@@ -590,6 +669,7 @@ static int surface_json_write( const std::string & out )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "instance" ) continue;
+        if ( f.size() > 5 && f[5] == "no-text" ) continue; // wire only (§16.2)
         const Codec * codec = find_codec( f[2], f[3] );
         if ( codec == NULL ) return 1;
         std::vector<uint8_t> wire;

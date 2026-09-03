@@ -31,8 +31,15 @@ type driver struct {
 
 type result struct {
 	pass, total int
-	absent      bool
-	failures    []string
+	absent      bool // the whole SURFACE: the backend does not implement it
+	// missing counts the CASES a driver answered ABSENT one at a time, by
+	// writing `<case>.absent` beside where the answer would go. A backend with
+	// no variable class runs the wire surface over the fixed instances and says
+	// so about the rest, which is a missing FEATURE per case rather than a
+	// failing test — the same distinction the surface-level absence draws, at
+	// the grain the corpus now needs (test/conformance/README.md).
+	missing  int
+	failures []string
 }
 
 func readDrivers(path string) ([]driver, error) {
@@ -157,7 +164,14 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "unit %s %s\n", u.Key, strings.Join(u.Paths, " "))
 	}
 	for _, i := range m.Instances {
-		fmt.Fprintf(&b, "instance %s %s %s %s\n", i.Name, i.Unit, i.Root, i.Wire)
+		marker := ""
+		if i.NoText {
+			// the marker travels: a driver has to know which instances the
+			// corpus carries on the wire alone, so that its TEXT surfaces skip
+			// them rather than reporting a form nobody has yet (§16.2)
+			marker = " no-text"
+		}
+		fmt.Fprintf(&b, "instance %s %s %s %s%s\n", i.Name, i.Unit, i.Root, i.Wire, marker)
 	}
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
@@ -195,6 +209,9 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	switch surface {
 	case "wire", "json-read":
 		for _, i := range m.Instances {
+			if i.NoText && surface == "json-read" {
+				continue // no text to read it FROM (§16.2, schema#275)
+			}
 			want, err := os.ReadFile(i.Wire)
 			if err != nil {
 				return nil, err
@@ -203,6 +220,9 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		}
 	case "json-write":
 		for _, i := range m.Instances {
+			if i.NoText {
+				continue // the corpus owes this one a text; no leg is asked for one
+			}
 			want, err := os.ReadFile(i.JSON)
 			if err != nil {
 				return nil, err
@@ -277,6 +297,12 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	return out, nil
 }
 
+// defaultDriversPath is the committed registry, and the REFERENCE rule below
+// belongs to it alone: a run handed a substituted registry — the big-endian
+// leg writes a one-driver file for the Go port — is one leg of a port, not the
+// matrix, and its first line is not the leg the pins come from.
+const defaultDriversPath = "test/conformance/drivers.txt"
+
 func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only string) (bool, error) {
 	drivers, err := readDrivers(driversPath)
 	if err != nil {
@@ -305,7 +331,14 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 
 	results := map[string]map[string]*result{}
 	var langs []string
-	for _, d := range drivers {
+	for i, d := range drivers {
+		// THE REFERENCE LEG MAY NOT ANSWER ABSENT. It is the first driver in
+		// the COMMITTED registry and the one `conformance-pin` takes its pins
+		// from, so an absence there is not a port's missing feature — it is the
+		// corpus losing its own expectation, quietly, while every other leg
+		// keeps comparing against nothing. Per-case absence is safe exactly
+		// because this rule stands beside it.
+		reference := i == 0 && driversPath == defaultDriversPath
 		if only != "" && d.lang != only {
 			continue
 		}
@@ -345,6 +378,12 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 			for _, e := range want[s] {
 				got, err := os.ReadFile(filepath.Join(out, e.name))
 				if err != nil {
+					if _, absent := os.Stat(filepath.Join(out, e.name+".absent")); absent == nil {
+						// the driver SAID it cannot answer this case, which is
+						// a feature it lacks and not a test it failed
+						r.missing++
+						continue
+					}
 					r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
 					continue
 				}
@@ -353,6 +392,12 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 					continue
 				}
 				r.pass++
+			}
+			if reference && r.missing > 0 {
+				r.failures = append(r.failures, fmt.Sprintf(
+					"the REFERENCE leg answered ABSENT for %d case(s) — an absence here is the corpus "+
+						"losing its own expectation, not a missing feature; the reference answers every case "+
+						"it registers a surface for", r.missing))
 			}
 		}
 	}
@@ -410,7 +455,8 @@ func describeDiff(name string, want, got []byte) string {
 
 func report(langs []string, results map[string]map[string]*result) bool {
 	ok := true
-	width := 12
+	// wide enough for "pass 111/111 +4a", the widest cell the matrix can print
+	width := 18
 	for _, s := range surfaces {
 		if len(s)+2 > width {
 			width = len(s) + 2
@@ -433,6 +479,11 @@ func report(langs []string, results map[string]map[string]*result) bool {
 			case len(r.failures) > 0:
 				fmt.Printf("%-*s", width, fmt.Sprintf("FAIL %d/%d", r.pass, r.total))
 				ok = false
+			case r.missing > 0:
+				// what it answered, and what it said it cannot: the cell is the
+				// completion tracker, so an absence stays visible rather than
+				// being rounded away into a smaller total
+				fmt.Printf("%-*s", width, fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing))
 			default:
 				fmt.Printf("%-*s", width, fmt.Sprintf("pass %d/%d", r.pass, r.total))
 			}

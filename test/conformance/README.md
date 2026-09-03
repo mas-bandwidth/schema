@@ -69,6 +69,32 @@ language" below, where both shapes are stated.
 | 2 | this backend does not implement it — the matrix prints ABSENT |
 | anything else | the driver failed; the matrix prints FAIL and the harness prints stderr |
 
+**A CASE may be absent too, and it is said the same way.** A driver that
+cannot answer one case of a surface it otherwise implements writes
+`<case>.absent` — an empty file, beside where the answer would go — and the
+harness counts it. The cell then reads `pass 16/16 +4a`: what the leg answered,
+and how many it said it cannot. The distinction is the surface-level one at a
+finer grain, and the corpus needed it the day it gained VARIABLE-class
+instances: a backend with no variable class still answers the wire surface over
+every FIXED instance, and a leg that failed the whole surface for them would say
+nothing about what it does carry.
+
+**THE REFERENCE LEG MAY NOT ANSWER ABSENT**, and that rule is what makes
+per-case absence safe rather than a place to hide: an absence from the first
+driver in the COMMITTED registry — the one `conformance-pin` takes its pins
+from — is the corpus losing its own expectation, not a port's missing feature.
+It belongs to that registry alone: a run handed a SUBSTITUTED one with
+`--drivers`, as the big-endian leg does for its single Go driver, is one leg of
+a port and not the matrix, so its first line is not the reference and its
+absences are ordinary.
+
+**THE MATRIX IS THE COMPLETION TRACKER.** Green cells over total cells is what
+"done" means for the tables layer, and an absence — per surface or per case — is
+the row of work that is left, named where it can be seen. The variable class's
+four instances read `+4a` in five languages today and become part of the count
+as schema#349 lands them, one language at a time, with nothing in this data or
+this contract moving as they do.
+
 **Absent is not failure, and the distinction is the whole reason the matrix
 exists.** A backend with no text form is missing a FEATURE; a backend whose text
 form writes the wrong bytes is failing a TEST. A harness that printed both the
@@ -127,6 +153,17 @@ truncation is. The pointer is the buffer that caller holds: `0` an aligned base,
 `1`..`63` that many bytes past one, `null` no buffer at all. A driver allocates
 EXACTLY the claim, places the base as the pointer column says, copies what fits
 and zeroes the rest. `-1` as the extent means the file's own length.
+
+### What the BLOCK surfaces do not cover, by design
+
+§19's block form is a FIXED-size table's third layout, and it does not admit a
+variable one: a block is one contiguous image of rows at a stride, and a
+pointered table has no stride. So the block surfaces carry no variable case and
+never will — that is ABSENT BY DESIGN and not a gap anyone is tracking, which
+is why it is written here rather than left to look like an oversight in the
+matrix. The variable class's accelerator is the COOK (§7), and the `cook`,
+`cook-foreign` and `cook-forgery` surfaces have carried pointered roots since
+they landed.
 
 ### Why there is no `dump-read`
 

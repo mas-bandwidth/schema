@@ -140,6 +140,18 @@ func spill(dir, name string, data []byte) error {
 	return os.WriteFile(filepath.Join(dir, name), data, 0o644)
 }
 
+// spillAbsent says this backend cannot answer THIS CASE — a feature it lacks,
+// not a test it failed. The harness counts it and the matrix prints it beside
+// what the leg did answer (test/conformance/README.md).
+func spillAbsent(dir, name string) error {
+	return os.WriteFile(filepath.Join(dir, name+".absent"), nil, 0o644)
+}
+
+// noText marks an instance the corpus carries on the WIRE only: the variable
+// class has no text form yet (docs/SPEC-TABLES.md §16.2), so the TEXT surfaces
+// skip it rather than reporting a form nobody has.
+func noText(f line) bool { return len(f) > 5 && f[5] == "no-text" }
+
 // ---------------------------------------------------------------------------
 // the surfaces
 // ---------------------------------------------------------------------------
@@ -153,7 +165,12 @@ func surfaceWire(lines []line, out string) error {
 		}
 		c := findCodec(f[2], f[3])
 		if c == nil {
-			return fmt.Errorf("no codec for %s.%s", f[2], f[3])
+			// no codec for this unit's root: the Go backend refuses a pointered
+			// unit's wire by name (§11), which is a missing FEATURE
+			if err := spillAbsent(out, f[1]); err != nil {
+				return err
+			}
+			continue
 		}
 		wire, err := os.ReadFile(f[4])
 		if err != nil {
@@ -190,7 +207,10 @@ func surfaceReport(lines []line, out string) error {
 		}
 		c := findCodec(f[2], f[3])
 		if c == nil {
-			return fmt.Errorf("no codec for %s.%s", f[2], f[3])
+			if err := spillAbsent(out, f[1]); err != nil {
+				return err
+			}
+			continue
 		}
 		wire, err := os.ReadFile(f[4])
 		if err != nil {
@@ -213,7 +233,7 @@ func surfaceReport(lines []line, out string) error {
 
 func surfaceJsonRead(lines []line, out string) error {
 	for _, f := range lines {
-		if f[0] != "instance" {
+		if f[0] != "instance" || noText(f) {
 			continue
 		}
 		c := findCodec(f[2], f[3])
@@ -246,7 +266,7 @@ func surfaceJsonRead(lines []line, out string) error {
 
 func surfaceJsonWrite(lines []line, out string) error {
 	for _, f := range lines {
-		if f[0] != "instance" {
+		if f[0] != "instance" || noText(f) {
 			continue
 		}
 		c := findCodec(f[2], f[3])

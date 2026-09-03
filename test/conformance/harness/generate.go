@@ -78,6 +78,16 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 
 	written := map[string]bool{}
 	for _, inst := range m.Instances {
+		if inst.NoText {
+			// the corpus carries this one on the WIRE only, and says so on its
+			// own line: the variable class has no text form in any
+			// implementation and the tool refuses a variable root in both
+			// directions (§16.2). schema#275 drops the marker and this arm
+			// with it — until then a JSON golden here would be a file nothing
+			// can write and nothing holds.
+			fmt.Printf("conformance: %-22s wire only — the corpus marks it no-text (§16.2, schema#275)\n", inst.Name)
+			continue
+		}
 		unit, err := u.get(inst.Unit)
 		if err != nil {
 			return err
@@ -164,13 +174,12 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", rc.Name, err)
 		}
-		one := filepath.Join(scratch, "report-"+rc.Name)
-		if err := os.MkdirAll(one, 0o755); err != nil {
-			return err
-		}
-		report, err := u.c.UnpackOneFile(unit, rc.Root, wire, one)
+		// the counters and only the counters: a report is a fact about the
+		// DECODE, and asking for a text here would refuse the variable class
+		// for a file this step throws away
+		report, err := u.c.ReadReport(unit, rc.Root, wire)
 		if err != nil {
-			return fmt.Errorf("%s: unpack: %w", rc.Name, err)
+			return fmt.Errorf("%s: read: %w", rc.Name, err)
 		}
 		counts := Counts{
 			Unknown:      report.Unknown,

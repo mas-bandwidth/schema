@@ -327,6 +327,27 @@ fn find_codec<'a>(rows: &'a [Codec], unit: &str, root: &str) -> &'a Codec {
     }
 }
 
+/// The row for a (unit, root), or `None` where this backend has none: Rust
+/// refuses a pointered unit's wire by name (§11), so the cases over one are a
+/// missing FEATURE and the driver says so per case.
+fn codec_for<'a>(rows: &'a [Codec], unit: &str, root: &str) -> Option<&'a Codec> {
+    rows.iter().find(|c| c.unit == unit && c.root == root)
+}
+
+/// `spill_absent` says this backend cannot answer THIS CASE — a feature it
+/// lacks, not a test it failed. The harness counts it and the matrix prints it
+/// beside what the leg did answer (test/conformance/README.md).
+fn spill_absent(dir: &str, name: &str) {
+    spill(dir, &format!("{name}.absent"), &[]);
+}
+
+/// `no_text` marks an instance the corpus carries on the WIRE only: the
+/// variable class has no text form yet (docs/SPEC-TABLES.md §16.2), so the TEXT
+/// surfaces skip it rather than reporting a form nobody has.
+fn no_text(f: &[String]) -> bool {
+    f.len() > 5 && f[5] == "no-text"
+}
+
 // ---------------------------------------------------------------------------
 // aligned storage
 // ---------------------------------------------------------------------------
@@ -566,7 +587,10 @@ fn open_block(name: &str, data: &[u8], extent: i64) -> bool {
 fn surface_wire(manifest: &Manifest, out: &str) {
     let rows = codecs();
     for f in manifest.of_kind("instance") {
-        let codec = find_codec(&rows, &f[2], &f[3]);
+        let Some(codec) = codec_for(&rows, &f[2], &f[3]) else {
+            spill_absent(out, &f[1]);
+            continue;
+        };
         let wire = slurp(&f[4]);
         let mut report = Report::default();
         match (codec.wire)(&wire, &mut report) {
@@ -579,7 +603,10 @@ fn surface_wire(manifest: &Manifest, out: &str) {
 fn surface_report(manifest: &Manifest, out: &str) {
     let rows = codecs();
     for f in manifest.of_kind("report") {
-        let codec = find_codec(&rows, &f[2], &f[3]);
+        let Some(codec) = codec_for(&rows, &f[2], &f[3]) else {
+            spill_absent(out, &f[1]);
+            continue;
+        };
         let wire = slurp(&f[4]);
         let mut report = Report::default();
         let ok = (codec.wire)(&wire, &mut report).is_some();
@@ -598,6 +625,9 @@ fn surface_report(manifest: &Manifest, out: &str) {
 fn surface_json_read(manifest: &Manifest, out: &str) {
     let rows = codecs();
     for f in manifest.of_kind("instance") {
+        if no_text(f) {
+            continue;
+        }
         let codec = find_codec(&rows, &f[2], &f[3]);
         let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
         let text = slurp(&path);
@@ -612,6 +642,9 @@ fn surface_json_read(manifest: &Manifest, out: &str) {
 fn surface_json_write(manifest: &Manifest, out: &str) {
     let rows = codecs();
     for f in manifest.of_kind("instance") {
+        if no_text(f) {
+            continue;
+        }
         let codec = find_codec(&rows, &f[2], &f[3]);
         let wire = slurp(&f[4]);
         let mut report = Report::default();
