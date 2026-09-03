@@ -644,7 +644,8 @@ enum is keyed.
   descriptors' count column (§8.1) derives the same way.
 
   **The accessor is `operator[]( E )`**: it takes a runtime key, REFUSES
-  `None`, and SUBTRACTS ONE. A key in a data-driven program IS a runtime
+  EVERY KEY THAT NAMES NO SLOT — `None` below the storage and anything past
+  `E.Max` above it — and SUBTRACTS ONE. A key in a data-driven program IS a runtime
   value — an enum field read out of a file, a key handed in by a tool, the
   key an iteration just yielded — so this is the form call sites use, and a
   compile-time accessor taking the key as a template parameter is not
@@ -653,27 +654,30 @@ enum is keyed.
   only place it appears.
 
   ```cpp
-  fleet.ships[ ship_type ]   // runtime key: refuses None, reads slots[ key - 1 ]
+  fleet.ships[ ship_type ]   // runtime key: refuses None and past Max, reads slots[ key - 1 ]
   ```
 
-  **THE REFUSAL STANDS IN EVERY BUILD, in every port.** It is not a debug
-  guard and `NDEBUG` does not remove it: **indexing by `None` is a PROGRAM
-  ERROR in every configuration**, and the accessor ends the program rather
-  than reading something. **There is NO undefined-behaviour path here in
-  any build** — which is the whole reason the compare is unconditional,
-  because the storage shifts left and holds no slot for `None` to land in,
-  so a build that skipped it would read one element BEFORE the array.
-  The cost is one perfectly-predicted compare on a path that reads config,
-  which is not a price worth a class of silent corruption.
+  **THE REFUSAL STANDS IN EVERY BUILD, in every port, AT BOTH ENDS.** It is
+  not a debug guard and `NDEBUG` does not remove it: **indexing by a key that
+  names no slot is a PROGRAM ERROR in every configuration**, and the accessor
+  ends the program rather than reading something. **THE GUARD IS SYMMETRIC**
+  because the storage is: one slot per NAMED variant and nothing else, so
+  `None` names none of them and neither does a key past `E.Max`. **There is
+  NO undefined-behaviour path here in any build** — which is the whole reason
+  the compare is unconditional, because a build that skipped it would read one
+  element BEFORE the array at one end and past its END at the other.
+  The cost is one perfectly-predicted compare on a path that reads config —
+  ONE compare covers both ends, since the storage index is `key − 1` and
+  `None`'s is `−1`, which wraps above the extent unsigned — and that is not a
+  price worth a class of silent corruption.
 
   What varies is only how a language ends a program: C++ asserts — for the
   message, where a debugger can read it — and then ABORTS, and the abort is
   what stands under `NDEBUG`; C# throws; Rust panics; Go panics too, and
   `-gcflags=all=-B` does not remove it because it is a written compare and not
-  a bounds check. **THE GUARD IS SYMMETRIC**: a key past `E.Max` is the same
-  program error as `None` for the same reason — the storage holds one slot per
-  NAMED variant and nothing else — so the accessor refuses both ends, in every
-  port.
+  a bounds check. A port that leans on its runtime's own bounds check has met
+  half the rule: the check must be the ACCESSOR's, so the behavior is the
+  reference's rather than whatever the language does at the end of an array.
 
   **AND WHAT THE KEY IS SPELLED AS varies too, because a language's own
   vocabulary decides it.** Every port indexes by the KEY and never by the
@@ -758,10 +762,12 @@ enum is keyed.
   one negative control moves `begin()` off the first stored slot and another
   restores the `None` slot — storage `E.Max + 1` with no shift — and the
   tables suite, the layout gate and the `sizeof` assertion go red. **The
-  refusal is held in the configuration that would drop it**: a translation
-  unit compiled `-DNDEBUG` indexes a keyed array by `None` and must die, so
-  a refusal that ever became an assert again fails the gate rather than the
-  reader.
+  refusal is held in the configuration that would drop it, at both ends**:
+  one translation unit compiled `-DNDEBUG` indexes a keyed array by `None`
+  and another by `E.Max + 1`, and both must die — so a refusal that ever
+  became an assert again, or narrowed back to `None` alone, fails the gate
+  rather than the reader. Each has its own negative control: the debug-only
+  guard for the first, the `None`-only compare for the second.
 
   The wire enforces the key rule from the other side regardless: a `None`
   key never rides (§3.2).

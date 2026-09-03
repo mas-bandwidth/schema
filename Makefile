@@ -2406,6 +2406,44 @@ tables-keyed-none-refusal-negative-control: bin/schema test/tables/keyed_none_nd
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the refusal"; cat build/keyed-none-assert-only.log; exit 1; }
 	@echo "negative control: a debug-only guard turns the -DNDEBUG refusal gate red"
 
+# THE OTHER END OF THE SAME REFUSAL, HELD UNDER -DNDEBUG (docs/SPEC-TABLES.md
+# §2.4, issue #377). The storage holds one slot per NAMED variant, so a key
+# past Max names a variant this enum does not have: the same program error as
+# None, refused at the same compare, in every configuration. A build that let
+# it through would read PAST THE END of the storage.
+.PHONY: tables-keyed-max-refusal-ndebug
+tables-keyed-max-refusal-ndebug: build/tables-generated/.stamp test/tables/keyed_max_ndebug_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -Ibuild/tables-generated/examples \
+		test/tables/keyed_max_ndebug_main.cpp -o build/schema_test_keyed_max_ndebug
+	./build/schema_test_keyed_max_ndebug
+
+# and its NEGATIVE CONTROL: put the accessor back to the None-ONLY compare —
+# what it refused before #377 — and the gate above must go RED, because a key
+# past Max then indexes past the end. Deleting the abort would turn both gates
+# red at once and prove nothing about THIS end, so the sabotage is the compare
+# itself.
+.PHONY: tables-keyed-max-refusal-negative-control
+tables-keyed-max-refusal-negative-control: bin/schema test/tables/keyed_max_ndebug_main.cpp
+	@mkdir -p build
+	@sed -e 's|        if ( (uint32_t) ( (int32_t) key - 1 ) >= (uint32_t) kSlots )|        if ( key == E::None ) /* SABOTAGED: the None-only compare again */|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-none-only.gotext
+	@grep -q SABOTAGED build/cpptable-none-only.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-none-only.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-none-only-overlay.json
+	@go build -overlay=build/cpptable-none-only-overlay.json -o build/schema-none-only ./cmd/schema
+	@rm -rf build/tables-none-only && mkdir -p build/tables-none-only
+	@./build/schema-none-only generate --lang cpp --out build/tables-none-only tables/examples
+	@$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -Ibuild/tables-none-only \
+		test/tables/keyed_max_ndebug_main.cpp -o build/schema_test_keyed_max_none_only
+	@if ./build/schema_test_keyed_max_none_only > build/keyed-max-none-only.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a None-only compare left the past-Max gate GREEN"; exit 1; \
+	fi
+	@grep -q "the refusal was compiled out" build/keyed-max-none-only.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the refusal"; cat build/keyed-max-none-only.log; exit 1; }
+	@echo "negative control: the None-only compare turns the past-Max refusal gate red"
+
 # The NEGATIVE CONTROL for the SHIFT itself (docs/SPEC-TABLES.md §2.4, owner ruling
 # 2026-09-03). The storage holds E.Max slots with the key k at index k-1 and
 # nothing for None. Putting the None slot BACK — E.Max + 1 slots, no shift —
@@ -3157,6 +3195,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-keyed-none-refusal-ndebug
 	$(MAKE) tables-keyed-none-refusal-negative-control
+	$(MAKE) tables-keyed-max-refusal-ndebug
+	$(MAKE) tables-keyed-max-refusal-negative-control
 	$(MAKE) tables-keyed-shift-negative-control
 	$(MAKE) tables-clamp-limits
 	$(MAKE) tables-clamp-limits-negative-control
