@@ -205,16 +205,21 @@ table Node
 // TestRustTableRuntimeNamesAreClaimed is the Rust half of the §11 promise: no
 // legal schema reaches a generated Rust module that does not compile.
 //
-// WHAT THE SCAN COLLECTS, and why it is narrower than the C# one. In Rust a
-// declaration produces a TYPE (PascalCase, exactly as declared) or — for a
-// const or a flags variant — a SCREAMING_SNAKE value. It never produces a bare
-// snake_case item, so the runtime's snake_case free functions
-// (table_json_read, table_cook_open, table_block_read64 …) are spellings no
-// declaration can reach, and registering forty walk helpers would take forty
-// names away from every schema for nothing. The scan therefore collects the two
-// classes that CAN collide — Table* identifiers and TABLE_* constants,
-// normalised back to the PascalCase a schema would spell — and requires the
-// whole set to be registered.
+// WHAT THE SCAN COLLECTS, and it collects ALL THREE SPELLINGS the emitter
+// uses, because the first version of this test collected only the C# one and
+// was blind to two of them. In Rust a declaration produces a TYPE (PascalCase,
+// exactly as declared) or — for a const or a flags variant — a SCREAMING_SNAKE
+// value; it never produces a bare snake_case crate item, and the runtime's
+// snake_case free functions are therefore spellings no declaration can reach.
+// That makes them SCOPED, not invisible: they are registered as such, and this
+// scan finds them, so a helper somebody adds has to be accounted for rather
+// than slipping in under a regex that could not see it.
+//
+// The SCREAMING half is where the real defect was. Rust's constant spelling is
+// MANY-TO-ONE — TableCookMagic, TABLE_COOK_MAGIC and table_cook_magic all
+// lower to one crate-scope TABLE_COOK_MAGIC — so a registry entry is not a
+// claim until internal/check makes it in the mapped space too. It does now,
+// and TestRustRuntimeConstantsClaimInTheMappedSpace below is what holds it.
 func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 	files, err := New().Generate(unitFromSource(t, runtimeSrc), "rust", Options{})
 	if err != nil {
@@ -224,6 +229,9 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 	// BUILD_VERSION is the one unit-level name the generated table sources
 	// define that is not a Table* spelling, and the registry already says so.
 	screaming := regexp.MustCompile(`\b(?:TABLE_[A-Z0-9_]+|BUILD_VERSION)\b`)
+	// and the snake_case family, which the first version of this scan could
+	// not see at all
+	snake := regexp.MustCompile(`\btable_[a-z0-9_]+\b`)
 	emitted := map[string]bool{}
 	for _, data := range files {
 		for line := range strings.SplitSeq(string(data), "\n") {
@@ -235,6 +243,9 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 			}
 			for _, m := range screaming.FindAllString(line, -1) {
 				emitted[screamingToPascal(m)] = true
+			}
+			for _, m := range snake.FindAllString(line, -1) {
+				emitted[snakeToPascal(m)] = true
 			}
 		}
 	}
@@ -260,6 +271,11 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 		}
 	}
 }
+
+// snakeToPascal maps a generated Rust free function back to the registry
+// spelling: table_json_read -> TableJsonRead. It is the inverse of
+// ir.RustSnake over the names this registry carries.
+func snakeToPascal(name string) string { return screamingToPascal(name) }
 
 // screamingToPascal maps a generated Rust constant back to the declaration
 // spelling a schema author would write: TABLE_JSON_MAX_KEY -> TableJsonMaxKey.

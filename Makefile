@@ -806,6 +806,40 @@ tables-cook-fuzz-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the battery went red, but not on the bar"; cat build/cook-fuzz-control/log; exit 1; }
 	@grep -m1 "FAILED" build/cook-fuzz-control/log
 
+# THE RUST NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). The claim
+# that a schema declaration may not lower onto one of the table runtime's Rust
+# CONSTANTS is a refusal, and a refusal that has never fired proves nothing —
+# so this removes it from internal/check and requires the suite to go red.
+#
+# It is the control that the whole class needed and did not have: the first
+# version of the registry scan was C#'s regex verbatim, blind to lowercase and
+# to SCREAMING_SNAKE, so forty-four crate items went unregistered and three
+# spellings of every runtime constant stayed legal. A green test over a blind
+# scan is what let that happen.
+#
+# The sabotage reaches the build through `go test -overlay`, so no tracked file
+# is edited and it cannot survive the target that made it.
+.PHONY: tables-rust-names-negative-control
+tables-rust-names-negative-control:
+	@rm -rf build/rust-names-control && mkdir -p build/rust-names-control
+	@sed 's|^\t\tfor _, gen := range tablenames.RustConstants() {$$|\t\tfor _, gen := range []string{} { _ = gen; // NEGATIVE CONTROL|' \
+		internal/check/check.go > build/rust-names-control/check.go.txt
+	@cmp -s internal/check/check.go build/rust-names-control/check.go.txt && \
+		{ echo "NEGATIVE CONTROL: the name-claim sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/rust-names-control/check.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-names-control/overlay.json
+	@if go test -count=1 -overlay=build/rust-names-control/overlay.json \
+			-run 'TestRustConstantSpaceIsClaimedForEveryRuntimeConstant|TestTableRefusals' \
+			./internal/check/ > build/rust-names-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the Rust constant-space claim removed"; \
+		exit 1; \
+	fi
+	@grep -q "was accepted beside a table" build/rust-names-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the claim"; \
+		  cat build/rust-names-control/log; exit 1; }
+	@grep -m1 "was accepted beside a table" build/rust-names-control/log
+	@echo "rust name-claim negative control: removing the mapped-space claim turns the suite RED on it"
+
 # THE SCALE FIXTURES (docs/SPEC-TABLES.md §7.5). `test/cookgen` writes a synthetic
 # region streaming, in O(1) memory, so the OPEN-COST gate the emitter owes —
 # open time flat across 1 MB, 100 MB and 1 GB — has inputs the C++ worker can
@@ -2281,6 +2315,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-rust-walk
 	$(MAKE) tables-rust-clippy
+	$(MAKE) tables-rust-names-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.

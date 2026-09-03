@@ -2584,6 +2584,25 @@ func (c *checker) checkClaimedNames() {
 		for _, gen := range tablenames.Claimed() {
 			add(gen, "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)", unitPos)
 		}
+		// AND THE SAME NAMES IN THE RUST CONSTANT SPACE. Rust spells a
+		// constant SCREAMING_SNAKE, and that spelling is MANY-TO-ONE:
+		// TableCookMagic, TABLE_COOK_MAGIC and table_cook_magic all lower to
+		// one crate-scope TABLE_COOK_MAGIC, so claiming the registered
+		// spelling alone leaves the other two legal. What they generate is a
+		// pair of ambiguous glob re-exports — the crate builds with a warning,
+		// the user's own constant is silently shadowed at the crate root, and
+		// a CONSUMER that names the symbol fails to compile under
+		// ambiguous_glob_imports, which is deny-by-default and
+		// future-incompatible.
+		//
+		// This is the claim two USER declarations already get from each other
+		// ("const max_health … collides with const MaxHealth … both generate
+		// the symbol MAX_HEALTH"), owed to the runtime for the same reason.
+		for _, gen := range tablenames.RustConstants() {
+			add(ir.RustConstName(gen),
+				fmt.Sprintf("the generated TABLE-wire runtime's %s (Rust constant form of %s, docs/SPEC-TABLES.md §11)",
+					ir.RustConstName(gen), gen), unitPos)
+		}
 	}
 
 	declNames := make([]string, 0, len(c.astDecls))
@@ -2735,6 +2754,12 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 	for _, verb := range tableGeneratedVerbs {
 		add(name+verb, why, pos)
 	}
+	// BlockMaxBytes is the one name-first verb the RUST backend spells as a
+	// crate-scope CONSTANT (<NAME>_BLOCK_MAX_BYTES), and Rust's constant
+	// spelling is many-to-one — so the mapped spelling is claimed beside the
+	// literal one, exactly as the unit-level runtime constants are.
+	add(ir.RustConstName(name+"BlockMaxBytes"),
+		fmt.Sprintf("%s's generated block extent constant (Rust form, docs/SPEC-TABLES.md §11)", name), pos)
 }
 
 // tableGeneratedVerbs is the full name-first suffix set a closure member
