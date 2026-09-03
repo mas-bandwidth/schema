@@ -79,8 +79,6 @@ type ShipState
 
 Write your data types once and generate bit-packed serialization code to read and write them. Best for client/server messages and state where the client speaks the same binary protocol or won't be allowed to connect to the server.
 
-Very fast and efficient serialization code is generated in all languages, and no schema definitions or version information is emitted on the wire.
-
 _This feature is production ready in this release_.
 
 ### 2. Versioned messages passed between tools, backends and websites
