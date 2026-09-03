@@ -457,7 +457,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		return fmt.Errorf("FAILED: the leg closed its input mid-stream: %w\n%s", err, stderr)
 	}
 	if err := leg.close(); err != nil {
-		return fmt.Errorf("FAILED: the leg exited with an error after the last mutant: %v\n%s", err, leg.stderr.String())
+		return fmt.Errorf("FAILED: the leg exited with an error after the last mutant: %w\n%s", err, leg.stderr.String())
 	}
 	elapsed := time.Since(start)
 	rate := float64(total) / elapsed.Seconds()
