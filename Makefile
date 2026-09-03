@@ -643,12 +643,15 @@ define block_fuzz_sabotage
 	@rm -rf build/block-fuzz-$(1) && mkdir -p build/block-fuzz-$(1)
 	@sed '$(BLOCK_FUZZ_SED_CPP_$(1))' internal/codegen/cpptable/block.go > build/block-fuzz-$(1)/cpptable-block.go.txt
 	@sed '$(BLOCK_FUZZ_SED_CS_$(1))' internal/codegen/cstable/block.go > build/block-fuzz-$(1)/cstable-block.go.txt
+	@sed '$(BLOCK_FUZZ_SED_RUST_$(1))' internal/codegen/rusttable/block.go > build/block-fuzz-$(1)/rusttable-block.go.txt
 	@cmp -s internal/codegen/cpptable/block.go build/block-fuzz-$(1)/cpptable-block.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ emitter sabotage did not apply"; exit 1; } || true
 	@cmp -s internal/codegen/cstable/block.go build/block-fuzz-$(1)/cstable-block.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C# emitter sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/block.go":"%s/build/block-fuzz-$(1)/cpptable-block.go.txt","%s/internal/codegen/cstable/block.go":"%s/build/block-fuzz-$(1)/cstable-block.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/block-fuzz-$(1)/overlay.json
+	@cmp -s internal/codegen/rusttable/block.go build/block-fuzz-$(1)/rusttable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/block.go":"%s/build/block-fuzz-$(1)/cpptable-block.go.txt","%s/internal/codegen/cstable/block.go":"%s/build/block-fuzz-$(1)/cstable-block.go.txt","%s/internal/codegen/rusttable/block.go":"%s/build/block-fuzz-$(1)/rusttable-block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/block-fuzz-$(1)/overlay.json
 	go build -overlay build/block-fuzz-$(1)/overlay.json -o build/block-fuzz-$(1)/schema ./cmd/schema
 	@rm -rf build/block-fuzz-$(1)/generated
 	./build/block-fuzz-$(1)/schema generate --lang cpp --out build/block-fuzz-$(1)/generated/block tables/block
@@ -2499,6 +2502,8 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
 	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	@rm -f $@   # replace the inode: writing over a binary another process is
+	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
 .PHONY: conformance

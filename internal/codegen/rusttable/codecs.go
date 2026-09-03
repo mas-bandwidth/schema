@@ -350,13 +350,14 @@ func (g *gen) emitResetField(f *ir.Field) {
 			g.pf("    %s.fill(%s);\n", g.keyedSlots(f), zeroScalar(f))
 		}
 	case f.Array != ir.ArrayNone:
-		if isStruct(f) {
+		switch {
+		case isStruct(f):
 			g.pf("    for element in value.%s.iter_mut() {\n", name)
 			g.pf("        %s(element);\n", fn(f.Type.Name, "reset"))
 			g.pf("    }\n")
-		} else if f.HasDefault {
+		case f.HasDefault:
 			g.pf("    value.%s.fill(%s);\n", name, g.defaultValue(f))
-		} else {
+		default:
 			g.pf("    value.%s.fill(%s);\n", name, zeroScalar(f))
 		}
 		if f.Array == ir.ArrayCounted {
@@ -619,14 +620,15 @@ func (g *gen) emitMeasureKeyed(f *ir.Field, kind, width int) {
 	g.pf("        // [%s]: every stored slot is a named variant's; i is the STORAGE\n", f.KeyEnum)
 	g.pf("        // index and the key it holds is i + 1\n")
 	g.pf("        for i in 0..%s {\n", arrayLen(f))
-	if kind == tkTable {
+	switch {
+	case kind == tkTable:
 		g.pf("            let element = %s(&%s[i]);\n", fn(f.Type.Name, "measure"), g.keyedSlots(f))
 		g.pf("            if element < 0 {\n                return -1;\n            }\n")
 		g.pf("            if element <= 2 {\n                continue; // an all-default slot elides\n            }\n")
-	} else if isEnum(f) {
+	case isEnum(f):
 		g.pf("            if %s[i] == %s {\n                continue; // a default slot elides\n            }\n", g.keyedSlots(f), zeroScalar(f))
 		g.pf("            if %s[i].table_id().is_none() {\n                return -1; // no variant names this value\n            }\n", g.keyedSlots(f))
-	} else {
+	default:
 		g.pf("            if %s[i] == %s {\n                continue; // a default slot elides\n            }\n", g.keyedSlots(f), zeroScalar(f))
 	}
 	g.pf("            if %s.table_id().is_none() {\n                return -1;\n            }\n", keyOfSlot(f, "i"))
@@ -974,14 +976,14 @@ func (g *gen) emitLoadPayload(f *ir.Field, kind int) {
 // clamping to the field's declared range on the way.
 func (g *gen) emitScalarDecode(f *ir.Field, kind int, reader, target string) {
 	width := tableKindWidth(kind)
-	switch {
-	case f.Type.Kind == ir.TBool:
+	switch f.Type.Kind {
+	case ir.TBool:
 		g.pf("%s = %s.get8() != 0;\n", target, reader)
 		return
-	case f.Type.Kind == ir.TFloat32:
+	case ir.TFloat32:
 		g.pf("%s = table_bits_to_float(%s.get32());\n", target, reader)
 		return
-	case f.Type.Kind == ir.TFloat64:
+	case ir.TFloat64:
 		g.pf("%s = table_bits_to_double(%s.get64());\n", target, reader)
 		return
 	}

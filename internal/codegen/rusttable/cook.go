@@ -44,7 +44,7 @@ func (g *gen) cookModule() []byte {
 	b.WriteString(cookModuleBanner)
 	b.WriteString("use crate::*;\n\n")
 	if first {
-		b.WriteString(fmt.Sprintf(cookRuntime, ir.BuildVersion(g.unit)))
+		fmt.Fprintf(&b, cookRuntime, ir.BuildVersion(g.unit))
 		b.WriteString(cookDescriptorRuntime)
 	}
 
@@ -63,10 +63,7 @@ func (g *gen) cookModule() []byte {
 // region can hold: a root is ANY table, and a record is anything one reaches
 // by value.
 func (g *gen) cookRoots() []*ir.Struct {
-	var out []*ir.Struct
-	for _, st := range orderTables(g.file.Tables) {
-		out = append(out, st)
-	}
+	out := append([]*ir.Struct(nil), orderTables(g.file.Tables)...)
 	for _, d := range g.file.Decls {
 		if st, ok := d.(*ir.Struct); ok && g.closure[st.Name] {
 			out = append(out, st)
@@ -627,7 +624,9 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 		}
 	}
 
-	storage, elemSize, record := "TableCookStorage::Unsigned", int64(1), "None"
+	var storage string
+	var elemSize int64
+	record := "None"
 	isArray := false
 	arrayBound := int64(0)
 	switch {

@@ -482,13 +482,17 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		b.pf("            let mut used: i64 = %d;\n", bl.Projection.Size)
 	}
 	for _, a := range bl.Arrays {
-		up := ir.RustConstName(a.Field.Name)
 		b.pf("            {\n")
 		b.pf("                let offset_of = projection.%s.offset_of;\n", a.Field.Name)
 		b.pf("                let count = projection.%s.count as u64;\n", a.Field.Name)
 		b.pf("                let stride = projection.%s.stride as u64;\n", a.Field.Name)
 		b.pf("                if stride != core::mem::size_of::<%sRow>() as u64 {\n                    return None;\n                }\n", a.ElemName)
-		b.pf("                if count > Self::%s_MAX as u64 {\n", up)
+		// the constant is spelled inline rather than bound to a local: the
+		// block fuzzer's negative control DELETES this check from the
+		// emitter, and a local used by nothing else would leave the deleted
+		// build unable to compile — a control that cannot build is a control
+		// that proves nothing
+		b.pf("                if count > Self::%s_MAX as u64 {\n", ir.RustConstName(a.Field.Name))
 		b.pf("                    return None; // past the DECLARED MAXIMUM: a consumer that\n")
 		b.pf("                                 // sized anything by the maximum would overflow\n")
 		b.pf("                                 // on a count the maximum does not bound\n                }\n")

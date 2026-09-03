@@ -227,10 +227,6 @@ func header(base, pkg string, what string) string {
 
 // ---- names ----
 
-// fieldName is a field's Rust storage member — the packet emitter's own
-// spelling, so one field is spelled one way across the whole Rust target.
-func fieldName(f *ir.Field) string { return f.Name }
-
 // fn is the name-first free-function spelling: Cfg + "measure" -> cfg_measure.
 func fn(typeName, verb string) string { return ir.RustSnake(typeName) + "_" + verb }
 
@@ -366,33 +362,6 @@ func arrayLen(f *ir.Field) string {
 		return fmt.Sprintf("(%s::MAX.0 as usize)", f.KeyEnum)
 	}
 	return strconv.FormatInt(f.ArrayBound, 10)
-}
-
-// storageSlots is the number of storage slots a field occupies.
-func storageSlots(f *ir.Field) int64 {
-	if f.KeyEnum != "" {
-		return f.ArrayBound
-	}
-	if f.Array != ir.ArrayNone {
-		return f.ArrayBound
-	}
-	return 1
-}
-
-// hasCount reports whether a field carries a <name>_count / <name>_length
-// companion.
-func hasCount(f *ir.Field) bool {
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		return true
-	}
-	return f.KeyEnum == "" && f.Array == ir.ArrayCounted
-}
-
-func countName(f *ir.Field) string {
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		return f.Name + "_length"
-	}
-	return f.Name + "_count"
 }
 
 // isEnum / isFlags / isUnion / isStruct classify a TNamed field.
