@@ -699,6 +699,52 @@ if (report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0)
 }
 ```
 
+
+The bytes are the same bytes: a shared golden corpus pins C++'s encoding of a
+set of instances and the C# and C legs byte-compare their own `Save` against
+it, then load those very files. `string(N)` and `bytes(N)` are a `byte[N]` beside an
+`int` used length, arrays a `T[N]` beside an `int` used count, `?T` a value
+beside a `<Name>Present` bool, and a union is its tag beside one pre-allocated
+arm — the same spelling the packet backend uses, because a table's closure
+decodes into the packet backend's own classes.
+
+An enum-keyed array is a `TableKeyed<T, E>` holding `E.Max` slots — one per
+named variant, nothing for `None`, the key `k` at index `k - 1`. Nothing
+outside the array names its size: the type derives its extent from the enum's
+own `Max`. **C# indexes it by the ENUM VALUE**, as every port does, but the
+language has no non-boxing generic enum-to-int conversion — so the caller
+writes the cast, `fleet.Ships[(int)ShipType.Bomber]`. The cast, never the
+shift. The `None` refusal survives as a runtime guard on that indexer, and
+it stands in every build, as the C++ abort does. Generated code
+walks `.Slots` directly and never pays for the guard.
+
+`foreach` walks every slot and yields the KEY, `1 .. E.Max`, beside the
+element — the same currency the indexer takes, so a site that wants the key
+as its enum writes `(ShipType)ship_type` there. The enumerator is a struct, so
+the walk allocates nothing:
+
+```csharp
+foreach (var (ship_type, ship) in fleet.Ships)
+{
+    ship.Health *= 2.0f;   // ship_type is the KEY, never a storage index
+}
+```
+
+**The entry's element is a value, so what the loop can WRITE depends on the
+element type.** A class element — a nested table, which is the common case — is
+the live instance, and mutating it through the iteration is visible. A scalar
+or enum element is a copy: **C# iteration reads those, and the indexer writes
+them**, `fleet.Thresholds[(int)Difficulty.Hard] = 3`. C++ yields a reference
+either way; the difference is C#'s, and a ref-yielding enumerator is a
+follow-on rather than part of this construct.
+
+`<Name>TableType()` returns the reflection descriptor: field names, wire ids
+and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
+an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
+the KEY — `KeyId(0)` is `0`, the reserved id that says `None` names no slot.
+`ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
+`i + 1`.
+
 **The C surface is the same three functions, name first, over buffers the
 caller owns** — the same spelling as C++ with a pointer where C++ takes a
 reference:
@@ -775,51 +821,6 @@ a NULL name for a value the declared set does not name. C has no captureless
 lambda, and a named function per enum would claim a name per enum, so the
 same facts ride as constant data — every question the descriptors answer
 elsewhere has an answer here, asked of an array instead of a call.
-
-The bytes are the same bytes: a shared golden corpus pins C++'s encoding of a
-set of instances and the C# and C legs byte-compare their own `Save` against
-it, then load those very files. `string(N)` and `bytes(N)` are a `byte[N]` beside an
-`int` used length, arrays a `T[N]` beside an `int` used count, `?T` a value
-beside a `<Name>Present` bool, and a union is its tag beside one pre-allocated
-arm — the same spelling the packet backend uses, because a table's closure
-decodes into the packet backend's own classes.
-
-An enum-keyed array is a `TableKeyed<T, E>` holding `E.Max` slots — one per
-named variant, nothing for `None`, the key `k` at index `k - 1`. Nothing
-outside the array names its size: the type derives its extent from the enum's
-own `Max`. **C# indexes it by the ENUM VALUE**, as every port does, but the
-language has no non-boxing generic enum-to-int conversion — so the caller
-writes the cast, `fleet.Ships[(int)ShipType.Bomber]`. The cast, never the
-shift. The `None` refusal survives as a runtime guard on that indexer, and
-it stands in every build, as the C++ abort does. Generated code
-walks `.Slots` directly and never pays for the guard.
-
-`foreach` walks every slot and yields the KEY, `1 .. E.Max`, beside the
-element — the same currency the indexer takes, so a site that wants the key
-as its enum writes `(ShipType)ship_type` there. The enumerator is a struct, so
-the walk allocates nothing:
-
-```csharp
-foreach (var (ship_type, ship) in fleet.Ships)
-{
-    ship.Health *= 2.0f;   // ship_type is the KEY, never a storage index
-}
-```
-
-**The entry's element is a value, so what the loop can WRITE depends on the
-element type.** A class element — a nested table, which is the common case — is
-the live instance, and mutating it through the iteration is visible. A scalar
-or enum element is a copy: **C# iteration reads those, and the indexer writes
-them**, `fleet.Thresholds[(int)Difficulty.Hard] = 3`. C++ yields a reference
-either way; the difference is C#'s, and a ref-yielding enumerator is a
-follow-on rather than part of this construct.
-
-`<Name>TableType()` returns the reflection descriptor: field names, wire ids
-and kinds, bounds, ranges, guards, `Optional`, the enum/union vocabulary, and
-an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
-the KEY — `KeyId(0)` is `0`, the reserved id that says `None` names no slot.
-`ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
-`i + 1`.
 
 The Rust surface is the same three functions, name first, as free functions in
 the generated crate, over slices the caller owns. Storage is a `#[repr(C)]`
