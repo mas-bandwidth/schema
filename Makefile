@@ -158,7 +158,7 @@ tables-json-walk: build/tables-generated/.stamp
 .PHONY: tables-json-graph-walk
 tables-json-graph-walk: build/tables-generated/.stamp
 	@rm -rf build/json-graph-walk && mkdir -p build/json-graph-walk
-	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp; do \
+	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp build/tables-generated/blobs/*Table.cpp; do \
 		out=build/json-graph-walk/$$(echo $$f | tr / _); \
 		awk '/---- json graph walk: begin ----/,/---- json graph walk: end ----/' $$f > $$out; \
 		if [ ! -s $$out ]; then echo "GRAPH-WALK GATE FAILED: no graph half in $$f"; exit 1; fi; \
