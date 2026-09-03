@@ -101,6 +101,7 @@ instance message_ping         messagedemo ToolMessage testdata/wire/tables/messa
 instance message_save         messagedemo ToolMessage testdata/wire/tables/message_save.bin
 instance message_empty        messagedemo ToolMessage testdata/wire/tables/message_empty.bin
 instance message_batch        messagedemo ToolMessage testdata/wire/tables/message_batch.bin
+instance message_trace        messagedemo ToolMessage testdata/wire/tables/message_trace.bin
 instance m1_open              tblm1       Msg         testdata/wire/tables/m1_open.bin
 instance m1_save              tblm1       Msg         testdata/wire/tables/m1_save.bin
 instance m2_close             tblm2       Msg         testdata/wire/tables/m2_close.bin
@@ -164,6 +165,15 @@ report parts_index_out_of_range streamdemo Feed testdata/wire/tables/parts_index
 # The bytes are pinned by the C++ leg (test/tables/main.cpp builds them).
 report batch_elem_kind   messagedemo ToolMessage testdata/wire/tables/batch_elem_kind.bin
 report batch_unknown_arm messagedemo ToolMessage testdata/wire/tables/batch_unknown_arm.bin
+# AN OPTIONAL ARRAY read under §2.3's rules, as shared rows: two hand-built
+# ToolMessage bodies with one `trace` field each. The element kind 8 where the
+# reader declares 13 is a kind mismatch and the field reads ABSENT — its
+# declared default, exactly as a skipped field's; four elements against a
+# bound of three keep the prefix, count clamped, and the field is PRESENT —
+# it rode with its own element kind. The bytes are pinned by the C++ leg
+# (test/tables/main.cpp builds them).
+report trace_elem_kind        messagedemo ToolMessage testdata/wire/tables/trace_elem_kind.bin
+report trace_count_past_bound messagedemo ToolMessage testdata/wire/tables/trace_count_past_bound.bin
 # the message pair (§2.6, §4): M2 inserted `close` first, removed `save` and
 # grew Open, so open's tag moved and both sides meet an arm they cannot name
 report m1_open_as_m2  tblm2 Msg testdata/wire/tables/m1_open.bin
@@ -232,6 +242,7 @@ cook-write message_ping           testdata/conformance/tables/cook-write/message
 cook-write message_save           testdata/conformance/tables/cook-write/message_save.cook testdata/conformance/tables/cook-write/message_save-be.cook
 cook-write message_empty          testdata/conformance/tables/cook-write/message_empty.cook testdata/conformance/tables/cook-write/message_empty-be.cook
 cook-write message_batch          testdata/conformance/tables/cook-write/message_batch.cook testdata/conformance/tables/cook-write/message_batch-be.cook
+cook-write message_trace          testdata/conformance/tables/cook-write/message_trace.cook testdata/conformance/tables/cook-write/message_trace-be.cook
 cook-write m1_open                testdata/conformance/tables/cook-write/m1_open.cook testdata/conformance/tables/cook-write/m1_open-be.cook
 cook-write m2_open                testdata/conformance/tables/cook-write/m2_open.cook testdata/conformance/tables/cook-write/m2_open-be.cook
 cook-write stream_chain           testdata/conformance/tables/cook-write/stream_chain.cook testdata/conformance/tables/cook-write/stream_chain-be.cook
@@ -481,6 +492,9 @@ json-hostile pointer-array-shared-label     streamdemo  Feed        testdata/con
 json-hostile union-array-element-shape      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-shape      0,1,0,0,false
 json-hostile union-array-element-two-keys   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-two-keys   refused
 json-hostile union-array-element-unknown    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-unknown    1,0,0,0,false
+json-hostile optional-array-shape           messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-shape           0,1,0,0,false
+json-hostile optional-array-null            messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-null            0,0,0,0,false
+json-hostile optional-array-element-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/optional-array-element-shape   0,1,0,0,false
 json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,false
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
 json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false

@@ -6746,6 +6746,234 @@ static void test_union_arrays_json_hostile()
     CHECK( value.history_count == 1 && value.history[0].type == messagedemo::ToolBodyType::None );
 }
 
+// ---- optional arrays (docs/SPEC-TABLES.md §2.3): ?[..N]T and ?[N]T ----------
+
+static void build_golden_message_trace( messagedemo::ToolMessage & m )
+{
+    m.sequence = 12;
+    m.body.type = messagedemo::ToolBodyType::Transact;
+    m.body.transact = messagedemo::Transaction{};
+    set_string( m.body.transact.reason, m.body.transact.reason_length, "trace" );
+    // depth two: checkpoints is FIXED ?[2]uint32, PRESENT AT ALL DEFAULTS —
+    // presence decides, so the array rides whole with both zeros
+    m.body.transact.checkpoints_present = true;
+    // depth three: modes is COUNTED ?[..2]Mode inside the insert, PRESENT AND
+    // EMPTY — the five-byte body no plain counted array can write
+    m.body.transact.edits_count = 1;
+    m.body.transact.edits[0].revision = 5;
+    m.body.transact.edits[0].body.type = messagedemo::EditBodyType::Insert;
+    m.body.transact.edits[0].body.insert = messagedemo::InsertText{};
+    set_string( m.body.transact.edits[0].body.insert.text, m.body.transact.edits[0].body.insert.text_length, "hi" );
+    m.body.transact.edits[0].body.insert.modes_present = true;
+    // depth one: trace is COUNTED ?[..3]Script in the root, present with a
+    // live element and an ALL-DEFAULT element, which rides in its place
+    m.trace_present = true;
+    m.trace_count = 2;
+    set_string( m.trace[0].path, m.trace[0].path_length, "boot.lua" );
+    m.trace[0].line = 1;
+}
+
+static void check_message_trace( const messagedemo::ToolMessage & m )
+{
+    CHECK( m.sequence == 12 );
+    CHECK( m.body.type == messagedemo::ToolBodyType::Transact );
+    CHECK( m.body.transact.checkpoints_present );
+    CHECK( m.body.transact.checkpoints[0] == 0 && m.body.transact.checkpoints[1] == 0 );
+    CHECK( m.body.transact.edits_count == 1 );
+    CHECK( m.body.transact.edits[0].body.type == messagedemo::EditBodyType::Insert );
+    CHECK( m.body.transact.edits[0].body.insert.modes_present );
+    CHECK( m.body.transact.edits[0].body.insert.modes_count == 0 );
+    CHECK( m.trace_present );
+    CHECK( m.trace_count == 2 );
+    CHECK( strcmp( m.trace[0].path, "boot.lua" ) == 0 && m.trace[0].line == 1 );
+    CHECK( m.trace[1].path_length == 0 && m.trace[1].line == 0 );
+    // the absent spellings elsewhere stay absent
+    CHECK( !m.body.transact.edits[0].body.insert.origins_count );
+}
+
+// the three depths through the wire, the text and the cook, pinned as the
+// shared instance the harness reads
+static void test_optional_arrays()
+{
+    messagedemo::ToolMessage m;
+    build_golden_message_trace( m );
+    static uint8_t wire[4096];
+    static uint8_t again[4096];
+    int64_t need = messagedemo::ToolMessageMeasure( m );
+    int64_t wrote = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    CHECK( wrote > 0 && wrote == need );
+    pin_table_golden( "message_trace", wire, wrote );
+    reload_table_golden( "message_trace", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+
+    messagedemo::ToolMessage back;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    check_message_trace( back );
+    CHECK( messagedemo::ToolMessageSave( back, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the text: a present empty array writes as [], key presence is presence
+    int64_t size = messagedemo::ToolMessageToJsonMeasure( m );
+    CHECK( size > 0 );
+    std::vector<char> text( (size_t) size + 1 );
+    CHECK( messagedemo::ToolMessageToJson( m, text.data(), size ) == size );
+    text[(size_t) size] = 0;
+    CHECK( strstr( text.data(), "\"modes\": []" ) != NULL );
+    CHECK( strstr( text.data(), "\"checkpoints\"" ) != NULL );
+    messagedemo::ToolMessage from_text;
+    messagedemo::TableReport text_report;
+    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
+    check_message_trace( from_text );
+    CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the cook: the presence companion is a slot the other side reads
+    int64_t cook_bytes = messagedemo::ToolMessageCookMeasure( m );
+    CHECK( cook_bytes > 0 );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( messagedemo::ToolMessageCook( m, cook, (uint64_t) cook_bytes, host_byte_order( messagedemo::TableByteOrder::Little, messagedemo::TableByteOrder::Big ) ) );
+    const messagedemo::ToolMessage * opened = messagedemo::ToolMessageOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        check_message_trace( *opened );
+        CHECK( messagedemo::ToolMessageSave( *opened, again, sizeof( again ) ) == wrote );
+        CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+    }
+    free( cook );
+
+    // the reflection: an optional array carries BOTH the array columns and
+    // the presence companion's offset
+    const messagedemo::TableTypeInfo * type = messagedemo::ToolMessageTableType();
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+    {
+        const messagedemo::TableFieldInfo * f = &type->fields[i];
+        if ( strcmp( f->name, "trace" ) != 0 ) continue;
+        CHECK( f->kind == 13 && f->is_array && f->counted && f->array_bound == 3 );
+        CHECK( f->optional );
+        CHECK( f->present_offset == (uint32_t) offsetof( messagedemo::ToolMessage, trace_present ) );
+        CHECK( f->elem_size == sizeof( messagedemo::Script ) );
+    }
+}
+
+// the elision rules at the empty end (§2.3): an ABSENT optional array writes
+// nothing — a message that sets none of the three is byte-identical to the
+// pinned message_transaction, the wire from before the fields were declared —
+// and a PRESENT one always rides: the fixed spelling whole at all defaults,
+// the counted spelling as its live count, zero included
+static void test_optional_arrays_elision()
+{
+    static uint8_t wire[4096];
+    messagedemo::ToolMessage m;
+    build_golden_message_transaction( m );
+    int64_t wrote = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    const int64_t pinned = read_table_golden( "message_transaction" );
+    CHECK( pinned == wrote && memcmp( golden_pinned, wire, (size_t) wrote ) == 0 );
+
+    // the fixed spelling, present at all defaults: id + kind + L, the element
+    // header, two u32 zeros
+    m.body.transact.checkpoints_present = true;
+    int64_t with_fixed = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    CHECK( with_fixed == wrote + 3 + 4 + 5 + 2 * 4 );
+    CHECK( messagedemo::ToolMessageMeasure( m ) == with_fixed );
+    messagedemo::ToolMessage back;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_fixed, &report ) );
+    CHECK( !report.malformed && back.body.transact.checkpoints_present );
+    CHECK( !back.trace_present ); // the others stayed absent
+
+    // the counted spelling, present and EMPTY: the five-byte body
+    m.body.transact.checkpoints_present = false;
+    m.trace_present = true;
+    int64_t with_empty = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    CHECK( with_empty == wrote + 3 + 4 + 5 );
+    CHECK( messagedemo::ToolMessageMeasure( m ) == with_empty );
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_empty, &report ) );
+    CHECK( !report.malformed && back.trace_present && back.trace_count == 0 );
+    CHECK( !back.body.transact.checkpoints_present );
+}
+
+// the element-kind separation under `?` (§2.3, §3): `trace` arriving with
+// element kind 8 where this reader declares 13 is a kind mismatch, counted,
+// and the field reads ABSENT — its declared default, exactly as a skipped
+// field's. The wire is pinned as a shared report row every leg reads.
+static void test_optional_arrays_element_kind_mismatch()
+{
+    uint8_t wire[64];
+    size_t n = 0;
+    le16( wire + n, field_id( "trace" ) ); n += 2;
+    wire[n++] = 14;                       // kind: array
+    le32( wire + n, 5 + 4 ); n += 4;      // L: element kind, N, one u32 element
+    wire[n++] = 8;                        // element kind: u32, not table
+    le32( wire + n, 1 ); n += 4;
+    le32( wire + n, 7 ); n += 4;          // the foreign element
+    le16( wire + n, 0 ); n += 2;          // terminator
+    pin_table_golden( "trace_elem_kind", wire, (int64_t) n );
+    messagedemo::ToolMessage out;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.malformed && report.kind_mismatch == 1 );
+    CHECK( !out.trace_present && out.trace_count == 0 );
+}
+
+// a count past the bound under `?` (§4): the prefix is kept, the excess is
+// counted clamped, and the field is PRESENT — it rode with its own element
+// kind. The wire is pinned as a shared report row every leg reads.
+static void test_optional_arrays_count_past_bound()
+{
+    uint8_t wire[96];
+    size_t n = 0;
+    le16( wire + n, field_id( "trace" ) ); n += 2;
+    wire[n++] = 14;                       // kind: array
+    le32( wire + n, 5 + 4 * ( 4 + 2 ) ); n += 4; // L: header + four empty table elements
+    wire[n++] = 13;                       // element kind: table
+    le32( wire + n, 4 ); n += 4;          // four elements against a bound of three
+    for ( int i = 0; i < 4; i++ )
+    {
+        le32( wire + n, 2 ); n += 4;      // the element's own L
+        le16( wire + n, 0 ); n += 2;      // an empty body: the terminator
+    }
+    le16( wire + n, 0 ); n += 2;          // terminator
+    pin_table_golden( "trace_count_past_bound", wire, (int64_t) n );
+    messagedemo::ToolMessage out;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.malformed && report.clamped == 1 );
+    CHECK( out.trace_present && out.trace_count == 3 );
+}
+
+// the text form's three hostile shapes (§16.2): the key's presence is
+// presence, `null` is the absence, and an element of the wrong shape is the
+// per-element kind mismatch
+static void test_optional_arrays_json_hostile()
+{
+    // the wrong shape under the key: skipped, counted — and PRESENT, because
+    // the KEY is what presence reads in the text form
+    messagedemo::ToolMessage value;
+    messagedemo::TableReport shape;
+    const char * number = "{ \"trace\": 5 }";
+    CHECK( messagedemo::ToolMessageFromJson( value, number, (int64_t) strlen( number ), &shape ) );
+    CHECK( shape.kind_mismatch == 1 && !shape.malformed );
+    CHECK( value.trace_present && value.trace_count == 0 );
+
+    // null is the absence, and the one key that resets
+    messagedemo::TableReport null_report;
+    const char * nulled = "{ \"trace\": null }";
+    CHECK( messagedemo::ToolMessageFromJson( value, nulled, (int64_t) strlen( nulled ), &null_report ) );
+    CHECK( null_report.unknown == 0 && null_report.kind_mismatch == 0 && !null_report.malformed );
+    CHECK( !value.trace_present && value.trace_count == 0 );
+
+    // an element that is not an object is the per-element kind mismatch; the
+    // array is present with the element at its defaults
+    messagedemo::TableReport elem;
+    const char * bad_elem = "{ \"trace\": [ 5 ] }";
+    CHECK( messagedemo::ToolMessageFromJson( value, bad_elem, (int64_t) strlen( bad_elem ), &elem ) );
+    CHECK( elem.kind_mismatch == 1 && !elem.malformed );
+    CHECK( value.trace_present && value.trace_count == 1 && value.trace[0].path_length == 0 );
+}
+
 int main()
 {
     test_golden_wire();
@@ -6846,6 +7074,11 @@ int main()
     test_union_arrays_element_kind_mismatch();
     test_union_arrays_unknown_arm();
     test_union_arrays_json_hostile();
+    test_optional_arrays();
+    test_optional_arrays_elision();
+    test_optional_arrays_element_kind_mismatch();
+    test_optional_arrays_count_past_bound();
+    test_optional_arrays_json_hostile();
     test_json_fuzz_tokenizer();
 
     if ( failures > 0 )

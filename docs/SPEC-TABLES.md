@@ -571,8 +571,9 @@ answer is to make `table` better rather than to add a construct beside it.
 That rule has a consequence the rest of this page is held to: **everything
 must recurse perfectly.** Every slot that can hold a value can hold a table,
 at every depth, in every form (wire, text, cook, block): a table by value, a
-pointer to a table, an array of tables, an array of pointers, a union whose
-arms are tables, a keyed array of tables, an optional table, a map of tables
+pointer to a table, an array of tables, an array of pointers, an array of
+unions, a union whose arms are tables, a keyed array of tables, an optional
+table, an optional array of tables, a map of tables
 (§2.8). A slot that
 refuses a table today is a gap, named in §15, not a design.
 
@@ -840,8 +841,37 @@ bytes are not identical for an all-default value, and an implementer should not
 be promised that they are. The corpus holds both directions, and the
 byte-identity of the two writers **over non-default content**.
 
-`?` applies to a nested table, a nested `type`, an enum, a `flags` mask
-and any scalar. It is refused, by name, on:
+**`?` on a bounded array — `?[..N]T` and `?[N]T` — is the same construct
+one shape up**, and every rule above reads through unchanged. The storage is
+the array's own plus the presence bool — `T name[N]`, the `int32` count
+beside it for the counted spelling, then `bool name_present` — so the
+holder stays fixed-size. PRESENCE decides whether the field rides: an
+absent optional array is not written; a present one ALWAYS rides as the
+array framing (§3) — a counted array with its live count, **zero
+included**, and a fixed array whole — where a plain counted array elides at
+count zero and a plain fixed array elides at all-default. That is what the
+presence bit buys: "present and empty" and "absent" are two values, which
+no count alone can spell. The framing is exactly the plain array's — kind
+`14` with the element's own kind — so `[..N]T` ⇄ `?[..N]T` is §2.3's one
+framing with two spellings: for any array that rides under both (a counted
+array with a live element; a fixed array not at all-default), no byte
+moves in either direction. At the empty end the bytes differ — a present
+empty counted array writes the five-byte array body (`element kind`,
+`N = 0`) and a present all-default fixed array writes all its elements —
+and no direction misdecodes, exactly as the scalar paragraph above states.
+
+**Presence follows the field's own framing, on both wires.** On the table
+wire, an optional array whose body carries a foreign ELEMENT kind is §3's
+element-kind mismatch: counted, the field left at its declared default —
+which for an optional is ABSENT — exactly as a reader that skipped the
+field leaves it. Every in-body event short of that (a count past the
+bound, clamped and prefixed; damaged elements, the decoded prefix kept)
+leaves the field PRESENT, because the field rode. In the text form the
+key's presence is presence and `null` is the absence, the rule §16.2
+already states for every `?T`.
+
+`?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
+any scalar, and a bounded array of those. It is refused, by name, on:
 
 - **a `type` body** — a type's wire is positional and every field always
   rides, so there is no absence to express;
@@ -849,10 +879,21 @@ and any scalar. It is refused, by name, on:
   as an absent optional does;
 - **a union** — its `None` arm IS the absence, and an empty union already
   elides;
-- **an array, a string or `bytes`** — each already carries a count or
-  length whose zero is emptiness, and a second presence bit beside it
-  would be two answers to one question. Wrap it in a table and make that
-  optional; the general form is a named follow-on (§15).
+- **a string or `bytes`** — each already carries a length whose zero is
+  emptiness, and the length rides inside a framing that never elides a
+  present field, so there is no "present and empty" left to buy. Wrap it
+  in a table and make that optional; the spellings are a named follow-on
+  (§15).
+- **an enum-keyed array** — `?[E]T` elides slots BY NAME (§3.2), so its
+  empty end wants stating before a presence bit sits beside it — the
+  reason `[E]*T` and `[E]Body` wait (§15);
+- **an array of pointers, an array of unions, and any VALUE whose closure
+  is variable-length** — scalar `?T` and array `?[N]T` alike, one rule, a
+  named follow-on (§15): an absent field is not an edge (§3.1), and the
+  authoring walks must gate on the presence companion before an optional
+  field may hold pointer edges. The bounded arrays of pointers and of
+  unions serve today without the `?` (§2.1, §2.6), and a table wrapping
+  the field serves with it.
 - **a specified default** — presence is the only default an optional has.
 
 ### 2.4 Enum-keyed arrays: `ships [ShipType]ShipConfig`
@@ -1922,7 +1963,10 @@ schema's codebase:
   absent `?T` and a null `*T` are not written; a present optional and a
   non-null pointer are ALWAYS written, even when the value is entirely
   default — otherwise "absent" and "present with nothing to say" would be
-  one value on the wire (§2.3, §3.1).
+  one value on the wire (§2.3, §3.1). An optional ARRAY is the same rule
+  over the array framing: absent writes nothing, and present always rides —
+  a counted array as its live count, zero included (the five-byte body:
+  element kind, `N = 0`), a fixed array whole (§2.3).
 - Schema's declaration-side types map onto the neutral kinds: a ranged
   integer rides as its storage-width integer kind, `bits(N)` as the
   narrowest unsigned kind that holds it, compressed floats as f32, a
@@ -4911,10 +4955,16 @@ in build version (§20.5).
   refused as a named follow-on (§15), the diagnostic naming the two spellings
   that serve.
 - **Optional fields** (§2.3): `?T` outside a table body; `?` on a pointer
-  (already optional); `?` on a union (its `None` IS the absence); `?` on an
-  array, a string or `bytes` (a named follow-on, §15 — the count or length
-  already carries emptiness); a specified default on an optional; and a
-  field whose name collides with an optional's `<field>_present` companion.
+  (already optional); `?` on a union (its `None` IS the absence); `?` on a
+  string or `bytes` (a named follow-on, §15 — the length already carries
+  emptiness); `?` on an enum-keyed array (`?[E]T`, a named follow-on — the
+  keyed body elides slots by name, §3.2); `?` on an array of pointers, on
+  an array of unions, and on any value whose closure is VARIABLE (one
+  named follow-on, §15 — an absent field is not an edge, and the authoring
+  walks gate on presence when it lands). The bounded arrays `?[..N]T` and
+  `?[N]T` of everything else are legal (§2.3). Also refused: a specified
+  default on an optional; and a field whose name collides with an
+  optional's `<field>_present` companion.
 - **Enum-keyed arrays** (§2.4): a bound naming a `flags` declaration (a mask
   names no single slot); a bounded keyed array, `[..E]` or `[A..E]` (a keyed
   array is complete by construction); an element that is a pointer — `[E]*T`,
@@ -6218,11 +6268,31 @@ inspects everything in the schema built:
   What it needs is a resumable per-type field cursor, because the ORDER is
   first-visit depth-first pre-order and a breadth-first walk would number a
   different graph.
-- **`?` on an array, a string or `bytes`** (§2.3): a presence bit beside an
-  existing count or length wants a decision about what the pair means before
-  it becomes wire. Wrap the field in a table and make that optional today.
-- **An array of `?T`** — the same question one level down: an element's
+- **`?string(N)` and `?bytes(N)`** (§2.3): the length rides inside the
+  string/array framing, which never elides a present field, so the presence
+  bit buys nothing a wrapper table does not already give. Wrap the field in
+  a table and make that optional today; `?[..N]T` and `?[N]T` landed and
+  are not part of this entry.
+- **An OPTIONAL whose value holds POINTER EDGES** (§2.3): `?T` where T's
+  closure is variable, `?[N]T` and `?[..N]T` of such a T, `?[N]*T`, and
+  `?[N]Body`. §3.1's law — a field the writer does not write is not an
+  edge — obliges the authoring walks (the numbering, the pack, `Lock`'s
+  sizing) to gate on the presence companion, and none of them does yet; the
+  refusal keeps the two writers byte-identical until that gating lands as
+  its own change, walks and corpus together.
+- **An array of `?T`** — a different question one level down: an element's
   presence bit beside the array's own count.
+- **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++ and the tool
+  carry `?[..N]T` and `?[N]T`, and every other backend refuses a table
+  closure holding one, by name (§11). What a port needs is the presence
+  companion beside its array walks — measure, save, load, the descriptors'
+  `optional`/`present_offset` columns on an array field, and the text
+  form's key-presence rule — held to the `message_trace` instance and the
+  hostile rows the harness carries.
+- **`?[E]T`** — a keyed array elides slots BY NAME and elides WHOLE when
+  every slot is at its default (§3.2), so a presence bit would have to say
+  what "present with every slot elided" writes before it is wire — the
+  same empty-end question that holds `[E]*T` and `[E]Body` (§15).
 - **AN UNBOUNDED BYTE BUFFER — `*bytes`, and `*string` beside it** (§2.5),
   tracked as schema#259. Neither spelling parses today. The case for it is
   the owner's and is two sentences: *"yes, i like byte buffer as primitive"*
@@ -6641,7 +6711,7 @@ Per kind:
 | `[..N]T` bounded array | array | count = length; more than N are dropped, counted |
 | `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key is last-wins and counted**, as any duplicate key is; an unknown key is skipped and counted, and **`"None"` is such a key** — it names no slot (§2.4) |
 | nested `type` / `table` | object | the same walk, recursively |
-| `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only |
+| `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only. An optional ARRAY (§2.3) is this row over the array's: the key present with `[]` is present-and-empty, and `ToJson` writes a present empty array as `[]` |
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `map[K]V` | object keyed by the KEY | a string key is the string; an integer key is its decimal spelling, quoted, and any other spelling under an integer key is `malformed`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |

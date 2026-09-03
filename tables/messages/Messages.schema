@@ -6,7 +6,11 @@
 // walk (wire, text, cook) descends a table arm that holds a table arm. The
 // ARRAY OF UNIONS (§2.6, §3) rides at the same three depths: history is a
 // counted batch of messages in the root, pending a fixed pair of edit bodies
-// inside a transaction, origins a counted array inside an insert.
+// inside a transaction, origins a counted array inside an insert. The
+// OPTIONAL ARRAY (§2.3) rides at the same three depths too: trace is a
+// counted optional array of tables in the root, checkpoints a fixed optional
+// array of scalars inside a transaction, modes a counted optional array of
+// enums inside an insert.
 //
 // Every table here is FIXED-SIZE: a union of fixed table arms leaves its
 // holder fixed, and the zero-cost gate holds over this unit as it does over
@@ -60,6 +64,7 @@ table InsertText
     text    string(32)
     origin  Origin
     origins [..2]Origin
+    modes   ?[..2]Mode
 }
 
 table RemoveText
@@ -95,9 +100,10 @@ table SaveDocument
 
 table Transaction
 {
-    reason  string(16)
-    edits   [..3]Edit
-    pending [2]EditBody
+    reason      string(16)
+    edits       [..3]Edit
+    pending     [2]EditBody
+    checkpoints ?[2]uint32
 }
 
 union ToolBody
@@ -113,4 +119,5 @@ table ToolMessage
     sequence uint32
     body     ToolBody
     history  [..2]ToolBody
+    trace    ?[..3]Script
 }

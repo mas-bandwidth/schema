@@ -1348,11 +1348,25 @@ nothing but defaults writes nothing, while a present `?T` and a non-null `*T`
 write a body — and no direction misdecodes: an absent field reads as the
 declared default, as null, or as absent, each of which is right.
 
-`?` goes on nested tables and types, enums, flags and scalars. It is refused
-on a pointer (already optional), a union (`None` is its absence), and on
-arrays, strings and `bytes` — those already carry a count or length whose
-zero is emptiness; wrap one in a table and make that optional. An optional
-takes no specified default: presence is its only default.
+`?` goes on nested tables and types, enums, flags, scalars, and bounded
+arrays of those — `?[..N]T` and `?[N]T`. An optional array rides whole when
+present, its live count included even at zero, so "present and empty" and
+"absent" stay two values — the thing a bare count cannot spell:
+
+```cpp
+ShipConfig ship;
+ship.loadouts_present = true;   // present, and empty: rides as count 0
+ship.loadouts_count   = 0;
+```
+
+`?` is refused on a pointer (already optional), a union (`None` is its
+absence), and on strings and `bytes` — those carry a length whose framing
+already rides when the field does; wrap one in a table and make that
+optional. It is also refused where the value could hold pointer edges — a
+variable-length closure, an array of pointers, an array of unions — until
+the authoring walks gate on presence (a named follow-on), and on an
+enum-keyed array, whose slots elide by name. An optional takes no
+specified default: presence is its only default.
 
 ### Enum-keyed arrays: `ships [ShipType]ShipConfig`
 

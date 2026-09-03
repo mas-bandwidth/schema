@@ -28,6 +28,8 @@ parts_elem_kind    0,1,0,0,false
 parts_index_out_of_range 0,0,0,0,true
 scalars_edges_as_2 1,2,2,0,false
 scalars_full_as_2  2,2,2,0,false
+trace_count_past_bound 0,0,1,0,false
+trace_elem_kind    0,1,0,0,false
 v1_cfg_as_v2       1,1,1,0,false
 v1_seams_as_v2     2,2,0,0,false
 v2_cfg_as_v1       5,1,1,0,false

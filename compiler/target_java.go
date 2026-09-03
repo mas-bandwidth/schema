@@ -22,6 +22,9 @@ func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseUnionArrays(u, "java"); err != nil {
 		return nil, err
 	}
+	if err := refuseOptionalArrays(u, "java"); err != nil {
+		return nil, err
+	}
 	files, err := java.Generate(u)
 	if err != nil {
 		return nil, err

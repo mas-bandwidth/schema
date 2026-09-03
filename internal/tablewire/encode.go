@@ -128,6 +128,16 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 			return nil
 		}
 		switch {
+		case f.Array != ir.ArrayNone:
+			// an OPTIONAL ARRAY rides the array framing whole (§2.3): the live
+			// count for the counted spelling — ZERO INCLUDED, the five-byte
+			// body — and every declared element for the fixed one. No content
+			// test anywhere: presence already decided.
+			count := int(f.ArrayBound)
+			if f.Array == ir.ArrayCounted {
+				count = fv.Count
+			}
+			return encodeArray(e, w, fv, id, kind, count)
 		case kind == ir.TableKindTable:
 			body, err := encodeBody(e, subInstance(e, f, &fv.Cell))
 			if err != nil {
