@@ -1142,7 +1142,7 @@ field, as `kind` is above.
 table body and nowhere else; it takes no specified default, because a fresh
 reference is null and null is the only value a default could name; it may
 not be marked `?` (it is already optional — null is its absence); an array of
-buffers, `[..N]*bytes`, is refused with the array-of-pointers follow-on (§15);
+buffers, `[..N]*bytes`, is refused and is a named follow-on of its own (§15);
 and one anywhere in a table's by-value closure flips the table to
 VARIABLE-LENGTH (§2.2), with the builder lifecycle that brings. A bound is
 refused too — `*bytes(N)` is a spelling the language does not have, because a
@@ -1171,9 +1171,9 @@ into, as it copies every node — a gigabyte on the wire path is a gigabyte read
 **Backend status: the C++ REFERENCE and the TOOL carry it; every other backend
 refuses a unit that declares one, by name** (§11), and the ports are a named
 follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
-blob beside a caption, a blob past 64 KiB, a shared blob, and an empty root,
-each crossing the wire and the cook in the harness, and the text where the
-form can carry it.
+blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
+and string of length zero beside null slots, each crossing the wire and the
+cook in the harness, and the text where the form can carry it.
 
 ### 2.6 Union arms may be tables
 

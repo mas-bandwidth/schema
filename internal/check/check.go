@@ -2281,7 +2281,7 @@ func (c *checker) checkBlobSpelling(f *ast.Field, what string, inTable bool) boo
 		return false
 	}
 	if f.Array != nil {
-		c.errf(f.Type.Pos, "field %s: an array of byte buffers is the array-of-pointers follow-on — declare a bounded array of tables by value, each holding a *%s, or a pointer to a table that holds the array (docs/SPEC-TABLES.md §15)", f.Name, what)
+		c.errf(f.Type.Pos, "field %s: an array of byte buffers is a named follow-on — declare an array of pointers to a table that holds the *%s, or a bounded array of tables by value (docs/SPEC-TABLES.md §15)", f.Name, what)
 		return false
 	}
 	if f.Default != nil {
