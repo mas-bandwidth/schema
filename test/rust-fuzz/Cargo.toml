@@ -1,0 +1,21 @@
+# THE FORGERY FUZZER, RUST SIDE (docs/SPEC-TABLES.md §19.5): the twin of
+# test/tables/block_fuzz_main.cpp and test/cs-block's Fuzz.cs, over the same
+# seed blocks, plus a cook half over test/cookgen's fixtures.
+[package]
+name = "rust-fuzz"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "rust-fuzz"
+path = "src/main.rs"
+
+[dependencies]
+blockdemo = { path = "../../build/tables-generated-rust/blockdemo" }
+blockhome = { path = "../../build/tables-generated-rust/blockhome" }
+graphdemo = { path = "../../build/tables-generated-rust/graphdemo" }
+
+[profile.dev]
+# the fuzzer's budget is measured against a gate's wall, and the ORACLE is
+# what costs — an unoptimised build would be measuring the debug build
+opt-level = 2

@@ -26,6 +26,8 @@
 /test/conformance/cs/obj/
 /test/conformance/rust/target/
 /test/conformance/rust/Cargo.lock
+/test/rust-fuzz/target/
+/test/rust-fuzz/Cargo.lock
 /bench/tools/cs-union-form/bin/
 /bench/tools/cs-union-form/obj/
 # every build stamp under generated/ — stamps order the build and are not

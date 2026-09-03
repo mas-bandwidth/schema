@@ -554,6 +554,51 @@ tables-block-fuzz: build/schema_test_block_fuzz build/schema_test_block_fuzz_asa
 	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz_asan
 	cd test/cs-block && SEED=$(SEED) N=$(N) dotnet run -- --fuzz
 
+# THE COOK FIXTURES the Rust fuzzer's cook half forges, written by test/cookgen
+# with the same chains the conformance harness uses — the fixture generator's
+# own facts, which the conformance data deliberately does not carry.
+build/cook-fuzz/.stamp: $(wildcard test/cookgen/*.go) $(SCHEMAS_TABLES_POINTERS)
+	@rm -rf build/cook-fuzz && mkdir -p build/cook-fuzz
+	go build -o build/cookgen ./test/cookgen
+	./build/cookgen --bytes 4096 --root Scene    --ref head --chain ListNode --next next --out build/cook-fuzz/Scene.cook
+	./build/cookgen --bytes 4096 --root Depot    --ref head --chain ListNode --next next --out build/cook-fuzz/Depot.cook
+	./build/cookgen --bytes 4096 --root Album    --ref head --chain ListNode --next next --out build/cook-fuzz/Album.cook
+	./build/cookgen --bytes 4096 --root TreeNode --ref left --chain TreeNode --next left --out build/cook-fuzz/TreeNode.cook
+	./build/cookgen --bytes 4096 --root ListNode --ref next --chain ListNode --next next --out build/cook-fuzz/ListNode.cook
+	@touch $@
+
+# THE RUST FORGERY FUZZER (docs/SPEC-TABLES.md §19.5, §7): the block half over
+# the C++ leg's seed blocks, and a COOK half over test/cookgen's fixtures. It
+# runs TWICE, for the reason the C++ leg runs twice:
+#
+#   - the ORDINARY build proves a mutant that OPENED stays inside the extent,
+#     because the oracle re-derives every bound and reads every row;
+#   - the MIRI build proves a mutant that Open REFUSED read nothing outside
+#     that extent on the way to refusing, which no oracle can prove from
+#     inside. Every region is allocated at exactly the bytes the caller claims,
+#     so the byte after it is off the end of a real allocation and Miri stops
+#     there. It is this leg's address sanitizer, and it is the reason the
+#     region is allocated to the CLAIM rather than to the file.
+#
+# Miri is roughly two orders of magnitude slower than native, so it runs the
+# ENUMERATED passes — every slot x width x boundary value, every truncation,
+# every unaligned base, which are what cover the boundaries — with a token
+# random budget on top (MIRI_N). It needs the nightly toolchain and the miri
+# component: `rustup toolchain install nightly && rustup +nightly component add miri`.
+MIRI_N ?= 64
+
+.PHONY: tables-rust-fuzz
+tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
+	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	SEED=$(SEED) N=$(N) ./test/rust-fuzz/target/debug/rust-fuzz
+
+.PHONY: tables-rust-fuzz-miri
+tables-rust-fuzz-miri: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
+	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" \
+		MIRIFLAGS="-Zmiri-disable-isolation" SEED=$(SEED) N=$(MIRI_N) \
+		BLOCK_SEEDS="$(CURDIR)/build/block-fuzz" COOK_FIXTURES="$(CURDIR)/build/cook-fuzz" \
+		cargo +nightly miri run --quiet
+
 # The NEGATIVE CONTROLS. A fuzzer that has never gone red proves nothing about
 # the checks it is watching, so each of these REMOVES one of BlockOpen's checks
 # from the EMITTER — from both backends at once — and requires the fuzzer to
@@ -572,6 +617,8 @@ BLOCK_FUZZ_SED_CPP_extent := /rows > (uint64_t) bytes - offset_of/d; /padding > 
 BLOCK_FUZZ_SED_CS_extent := /rows > (ulong) bytes - offsetOf/d; /padding > bytes - used/d
 BLOCK_FUZZ_SED_CPP_maximum := /count > (uint64_t) %sBlock/,/overflow on a count the maximum does not bound/d
 BLOCK_FUZZ_SED_CS_maximum := /count > (ulong) %sMax/d
+BLOCK_FUZZ_SED_RUST_extent := /rows > bytes as u64 - offset_of/d; /padding > bytes - used/d
+BLOCK_FUZZ_SED_RUST_maximum := /count > Self::%s_MAX as u64/,/on a count the maximum does not bound/d
 
 # how a sabotage is built: $(1) is its name, and the two sed programs above
 # named by it are what come out of each emitter. The replacement files take a
@@ -613,23 +660,33 @@ define block_fuzz_sabotage
 	fi
 	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cs.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the C# leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cs.log; exit 1; }
+	@rm -f build/tables-generated-rust/.stamp
+	./build/block-fuzz-$(1)/schema generate --lang rust --out build/tables-generated-rust/blockdemo/src tables/block
+	./build/block-fuzz-$(1)/schema generate --lang rust --out build/tables-generated-rust/blockhome/src tables/blockhome
+	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	@if SEED=$(SEED) N=$(N) ./test/rust-fuzz/target/debug/rust-fuzz > build/block-fuzz-$(1)/rust.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust fuzzer stayed green with the $(1) check removed from the emitter"; \
+		exit 1; \
+	fi
+	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/rust.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the Rust leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/rust.log; exit 1; }
 	@grep -m1 "^FAILED" build/block-fuzz-$(1)/cpp.log
 	@grep -m1 "  mutation" build/block-fuzz-$(1)/cpp.log
-	@echo "block fuzz $(1) negative control: removing that check from BOTH emitters turns the fuzzer red on both backends"
+	@echo "block fuzz $(1) negative control: removing that check from EVERY emitter turns the fuzzer red on every backend"
 endef
 
 # The EXTENT check: an array's rows must end inside the bytes the caller
 # passed, and the used extent it reports must too. Both spellings go, because
 # either one alone still refuses what the other would have.
 .PHONY: tables-block-fuzz-extent-negative-control
-tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp
+tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
 	$(call block_fuzz_sabotage,extent)
 
 # The DECLARED MAXIMUM check: a count past the maximum Begin refuses on the
 # producer side. This is §19.2's tenth forgery, the one a reader found OPEN,
 # and the control is what keeps it closed.
 .PHONY: tables-block-fuzz-maximum-negative-control
-tables-block-fuzz-maximum-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp
+tables-block-fuzz-maximum-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
 	$(call block_fuzz_sabotage,maximum)
 
 # THE COOK'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §7.5). The hostile battery in
