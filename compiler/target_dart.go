@@ -16,10 +16,7 @@ type dartTarget struct{}
 func (dartTarget) Names() []string { return []string{"dart"} }
 
 func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTableArms(u, "dart"); err != nil {
-		return nil, err
-	}
-	if err := refuseUnionArrays(u, "dart"); err != nil {
+	if err := refuseUnported(u, "dart"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "dart"); err != nil {
@@ -46,4 +43,4 @@ func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(dartTarget{}, true, false, false) }
+func init() { registerBuiltin(dartTarget{}, true, false, false, false) }

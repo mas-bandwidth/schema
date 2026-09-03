@@ -16,10 +16,7 @@ type rustTarget struct{}
 func (rustTarget) Names() []string { return []string{"rust"} }
 
 func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTableArms(u, "rust"); err != nil {
-		return nil, err
-	}
-	if err := refuseUnionArrays(u, "rust"); err != nil {
+	if err := refuseUnported(u, "rust"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "rust"); err != nil {
@@ -55,4 +52,4 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(rustTarget{}, true, false, false) }
+func init() { registerBuiltin(rustTarget{}, true, false, false, false) }

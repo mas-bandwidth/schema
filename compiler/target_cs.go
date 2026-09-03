@@ -16,10 +16,7 @@ type csTarget struct{}
 func (csTarget) Names() []string { return []string{"cs", "csharp"} }
 
 func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTableArms(u, "cs"); err != nil {
-		return nil, err
-	}
-	if err := refuseUnionArrays(u, "cs"); err != nil {
+	if err := refuseUnported(u, "cs"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "cs"); err != nil {
@@ -45,4 +42,4 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(csTarget{}, true, false, false) }
+func init() { registerBuiltin(csTarget{}, true, false, false, false) }

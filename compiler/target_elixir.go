@@ -16,10 +16,7 @@ type elixirTarget struct{}
 func (elixirTarget) Names() []string { return []string{"elixir"} }
 
 func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTableArms(u, "elixir"); err != nil {
-		return nil, err
-	}
-	if err := refuseUnionArrays(u, "elixir"); err != nil {
+	if err := refuseUnported(u, "elixir"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "elixir"); err != nil {
@@ -46,4 +43,4 @@ func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(elixirTarget{}, true, false, false) }
+func init() { registerBuiltin(elixirTarget{}, true, false, false, false) }

@@ -473,7 +473,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
     if ( f->is_array ) return 'a';
     if ( f->arms != NULL ) return 'o';         // union: an object with ONE key
     if ( f->kind == 13 ) return 'o';           // nested table or type
-    if ( f->kind == 17 ) return 'o';           // a pointer: the pointee's object in place, or null (§16.7)
+    if ( f->kind == 17 ) return f->table != NULL ? 'o' : 's'; // a pointer: the pointee's object in place, or null (§16.7); a byte buffer's string (§2.5)
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
     if ( f->kind == 1 ) return 'b';
@@ -1220,17 +1220,18 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
                 unit[unit_length++] = in.text[in.pos++];
             }
         }
-        if ( out != NULL )
+        if ( out == NULL )
         {
-            if ( placed + unit_length <= capacity )
-            {
-                memcpy( out + placed, unit, (size_t) unit_length );
-                placed += unit_length;
-            }
-            else
-            {
-                clamped = true;
-            }
+            placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
+        }
+        else if ( placed + unit_length <= capacity )
+        {
+            memcpy( out + placed, unit, (size_t) unit_length );
+            placed += unit_length;
+        }
+        else
+        {
+            clamped = true;
         }
     }
     if ( clamped ) { in.report->clamped++; }
@@ -2119,14 +2120,15 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             if ( f->kind == 17 && !f->is_array )
             {
                 // a pointer: null is a null pointer, an object is the pointee
-                // in place or an ` + "`&node`" + ` reference to one (§16.7), and anything
-                // else is the wrong shape for the kind
+                // in place or an ` + "`&node`" + ` reference to one (§16.7), a string is
+                // a BYTE BUFFER's bytes (§2.5), and anything else is the wrong
+                // shape for the kind
                 if ( got == 'z' )
                 {
                     if ( !TableJsonLiteral( in, "null" ) ) { return false; }
                     TableJsonSetRaw( (uint8_t *) base + f->offset, f->elem_size, 0 );
                 }
-                else if ( got != 'o' )
+                else if ( got != TableJsonShape( f ) )
                 {
                     in.report->kind_mismatch++;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
@@ -2377,15 +2379,85 @@ inline bool TableJsonScanLabel( TableJsonIn & in, uint64_t & label )
     return true;
 }
 
+// A BYTE BUFFER's text (docs/SPEC-TABLES.md §2.5, §16.2): a string. For a
+// *string the string's bytes become the blob; for a *bytes the string is base64
+// and its decoded bytes do. The blob is allocated at EXACTLY the decoded
+// length — the string is scanned once without keeping it to learn the length,
+// and once into the node — so a blob of any size reads with no window and no
+// bound to clamp against. A *bytes body that is not base64 is the wrong shape
+// for the kind: the reference stays null and the event is counted.
+inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldInfo * f )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    if ( graph == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    if ( TableJsonPeek( in ) != '"' ) { in.bad = true; return false; }
+    TableRef * ref = (TableRef *) slot;
+    ref->value = 0;
+    if ( strcmp( f->type_name, "string" ) == 0 )
+    {
+        const int64_t mark = in.pos;
+        int32_t length = 0;
+        if ( !TableJsonScanString( in, NULL, 0, &length ) ) { return false; }
+        in.pos = mark;
+        char * data = TableStringEmplace( *graph->worker, *ref, NULL, (int64_t) length );
+        if ( data == NULL ) { in.report->malformed = true; in.bad = true; return false; } // the arena refused
+        int32_t placed = 0;
+        return TableJsonScanString( in, data, length, &placed );
+    }
+    // base64: the alphabet characters decide the length, six bits apiece
+    const char * alphabet = TableJsonBase64Alphabet();
+    const int64_t mark = in.pos + 1;
+    int64_t symbols = 0;
+    bool malformed = false;
+    in.pos++;
+    for ( ;; )
+    {
+        if ( in.pos >= in.size ) { in.bad = true; return false; }
+        char c = in.text[in.pos++];
+        if ( c == '"' ) { break; }
+        if ( c == '=' || malformed ) { continue; }
+        if ( c == 0 || strchr( alphabet, c ) == NULL ) { malformed = true; continue; }
+        symbols++;
+    }
+    if ( malformed )
+    {
+        in.report->kind_mismatch++;
+        return true;
+    }
+    const int64_t length = ( symbols * 6 ) / 8;
+    uint8_t * data = TableBytesEmplace( *graph->worker, *ref, length );
+    if ( data == NULL ) { in.report->malformed = true; in.bad = true; return false; } // the arena refused
+    int64_t placed = 0;
+    uint32_t accumulator = 0;
+    int32_t held = 0;
+    for ( int64_t at = mark; ; at++ )
+    {
+        char c = in.text[at];
+        if ( c == '"' ) { break; }
+        const char * symbol = c != '=' ? strchr( alphabet, c ) : NULL;
+        if ( symbol == NULL ) { continue; }
+        accumulator = ( accumulator << 6 ) | (uint32_t) ( symbol - alphabet );
+        held += 6;
+        if ( held >= 8 )
+        {
+            held -= 8;
+            if ( placed < length ) { data[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
+        }
+    }
+    return true;
+}
+
 // A pointer's object. Its FIRST key decides what it is: ` + "`&node`" + ` naming a label not
 // yet defined, with fields after it, is a DEFINITION; ` + "`&node`" + ` naming one already
 // defined, alone, is a REFERENCE; any other key is a node named once, its
 // object in place. The node comes from the
-// builder's arena, and the slot holds its arena offset (§6.3).
+// builder's arena, and the slot holds its arena offset (§6.3). A pointer whose
+// target is a BYTE BUFFER — no table — takes a string instead (§2.5).
 inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
     if ( graph == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    if ( f->table == NULL ) { return TableJsonReadBlob( in, slot, f ); }
     // the pointee nests one level down, exactly as a by-value table does, and
     // takes the same cap: a chain nests as deep as it is long (§16.7)
     if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
@@ -2519,6 +2591,21 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
     bool taken = false;
     TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->nodes, (uint64_t) (uintptr_t) node, taken );
     if ( entry == NULL ) { return false; }
+    if ( f->table == NULL )
+    {
+        // A BYTE BUFFER (§2.5, §16.7): its text is a string, which has no
+        // first key to carry ` + "`&node`" + `, so a blob named from more than one
+        // slot has no spelling this form can carry and the graph is refused —
+        // as a shared node with nothing to write is. A blob named once is its
+        // bytes in place: base64 for a *bytes, the string itself for a *string.
+        if ( graph->counting ) { entry->count++; return true; }
+        if ( entry->count > 1 ) { return false; }
+        const TableBlob * blob = (const TableBlob *) node;
+        if ( blob->length > (uint32_t) 0x7fffffff ) { return false; }
+        if ( strcmp( f->type_name, "string" ) == 0 ) { TableJsonWriteString( out, (const char *) ( blob + 1 ), (int32_t) blob->length ); }
+        else { TableJsonWriteBase64( out, (const uint8_t *) ( blob + 1 ), (int32_t) blob->length ); }
+        return true;
+    }
     if ( graph->counting )
     {
         // PASS ONE: one visit per node, every slot that names it counted, and

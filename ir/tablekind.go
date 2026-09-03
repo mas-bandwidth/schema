@@ -67,6 +67,13 @@ const (
 // kind is [TableElemKind]'s answer, not this one. Every declared type has a
 // kind; 0 is the reserved value no declaration spells.
 func TableScalarKind(f *Field) int {
+	if f.Type.Blob() {
+		// a BYTE BUFFER is a pointer to a blob node (docs/SPEC-TABLES.md §2.5):
+		// its own payload is the node index, and the bytes ride as a record
+		// under a reserved type id (§3.1) — so `*bytes` against `bytes(N)` is
+		// kind 17 against kind 14, a reported edit in both directions
+		return TableKindPointer
+	}
 	switch f.Type.Kind {
 	case TBool:
 		return TableKindBool
@@ -190,7 +197,7 @@ func TableFieldKind(f *Field) int {
 // for a field that is not an array on the wire. `bytes(N)` is an array of u8
 // (docs/SPEC-TABLES.md §3) even though it declares no array bound.
 func TableElemKind(f *Field) int {
-	if f.Type.Kind == TBytes {
+	if f.Type.Kind == TBytes && !f.Type.Blob() {
 		return TableKindU8
 	}
 	if f.Array != ArrayNone {

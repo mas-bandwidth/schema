@@ -51,6 +51,54 @@ func TableTypeId(name string) uint64 {
 	return h
 }
 
+// BytesTypeId and StringTypeId are the two RESERVED node type ids a BYTE
+// BUFFER's record rides under (docs/SPEC-TABLES.md §2.5, §3.1): the same fold
+// a table's name takes, over the keywords `bytes` and `string`, which no table
+// can be named — so the two sit in every closure's id population beside the
+// tables' and separate a `*bytes` blob from a `*string` blob as `bytes(N)`
+// and `string(N)` are separated on the wire.
+var (
+	BytesTypeId  = TableTypeId("bytes")
+	StringTypeId = TableTypeId("string")
+)
+
+// BlobTypeId is the reserved type id a BYTE BUFFER field's node rides under:
+// [BytesTypeId] for `*bytes`, [StringTypeId] for `*string`, and 0 for a field
+// that is not a byte buffer.
+func BlobTypeId(f *Field) uint64 {
+	switch {
+	case !f.Type.Blob():
+		return 0
+	case f.Type.Kind == TString:
+		return StringTypeId
+	default:
+		return BytesTypeId
+	}
+}
+
+// BlobFields lists the BYTE BUFFER fields of a unit's table closure as
+// `Table.field`, sorted — the names a backend that does not carry the
+// construct puts in its refusal (docs/SPEC-TABLES.md §11).
+func BlobFields(u *Unit) []string {
+	var out []string
+	for name := range TableClosure(u) {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Type.Blob() {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // NodeTableFieldId is the RESERVED field id the node table rides under
 // (docs/SPEC-TABLES.md §3.1). §5's fold reaches it and ordinary names land there, so
 // the compiler refuses a field name — or a `was` — whose id does (§11).
@@ -167,8 +215,8 @@ func PointerTargets(u *Unit) map[string]bool {
 			continue
 		}
 		for _, f := range st.Fields {
-			if f.Type.Pointer {
-				targets[f.Type.Name] = true
+			if f.Type.Pointer && f.Type.Kind == TNamed {
+				targets[f.Type.Name] = true // a byte buffer names no table (§2.5)
 			}
 		}
 	}

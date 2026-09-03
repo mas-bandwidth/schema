@@ -245,6 +245,16 @@ func renderField(f *ir.Field) Field {
 	// body, and a vocabulary's do not ride at all (docs/SPEC-TABLES.md §4 — an
 	// enum field and a plain uint16 field are both kind 7, so the runtime
 	// cannot report an edit between them). See DefaultTokenPolicy.
+	if f.Type.Blob() {
+		// a BYTE BUFFER's referent is the blob node's shape (§2.5): a slot
+		// moved between `*bytes` and `*string`, or to a `*T`, meets a record
+		// of another type id and reads null (§3.1)
+		if f.Type.Kind == ir.TString {
+			add("type", "string")
+		} else {
+			add("type", "bytes")
+		}
+	}
 	if f.Type.Kind == ir.TNamed {
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:

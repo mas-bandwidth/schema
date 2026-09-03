@@ -213,7 +213,12 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// a pointer is EIGHT BYTES and no address: an arena offset while the
 		// builder is mutable, a self-relative delta once packed. That is what
 		// keeps a pointer-bearing table relocatable in both forms. An ARRAY
-		// of pointers is that slot per element (docs/SPEC-TABLES.md §2.1).
+		// of pointers is that slot per element (docs/SPEC-TABLES.md §2.1). A BYTE
+		// BUFFER is the same slot naming a blob node (docs/SPEC-TABLES.md §2.5).
+		if f.Type.Blob() {
+			g.pf("    TableRef %s; // *%s — a byte buffer at its used size, null until assigned\n", f.Name, blobWord(f))
+			return
+		}
 		g.noteRef(f.Type.Name)
 		switch f.Array {
 		case ir.ArrayFixed:
@@ -329,7 +334,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	if f.Type.Pointer {
 		switch f.Array {
 		case ir.ArrayNone:
-			g.pf("    value.%s.value = 0; // *%s — null\n", f.Name, f.Type.Name)
+			g.pf("    value.%s.value = 0; // *%s — null\n", f.Name, pointeeName(f))
 		default:
 			g.pf("    for ( int32_t i = 0; i < %d; i++ ) { value.%s[i].value = 0; } // [%d]*%s — every slot null\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
 			if f.Array == ir.ArrayCounted {
@@ -659,6 +664,15 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        bool any_%s = false;\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %sAt( ctx, value.%s[i] ) != NULL ) { any_%s = true; break; } }\n", f.ArrayBound, f.Type.Name, f.Name, f.Name)
 		g.pf("        if ( any_%s ) { bytes += 3 + 4 + 5 + 4 * %d; } // %s: [%d]*%s\n", f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		g.pf("    }\n")
+	case f.Type.Blob():
+		g.pf("    {\n")
+		g.pf("        const TableBlob * blob_%s = TableBlobAt( ctx, value.%s ); // *%s\n", f.Name, f.Name, blobWord(f))
+		g.pf("        // A BYTE BUFFER RIDES AS A u32 NODE INDEX too (docs/SPEC-TABLES.md §2.5,\n")
+		g.pf("        // §3.1): seven bytes here, the bytes themselves as a record in the\n")
+		g.pf("        // node table. Null is elided and a non-null blob always rides, even\n")
+		g.pf("        // at length zero — null and empty are two values.\n")
+		g.pf("        if ( blob_%s != NULL ) { bytes += 3 + 4; }\n", f.Name)
 		g.pf("    }\n")
 	case f.Type.Pointer:
 		t := f.Type.Name
@@ -994,6 +1008,15 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        }\n")
 		}
 		g.pf("    }\n")
+	case f.Type.Blob():
+		g.pf("    {\n")
+		g.pf("        const TableBlob * blob_%s = TableBlobAt( ctx, value.%s ); // *%s\n", f.Name, f.Name, blobWord(f))
+		g.pf("        if ( blob_%s != NULL )\n        {\n", f.Name)
+		g.pf("            uint32_t index_%s = 0;\n", f.Name)
+		g.pf("            if ( !TableNumberingIndex( numbering, (const void *) blob_%s, index_%s ) ) { return false; }\n", f.Name, f.Name)
+		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s — a NODE INDEX into the flat node table\n", id, tkNodeIndex, f.Name)
+		g.pf("            w.put32( index_%s );\n", f.Name)
+		g.pf("        }\n    }\n")
 	case f.Type.Pointer:
 		t := f.Type.Name
 		g.pf("    {\n")
@@ -1209,7 +1232,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				// other shape (docs/SPEC-TABLES.md §3.1)
 				kind, wireKind = tkNodeIndex, tkNodeIndex
 			}
-			if f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes {
+			if f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 				wireKind = tkArray
 			}
 			if f.KeyEnum != "" {
@@ -1218,8 +1241,8 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				// never decoded as the other body (docs/SPEC-TABLES.md §3.2)
 				wireKind = tkKeyed
 			}
-			if f.Type.Kind == ir.TBytes {
-				kind = tkU8 // bytes travel as an array of u8 elements
+			if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
+				kind = tkU8 // bytes travel as an array of u8 elements; a *bytes is a node index (§2.5)
 			}
 			g.pf("            case 0x%04x: // %s\n            {\n", id, f.Name)
 			g.pf("                if ( kind != %d )\n                {\n", wireKind)
@@ -1317,6 +1340,12 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s        sub.offset += elem_len;\n", ind)
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.pf("%sr.offset = body_end; // unread pairs and slack skip via the length\n", ind)
+	case f.Type.Blob():
+		g.pf("%s// A BYTE BUFFER'S PAYLOAD IS A NUMBER too (docs/SPEC-TABLES.md §2.5, §3.1):\n", ind)
+		g.pf("%s// the blob is a record in the node table, and the slot resolves through\n", ind)
+		g.pf("%s// the numbering to it under its reserved type id, never followed.\n", ind)
+		g.pf("%sif ( !r.has( 4 ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%sTableNodeResolve( nodes, value.%s, r.get32(), %s, r.report ); // *%s\n", ind, f.Name, blobTypeIdConst(f), blobWord(f))
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		t := f.Type.Name
 		g.pf("%s// A POINTER FIELD'S PAYLOAD IS A NUMBER (docs/SPEC-TABLES.md §3.1): it is\n", ind)
@@ -1636,12 +1665,12 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		for _, f := range st.Fields {
 			id := ir.TableFieldId(f)
 			kind := tableScalarKind(f)
-			if f.Type.Kind == ir.TBytes {
+			if f.Type.Kind == ir.TBytes && !f.Type.Blob() {
 				kind = tkU8
 			}
-			isArray := f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes
+			isArray := f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob())
 			if f.Type.Pointer {
-				kind = tkNodeIndex // the descriptor states the WIRE (§8.1, §3.1)
+				kind = tkNodeIndex // the descriptor states the WIRE (§8.1, §3.1); a byte buffer's slot is a node index too (§2.5)
 			}
 			counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString
 
@@ -1792,7 +1821,12 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 				// flag, and the two thunks the ONE walk cannot spell for itself
 				// (docs/SPEC-TABLES.md §16.7)
 				resolve, emplace := "NULL", "NULL"
-				if f.Type.Pointer {
+				if f.Type.Blob() {
+					// a byte buffer's slot resolves to its blob's header; the
+					// walk allocates one through the runtime's own Emplace,
+					// which takes a length no descriptor thunk could carry
+					resolve = "[]( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }"
+				} else if f.Type.Pointer {
 					t := f.Type.Name
 					resolve = fmt.Sprintf("[]( const void * slot ) -> const void * { return (const void *) %sAt( *(const TableRef *) slot ); }", t)
 					emplace = fmt.Sprintf("[]( TableWorker & worker, void * slot ) -> void * { return (void *) %sEmplace( worker, *(TableRef *) slot ); }", t)

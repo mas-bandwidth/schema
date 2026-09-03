@@ -297,10 +297,12 @@ type FieldType struct {
 	Ref      Decl   // TNamed: *Struct, *Enum, *Flags or *Union
 
 	// Pointer marks a `*T` field: a POINTER to a table, not a by-value
-	// nesting (docs/SPEC-TABLES.md). Only ever set on a TNamed field whose Ref is
-	// a table, declared inside a table body — the checker refuses every other
-	// spelling by name. A pointer's presence is what makes its owner a
-	// VARIABLE-LENGTH table (ir.VariableTables).
+	// nesting (docs/SPEC-TABLES.md) — or, on a TBytes or TString field with no
+	// Size, a `*bytes` / `*string` BYTE BUFFER: a pointer to a blob node of
+	// exactly its bytes (§2.5). Set only on a TNamed field whose Ref is a
+	// table, or on those two buffer kinds, declared inside a table body — the
+	// checker refuses every other spelling by name. A pointer's presence is
+	// what makes its owner a VARIABLE-LENGTH table (ir.VariableTables).
 	Pointer bool
 
 	// Optional marks a `?T` field: an OPTIONAL by-value field carrying a
@@ -309,6 +311,13 @@ type FieldType struct {
 	// bytes or a union — the checker refuses each by name. The holder stays
 	// FIXED-SIZE: an optional costs one bool and no allocation.
 	Optional bool
+}
+
+// Blob reports a BYTE BUFFER field — `*bytes` or `*string` (docs/SPEC-TABLES.md
+// §2.5): a pointer whose target is a blob node rather than a table. Every
+// pointer rule applies to it; what differs is the node it names.
+func (t FieldType) Blob() bool {
+	return t.Pointer && (t.Kind == TBytes || t.Kind == TString)
 }
 
 // GoExportName is the one true mapping from a schema field name to its

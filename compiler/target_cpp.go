@@ -37,6 +37,6 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
-	registerBuiltin(cppTarget{}, true, true, true)
+	registerBuiltin(cppTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("cpp")
 }

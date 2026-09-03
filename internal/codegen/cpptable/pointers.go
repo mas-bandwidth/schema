@@ -72,6 +72,36 @@ func (g *tableGen) varMembers(members []*ir.Struct) []*ir.Struct {
 	return out
 }
 
+// blobWord is the keyword a byte buffer field was declared with.
+func blobWord(f *ir.Field) string {
+	if f.Type.Kind == ir.TString {
+		return "string"
+	}
+	return "bytes"
+}
+
+// blobTerminated reports whether a byte buffer's node carries the zero byte a
+// *string's does (docs/SPEC-TABLES.md §6.3).
+func blobTerminated(f *ir.Field) bool { return f.Type.Kind == ir.TString }
+
+// blobTypeIdConst is the generated runtime's name for a byte buffer's reserved
+// type id (docs/SPEC-TABLES.md §3.1).
+func blobTypeIdConst(f *ir.Field) string {
+	if f.Type.Kind == ir.TString {
+		return "kTableStringTypeId"
+	}
+	return "kTableBytesTypeId"
+}
+
+// pointeeName spells what a pointer field names, for a comment: the target
+// table, or the buffer keyword.
+func pointeeName(f *ir.Field) string {
+	if f.Type.Blob() {
+		return blobWord(f)
+	}
+	return f.Type.Name
+}
+
 // ---- THE WALK (docs/SPEC-TABLES.md §3.1): one shape, three emitters ----
 //
 // The numbering, the pack measure and the pack are ONE depth-first walk over a
@@ -83,13 +113,17 @@ func (g *tableGen) varMembers(members []*ir.Struct) []*ir.Struct {
 // all three by construction, and the region Lock lays out is in the order the
 // wire numbers (§6.3).
 //
-// A walk that GROUPS the edges — every pointer field, then every nesting, then
-// every arm — is a different order whenever a by-value edge declared before a
-// pointer field reaches a shared node first, and the tool (internal/tablewire)
-// numbers by the page; the corpus's stream_arm_first is the value that tells
-// the two apart.
+// A BYTE BUFFER slot is an edge of the same walk (§2.5): its node takes an
+// index where the field is declared, like any other, and reaches nothing, so
+// its descent closes at once.
+//
+// A walk that GROUPS the edges — every pointer field, then every blob, then
+// every nesting, then every arm — is a different order whenever an edge
+// declared before another reaches a shared node first, and the tool
+// (internal/tablewire) numbers by the page; the corpus's stream_arm_first is
+// the value that tells the two apart.
 
-// edgeVisitor is what one emitter does at the two kinds of edge the walk
+// edgeVisitor is what one emitter does at the three kinds of edge the walk
 // reaches. subject is the expression the fields hang off — `value`, or `src`
 // for the pack, which derives its `dst` from it.
 type edgeVisitor struct {
@@ -97,6 +131,8 @@ type edgeVisitor struct {
 	// pointer is one live pointer slot: the field itself, or one element of an
 	// array of pointers, in index order (§2.1)
 	pointer func(f *ir.Field, slot string)
+	// blob is one byte buffer slot, `*bytes` or `*string` (§2.5)
+	blob func(f *ir.Field)
 	// descend is one by-value edge into a VARIABLE table — a nested field, an
 	// array element, a keyed slot, or a union's set arm — given the table's
 	// name, the element expression and the indent the call sits at
@@ -109,11 +145,15 @@ type edgeKind int
 const (
 	edgeNone    edgeKind = iota
 	edgePointer          // *T, [N]*T, [..N]*T
+	edgeBlob             // *bytes, *string (§2.5)
 	edgeNested           // a VARIABLE table by value, alone or as an array
 	edgeArm              // a union with at least one VARIABLE table arm (§2.6)
 )
 
 func (g *tableGen) edgeOf(f *ir.Field) edgeKind {
+	if f.Type.Blob() {
+		return edgeBlob
+	}
 	if f.Type.Pointer {
 		return edgePointer
 	}
@@ -135,8 +175,8 @@ func (g *tableGen) edgeOf(f *ir.Field) edgeKind {
 	return edgeNone
 }
 
-// noVariableEdges reports a member with no pointer below it: no pointer
-// field, no by-value variable nesting and no union with a variable arm.
+// noVariableEdges reports a member with no node below it: no pointer field, no
+// byte buffer, no by-value variable nesting and no union with a variable arm.
 func (g *tableGen) noVariableEdges(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if g.edgeOf(f) != edgeNone {
@@ -152,6 +192,8 @@ func (g *tableGen) emitEdgeWalk(st *ir.Struct, v edgeVisitor) {
 		switch g.edgeOf(f) {
 		case edgePointer:
 			g.emitPointerSlots(f, v.subject, func(slot string) { v.pointer(f, slot) })
+		case edgeBlob:
+			v.blob(f)
 		case edgeNested:
 			g.emitVariableByValueWalk(f, v.subject, func(expr string) { v.descend(f.Type.Name, expr, "        ") })
 		case edgeArm:
@@ -368,6 +410,29 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
+		blob: func(f *ir.Field) {
+			// a BYTE BUFFER is numbered as every node is, where its slot is
+			// declared, and it reaches nothing, so its descent closes at once
+			// (docs/SPEC-TABLES.md §2.5, §3.1)
+			g.pf("    {\n")
+			g.pf("        const TableBlob * blob = TableBlobAt( ctx, value.%s ); // %s: a byte buffer\n", f.Name, f.Name)
+			g.pf("        if ( blob != NULL )\n        {\n")
+			g.pf("            bool taken = false;\n")
+			g.pf("            int64_t slot = 0;\n")
+			g.pf("            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) blob,\n")
+			g.pf("                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit\n")
+			g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
+			g.pf("            if ( taken )\n            {\n")
+			g.pf("                TableNodeEntry node;\n")
+			g.pf("                node.node = (const void *) blob;\n")
+			g.pf("                node.type_id = %s;\n", blobTypeIdConst(f))
+			g.pf("                node.measure = &TableBlobMeasureThunk<Ctx>;\n")
+			g.pf("                node.save = &TableBlobSaveThunk<Ctx>;\n")
+			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
+			g.pf("                TablePackMapClose( numbering.seen, (const void *) blob, slot );\n")
+			g.pf("            }\n")
+			g.pf("        }\n    }\n")
+		},
 		descend: func(table, expr, indent string) {
 			g.pf("%sif ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", indent, table, expr)
 		},
@@ -407,6 +472,22 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 			g.pf("                if ( inner < 0 ) { return -1; }\n")
 			g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
 			g.pf("                bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
+			g.pf("            }\n")
+			g.pf("        }\n    }\n")
+		},
+		blob: func(f *ir.Field) {
+			// a byte buffer's node beside the table pointees, where its slot is
+			// declared — the pack lays nodes out in first-visit order (§6.2)
+			g.pf("    {\n")
+			g.pf("        const TableBlob * blob = TableBlobAt( ctx, value.%s ); // %s: a byte buffer, packed at its used size\n", f.Name, f.Name)
+			g.pf("        if ( blob != NULL )\n        {\n")
+			g.pf("            bool taken = false;\n")
+			g.pf("            int64_t slot = 0;\n")
+			g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, 0, taken, slot );\n")
+			g.pf("            if ( entry == NULL ) { return -1; } // the map could not grow\n")
+			g.pf("            if ( taken )\n            {\n")
+			g.pf("                TablePackMapClose( seen, (const void *) blob, slot );\n")
+			g.pf("                bytes += TableBlobStorage( (int64_t) blob->length, %v );\n", blobTerminated(f))
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
@@ -467,11 +548,39 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
 		},
+		blob: g.emitPackBlobField,
 		descend: func(table, expr, indent string) {
 			g.pf("%sif ( !%sPack( ctx, seen, %s, %s, base, capacity, used ) ) { return false; }\n", indent, table, expr, dstOf(expr))
 		},
 	})
 	g.pf("    return true;\n}\n\n")
+}
+
+// emitPackBlobField lays a BYTE BUFFER's node out beside the table pointees,
+// where its slot is declared: the node is copied at its used size — the header
+// and the bytes; the region's zeros are its tail and a string's terminator —
+// and a blob two slots name is laid out once (docs/SPEC-TABLES.md §2.5).
+func (g *tableGen) emitPackBlobField(f *ir.Field) {
+	g.pf("    {\n")
+	g.pf("        dst.%s.value = 0; // %s: a byte buffer\n", f.Name, f.Name)
+	g.pf("        const TableBlob * blob = TableBlobAt( ctx, src.%s );\n", f.Name)
+	g.pf("        if ( blob != NULL )\n        {\n")
+	g.pf("            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit\n")
+	g.pf("            bool taken = false;\n")
+	g.pf("            int64_t slot = 0;\n")
+	g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) blob, at, taken, slot );\n")
+	g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
+	g.pf("            if ( !taken )\n            {\n")
+	g.pf("                dst.%s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.%s ); // the one body it already has\n", f.Name, f.Name)
+	g.pf("            }\n            else\n            {\n")
+	g.pf("                int64_t storage = TableBlobStorage( (int64_t) blob->length, %v );\n", blobTerminated(f))
+	g.pf("                if ( at + storage > capacity ) { return false; }\n")
+	g.pf("                memcpy( base + at, (const void *) blob, (size_t) ( kTableBlobHeader + (int64_t) blob->length ) );\n")
+	g.pf("                used = at + storage;\n")
+	g.pf("                dst.%s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.%s );\n", f.Name, f.Name)
+	g.pf("                TablePackMapClose( seen, (const void *) blob, slot );\n")
+	g.pf("            }\n")
+	g.pf("        }\n    }\n")
 }
 
 // ---- the builder and the public surface ----
@@ -661,7 +770,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    int64_t length = 0;\n")
 	g.pf("    while ( TableNodeScanNext( scan, type_id, body, length ) )\n    {\n")
 	g.pf("        records++;\n")
-	g.pf("        int64_t storage = %sNodeStorage( type_id );\n", n)
+	g.pf("        int64_t storage = %sNodeStorage( type_id, length );\n", n)
 	g.pf("        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none\n")
 	g.pf("    }\n")
 	g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
@@ -691,7 +800,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
 	g.pf("            records++;\n")
-	g.pf("            int64_t storage = %sNodeStorage( type_id );\n", n)
+	g.pf("            int64_t storage = %sNodeStorage( type_id, length );\n", n)
 	g.pf("            if ( storage > 0 ) { data += storage; }\n")
 	g.pf("        }\n    }\n")
 	g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
@@ -712,7 +821,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
 	g.pf("        int64_t k = 0;\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
-	g.pf("            int64_t storage = %sNodeStorage( type_id );\n", n)
+	g.pf("            int64_t storage = %sNodeStorage( type_id, length );\n", n)
 	g.pf("            if ( storage <= 0 )\n            {\n")
 	g.pf("                // a record whose type id this build cannot name KEEPS ITS\n")
 	g.pf("                // INDEX, is counted once here and not once per pointer, and\n")
@@ -723,7 +832,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("            }\n            else\n            {\n")
 	g.pf("                directory[k + 1].offset = (uint64_t) used;\n")
 	g.pf("                directory[k + 1].type_id = type_id;\n")
-	g.pf("                %sNodePlace( type_id, region + used );\n", n)
+	g.pf("                %sNodePlace( type_id, region + used, length );\n", n)
 	g.pf("                used += storage;\n")
 	g.pf("            }\n")
 	g.pf("            k++;\n")
@@ -784,7 +893,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
 	g.pf("        int64_t k = 0;\n")
 	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
-	g.pf("            uint32_t at = %sNodeAlloc( type_id, builder.main );\n", n)
+	g.pf("            uint32_t at = %sNodeAlloc( type_id, builder.main, length );\n", n)
 	g.pf("            if ( at == 0 )\n            {\n")
 	g.pf("                out->unknown++;\n")
 	g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
@@ -823,34 +932,60 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	n := st.Name
 	reachable := g.pointerReachable(st)
+	blobs := g.reachableBlobs(st)
 
 	g.pf("// %sNodeStorage: the region bytes one record commands, or -1 for a type id\n", n)
-	g.pf("// this build cannot name — which keeps its index and reads null.\n")
-	g.pf("inline int64_t %sNodeStorage( uint64_t type_id )\n{\n", n)
+	g.pf("// this build cannot name — which keeps its index and reads null. A BYTE\n")
+	g.pf("// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),\n")
+	g.pf("// which is the one answer the record's LENGTH decides.\n")
+	g.pf("inline int64_t %sNodeStorage( uint64_t type_id, int64_t length )\n{\n", n)
+	if len(blobs) == 0 {
+		g.pf("    (void) length; // no byte buffer below this root: every node's storage is its type's\n")
+	}
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
 		g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name)
+	}
+	for _, b := range blobs {
+		g.pf("        case %s: return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
 	}
 	g.pf("        default: break;\n    }\n")
 	g.pf("    return -1;\n}\n\n")
 
 	g.pf("// %sNodePlace: start one record's node's lifetime in the storage pass one\n", n)
-	g.pf("// reserved for it, holding exactly the declared defaults.\n")
-	g.pf("inline void %sNodePlace( uint64_t type_id, uint8_t * at )\n{\n", n)
+	g.pf("// reserved for it, holding exactly the declared defaults — a byte buffer's\n")
+	g.pf("// header holds its length, and its bytes come in pass two.\n")
+	g.pf("inline void %sNodePlace( uint64_t type_id, uint8_t * at, int64_t length )\n{\n", n)
+	if len(blobs) == 0 {
+		g.pf("    (void) length;\n")
+	}
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
 		g.pf("        case 0x%016xull: { %s * node = new ( at ) %s; %sReset( *node ); break; } // %s\n",
 			ir.TableTypeId(t.Name), t.Name, t.Name, t.Name, t.Name)
+	}
+	for _, b := range blobs {
+		g.pf("        case %s: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *%s\n", b.constant, b.word)
 	}
 	g.pf("        default: break;\n    }\n}\n\n")
 
 	g.pf("// %sNodeAlloc: the TOOL's path — one record's node in the builder's arena.\n", n)
 	g.pf("// Zero is the arena's null, and it is also what a type id this build cannot\n")
 	g.pf("// name answers.\n")
-	g.pf("inline uint32_t %sNodeAlloc( uint64_t type_id, TableWorker & worker )\n{\n", n)
+	g.pf("inline uint32_t %sNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )\n{\n", n)
+	if len(blobs) == 0 {
+		g.pf("    (void) length;\n")
+	}
 	g.pf("    switch ( type_id )\n    {\n")
 	for _, t := range reachable {
 		g.pf("        case 0x%016xull: return (uint32_t) worker.Alloc<%s>().ref.value; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name)
+	}
+	for _, b := range blobs {
+		if b.terminated {
+			g.pf("        case %s: return (uint32_t) worker.AllocString( length ).ref.value; // *string\n", b.constant)
+		} else {
+			g.pf("        case %s: return (uint32_t) worker.AllocBytes( length ).ref.value; // *bytes\n", b.constant)
+		}
 	}
 	g.pf("        default: break;\n    }\n")
 	g.pf("    return 0;\n}\n\n")
@@ -875,7 +1010,68 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 		}
 		g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableTypeId(t.Name), call, t.Name)
 	}
+	for _, b := range blobs {
+		// the bytes verbatim; the storage's zeros are a string's terminator
+		g.pf("        case %s: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *%s\n", b.constant, b.word)
+	}
 	g.pf("        default: break;\n    }\n}\n\n")
+}
+
+// reachableBlob is one BYTE BUFFER shape a root's numbering can name
+// (docs/SPEC-TABLES.md §2.5): the record's reserved type id, spelled as the
+// runtime's constant, and whether its node carries a string's terminator.
+type reachableBlob struct {
+	constant   string
+	word       string
+	terminated bool
+}
+
+// reachableBlobs lists the byte buffer shapes a root's numbering can name —
+// `*bytes`, `*string`, or both — over the same closure pointerReachable
+// walks: a blob inside a pointed-at table is this root's to load.
+func (g *tableGen) reachableBlobs(root *ir.Struct) []reachableBlob {
+	bytes, str := false, false
+	visited := map[string]bool{}
+	var descend func(st *ir.Struct)
+	descend = func(st *ir.Struct) {
+		if visited[st.Name] {
+			return
+		}
+		visited[st.Name] = true
+		for _, f := range st.Fields {
+			if f.Type.Blob() {
+				if f.Type.Kind == ir.TString {
+					str = true
+				} else {
+					bytes = true
+				}
+				continue
+			}
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			if un, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+				for _, v := range un.Variants {
+					if v.Ref != nil {
+						descend(v.Ref)
+					}
+				}
+				continue
+			}
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+				descend(ref)
+			}
+		}
+	}
+	descend(root)
+	var out []reachableBlob
+	if bytes {
+		out = append(out, reachableBlob{constant: "kTableBytesTypeId", word: "bytes"})
+	}
+	if str {
+		out = append(out, reachableBlob{constant: "kTableStringTypeId", word: "string", terminated: true})
+	}
+	return out
 }
 
 // pointerReachable returns the closure members this root's numbering can name:

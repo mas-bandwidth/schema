@@ -18,10 +18,7 @@ type jsTarget struct{}
 func (jsTarget) Names() []string { return []string{"js", "javascript"} }
 
 func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTableArms(u, "js"); err != nil {
-		return nil, err
-	}
-	if err := refuseUnionArrays(u, "js"); err != nil {
+	if err := refuseUnported(u, "js"); err != nil {
 		return nil, err
 	}
 	if err := refuseOptionalArrays(u, "js"); err != nil {
@@ -49,4 +46,4 @@ func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(jsTarget{}, true, false, false) }
+func init() { registerBuiltin(jsTarget{}, true, false, false, false) }

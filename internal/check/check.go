@@ -1044,10 +1044,6 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		out.Type = ir.FieldType{Kind: ir.TFixed, Signed: f.Type.Signed, Width: int(total),
 			IntBits: int(iv.Int64()), FracBits: int(fv.Int64())}
 	case ast.ScalarString, ast.ScalarBytes:
-		n, ok := c.evalInt(f.Type.Arg)
-		if !ok {
-			return nil
-		}
 		minN := int64(1)
 		what := "bytes"
 		k := ir.TBytes
@@ -1055,6 +1051,20 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			minN = 2
 			what = "string"
 			k = ir.TString
+		}
+		if f.Type.Pointer {
+			// `*bytes` / `*string` — a BYTE BUFFER at its used size
+			// (docs/SPEC-TABLES.md §2.5): a pointer to a blob node, under
+			// every rule a pointer lives under
+			if !c.checkBlobSpelling(f, what, inTable) {
+				return nil
+			}
+			out.Type = ir.FieldType{Kind: k, Pointer: true}
+			break
+		}
+		n, ok := c.evalInt(f.Type.Arg)
+		if !ok {
+			return nil
 		}
 		if !n.IsInt64() || n.Int64() < minN {
 			c.errf(f.Type.Pos, "%s(%s): N below %d (SPEC §4.6)", what, n, minN)
@@ -2255,6 +2265,27 @@ func (c *checker) checkPointerSpelling(f *ast.Field, inTable bool, d ast.Decl) b
 	}
 	if f.Default != nil {
 		c.errf(f.Pos, "field %s: a pointer field takes no specified default — a fresh pointer is null, and null is the only value a default could name (docs/SPEC-TABLES.md)", f.Name)
+		return false
+	}
+	return true
+}
+
+// checkBlobSpelling enforces the `*bytes` / `*string` spelling's rules, each
+// refused by name (docs/SPEC-TABLES.md §2.5, §11): a byte buffer is a POINTER to a
+// blob node, so it lives where a pointer lives and takes what a pointer takes
+// — a table body, no default, no array.
+func (c *checker) checkBlobSpelling(f *ast.Field, what string, inTable bool) bool {
+	if !inTable {
+		c.errf(f.Type.Pos, "field %s: *%s is a byte buffer, and a byte buffer is a pointer — pointers are a TABLE construct, and types remain value semantics; declare %s(N) at a bound, or move the declaring type to a `table` (docs/SPEC-TABLES.md §2.5)",
+			f.Name, what, what)
+		return false
+	}
+	if f.Array != nil {
+		c.errf(f.Type.Pos, "field %s: an array of byte buffers is the array-of-pointers follow-on — declare a bounded array of tables by value, each holding a *%s, or a pointer to a table that holds the array (docs/SPEC-TABLES.md §15)", f.Name, what)
+		return false
+	}
+	if f.Default != nil {
+		c.errf(f.Pos, "field %s: a byte buffer takes no specified default — a fresh reference is null, and null is the only value a default could name (docs/SPEC-TABLES.md §2.5)", f.Name)
 		return false
 	}
 	return true
