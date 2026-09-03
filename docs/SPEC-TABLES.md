@@ -404,6 +404,18 @@ emitted.
 
 ## 1. Purpose
 
+**Table is king.** There is no document that things are put into, and no
+root that is anything other than a table. A file is a tree of nodes and every
+node is a table: a table of tables, as deep as the data goes. Anything the
+data needs is expressed as tables of tables, and where it cannot be, the
+answer is to make `table` better rather than to add a construct beside it.
+That rule has a consequence the rest of this page is held to: **everything
+must recurse perfectly.** Every slot that can hold a value can hold a table,
+at every depth, in every form (wire, text, cook, block): a table by value, a
+pointer to a table, an array of tables, an array of pointers, a union whose
+arms are tables, a keyed array of tables, an optional table. A slot that
+refuses a table today is a gap, named in §15, not a design.
+
 - **Users build their own formats.** A table declaration plus nesting is a
   complete file format: declare a root table, nest subtables, and the
   generated code saves and loads it. schema imposes no envelope, no
