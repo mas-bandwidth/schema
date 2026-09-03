@@ -1,0 +1,34 @@
+// M1.schema — the OLD side of the MESSAGE evolution pair (docs/SPEC-TABLES.md
+// §2.6, §4): Body's arms are tables. M2 inserts `close` FIRST, removes `save`
+// and grows Open, so open's tag moves from 1 to 2 and save has no name in M2.
+// Arms ride under their name hash, so both directions load (§5).
+package tblm1
+
+table Open
+{
+    path string(16)
+}
+
+table Save
+{
+    path  string(16)
+    force bool
+}
+
+table Quit
+{
+    code int32 = 0 | min = 0, max = 255
+}
+
+union Body
+{
+    open Open
+    save Save
+    quit Quit
+}
+
+table Msg
+{
+    seq  uint32
+    body Body
+}

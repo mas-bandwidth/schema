@@ -1,0 +1,54 @@
+0x9f4d7dfe354b980b
+schema-build-version 1
+protocol 8248fac3393e5575
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record Cursor sizeof=8 alignof=4
+    field 01fc kind=8 offset=0 size=4
+    field 27df kind=8 offset=4 size=4
+record Edit sizeof=136 alignof=4
+    field b98e kind=8 offset=0 size=4
+    field a2df kind=15 offset=4 size=132 union=EditBody
+record InsertText sizeof=128 alignof=4
+    field 42ad kind=13 offset=0 size=8 type=Cursor
+    field f3d8 kind=12 offset=8 size=40 bound=32
+    field 4330 kind=15 offset=48 size=80 union=Origin
+record OpenDocument sizeof=84 alignof=4
+    field c9b1 kind=12 offset=0 size=72 bound=64
+    field 0c7c kind=7 offset=72 size=1 enum=Mode default=Read
+    field d139 kind=13 offset=76 size=8 type=Cursor
+record Ping sizeof=4 alignof=4
+    field 80f0 kind=8 offset=0 size=4
+record RemoveText sizeof=16 alignof=4
+    field abc0 kind=13 offset=0 size=16 type=Selection
+record SaveDocument sizeof=76 alignof=4
+    field c9b1 kind=12 offset=0 size=72 bound=64
+    field f12d kind=1 offset=72 size=1
+record Script sizeof=76 alignof=4
+    field c9b1 kind=12 offset=0 size=72 bound=64
+    field 01fc kind=8 offset=72 size=4
+record Selection sizeof=16 alignof=4
+    field 61f4 kind=13 offset=0 size=8 type=Cursor
+    field 1f24 kind=13 offset=8 size=8 type=Cursor
+record ToolMessage sizeof=444 alignof=4
+    field d32b kind=8 offset=0 size=4
+    field a2df kind=15 offset=4 size=440 union=ToolBody
+record Transaction sizeof=436 alignof=4
+    field a6ba kind=12 offset=0 size=24 bound=16
+    field 3d33 kind=13 offset=24 size=412 type=Edit elem=136 array=bounded bound=3
+record User sizeof=24 alignof=4
+    field 30df kind=12 offset=0 size=24 bound=16
+enum Mode
+    variant 1 Read
+    variant 2 Write
+union EditBody
+    arm 1 insert payload=InsertText
+    arm 2 remove payload=RemoveText
+union Origin
+    arm 1 user payload=User
+    arm 2 script payload=Script
+union ToolBody
+    arm 1 open payload=OpenDocument
+    arm 2 save payload=SaveDocument
+    arm 3 transact payload=Transaction
+    arm 4 ping payload=Ping

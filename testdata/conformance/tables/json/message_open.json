@@ -1,0 +1,13 @@
+{
+  "sequence": 7,
+  "body": {
+    "open": {
+      "path": "docs/a.md",
+      "mode": "Write",
+      "cursor": {
+        "line": 3,
+        "column": 4
+      }
+    }
+  }
+}

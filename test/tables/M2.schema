@@ -1,0 +1,33 @@
+// M2.schema — the NEW side of the message evolution pair: relative to M1,
+// `close` was inserted before `open`, `save` was removed and Open gained
+// `line`. Any reader x any data, both directions (docs/SPEC-TABLES.md §4).
+package tblm2
+
+table Open
+{
+    path string(16)
+    line uint32
+}
+
+table Close
+{
+    path string(16)
+}
+
+table Quit
+{
+    code int32 = 0 | min = 0, max = 255
+}
+
+union Body
+{
+    close Close
+    open  Open
+    quit  Quit
+}
+
+table Msg
+{
+    seq  uint32
+    body Body
+}

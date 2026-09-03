@@ -46,6 +46,13 @@
 #include "PartsTable.h"
 #include "RenderBlock.h"
 #include "PaddedBlock.h"
+// the MESSAGE units (docs/SPEC-TABLES.md §2.6): a union whose arms are tables,
+// fixed in messagedemo and with a variable arm in streamdemo, plus the
+// message evolution pair
+#include "MessagesTable.h"
+#include "StreamTable.h"
+#include "M1Table.h"
+#include "M2Table.h"
 
 // ---------------------------------------------------------------------------
 // the manifest, read exactly as testdata/conformance/tables/FORMAT.md states it
@@ -229,6 +236,10 @@ static const Codec codecs[] = {
     CODEC( "tblv2", tblv2, Cfg ),
     CODEC( "tblp1", tblp1, Chain ),
     CODEC( "tblp3", tblp3, Chain ),
+    CODEC( "messagedemo", messagedemo, ToolMessage ),
+    CODEC( "messagedemo", messagedemo, Edit ),
+    CODEC( "tblm1", tblm1, Msg ),
+    CODEC( "tblm2", tblm2, Msg ),
 };
 
 // ---------------------------------------------------------------------------
@@ -303,6 +314,7 @@ struct VarCodec
 static const VarCodec var_codecs[] = {
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "tblp2", tblp2, Chain ),
+    VARCODEC( "streamdemo", streamdemo, Feed ),
 };
 
 static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )
