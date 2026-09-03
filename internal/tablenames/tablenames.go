@@ -135,6 +135,19 @@ var registry = []Name{
 	{Name: "table_block_read64", By: Cpp, What: "the prologue read BYTEWISE"},
 	{Name: "table_block_align", By: Cpp, What: "round an offset up to an alignment"},
 
+	// the COOKED FORM's read runtime (SPEC-TABLES.md §7), emitted into
+	// <Base>Table.h of a unit that declares a variable-length table — a cook's
+	// root is one — and into no value-only unit's header at all. Claimed
+	// whenever a unit declares a table, on the same terms as the
+	// variable-length names above: a table gains and loses its cook reader as
+	// its closure gains and loses a pointer, and a name free today must not
+	// become a collision tomorrow.
+	{Name: "TableCookOpen", By: Cpp, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
+	{Name: "TableCookMagic", By: Cpp, What: "the cooked header's magic, and the byte-order check with it"},
+	{Name: "TableCookByteOrder", By: Cpp, What: "this build's byte order, as a cooked header records it"},
+	{Name: "TableCookMaxAlign", By: Cpp, What: "the greatest region alignment a cooked header may name"},
+	{Name: "table_cook_read64", By: Cpp, What: "the cooked header read BYTEWISE"},
+
 	// the unit's BUILD VERSION (SPEC-TABLES.md §20): the one digest a block
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is
 	// claimed here because it is a unit-level name the generated block sources

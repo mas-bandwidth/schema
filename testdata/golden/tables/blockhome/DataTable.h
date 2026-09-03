@@ -209,6 +209,186 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 #endif // BLOCKHOME_SCHEMA_TABLE_PRIMITIVES
 
+#ifndef BLOCKHOME_SCHEMA_BUILD_VERSION
+#define BLOCKHOME_SCHEMA_BUILD_VERSION
+
+namespace blockhome {
+
+// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// this build produces depend on — the type wire's protocol id, every record's
+// layout as the compiler's own C ABI model computes it, and the facts that
+// decide what a load PUTS in those slots. It is the number a cook's header
+// carries and the number Open compares, and the number a block's prologue
+// carries and BlockOpen compares: a build version answers "which build?" and
+// not "which form?", and what separates the two forms is their MAGIC.
+//
+// There are TWO ids in the design and they are not interchangeable: the
+// PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
+// what everything cooked or blocked is keyed by. A table edit moves this and
+// never the protocol id; a type edit moves both.
+inline constexpr uint64_t BuildVersion = 0x3de2d055d5640b6aull;
+
+} // namespace blockhome
+
+#endif // BLOCKHOME_SCHEMA_BUILD_VERSION
+
+#ifndef BLOCKHOME_SCHEMA_TABLE_COOK
+#define BLOCKHOME_SCHEMA_TABLE_COOK
+
+namespace blockhome {
+
+// ---- the cooked form (SPEC-TABLES.md §7) ----
+//
+// A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
+// order. Every word of the header is a u64 written in the byte order the cook
+// was produced in, and the header is 64 bytes:
+//
+//     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
+//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//    16  byte_order          1 little, 2 big — the order that WROTE the file
+//    24  data_length         the region's bytes, rounded up to alignment
+//    32  attribution_length  the directory's bytes, or 0
+//    40  alignment           the region's alignment, never below eight
+//    48  reserved            zero
+//    56  reserved            zero
+//
+// The DATA part is Lock's region written verbatim (§7.2) — the root at its
+// base — and it is what a runtime points at. The ATTRIBUTION part is the node
+// directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
+// written beside the data for schema cook-check, so a build that ships no
+// tooling need not carry it at all.
+static const int64_t kTableCookHeaderBytes = 64;
+
+// THE MAGIC'S VALUE, and a consumer written from the page needs the constant
+// rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
+// order a little-endian store produces — the same shape the block form's
+// SCHMABLK takes, so a hex dump of a little-endian cook is legible and the two
+// accelerators sit in one vocabulary.
+//
+// IT IS STORED IN THE PRODUCER'S ORDER, which is what makes it the byte-order
+// check as well as the form check: a consumer reads back this build's
+// constant, or that constant byte-reversed — which identifies a cook of the
+// OTHER order — or something that is not a cook. All three answers but the
+// first refuse, and a cook and a BLOCK are separated here too, because a
+// form's identity belongs in its magic rather than in a second digest.
+inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+
+// THIS BUILD's byte order, as the header's own word carries it. The magic is
+// what REFUSES a foreign order; this word is what RECORDS which order wrote
+// the file, so a refusal names the order rather than inferring it and a tool
+// dumping a cook reads the fact. A file whose magic matched and whose order
+// word did not is corrupt, and there is no reading that recovers it.
+//
+// The BUILD VERSION cannot do either job: §20.1 digests byteorder as a
+// GENERATION input, little for every target schema generates for today, so
+// two builds of one schema for two orders emit the same id.
+#if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+inline constexpr uint64_t TableCookByteOrder = 2; // big
+#else
+inline constexpr uint64_t TableCookByteOrder = 1; // little
+#endif
+
+// The greatest region alignment a cooked file may name. The DATA part begins
+// at align_up( 64, alignment ), which is 64 for every unit this language can
+// declare — the largest alignment it has is sixteen — so a word past this cap
+// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+inline constexpr uint64_t TableCookMaxAlign = 64;
+
+// The header read, BYTEWISE. memcpy is the portable spelling of "these eight
+// bytes, in this machine's order"; every compiler this repo builds under folds
+// it to one load, and it is the only read in the whole of Open that is not a
+// comparison.
+inline uint64_t table_cook_read64( const uint8_t * p )
+{
+    uint64_t v;
+    memcpy( &v, p, sizeof( v ) );
+    return v;
+}
+
+// TableCookOpen: THE WHOLE CHECK, in one place, because §7 states the
+// enumeration once and every generated <Name>Open is that one enumeration plus
+// its own root's two layout facts.
+//
+// THE CHECK, in order: the magic read bytewise, the byte order it establishes,
+// the build version against this build's own, both RESERVED words zero, the
+// region alignment the header names, the two part lengths against the length
+// the caller passed — a truncated file and a file with trailing bytes are the
+// same refusal — the root's own storage inside the data part, and the
+// alignment of the base.
+//
+// AND THAT IS ALL OF IT. On a match the bytes ARE what this build wrote, in
+// this build's layout and this build's byte order, so there is nothing to
+// validate and nothing to fix up: the caller gets the root. Nothing per node
+// happens here, which is what makes open O(1) in the file's size; a walk of
+// any shape would forfeit that, and validating an untrusted file is schema
+// cook-check's job and a person's decision (§7.4).
+//
+// EVERY NUMBER BELOW COMES OUT OF THE FILE, so the arithmetic is unsigned and
+// each term is BOUNDED BEFORE IT IS ADDED: a forged length near 2^64 must
+// refuse, and an addition that wrapped would be the defect the comparison
+// after it was supposed to catch. Nothing past length is read on any path,
+// including every refusing one.
+inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+{
+    if ( bytes == NULL ) { return NULL; }
+    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    const uint8_t * raw = (const uint8_t *) bytes;
+    // the MAGIC, bytewise and first: it is what establishes the byte order
+    // every other header word is read in, so nothing else may be read before
+    // it. A byte-reversed constant is a cook of the other order and refuses
+    // here, which is why the order never reaches a fix-up pass.
+    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
+    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
+    if ( table_cook_read64( raw + 8 ) != BuildVersion ) { return NULL; }
+    // the RESERVED words: a non-zero one means a writer used a form this build
+    // does not understand, and Open refuses rather than ignoring it.
+    if ( table_cook_read64( raw + 48 ) != 0 ) { return NULL; }
+    if ( table_cook_read64( raw + 56 ) != 0 ) { return NULL; }
+    const uint64_t data_length = table_cook_read64( raw + 24 );
+    const uint64_t attribution_length = table_cook_read64( raw + 32 );
+    const uint64_t alignment = table_cook_read64( raw + 40 );
+    // THE ALIGNMENT WORD IS DATA, and it is the one header field the rest of
+    // the check does arithmetic WITH rather than only comparison against. A
+    // region's alignment is a power of two, never below eight (the floor that
+    // puts the attribution part on an eight-byte boundary without a second
+    // padding rule) and never past the cap above; a word that is none of those
+    // rounds nothing and aligns nothing, so it is refused before it is used.
+    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
+    if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
+    // and it must be an alignment THE ROOT CAN SIT AT, since the root is at
+    // the region's base: both are powers of two, so "at least the root's"
+    // is one division.
+    if ( ( alignment % root_align ) != 0 ) { return NULL; }
+    // The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
+    // a header field, because a fact a reader computes is a fact two writers
+    // cannot disagree about.
+    const uint64_t data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
+    if ( length < data_offset ) { return NULL; }
+    // the two part lengths against the length the caller passed. The whole
+    // file is data_offset + data_length + attribution_length, and a length
+    // that is not EXACTLY that refuses — truncation and trailing bytes are one
+    // refusal, and both terms are subtracted rather than added so no sum can
+    // carry.
+    if ( data_length > length - data_offset ) { return NULL; }
+    if ( attribution_length != length - data_offset - data_length ) { return NULL; }
+    // the ROOT sits at the region's base, so the region has to hold it: a
+    // shorter data part describes a root partly outside the file, which is the
+    // one way a match-and-point reader could hand back storage it never
+    // received.
+    if ( data_length < root_size ) { return NULL; }
+    const uint8_t * base = raw + data_offset;
+    // the alignment of the BASE. The header pads the data part to the region's
+    // alignment, so a base an allocator or mmap gave you is already aligned —
+    // mmap gives page alignment for free — and a base that is not is a caller's
+    // buffer this form cannot be read out of.
+    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
+    return base;
+}
+
+} // namespace blockhome
+
+#endif // BLOCKHOME_SCHEMA_TABLE_COOK
+
 namespace blockhome {
 
 // ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
@@ -818,6 +998,35 @@ static_assert( std::is_trivially_copyable<FiringGroup>::value, "FiringGroup must
 static_assert( std::is_standard_layout<FiringGroup>::value, "FiringGroup must stay standard-layout for offsetof" );
 static_assert( std::is_trivially_copyable<GunnerSettings>::value, "GunnerSettings must stay relocatable" );
 static_assert( std::is_standard_layout<GunnerSettings>::value, "GunnerSettings must stay standard-layout for offsetof" );
+
+// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----
+//
+// The compiler derived every number below from the declaration and folded it
+// into the BUILD VERSION; these asserts are this compiler saying whether it
+// agrees. The model is not self-evidently right — on 32-bit System V
+// alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
+// rather than assumed.
+static_assert( sizeof( ArmorPlate ) == 16, "ArmorPlate's sizeof moved: the build version was taken over 16, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( alignof( ArmorPlate ) == 8, "ArmorPlate's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ArmorPlate, thickness ) == 0, "ArmorPlate's field thickness moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ArmorPlate, material ) == 8, "ArmorPlate's field material moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ArmorPlate, layer ) == 12, "ArmorPlate's field layer moved: the build version was taken over offset 12 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( ArmorConfig ) == 40, "ArmorConfig's sizeof moved: the build version was taken over 40, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( alignof( ArmorConfig ) == 8, "ArmorConfig's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ArmorConfig, front ) == 0, "ArmorConfig's field front moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ArmorConfig, rear ) == 16, "ArmorConfig's field rear moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ArmorConfig, rating ) == 32, "ArmorConfig's field rating moved: the build version was taken over offset 32 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ArmorConfig, tier ) == 36, "ArmorConfig's field tier moved: the build version was taken over offset 36 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( FiringGroup ) == 8, "FiringGroup's sizeof moved: the build version was taken over 8, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( alignof( FiringGroup ) == 4, "FiringGroup's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( FiringGroup, barrel ) == 0, "FiringGroup's field barrel moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( FiringGroup, cooldown ) == 4, "FiringGroup's field cooldown moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( GunnerSettings ) == 304, "GunnerSettings's sizeof moved: the build version was taken over 304, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
+static_assert( alignof( GunnerSettings ) == 4, "GunnerSettings's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerSettings, firing_groups ) == 0, "GunnerSettings's field firing_groups moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerSettings, missile_groups ) == 260, "GunnerSettings's field missile_groups moved: the build version was taken over offset 260 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerSettings, reload_seconds ) == 296, "GunnerSettings's field reload_seconds moved: the build version was taken over offset 296 (SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerSettings, gunner_id ) == 300, "GunnerSettings's field gunner_id moved: the build version was taken over offset 300 (SPEC-TABLES.md §20.3)" );
 
 // ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
 

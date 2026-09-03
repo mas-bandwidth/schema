@@ -612,6 +612,161 @@ tables-cook-scale-1gb: bin/schema
 	./build/cookgen --bytes 1073741824 --out build/cook/1gb.cook
 	./bin/schema cook-check --verbose build/cook/1gb.cook $(COOKGEN_UNIT)
 
+# ---- the COOK's C++ READ SIDE (SPEC-TABLES.md §7) --------------------------
+#
+# `schema cook` writes the file and the generated <Root>Open points at it, and
+# the two were written from the page independently — the tool in Go, the C++
+# side from §7 alone, neither reading the other. That is what makes the golden
+# mode a CROSS-IMPLEMENTATION gate rather than one implementation agreeing with
+# itself: every node the C++ side reaches through its own derefs must be a node
+# the cook's ATTRIBUTION part names, at that offset, with that type id, and the
+# two sets must be equal.
+#
+# THE FIXTURES come from test/cookgen, which streams a synthetic region in O(1)
+# memory (§7.5), so the 100 MB arm of the O(1) gate is regenerated rather than
+# committed. Five roots cover the shapes a region has: a pointer chain, a tree,
+# a keyed array of variable tables beside an optional, a cross-file graph
+# through a by-value variable table, and a bare chain node as its own root.
+COOK_ROOTS := Scene Depot Album TreeNode ListNode
+# The FIXED roots. A fixed table's cook is ONE REGION OF ONE NODE (§7) and the
+# same header match, and it is where the VALUE crossing lives: a fixed table has
+# no pointer, so it has no node table and no kind 17, so this backend's wire and
+# the tool's are the same bytes — the C++ side writes a known instance, the tool
+# cooks it, and the C++ side reads the values back out of the tool's layout.
+# Settings is POINTED AT; Stamp is pointed at by nothing and is declared in a
+# file with no variable table of its own, which is the shape a file-scoped
+# emission rule forgets.
+COOK_FIXED_ROOTS := Settings Stamp
+
+COOK_INCLUDES := -Ibuild/tables-generated/pointers -Itest/tables
+COOK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
+# The SANITIZED twin is a gate and not a nicety here: Open is handed a hostile
+# buffer by construction, the driver allocates each fixture at EXACTLY the
+# length it claims so a redzone sits on the next byte, and
+# -fno-sanitize-recover=all is what stops UBSan printing and continuing.
+COOK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+
+build/schema_test_cook: build/tables-generated/.stamp test/tables/cook_main.cpp
+	@mkdir -p build
+	$(CXX) $(COOK_CXXFLAGS) $(COOK_INCLUDES) test/tables/cook_main.cpp -o $@
+
+build/schema_test_cook_asan: build/tables-generated/.stamp test/tables/cook_main.cpp
+	@mkdir -p build
+	$(CXX) $(COOK_CXXFLAGS) $(COOK_SANITIZE) $(COOK_INCLUDES) test/tables/cook_main.cpp -o $@
+
+# The fixtures the C++ gate opens. Small ones per root for the golden lock, the
+# battery and the fuzzer; a big-endian one for the byte-order leg; and the two
+# scale arms for the O(1) gate. `schema cook-check` runs over every small one
+# first, so a fixture the TOOL itself would refuse can never be what a green
+# C++ run is standing on.
+build/cook-open/.stamp: bin/schema $(SCHEMAS_TABLES_POINTERS)
+	@rm -rf build/cook-open && mkdir -p build/cook-open
+	go build -o build/cookgen ./test/cookgen
+	./build/cookgen --bytes 4096 --root Scene    --ref head --chain ListNode --next next --out build/cook-open/Scene.cook
+	./build/cookgen --bytes 3000 --root Depot    --ref head --chain ListNode --next next --out build/cook-open/Depot.cook
+	./build/cookgen --bytes 3000 --root Album    --ref head --chain ListNode --next next --out build/cook-open/Album.cook
+	./build/cookgen --bytes 3000 --root TreeNode --ref left --chain TreeNode --next left --out build/cook-open/TreeNode.cook
+	./build/cookgen --bytes 3000 --root ListNode --ref next --chain ListNode --next next --out build/cook-open/ListNode.cook
+	./build/cookgen --bytes 4096 --root Scene    --byte-order big --out build/cook-open/Scene-be.cook
+	./build/cookgen --bytes 1048576   --root Scene --out build/cook-open/1mb.cook
+	./build/cookgen --bytes 104857600 --root Scene --out build/cook-open/100mb.cook
+	@for r in $(COOK_ROOTS); do \
+		./bin/schema cook-check --root $$r build/cook-open/$$r.cook tables/pointers || exit 1; \
+	done
+	./bin/schema cook-check --root Scene build/cook-open/Scene-be.cook tables/pointers
+	@touch $@
+
+# The FIXED-root fixtures, which the C++ side WRITES: it saves a known instance
+# to the tolerant wire, the tool cooks that wire, and the value gate reads the
+# instance back out of the cook. The tool's own read report must be SILENT over
+# a wire this backend wrote — a crossing in the other direction, for free.
+build/cook-open-fixed/.stamp: bin/schema build/schema_test_cook build/cook-open/.stamp
+	@rm -rf build/cook-open-fixed && mkdir -p build/cook-open-fixed
+	@for r in $(COOK_FIXED_ROOTS); do \
+		./build/schema_test_cook write $$r build/cook-open-fixed/$$r.bin || exit 1; \
+		./bin/schema cook --root $$r --in build/cook-open-fixed/$$r.bin \
+			--out build/cook-open-fixed/$$r.cook --verbose tables/pointers || exit 1; \
+		./bin/schema cook-check --root $$r build/cook-open-fixed/$$r.cook tables/pointers || exit 1; \
+	done
+	@touch $@
+
+.PHONY: tables-cook-open
+tables-cook-open: build/schema_test_cook build/schema_test_cook_asan build/cook-open/.stamp build/cook-open-fixed/.stamp
+	@for r in $(COOK_ROOTS); do \
+		./build/schema_test_cook      golden $$r build/cook-open/$$r.cook || exit 1; \
+		./build/schema_test_cook_asan golden $$r build/cook-open/$$r.cook || exit 1; \
+	done
+	@for r in $(COOK_FIXED_ROOTS); do \
+		./build/schema_test_cook      golden      $$r build/cook-open-fixed/$$r.cook || exit 1; \
+		./build/schema_test_cook_asan golden      $$r build/cook-open-fixed/$$r.cook || exit 1; \
+		./build/schema_test_cook      fixedvalues $$r build/cook-open-fixed/$$r.cook || exit 1; \
+		./build/schema_test_cook_asan fixedvalues $$r build/cook-open-fixed/$$r.cook || exit 1; \
+		./build/schema_test_cook_asan forge       $$r build/cook-open-fixed/$$r.cook || exit 1; \
+	done
+	./build/schema_test_cook      usage Scene build/cook-open/Scene.cook
+	./build/schema_test_cook      forge Scene build/cook-open/Scene.cook
+	./build/schema_test_cook_asan forge Scene build/cook-open/Scene.cook
+	./build/schema_test_cook_asan forge Depot build/cook-open/Depot.cook
+	SEED=$(SEED) N=$(N) ./build/schema_test_cook_asan fuzz Scene build/cook-open/Scene.cook
+	SEED=$(SEED) N=$(N) ./build/schema_test_cook_asan fuzz TreeNode build/cook-open/TreeNode.cook
+	./build/schema_test_cook accept Scene build/cook-open/Scene.cook
+	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
+	./build/schema_test_cook time Scene build/cook-open/1mb.cook build/cook-open/100mb.cook
+
+# THE GIGABYTE ARM, by hand (§7.5): a 1.5 GB fixture is not something a CI
+# runner's disk should meet on every push, and the two arms above already span
+# two orders of magnitude.
+.PHONY: tables-cook-open-1gb
+tables-cook-open-1gb: build/schema_test_cook build/cook-open/.stamp
+	go build -o build/cookgen ./test/cookgen
+	./build/cookgen --bytes 1073741824 --root Scene --out build/cook-open/1gb.cook
+	./build/schema_test_cook time Scene build/cook-open/1mb.cook build/cook-open/1gb.cook
+
+# THE NEGATIVE CONTROLS, and a battery whose battery has never gone red is
+# watching nothing. Each removes ONE clause of TableCookOpen through a
+# `go build -overlay` on the emitter — so no tracked file is ever written to,
+# an interrupt cannot leave a sabotaged working tree, and a parallel `make -j`
+# cannot compile the sabotage into something else — regenerates the corpus from
+# the sabotaged emitter, and requires the C++ gate to go RED.
+#
+# The two clauses chosen are the two that decide whether Open can hand back
+# storage the caller never gave it: the part-length equation, which is what
+# refuses a truncated file, and the root-fits check, which is what refuses a
+# data part too short to hold the root.
+define cook_open_sabotage
+	@mkdir -p build
+	@rm -rf build/cook-open-$(1) && mkdir -p build/cook-open-$(1)
+	@sed 's|^.*$(2).*$$|    $(3) // NEGATIVE CONTROL|' \
+		internal/codegen/cpptable/cook.go > build/cook-open-$(1)/cook.gotext
+	@cmp -s build/cook-open-$(1)/cook.gotext internal/codegen/cpptable/cook.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cook.go":"%s/build/cook-open-$(1)/cook.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cook-open-$(1)/overlay.json
+	@go build -overlay=build/cook-open-$(1)/overlay.json -o build/cook-open-$(1)/schema ./cmd/schema
+	./build/cook-open-$(1)/schema generate --lang cpp --out build/cook-open-$(1)/gen tables/pointers
+	$(CXX) $(COOK_CXXFLAGS) $(COOK_SANITIZE) -Ibuild/cook-open-$(1)/gen -Itest/tables \
+		test/tables/cook_main.cpp -o build/cook-open-$(1)/test
+	@if ./build/cook-open-$(1)/test forge Scene build/cook-open/Scene.cook > build/cook-open-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the battery stayed green with the $(1) check removed"; exit 1; \
+	fi
+	@grep -q "FAILED" build/cook-open-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the battery went red, but not on a forgery"; cat build/cook-open-$(1)/log; exit 1; }
+	@grep -m1 -A3 "FAILED" build/cook-open-$(1)/log
+	@echo "negative control: removing the $(1) check turns the cook forgery battery RED"
+endef
+
+# The sabotage keeps the local it defeats IN USE, because a generated C++ file
+# with an unused local does not compile under -Werror and a control that fails
+# to build is not a control that went red.
+.PHONY: tables-cook-open-lengths-negative-control
+tables-cook-open-lengths-negative-control: build/cook-open/.stamp
+	$(call cook_open_sabotage,lengths,attribution_length != length - data_offset - data_length,if ( attribution_length == UINT64_MAX ) { return NULL; })
+
+.PHONY: tables-cook-open-root-negative-control
+tables-cook-open-root-negative-control: build/cook-open/.stamp
+	$(call cook_open_sabotage,root,data_length < root_size,if ( root_size == UINT64_MAX ) { return NULL; })
+
+
 # THE COOK ROUND TRIP THROUGH THE CLI (SPEC-TABLES.md §7.5). The Go tests hold
 # the engine; this holds the three COMMANDS and their flags, over a pinned pack
 # tree, in both byte orders and with the attribution written both ways.
@@ -646,16 +801,34 @@ tables-cook-cli: bin/schema
 #
 # They are ordinary goldens from here on: `make update-goldens` re-pins them
 # when a TABLE emitter legitimately changes, and a move under an unchanged
-# emitter is stop-the-line, exactly as it is for every other golden.
+# emitter is stop-the-line, exactly as it is for every other golden. **The
+# fourteen Table HEADERS were re-pinned when the cook's read side landed** (§7),
+# so their text is no longer the pre-block compiler's — git carries that
+# provenance, and the .cpp pins still are. Replacing the frozen pins with a
+# mechanical comparison against a corpus generated from a block-less emitter,
+# the way the negative controls already do it, is the follow-on that would give
+# the byte-identity half back its independence.
 .PHONY: tables-block-zero-cost
 tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
 	          build/tables-generated-cs/*/*Table.cs; do \
-		if grep -nE "TableBlock|[A-Za-z0-9_]Block|BuildVersion" $$f; then \
+		if grep -nE "TableBlock|[A-Za-z0-9_]Block" $$f; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
 		fi; \
 	done
 	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
+# BuildVersion LEFT this grep when the cook's read side landed. It is not a
+# block symbol and never was: a build version answers "which build?" and not
+# "which form?", both accelerators carry it (SPEC-TABLES.md §20.6), and every
+# Table header now carries it because every table cooks (§7). What still holds
+# the block form to zero cost is the line above — no Table source carries one
+# BLOCK symbol — and the byte comparison below.
+	@for f in build/tables-generated-cs/*/*Table.cs; do \
+		if grep -n "BuildVersion" $$f; then \
+			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources carry BuildVersion, which is the BLOCK file's there: $$f"; exit 1; \
+		fi; \
+	done
+	@echo "block zero-cost gate: the C# Table sources still carry no build version — it is their Block file's"
 	@n=0; d=0; \
 	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
 	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* ; do \
@@ -681,7 +854,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	done; \
 	if [ "$$d" != "0" ]; then exit 1; fi; \
 	if [ "$$n" -lt 38 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 38 — the glob, not the property, is what broke"; exit 1; fi; \
-	echo "block zero-cost gate: $$n Table sources byte-identical to the pins the PRE-BLOCK compiler wrote"
+	echo "block zero-cost gate: $$n Table sources byte-identical to their pins (the .cpp half still the PRE-BLOCK compiler's text)"
 
 # THE BUILD VERSION IS ONE NUMBER (SPEC-TABLES.md §20.7): the constant each
 # backend emits, and the number `schema build-version` prints, are the same
@@ -1034,6 +1207,15 @@ build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp
 	@mkdir -p build
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
+# The COOK's read side, for a BIG-ENDIAN target. A cook is produced in the byte
+# order of the build it is cooked for (SPEC-TABLES.md §7), so this is where that
+# stops being a sentence: the big-endian build opens the big-endian cook
+# NATIVELY — magic, header words, deltas and all, with no fix-up pass anywhere —
+# and refuses the little-endian one, and this host does the mirror image.
+build/schema_test_cook_be: build/tables-generated/.stamp test/tables/cook_main.cpp
+	@mkdir -p build
+	$(BE_CXX) $(COOK_CXXFLAGS) -static $(COOK_INCLUDES) test/tables/cook_main.cpp -o $@
+
 # The cross-endian BLOCK driver, built BOTH ways: a block is produced in the
 # byte order of the build that wrote it, and every other block test in this
 # tree runs producer and consumer in one process. This is the one part of
@@ -1047,7 +1229,7 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 	$(BE_CXX) $(BLOCK_CXXFLAGS) -static $(BLOCK_INCLUDES) test/tables/block_endian_main.cpp $(BLOCK_SOURCES) -o $@
 
 .PHONY: tables-big-endian
-tables-big-endian: build/schema_test_tables_be build/schema_test_block_endian build/schema_test_block_endian_be
+tables-big-endian: build/schema_test_tables_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
 	$(BE_RUN) ./build/schema_test_tables_be
 	@echo "big-endian leg: the wire crosses the byte order"
 	./build/schema_test_block_endian write build/block-host.bin
@@ -1057,6 +1239,12 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_block_endian bu
 	./build/schema_test_block_endian accept build/block-host.bin
 	./build/schema_test_block_endian refuse build/block-target.bin
 	@echo "big-endian leg: a block does not cross the byte order either — the magic refuses it and the prologue's word names the order that wrote it"
+	$(BE_RUN) ./build/schema_test_cook_be accept Scene build/cook-open/Scene-be.cook
+	$(BE_RUN) ./build/schema_test_cook_be golden Scene build/cook-open/Scene-be.cook
+	$(BE_RUN) ./build/schema_test_cook_be refuse Scene build/cook-open/Scene.cook
+	./build/schema_test_cook accept Scene build/cook-open/Scene.cook
+	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
+	@echo "big-endian leg: a cook opens NATIVELY in the order it was cooked for, whole graph and all, and a cook of the other order is refused by the magic"
 	$(MAKE) tables-cook-endian
 
 # THE COOK IS THE HOST'S BUSINESS IN NEITHER DIRECTION (SPEC-TABLES.md §7).
@@ -1441,6 +1629,9 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cook-cli
 	$(MAKE) tables-cook-scale
 	$(MAKE) tables-cook-fuzz-negative-control
+	$(MAKE) tables-cook-open
+	$(MAKE) tables-cook-open-lengths-negative-control
+	$(MAKE) tables-cook-open-root-negative-control
 	$(MAKE) tables-block-zero-cost
 	$(MAKE) tables-block-build-version
 	$(MAKE) tables-block-fill-refuser

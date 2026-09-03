@@ -112,8 +112,10 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Node { x int32 }\ntype NodeLoadMeasureBody { y int32 }\n"},
 		{name: "a declaration colliding with the builder load path", want: "generated TABLE-wire functions",
 			src: "package t\ntable Node { x int32 }\ntype NodeLoadBuilder { y int32 }\n"},
-		{name: "a declaration colliding with the Open bounds walk", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeOpenWalk { y int32 }\n"},
+		{name: "a declaration colliding with the cook's read side", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeOpen { y int32 }\n"},
+		{name: "a declaration colliding with the cook's write side", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeCookMeasure { y int32 }\n"},
 		{name: "a declaration colliding with the descriptor storage", want: "generated TABLE-wire functions",
 			src: "package t\ntable Node { x int32 }\ntype NodeTableInfo { y int32 }\n"},
 		{name: "a declaration colliding with the descriptor field storage", want: "generated TABLE-wire functions",
@@ -515,6 +517,19 @@ func TestCanonicalRootTableNameIsLegal(t *testing.T) {
 	}
 	if !ir.VariableTables(u)["Root"] {
 		t.Error("table Root did not derive VARIABLE-LENGTH")
+	}
+}
+
+// TestRetiredOpenWalkIsFree: `<X>OpenWalk` named wire v1's validating walk, and
+// §7's Open is a header match with NO WALK IN IT — so the name went with the
+// design and the claim went with the name (SPEC-TABLES.md §7, §11). A claim
+// nothing needs takes a name away from every schema for free, and this is the
+// one direction the claim list cannot police itself in: an unclaimed name is
+// invisible unless something asks for it.
+func TestRetiredOpenWalkIsFree(t *testing.T) {
+	u := buildUnit(t, "package t\ntable Node { x int32 }\ntype NodeOpenWalk { y int32 }\n")
+	if u.Structs["NodeOpenWalk"] == nil {
+		t.Fatal("type NodeOpenWalk did not survive checking: the retired claim is still being made")
 	}
 }
 

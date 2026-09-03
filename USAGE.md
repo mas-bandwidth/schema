@@ -1176,28 +1176,62 @@ this side allocates: the bytes are yours, from wherever you got them.
 
 ### The cooked form: point at a file instead of parsing it
 
-*The TOOL is built and the generated runtime is not (SPEC-TABLES.md §7,
-schema#251). `schema cook`, `schema cook-check` and `schema uncook` produce,
-validate and read back cooked files today, in either byte order. The `Open` in
-the C++ below is the design you will get; a game still rides the tolerant
-wire.*
+*The TOOL and the C++ READ side are built; the C++ WRITE side is not
+(SPEC-TABLES.md §7, schema#251). `schema cook`, `schema cook-check` and
+`schema uncook` produce, validate and read back cooked files today, in either
+byte order, and the C++ backend emits `<Root>Open` for every table.
+`SceneCook` and `SceneCookMeasure` are the design you will get; today your
+tools write the cook with `schema cook` and your game opens it.*
 
-The wire is generic — it allocates, walks and parses, and any build reads any
-data. When you want a big file to start instantly, cook it: the locked region
-written verbatim behind a small header, laid out exactly as the runtime reads
-it.
+**A cook is not a wire protocol — it is a load-trusted-data-from-tools
+protocol.** A wire crosses a boundary between builds; a cook crosses none. Your
+tools write one for one build, and that build loads it off its own disk. So
+`Open`'s checks are IDENTITY checks — is this file for this build — and not a
+trust boundary, and there is no per-node validation at load, ever: a pass over a
+catalogue-scale file is the parse the whole form exists to delete. A file that
+did not come from your own pipeline is `schema cook-check`'s problem, run by a
+person, once. If you want integrity, sign the file and verify the signature
+before you open it; do not ask the loader to walk anything.
+
+The tolerant wire is generic — it allocates, walks and parses, and any build
+reads any data. When you want a big file to start instantly, cook it: the
+locked region written verbatim behind a small header, laid out exactly as the
+runtime reads it.
+
+```sh
+# your build writes the cook, beside the build that will read it
+schema cook --root Scene --in config/ --out Scene.cook .
+```
 
 ```cpp
-int64_t size = SceneCookMeasure( builder );
-SceneCook( builder, buffer, size );                  // write Scene.bin
+#include "GraphTable.h"
 
-// later, in the game — mmap it or read it, then just point:
-const Scene * scene = SceneOpen( bytes, size );
+// in the game — mmap the file or read it, then just point. Nothing is parsed,
+// nothing is allocated, and nothing is walked: this is a header match and a
+// cast, so a one-megabyte cook and a one-gigabyte cook open in the same time
+// and a mapped file's pages are touched only as you use them.
+const Scene * scene = graphdemo::SceneOpen( bytes, length );
 if ( scene == NULL )
 {
-    // wrong build, corrupt, or foreign byte order: fall back to the wire
+    // wrong build, corrupt, truncated, or a foreign byte order:
+    // fall back to a wire load, which is the path that carries every version
+    return load_from_wire();
+}
+
+// read it as it lies. A reference is one add through <T>At — the slot holds a
+// signed self-relative delta — and a null reference is a null pointer.
+printf( "%s v%d\n", scene->name, scene->version );
+for ( const ListNode * n = graphdemo::ListNodeAt( scene->head ); n != NULL;
+      n = graphdemo::ListNodeAt( n->next ) )
+{
+    printf( "  %s = %d\n", n->name, n->value );
 }
 ```
+
+`SceneOpen` takes `const void *` and a `uint64_t` length and returns
+`const Scene *` or `NULL`. The length is unsigned because every number the
+check compares comes out of the file, so all of its arithmetic is unsigned; a
+caller holding an `int64_t` from a `stat` casts once, at the call site.
 
 A cooked file is an ACCELERATOR, not an archive: it is build-locked by a
 build version that covers the schema's layout, its meaning facts and your
@@ -1205,9 +1239,11 @@ target's byte order, so it refuses the moment any of it moves and you
 regenerate it. The tolerant wire stays the format of record.
 
 `Open` checks the header and points — the magic, the byte order it
-establishes, the build version, every reserved word zero, the two part lengths
-against the size you passed, the base's alignment — and that is the whole of
-it. On a match the bytes ARE what this build wrote, so there is nothing to
+establishes, the build version, every reserved word zero, the region alignment
+the header names, the two part lengths against the length you passed, the
+root's own storage inside the data part, the base's alignment — and that is the
+whole of it. On a match the bytes ARE what this build wrote, so there is
+nothing to
 validate and nothing to fix up, and open time does not grow with the file. It
 is the only runtime entry point there is: a cook is your build's own
 accelerator, and a file that is not your build's returns NULL and you load the
@@ -1225,7 +1261,12 @@ one struct behind the header, so you memcpy it or point at it where it lies —
 no node table and no graph, and the build version is the whole of what `Open`
 checks. Its attribution part still names that one node, so `cook-check` can
 bound its string lengths and array counts, which are as forgeable in one
-struct as in a graph.
+struct as in a graph. **A root is any table**, so a fixed table has an `Open`
+like every other, and it is the same call:
+
+```cpp
+const Settings * settings = graphdemo::SettingsOpen( bytes, length );
+```
 
 **The three commands, today.** They run over the same declarations the
 compiler already read, and the input may be a wire file or the directory tree

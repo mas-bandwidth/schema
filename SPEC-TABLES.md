@@ -1776,6 +1776,14 @@ nowhere either.
 is a consequence of that one sentence, and none of it is a second format
 of record.
 
+**IT IS NOT A WIRE PROTOCOL. It is a LOAD-TRUSTED-DATA-FROM-TOOLS protocol**,
+in the owner's words — *"It's not a 'wire' protocol, it's a load trusted data
+from tools protocol."* That is the name and the whole frame: a wire is what
+crosses a boundary between builds, and this crosses none. Tooling writes a cook
+for one build and that build loads it off its own disk, so nothing here
+negotiates, tolerates or defends; the tolerant table wire (§3) is what carries
+data across versions, and it stays the format of record.
+
 **What it is for**: reducing the load time of assets, and nothing else —
 don't parse, just point at an mmap'd data structure loaded as it stands,
 and have it work.
@@ -1789,16 +1797,18 @@ int64_t data, attribution;
 SceneCookMeasure( builder, &data, &attribution );
 SceneCook( builder, buffer, data, attribution );   // write it
 
-const Scene * scene = SceneOpen( bytes, size );    // point at it, or NULL
+const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 ```
 
-**Backend status: the TOOL is built and the EMITTERS are not (schema#251).**
-`schema cook`, `schema cook-check` and `schema uncook` produce, validate and
-read back the form below, in both byte orders, over the same IR the emitters
-consume — and `wire → cook → wire` is byte-identical over the corpus, which is
-what proves the accelerator loses no fact. No generated runtime carries `Cook`,
-`CookMeasure` or `Open` yet: a game still rides the tolerant wire, and the four
-spellings stay claimed ahead of their emitter (§11).
+**Backend status: the TOOL and the C++ READ SIDE are built; the C++ WRITE side
+is not (schema#251).** `schema cook`, `schema cook-check` and `schema uncook`
+produce, validate and read back the form below, in both byte orders, over the
+same IR the emitters consume — and `wire → cook → wire` is byte-identical over
+the corpus, which is what proves the accelerator loses no fact. The C++ table
+backend emits `<Root>Open` for EVERY TABLE (below) — a root is any table — so a
+game points at a cook the tooling produced. What no generated runtime carries
+yet is `Cook` and `CookMeasure`: a build that wants to WRITE a cook runs the
+tool, and those two spellings stay claimed ahead of their emitter (§11).
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -1911,12 +1921,62 @@ the wire, and keeps the flexibility that comes with it.
   (`schema cook-check`, below), so a build that ships no
   tooling need not carry it at all: the header records its length as zero and
   the file is just data.
+- **A COOK IS TRUSTED INPUT, LOADED FROM DISK, and that is the sentence every
+  clause below descends from.** A cook is an artifact the owner's own pipeline
+  produced for the owner's own build and put on the owner's own disk beside it;
+  the game loads it. **`Open`'s checks are IDENTITY checks — is this file for
+  THIS build — and not a trust boundary**: the magic, the byte order, the build
+  version, the lengths and the alignment answer "did we write this?", and
+  nothing answers "is this hostile?" because that is not the question a load is
+  asking. **There is NO PER-NODE VALIDATION AT LOAD, ever**, and that is not a
+  cost saved but the design: a per-node pass over a catalogue-scale file is the
+  parse the whole form exists to delete.
+
+  **A file that did not come from your own pipeline is a TOOL's problem, not a
+  loader's**: `schema cook-check` (below), run by a person, once, offline. And
+  **if integrity is wanted, it is a SIGNATURE** — over the whole file, verified
+  once before `Open`, with sodium — never per-node checks smuggled into the
+  loader. It costs the lazy paging, and §15 carries both that and the shape
+  that keeps it; not built.
+
+  **The forgery battery and the fuzzer (§7.5) are hardening gates on the
+  REFUSAL PATH and they do not shape this runtime.** What they hold is that a
+  file `Open` refuses is refused cleanly — no crash, no read past the `length`
+  the caller passed, no undefined behaviour inside the check — because the
+  check runs on whatever bytes a disk hands back, including a corrupt or
+  truncated one. They do not ask `Open` to validate a graph, and the three
+  forgeries that OPEN by design (a reference leaving the region, a negative
+  delta past the base, a directory entry outside it) are exactly that
+  distinction written down.
+
 - **`Open` checks the header and points, and this is the WHOLE check**,
   because nothing else is checked at all: **the magic, the byte order it
-  establishes, the build version, every RESERVED word zero, the two part
-  lengths against the `size` the caller passed — a truncated file refuses —
-  and the alignment of the base.** That is the enumeration, and it is stated
-  once: §11 and §20.6 cite it rather than repeat it. On a match the bytes ARE
+  establishes, the build version, every RESERVED word zero, the region
+  ALIGNMENT the header names, the two part lengths against the `length` the
+  caller passed — a truncated file refuses — the ROOT's own storage inside the
+  data part, and the alignment of the base.** That is the enumeration, and it is
+  stated once: §11 and §20.6 cite it rather than repeat it.
+
+  **Two of those clauses are there because the header's own words are DATA**,
+  and a reader that took them on trust would do arithmetic with a forgery:
+
+  - **The `alignment` word is the one field the check computes WITH** rather
+    than only compares against — the data part begins at `align_up( 64,
+    alignment )` and the base's alignment is measured against it — so a word
+    that is not an alignment rounds nothing and aligns nothing. It must be a
+    POWER OF TWO, at least EIGHT (§7.1's floor) and at most SIXTY-FOUR — the
+    same sixty-four a block's base takes (§19.1), and past which the derived
+    data offset would no longer be the 64 every unit this language can declare
+    produces — and a multiple of the ROOT's own `alignof`, since the root sits
+    at the region's base. A zero there is a division by
+    zero inside the check, which is the defect the check exists to prevent.
+  - **The DATA PART MUST HOLD THE ROOT.** The two part lengths frame the FILE;
+    they do not say the region is at least `sizeof( root )`. Without that
+    clause a forged short data part describes a root partly outside the file,
+    and a match-and-point reader would hand back storage the caller never gave
+    it — the one way this design could read past the length it was passed.
+
+  On a match the bytes ARE
   what this build wrote, in this build's layout and this build's byte order,
   so there is nothing to validate and nothing to fix up: `Open` returns the
   root. That is the runtime path and there is no other. On any failure it
@@ -1927,6 +1987,63 @@ the wire, and keeps the flexibility that comes with it.
   build either wrote a file or it did not, and the build version is what says
   which. A cook is an accelerator for a build's own assets, and a runtime
   that wanted to reason about a foreign one has already left the fast path.
+
+- **THE C++ SURFACE, because a consumer written from this page needs the
+  spelling and not a description of one.** One free function per root, name
+  first (§6.1), taking the caller's bytes and returning the root or `NULL`:
+
+  ```cpp
+  const Scene * SceneOpen( const void * bytes, uint64_t length );
+  ```
+
+  **The length is UNSIGNED, and that is a decision the check makes rather than
+  a style.** Every number `Open` compares comes out of the file, so all of its
+  arithmetic is unsigned and each term is bounded before it is added; a signed
+  length would put one signed value into that arithmetic and one negative case
+  into every comparison. A caller holding an `int64_t` from a `stat` casts once,
+  at the call site, where the sign is still its own business.
+
+  **A ROOT IS ANY TABLE, and every table gets one.** Nothing on this page
+  narrows which table a cook may be rooted at, and two things say it is any of
+  them: `schema cook --root` names a TABLE and refuses anything else — a `type`
+  is not a node and has no type id (§3.1) — and §11 claims the spelling on every
+  closure member. So the emission is per table, in every unit that declares one,
+  and a FIXED root is not a second case: its cook is one region of one node
+  (below), which is this same header match and then the one record.
+
+  **The price is bytes of header and it is measured, not assumed.** The shared
+  read runtime plus one `Open` per table plus §20.3's layout asserts grew the
+  corpus's fourteen Table headers by 207 KB in total — a mean of 14.8 KB, about
+  a fifth of each — and the paired instrument §13.5 uses (one empty translation
+  unit including one generated Table header, arms interleaved in one sitting,
+  medians of 15) puts the compile-time cost at **+0.2 ms, +0.2%, inside a 4–6%
+  spread**. It is comment and constant-folded arithmetic, and it does not reach
+  the clock.
+
+  **None of it is POINTER MACHINERY**, which is what keeps §2.2's question
+  answerable with the form emitted everywhere: a value-only table still gets no
+  arena, no builder, no reference slot and no lifecycle surface. What it gets is
+  a header match, and a header match is what a cook is.
+
+  **A REFERENCE IS DEREFERENCED THROUGH `<T>At`**, which is emitted for every
+  pointer target and is the same call in a locked region and an opened cook,
+  because they are the same encoding (§6.3):
+
+  ```cpp
+  const Node * next = NodeAt( node->next );   // one add; NULL when the delta is zero
+  ```
+
+  The slot is eight bytes, signed, self-relative from the slot's own address, so
+  a deref needs no base pointer and no bounds test, and NULL is a delta of zero.
+  **Nothing about that call is the cook's**: it is what a region reference is,
+  and a cook is a region written verbatim.
+
+  **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
+  rather than assuming it: every record a unit's files declare carries
+  `static_assert`s on its `sizeof`, its `alignof` and every field's `offsetof`
+  against the numbers the compiler folded into the build version, so a compiler
+  that lays a record out differently fails to BUILD, naming the record and the
+  field (§20.3).
 - **Validating an untrusted cook is a TOOL, not a runtime surface**:
   `schema cook-check`, over the same reflection descriptors
   (§8) the runtime already carries, checking the DATA against the ATTRIBUTION.
@@ -1977,7 +2094,8 @@ the wire, and keeps the flexibility that comes with it.
   struct's bytes behind the header: memcpy it, or point at it where it
   lies. There is no node table and no graph, and the build version is the
   whole of what `Open` checks — which is the whole of what `Open` checks
-  for any cook.
+  for any cook. **The generated `Open` reads one**, on exactly the terms above:
+  a root is any table, and this is a root.
   **It is ONE REGION OF ONE NODE and not a second shape**, and the
   attribution part names that node like any other: sixteen bytes, the root
   at offset zero. One shape is what lets `schema cook-check` bound a fixed
@@ -2232,7 +2350,7 @@ with `scene.name = "hi"`, `scene.head = A`, `A.next = B`, `A.value = 1`,
 00c0  e0 ad 84 20 6e 53 af c8   node 4: type id, Palette
 ```
 
-**The BIG-ENDIAN cook of the same structure is the same 168 bytes with every
+**The BIG-ENDIAN cook of the same structure is the same 200 bytes with every
 scalar reversed in place** — the header's words, the region's lengths, counts,
 deltas and values, and the directory's pairs — and nothing else moves: no
 offset, no size, no node order, and the same directory read in its own order.
@@ -2320,12 +2438,112 @@ every clause above by construction.
   `cook-check` through a build overlay, and the battery must go red. A checker
   whose battery has never gone red is watching nothing.
 - **THE SCALE FIXTURES**: a synthetic region generator writes a 1 MB, a 100 MB
-  and a 1 GB cook, streaming, so the open-cost gate the emitter owes — open
-  time FLAT across the three — has inputs a person regenerates rather than a
-  gigabyte in the tree. CI runs the first two under the two-minute rule; the
-  gigabyte is run by hand. **The gate itself belongs to the RUNTIME and not to
-  this tool**: `Open` is what has to be O(1), and a tool that walks a directory
-  is measuring its own scan.
+  and a 1 GB cook, streaming, so the open-cost gate — open time FLAT across the
+  three — has inputs a person regenerates rather than a gigabyte in the tree.
+  CI runs the first two under the two-minute rule; the gigabyte is run by hand.
+  **The gate itself belongs to the RUNTIME and not to this tool**: `Open` is
+  what has to be O(1), and a tool that walks a directory is measuring its own
+  scan. It is held over the C++ `Open`, below.
+
+- **THE CROSS-IMPLEMENTATION LOCK, and it is what makes two implementations of
+  one page worth having.** The tool writes a cook in Go and the C++ `Open`
+  points at it, and neither was written from the other. The lock is the
+  ATTRIBUTION part: every node the C++ side reaches by following its OWN
+  derefs, through its own record layouts, must be a node the directory names,
+  at that offset, with that type id — and the two SETS must be equal, so an
+  edge the reader stops following is as loud as one it invents. A record laid
+  out one byte differently on either side lands a deref off a directory entry
+  and the gate says which node and which type. It runs over SEVEN roots, which
+  is the shapes a region has: a pointer chain, a tree, a keyed array of
+  variable tables beside an optional, a cross-file graph through a by-value
+  variable table, a chain node as its own root, and TWO FIXED ROOTS — one region
+  of one node — of which one is pointed at and one is declared in a file with no
+  variable table of its own.
+
+  Beside it, and from the same walk: **every byte no field covers is ZERO**
+  (§7.2), checked over the slack the directory frames; and every COUNT
+  COMPANION inside its declared bound, which is pass two's own reading (§7.4)
+  done by the other implementation.
+
+- **THE VALUE CROSSING, and the FIXED class is where it lives today.** A fixed
+  table has no pointer, so it has no node table and no kind `17`, so this
+  backend's wire and the tool's are the SAME BYTES for one. The gate rides that:
+  the C++ side writes a known instance to the wire, `schema cook` cooks it —
+  reading that wire with its own model of the record's layout — and the C++
+  side opens the cook and reads the fields back. Value for value, including a
+  string's used length and the zero tail past it (§7.2). The tool's own read
+  report over a wire this backend wrote is SILENT, which is the same crossing in
+  the other direction and comes free.
+
+  **For the VARIABLE class it does not cross yet**, and the reason is §3.1's
+  backend status rather than anything about the cook: the tool writes the flat
+  node table and no backend does, so a tool-written wire's pointer fields reach
+  a generated reader as a kind it cannot skip and the decode stops. It lands
+  with that emitter work. What stands in for it meanwhile is that a value is its
+  bytes at its offset, and the directory lock pins the offsets while §20.3's
+  asserts pin the layout they come from.
+
+- **THE C++ `Open`'s OWN GATES**, on §19.5's shape and with §7's oracle rather
+  than §19's:
+
+  - **THE DIRECTED BATTERY**: one forgery per fact the enumeration names — each
+    byte of the magic, the magic byte-reversed (a cook of the other order), the
+    BLOCK form's magic, every byte-order word the magic contradicts, three
+    build versions, both reserved words, thirteen alignment words that are not
+    alignments, both part lengths long and short and saturated, a data part too
+    short to hold the root with the file's total kept exact, six truncations
+    and an extension, and every unaligned base — each refused, under ASan and
+    UBSan with `-fno-sanitize-recover=all`, over a buffer allocated at EXACTLY
+    the length claimed so a redzone sits on the next byte.
+  - **AND ONE PER FACT THE ENUMERATION DOES NOT NAME**, each of which must
+    OPEN: a reference slot with an enormous forward delta, a negative delta
+    past the base, a directory entry naming an offset outside the region.
+    **Those are `cook-check`'s refusals and not the runtime's** (§7.4), and a
+    battery that expected `Open` to catch them would be holding this code to a
+    design this page does not have. A cook is trusted input loaded from disk
+    (§7): the battery asserting that these OPEN is that ruling written as a
+    test, so a walk cannot be put back without the gate saying so.
+
+  **WHAT THE BATTERY AND THE FUZZER ARE FOR, stated because it is easy to read
+  them as a threat model and they are not one.** They harden the REFUSAL PATH.
+  `Open` runs on whatever bytes a disk hands back — including a corrupt one, a
+  truncated one, a file from a build that moved — and what these hold is that
+  refusing is CLEAN: no crash, no read past the `length` the caller passed, no
+  undefined behaviour inside the check. They do not shape the runtime, and they
+  ask `Open` to validate nothing.
+  - **THE FUZZER**, seeded, with the oracle §7 actually promises. A mutation
+    inside the HEADER must be refused, or open onto a data part that is still
+    this build's own bytes — and then the whole graph must agree with the
+    directory, exactly as the lock above requires. A mutation inside the DATA
+    PART must not change `Open`'s answer AT ALL, which is the O(1) promise
+    written as a property a fuzzer can falsify rather than as a timing. On
+    every path, opened or refused, nothing outside the length the caller passed
+    is read; and an opened cook's ROOT STORAGE is read whole, so the sanitizer
+    proves it lies inside that length rather than the oracle computing that it
+    does.
+  - **ITS TWO NEGATIVE CONTROLS**, each removing ONE clause of the check
+    through a build overlay on the emitter and requiring the battery to go RED:
+    the part-length equation, which is what refuses a truncated file, and the
+    root-fits clause, which is what refuses a data part too short to hold the
+    root. A battery that has never gone red is watching nothing.
+  - **THE O(1) GATE**: the 1 MB and the 100 MB fixture, opened the same number
+    of times, paired in one sitting, reported as medians — the bar is that the
+    two are the same time. A walk of any shape over the larger one would be
+    orders of magnitude out, so the band cannot pass one by accident. The
+    gigabyte arm is run by hand.
+  - **THE BYTE-ORDER LEG**: on the big-endian target, a cook written
+    `--byte-order big` opens NATIVELY — header, deltas and the whole graph
+    walk, with no fix-up pass anywhere — and a little-endian cook is refused by
+    the MAGIC; on this host, the mirror image.
+  - **THE ZERO-COST HALF**: a value-only unit emits no `Open`, no build-version
+    constant and no cook runtime, and its Table sources stay byte-identical to
+    the pins (§2.2).
+  - **THE DOCUMENTED SURFACE COMPILES**: USAGE's cook example is a translation
+    unit in the gate and it runs against a real cook, so the day the surface
+    moves the documentation goes red with the code rather than a release later.
+  - **AND `cl /W4 /WX` COMPILES IT**: the msvc leg generates the pointered unit
+    and compiles its header, so the cook runtime meets the estate's hard
+    requirement on every pull request (SPEC.md's Visual C++ rule).
 
 ## 8. Reflection: the view
 
@@ -3002,13 +3220,13 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **25 suffixes**, and a declaration spelling one of them is
+  each of these **24 suffixes**, and a declaration spelling one of them is
   refused naming the collision:
 
   ```
   Measure  MeasureBody  Save  SaveBody  Load  LoadBody  Reset
   LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
-  At  Emplace  Pack  PackMeasure  OpenWalk
+  At  Emplace  Pack  PackMeasure
   Cook  CookMeasure  Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   ```
@@ -3020,13 +3238,21 @@ in build version (§20.5).
   here equal `tableGeneratedVerbs` exactly, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **Four of the twenty-five are claimed AHEAD of their emitter.** `Cook`,
-  `CookMeasure`, `Open` and `OpenWalk` are the cook's spellings and no backend
-  emits one: the cook is wire v2's (§7) and is not built (schema#251). The
-  claim is held while the emitter is absent, on this list's own rule — a name
-  freed now is a collision the day it lands. `<X>Root` is NOT claimed and needs
-  no claim: the builder's accessor is the member `GetRoot`, renamed for the
-  reason below, so no emitter ever spells it.
+  **`Open` IS EMITTED; two of the twenty-four are still claimed AHEAD of their
+  emitter, and `OpenWalk` was RETIRED.** The C++ table backend emits `<X>Open`
+  for every TABLE (§7) — a root is any table — so that spelling is a definition
+  now and not only a claim, and it is claimed for every closure member all the
+  same, on this list's own rule. `Cook` and `CookMeasure` are the WRITE side
+  and no backend emits one: a build that writes a cook runs the tool (§7).
+  **`OpenWalk` LEFT THIS LIST**, and it is the one entry ever removed: it named
+  wire v1's validating walk, and §7's `Open` is a header match with no walk in
+  it, so the name went with the design rather than being held for an emitter
+  nothing will write. A claim nothing needs takes a name away from every schema
+  for free, and freeing one is cheap before release and never again — the count
+  above moved with it, and a test asserts `<X>OpenWalk` is legal, because an
+  unclaimed name is invisible unless something asks for it. `<X>Root` is NOT
+  claimed and needs no claim: the builder's accessor is the member `GetRoot`,
+  renamed for the reason below, so no emitter ever spells it.
 
   **The BLOCK FORM claims nine more, and the checker claims them.** They are
   law on the same terms and for a stronger reason — every fixed table has a
@@ -3074,7 +3300,10 @@ in build version (§20.5).
     `TableKeyed` (an enum-keyed array's storage, and a keyed array occurs in
     a `type` body: this document's own `ScoreBoard` declares one),
     `TableRef`, `TableReport`, `TableWriter`, `TableReader`, `TableEnumId`,
-    `TableEnumValue` and the rest of that list. §8.2 has a table-free unit's
+    `TableEnumValue`, the COOKED form's read runtime (`TableCookOpen`,
+    `TableCookMagic`, `TableCookByteOrder`, `TableCookMaxAlign`,
+    `table_cook_read64` — §7), `BuildVersion` (§20, which both accelerators
+    carry) and the rest of that list. §8.2 has a table-free unit's
     view file DEFINING those primitives, so a unit that declares no table
     can no longer be allowed to declare their names.
 
@@ -3416,9 +3645,21 @@ are these rulings, in the owner's words:
   beside them (§7).
 - **The scale, and when its gate binds**: "We can keep the gigabyte scale
   stuff for v2, but think about it as we work now." The 1 GB open-time gate
-  belongs to the wire v2 emitter (§7, schema#251); the design constraint it
-  comes from — nothing per node at open — is what §7's `Open` is specified as,
-  a match and a point.
+  belongs to the COOK's emitter (§7, schema#251) and is held over it: the
+  design constraint it comes from — nothing per node at open — is what §7's
+  `Open` is, a match and a point, and open time is flat from a megabyte to a
+  gigabyte.
+- **What it is NOT**, and it is the name: "It's not a 'wire' protocol, it's a
+  load trusted data from tools protocol." A wire crosses a boundary between
+  builds; a cook crosses none.
+- **A cook is TRUSTED INPUT**, 2026-09-03: "OK to be clear, cooked data is
+  generally trusted and will be loaded from disk." That is what makes `Open`'s
+  checks IDENTITY checks rather than a trust boundary, and it is why there is no
+  per-node validation at load at any scale (§7).
+- **And if trust is in question, the answer is a SIGNATURE and not a walk**:
+  "If we have concerns, then we should sign it." / "We just have to load the
+  data." Integrity is one verification over the whole file before `Open`, never
+  per-node checks in the loader; banked as a named follow-on (§15).
 - **Which files earn one**: "imagine a huge data file that specifies all
   the meshes used in the game for example, or all the texture files" —
   "that would be a cook"; against "Config.bin and Assets.bin are small
@@ -4005,6 +4246,22 @@ pre-empted here.
   a catalogue is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
+- **A SIGNED COOK.** A cook is trusted input loaded from disk (§7), so nothing
+  in the load path asks whether it is hostile. Where integrity IS wanted, it is
+  a SIGNATURE over the whole file, verified ONCE before `Open`, and never
+  per-node checks in the loader — which is the parse the form exists to delete.
+  Owner: *"If we have concerns, then we should sign it."* / *"We just have to
+  load the data."* The library is **sodium**, and the reason is the scale this
+  form is built for: *"sodium is faster and we could be loading large data"* —
+  verification is one hash pass over the whole file.
+
+  **The cost is stated because it is the one thing a signature takes away.** A
+  pass over the whole file at load forfeits the lazy paging §7 counts as a
+  property of touching nothing at open: a mapped cook whose pages are read only
+  as they are used becomes a cook read whole, once, before the first field. If
+  that matters, the shape that keeps both is a SIGNED TABLE OF PER-CHUNK
+  HASHES — the signature covers the table, and a page verifies as it faults in.
+  Not built.
 - **Per-language backends beyond C++ and C#** (the refusal in §11 names this).
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12), and the FIXED class is what that
@@ -5407,32 +5664,39 @@ constant. A build whose compiler lays a record out differently is meant to
 fail to BUILD, loudly, naming the type and the field; those asserts are owed
 and not yet emitted, which §20.3 states in full.
 
-**Backend status: the id and its projection are LIVE; the cook is not.**
+**Backend status: the id, its projection and both READ sides are LIVE.**
 `schema build-version` prints the id and `schema build-version --facts` prints
 the projection of §20.2, both pinned as goldens over the corpus. The C++ and
 C# BLOCK backends emit the constant and stamp it into every block's prologue
-(§19.1), and `BlockOpen` compares it. What remains owed, largest first:
+(§19.1), and `BlockOpen` compares it; `schema cook` stamps it into the cooked
+header, `schema cook-check` reads it back, and the C++ `<Root>Open` compares
+it (§7). What remains owed, largest first:
 
-1. **The constant rides in the BLOCK sources only.** §20.7 asks for one
-   beside `ProtocolId` in every backend; today the two block backends emit it
-   into `<Base>Block.h` / `<Base>Block.cs`, and the seven backends that carry
-   no table emit none. The cooked side has no constant at all.
-2. **The layout asserts cover the BLOCK CLOSURE, not every cookable record.**
-   C++ `static_assert`s each block projection's and each row type's `sizeof`,
-   `alignof` and every field `offsetof`, and C# asserts the same facts under
-   the managed model in a once-run check — but only for the records the block
-   form reaches. §20.3 commits the model to every record in the unit's table
-   closure, and a record no block reaches is asserted by neither side.
+1. **The constant rides in the BLOCK and COOK sources only.** §20.7 asks for
+   one beside `ProtocolId` in every backend; today the two block backends emit
+   it into `<Base>Block.h` / `<Base>Block.cs`, the C++ table backend emits it
+   into the `<Base>Table.h` of a unit that has a variable-length table — where
+   the cook's reader is — and the seven backends that carry no table emit none.
+   A VALUE-ONLY unit's Table sources carry no constant, which is the zero-cost
+   gate (§2.2) rather than an omission: nothing in one reads a cook.
+2. **The layout asserts cover the BLOCK CLOSURE and the COOK closure of a
+   POINTERED unit, not every cookable record.** C++ `static_assert`s each block
+   projection's and each row type's `sizeof`, `alignof` and every field
+   `offsetof`, and does the same for every record declared by a file of a unit
+   that has a variable-length table; C# asserts the block facts under the
+   managed model in a once-run check. What neither side asserts is a record in
+   a unit with NO pointer anywhere — which is exactly the unit whose header the
+   zero-cost gate holds byte-identical, so closing it and §20.3's commitment
+   are one question, and it is OPEN.
 3. **The C# check is a THROW at first use, not a build error.** §20.3 asks
    for a build error on the side that disagrees; C# has no `static_assert`,
    so the generated check runs once at type initialization and throws naming
    the type, the field, the offset it found and the offset the C++ side
    asserts. Loud and early, but not at compile time.
-4. **The COOK carries it in the TOOL and not in a runtime.** `schema cook`
-   stamps the id into the cooked header and `schema cook-check` reads it back,
-   both held to `schema build-version` by test (§7, §20.8). What is still owed
-   is the generated `Open` that checks it — no backend emits one (§7,
-   schema#251).
+4. **The COOK's WRITE side is the TOOL's alone.** `schema cook` produces a
+   cooked file and no generated runtime does: `Cook` and `CookMeasure` stay
+   claimed ahead of their emitter (§7, §11, schema#251). The read side is
+   emitted and gated.
 
 ### 20.1 What it digests
 
@@ -5728,16 +5992,21 @@ Pack = 1, Size = N)`) with generated padding and a once-run layout check
 that disagrees**, naming the type, the field, the expected offset and the one
 its compiler produced.
 
-**Those asserts are in the tree for the BLOCK CLOSURE and nowhere else.** C++
-`static_assert`s each block projection's and each row type's `sizeof`,
-`alignof` and every field `offsetof`; C# emits blittable storage with
-generated padding and asserts the same facts under the managed model in a
-once-run check that THROWS rather than failing the build, because C# has no
-`static_assert`. What neither side asserts is a record no block form reaches —
-so for those, and for the cooked path generally, this section's guarantee is
-still a specification and not a property of any build: **two builds whose ABIs
-differ there would share a build version and cook different bytes, with
-nothing to say so.** The model is not self-evidently right either — on 32-bit System V
+**Those asserts are in the tree for the BLOCK CLOSURE and for the COOK closure
+of a POINTERED unit.** C++ `static_assert`s each block projection's and each
+row type's `sizeof`, `alignof` and every field `offsetof`, and asserts the same
+three facts for every record declared by a file of a unit that has a
+variable-length table — the records a cook's region is laid out from, asserted
+in the file that DECLARES them, which is the same rule §7 gives a member's
+walk. C# emits blittable storage with generated padding and asserts the block
+facts under the managed model in a once-run check that THROWS rather than
+failing the build, because C# has no `static_assert`. What neither side asserts
+is a record in a unit with NO pointer in it — so for those this section's
+guarantee is still a specification and not a property of any build: **two
+builds whose ABIs differ there would share a build version and cook different
+bytes, with nothing to say so.** Closing it means emitting the asserts into a
+value-only unit's Table header, which moves bytes the zero-cost gate holds
+identical (§2.2), so it is one question with that gate and it is OPEN. The model is not self-evidently right either — on 32-bit System V
 `alignof(uint64_t)` is 4, not 8 — which is precisely why it is asserted rather
 than assumed, and why "it never reaches a cook" is a claim the asserts make
 true rather than one the model makes true on its own.
@@ -5853,7 +6122,7 @@ be — a finer key buys a smaller re-cook and pays for it with a second id, and
 this design has two ids in total.
 
 **The cooked header carries the build version, and `Open` is a match** — the
-six-item check §7 states, in one place, with the build version among them. On
+check §7 states, in one place, with the build version among them. On
 a match the bytes ARE what a build at this version wrote, so there is nothing
 to validate and nothing to fix up (§7). A hit in the store under the right
 tuple therefore cannot be refused by `Open`, save on a corrupt or truncated
