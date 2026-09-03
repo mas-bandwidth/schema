@@ -310,7 +310,8 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  @surfaces ~w(wire report json-read json-write json-hostile block block-dump forgery cook cook-forgery)
+  @surfaces ~w(wire report json-read json-write json-hostile
+               cook cook-foreign block block-foreign block-dump forgery cook-forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -450,6 +451,30 @@ defmodule Driver do
     end
   end
 
+  # THE FOREIGN-ORDER REFUSAL (test/conformance/README.md): the driver makes the
+  # file foreign to ITSELF by reversing the eight bytes at offset 0 — the magic —
+  # so whatever this build's order is, the magic it now reads is not this
+  # build's. It is the check §19.1 and §7.1 put FIRST, for exactly this.
+  defp run("block-foreign", rows, outdir) do
+    for [name, unit, image] <- rows(rows, "block") do
+      write(outdir, name, block_verdict(unit, block_table(name), foreign(File.read!(image))))
+    end
+  end
+
+  defp run("cook-foreign", rows, outdir) do
+    for [name, unit, root, file] <- rows(rows, "cook") do
+      {mod, open} = accessor(unit, root, "cook_open", 1)
+
+      verdict =
+        case apply(mod, open, [foreign(File.read!(file))]) do
+          {:ok, _cook} -> "open\n"
+          :refuse -> "refuse\n"
+        end
+
+      write(outdir, name, verdict)
+    end
+  end
+
   defp run("block-dump", rows, outdir) do
     for [name, unit, image] <- rows(rows, "block") do
       root = block_table(name)
@@ -520,6 +545,10 @@ defmodule Driver do
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
+  end
+
+  defp foreign(<<magic::binary-size(8), rest::binary>>) do
+    magic |> :binary.bin_to_list() |> Enum.reverse() |> :binary.list_to_bin() |> Kernel.<>(rest)
   end
 
   defp block_module(unit, root) do
