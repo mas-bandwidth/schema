@@ -2159,6 +2159,14 @@ the wire, and keeps the flexibility that comes with it.
   cook's otherwise. `Schema` is one partial class across a unit's files, so
   exactly one definition of each constant is the whole requirement.
 
+  **THE CONSEQUENCE FOR A CONSUMER: the two accelerator files are a PAIR.**
+  Sharing one set of records is what stops a second ABI, and it is also what
+  makes `<Base>Block.cs` and `<Base>Cook.cs` compile together or not at all — a
+  consumer that takes one without the other has records defined in a file it
+  left out. Both, or neither; the zero-cost rule is unchanged, because neither
+  costs anything to a consumer that takes neither, and `<Base>Table.cs` still
+  carries not one symbol of either.
+
   **THE LAYOUT CONTRACT IS §20.3's, over the COOK CLOSURE**, and C# has no
   `static_assert`: `TableCookLayout.Verify()` runs once, before any cook opens,
   and THROWS naming the record, the field, the offset it found and the offset the

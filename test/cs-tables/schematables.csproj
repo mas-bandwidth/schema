@@ -33,15 +33,22 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- THE TWO ACCELERATORS ARE EXCLUDED, and they are excluded as a PAIR.
+         This is the WIRE leg: a block (§19) and a cook (§7) are emitted on the
+         side, and a consumer compiles them only if it uses one. They come as a
+         pair because they SHARE one set of blittable <Name>Row records — a
+         cooked record IS the blittable row (§7) — so compiling one file of the
+         pair without the other leaves those records undefined. Both, or
+         neither. -->
     <Compile Include="src/*.cs" />
-    <Compile Include="../../build/tables-generated-cs/examples/*.cs" Exclude="../../build/tables-generated-cs/examples/*Block.cs" />
-    <Compile Include="../../build/tables-generated-cs/v1/*.cs" Exclude="../../build/tables-generated-cs/v1/*Block.cs" />
-    <Compile Include="../../build/tables-generated-cs/v2/*.cs" Exclude="../../build/tables-generated-cs/v2/*Block.cs" />
+    <Compile Include="../../build/tables-generated-cs/examples/*.cs" Exclude="../../build/tables-generated-cs/examples/*Block.cs;../../build/tables-generated-cs/examples/*Cook.cs" />
+    <Compile Include="../../build/tables-generated-cs/v1/*.cs" Exclude="../../build/tables-generated-cs/v1/*Block.cs;../../build/tables-generated-cs/v1/*Cook.cs" />
+    <Compile Include="../../build/tables-generated-cs/v2/*.cs" Exclude="../../build/tables-generated-cs/v2/*Block.cs;../../build/tables-generated-cs/v2/*Cook.cs" />
     <!-- the three-way T / ?T / *T set (SPEC-TABLES.md §2.3, §3.1). P2 is
          POINTERED, so this backend refuses it by name and the leg reads P2's
          C++-written golden bytes instead of generating it. -->
-    <Compile Include="../../build/tables-generated-cs/p1/*.cs" Exclude="../../build/tables-generated-cs/p1/*Block.cs" />
-    <Compile Include="../../build/tables-generated-cs/p3/*.cs" Exclude="../../build/tables-generated-cs/p3/*Block.cs" />
+    <Compile Include="../../build/tables-generated-cs/p1/*.cs" Exclude="../../build/tables-generated-cs/p1/*Block.cs;../../build/tables-generated-cs/p1/*Cook.cs" />
+    <Compile Include="../../build/tables-generated-cs/p3/*.cs" Exclude="../../build/tables-generated-cs/p3/*Block.cs;../../build/tables-generated-cs/p3/*Cook.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>
