@@ -636,6 +636,10 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
   lookup by key over entries the wire carries as a sorted array of one
   generated `{ key, value }` table; it spends no wire kind, and it makes its
   holder variable-length.
+- **A table may hold a BYTE BUFFER at its used size** (§2.5). `data *bytes`
+  and `caption *string` point at a blob node of exactly the bytes it holds —
+  an image inside a table at its own size, null when absent — and, like every
+  pointer, they make their holder variable-length.
 - **`was` — the rename attribute** (§5).
 
 And one addition that is not a field spelling at all: **every fixed table has
@@ -682,11 +686,11 @@ lifecycle, so the choice is a real one.
 The spelling is C's, deliberately: it reads as what it is. The rules,
 each refused by name (§11):
 
-- **A pointer targets a `table`, and nothing else.** `*Node` names a declared
-  table. Everything else is refused — `*SomeType`, `*SomeEnum`, `*SomeUnion`,
-  and the buffer spellings `*bytes` and `*string`, which do not parse (§15) —
-  because value-semantics data has no independent identity to point at. Nest
-  it by value instead.
+- **A pointer targets a `table`, or a BYTE BUFFER, and nothing else.** `*Node`
+  names a declared table; `*bytes` and `*string` name a blob node at its used
+  size (§2.5). Everything else is refused — `*SomeType`, `*SomeEnum`,
+  `*SomeUnion` — because value-semantics data has no independent identity to
+  point at. Nest it by value instead.
 - **A pointer is declared inside a table body, and nowhere else.** A
   `type` body refuses one: types remain value semantics, and that is the
   founding line of the split.
@@ -1110,14 +1114,66 @@ set of bits at once, so it names no single slot); a bounded keyed array,
 element that is a pointer, as for any array (§15); and an index of
 `E::None`, which names no slot.
 
-### 2.5 Byte buffers
+### 2.5 Byte buffers: `data *bytes`
 
-**There is no buffer primitive: `*bytes` and `*string` do not parse.** A
-pointer targets a declared `table` (§2.1), and `bytes` and `string` are
-keywords rather than table names, so the spelling is a parse failure and not
-a construct with rules. An unbounded byte buffer at its used size is a NAMED
-FOLLOW-ON (§15), tracked as schema#259; today a blob is `bytes(N)` at a
-declared bound, and a very large one is a table of its own pointed at.
+```
+table Asset
+{
+    name    string(32)
+    kind    uint32          // the user's own format tag: schema never reads the blob
+    data    *bytes          // the asset, at exactly its size; null when absent
+    caption *string         // a string at its used length, the same shape
+}
+```
+
+**A byte buffer is a POINTER to a BLOB NODE.** `bytes(N)` is inline storage of
+N per instance, paid whether the field is used or not; in a table of a million
+nodes a `bytes(65536)` field costs 64 KB a node. `*bytes` costs the eight-byte
+reference slot every pointer costs (§2.1) plus what each node actually holds:
+a blob node of exactly the bytes it was given, allocated in the builder's
+arena, packed at its used size in a region, framed at its length on the wire,
+and pointed at inside a mapped cook with no copy and no parse. `*string` is the
+same node with one difference in storage: the bytes are followed by a zero
+byte, so a region hands back a C string. Neither carries a declared bound, and
+neither interprets its contents — a format tag beside the blob is the user's
+field, as `kind` is above.
+
+**It is a pointer, and every pointer rule holds** (§2.1): it is declared in a
+table body and nowhere else; it takes no specified default, because a fresh
+reference is null and null is the only value a default could name; it may
+not be marked `?` (it is already optional — null is its absence); an array of
+buffers, `[..N]*bytes`, is refused with the array-of-pointers follow-on (§15);
+and one anywhere in a table's by-value closure flips the table to
+VARIABLE-LENGTH (§2.2), with the builder lifecycle that brings. A bound is
+refused too — `*bytes(N)` is a spelling the language does not have, because a
+buffer at its used size has no bound to declare.
+
+**Null and empty are two values.** A null reference is elided on the wire and
+reads back null; a zero-length blob is a node like any other, always written
+when its slot is non-null, and reads back as a non-null buffer of length zero.
+That is the presence rule every pointer-shaped spelling lives under (§3), and
+it is what `bytes(N)` cannot say without spending a field.
+
+**A blob is a NODE, so it has identity and sharing** (§3.1, §6.2): two slots
+that name one blob name one node on the wire, in a region and in a cook —
+one body, written once, read back as one. The text form is the one place a
+blob cannot be shared (§16.7).
+
+**The read is a pointer and a length, and it allocates nothing.** In C++,
+`TableBytesAt( ctx, node->data )` answers a `TableBytesView` — `data` and
+`length`, NULL and zero for a null slot — and `TableStringAt` answers a
+`TableStringView` whose `data` is zero-terminated. Off a region or an opened
+cook the view points INTO the region: one add, no base pointer, no copy
+(§6.3). A tolerant wire load COPIES the blob into the region it is decoding
+into, as it copies every node — a gigabyte on the wire path is a gigabyte read
+— and the cooked path is the zero-copy one (§7).
+
+**Backend status: the C++ REFERENCE and the TOOL carry it; every other backend
+refuses a unit that declares one, by name** (§11), and the ports are a named
+follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
+blob beside a caption, a blob past 64 KiB, a shared blob, and an empty root,
+each crossing the wire and the cook in the harness, and the text where the
+form can carry it.
 
 ### 2.6 Union arms may be tables
 
@@ -2050,11 +2106,11 @@ that edit an ordinary kind mismatch (§4). §3's rule that an unknown kind
 is not skippable is what makes spending a kind expensive AFTER readers
 exist; the set is closed before any of them ship.
 
-**What a pointer edge is, and what it is not.** Only a `*T` naming a
-declared TABLE takes a node index, and it is the only pointer spelling the
-language has (§2.1). A table-typed UNION ARM is a by-value nesting and rides
-inline as §2.6 frames it; the pointer fields INSIDE an arm are indices like
-any other.
+**What a pointer edge is, and what it is not.** A `*T` naming a declared
+TABLE takes a node index, and so does a `*bytes` or `*string` naming a BLOB
+(§2.5, below); those are the pointer spellings the language has (§2.1). A
+table-typed UNION ARM is a by-value nesting and rides inline as §2.6 frames
+it; the pointer fields INSIDE an arm are indices like any other.
 
 **Node numbering.**
 
@@ -2215,6 +2271,36 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   terminator, exactly as §3 describes. Everything inside is ordinary:
   by-value nesting still nests, arrays are arrays, guards still guard, and
   `string(N)` and `bytes(N)` ride inline.
+
+**A BLOB record** (§2.5) is a node record whose body is the bytes themselves.
+
+- Its **type id** is one of two RESERVED ids: `fnv1a64( "bytes" )` for a
+  `*bytes` blob and `fnv1a64( "string" )` for a `*string` blob, with the same
+  zero-rebound every table's id takes. `bytes` and `string` are keywords no
+  table can be named, so the two ids sit in the closure's population beside
+  every table's and collide with a declared name only by hash accident, which
+  is the compile error §11 already names.
+- Its **length** is the blob's length, and its **body** is the blob's bytes
+  verbatim — no fields, no terminator, no framing inside. The `u32` record
+  length is therefore the ceiling on one blob, and a blob past `0xFFFFFFFF`
+  bytes is the same save-time refusal a node body past it is.
+- **A blob is numbered as every node is**: first visit, depth-first, in the
+  slot's declaration order, and it has no descent — a blob reaches nothing.
+  Two slots that name one blob name one index, and the record is written once.
+- **A reader that has no blobs skips it by its length and counts it
+  `unknown`**, as it does any record whose type id it cannot name, and the
+  record keeps its index. A reader that names the id and meets a length past
+  the field it rides in refuses the whole table as **malformed**, as it
+  refuses any record that does; nothing reads a blob's bytes from outside its
+  record. A blob record under a `*T` slot, or a table record under a `*bytes`
+  slot, is the type-id check below: **kind mismatch**, pointer null. A
+  `*bytes` slot and a `*string` slot are two ids for the same reason
+  `string(N)` and `bytes(N)` are two kinds on this wire.
+- The blob rides ONLY as a record. A `*bytes` field's own payload is the
+  four-byte node index under kind `17`, so an edit between `*bytes` and
+  `bytes(N)` — kind `17` against kind `14` — is §4's kind mismatch in both
+  directions, and no reader ever decodes a blob's bytes as an array or an
+  array as a blob.
 
 **A pointer field, and the constructs that ride on it.**
 
@@ -2452,6 +2538,13 @@ tolerance is the versioning model:
   not an evolution event at all — the bytes do not move. Moving one to or
   from `*T` IS one: a table pointer is kind `17` (§3.1), so the edit is a
   kind mismatch, below.
+- **A BYTE BUFFER changed shape** (§2.5): `*bytes` against `bytes(N)` is a
+  kind mismatch (`17` against `14`), counted, the field at its default in
+  both directions; `*bytes` against `*string`, or a buffer against a `*T`, is
+  the same event met at the node — the record's type id is not the one the
+  slot requires, so the pointer reads null and one `kind_mismatch` is counted
+  (§3.1). A reader with no buffers at all counts each blob record `unknown`
+  once and every slot naming it reads null.
 - **Kind mismatch** (a field changed type between builds): skipped, never
   misdecoded, counted. The kinds are a coarser vocabulary than the
   declaration side, so this catches a change of KIND, not every change of
@@ -2871,8 +2964,12 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
 
 - **Builder** — a growable arena. `Alloc<T>()` hands back a node that is
   usable both as the pointer to write fields through and as the reference
-  to store in a pointer field. Growth never invalidates anything already
-  allocated (§6.4).
+  to store in a pointer field. `AllocBytes( n )` and `AllocString( n )` hand
+  back a BLOB node of exactly `n` bytes the same way (§2.5): `data` to write
+  through, `length`, and the reference to store in a `*bytes` or `*string`
+  slot; a blob larger than a slab takes a span of the arena's address space
+  of its own rather than being refused. Growth never invalidates anything
+  already allocated (§6.4).
 - **`Lock()`** — one way, and it IS the compaction: the arena is walked,
   measured exactly, and laid back to back into ONE region with zero
   slack, the root at its base. The walk is the same depth-first pre-order
@@ -3018,6 +3115,18 @@ yields NULL and can never fabricate the root.
 Every node starts at its own type's alignment and the directory's offsets
 are those padded starts, so "is a directory entry" and "is aligned" are
 one check rather than two.
+
+**A BLOB NODE in a region** (§2.5) is an eight-byte header and then the
+bytes: `length (u32)`, four zero bytes, and `length` bytes of data at offset
+eight, so the data itself is eight-aligned; a `*string` blob carries one more
+zero byte after its data, which is the terminator `string(N)`'s storage
+carries and the reason a region hands back a C string with no copy. Its
+alignment is eight and its extent runs to the next entry as every node's
+does; its directory entry carries the reserved type id of §3.1. A `*bytes`
+slot is the same eight-byte self-relative delta every pointer slot is, and it
+resolves to the header: `data` is the header plus eight, and `length` is the
+header's first word. Nothing about the encoding changes for a blob — a deref
+is one add, a region relocates by `memcpy`, and null is zero.
 
 **The directory is ATTRIBUTION, and attribution is separable.** Nothing
 that READS a structure touches it: a deref is one add on a self-relative
@@ -3718,6 +3827,7 @@ fields would get wrong:
 | `*T` | `int64` self-relative delta, eight bytes at eight |
 | `[N]*T` | `N` `int64` self-relative deltas, each eight bytes at eight, null zero |
 | `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes all `N` slots, below) |
+| `*bytes`, `*string` | `int64` self-relative delta, eight bytes at eight, to a BLOB NODE (below) |
 | `?T` | the value's own pieces, then `bool` present |
 | `map[K]V` | `int64` self-relative delta to the entry array, then `uint32` count; the entries follow the record inside the node's extent (§2.8) |
 
@@ -3745,6 +3855,13 @@ fields would get wrong:
   delta of §6.3, and **NULL IS ZERO**. It is as wide as the offsets it is the
   difference of, so a region of any size expresses every reference it holds and
   a cook has no reach to refuse.
+- **A BLOB NODE is `length (u32)`, four zero bytes, then `length` bytes**, and
+  a `*string` blob's one more zero byte (§6.3) — a node whose extent is
+  `8 + length`, or `9 + length`, at alignment eight, laid out in the numbering
+  like every node and named in the directory under its reserved type id
+  (§3.1). Every byte of it is written, so a blob costs its bytes and eight,
+  and a mapped cook's `TableBytesAt` is a pointer into the data part at the
+  header plus eight.
 - **A MAP's ENTRIES are BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT**
   (§2.8): after the record's own storage, `count × sizeof( Entry )` at the
   entry's alignment, in ASCENDING KEY ORDER, one array per map the record
@@ -3845,13 +3962,15 @@ what tells a little-endian consumer it is holding a foreign file.
 §7's two passes are stated above; this is what each one touches.
 
 **Pass one, the directory, needs no field of the region at all.** It refuses a
-sentinel entry, a type id no table has, a first entry that is not the root at
-offset zero, an offset below the previous node's end, an offset not aligned
-for its own type, and a node whose `sizeof` does not fit before the next entry
-or before `data_length`. Because every entry is then known aligned and inside
-the region, PASS TWO NEEDS NO BOUNDS CHECK OF ITS OWN for a reference that
-lands on a directory entry — which is the economy §6.3 buys by making the
-directory's offsets the padded starts.
+sentinel entry, a type id no table has and neither reserved blob id names, a
+first entry that is not the root at offset zero, an offset below the previous
+node's end, an offset not aligned for its own type, and a node whose `sizeof`
+does not fit before the next entry or before `data_length` — for a BLOB entry
+(§6.3) the eight-byte header, at alignment eight, because its length is a
+field of the region and pass two's. Because every entry is then known aligned
+and inside the region, PASS TWO NEEDS NO BOUNDS CHECK OF ITS OWN for a
+reference that lands on a directory entry — which is the economy §6.3 buys by
+making the directory's offsets the padded starts.
 
 **Pass two reads exactly four things**, and it decodes no payload and follows
 no reference:
@@ -3865,7 +3984,11 @@ no reference:
    refuses too, because an extent is never negative and a walker handed one
    indexes backwards out of the region. The companions of fixed-size tables
    and plain types NESTED BY VALUE are in scope, because they bound a walker
-   just as a table's do.
+   just as a table's do. **A BLOB NODE's `length` is such a companion** (§6.3):
+   the header plus `length` bytes — plus the `*string` terminator — must fit
+   inside the node's own extent, which is the next entry's offset or
+   `data_length`, because a walker handed a length past the extent reads the
+   node after it as this node's bytes.
 3. **Every UNION TAG.** It is the one field VALUE the scan reads, and it is
    read because it is a DISCRIMINANT rather than a payload: a scan that
    skipped it would either check no arm — leaving every reference and every
@@ -4221,8 +4344,10 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   slack; the data length rounded to the region's alignment, which is the
   greatest of the nodes' and never below eight; a `*T` slot holding the signed
   self-relative delta from the slot's own address to the node's start, and
-  zero for null. The nodes are the numbering's entries, so the directory is
-  filled from the same pass that placed them.
+  zero for null. A BLOB NODE's size is its header plus its bytes, at
+  alignment eight (§7.2), read off the blob the numbering reached. The nodes
+  are the numbering's entries, so the directory is filled from the same pass
+  that placed them.
 - **A REFERENCE THE NUMBERING DOES NOT CARRY IS A REFUSAL.** The walk visits
   what a writer writes (§3.1) — it does not descend a counted array's slot past
   the count, an absent optional's value or an unset union arm — while the record
@@ -4480,7 +4605,9 @@ POINTER columns below are conditional (§2.2).
 A unit that has pointers carries three more facts, and a unit that has
 none carries not one of them (§2.2): a field's **`is_pointer`** flag —
 whose `table` member then names the TARGET table's descriptor and whose
-`elem_size` is the reference slot's width; a type's derived
+`elem_size` is the reference slot's width, and whose `table` is NULL for a
+BYTE BUFFER (§2.5), where `type_name` says `bytes` or `string` and the slot
+resolves to a blob node rather than a record; a type's derived
 **`variable`** mode, so a tool can tell at runtime which of §6's two
 lives a table has without being told; and a table's own **node type id**
 (§3.1), so a tool can map a node table's records — or a region's node
@@ -4986,10 +5113,12 @@ in build version (§20.5).
   (the by-value cycle, named); and a declared table under the claimed
   `<Table><Field>Entry` spelling beside the map that generates it, naming the
   map.
-- **Byte buffers** (§2.5): `*bytes` and `*string` reach no refusal of their
-  own — a pointer takes a declared table's name and these are keywords, so
-  the parser refuses the spelling where it stands. The construct is a named
-  follow-on (§15).
+- **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
+  bound on one, `*bytes(N)` (a buffer at its used size has no bound to
+  declare); a specified default on one; `?` on one (already optional); and an
+  array of them, `[..N]*bytes` and `[N]*bytes`, which is the array-of-pointers
+  follow-on (§15). And a unit that declares one under every backend but C++,
+  named in the refusal, because the ports are a named follow-on (§15).
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there
@@ -6295,26 +6424,35 @@ inspects everything in the schema built:
   every slot is at its default (§3.2), so a presence bit would have to say
   what "present with every slot elided" writes before it is wire — the
   same empty-end question that holds `[E]*T` and `[E]Body` (§15).
-- **AN UNBOUNDED BYTE BUFFER — `*bytes`, and `*string` beside it** (§2.5),
-  tracked as schema#259. Neither spelling parses today. The case for it is
-  the owner's and is two sentences: *"yes, i like byte buffer as primitive"*
-  / *"since it can be nulled."* — a buffer that is a REFERENCE has an absent
-  state a bounded `bytes(N)` has to spend a field to express; and
-  *"instantly, it turns a table into variable"*, which is the price, because
-  one such field flips its holder's whole closure to the variable class
-  (§2.2) and with it the arena, the region and the lifecycle. What it buys is
-  size: in a table of a million nodes a `bytes(65536)` field costs 64 KB a
-  node whether it is used or not, while a reference costs four bytes plus
-  what each node actually holds — the same argument as a sub-document stored
-  as its own wire bytes and decoded only when something asks for it. What it
-  needs decided is the framing it rides under and the elision at the empty
-  end, since a null buffer and a zero-length one are different values.
 - **A KEYED ARRAY OF POINTERS** — `[E]*T`, one pointer slot per named
   variant. The bounded spellings landed (§2.1, §3.1) and the keyed one did
   not: a keyed body rides slots by variant id under kind `16` (§3.2), and
   a null slot there is elided by name rather than written in place, so the
   form wants its empty-end rule stated before it is wire. `[..N]*T` and
   `[N]*T` serve today, as does a keyed array of tables by value.
+- **A BYTE BUFFER BY RELATIVE FILE in the pack tree** (§2.5, §17): the JSON
+  field of a `*bytes` or `*string` holds a path relative to the file it sits
+  in, `pack` reads that file's bytes into the blob, and `unpack` writes the
+  sidecar back out beside the JSON — so a texture lives in the tree as a
+  `.png` and not as base64. Inline base64 stays the JSON form (§16.2) and the
+  include is a second spelling the pack tree accepts beside it. What it needs
+  decided is how the text tells a path from a base64 body — an object form,
+  `{ "&file": "thumb.png" }`, is the shape the reserved prefix already keeps
+  room for — and what `unpack` names a sidecar; neither is decided here.
+- **A BYTE BUFFER in every ported backend** (§2.5): C++ carries it and every
+  other backend refuses the unit by name (§11). A port needs the blob node in
+  its arena and its region, the two reserved type ids in its load dispatch,
+  the text form's two spellings, and the cook layout's blob case, held to the
+  `tables/blobs` instances the harness carries.
+- **A SHARED BLOB in the text form** (§16.7): a blob's text is a string, which
+  has no first key to carry `&node`, so a blob named from two slots has no
+  spelling and the writer refuses the graph. The relative-file include above
+  is the natural one — two slots naming one file — and the two land together.
+- **An ARRAY OF BYTE BUFFERS**, `[..N]*bytes` and `[N]*bytes`: the landed
+  array of pointers (§2.1, §3.1) with a blob node as the element. The slot
+  array and its elision rules carry over unchanged; what it needs decided is
+  only the element's declared pointee — the reserved blob ids where the
+  array's rows today name a table.
 - **Cross-endian COOKING**: producing a cook for a target whose byte order
   is not the cooking machine's, by swapping as the region is written. The
   ENDIAN FIX-UP ITSELF IS NOT DEFERRED — it is part of the cook and §7 states
@@ -6716,6 +6854,8 @@ Per kind:
 | `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only. An optional ARRAY (§2.3) is this row over the array's: the key present with `[]` is present-and-empty, and `ToJson` writes a present empty array as `[]` |
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
+| `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
+| `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
 | `map[K]V` | object keyed by the KEY | a string key is the string; an integer key is its decimal spelling, quoted, and any other spelling under an integer key is `malformed`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |
 
 **A `table` arm takes the union row's form because a text mapping is a
@@ -7070,6 +7210,18 @@ an older reader is exactly the unknown key §4 exists to survive.
   of the variable class, and the cap is the fixed form's, held as the fixed
   form holds it (§15 names the ruling that would move it).
 
+**A BYTE BUFFER is a string in the text, and it takes no label** (§2.5,
+§16.2). A `*bytes` slot writes its blob as base64 in place and a `*string`
+slot writes its bytes as a JSON string, `null` for a null reference, and the
+reader allocates a blob of exactly the decoded length in the builder's arena;
+a `*bytes` body that is not base64 is `kind_mismatch` with the reference left
+null, as a `bytes(N)` body is with the field left at its default. A string
+has no first key to carry `&node`, so a blob named from more than one slot has
+no definition this form can spell, and the writer refuses the graph as it
+refuses a shared node with nothing to write — the corpus carries that
+instance on the wire alone, marked `no-text` on its line, and the include by
+relative file that would give it a spelling is named in §15.
+
 **What a reader builds.** The variable class is not held by value (§6.2), so
 its text form reads through the BUILDER, and writes from the CONST root of a
 region — what `Lock` and `Load` both produce. The surface is §16.1's with the
@@ -7236,7 +7388,10 @@ The tree MIRRORS the root table's shape, and nothing else:
   is named by a label a TEXT owns, and a tree of fields would split the root
   across texts that cannot name each other's nodes. `unpack` writes the one
   file for such a root whichever shape is asked for, and `pack` refuses a tree
-  of fields under one by name.
+  of fields under one by name;
+- a **byte buffer** (§2.5) is inline base64 in that file, as §16.2 spells it;
+  a blob held in the tree as a file of its own, named by a relative path, is
+  the include named in §15.
 
 Each file's content is read under §16's rules, so everything about kinds,
 presence, numbers, clamping and the report is that section's and is not
@@ -8566,8 +8721,10 @@ of declaration it names"*:
 
 **A variable-length table is a record like any other.** Its node is a struct
 (§6.1) with a `sizeof` and an `alignof`, and a pointer field is a kind `17`
-slot whose `type=` names the pointee — so a pointered unit projects exactly as
-a fixed one does, and nothing about the arena or the region appears here.
+slot whose `type=` names the pointee — `type=bytes` or `type=string` for a
+byte buffer (§2.5), since the blob node's shape is the page's and not a
+declaration's — so a pointered unit projects exactly as a fixed one does, and
+nothing about the arena or the region appears here.
 
 Every record whose block form LAYS AN ARRAY OUT OF LINE (§19) is followed by
 its PROJECTION, whose slots are the other side's contract. A record whose

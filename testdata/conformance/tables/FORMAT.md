@@ -50,12 +50,14 @@ forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <
   both ways.
 
   **`no-text` says the corpus carries this one on the WIRE alone**, by the text
-  form's own rule: a pointer chain nests in the text as deep as it is long
+  form's own rules: a pointer chain nests in the text as deep as it is long
   (docs/SPEC-TABLES.md §16.7), and past the depth cap every walk carries the
-  writer refuses it in every implementation, so a `json/<name>.json` here would
-  be a text every reader refuses. `harness generate` writes none and the harness
-  asks no leg for one. The marker is the data saying so on the instance's own
-  line, which is louder than a missing file quietly tolerated.
+  writer refuses it in every implementation; and a byte buffer named from two
+  slots has no spelling a string can carry (§16.7), so the writer refuses that
+  graph too. A `json/<name>.json` for either would be a text every reader
+  refuses. `harness generate` writes none and the harness asks no leg for one.
+  The marker is the data saying so on the instance's own line, which is louder
+  than a missing file quietly tolerated.
 - **`report`** is bytes read by a type that did not write them — the evolution
   class. The counters live in `reports.txt`, keyed by `<case>`.
 - **`json-hostile`** is one tree per rule the text form states (§16.2, §16.3,
