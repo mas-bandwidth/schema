@@ -1403,8 +1403,16 @@ tree mirrors the schema tree a person navigates.
   §19.2 states for every port: a unit is one crate, so a second copy would be
   a duplicate definition rather than C++'s harmless re-inclusion behind a
   guard, and a runtime that lived in whichever file sorted first would
-  relocate whole whenever a corpus file sorted earlier. A table-free unit
-  grows none of them, and its packet modules are byte-identical either way.
+  relocate whole whenever a corpus file sorted earlier. Two more modules are
+  always compiled and belong to neither accelerator: `build_version.rs`
+  (SPEC-TABLES.md §20 — one digest answering "which build?", which both the
+  block form and the cooked form compare against) and `<base>_records.rs` (the
+  blittable `<Name>Row` records with their layout contract, because a cooked
+  record IS the blittable row). **The block and cook modules sit behind cargo
+  features, both on by default**, so a consumer that reaches for neither
+  compiles neither — the Rust answer to §19's "the form costs nothing unless
+  you include it". A table-free unit grows none of it, and its packet modules
+  are byte-identical either way.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
   `namespace <Package>`. A unit that declares TABLES emits one further file

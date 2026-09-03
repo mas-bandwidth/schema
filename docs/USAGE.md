@@ -1837,9 +1837,12 @@ ship_config_to_json(&ship, &mut buffer);
 
 There is nothing extra to add to a Rust build either, for the same reason: a
 unit is one crate, so the walk is already in the `table_runtime.rs` the crate
-root declares. It reads through the descriptors' storage offsets, which is the
-one place the generated table code is `unsafe`, and it allocates nothing beyond
-the instance you passed in.
+root declares. It reads through the descriptors' storage offsets — one of the
+four places the generated table code is `unsafe`, all four listed under **Rust**
+in [Per-language notes](#per-language-notes) — and it **allocates nothing**:
+numbers format through a stack sink, strings and keys land in the field's own
+storage, and `make tables-rust-alloc-audit` counts zero on every read and write
+path of every instance in the corpus.
 
 Every writer ends the text with exactly one newline, and every reader accepts a
 text with or without one — so a text is the same text in a file, in a diff and
@@ -2122,14 +2125,32 @@ if (!ok) {
 ```
 
 **Rust** — no `unsafe` in the generated PACKET code, `Result`-returning read
-and write. The generated TABLE code is the same for the wire: the codecs are
-safe Rust over caller-owned slices. `unsafe` appears in exactly three places
-there, each by nature rather than by taste and each carrying a `# Safety`
-clause: the text form's one generic walk, which reads storage through the
-descriptors' offsets; the cooked form's `Open`, which takes a pointer and a
-length and points; and the block form's `Open`, which does the same. A project
-that reads no cook, opens no block and writes no JSON compiles none of them —
-those are their own modules.
+and write. **The generated TABLE WIRE is safe Rust too**: `<name>_measure`,
+`<name>_save`, `<name>_load` and their bodies index caller-owned slices and
+contain no `unsafe` at all.
+
+`unsafe` appears in FOUR places, each by nature rather than by taste and each
+carrying a `# Safety` clause:
+
+1. **The text form's one generic walk**, which reads and writes storage
+   through the descriptors' offsets — an offset and a width are not a typed
+   reference.
+2. **Every table's REFLECTION DESCRIPTOR**, and this one rides in every table
+   module rather than in an accelerator: §8.1's `reset: fn(*mut u8)` hook takes
+   a raw pointer because a generic walker holds no type to spell, and a union
+   field's four descriptor columns (`read_tag`, `clear`, `select`, `payload`)
+   reach a Rust enum's payload the same way. Every table carries them always.
+3. **The cooked form's `Open`**, which takes a pointer and a length and points.
+4. **The block form's `Open`**, which does the same.
+
+Sites 3 and 4 are behind **cargo features**, both on by default: build with
+`default-features = false` and the block and cook modules are not compiled at
+all — the Rust analogue of C++'s "include the header only if you use the form"
+(§19). On the corpus's widest unit that is 7,181 of 23,290 generated lines not
+compiled. `--features cook` and `--features block` take one without the other.
+What stays either way is the wire, the text form, the reflection descriptors
+and the blittable `<Name>Row` records — a cooked record IS the blittable row,
+so the record family belongs to neither feature.
 
 **JavaScript** — ES modules, zero dependencies, Number storage for widths of
 32 bits or fewer, BigInt for 64 and 128. Two codecs are generated over the

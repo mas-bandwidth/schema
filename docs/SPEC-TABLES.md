@@ -155,8 +155,8 @@ declares a pointer, naming its variable class as a follow-on. Every other
 backend refuses a unit that declares tables at all, by name, with this document
 cited. The remaining per-language backends are named follow-ons (§15).
 
-**The RUST backend's own two divergences**, both forced by the language and
-both named where they are spelled rather than discovered in the source. The
+**The RUST backend's own three divergences**, each forced by the language and
+each named where it is spelled rather than discovered in the source. The
 READ REPORT is the codecs' own parameter rather than a member of the reader: a
 Rust reader holding `&mut TableReport` could not hand a sub-reader out of its
 own buffer while that borrow stood. And the COOKED and BLOCKED records are
@@ -168,6 +168,18 @@ C# has a check run at type initialization. A UNION in a cooked record is a
 named follow-on there for the same reason it is absent from the block form: a
 Rust union is a real enum with no committed payload layout, and the
 `#[repr(C)] union` twin is a pass of its own.
+
+And the THIRD: **the two accelerators are cargo features**, both on by
+default. §19's rule is that the block form costs nothing unless you reach for
+it, which C++ answers by not including the header and C# cannot answer at all
+— one assembly compiles every file of the unit. Rust answers it with
+`default-features = false`, which compiles no block module and no cook module;
+`--features cook` and `--features block` take one without the other. What is
+NOT behind either feature is the unit's BUILD VERSION (§20 answers "which
+build?", not "which form?", and both forms compare against it) and the
+blittable `<Name>Row` records, because a cooked record IS the blittable row
+(§7.2, §19.3) and a block-only build wants the same structs a cook-only build
+does.
 
 **BIG-ENDIAN, per backend.** The C++ leg proves the wire, the block form and
 the cooked form crossing the byte order on a real big-endian target under an
@@ -542,9 +554,18 @@ enum is keyed.
 
   What varies is only how a language ends a program: C++ asserts — for the
   message, where a debugger can read it — and then ABORTS, and the abort is
-  what stands under `NDEBUG`; C# throws. **ITERATION is still the surface a
-  consumer of a whole array should reach for**, below, because it needs no
-  key from the caller at all.
+  what stands under `NDEBUG`; C# throws; Rust panics. **ITERATION is still
+  the surface a consumer of a whole array should reach for**, below, because
+  it needs no key from the caller at all.
+
+  **AND WHAT THE KEY IS SPELLED AS varies too, because a language's own
+  vocabulary decides it.** Every port indexes by the KEY and never by the
+  storage position, and the difference is only what the key's type is at the
+  call site: C++ takes the enum itself; C# takes an `int`, because the
+  language has no non-boxing generic enum-to-int conversion, so the caller
+  writes `(int)ShipType.Bomber`; Rust takes a `u64`, because the enum is a
+  `#[repr(transparent)]` newtype and the caller writes `ShipType::BOMBER.0 as
+  u64`. The cast is over the KEY in all three — never over the shift.
 
 - **ITERATION IS THE SAFETY**, and it is the form a consumer of a whole
   keyed array should reach for. The keyed type ITERATES EVERY SLOT — keys
@@ -2818,6 +2839,18 @@ nothing else enumerates the types, the tables, the enums, the flags, the
 unions and the constants, and walks each one's properties with no schema
 files on hand.
 
+**ONE WALKER, PER UNIT — and in a language whose units are separate
+namespaces that is a real limit worth stating.** The descriptor TYPES are
+generated per unit, not shared from a runtime library: C++ puts them in
+`namespace <package>`, C# in `namespace <Package>`, and Rust in the unit's own
+crate. So a tool that walks TWO units holds two nominally distinct
+`TableFieldInfo` types describing one vocabulary, and it writes its walk once
+per unit — through a template in C++, a generic or reflection in C#, a macro
+or a trait in Rust — rather than once. The VOCABULARY is one; the TYPE is per
+unit. A shared descriptor library would make it one type and would put a
+runtime dependency in generated code that today has none, which is the trade
+this side of it takes.
+
 **Nothing selects any of it.** There is no attribute, no generate flag and
 no mode: the registry and the type views are emitted ON THE SIDE (§8.5) —
 one generated file per unit, carrying everything — and what a build pays is
@@ -2931,13 +2964,28 @@ names no slot on this wire, and that is the one test a tool needs.
 **A FIXED table carries a second set of positions for the same fields, and
 this is what makes the block form READABLE BY REFLECTION** (§19.2). No flag
 says it has the form — every fixed table does (§2.7), and the mode is already
-in the descriptors. Each out-of-line array field carries, beside the offset
-its by-value storage has, the **projection offset** of its
+in the descriptors.
+
+**THOSE POSITIONS ARE A DESCRIPTOR OF THEIR OWN, not extra columns on the
+table field's.** A block's projection is a different struct from the by-value
+one (§19.3), so its positions belong to a different record: every backend
+emits a separate block field descriptor — C++'s and Rust's are both spelled
+`TableBlockFieldInfo` — reached from the block's own type descriptor, and a
+reader looking for a `projection_offset` column on the TABLE field descriptor
+will not find one. Each out-of-line array field carries there, beside the
+offset its by-value storage has, the **projection offset** of its
 `(offset_of, count, stride)` triple and the offsets of the three members
-inside it, with the ELEMENT's own descriptor already in the column a nested
-table uses. Every other field carries its projection offset too, because the
-projection is a different struct from the by-value one (§19.3) and a walker
-over a block needs the positions that struct actually has.
+inside it, with the ELEMENT's own descriptor in the column a nested table
+uses. Every other field of the projection carries its own position there too.
+
+**`bytes(N)` AND `[..N]uint8` ARE THE SAME KIND AND THE TYPE NAME SEPARATES
+THEM.** Both carry `kind` u8 with the array column set — the wire framing is
+identical, which is the point (§3) — so nothing about the kind tells a walker
+which one it has. The **type name** does, and it is the discriminator by
+design: `bytes` is a keyword no declaration can claim, so a field whose type
+name is exactly `bytes` is a `bytes(N)` and every other u8 array is an array
+of numbers. The text form needs the difference and nothing else does: §16.2
+writes a `bytes(N)` as base64 and a `[..N]uint8` as an array of numbers.
 
 **A block field carries the SAME row-walk columns a table field does**, and
 in the same vocabulary, so ONE generic walker reads a cooked node and a block
@@ -3603,13 +3651,19 @@ in build version (§20.5).
   list. A language whose accessors are members spells the same two names on
   the block type and claims nothing at file scope for them.
 
-  **THE DESCRIPTOR SURFACE'S CLAIMS ARE UNCONDITIONAL — every declaration,
-  every unit, tables or not.** Every unit emits a view file and that file
-  defines the descriptor surface (§8.2), so a name a table-free unit may
-  declare today would collide with its own generated code the day its view
-  is emitted — a legal schema whose generated code does not compile, which
-  is the one defect this whole list exists to prevent. Two sets follow, and
-  both are FRONT-END LAW rather than one target's inventory:
+  **THE DESCRIPTOR SURFACE'S CLAIMS ARE TO BE UNCONDITIONAL — every
+  declaration, every unit, tables or not — AND ARE NOT IN FORCE YET.** Every
+  unit is to emit a view file and that file defines the descriptor surface
+  (§8.2), so a name a table-free unit may declare today would collide with
+  its own generated code the day its view is emitted — a legal schema whose
+  generated code does not compile, which is the one defect this whole list
+  exists to prevent. **What ships today claims these names only in a unit
+  that declares a table**: a table-free unit still accepts `type TableReport`
+  and `const TABLE_COOK_MAGIC`, and it must stop doing so BEFORE the first
+  view file is emitted, not after. This paragraph is the obligation, and the
+  gap between it and the checker is stated here rather than left for a port
+  to find. Two sets follow, and both are FRONT-END LAW rather than one
+  target's inventory:
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
@@ -4688,6 +4742,16 @@ with the function missing — and the second walker it needs, emitted only in
 units that declare a pointer, is tracked as schema#275. In C# and Rust that
 refusal is already made one level up: a pointered unit gets no table source at
 all (§11), so it has no text form for the same reason it has no wire codec.
+
+**Rust's walk allocates nothing, and that is a gate rather than a claim**:
+numbers format through a stack sink the size of the C++ walker's own
+`char[64]`, strings and keys land in the field's own storage, and
+`make tables-rust-alloc-audit` counts allocations at the global allocator over
+every read and write path of every instance in the conformance corpus. It
+reads zero. The instrument matters as much as the number: an earlier soak
+gated on LIVE BYTES, which answers "does this leak", and a formatter that
+allocated and freed the same bytes every iteration read +0 there for an hour.
+The count is what the claim is about.
 
 **Rust's walk is a UNIT's, on the same terms C#'s is**, and for the same
 reason: a unit is one crate, so a second copy would be a duplicate definition
