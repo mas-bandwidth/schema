@@ -299,3 +299,31 @@ func TestGoldenBuildVersion(t *testing.T) {
 		})
 	}
 }
+
+// TestUsagePageBuildVersion holds the ONE build version docs/USAGE.md prints.
+// The page shows a worked `schema build-version tables/block/` run, and a
+// number pasted into prose moves with nothing — a reader who runs the command
+// beside the page has to get the page's answer, so the page is read back here
+// and compared against the unit itself.
+func TestUsagePageBuildVersion(t *testing.T) {
+	const command = "$ schema build-version tables/block/"
+	page, err := os.ReadFile("../../docs/USAGE.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(page), "\n")
+	printed := ""
+	for i, line := range lines {
+		if strings.TrimSpace(line) == command && i+1 < len(lines) {
+			printed = strings.TrimSpace(lines[i+1])
+			break
+		}
+	}
+	if printed == "" {
+		t.Fatalf("docs/USAGE.md no longer shows a %q run with its answer beneath it — this gate names a line that has moved", command)
+	}
+	want := fmt.Sprintf("0x%016x", ir.BuildVersion(loadCorpusDir(t, "../../tables/block")))
+	if printed != want {
+		t.Errorf("docs/USAGE.md prints %s for tables/block and the unit's build version is %s — paste the current one", printed, want)
+	}
+}

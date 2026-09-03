@@ -1479,7 +1479,7 @@ order) — plus the target's byte order.
 
 ```
 $ schema build-version tables/block/
-0xb34bc386659d9873
+0x863a8eebc1090dc6
 ```
 
 ```cpp
@@ -1872,12 +1872,20 @@ float. The text it does emit is always valid JSON and valid UTF-8.
 ### Packing a directory into a table
 
 `schema pack` builds ONE table instance from a directory tree that mirrors
-the root table, and writes the root's wire bytes:
+the root table, and writes the root's wire bytes. **The tree is a POSITIONAL
+argument, never a `--in`** — `--in` and `--out` name the wire FILE on both
+verbs, and the tree is what the verb walks:
 
 ```
-$ schema pack --root Config --out Config.bin configs/
-$ schema unpack --root Config --in Config.bin configs/
+$ schema pack   --root Config --out Config.bin  configs/    # tree -> wire file
+$ schema unpack --root Config --in  Config.bin  configs/    # wire file -> tree
 ```
+
+The unit's own schema files come after the tree, and with nothing there they
+are the working directory — so `schema pack --root Config --out Config.bin
+configs/ schema/` reads the declarations from `schema/` and the values from
+`configs/`. Every `schema` command ends with that same declarations argument;
+what `pack` and `unpack` put in front of it is the tree.
 
 A directory named after a field holds that field's value; an enum-keyed array
 takes one `<Variant>.json` per variant (there is no `None.json` — `None` keys
