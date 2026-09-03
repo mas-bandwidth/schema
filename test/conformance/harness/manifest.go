@@ -118,6 +118,22 @@ type Cook struct {
 	File string // filled in by the harness once test/cookgen has written it
 }
 
+// CookWrite is one instance a runtime must WRITE as a cooked file
+// (docs/SPEC-TABLES.md §7.6), and the two files `schema cook` produces from the
+// same wire — one per byte order. The TOOL is the reference: a runtime's bytes
+// are byte-compared against these, and a cook is content-addressed by (asset
+// hash, build version), so two writers of one instance produce ONE artifact or
+// the pair means nothing.
+//
+// It names an INSTANCE rather than repeating its unit, root and wire: the
+// instance line already carries those, and a second copy of a path is a second
+// place for it to drift.
+type CookWrite struct {
+	Instance string
+	Little   string
+	Big      string
+}
+
 // Block is a block image (docs/SPEC-TABLES.md §19) an Open must accept, and the
 // canonical ROW DUMP its reader must produce out of it (§19.2). Open alone says
 // a reader checked the prologue; the dump is the value-for-value read.
@@ -200,13 +216,26 @@ func parsePatches(offsets, widths, values string) ([]Patch, error) {
 
 // Manifest is the whole registry.
 type Manifest struct {
-	Units     []Unit
-	Instances []Instance
-	Reports   []ReportCase
-	Hostiles  []Hostile
-	Cooks     []Cook
-	Blocks    []Block
-	Forgeries []Forgery
+	Units      []Unit
+	Instances  []Instance
+	Reports    []ReportCase
+	Hostiles   []Hostile
+	Cooks      []Cook
+	CookWrites []CookWrite
+	Blocks     []Block
+	Forgeries  []Forgery
+}
+
+// LookupInstance returns the instance a name calls out, which is how a
+// `cook-write` line reaches the unit, the root and the wire it is written from
+// without repeating any of them.
+func (m *Manifest) LookupInstance(name string) (Instance, error) {
+	for _, i := range m.Instances {
+		if i.Name == name {
+			return i, nil
+		}
+	}
+	return Instance{}, fmt.Errorf("the manifest names no instance %q", name)
 }
 
 // Unit returns the unit a key names.
@@ -288,6 +317,11 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: cook takes case, unit, root, dump", where)
 			}
 			m.Cooks = append(m.Cooks, Cook{Case: f[1], Unit: f[2], Root: f[3], Dump: f[4]})
+		case "cook-write":
+			if len(f) != 4 {
+				return nil, fmt.Errorf("%s: cook-write takes an instance and its two cooked files, little then big", where)
+			}
+			m.CookWrites = append(m.CookWrites, CookWrite{Instance: f[1], Little: f[2], Big: f[3]})
 		case "block":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: block takes name, unit, file, dump", where)
@@ -328,5 +362,15 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			return nil, fmt.Errorf("%s: %q is not a manifest line kind", where, f[0])
 		}
 	}
-	return m, scan.Err()
+	if err := scan.Err(); err != nil {
+		return nil, err
+	}
+	// a cook-write line REACHES an instance, and a name that reaches nothing is
+	// a case that would silently expect nothing
+	for _, cw := range m.CookWrites {
+		if _, err := m.LookupInstance(cw.Instance); err != nil {
+			return nil, fmt.Errorf("%s: cook-write %s: %w", path, cw.Instance, err)
+		}
+	}
+	return m, nil
 }

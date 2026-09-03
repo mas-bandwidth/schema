@@ -401,6 +401,48 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     return base;
 }
 
+// ---- the cooked form, the WRITE side (docs/SPEC-TABLES.md §7.6) ----
+//
+// THE BYTE ORDER IS THE TARGET'S, NOT THE HOST'S. A cook is produced in the
+// byte order of the build that will read it (§7), so the fixing happens here —
+// offline, once, on the writing side — and never at Open. Passing
+// TableByteOrder::Big on a little-endian machine produces a big-endian build's
+// file, and nothing about the writing host reaches the bytes.
+enum class TableByteOrder
+{
+    Little = 1, // the header's byte_order word, and the order every scalar is written in
+    Big = 2,
+};
+
+// One store, width as an argument. Every call site passes a literal width, so
+// the loop folds to a store (and a byte swap on the foreign order); a name per
+// width would claim four §11 names to save nothing.
+inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little )
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * i ) ); }
+    }
+    else
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
+    }
+}
+
+// A buffer piece: the USED bytes and nothing else. The tail is already zero —
+// the whole extent was zeroed before any field was written — so this copies the
+// used prefix and leaves the rest, which is what makes a string's unused tail a
+// consequence of one memset rather than a rule per buffer. A used length past
+// the buffer, or below zero, is a value no reader could have produced and it is
+// clamped rather than trusted: this writes inside the caller's buffer on every
+// input.
+inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, int64_t capacity )
+{
+    if ( used <= 0 ) { return; }
+    const int64_t n = used < capacity ? used : capacity;
+    memcpy( at, source, (size_t) n );
+}
+
 } // namespace blockhome
 
 #endif // BLOCKHOME_SCHEMA_TABLE_COOK

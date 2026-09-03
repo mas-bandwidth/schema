@@ -401,6 +401,48 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     return base;
 }
 
+// ---- the cooked form, the WRITE side (docs/SPEC-TABLES.md §7.6) ----
+//
+// THE BYTE ORDER IS THE TARGET'S, NOT THE HOST'S. A cook is produced in the
+// byte order of the build that will read it (§7), so the fixing happens here —
+// offline, once, on the writing side — and never at Open. Passing
+// TableByteOrder::Big on a little-endian machine produces a big-endian build's
+// file, and nothing about the writing host reaches the bytes.
+enum class TableByteOrder
+{
+    Little = 1, // the header's byte_order word, and the order every scalar is written in
+    Big = 2,
+};
+
+// One store, width as an argument. Every call site passes a literal width, so
+// the loop folds to a store (and a byte swap on the foreign order); a name per
+// width would claim four §11 names to save nothing.
+inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little )
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * i ) ); }
+    }
+    else
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
+    }
+}
+
+// A buffer piece: the USED bytes and nothing else. The tail is already zero —
+// the whole extent was zeroed before any field was written — so this copies the
+// used prefix and leaves the rest, which is what makes a string's unused tail a
+// consequence of one memset rather than a rule per buffer. A used length past
+// the buffer, or below zero, is a value no reader could have produced and it is
+// clamped rather than trusted: this writes inside the caller's buffer on every
+// input.
+inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, int64_t capacity )
+{
+    if ( used <= 0 ) { return; }
+    const int64_t n = used < capacity ? used : capacity;
+    memcpy( at, source, (size_t) n );
+}
+
 } // namespace blockhome
 
 #endif // BLOCKHOME_SCHEMA_TABLE_COOK
@@ -998,6 +1040,57 @@ inline bool GunnerSettingsLoad( GunnerSettings & value, const uint8_t * buffer, 
     TableReport ignored;
     TableReader r( buffer, bytes, report != NULL ? report : &ignored );
     return GunnerSettingsLoadBody( r, value );
+}
+
+// ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
+//
+// The bytes are `schema cook`'s, and the tool stays the reference: the two
+// writers are held to one file, byte for byte, in both byte orders. A cook is
+// content-addressed by (asset hash, build version), so two writers of one
+// instance produce ONE artifact or the pair means nothing.
+
+inline void ArmorPlateCookBody( uint8_t * at, const ArmorPlate & value, TableByteOrder order );
+inline void ArmorConfigCookBody( uint8_t * at, const ArmorConfig & value, TableByteOrder order );
+inline void FiringGroupCookBody( uint8_t * at, const FiringGroup & value, TableByteOrder order );
+inline void GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, TableByteOrder order );
+
+inline void ArmorPlateCookBody( uint8_t * at, const ArmorPlate & value, TableByteOrder order )
+{
+    { uint64_t bits = 0; memcpy( &bits, &value.thickness, 8 ); table_cook_put( at + 0, bits, 8, order ); }
+    table_cook_put( at + 8, (uint64_t) value.material, 4, order );
+    table_cook_put( at + 12, (uint64_t) value.layer, 1, order );
+}
+
+inline void ArmorConfigCookBody( uint8_t * at, const ArmorConfig & value, TableByteOrder order )
+{
+    ArmorPlateCookBody( at + 0, value.front, order );
+    ArmorPlateCookBody( at + 16, value.rear, order );
+    { uint32_t bits = 0; memcpy( &bits, &value.rating, 4 ); table_cook_put( at + 32, (uint64_t) bits, 4, order ); }
+    table_cook_put( at + 36, (uint64_t) value.tier, 1, order );
+}
+
+inline void FiringGroupCookBody( uint8_t * at, const FiringGroup & value, TableByteOrder order )
+{
+    table_cook_put( at + 0, (uint64_t) value.barrel, 4, order );
+    { uint32_t bits = 0; memcpy( &bits, &value.cooldown, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
+}
+
+inline void GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, TableByteOrder order )
+{
+    // all 32 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 32; i++ )
+    {
+        FiringGroupCookBody( at + 0 + i * 8, value.firing_groups[ i ], order );
+    }
+    table_cook_put( at + 256, (uint64_t) (uint32_t) value.firing_groups_count, 4, order );
+    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        FiringGroupCookBody( at + 260 + i * 8, value.missile_groups[ i ], order );
+    }
+    table_cook_put( at + 292, (uint64_t) (uint32_t) value.missile_groups_count, 4, order );
+    { uint32_t bits = 0; memcpy( &bits, &value.reload_seconds, 4 ); table_cook_put( at + 296, (uint64_t) bits, 4, order ); }
+    table_cook_put( at + 300, (uint64_t) value.gunner_id, 4, order );
 }
 
 // ---- relocatability, enforced: the wire is a pure length-prefixed

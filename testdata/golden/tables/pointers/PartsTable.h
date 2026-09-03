@@ -1230,6 +1230,48 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     return base;
 }
 
+// ---- the cooked form, the WRITE side (docs/SPEC-TABLES.md §7.6) ----
+//
+// THE BYTE ORDER IS THE TARGET'S, NOT THE HOST'S. A cook is produced in the
+// byte order of the build that will read it (§7), so the fixing happens here —
+// offline, once, on the writing side — and never at Open. Passing
+// TableByteOrder::Big on a little-endian machine produces a big-endian build's
+// file, and nothing about the writing host reaches the bytes.
+enum class TableByteOrder
+{
+    Little = 1, // the header's byte_order word, and the order every scalar is written in
+    Big = 2,
+};
+
+// One store, width as an argument. Every call site passes a literal width, so
+// the loop folds to a store (and a byte swap on the foreign order); a name per
+// width would claim four §11 names to save nothing.
+inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little )
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * i ) ); }
+    }
+    else
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
+    }
+}
+
+// A buffer piece: the USED bytes and nothing else. The tail is already zero —
+// the whole extent was zeroed before any field was written — so this copies the
+// used prefix and leaves the rest, which is what makes a string's unused tail a
+// consequence of one memset rather than a rule per buffer. A used length past
+// the buffer, or below zero, is a value no reader could have produced and it is
+// clamped rather than trusted: this writes inside the caller's buffer on every
+// input.
+inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, int64_t capacity )
+{
+    if ( used <= 0 ) { return; }
+    const int64_t n = used < capacity ? used : capacity;
+    memcpy( at, source, (size_t) n );
+}
+
 } // namespace graphdemo
 
 #endif // GRAPHDEMO_SCHEMA_TABLE_COOK
@@ -1504,6 +1546,82 @@ inline bool ColourLoad( Colour & value, const uint8_t * buffer, int64_t bytes, T
 inline const Stamp * StampOpen( const void * bytes, uint64_t length )
 {
     return (const Stamp *) TableCookOpen( bytes, length, (uint64_t) sizeof( Stamp ), (uint64_t) alignof( Stamp ) );
+}
+
+// ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
+//
+// The bytes are `schema cook`'s, and the tool stays the reference: the two
+// writers are held to one file, byte for byte, in both byte orders. A cook is
+// content-addressed by (asset hash, build version), so two writers of one
+// instance produce ONE artifact or the pair means nothing.
+
+inline void StampCookBody( uint8_t * at, const Stamp & value, TableByteOrder order );
+inline void ColourCookBody( uint8_t * at, const Colour & value, TableByteOrder order );
+
+inline void StampCookBody( uint8_t * at, const Stamp & value, TableByteOrder order )
+{
+    table_cook_bytes( at + 0, value.tag, value.tag_length, 9 );
+    table_cook_put( at + 12, (uint64_t) (uint32_t) value.tag_length, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.seq, 4, order );
+}
+
+inline void ColourCookBody( uint8_t * at, const Colour & value, TableByteOrder order )
+{
+    table_cook_put( at + 0, (uint64_t) value.r, 1, order );
+    table_cook_put( at + 1, (uint64_t) value.g, 1, order );
+    table_cook_put( at + 2, (uint64_t) value.b, 1, order );
+}
+
+// StampCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// Stamp IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t StampCookMeasure( const Stamp & value )
+{
+    (void) value;
+    return 104; // 64 header + 24 data + 16 attribution
+}
+
+// StampCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract StampMeasure/StampSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool StampCook( const Stamp & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) StampCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 24, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    StampCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 88, 0, 8, order );
+    table_cook_put( raw + 96, 0xae3b9113b7db93a4ull, 8, order );
+    return true;
 }
 
 // ---- relocatability, enforced: the wire is a pure length-prefixed

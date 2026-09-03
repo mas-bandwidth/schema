@@ -226,7 +226,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return NULL; }
     return base;
 }
-
+` + tableCookWriteRuntime + `
 } // namespace ` + pkg + `
 
 #endif // ` + guard + `

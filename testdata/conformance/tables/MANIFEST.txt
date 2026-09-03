@@ -126,6 +126,36 @@ cook ListNode    graphdemo ListNode testdata/conformance/tables/cook/ListNode.du
 # non-pointer leaf, so the same walk locks what a reader READS as well.
 cook SceneValued graphdemo Scene    testdata/conformance/tables/cook/SceneValued.dump
 
+# THE COOK WRITE SIDE (docs/SPEC-TABLES.md §7.6): a runtime WRITES the cooked
+# file and the bytes are `schema cook`'s, byte for byte, in BOTH byte orders.
+# Each line names an INSTANCE the file already carries — its unit, root and wire
+# are on that line and are not repeated here — and the two files the tool wrote
+# from it. `make conformance-generate` writes those; they are generated, like
+# the JSON texts and reports.txt, and a byte that MOVES under an unchanged
+# schema is stop-the-line.
+#
+#   cook-write <instance> <little-endian file> <big-endian file>
+#
+# The big-endian half is not host-dependent: the order is a PARAMETER of the
+# write, settled at cook time for the target build (§7), so every leg answers
+# both halves on any host.
+cook-write root_full              testdata/conformance/tables/cook-write/root_full.cook testdata/conformance/tables/cook-write/root_full-be.cook
+cook-write root_default           testdata/conformance/tables/cook-write/root_default.cook testdata/conformance/tables/cook-write/root_default-be.cook
+cook-write profile_elide          testdata/conformance/tables/cook-write/profile_elide.cook testdata/conformance/tables/cook-write/profile_elide-be.cook
+cook-write loadout_full           testdata/conformance/tables/cook-write/loadout_full.cook testdata/conformance/tables/cook-write/loadout_full-be.cook
+cook-write wide_blob              testdata/conformance/tables/cook-write/wide_blob.cook testdata/conformance/tables/cook-write/wide_blob-be.cook
+cook-write archive                testdata/conformance/tables/cook-write/archive.cook testdata/conformance/tables/cook-write/archive-be.cook
+cook-write keyed_config           testdata/conformance/tables/cook-write/keyed_config.cook testdata/conformance/tables/cook-write/keyed_config-be.cook
+cook-write keyed_default          testdata/conformance/tables/cook-write/keyed_default.cook testdata/conformance/tables/cook-write/keyed_default-be.cook
+cook-write v1_cfg                 testdata/conformance/tables/cook-write/v1_cfg.cook testdata/conformance/tables/cook-write/v1_cfg-be.cook
+cook-write v1_seams               testdata/conformance/tables/cook-write/v1_seams.cook testdata/conformance/tables/cook-write/v1_seams-be.cook
+cook-write v2_cfg                 testdata/conformance/tables/cook-write/v2_cfg.cook testdata/conformance/tables/cook-write/v2_cfg-be.cook
+cook-write v2_seams               testdata/conformance/tables/cook-write/v2_seams.cook testdata/conformance/tables/cook-write/v2_seams-be.cook
+cook-write chain_value            testdata/conformance/tables/cook-write/chain_value.cook testdata/conformance/tables/cook-write/chain_value-be.cook
+cook-write chain_value_empty      testdata/conformance/tables/cook-write/chain_value_empty.cook testdata/conformance/tables/cook-write/chain_value_empty-be.cook
+cook-write chain_optional         testdata/conformance/tables/cook-write/chain_optional.cook testdata/conformance/tables/cook-write/chain_optional-be.cook
+cook-write chain_optional_empty   testdata/conformance/tables/cook-write/chain_optional_empty.cook testdata/conformance/tables/cook-write/chain_optional_empty-be.cook
+
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
 # word of an otherwise valid block image, resolved to a byte offset.

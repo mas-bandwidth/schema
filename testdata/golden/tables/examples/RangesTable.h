@@ -515,6 +515,48 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     return base;
 }
 
+// ---- the cooked form, the WRITE side (docs/SPEC-TABLES.md §7.6) ----
+//
+// THE BYTE ORDER IS THE TARGET'S, NOT THE HOST'S. A cook is produced in the
+// byte order of the build that will read it (§7), so the fixing happens here —
+// offline, once, on the writing side — and never at Open. Passing
+// TableByteOrder::Big on a little-endian machine produces a big-endian build's
+// file, and nothing about the writing host reaches the bytes.
+enum class TableByteOrder
+{
+    Little = 1, // the header's byte_order word, and the order every scalar is written in
+    Big = 2,
+};
+
+// One store, width as an argument. Every call site passes a literal width, so
+// the loop folds to a store (and a byte swap on the foreign order); a name per
+// width would claim four §11 names to save nothing.
+inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little )
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * i ) ); }
+    }
+    else
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
+    }
+}
+
+// A buffer piece: the USED bytes and nothing else. The tail is already zero —
+// the whole extent was zeroed before any field was written — so this copies the
+// used prefix and leaves the rest, which is what makes a string's unused tail a
+// consequence of one memset rather than a rule per buffer. A used length past
+// the buffer, or below zero, is a value no reader could have produced and it is
+// clamped rather than trusted: this writes inside the caller's buffer on every
+// input.
+inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, int64_t capacity )
+{
+    if ( used <= 0 ) { return; }
+    const int64_t n = used < capacity ? used : capacity;
+    memcpy( at, source, (size_t) n );
+}
+
 } // namespace tabledemo
 
 #endif // TABLEDEMO_SCHEMA_TABLE_COOK
@@ -1733,6 +1775,235 @@ inline const RangedUnsigned * RangedUnsignedOpen( const void * bytes, uint64_t l
 inline const RangedWidths * RangedWidthsOpen( const void * bytes, uint64_t length )
 {
     return (const RangedWidths *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedWidths ), (uint64_t) alignof( RangedWidths ) );
+}
+
+// ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
+//
+// The bytes are `schema cook`'s, and the tool stays the reference: the two
+// writers are held to one file, byte for byte, in both byte orders. A cook is
+// content-addressed by (asset hash, build version), so two writers of one
+// instance produce ONE artifact or the pair means nothing.
+
+inline void RangedSignedCookBody( uint8_t * at, const RangedSigned & value, TableByteOrder order );
+inline void RangedUnsignedCookBody( uint8_t * at, const RangedUnsigned & value, TableByteOrder order );
+inline void RangedWidthsCookBody( uint8_t * at, const RangedWidths & value, TableByteOrder order );
+
+inline void RangedSignedCookBody( uint8_t * at, const RangedSigned & value, TableByteOrder order )
+{
+    table_cook_put( at + 0, (uint64_t) value.i8_span, 1, order );
+    table_cook_put( at + 1, (uint64_t) value.i8_low, 1, order );
+    table_cook_put( at + 2, (uint64_t) value.i8_high, 1, order );
+    table_cook_put( at + 3, (uint64_t) value.i8_inside, 1, order );
+    table_cook_put( at + 4, (uint64_t) value.i16_span, 2, order );
+    table_cook_put( at + 6, (uint64_t) value.i16_low, 2, order );
+    table_cook_put( at + 8, (uint64_t) value.i16_high, 2, order );
+    table_cook_put( at + 10, (uint64_t) value.i16_inside, 2, order );
+    table_cook_put( at + 12, (uint64_t) value.i32_span, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.i32_low, 4, order );
+    table_cook_put( at + 20, (uint64_t) value.i32_high, 4, order );
+    table_cook_put( at + 24, (uint64_t) value.i32_inside, 4, order );
+    table_cook_put( at + 32, (uint64_t) value.i64_span, 8, order );
+    table_cook_put( at + 40, (uint64_t) value.i64_low, 8, order );
+    table_cook_put( at + 48, (uint64_t) value.i64_high, 8, order );
+    table_cook_put( at + 56, (uint64_t) value.i64_inside, 8, order );
+    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        table_cook_put( at + 64 + i * 2, (uint64_t) value.edges[ i ], 2, order );
+    }
+    table_cook_put( at + 72, (uint64_t) (uint32_t) value.edges_count, 4, order );
+}
+
+inline void RangedUnsignedCookBody( uint8_t * at, const RangedUnsigned & value, TableByteOrder order )
+{
+    table_cook_put( at + 0, (uint64_t) value.u8_span, 1, order );
+    table_cook_put( at + 1, (uint64_t) value.u8_low, 1, order );
+    table_cook_put( at + 2, (uint64_t) value.u8_high, 1, order );
+    table_cook_put( at + 3, (uint64_t) value.u8_inside, 1, order );
+    table_cook_put( at + 4, (uint64_t) value.u16_span, 2, order );
+    table_cook_put( at + 6, (uint64_t) value.u16_low, 2, order );
+    table_cook_put( at + 8, (uint64_t) value.u16_high, 2, order );
+    table_cook_put( at + 10, (uint64_t) value.u16_inside, 2, order );
+    table_cook_put( at + 12, (uint64_t) value.u32_span, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.u32_low, 4, order );
+    table_cook_put( at + 20, (uint64_t) value.u32_high, 4, order );
+    table_cook_put( at + 24, (uint64_t) value.u32_inside, 4, order );
+    table_cook_put( at + 32, (uint64_t) value.u64_span, 8, order );
+    table_cook_put( at + 40, (uint64_t) value.u64_low, 8, order );
+    table_cook_put( at + 48, (uint64_t) value.u64_high, 8, order );
+    table_cook_put( at + 56, (uint64_t) value.u64_inside, 8, order );
+    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 4; i++ )
+    {
+        table_cook_put( at + 64 + i * 8, (uint64_t) value.counts[ i ], 8, order );
+    }
+    table_cook_put( at + 96, (uint64_t) (uint32_t) value.counts_count, 4, order );
+}
+
+inline void RangedWidthsCookBody( uint8_t * at, const RangedWidths & value, TableByteOrder order )
+{
+    table_cook_put( at + 0, (uint64_t) value.b8, 4, order );
+    table_cook_put( at + 4, (uint64_t) value.b16, 4, order );
+    table_cook_put( at + 8, (uint64_t) value.b32, 4, order );
+    table_cook_put( at + 16, (uint64_t) value.b64, 8, order );
+    table_cook_put( at + 24, (uint64_t) value.b12, 4, order );
+    table_cook_put( at + 32, (uint64_t) value.b48, 8, order );
+}
+
+// RangedSignedCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RangedSigned IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RangedSignedCookMeasure( const RangedSigned & value )
+{
+    (void) value;
+    return 160; // 64 header + 80 data + 16 attribution
+}
+
+// RangedSignedCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RangedSignedMeasure/RangedSignedSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RangedSignedCook( const RangedSigned & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RangedSignedCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 80, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RangedSignedCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 144, 0, 8, order );
+    table_cook_put( raw + 152, 0xec79751dda28be2eull, 8, order );
+    return true;
+}
+
+// RangedUnsignedCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RangedUnsigned IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RangedUnsignedCookMeasure( const RangedUnsigned & value )
+{
+    (void) value;
+    return 184; // 64 header + 104 data + 16 attribution
+}
+
+// RangedUnsignedCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RangedUnsignedMeasure/RangedUnsignedSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RangedUnsignedCook( const RangedUnsigned & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RangedUnsignedCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 104, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RangedUnsignedCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 168, 0, 8, order );
+    table_cook_put( raw + 176, 0x031ec0c4b7d28bf1ull, 8, order );
+    return true;
+}
+
+// RangedWidthsCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RangedWidths IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RangedWidthsCookMeasure( const RangedWidths & value )
+{
+    (void) value;
+    return 120; // 64 header + 40 data + 16 attribution
+}
+
+// RangedWidthsCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RangedWidthsMeasure/RangedWidthsSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RangedWidthsCook( const RangedWidths & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RangedWidthsCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 40, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RangedWidthsCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 104, 0, 8, order );
+    table_cook_put( raw + 112, 0xbf59694e9e4f5ed7ull, 8, order );
+    return true;
 }
 
 // ---- relocatability, enforced: the wire is a pure length-prefixed

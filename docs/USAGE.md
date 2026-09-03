@@ -1641,12 +1641,14 @@ this side allocates: the bytes are yours, from wherever you got them.
 
 ### The cooked form: point at a file instead of parsing it
 
-*The TOOL and BOTH READ sides are built; no WRITE side is (SPEC-TABLES.md §7,
-schema#251). `schema cook`, `schema cook-check` and `schema uncook` produce,
-validate and read back cooked files today, in either byte order; the C++ backend
-emits `<Root>Open` and the C# backend emits `<Root>Cook.Open`, for every table.
-`SceneCook` and `SceneCookMeasure` are the write design you will get; today your
-tools write the cook with `schema cook` and your game opens it.*
+*The TOOL, every READ side, and the C++ WRITE side for the FIXED class are built
+(SPEC-TABLES.md §7, §7.6, schema#251). `schema cook`, `schema cook-check` and
+`schema uncook` produce, validate and read back cooked files, in either byte
+order; the C++ backend emits `<Root>Open` and the C# backend emits
+`<Root>Cook.Open`, for every table; and C++ emits `<Root>Cook` and
+`<Root>CookMeasure` for every FIXED table, whose bytes are the tool's. For a
+POINTERED root, and in every other language, your tools write the cook with
+`schema cook` and your game opens it.*
 
 **A cook is not a wire protocol — it is a load-trusted-data-from-tools
 protocol.** A wire crosses a boundary between builds; a cook crosses none. Your
@@ -1807,6 +1809,34 @@ like every other, and it is the same call:
 ```cpp
 const Settings * settings = graphdemo::SettingsOpen( bytes, length );
 ```
+
+**And a fixed table WRITES its cook too, from C++.** Your tools do not have to
+shell out to the compiler to lay one out: `CookMeasure` answers the whole
+file's length and `Cook` writes exactly that many bytes into your buffer. The
+bytes are `schema cook`'s, byte for byte — the tool is the reference and the
+conformance harness holds the two to one file — so a cook your editor wrote and
+a cook your build farm ran the tool for are the same artifact.
+
+```cpp
+// measure, then write: the buffer is yours and nothing here allocates
+const int64_t bytes = graphdemo::SettingsCookMeasure( settings );
+std::vector<uint8_t> file( (size_t) bytes );
+if ( !graphdemo::SettingsCook( settings, file.data(), file.size(),
+                               graphdemo::TableByteOrder::Little ) )
+{
+    return false; // the only refusal: a capacity short of the measure
+}
+```
+
+The byte order is a PARAMETER and it is the TARGET's, not yours: pass
+`TableByteOrder::Big` and a little-endian machine writes the file a big-endian
+build will open. That is where the endian fix-up belongs — offline, once, on
+the writing side — which is exactly why `Open` never fixes anything up.
+
+Two limits, stated rather than found: this is the FIXED class today, so a
+pointered root is still the tool's to cook; and `Cook` always writes the
+attribution part beside the data, which is what `schema cook-check` reads. A
+variable root's writer and a data-only option are named follow-ons.
 
 **The three commands, today.** They run over the same declarations the
 compiler already read, and the input may be a wire file or the directory tree

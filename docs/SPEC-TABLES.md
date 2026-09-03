@@ -2144,17 +2144,19 @@ const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 
 `schema cook` writes the file; the runtime only ever points at one.
 
-**Backend status: the TOOL and BOTH READ SIDES are built; no WRITE side is
-(schema#251).** `schema cook`, `schema cook-check` and `schema uncook` produce,
-validate and read back the form below, in both byte orders, over the same IR the
-emitters consume — and `wire → cook → wire` is byte-identical over the corpus,
-which is what proves the accelerator loses no fact. Every port emits the entry
-point for EVERY TABLE (below) — a root is any table — in its own idiom: the C++
-backend `<Root>Open`, the C# backend `<Root>Cook.Open`, the Java backend
-`<Root>Cook.open`. A game points at a cook the tooling produced, whichever
-language it reads from. What no generated runtime carries yet is `Cook` and
-`CookMeasure`: a build that wants to WRITE a cook runs the tool, and those two
-spellings stay claimed ahead of their emitter (§11).
+**Backend status: the TOOL, EVERY READ SIDE, and the C++ WRITE side for the
+FIXED class are built (schema#251).** `schema cook`, `schema cook-check` and
+`schema uncook` produce, validate and read back the form below, in both byte
+orders, over the same IR the emitters consume — and `wire → cook → wire` is
+byte-identical over the corpus, which is what proves the accelerator loses no
+fact. Every port emits the entry point for EVERY TABLE (below) — a root is any
+table — in its own idiom: the C++ backend `<Root>Open`, the C# backend
+`<Root>Cook.Open`, the Java backend `<Root>Cook.open`. A game points at a cook
+the tooling produced, whichever language it reads from. The WRITE side
+(`Cook` and `CookMeasure`, §7.6) is emitted by the C++ backend for every FIXED
+table, and its bytes are the tool's, byte for byte, in both byte orders; a
+pointered root's writer and every other language's are named follow-ons (§15),
+and until they land those builds run the tool.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -3080,6 +3082,91 @@ every clause above by construction.
     gate and it runs against a real cook, so the day the surface moves the
     documentation goes red with the code rather than a release later.
 
+### 7.6 The write side: `Cook` and `CookMeasure`
+
+**A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
+the reference and stays it: a generated writer is held to the tool's output
+BYTE FOR BYTE, in both byte orders, over every instance the conformance harness
+carries. That is the whole contract, and it is not a courtesy — a cooked
+artifact is CONTENT-ADDRESSED by (asset hash, build version) (§7), so two
+writers of one instance must produce ONE artifact or the pair addresses
+nothing.
+
+**Why a runtime writes one at all**: tooling is written in whatever language
+the tool is written in, and a game's runtime in another. An editor, an importer
+or a cook farm that already holds the structure should not have to shell out to
+the compiler to lay it out — *"game developers could write tools in any
+language and a runtime in any other."*
+
+**THE C++ SURFACE**, name first (§6.1), one pair per table beside `<Root>Open`:
+
+```cpp
+int64_t SettingsCookMeasure( const Settings & value );
+bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, TableByteOrder order );
+```
+
+- **IT IS A MEASURE/WRITE SPLIT, exactly as the wire's is** (§6.1).
+  `CookMeasure` answers the whole file's length — the header, the data part and
+  the attribution part — in `int64_t`, because a cook's part lengths are 64
+  bits and the scale this form exists for is a catalog. `Cook` writes exactly
+  that many bytes into the caller's buffer, or writes nothing and returns
+  `false` when the capacity is short. **THE CALLER OWNS THE BUFFER AND THE
+  WRITER ALLOCATES NOTHING**, which is the rule the generated codecs already
+  live under, and it is measured rather than claimed (below).
+- **THE BYTE ORDER IS A PARAMETER, AND IT IS THE TARGET'S RATHER THAN THE
+  HOST'S.** The order is settled at cook time for the build the file is for
+  (§7), so passing `TableByteOrder::Big` on a little-endian machine produces a
+  big-endian build's file and nothing about the writing host reaches the bytes.
+  It is the same choice `schema cook --byte-order` makes, in the runtime.
+- **A RECORD IS WRITTEN PIECE BY PIECE AND NEVER MEMCPY'D**, for two reasons
+  that are both the format's. A swap has to know where every scalar begins; and
+  EVERY BYTE NO FIELD COVERS IS ZERO (§7.2), while a live struct's padding, a
+  string's tail and the bytes of a union outside its set arm carry whatever the
+  program left there. The extent is zeroed once and each field's storage pieces
+  are written at the offsets §20.3's model gives — one zeroing rather than a
+  rule per padding site, and the same model the region's bytes, the
+  `static_assert`s and the build version all come from.
+- **WHAT THE STORAGE HOLDS IS WHAT IS WRITTEN.** A counted array writes all `N`
+  slots (§7.2), so a slot past the live count carries what the storage carries:
+  for a value a wire load or `Reset` produced, that is the value-initialized
+  element the page names, which is why a cook of a loaded wire and a cook of a
+  built structure agree.
+- **THE ATTRIBUTION PART IS WRITTEN.** A fixed root's is one entry — the root
+  at offset zero, its type id the `fnv1a64` of the table's name — so what comes
+  out is a file `schema cook-check` can check. A cook that carries DATA ALONE
+  is the tool's `--attribution` option and a named follow-on here (§15), not a
+  parameter on this call.
+- **IT IS WRITE-COLD, AND THE GENERATED CODE SAYS SO**: the writer is ordinary
+  `inline` rather than the force-inlined shape the wire codecs take (§9),
+  because a cook is produced offline once per (asset, build version) and read
+  every time a build starts. The performance ladder puts the two halves in
+  different places and the emitter follows it.
+
+**THE CLASS IT COVERS IS THE FIXED ONE.** A fixed table is one struct (§6.1),
+so its cook is ONE REGION OF ONE NODE and this is the header, the record and
+the one directory entry. A pointered root's `Cook` — the numbering (§3.1), the
+region and `Lock`'s identity map (§6.2, §6.3) — is the next step, and until it
+lands the generated header NAMES the absence where a reader meets the table
+rather than leaving a missing symbol.
+
+**Held by test**:
+
+- **THE HARNESS SURFACE, and it is the gate**: `cook-write` — a language writes
+  the cook from an instance's WIRE and the harness byte-compares the result
+  against `schema cook`'s file, in BOTH byte orders, over every instance the
+  corpus carries. Every leg that has no writer prints ABSENT, which is the
+  distinction the matrix exists for (test/conformance/README.md).
+- **THE TWO FIXED FIXTURES, against the tool's own files**: the same
+  `Settings` and `Stamp` cooks §7.5's value crossing already reads, written by
+  the runtime this time and compared byte for byte — and then OPENED by
+  `<Root>Open`, which is the writer and the reader of one implementation
+  meeting over the tool's format.
+- **ZERO ALLOCATION, MEASURED**: a counting `operator new` around the measure
+  and both writes, requiring not one allocation, with a negative control that
+  puts one inside the measured region and requires the gate to go red.
+- **A SHORT CAPACITY WRITES NOTHING**: one byte less than the measure returns
+  false, and the buffer is untouched.
+
 ## 8. Reflection: the view
 
 **One vocabulary, one walker, three things it describes.** A TABLE carries
@@ -3885,16 +3972,19 @@ in build version (§20.5).
   to the cook. The C# table backend emits `<X>Cook`, a `readonly struct` over an
   opened region, carrying `Open` and `At` as members and one accessor per field
   named after that field. So `Cook` names the READ handle in C# and the
-  unemitted WRITE function in C++, one claimed name in two backends — and a C#
+  WRITE function in C++ (§7.6), one claimed name in two backends — and a C#
   cook WRITER, if one is ever emitted, is `<X>Cook`'s members too and claims
   nothing further. A table also **claims one member per field on its `Cook`
   type**, exactly as it claims two per out-of-line array on its `Block` type,
   and a language whose accessors are members claims nothing at file scope for
   them.
 
-  **`CookMeasure` is still claimed AHEAD of its emitter, and so is the write
-  half of `Cook`**: no backend writes a cook, and a build that wants to runs the
-  tool (§7).
+  **`CookMeasure` AND THE WRITE HALF OF `Cook` ARE EMITTED NOW TOO**, by the
+  C++ backend, for every FIXED table (§7.6) — so `Cook` names a definition in
+  two backends and two different things: the READ handle in C#, and the write
+  function in C++. Both are claimed on every closure member all the same, on
+  this list's own rule; a pointered root's writer and the other languages' are
+  named follow-ons (§15), and a build that wants one today runs the tool.
   **`OpenWalk` LEFT THIS LIST**, and it is the one entry ever removed: it named
   wire v1's validating walk, and §7's `Open` is a header match with no walk in
   it, so the name went with the design rather than being held for an emitter
@@ -3973,7 +4063,10 @@ in build version (§20.5).
     `TableRef`, `TableReport`, `TableWriter`, `TableReader`, `TableEnumId`,
     `TableEnumValue`, the COOKED form's read runtime (`TableCookOpen`,
     `TableCookMagic`, `TableCookByteOrder`, `TableCookMaxAlign`,
-    `table_cook_read64` — §7 — and the C# half's `TableCookLayout`,
+    `table_cook_read64` — §7 — its WRITE runtime beside it (`TableByteOrder`,
+    `table_cook_put`, `table_cook_bytes` — §7.6, three names because a store
+    takes its width as an argument rather than minting one name per width) —
+    and the C# half's `TableCookLayout`,
     `TableCookInfo`, `TableCookFieldInfo` and `TableCookStorage`, with
     `TableCookHeaderBytes` and `TableCookRead64` riding as members of `Schema`
     and so claiming nothing at file scope), `BuildVersion` (§20, which both
@@ -4787,6 +4880,19 @@ inspects everything in the schema built:
   a catalogue is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
+- **THE COOK's WRITE SIDE for the VARIABLE class, and in every other
+  language.** C++ writes a FIXED root's cook today and its bytes are the tool's
+  (§7.6). A pointered root's writer needs three things the fixed one does not:
+  the depth-first numbering (§3.1), the region `Lock` packs (§6.2, §6.3) and
+  the identity map that packs a shared node once. Every other language's writer
+  is the same feature in that language's own idiom, held to the same
+  `cook-write` surface — a language writes, the harness compares to the tool's
+  bytes.
+- **A DATA-ONLY COOK from the runtime.** `schema cook --attribution` writes the
+  node directory beside the file instead of inside it, so a build that ships no
+  tooling carries just data (§7, §7.1). The generated `Cook` always writes the
+  attribution part; the option is a parameter with no caller, and
+  adding one changes a call site rather than a byte of the format.
 - **A SIGNED COOK.** A cook is trusted input loaded from disk (§7), so nothing
   in the load path asks whether it is hostile. Where integrity IS wanted, it is
   a SIGNATURE over the whole file, verified ONCE before `Open`, and never
@@ -6441,9 +6547,10 @@ the C++ `<Root>Open`, the C# `<Root>Cook.Open`, the Java `<Root>Cook.open`. What
    gives. Loud and early, but not at compile time. The gate runs both `Verify()`
    halves as their own start-up mode rather than waiting for a first open, which
    is the most a runtime with no compile-time assert can do.
-3. **The COOK's WRITE side is the TOOL's alone.** `schema cook` produces a
-   cooked file and no generated runtime does: `CookMeasure` and the write half
-   of `Cook` stay claimed ahead of their emitter (§7, §11, schema#251). BOTH
+3. **The COOK's WRITE side is the C++ backend's and the TOOL's.** `Cook` and
+   `CookMeasure` are emitted for every FIXED table in C++ and their bytes are
+   `schema cook`'s, byte for byte, in both byte orders (§7.6). A pointered
+   root's writer, and every other language's, are named follow-ons (§15). BOTH
    read sides are emitted and gated.
 4. **A UNION-BEARING closure has no C# cook reader**, for the reason it has no
    block form: §19.3 pins a blittable C# record to `Sequential`, which cannot

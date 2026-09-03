@@ -115,6 +115,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
 | `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,c,d,m\n`, or `refused\n` | the verdict in the manifest |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
+| `cook-write` | `cook-write` | Load the instance's wire, `Cook` it in each byte order, the bytes, as `<instance>` and `<instance>-be` | the two files `schema cook` wrote |
 | `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
 | `block` | `block` | Open the image, `open\n` or `refuse\n` | `open\n` |
 | `block-foreign` | `block` | byte-swap the image's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
@@ -124,6 +125,16 @@ One process per surface, so a runtime starts once rather than once per case.
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
+
+**`cook-write` IS THE ONE SURFACE WHERE A LANGUAGE WRITES AN ACCELERATOR RATHER
+THAN READING ONE, and the expectation is the TOOL's file.** Every other cook
+surface asks whether a reader agrees about bytes somebody else produced; this
+one asks whether a WRITER produces the bytes `schema cook` produces, in both
+byte orders, from the same wire (SPEC-TABLES.md §7.6). It needs no big-endian
+host on either side, because the order is a parameter of the write rather than a
+fact of the machine. A leg with no writer prints ABSENT, which is the whole
+point of the distinction: C++ answers it today and every other leg is missing a
+FEATURE rather than failing a test.
 
 **The two forgery surfaces are one shape and two KINDS**, split so the matrix
 can say which reader a backend has: a leg with a block reader and no cook reader
@@ -237,6 +248,16 @@ leg starts a runtime once per surface plus once per cook, because
 the whole wall is: of the 1,608 cases in this table, the 1,340 the five NATIVE
 legs answer cost about four seconds between them — under a second each, even
 under this load — and the last 268 cost eighteen.
+
+**`cook-write` added 32 cases to the C++ leg alone** — sixteen instances in two
+byte orders — and the table above is NOT re-priced for them: they are answered
+inside `build/conformance-cpp`, a process that was already starting for the wire
+surfaces, so what they cost is a wire load and a memset per case in a leg the
+table already measures at a second. The row is left as it was measured rather
+than adjusted by arithmetic, which is what the sitting rule means. The four
+VARIABLE instances are not on the surface: the C++ backend writes a FIXED root's
+cook and no other, and the reference leg may not answer absent, so those lines
+join the manifest when the pointered writer lands (SPEC-TABLES.md §15).
 
 **The C leg answers all 268 from one native binary**, which is the cheapest
 shape the contract allows and what puts its row among the fastest. A sixth leg

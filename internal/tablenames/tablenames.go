@@ -231,6 +231,16 @@ var registry = []Name{
 	{Name: "TableCookMaxAlign", By: Cpp | Cs | Go | Rust, What: "the greatest region alignment a cooked header may name", RustConst: true},
 	{Name: "table_cook_read64", By: Cpp | C, What: "the cooked header read BYTEWISE"},
 
+	// and the COOKED FORM's WRITE runtime (docs/SPEC-TABLES.md §7.6), emitted
+	// beside the read half in the same guard. Three names: the byte order a
+	// cook is WRITTEN in, one store and one buffer copy. A store takes its
+	// width as an argument rather than minting a name per width — every call
+	// site passes a literal, so the loop folds — because a claimed name costs
+	// every schema in every unit and saves nothing here.
+	{Name: "TableByteOrder", By: Cpp, What: "the byte order a cook is WRITTEN in, as Cook's parameter"},
+	{Name: "table_cook_put", By: Cpp, What: "one scalar into a cook, in the target's byte order"},
+	{Name: "table_cook_bytes", By: Cpp, What: "a string or bytes buffer's used prefix into a cook"},
+
 	// ---- the RUST backend's own spellings (internal/codegen/rusttable) ----
 	//
 	// Rust has no overloading, so the enum identity pair C++ and C# spell as an
