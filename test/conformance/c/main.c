@@ -383,6 +383,70 @@ static int surface_block_dump( const char * out )
     return 0;
 }
 
+/* THE TWO FOREIGN SURFACES: the cross-endian refusal, and the one answer a leg
+   can give on ANY host (test/conformance/README.md).
+ 
+   A block and a cook are produced in the byte order of the build that wrote
+   them (§19.1, §7), so a reader of the other order must REFUSE — and the check
+   that does it is the MAGIC, read first and bytewise for exactly this reason.
+   Reversing the magic's eight bytes is what that word looks like to a reader of
+   the other order, so it makes the file foreign to WHOEVER READS IT rather than
+   to a particular host: whatever this build's order is, the magic it now reads
+   is not this build's. That is the only shape a cross-endian expectation can
+   take without depending on the host it runs on. */
+static void conformance_foreign( uint8_t * data, size_t bytes )
+{
+    int i;
+    if ( bytes < 8 ) { return; }
+    for ( i = 0; i < 4; i++ )
+    {
+        uint8_t t = data[i];
+        data[i] = data[7 - i];
+        data[7 - i] = t;
+    }
+}
+
+static int surface_block_foreign( const char * out )
+{
+    int i;
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        uint8_t * data;
+        size_t bytes = 0;
+        const char * verdict;
+        if ( strcmp( f->field[0], "block" ) != 0 ) { continue; }
+        data = slurp( f->field[3], &bytes );
+        if ( data == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[3] ); return 1; }
+        conformance_foreign( data, bytes );
+        verdict = conformance_block_open( f->field[1], data, bytes, -1, 0 ) ? "open\n" : "refuse\n";
+        free( data );
+        if ( !spill( out, f->field[1], verdict, strlen( verdict ) ) ) { return 1; }
+    }
+    return 0;
+}
+
+static int surface_cook_foreign( const char * out )
+{
+    int i;
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        uint8_t * data;
+        size_t bytes = 0;
+        const char * verdict;
+        if ( strcmp( f->field[0], "cook" ) != 0 ) { continue; }
+        data = slurp( f->field[4], &bytes );
+        if ( data == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
+        conformance_foreign( data, bytes );
+        verdict = conformance_cook_open( f->field[3], data, bytes, -1, 0 ) ? "open\n" : "refuse\n";
+        free( data );
+        if ( !spill( out, f->field[1], verdict, strlen( verdict ) ) ) { return 1; }
+    }
+    return 0;
+}
+
+
 static int surface_cook( const char * out )
 {
     int i;
@@ -455,7 +519,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook\nblock\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -471,6 +535,8 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "json-hostile" ) == 0 ) { return surface_json_hostile( out ); }
     if ( strcmp( surface, "cook" ) == 0 ) { return surface_cook( out ); }
     if ( strcmp( surface, "block" ) == 0 ) { return surface_block( out ); }
+    if ( strcmp( surface, "cook-foreign" ) == 0 ) { return surface_cook_foreign( out ); }
+    if ( strcmp( surface, "block-foreign" ) == 0 ) { return surface_block_foreign( out ); }
     if ( strcmp( surface, "block-dump" ) == 0 ) { return surface_block_dump( out ); }
     if ( strcmp( surface, "forgery" ) == 0 ) { return surface_forgery( out, "block" ); }
     if ( strcmp( surface, "cook-forgery" ) == 0 ) { return surface_forgery( out, "cook" ); }

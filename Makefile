@@ -3027,6 +3027,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-java-fuzz
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
+	$(MAKE) conformance-negative-control-c
+	$(MAKE) conformance-negative-control-c-foreign
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
@@ -3981,6 +3983,48 @@ conformance-negative-control-c: build/conformance-harness
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
 	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
+
+# THE NEGATIVE CONTROL FOR THE TWO FOREIGN SURFACES. `cook-foreign` and
+# `block-foreign` are the only rows whose EXPECTED ANSWER IS A REFUSAL, so a
+# driver that never made the file foreign in the first place would pass them by
+# accident on every host: it would open a perfectly good file and, if `open` had
+# been the expectation, be right. The control neuters the byte swap and requires
+# BOTH foreign rows to go red while `cook` and `block` — the same Opens over the
+# same files, unswapped — stay green. That second half is what says the control
+# localises the swap rather than breaking the reader.
+CONFORMANCE_NEGATIVE_C_FOREIGN := build/conformance-negative-c-foreign
+.PHONY: conformance-negative-control-c-foreign
+conformance-negative-control-c-foreign: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_C_FOREIGN) && mkdir -p $(CONFORMANCE_NEGATIVE_C_FOREIGN)
+	@sed 's|if ( bytes < 8 ) { return; }|if ( bytes < 8 ) { return; } /* SABOTAGED */ return;|' \
+		test/conformance/c/main.c > $(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c
+	@grep -q SABOTAGED $(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c || \
+		{ echo "NEGATIVE CONTROL: the byte-swap sabotage did not apply"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) \
+		$(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) \
+		-o $(CONFORMANCE_NEGATIVE_C_FOREIGN)/driver-bin -lm
+	@printf '#!/bin/sh\nexec %s/driver-bin "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_FOREIGN)" > $(CONFORMANCE_NEGATIVE_C_FOREIGN)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_C_FOREIGN)/driver
+	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C_FOREIGN)" > $(CONFORMANCE_NEGATIVE_C_FOREIGN)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_C_FOREIGN)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_C_FOREIGN)/work > $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a driver that never swapped the magic left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; \
+	fi
+	@grep -q "c / cook-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: cook-foreign stayed green with no swap"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
+	@grep -q "c / block-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: block-foreign stayed green with no swap"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
+	@grep -q "^cook          pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: cook went red too, so the control does not localise the swap"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
+	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the swap"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
+	@grep -m1 "c / cook-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log
+	@echo "negative control: a driver that never makes the file foreign turns cook-foreign and block-foreign RED, and only those"
 
 # THE BIG-ENDIAN C LEG (docs/SPEC-TABLES.md §3). The tolerant wire is
 # little-endian by construction — the generated writer spells every width out
