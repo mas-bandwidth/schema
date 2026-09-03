@@ -167,3 +167,12 @@ names bench/tables/rust/src/main.rs 1 shape-blind leg: `TableMixed` as the bench
 # PATH trips a check, exactly as its type twin's does.
 
 paths test/bench/table_main.cpp 1 the tables corpus's producer and §1.5 oracle: correctness code, no timing
+
+# THE GO PORT's SOAK (docs/SPEC-TABLES.md, "What allocates, and what never
+# does") reads a clock for the same reason the cook's open-cost gate does: to
+# BOUND A DURATION, not to measure one. What it watches is
+# runtime.MemStats.Mallocs across the loop, which must not move at all; the two
+# clock reads decide when to stop. It names no shape it did not get from the
+# conformance corpus's own manifest, and it reports no time.
+
+timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BOUNDS the loop, the allocation counter is what is watched — no time is reported and no shape is measured

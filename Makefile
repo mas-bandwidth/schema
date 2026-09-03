@@ -2861,27 +2861,6 @@ build/conformance-go-be: build/tables-generated-go/.stamp $(wildcard test/confor
 	@mkdir -p build
 	cd test/conformance/go && GOOS=linux GOARCH=s390x go build -o ../../../$@ .
 
-# THE TABLE-WIRE BENCH PAIR (docs/SPEC-TABLES.md, the performance ladder): the
-# C++ reference and the Go port over the SAME golden, the same three operations
-# and the same warm buffer, so the ratio between them says whether a Go consumer
-# of this format pays for the language or for the format.
-#
-# ITERATION instruments, not certification ones (BENCH-STANDARD.md): they run on
-# a workstation to compare two ports on one machine at one moment, they are not
-# a gate, and nothing in `make test` reads them. -O3 -DNDEBUG on the C++ side is
-# the configuration a game ships, which is what makes the comparison fair.
-build/schema_test_tables_bench: build/tables-generated/.stamp test/tables/bench_main.cpp
-	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -O3 -DNDEBUG $(TABLES_INCLUDES) test/tables/bench_main.cpp -o $@
-
-.PHONY: tables-bench
-tables-bench: build/schema_test_tables_bench build/tables-generated-go/.stamp
-	@echo "--- C++ (the reference) ---"
-	./build/schema_test_tables_bench
-	@echo
-	@echo "--- Go (this port) ---"
-	cd test/go-tables && go test -run XXX -bench . -benchtime 2s .
-
 .PHONY: conformance-big-endian
 conformance-big-endian: build/conformance-harness build/conformance-go-be
 	@printf 'go-be test/conformance/go/driver-be\n' > build/conformance-be-drivers.txt
