@@ -2696,14 +2696,18 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // block form, every fixed table has one, and a table gains and loses the form
 // as its closure gains and loses a pointer — so a name that was free yesterday
 // must not become a collision tomorrow (§11).
-// Cook, CookMeasure, Open and OpenWalk are the COOK's spellings and no
-// backend emits them: the cook is wire v2's (SPEC-TABLES.md §7, schema#251)
-// and is not built. The claim is held while the emitter is absent, on the same
-// rule — freeing a name now is a collision the day it lands.
+// Open is the COOK's read side and the C++ table backend emits it, for every
+// TABLE, because every table cooks and any table may be a cook's root
+// (SPEC-TABLES.md §7). Cook and CookMeasure are the WRITE side and no backend
+// emits one — a build that writes a cook runs `schema cook` — and the claim is
+// held while that emitter is absent, on the same rule: freeing a name now is a
+// collision the day it lands. OpenWalk is NOT claimed: it named wire v1's
+// validating walk, and §7's Open is a header match with no walk in it, so the
+// name went with the design.
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveBody", "Load", "LoadBody",
 	"Reset", "LoadMeasure", "LoadMeasureBody", "LoadBuilder", "TableType", "Builder",
-	"At", "Emplace", "Pack", "PackMeasure", "OpenWalk",
+	"At", "Emplace", "Pack", "PackMeasure",
 	"Cook", "CookMeasure", "Open", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",

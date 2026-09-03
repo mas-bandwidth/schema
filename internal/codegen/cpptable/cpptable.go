@@ -507,12 +507,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitTableRead(st)
 			}
 			g.emitVariableSurface(members)
+			g.emitCookSurface(members)
 			g.emitRelocatabilityPreamble()
 			for _, st := range members {
 				g.pf("static_assert( std::is_trivially_copyable<%s>::value, \"%s must stay relocatable\" );\n", st.Name, st.Name)
 				g.pf("static_assert( std::is_standard_layout<%s>::value, \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
 			}
 			g.pf("\n")
+			g.emitCookLayoutAsserts(members)
 			g.pf("// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----\n\n")
 			for _, st := range members {
 				g.pf("inline const TableTypeInfo * %sTableType();\n", st.Name)
@@ -588,6 +590,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package))
 		}
+		// the COOKED FORM's read side (SPEC-TABLES.md §7) and the BUILD VERSION
+		// it matches against, in EVERY unit that declares a table: every table
+		// cooks and any table may be a cook's root, so there is no unit with
+		// tables and no cook reader. It is not pointer machinery — no arena, no
+		// builder, no reference slot — which is what keeps §2.2's question
+		// answerable with the form still emitted.
+		h.WriteString("\n")
+		h.WriteString(buildVersionConstant(u.Package, ir.BuildVersion(u)))
+		h.WriteString("\n")
+		h.WriteString(tableCookRuntime(u.Package))
 		fmt.Fprintf(&h, "\nnamespace %s {\n\n", u.Package)
 		h.WriteString(g.body.String())
 		fmt.Fprintf(&h, "} // namespace %s\n", u.Package)

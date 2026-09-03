@@ -35,24 +35,16 @@ import (
 // blockRuntime is the shared block runtime: emitted into every <Base>Block.h
 // behind a per-package guard, so one definition survives per translation unit
 // whatever the include order and a lone Block.h works standalone.
-func blockRuntime(pkg string, buildVersion uint64) string {
+//
+// The unit's BUILD VERSION is NOT here: both accelerators carry it (§20.6) and
+// a Block header includes the Table header beside it, so it has a guard of its
+// own and one text — buildVersionConstant, emitted by both.
+func blockRuntime(pkg string) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_BLOCK_PRIMITIVES"
 	return `#ifndef ` + guard + `
 #define ` + guard + `
 
 namespace ` + pkg + ` {
-
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
-// this build produces depend on — the type wire's protocol id, every table's
-// layout keyed by wire id, every table's meaning (defaults, ranges, enum and
-// union vocabularies, keyed the same way), and the build's byte order. It is
-// the number a block carries and the number BlockOpen compares.
-//
-// There are TWO ids in the design and they are not interchangeable: the
-// PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
-// what everything cooked or blocked is keyed by. A table edit moves this and
-// never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = ` + fmt.Sprintf("0x%016xull", buildVersion) + `;
 
 // ---- the block form's runtime (SPEC-TABLES.md §19) ----
 
@@ -316,7 +308,9 @@ func blockHeader(u *ir.Unit, f *ir.File, g *tableGen, formed int) []byte {
 	}
 	h.WriteString("\n")
 	if formed > 0 {
-		h.WriteString(blockRuntime(u.Package, ir.BuildVersion(u)))
+		h.WriteString(buildVersionConstant(u.Package, ir.BuildVersion(u)))
+		h.WriteString("\n")
+		h.WriteString(blockRuntime(u.Package))
 	}
 	fmt.Fprintf(&h, "\nnamespace %s {\n\n", u.Package)
 	h.WriteString(g.body.String())
