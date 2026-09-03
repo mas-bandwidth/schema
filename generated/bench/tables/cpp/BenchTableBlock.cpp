@@ -60,20 +60,20 @@ namespace {
 extern const TableBlockInfo tableentity_block_projection;
 
 const TableBlockFieldInfo tableentity_block_projection_fields[] = {
-    { "entity_id", 24u, 4u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "pos_x", 28u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "pos_y", 32u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "pos_z", 36u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "yaw", 40u, 4u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "pitch", 44u, 4u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "vel_x", 48u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "vel_y", 52u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "vel_z", 56u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "health", 60u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "weapon", 64u, 1u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "damage", 72u, 8u, 9, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "moving", 80u, 1u, 1, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "firing", 81u, 1u, 1, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
+    { "entity_id", 24u, 4u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "pos_x", 28u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "pos_y", 32u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "pos_z", 36u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "yaw", 40u, 4u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "pitch", 44u, 4u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "vel_x", 48u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "vel_y", 52u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "vel_z", 56u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "health", 60u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "weapon", 64u, 1u, 7, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 1u, 0xffffffffu, NULL },
+    { "damage", 72u, 8u, 9, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 8u, 0xffffffffu, NULL },
+    { "moving", 80u, 1u, 1, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 1u, 0xffffffffu, NULL },
+    { "firing", 81u, 1u, 1, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 1u, 0xffffffffu, NULL },
 };
 
 const TableBlockInfo tableentity_block_projection = { "TableEntity", BuildVersion, 88u, 8u, 14, tableentity_block_projection_fields };
@@ -129,8 +129,8 @@ namespace {
 extern const TableBlockInfo tablestat_block_projection;
 
 const TableBlockFieldInfo tablestat_block_projection_fields[] = {
-    { "stat_id", 24u, 4u, 6, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
-    { "delta", 28u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, NULL },
+    { "stat_id", 24u, 4u, 6, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
+    { "delta", 28u, 4u, 4, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, false, false, false, 0, 4u, 0xffffffffu, NULL },
 };
 
 const TableBlockInfo tablestat_block_projection = { "TableStat", BuildVersion, 32u, 8u, 2, tablestat_block_projection_fields };

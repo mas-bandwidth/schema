@@ -224,41 +224,46 @@ func TestUnknownRootIsRefused(t *testing.T) {
 // reads (docs/SPEC-TABLES.md §16.2, §16.3, §17.5): one tree per rule the text form
 // states, each with the outcome the rule requires. Two clean trees prove the
 // happy path and nothing else; this is where the rules bite.
+//
+// The manifest is the CONFORMANCE HARNESS's, and the trees live beside it: the
+// battery was always data, so it moved there whole rather than keeping a
+// registry of its own, and the harness's `json-hostile` surface reads these very
+// rows. One corpus, one set of expectations.
+//
+//	json-hostile <case> <unit> <root> <tree> <verdict>
 func TestHostileValueCorpus(t *testing.T) {
 	c, u := corpus(t)
-	manifest, err := os.ReadFile("../../tables/pack/hostile-values/cases.txt")
+	const manifestPath = "../../testdata/conformance/tables/MANIFEST.txt"
+	manifest, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cases := 0
 	for line := range strings.SplitSeq(string(manifest), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
+		row := strings.Fields(line)
+		if len(row) == 0 || row[0] != "json-hostile" {
 			continue
 		}
-		row := strings.Fields(line)
-		if len(row) < 3 {
-			t.Fatalf("cases.txt: %q is neither blank, a comment, nor a case", line)
+		if len(row) != 6 {
+			t.Fatalf("%s: %q is not a json-hostile row", manifestPath, line)
 		}
-		name, root, outcome := row[0], row[1], row[2]
+		name, root, tree, verdict := row[1], row[3], row[4], row[5]
 		cases++
 		t.Run(name, func(t *testing.T) {
-			_, _, report, err := c.Pack(u, root, "../../tables/pack/hostile-values/"+name)
-			if outcome == "refused" {
+			_, _, report, err := c.Pack(u, root, "../../"+tree)
+			if verdict == "refused" {
 				if err == nil {
 					t.Fatalf("the tree packed; the manifest says it is refused")
 				}
 				return
-			}
-			if outcome != "packs" || len(row) < 4 {
-				t.Fatalf("cases.txt: %q names no outcome this gate knows", line)
 			}
 			if err != nil {
 				t.Fatalf("the tree was refused; the manifest says it packs: %v", err)
 			}
 			got := fmt.Sprintf("%d,%d,%d,%d,%v",
 				report.Unknown, report.KindMismatch, report.Clamped, report.Duplicate, report.Malformed)
-			if got != row[3] {
-				t.Fatalf("report %s, the manifest says %s", got, row[3])
+			if got != verdict {
+				t.Fatalf("report %s, the manifest says %s", got, verdict)
 			}
 		})
 	}

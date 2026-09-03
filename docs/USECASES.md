@@ -172,7 +172,7 @@ language.
   engine and the C++ generated walk to one wire and one text (§17.1); the
   hostile-value corpus is a two-sided differential over 67 trees whose
   reports must agree counter for counter and whose bytes must agree byte for
-  byte (`tables/pack/hostile-values`, **#272**); `unpack` → `pack` is
+  byte (`testdata/conformance/tables/json-hostile`, **#272**); `unpack` → `pack` is
   byte-stable across both tree shapes, with §17.3's UTF-8 carve-out pinned
   rather than assumed. The generated readers exist in C++ and C# (**#267**,
   **#266**), and the dogfood packed and unpacked a real game's config and

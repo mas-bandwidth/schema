@@ -264,3 +264,97 @@ func TestRaisingAMaximumMovesTheBuildVersion(t *testing.T) {
 		t.Error("raising a maximum left the build version where it was — the layout projection carries the bound, and this test is the record of that")
 	}
 }
+
+// THE ROW-WALK COLUMNS (docs/SPEC-TABLES.md §8.1): what a generic walker needs
+// about a field after it knows where the field starts. PaddedRow is the case
+// that has one of everything the block form leaves INLINE — a string, a fixed
+// array, an enum-keyed array, an optional — and PaddedFrame adds a `bytes` and
+// the out-of-line triple beside them.
+//
+// It is written against the numbers rather than against a re-derivation,
+// because a test that re-derived the layout would agree with a wrong model as
+// happily as with a right one.
+func TestBlockFieldRowWalkColumns(t *testing.T) {
+	u := loadRender(t)
+	b := ir.Blocks(u)
+	bl := b.Block("PaddedFrame")
+	if bl == nil {
+		t.Fatal("PaddedFrame is not a block-form table")
+	}
+	row := b.Layout("PaddedRow")
+	if row == nil {
+		t.Fatal("PaddedRow has no layout in the block closure")
+	}
+
+	type want struct {
+		field                                string
+		isArray, counted, optional           bool
+		bound, elem, countOffset, presOffset int64
+	}
+	// the ROW, at its own offsets
+	rowWants := []want{
+		{"tag", false, false, false, 0, 1, -1, -1},
+		{"value", false, false, false, 0, 8, -1, -1},
+		{"flag", false, false, false, 0, 1, -1, -1},
+		{"id", false, false, false, 0, 4, -1, -1},
+		// string(15): a char[16] buffer at 24 and the int32 used length at 40.
+		// A string is COUNTED and not an ARRAY, and the bound is the declared
+		// maximum rather than the buffer.
+		{"label", false, true, false, 15, 1, 40, -1},
+		{"slots", true, false, false, 4, 2, -1, -1},   // [4]uint16
+		{"teams", true, false, false, 4, 1, -1, -1},   // [Team]uint8: one slot per named variant
+		{"counter", false, false, true, 0, 4, -1, 60}, // ?int32: the value, then the presence bool
+	}
+	for _, w := range rowWants {
+		fl := row.FieldByName(w.field)
+		if fl == nil {
+			t.Errorf("PaddedRow declares no field %s", w.field)
+			continue
+		}
+		got := ir.BlockFieldOf(u, fl.Field, fl.Offset, false)
+		if got.IsArray != w.isArray || got.Counted != w.counted || got.Optional != w.optional ||
+			got.ArrayBound != w.bound || got.ElemSize != w.elem ||
+			got.CountOffset != w.countOffset || got.PresentOffset != w.presOffset {
+			t.Errorf("PaddedRow.%s = %+v, want array=%t counted=%t optional=%t bound=%d elem=%d count@%d present@%d",
+				w.field, got, w.isArray, w.counted, w.optional, w.bound, w.elem, w.countOffset, w.presOffset)
+		}
+	}
+
+	// the PROJECTION, whose out-of-line array is its triple: the count
+	// companion is the triple's own `count` member, eight bytes in, which is
+	// the same column doing the same job as a string's used length.
+	rows := bl.Projection.FieldByName("rows")
+	got := ir.BlockFieldOf(u, rows.Field, rows.Offset, true)
+	if !got.IsArray || !got.Counted || got.CountOffset != rows.Offset+8 || got.ArrayBound != 64 {
+		t.Errorf("PaddedFrame.rows = %+v, want an array of bound 64 counted at %d", got, rows.Offset+8)
+	}
+	// bytes(12): twelve bytes then the int32 length, an ARRAY and COUNTED
+	blob := bl.Projection.FieldByName("blob")
+	got = ir.BlockFieldOf(u, blob.Field, blob.Offset, true)
+	if !got.IsArray || !got.Counted || got.ArrayBound != 12 || got.ElemSize != 1 ||
+		got.CountOffset != blob.Offset+12 {
+		t.Errorf("PaddedFrame.blob = %+v, want twelve u8 slots counted at %d", got, blob.Offset+12)
+	}
+}
+
+// The NEGATIVE CONTROL for the columns above, and it is the one a sweep cannot
+// give: a walker that took `size` for the element count would read a
+// `string(15)` as twenty one-byte slots and an optional int32 as five. The
+// assertion is that the two numbers DIFFER — the columns carry something the
+// offset/size pair does not.
+func TestRowWalkColumnsAreNotDerivableFromSize(t *testing.T) {
+	u := loadRender(t)
+	row := ir.Blocks(u).Layout("PaddedRow")
+	for _, name := range []string{"label", "counter"} {
+		fl := row.FieldByName(name)
+		got := ir.BlockFieldOf(u, fl.Field, fl.Offset, false)
+		span := got.ArrayBound * got.ElemSize
+		if got.ArrayBound == 0 {
+			span = got.ElemSize
+		}
+		if span == fl.Size {
+			t.Errorf("PaddedRow.%s spans %d of %d bytes — the companion is inside the field, "+
+				"and a walker that took the field's size would read it too", name, span, fl.Size)
+		}
+	}
+}

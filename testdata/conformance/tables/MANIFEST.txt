@@ -21,10 +21,11 @@
 #            reports.txt keyed by <case>, because they are GENERATED and this
 #            file is hand-authored.
 #
-#   cook     <root> <unit> <dump file>
+#   cook     <case> <unit> <root> <dump file>
 #            a cooked file (§7) — materialised by test/cookgen, which is
 #            deterministic — and the canonical node dump its Open must produce,
-#            byte for byte.
+#            byte for byte. <case> names the FIXTURE and <root> the table it is
+#            opened at: one root can have more than one fixture.
 #
 #   block    <name> <unit> <block file>
 #            a block image (§19) an Open must accept.
@@ -77,38 +78,253 @@ report p3_as_p1       tblp1 Chain testdata/wire/tables/chain_optional.bin
 report p1_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_value_empty.bin
 report p3_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_optional_empty.bin
 
-block block_render blockdemo testdata/wire/tables/block_render.bin
-block block_padded blockdemo testdata/wire/tables/block_padded.bin
+block block_render blockdemo testdata/wire/tables/block_render.bin testdata/conformance/tables/block/block_render.dump
+block block_padded blockdemo testdata/wire/tables/block_padded.bin testdata/conformance/tables/block/block_padded.dump
 
 # THE COOKED FILES (docs/SPEC-TABLES.md §7). The fixture itself is materialised by
 # test/cookgen, which is deterministic, so what is pinned here is the canonical
 # NODE DUMP: one line per node and one per leaf, the same walk in every
 # language, byte-compared. A record laid out one byte differently INSIDE a node
 # moves no node offset, so this is the gate the directory check cannot be.
-cook Scene    graphdemo testdata/conformance/tables/cook/Scene.dump
-cook Depot    graphdemo testdata/conformance/tables/cook/Depot.dump
-cook Album    graphdemo testdata/conformance/tables/cook/Album.dump
-cook TreeNode graphdemo testdata/conformance/tables/cook/TreeNode.dump
-cook ListNode graphdemo testdata/conformance/tables/cook/ListNode.dump
+cook Scene       graphdemo Scene    testdata/conformance/tables/cook/Scene.dump
+cook Depot       graphdemo Depot    testdata/conformance/tables/cook/Depot.dump
+cook Album       graphdemo Album    testdata/conformance/tables/cook/Album.dump
+cook TreeNode    graphdemo TreeNode testdata/conformance/tables/cook/TreeNode.dump
+cook ListNode    graphdemo ListNode testdata/conformance/tables/cook/ListNode.dump
+# and the VALUED chain, which is why <case> and <root> are two columns: the five
+# above are value-initialised, so their dumps lock every offset, every deref and
+# every visit order and almost no VALUES. This one carries a value in every
+# non-pointer leaf, so the same walk locks what a reader READS as well.
+cook SceneValued graphdemo Scene    testdata/conformance/tables/cook/SceneValued.dump
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
 # word of an otherwise valid block image, resolved to a byte offset.
 #
-#   forgery <name> block <subject> <base> <offset> <width> <value> <extent> <verdict> <label>
+#   forgery <name> block <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 #
 # <base> names the block line the image comes from; <extent> is the length the
-# CALLER claims (-1: the image's own).
+# CALLER claims (-1: the image's own); <pointer> is 0 — every block row is read
+# out of an ALIGNED base, and the column is the cook battery's.
 # The harness applies the patch and hands a driver a path.
 # Repin with: make conformance-pin.
-forgery block_magic_foreign        block block_render block_render 0x0000 8 0x0                      -1 refuse a foreign magic
-forgery block_magic_swapped        block block_render block_render 0x0000 8 0x5343484d41424c4b       -1 refuse a block of the other byte order
-forgery block_build_version        block block_render block_render 0x0008 8 0x863a8eebc1090dc7       -1 refuse a build this one does not match
-forgery block_byte_order           block block_render block_render 0x0010 8 0x2                      -1 refuse the other byte order in the prologue's own word
-forgery block_array_unaligned      block block_render block_render 0x0030 8 0x141                    -1 refuse an array start not aligned for its element
-forgery block_array_in_prologue    block block_render block_render 0x0030 8 0x0                      -1 refuse an array start inside the projection
-forgery block_array_escapes        block block_render block_render 0x0030 8 0x783b40                 -1 refuse an array that leaves the block
-forgery block_pitch                block block_render block_render 0x003c 4 0x60                     -1 refuse a pitch that is not this build's own
-forgery block_count_past_extent    block block_render block_render 0x0038 4 0xfa0                200000 refuse a count whose rows leave the extent the caller passed
-forgery block_count_past_maximum   block block_render block_render 0x0038 4 0x1388              7879488 refuse a count past the declared maximum, inside a roomy extent
-forgery block_offset_overflow      block block_render block_render 0x0020 8 0x7fffffffffffffc0       -1 refuse an offset 64-aligned and just under 2^63 — the forgery fuzzer's find
+forgery block_magic_foreign        block block_render block_render 0 0x0000 8 0x0                      -1 refuse a foreign magic
+forgery block_magic_swapped        block block_render block_render 0 0x0000 8 0x5343484d41424c4b       -1 refuse a block of the other byte order
+forgery block_build_version        block block_render block_render 0 0x0008 8 0x863a8eebc1090dc7       -1 refuse a build this one does not match
+forgery block_byte_order           block block_render block_render 0 0x0010 8 0x2                      -1 refuse the other byte order in the prologue's own word
+forgery block_array_unaligned      block block_render block_render 0 0x0030 8 0x141                    -1 refuse an array start not aligned for its element
+forgery block_array_in_prologue    block block_render block_render 0 0x0030 8 0x0                      -1 refuse an array start inside the projection
+forgery block_array_escapes        block block_render block_render 0 0x0030 8 0x783b40                 -1 refuse an array that leaves the block
+forgery block_pitch                block block_render block_render 0 0x003c 4 0x60                     -1 refuse a pitch that is not this build's own
+forgery block_count_past_extent    block block_render block_render 0 0x0038 4 0xfa0                200000 refuse a count whose rows leave the extent the caller passed
+forgery block_count_past_maximum   block block_render block_render 0 0x0038 4 0x1388              7879488 refuse a count past the declared maximum, inside a roomy extent
+forgery block_offset_overflow      block block_render block_render 0 0x0020 8 0x7fffffffffffffc0       -1 refuse an offset 64-aligned and just under 2^63 — the forgery fuzzer's find
+
+# THE COOK FORGERY BATTERY as data (docs/SPEC-TABLES.md §7, §7.4), pinned
+# from test/tables/cook_main.cpp's 111 by that binary's emit-forgeries mode:
+# every row is one edit to an otherwise valid cook, resolved to byte offsets
+# over the fixture test/cookgen writes for this root.
+#
+#   forgery <name> cook <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
+#
+# <pointer> is the BUFFER the caller holds — 0 an aligned base, 1..63 that
+# many bytes past one, `null` no buffer at all — because an unaligned base is
+# a pointer fact and not a file fact. <extent> is the length the caller
+# claims (-1: the file's own), and a claim SHORT of the file is a truncation.
+# The three rows whose verdict is `open` are §7's own ruling written down:
+# Open reads the header and points, and those three are cook-check's.
+# Repin with: make conformance-pin.
+forgery cook_magic_byte0               cook Scene Scene 0    0x0          8     0x4b4f4f434d4843ac             -1 refuse one byte of the magic
+forgery cook_magic_byte1               cook Scene Scene 0    0x0          8     0x4b4f4f434d48bc53             -1 refuse one byte of the magic
+forgery cook_magic_byte2               cook Scene Scene 0    0x0          8     0x4b4f4f434db74353             -1 refuse one byte of the magic
+forgery cook_magic_byte3               cook Scene Scene 0    0x0          8     0x4b4f4f43b2484353             -1 refuse one byte of the magic
+forgery cook_magic_byte4               cook Scene Scene 0    0x0          8     0x4b4f4fbc4d484353             -1 refuse one byte of the magic
+forgery cook_magic_byte5               cook Scene Scene 0    0x0          8     0x4b4fb0434d484353             -1 refuse one byte of the magic
+forgery cook_magic_byte6               cook Scene Scene 0    0x0          8     0x4bb04f434d484353             -1 refuse one byte of the magic
+forgery cook_magic_byte7               cook Scene Scene 0    0x0          8     0xb44f4f434d484353             -1 refuse one byte of the magic
+forgery cook_magic_reversed            cook Scene Scene 0    0x0          8     0x5343484d434f4f4b             -1 refuse the magic byte-reversed: a cook of the other byte order
+forgery cook_magic_block               cook Scene Scene 0    0x0          8     0x4b4c42414d484353             -1 refuse the BLOCK form's magic: a block where a cook was written
+forgery cook_byte_order_0              cook Scene Scene 0    0x10         8     0x0                            -1 refuse the byte-order word
+forgery cook_byte_order_2              cook Scene Scene 0    0x10         8     0x2                            -1 refuse the byte-order word
+forgery cook_byte_order_3              cook Scene Scene 0    0x10         8     0x3                            -1 refuse the byte-order word
+forgery cook_build_zero                cook Scene Scene 0    0x8          8     0x0                            -1 refuse a zero build version
+forgery cook_build_one_bit             cook Scene Scene 0    0x8          8     0xe7c54936602ceecb             -1 refuse a build version one bit away from this build's
+forgery cook_build_saturated           cook Scene Scene 0    0x8          8     0xffffffffffffffff             -1 refuse a saturated build version
+forgery cook_reserved0_one             cook Scene Scene 0    0x30         8     0x1                            -1 refuse the first reserved word non-zero
+forgery cook_reserved1_one             cook Scene Scene 0    0x38         8     0x1                            -1 refuse the second reserved word non-zero
+forgery cook_reserved0_saturated       cook Scene Scene 0    0x30         8     0xffffffffffffffff             -1 refuse the first reserved word saturated
+forgery cook_alignment_0               cook Scene Scene 0    0x28         8     0x0                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_1               cook Scene Scene 0    0x28         8     0x1                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_2               cook Scene Scene 0    0x28         8     0x2                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_3               cook Scene Scene 0    0x28         8     0x3                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_4               cook Scene Scene 0    0x28         8     0x4                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_5               cook Scene Scene 0    0x28         8     0x5                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_6               cook Scene Scene 0    0x28         8     0x6                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_7               cook Scene Scene 0    0x28         8     0x7                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_12              cook Scene Scene 0    0x28         8     0xc                            -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_24              cook Scene Scene 0    0x28         8     0x18                           -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_128             cook Scene Scene 0    0x28         8     0x80                           -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_pow63           cook Scene Scene 0    0x28         8     0x8000000000000000             -1 refuse an alignment word that is not a region's alignment
+forgery cook_alignment_saturated       cook Scene Scene 0    0x28         8     0xffffffffffffffff             -1 refuse an alignment word that is not a region's alignment
+forgery cook_data_length_long          cook Scene Scene 0    0x18         8     0xff1                          -1 refuse a data length one byte long
+forgery cook_data_length_short         cook Scene Scene 0    0x18         8     0xfef                          -1 refuse a data length one byte short
+forgery cook_data_length_saturated     cook Scene Scene 0    0x18         8     0xffffffffffffffff             -1 refuse a saturated data length
+forgery cook_data_length_under_root    cook Scene Scene 0    0x18         8     0xaf                           -1 refuse a data part too short to hold the root, and one byte off the total too
+forgery cook_data_length_eight_bytes   cook Scene Scene 0    0x18,0x20    8,8   0x8,0x1798                     -1 refuse a data part of eight bytes, with the attribution length made up so the total still matches
+forgery cook_data_length_empty         cook Scene Scene 0    0x18         8     0x0                            -1 refuse an empty data part
+forgery cook_attribution_long          cook Scene Scene 0    0x20         8     0x7b1                          -1 refuse an attribution length one byte long
+forgery cook_attribution_short         cook Scene Scene 0    0x20         8     0x7af                          -1 refuse an attribution length one byte short
+forgery cook_attribution_saturated     cook Scene Scene 0    0x20         8     0xffffffffffffffff             -1 refuse a saturated attribution length
+forgery cook_claim_0                   cook Scene Scene 0    -1           0     0                               0 refuse a truncated file
+forgery cook_claim_1                   cook Scene Scene 0    -1           0     0                               1 refuse a truncated file
+forgery cook_claim_8                   cook Scene Scene 0    -1           0     0                               8 refuse a truncated file
+forgery cook_claim_63                  cook Scene Scene 0    -1           0     0                              63 refuse a truncated file
+forgery cook_claim_64                  cook Scene Scene 0    -1           0     0                              64 refuse a truncated file
+forgery cook_claim_65                  cook Scene Scene 0    -1           0     0                              65 refuse a truncated file
+forgery cook_claim_one_short           cook Scene Scene 0    -1           0     0                            6111 refuse one byte short
+forgery cook_claim_one_long            cook Scene Scene 0    -1           0     0                            6113 refuse one trailing byte
+forgery cook_claim_header_only         cook Scene Scene 0    -1           0     0                              64 refuse the header alone
+forgery cook_claim_no_attribution      cook Scene Scene 0    -1           0     0                            4144 refuse the data part with the attribution cut off, and the header still claiming it
+forgery cook_lead_1                    cook Scene Scene 1    -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_2                    cook Scene Scene 2    -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_3                    cook Scene Scene 3    -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_4                    cook Scene Scene 4    -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_5                    cook Scene Scene 5    -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_6                    cook Scene Scene 6    -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_7                    cook Scene Scene 7    -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_9                    cook Scene Scene 9    -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_10                   cook Scene Scene 10   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_11                   cook Scene Scene 11   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_12                   cook Scene Scene 12   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_13                   cook Scene Scene 13   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_14                   cook Scene Scene 14   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_15                   cook Scene Scene 15   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_17                   cook Scene Scene 17   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_18                   cook Scene Scene 18   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_19                   cook Scene Scene 19   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_20                   cook Scene Scene 20   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_21                   cook Scene Scene 21   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_22                   cook Scene Scene 22   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_23                   cook Scene Scene 23   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_25                   cook Scene Scene 25   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_26                   cook Scene Scene 26   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_27                   cook Scene Scene 27   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_28                   cook Scene Scene 28   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_29                   cook Scene Scene 29   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_30                   cook Scene Scene 30   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_31                   cook Scene Scene 31   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_33                   cook Scene Scene 33   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_34                   cook Scene Scene 34   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_35                   cook Scene Scene 35   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_36                   cook Scene Scene 36   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_37                   cook Scene Scene 37   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_38                   cook Scene Scene 38   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_39                   cook Scene Scene 39   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_41                   cook Scene Scene 41   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_42                   cook Scene Scene 42   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_43                   cook Scene Scene 43   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_44                   cook Scene Scene 44   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_45                   cook Scene Scene 45   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_46                   cook Scene Scene 46   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_47                   cook Scene Scene 47   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_49                   cook Scene Scene 49   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_50                   cook Scene Scene 50   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_51                   cook Scene Scene 51   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_52                   cook Scene Scene 52   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_53                   cook Scene Scene 53   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_54                   cook Scene Scene 54   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_55                   cook Scene Scene 55   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_57                   cook Scene Scene 57   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_58                   cook Scene Scene 58   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_59                   cook Scene Scene 59   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_60                   cook Scene Scene 60   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_61                   cook Scene Scene 61   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_62                   cook Scene Scene 62   -1           0     0                              -1 refuse an unaligned base
+forgery cook_lead_63                   cook Scene Scene 63   -1           0     0                              -1 refuse an unaligned base
+forgery cook_null_buffer               cook Scene Scene null -1           0     0                              -1 refuse a NULL buffer
+forgery cook_open_forward_delta        cook Scene Scene 0    0xe8         8     0x7fffffffffffffff             -1 open   a reference slot with an enormous forward delta — cook-check's refusal, not Open's
+forgery cook_open_negative_delta       cook Scene Scene 0    0xe8         8     0xffffffffffffefc0             -1 open   a negative delta past the base — cook-check's refusal, not Open's
+forgery cook_open_directory_entry      cook Scene Scene 0    0x1030       8     0xffffffffffffffff             -1 open   a directory entry naming an offset outside the region — the attribution is not read at open
+
+# THE HOSTILE-VALUE BATTERY (docs/SPEC-TABLES.md §16.2, §16.3, §17.5): one tree
+# per rule the text form states, so a divergence between the compiler's engine
+# and a backend shows up as a diff rather than as a happy path that still
+# passes. It moved here whole from tables/pack — it was always data, and it had
+# a manifest of its own that this file now is.
+#
+#   json-hostile <case> <unit> <root> <tree> <verdict>
+#
+# <tree> is the directory `schema pack` reads, so the text is <tree>/<root>.json
+# (§17). <verdict> is `refused` or the §4 report the read produces,
+# <unknown>,<kind_mismatch>,<clamped>,<duplicate>,<malformed>.
+#
+# A case that PACKS carries one further invariant, uniform and therefore not
+# spelled per row: the bytes it produces load CLEAN in the generated backend —
+# report all zero — and re-save byte-identically. That half is
+# test/tables/hostile_main.cpp's, which reads these very rows.
+json-hostile array-past-bound             tabledemo RootConfig  testdata/conformance/tables/json-hostile/array-past-bound             0,0,2,0,false
+json-hostile base64-empty                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-empty                 0,0,0,0,false
+json-hostile base64-unpadded              tabledemo RootConfig  testdata/conformance/tables/json-hostile/base64-unpadded              0,0,0,0,false
+json-hostile bits-at-max                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/bits-at-max                  0,0,0,0,false
+json-hostile bits-over-range              tabledemo RootConfig  testdata/conformance/tables/json-hostile/bits-over-range              0,0,1,0,false
+json-hostile bytes-not-base64             tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-not-base64             0,1,0,0,false
+json-hostile bytes-overlong               tabledemo RootConfig  testdata/conformance/tables/json-hostile/bytes-overlong               0,0,1,0,false
+json-hostile comment-refused              tabledemo RootConfig  testdata/conformance/tables/json-hostile/comment-refused              refused
+json-hostile dup-key                      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key                      0,0,0,1,false
+json-hostile dup-key-array                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-array                0,0,0,1,false
+json-hostile dup-key-placeable            tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable            0,0,0,1,false
+json-hostile dup-key-rejected-element     tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-element     0,1,0,1,false
+json-hostile dup-key-rejected-float       tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-float       0,1,0,1,false
+json-hostile dup-key-rejected-keyed       tabledemo PackConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-keyed       0,1,0,1,false
+json-hostile dup-key-rejected-nested      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-nested      0,1,0,1,false
+json-hostile dup-key-rejected-scalar      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-scalar      0,1,0,1,false
+json-hostile dup-key-table                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-table                0,0,0,1,false
+json-hostile dup-key-union                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-union                0,0,0,1,false
+json-hostile dup-key-wrong-shape          tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-wrong-shape          0,1,0,1,false
+json-hostile enum-unknown-name            tabledemo RootConfig  testdata/conformance/tables/json-hostile/enum-unknown-name            1,0,0,0,false
+json-hostile flags-unknown-name           tabledemo RootConfig  testdata/conformance/tables/json-hostile/flags-unknown-name           1,0,0,0,false
+json-hostile guard-key-after-fields       tabledemo RootConfig  testdata/conformance/tables/json-hostile/guard-key-after-fields       0,0,0,0,false
+json-hostile json-key-declared-name       tabledemo PackConfig  testdata/conformance/tables/json-hostile/json-key-declared-name       1,0,0,0,false
+json-hostile keyed-duplicate-mixed        tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-mixed        2,0,0,1,false
+json-hostile keyed-duplicate-none         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none         2,0,0,0,false
+json-hostile keyed-duplicate-slot         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-slot         0,0,0,1,false
+json-hostile keyed-duplicate-unknown      tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown      2,0,0,0,false
+json-hostile keyed-none-key               tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-none-key               1,0,0,0,false
+json-hostile keyed-unknown-key            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key            1,0,0,0,false
+json-hostile keyed-wrong-shape            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape            0,1,0,0,false
+json-hostile nesting-past-depth-cap       tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-past-depth-cap       refused
+json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,false
+json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,false
+json-hostile num-bare-minus               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus               refused
+json-hostile num-double-dot               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-double-dot               refused
+json-hostile num-double-minus             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-double-minus             refused
+json-hostile num-float32-midpoint         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-midpoint         0,1,0,0,false
+json-hostile num-float32-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-overflow         0,1,0,0,false
+json-hostile num-float32-subnormal        tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-subnormal        0,0,0,0,false
+json-hostile num-float32-upper-band       tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float32-upper-band       0,0,0,0,false
+json-hostile num-float64-overflow         tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-float64-overflow         0,1,0,0,false
+json-hostile num-fraction                 tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-fraction                 0,1,0,0,false
+json-hostile num-int-overflow             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow             0,0,2,0,false
+json-hostile num-int64-min                tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-int64-min                0,0,0,0,false
+json-hostile num-integral-forms           tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms           0,0,0,0,false
+json-hostile num-leading-plus             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-leading-plus             refused
+json-hostile num-leading-zero             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-leading-zero             refused
+json-hostile num-negative-unsigned        tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-unsigned        0,0,1,0,false
+json-hostile num-negative-zero            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero            0,0,0,0,false
+json-hostile num-no-exp-digits            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-no-exp-digits            refused
+json-hostile num-no-int                   tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-no-int                   refused
+json-hostile num-three-part               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-three-part               refused
+json-hostile num-trailing-dot             tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-trailing-dot             refused
+json-hostile num-trailing-plus            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-trailing-plus            refused
+json-hostile num-two-exponents            tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-two-exponents            refused
+json-hostile optional-present-empty       tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-present-empty       0,0,0,0,false
+json-hostile optional-wrong-shape         tabledemo PackConfig  testdata/conformance/tables/json-hostile/optional-wrong-shape         0,1,0,0,false
+json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-clamp-boundary           0,0,1,0,false
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       0,0,0,0,false
+json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,false
+json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,false
+json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,false
+json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,false
+json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
+json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false
+json-hostile unknown-key                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/unknown-key                  1,0,0,0,false

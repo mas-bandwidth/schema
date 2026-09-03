@@ -13,10 +13,11 @@
 // that has no text form is missing a feature, not failing a test, and the
 // difference is the whole reason the matrix exists.
 //
-// The two units that are NOT here are deliberate: the cook's node dump and the
-// block form's own batteries are already held by test/tables/cook_main.cpp and
-// test/tables/block_main.cpp, and this driver's shell wrapper delegates those
-// surfaces to those binaries rather than compiling a second copy of them.
+// The COOK surfaces are not here and that is deliberate: the node dump and the
+// 111-row forgery battery are already held by test/tables/cook_main.cpp, whose
+// unit this one does not compile, and the shell wrapper delegates both to that
+// binary rather than to a second copy of the same walk. The BLOCK surfaces are
+// here, because this driver already opens the block unit.
 
 #include <cstdio>
 #include <cstdlib>
@@ -30,6 +31,7 @@
 #include "WideTable.h"
 #include "NestedTable.h"
 #include "KeyedTable.h"
+#include "PackTable.h"
 #include "V1Table.h"
 #include "V2Table.h"
 #include "P1Table.h"
@@ -203,6 +205,7 @@ static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, WideBlob ),
     CODEC( "tabledemo", tabledemo, ArchiveConfig ),
     CODEC( "tabledemo", tabledemo, KeyedConfig ),
+    CODEC( "tabledemo", tabledemo, PackConfig ),
     CODEC( "tblv1", tblv1, Cfg ),
     CODEC( "tblv2", tblv2, Cfg ),
     CODEC( "tblp1", tblp1, Chain ),
@@ -239,13 +242,16 @@ struct Aligned
     // sanitizer's redzone rather than into a neighbour.
     bool create( const std::vector<uint8_t> & data, int64_t extent )
     {
+        // the allocation IS the claim, and the claim may be shorter than the
+        // file: a driver copies what fits and zeroes the rest, which is the one
+        // rule both forgery batteries read the extent column by.
         bytes = extent < 0 ? (int64_t) data.size() : extent;
-        if ( bytes < (int64_t) data.size() ) bytes = (int64_t) data.size();
-        raw = (uint8_t *) malloc( (size_t) bytes + 64 );
+        raw = (uint8_t *) malloc( (size_t) ( bytes > 0 ? bytes : 1 ) + 64 );
         if ( raw == NULL ) return false;
         base = (uint8_t *) ( ( (uintptr_t) raw + 63 ) & ~(uintptr_t) 63 );
         memset( base, 0, (size_t) bytes );
-        memcpy( base, data.data(), data.size() );
+        const size_t copy = data.size() < (size_t) bytes ? data.size() : (size_t) bytes;
+        memcpy( base, data.data(), copy );
         return true;
     }
     void destroy() { free( raw ); raw = NULL; }
@@ -274,6 +280,229 @@ static bool open_block( const std::string & name, const std::vector<uint8_t> & d
     }
     storage.destroy();
     return opened;
+}
+
+// ---------------------------------------------------------------------------
+// the BLOCK ROW DUMP (testdata/conformance/tables/FORMAT.md)
+// ---------------------------------------------------------------------------
+//
+// The `block` surface says only that an image OPENS, which a port passes with
+// a reader that checks the prologue and stops. This one reads every row VALUE
+// FOR VALUE and writes the walk out as text, so two implementations' reads are
+// byte-compared. It is written against §8's descriptors and NOTHING ELSE — no
+// generated struct, no field named in this file — because that is the claim
+// §19.2 makes for them, and a walk that reached for a struct would be proving
+// something else.
+//
+// The conventions are the cook's node dump's (§7.5), with one addition the
+// cook's corpus never needed: a FLOAT is written as its IEEE-754 BIT PATTERN.
+// A block row is a byte-identical projection, so its bits are the fact and a
+// decimal spelling would be a rounding rule two languages have to agree on for
+// no gain — the cook's dump refuses a float rather than inventing one, and
+// this is the same refusal to invent, answered by not spelling it as a number.
+
+typedef blockdemo::TableBlockInfo BlockInfo;
+typedef blockdemo::TableBlockFieldInfo BlockField;
+
+static void dump_scalar( std::string & out, const uint8_t * at, uint8_t kind, uint32_t width )
+{
+    char text[64];
+    switch ( kind )
+    {
+        case 1: // bool
+            snprintf( text, sizeof( text ), "%s", *at != 0 ? "true" : "false" );
+            break;
+        case 10: // float32: the bit pattern, in this build's own order
+        {
+            uint32_t bits = 0;
+            memcpy( &bits, at, 4 );
+            snprintf( text, sizeof( text ), "0x%08x", bits );
+            break;
+        }
+        case 11: // float64
+        {
+            uint64_t bits = 0;
+            memcpy( &bits, at, 8 );
+            snprintf( text, sizeof( text ), "0x%016llx", (unsigned long long) bits );
+            break;
+        }
+        case 2: case 3: case 4: case 5: // the SIGNED integers
+        {
+            int64_t v = 0;
+            if ( width == 1 ) { int8_t t; memcpy( &t, at, 1 ); v = t; }
+            else if ( width == 2 ) { int16_t t; memcpy( &t, at, 2 ); v = t; }
+            else if ( width == 4 ) { int32_t t; memcpy( &t, at, 4 ); v = t; }
+            else { memcpy( &v, at, 8 ); }
+            snprintf( text, sizeof( text ), "%lld", (long long) v );
+            break;
+        }
+        default: // an enum's ordinal, a flags mask, and every unsigned integer
+        {
+            uint64_t v = 0;
+            if ( width == 1 ) { v = *at; }
+            else if ( width == 2 ) { uint16_t t; memcpy( &t, at, 2 ); v = t; }
+            else if ( width == 4 ) { uint32_t t; memcpy( &t, at, 4 ); v = t; }
+            else { memcpy( &v, at, 8 ); }
+            snprintf( text, sizeof( text ), "%llu", (unsigned long long) v );
+            break;
+        }
+    }
+    out += text;
+}
+
+// a string's or a `bytes`' USED bytes, quoted, with everything outside
+// printable ASCII escaped — the cook dump's spelling, exactly
+static void dump_text( std::string & out, const uint8_t * at, int32_t used )
+{
+    if ( used < 0 ) used = 0;
+    out += '"';
+    for ( int32_t i = 0; i < used; i++ )
+    {
+        const uint8_t c = at[i];
+        if ( c >= 0x20 && c < 0x7f && c != '"' && c != '\\' )
+        {
+            out += (char) c;
+        }
+        else
+        {
+            char escape[8];
+            snprintf( escape, sizeof( escape ), "\\x%02x", (unsigned) c );
+            out += escape;
+        }
+    }
+    out += '"';
+    char tail[32];
+    snprintf( tail, sizeof( tail ), " len=%d", (int) used );
+    out += tail;
+}
+
+static std::string dump_join( const std::string & prefix, const char * name )
+{
+    return prefix.empty() ? std::string( name ) : prefix + "." + name;
+}
+
+static std::string dump_slot( const std::string & path, int64_t slot )
+{
+    char index[32];
+    snprintf( index, sizeof( index ), "[%lld]", (long long) slot );
+    return path + index;
+}
+
+// One record's leaves, at two spaces, in descriptor order. `storage` is the
+// record's own base. Out-of-line arrays are the caller's business: they are a
+// section of their own, not a leaf.
+static bool dump_record( std::string & out, const uint8_t * storage, const BlockInfo * info,
+                         const std::string & path )
+{
+    if ( info == NULL ) { fprintf( stderr, "driver: a descriptor names no record\n" ); return false; }
+    for ( int i = 0; i < info->num_fields; i++ )
+    {
+        const BlockField & f = info->fields[i];
+        if ( f.out_of_line ) continue;
+        const std::string name = dump_join( path, f.name );
+
+        if ( f.counted )
+        {
+            // a string or a `bytes`: the used length lives at count_offset
+            int32_t used = 0;
+            memcpy( &used, storage + f.count_offset, sizeof( used ) );
+            if ( used < 0 || used > f.array_bound )
+            {
+                fprintf( stderr, "driver: %s.%s carries a used length of %d, outside [ 0, %d ]\n",
+                         info->name, f.name, used, f.array_bound );
+                return false;
+            }
+            out += "  " + name + " = ";
+            dump_text( out, storage + f.offset, used );
+            out += "\n";
+        }
+        else
+        {
+            const int64_t slots = f.is_array ? (int64_t) f.array_bound : 1;
+            for ( int64_t s = 0; s < slots; s++ )
+            {
+                const std::string at = f.is_array ? dump_slot( name, s ) : name;
+                const uint8_t * value = storage + f.offset + s * (int64_t) f.elem_size;
+                if ( f.element != NULL )
+                {
+                    if ( !dump_record( out, value, f.element(), at ) ) return false;
+                }
+                else
+                {
+                    out += "  " + at + " = ";
+                    dump_scalar( out, value, f.kind, f.elem_size );
+                    out += "\n";
+                }
+            }
+        }
+
+        if ( f.optional )
+        {
+            out += "  " + name + "#present = ";
+            out += storage[f.present_offset] != 0 ? "true" : "false";
+            out += "\n";
+        }
+    }
+    return true;
+}
+
+// the whole dump of one opened block: the projection's own fields, then every
+// out-of-line array in declaration order, row by row
+static bool dump_block( std::string & out, const uint8_t * base, const BlockInfo * info )
+{
+    char header[256];
+    snprintf( header, sizeof( header ), "projection %s @0\n", info->name );
+    out += header;
+    if ( !dump_record( out, base, info, "" ) ) return false;
+
+    for ( int i = 0; i < info->num_fields; i++ )
+    {
+        const BlockField & f = info->fields[i];
+        if ( !f.out_of_line ) continue;
+        uint64_t offset_of = 0;
+        uint32_t count = 0, stride = 0;
+        memcpy( &offset_of, base + f.offset_of_offset, 8 );
+        memcpy( &count, base + f.count_offset, 4 );
+        memcpy( &stride, base + f.stride_offset, 4 );
+        const BlockInfo * row = f.element();
+        if ( row == NULL ) { fprintf( stderr, "driver: %s names no element\n", f.name ); return false; }
+        snprintf( header, sizeof( header ), "array %s %s @%llu count=%u stride=%u\n",
+                  f.name, row->name, (unsigned long long) offset_of, count, stride );
+        out += header;
+        for ( uint32_t r = 0; r < count; r++ )
+        {
+            const uint64_t at = offset_of + (uint64_t) r * stride;
+            snprintf( header, sizeof( header ), "row %u @%llu\n", r, (unsigned long long) at );
+            out += header;
+            if ( !dump_record( out, base + at, row, "" ) ) return false;
+        }
+    }
+    return true;
+}
+
+static bool block_dump( const std::string & name, const std::vector<uint8_t> & data, std::string & out )
+{
+    Aligned storage = {};
+    if ( !storage.create( data, -1 ) ) return false;
+    bool ok = false;
+    if ( name.rfind( "block_render", 0 ) == 0 )
+    {
+        blockdemo::RenderFrameBlock block;
+        ok = blockdemo::RenderFrameBlockOpen( block, storage.base, storage.bytes ) &&
+             dump_block( out, block.base, blockdemo::RenderFrameBlock::Type() );
+    }
+    else if ( name.rfind( "block_padded", 0 ) == 0 )
+    {
+        blockdemo::PaddedFrameBlock block;
+        ok = blockdemo::PaddedFrameBlockOpen( block, storage.base, storage.bytes ) &&
+             dump_block( out, block.base, blockdemo::PaddedFrameBlock::Type() );
+    }
+    else
+    {
+        fprintf( stderr, "driver: no block named %s\n", name.c_str() );
+    }
+    storage.destroy();
+    return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +622,53 @@ static int surface_block( const std::string & out )
     return 0;
 }
 
+// json-hostile: one tree per rule the text form states (§16.2, §16.3, §17.5).
+// The answer is the REPORT the read produces, or `refused` — which is the same
+// two-valued verdict the engine's own gate holds, over the same data.
+static int surface_json_hostile( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "json-hostile" ) continue;
+        const Codec * codec = find_codec( f[2], f[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+        std::vector<uint8_t> text;
+        // the tree is what `schema pack` reads, so the text is <tree>/<root>.json (§17)
+        const std::string path = f[4] + "/" + f[3] + ".json";
+        if ( !slurp( path.c_str(), text ) ) { fprintf( stderr, "driver: cannot read %s\n", path.c_str() ); return 1; }
+
+        void * value = codec->make();
+        codec->reset( value );
+        Report report;
+        const bool ok = codec->from_json( value, (const char *) text.data(), (int64_t) text.size(), &report );
+        char verdict[128];
+        int n;
+        if ( !ok || report.malformed )
+            n = snprintf( verdict, sizeof( verdict ), "refused\n" );
+        else
+            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,false\n",
+                          report.unknown, report.kind_mismatch, report.clamped, report.duplicate );
+        if ( !spill( out, f[1], verdict, (size_t) n ) ) return 1;
+    }
+    return 0;
+}
+
+static int surface_block_dump( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "block" ) continue;
+        std::vector<uint8_t> data;
+        if ( !slurp( f[3].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[3].c_str() ); return 1; }
+        std::string text;
+        if ( !block_dump( f[1], data, text ) ) return 1;
+        if ( !spill( out, f[1], text.data(), text.size() ) ) return 1;
+    }
+    return 0;
+}
+
 static int surface_forgery( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -489,15 +765,15 @@ static int emit_block_forgeries()
     printf( "# test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one\n" );
     printf( "# word of an otherwise valid block image, resolved to a byte offset.\n" );
     printf( "#\n" );
-    printf( "#   forgery <name> block <subject> <base> <offset> <width> <value> <extent> <verdict> <label>\n" );
+    printf( "#   forgery <name> block <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>\n" );
     printf( "#\n" );
-    printf( "# <base> names the block line the image comes from; <extent> is the length the\n# CALLER claims (-1: the image's own).\n" );
+    printf( "# <base> names the block line the image comes from; <extent> is the length the\n# CALLER claims (-1: the image's own); <pointer> is 0 — every block row is read\n# out of an ALIGNED base, and the column is the cook battery's.\n" );
     printf( "# The harness applies the patch and hands a driver a path.\n" );
     printf( "# Repin with: make conformance-pin.\n" );
     for ( size_t i = 0; i < sizeof( patches ) / sizeof( patches[0] ); i++ )
     {
         const Patch & p = patches[i];
-        printf( "forgery %-26s block block_render block_render 0x%04llx %d 0x%-16llx %8lld %s %s\n",
+        printf( "forgery %-26s block block_render block_render 0 0x%04llx %d 0x%-16llx %8lld %s %s\n",
                 p.name, (unsigned long long) p.offset, p.width,
                 (unsigned long long) p.value, (long long) p.claim, p.verdict, p.label );
     }
@@ -521,7 +797,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nreport\njson-read\njson-write\nblock\nforgery\n" );
+        printf( "wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-dump\nforgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -535,7 +811,9 @@ int main( int argc, char ** argv )
     if ( surface == "report" ) return surface_report( out );
     if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out );
+    if ( surface == "json-hostile" ) return surface_json_hostile( out );
     if ( surface == "block" ) return surface_block( out );
+    if ( surface == "block-dump" ) return surface_block_dump( out );
     if ( surface == "forgery" ) return surface_forgery( out );
     return 2;
 }

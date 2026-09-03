@@ -12,7 +12,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
 
 static class Program
 {
@@ -102,6 +104,8 @@ static class Program
             Tabledemo.Schema.ArchiveConfigFromJson, Tabledemo.Schema.ArchiveConfigToJsonMeasure, Tabledemo.Schema.ArchiveConfigToJson),
         Demo<Tabledemo.KeyedConfig>("KeyedConfig", Tabledemo.Schema.KeyedConfigLoad, Tabledemo.Schema.KeyedConfigMeasure, Tabledemo.Schema.KeyedConfigSave,
             Tabledemo.Schema.KeyedConfigFromJson, Tabledemo.Schema.KeyedConfigToJsonMeasure, Tabledemo.Schema.KeyedConfigToJson),
+        Demo<Tabledemo.PackConfig>("PackConfig", Tabledemo.Schema.PackConfigLoad, Tabledemo.Schema.PackConfigMeasure, Tabledemo.Schema.PackConfigSave,
+            Tabledemo.Schema.PackConfigFromJson, Tabledemo.Schema.PackConfigToJsonMeasure, Tabledemo.Schema.PackConfigToJson),
         Row<Tblv1.Cfg, Tblv1.TableReport>("tblv1", "Cfg", () => new Tblv1.TableReport(), Copy,
             Tblv1.Schema.CfgLoad, Tblv1.Schema.CfgMeasure, Tblv1.Schema.CfgSave,
             Tblv1.Schema.CfgFromJson, Tblv1.Schema.CfgToJsonMeasure, Tblv1.Schema.CfgToJson),
@@ -297,6 +301,33 @@ static class Program
         return 0;
     }
 
+    // json-hostile: one tree per rule the text form states (§16.2, §16.3,
+    // §17.5). The answer is the REPORT the read produces, or `refused` — the
+    // same two-valued verdict the engine's own gate holds, over the same data.
+    static int SurfaceJsonHostile(string outDir)
+    {
+        foreach (string[] f in Kind("json-hostile"))
+        {
+            Codec codec = Find(f[2], f[3]);
+            if (codec == null)
+            {
+                Console.Error.WriteLine("driver: no codec for " + f[2] + "." + f[3]);
+                return 1;
+            }
+            // the tree is what `schema pack` reads, so the text is
+            // <tree>/<root>.json (§17)
+            byte[] text = File.ReadAllBytes(Path.Combine(f[4], f[3] + ".json"));
+            Report report = new Report();
+            object value = codec.FromJson(text, report);
+            string verdict = value == null || report.Malformed
+                ? "refused\n"
+                : report.Unknown + "," + report.KindMismatch + "," + report.Clamped + "," +
+                  report.Duplicate + ",false\n";
+            File.WriteAllText(Path.Combine(outDir, f[1]), verdict);
+        }
+        return 0;
+    }
+
     static int SurfaceReport(string outDir)
     {
         foreach (string[] f in Kind("report"))
@@ -366,6 +397,212 @@ static class Program
         return 0;
     }
 
+    // ---- the BLOCK ROW DUMP (testdata/conformance/tables/FORMAT.md)
+    //
+    // The twin of the C++ leg's walk, and like it, written against §8's
+    // descriptors and NOTHING ELSE: no generated row struct, no field named in
+    // this file. That is the claim §19.2 makes for the descriptors, and a walk
+    // that reached for a struct would be proving something else. A FLOAT is its
+    // IEEE-754 bit pattern, because a block row is a byte-identical projection
+    // and its bits are the fact.
+
+    static unsafe void DumpScalar(StringBuilder into, byte* at, byte kind, int width)
+    {
+        switch (kind)
+        {
+            case 1:
+                into.Append(*at != 0 ? "true" : "false");
+                return;
+            case 10:
+                into.Append("0x").Append((*(uint*)at).ToString("x8", CultureInfo.InvariantCulture));
+                return;
+            case 11:
+                into.Append("0x").Append((*(ulong*)at).ToString("x16", CultureInfo.InvariantCulture));
+                return;
+            case 2: case 3: case 4: case 5:
+            {
+                long v = width == 1 ? *(sbyte*)at : width == 2 ? *(short*)at : width == 4 ? *(int*)at : *(long*)at;
+                into.Append(v.ToString(CultureInfo.InvariantCulture));
+                return;
+            }
+            default:
+            {
+                ulong v = width == 1 ? *at : width == 2 ? *(ushort*)at : width == 4 ? *(uint*)at : *(ulong*)at;
+                into.Append(v.ToString(CultureInfo.InvariantCulture));
+                return;
+            }
+        }
+    }
+
+    static unsafe void DumpText(StringBuilder into, byte* at, int used)
+    {
+        if (used < 0)
+        {
+            used = 0;
+        }
+        into.Append('"');
+        for (int i = 0; i < used; i++)
+        {
+            byte c = at[i];
+            if (c >= 0x20 && c < 0x7f && c != (byte)'"' && c != (byte)'\\')
+            {
+                into.Append((char)c);
+            }
+            else
+            {
+                into.Append("\\x").Append(c.ToString("x2", CultureInfo.InvariantCulture));
+            }
+        }
+        into.Append('"').Append(" len=").Append(used.ToString(CultureInfo.InvariantCulture));
+    }
+
+    static string DumpJoin(string prefix, string name)
+    {
+        return prefix.Length == 0 ? name : prefix + "." + name;
+    }
+
+    static unsafe bool DumpRecord(StringBuilder into, byte* storage, Blockdemo.TableBlockInfo info, string path)
+    {
+        if (info == null)
+        {
+            Console.Error.WriteLine("driver: a descriptor names no record");
+            return false;
+        }
+        foreach (Blockdemo.TableBlockFieldInfo f in info.Fields)
+        {
+            if (f.OutOfLine)
+            {
+                continue;
+            }
+            string name = DumpJoin(path, f.Name);
+            if (f.Counted)
+            {
+                int used = *(int*)(storage + f.CountOffset);
+                if (used < 0 || used > f.ArrayBound)
+                {
+                    Console.Error.WriteLine("driver: " + info.Name + "." + f.Name +
+                                            " carries a used length of " + used + ", outside [ 0, " + f.ArrayBound + " ]");
+                    return false;
+                }
+                into.Append("  ").Append(name).Append(" = ");
+                DumpText(into, storage + f.Offset, used);
+                into.Append('\n');
+            }
+            else
+            {
+                int slots = f.IsArray ? f.ArrayBound : 1;
+                for (int s = 0; s < slots; s++)
+                {
+                    string at = f.IsArray ? name + "[" + s.ToString(CultureInfo.InvariantCulture) + "]" : name;
+                    byte* value = storage + f.Offset + (long)s * f.ElemSize;
+                    if (f.Element != null)
+                    {
+                        if (!DumpRecord(into, value, f.Element, at))
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        into.Append("  ").Append(at).Append(" = ");
+                        DumpScalar(into, value, f.Kind, f.ElemSize);
+                        into.Append('\n');
+                    }
+                }
+            }
+            if (f.Optional)
+            {
+                into.Append("  ").Append(name).Append("#present = ")
+                    .Append(storage[f.PresentOffset] != 0 ? "true" : "false").Append('\n');
+            }
+        }
+        return true;
+    }
+
+    static unsafe bool DumpBlock(StringBuilder into, byte* baseAt, Blockdemo.TableBlockInfo info)
+    {
+        into.Append("projection ").Append(info.Name).Append(" @0\n");
+        if (!DumpRecord(into, baseAt, info, ""))
+        {
+            return false;
+        }
+        foreach (Blockdemo.TableBlockFieldInfo f in info.Fields)
+        {
+            if (!f.OutOfLine)
+            {
+                continue;
+            }
+            ulong offsetOf = *(ulong*)(baseAt + f.OffsetOfOffset);
+            uint count = *(uint*)(baseAt + f.CountOffset);
+            uint stride = *(uint*)(baseAt + f.StrideOffset);
+            Blockdemo.TableBlockInfo row = f.Element;
+            if (row == null)
+            {
+                Console.Error.WriteLine("driver: " + f.Name + " names no element");
+                return false;
+            }
+            into.Append("array ").Append(f.Name).Append(' ').Append(row.Name)
+                .Append(" @").Append(offsetOf.ToString(CultureInfo.InvariantCulture))
+                .Append(" count=").Append(count.ToString(CultureInfo.InvariantCulture))
+                .Append(" stride=").Append(stride.ToString(CultureInfo.InvariantCulture)).Append('\n');
+            for (uint r = 0; r < count; r++)
+            {
+                ulong at = offsetOf + (ulong)r * stride;
+                into.Append("row ").Append(r.ToString(CultureInfo.InvariantCulture))
+                    .Append(" @").Append(at.ToString(CultureInfo.InvariantCulture)).Append('\n');
+                if (!DumpRecord(into, baseAt + (long)at, row, ""))
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    static unsafe bool BlockDump(string name, byte[] bytes, StringBuilder into)
+    {
+        IntPtr raw = Marshal.AllocHGlobal(new IntPtr(bytes.Length + 64));
+        try
+        {
+            long aligned = ((long)raw + 63) & ~63L;
+            IntPtr pointer = new IntPtr(aligned);
+            new Span<byte>((void*)pointer, bytes.Length).Clear();
+            Marshal.Copy(bytes, 0, pointer, bytes.Length);
+            if (name.StartsWith("block_render", StringComparison.Ordinal))
+            {
+                Blockdemo.RenderFrameBlock block;
+                return Blockdemo.RenderFrameBlock.Open(out block, pointer, bytes.Length) &&
+                       DumpBlock(into, block.Base, Blockdemo.RenderFrameBlock.Type);
+            }
+            if (name.StartsWith("block_padded", StringComparison.Ordinal))
+            {
+                Blockdemo.PaddedFrameBlock block;
+                return Blockdemo.PaddedFrameBlock.Open(out block, pointer, bytes.Length) &&
+                       DumpBlock(into, block.Base, Blockdemo.PaddedFrameBlock.Type);
+            }
+            Console.Error.WriteLine("driver: no block named " + name);
+            return false;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(raw);
+        }
+    }
+
+    static int SurfaceBlockDump(string outDir)
+    {
+        foreach (string[] f in Kind("block"))
+        {
+            StringBuilder text = new StringBuilder();
+            if (!BlockDump(f[1], File.ReadAllBytes(f[3]), text))
+            {
+                return 1;
+            }
+            File.WriteAllBytes(Path.Combine(outDir, f[1]), Encoding.UTF8.GetBytes(text.ToString()));
+        }
+        return 0;
+    }
+
     static int SurfaceForgery(string outDir)
     {
         foreach (string[] f in Kind("forgery"))
@@ -391,7 +628,7 @@ static class Program
         string surface = args[1];
         if (surface == "list")
         {
-            Console.Out.Write("wire\nreport\njson-read\njson-write\nblock\nforgery\n");
+            Console.Out.Write("wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-dump\nforgery\n");
             return 0;
         }
         if (args.Length < 3)
@@ -406,7 +643,9 @@ static class Program
             case "report": return SurfaceReport(outDir);
             case "json-read": return SurfaceJsonRead(outDir);
             case "json-write": return SurfaceJsonWrite(outDir);
+            case "json-hostile": return SurfaceJsonHostile(outDir);
             case "block": return SurfaceBlock(outDir);
+            case "block-dump": return SurfaceBlockDump(outDir);
             case "forgery": return SurfaceForgery(outDir);
             default: return 2;
         }

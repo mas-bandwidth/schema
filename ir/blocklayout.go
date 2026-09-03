@@ -693,3 +693,83 @@ func elemAlignOf(a BlockArray) int64 {
 
 // ElemAlign is elemAlignOf, exported for the backends and the tests.
 func (a BlockArray) ElemAlign() int64 { return elemAlignOf(a) }
+
+// ---- what a GENERIC ROW WALK needs (docs/SPEC-TABLES.md §8.1, §19.2) ----
+
+// BlockFieldFacts is one field of a block record, described in the vocabulary
+// §8.1's table descriptors already use, so ONE walker reads a cooked node and a
+// block row without learning a second one.
+//
+// Where the field STARTS is already in the layout; this is everything a walker
+// needs after that — how many slots it holds, how wide one is, and where the
+// companions live. Without it the descriptors name a `string(15)` as twenty
+// bytes at an offset and no reader can tell where the sixteen-byte buffer stops
+// and the used length begins.
+type BlockFieldFacts struct {
+	IsArray       bool  // inline storage of ArrayBound slots at ElemSize (`bytes` included)
+	Counted       bool  // CountOffset names an int32 used-length companion
+	Optional      bool  // PresentOffset names a bool presence companion
+	ArrayBound    int64 // inline slots, or a string's declared maximum; 0 for a plain scalar
+	ElemSize      int64 // ONE slot's size; the field's own when it holds one value
+	CountOffset   int64 // the used-length companion, or -1
+	PresentOffset int64 // the presence companion, or -1
+}
+
+// BlockFieldOf derives one field's row-walk facts from the ONE layout model
+// (§19.3). `projection` selects the block form's projection spelling, in which
+// an out-of-line array is its triple: the count companion is then the triple's
+// own `count` member, which is the same column doing the same job.
+func BlockFieldOf(u *Unit, f *Field, fieldOffset int64, projection bool) BlockFieldFacts {
+	facts := BlockFieldFacts{CountOffset: -1, PresentOffset: -1, Optional: f.Type.Optional}
+	pieces := BlockFieldPieceOffsets(u, f, fieldOffset, projection)
+	if len(pieces) == 0 {
+		return facts
+	}
+	if facts.Optional {
+		facts.PresentOffset = pieces[len(pieces)-1].Offset
+		pieces = pieces[:len(pieces)-1]
+	}
+	if len(pieces) == 0 {
+		return facts
+	}
+	if projection && BlockOutOfLine(f) {
+		// the triple: (offset_of u64, count u32, stride u32) at 0/8/12 (§2.7)
+		facts.IsArray = true
+		facts.Counted = true
+		facts.ArrayBound = f.ArrayBound
+		facts.CountOffset = pieces[0].Offset + 8
+		facts.ElemSize = 0 // the PITCH is the instance's own, and the Stride column carries this build's
+		return facts
+	}
+	switch {
+	case f.Type.Pointer:
+		facts.ElemSize = pieces[0].Size
+	case f.Type.Kind == TString:
+		// char[N+1] buffer, then the int32 used length. A string is not an
+		// ARRAY — §8.1's descriptors say the same — but it is COUNTED, and
+		// ArrayBound is its declared maximum.
+		facts.Counted = true
+		facts.ArrayBound = f.Type.Size
+		facts.ElemSize = 1
+		facts.CountOffset = pieces[1].Offset
+	case f.Type.Kind == TBytes:
+		facts.IsArray = true
+		facts.Counted = true
+		facts.ArrayBound = f.Type.Size
+		facts.ElemSize = 1
+		facts.CountOffset = pieces[1].Offset
+	case f.KeyEnum != "" || f.Array == ArrayFixed:
+		facts.IsArray = true
+		facts.ArrayBound = f.ArrayBound
+		facts.ElemSize = elementPiece(u, f).size
+	case f.Array == ArrayCounted:
+		facts.IsArray = true
+		facts.Counted = true
+		facts.ArrayBound = f.ArrayBound
+		facts.ElemSize = elementPiece(u, f).size
+		facts.CountOffset = pieces[1].Offset
+	default:
+		facts.ElemSize = pieces[0].Size
+	}
+	return facts
+}

@@ -744,7 +744,7 @@ build/cook-open-fixed/.stamp: bin/schema build/schema_test_cook build/cook-open/
 	done
 	@touch $@
 
-.PHONY: tables-cook-open
+.PHONY: tables-cook-open tables-cook-valued
 tables-cook-open: build/schema_test_cook build/schema_test_cook_asan build/cook-open/.stamp build/cook-open-fixed/.stamp
 	@for r in $(COOK_ROOTS); do \
 		./build/schema_test_cook      golden $$r build/cook-open/$$r.cook || exit 1; \
@@ -766,6 +766,36 @@ tables-cook-open: build/schema_test_cook build/schema_test_cook_asan build/cook-
 	./build/schema_test_cook accept Scene build/cook-open/Scene.cook
 	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
 	./build/schema_test_cook time Scene build/cook-open/1mb.cook build/cook-open/100mb.cook
+
+# THE VALUED FIXTURE, cross-checked by the ENGINE's own uncook (§7.5, §7.4).
+#
+# `test/cookgen --values` fills every non-pointer leaf, so the conformance
+# harness's `SceneValued` dump locks what a reader READS out of a node and not
+# only where the node is. That dump is pinned from the C++ leg and byte-compared
+# by the C# one; this is the THIRD reader, and it is the Go engine's:
+#
+#   cookgen --values  ->  uncook  ->  cook   must land on the same bytes
+#
+# `uncook` walks the region and recovers the root's wire, `cook` lays a region
+# out from that wire, and the two regions being byte-identical is every value
+# surviving a round trip through an implementation that did not write the
+# fixture. A value dropped, widened or misplaced by either half moves a byte
+# here — and `cook-check` first, so a fixture the tool itself would refuse can
+# never be what a green run is standing on.
+.PHONY: tables-cook-valued
+tables-cook-valued: bin/schema
+	@rm -rf build/cook-valued && mkdir -p build/cook-valued
+	go build -o build/cookgen ./test/cookgen
+	./build/cookgen --bytes 4096 --root Scene --ref head --chain ListNode --next next --values \
+		--out build/cook-valued/SceneValued.cook
+	./bin/schema cook-check --root Scene --verbose build/cook-valued/SceneValued.cook tables/pointers
+	./bin/schema uncook --root Scene --in build/cook-valued/SceneValued.cook \
+		--out build/cook-valued/Scene.wire --verbose tables/pointers
+	./bin/schema cook --root Scene --in build/cook-valued/Scene.wire \
+		--out build/cook-valued/SceneAgain.cook --verbose tables/pointers
+	@cmp build/cook-valued/SceneValued.cook build/cook-valued/SceneAgain.cook || \
+		{ echo "the engine's uncook did not recover every value the fixture carries"; exit 1; }
+	@echo "valued cook: cookgen --values -> uncook -> cook is byte-identical, so every value survives the engine's own read"
 
 # THE GIGABYTE ARM, by hand (§7.5): a 1.5 GB fixture is not something a CI
 # runner's disk should meet on every push, and the two arms above already span
@@ -1653,15 +1683,22 @@ tables-pack: build/schema_test_pack build/schema_test_pack_asan build/tables-pac
 # invariant the report is a promise about, that bytes the engine called clean
 # load clean and re-save byte-identically. The Go half lives in
 # internal/tablepack's tests and reads the same manifest.
-HOSTILE_TREES := $(shell find tables/pack/hostile-values -type f 2>/dev/null)
+#
+# THE CORPUS AND ITS MANIFEST LIVE IN THE CONFORMANCE HARNESS's DATA
+# (testdata/conformance/tables): the battery was always data, so it moved there
+# whole rather than keeping a registry of its own, and the harness's
+# `json-hostile` surface reads the same rows this gate does. One corpus, one set
+# of expectations, two gates asking different things of it.
+HOSTILE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
+HOSTILE_TREES := $(shell find testdata/conformance/tables/json-hostile -type f 2>/dev/null)
 
-build/hostile-values/.stamp: bin/schema $(HOSTILE_TREES)
+build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 	@rm -rf build/hostile-values
 	@mkdir -p build/hostile-values
-	@grep -v '^#' tables/pack/hostile-values/cases.txt | grep ' packs ' | \
-	while read -r name root outcome counts; do \
+	@grep '^json-hostile ' $(HOSTILE_MANIFEST) | grep -v ' refused$$' | \
+	while read -r kind name unit root tree verdict; do \
 		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin --tolerate \
-			tables/pack/hostile-values/$$name tables/examples || exit 1; \
+			$$tree tables/examples || exit 1; \
 	done
 	@touch $@
 
@@ -1675,10 +1712,8 @@ build/schema_test_hostile_asan: build/tables-generated/.stamp test/tables/hostil
 
 .PHONY: tables-hostile-values
 tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp
-	./build/schema_test_hostile tables/pack/hostile-values/cases.txt \
-		tables/pack/hostile-values build/hostile-values
-	./build/schema_test_hostile_asan tables/pack/hostile-values/cases.txt \
-		tables/pack/hostile-values build/hostile-values
+	./build/schema_test_hostile $(HOSTILE_MANIFEST) build/hostile-values
+	./build/schema_test_hostile_asan $(HOSTILE_MANIFEST) build/hostile-values
 
 # Its NEGATIVE CONTROL: relax ONE rule of the number grammar — accept a leading
 # `+`, which RFC 8259 does not — and the gate must go red, because a tree the
@@ -1695,13 +1730,13 @@ tables-hostile-negative: tables-hostile-values
 		"$(CURDIR)" "$(CURDIR)" > build/read-overlay.json
 	@go build -overlay=build/read-overlay.json -o build/schema-loose-numbers ./cmd/schema
 	@if ./build/schema-loose-numbers pack --root RootConfig --out build/loose.bin --tolerate \
-		tables/pack/hostile-values/num-leading-plus tables/examples > /dev/null 2>&1; then \
+		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1; then \
 		echo "pack hostile-value negative control: a leading + packs once the grammar is relaxed"; \
 	else \
 		echo "NEGATIVE CONTROL FAILED: relaxing the number grammar left num-leading-plus refused"; exit 1; \
 	fi
 	@./bin/schema pack --root RootConfig --out build/loose.bin --tolerate \
-		tables/pack/hostile-values/num-leading-plus tables/examples > /dev/null 2>&1 && \
+		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1 && \
 		{ echo "NEGATIVE CONTROL FAILED: the real engine accepts a leading + too"; exit 1; } || true
 
 # The NEGATIVE CONTROL for that golden: break ONE framing rule in the Go
@@ -1922,6 +1957,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# registers are the two this section has just built.
 	$(MAKE) conformance
 	$(MAKE) conformance-negative-control
+	$(MAKE) conformance-negative-control-block-dump
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
@@ -1936,6 +1972,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cook-scale
 	$(MAKE) tables-cook-fuzz-negative-control
 	$(MAKE) tables-cook-open
+	$(MAKE) tables-cook-valued
 	$(MAKE) tables-cook-open-lengths-negative-control
 	$(MAKE) tables-cook-open-root-negative-control
 	$(MAKE) tables-cook-open-cs
@@ -2155,7 +2192,7 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generat
 	-Ibuild/tables-generated/block
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
-	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/v1/V1Table.cpp \
+	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp \
 	build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp \
 	build/tables-generated/p3/P3Table.cpp build/tables-generated/block/RenderBlock.cpp \
 	build/tables-generated/block/PaddedBlock.cpp
@@ -2222,6 +2259,48 @@ conformance-negative-control: build/conformance-harness build/conformance-cpp
 		  cat build/conformance-negative/log; exit 1; }
 	@grep -m1 "cpp / json-write" build/conformance-negative/log
 	@echo "negative control: one byte off in one dump turns the harness RED on that surface alone"
+
+# THE NEGATIVE CONTROL FOR THE BLOCK ROW DUMP (docs/SPEC-TABLES.md §19.2), and it
+# sabotages neither driver: it flips one byte INSIDE A ROW of the block image
+# itself. That is the whole reason the surface exists. `Open` reads the prologue
+# and the triples and nothing else (§19.2's O(1) promise), so a byte inside a
+# row cannot move its answer — `block` must stay GREEN and `block-dump` must go
+# RED, which is the harness saying "the reader opened it and then read it
+# wrong". A control that turned both red would be proving the image was
+# corrupted, not that anyone reads rows.
+#
+# The byte is ships row 0's `object_id`: the array starts at 320 and the field
+# sits at 64 inside a row, both facts the pinned dump states. If the fixture's
+# layout ever moves under it the `cmp` below fails loudly rather than the
+# control quietly checking nothing.
+CONFORMANCE_NEGATIVE_BLOCK := build/conformance-negative-block
+.PHONY: conformance-negative-control-block-dump
+conformance-negative-control-block-dump: build/conformance-harness build/conformance-cpp
+	@rm -rf $(CONFORMANCE_NEGATIVE_BLOCK) && mkdir -p $(CONFORMANCE_NEGATIVE_BLOCK)
+	@cp testdata/wire/tables/block_render.bin $(CONFORMANCE_NEGATIVE_BLOCK)/block_render.bin
+	@printf '\001' | dd of=$(CONFORMANCE_NEGATIVE_BLOCK)/block_render.bin bs=1 seek=384 count=1 conv=notrunc 2>/dev/null
+	@cmp -s testdata/wire/tables/block_render.bin $(CONFORMANCE_NEGATIVE_BLOCK)/block_render.bin && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage changed no byte of the image"; exit 1; } || true
+	@sed 's|testdata/wire/tables/block_render.bin|$(CONFORMANCE_NEGATIVE_BLOCK)/block_render.bin|' \
+		testdata/conformance/tables/MANIFEST.txt > $(CONFORMANCE_NEGATIVE_BLOCK)/MANIFEST.txt
+	@printf 'cpp test/conformance/cpp/driver\n' > $(CONFORMANCE_NEGATIVE_BLOCK)/drivers.txt
+	@if ./build/conformance-harness run --manifest $(CONFORMANCE_NEGATIVE_BLOCK)/MANIFEST.txt \
+			--drivers $(CONFORMANCE_NEGATIVE_BLOCK)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_BLOCK)/work > $(CONFORMANCE_NEGATIVE_BLOCK)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: one byte off inside a row left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; \
+	fi
+	@grep -q "cpp / block-dump" $(CONFORMANCE_NEGATIVE_BLOCK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on block-dump"; \
+		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
+	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_BLOCK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the ROW READ"; \
+		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
+	@grep -q "^forgery       pass" $(CONFORMANCE_NEGATIVE_BLOCK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_BLOCK)/log; exit 1; }
+	@grep -m1 "cpp / block-dump" $(CONFORMANCE_NEGATIVE_BLOCK)/log
+	@echo "negative control: one byte off INSIDE A ROW turns the harness RED on block-dump alone — block still opens"
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
 # different sabotage from the C++ one above on purpose. That one flips a byte of
@@ -2291,4 +2370,4 @@ conformance-negative-control-cs: build/conformance-harness
 	@grep -m1 "cs / json-read" $(CONFORMANCE_NEGATIVE_CS)/log
 	@echo "negative control: one field index off in the C# walk turns the harness RED on json-read alone"
 
-.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-cs build-conformance-cs
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs build-conformance-cs

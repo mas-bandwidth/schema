@@ -16,11 +16,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "report", "json-read", "json-write", "cook", "block", "forgery"}
+var surfaces = []string{"wire", "report", "json-read", "json-write", "json-hostile", "cook", "block", "block-dump", "forgery", "cook-forgery"}
 
 type driver struct {
 	lang string
@@ -81,18 +82,20 @@ func materialise(m *Manifest, work string) error {
 		}
 		for i := range m.Cooks {
 			c := &m.Cooks[i]
-			out := filepath.Join(fixtures, c.Root+".cook")
+			out := filepath.Join(fixtures, c.Case+".cook")
 			args := []string{"--bytes", "4096", "--root", c.Root, "--out", out}
-			if extra, ok := cookShape[c.Root]; ok {
-				args = append(args, extra...)
+			extra, ok := cookShape[c.Case]
+			if !ok {
+				return fmt.Errorf("cooking %s: test/conformance/harness names no fixture shape for it", c.Case)
 			}
+			args = append(args, extra...)
 			cmd := exec.Command(cookgen, args...)
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("cooking %s: %w", c.Root, err)
+				return fmt.Errorf("cooking %s: %w", c.Case, err)
 			}
 			c.File = out
-			base[c.Root] = out
+			base[c.Case] = out
 		}
 	}
 
@@ -106,13 +109,15 @@ func materialise(m *Manifest, work string) error {
 		if err != nil {
 			return err
 		}
-		if f.Offset < 0 || f.Offset+int64(f.Width) > int64(len(data)) {
-			return fmt.Errorf("forgery %s: the patch at %d+%d does not fit %s (%d bytes)",
-				f.Name, f.Offset, f.Width, src, len(data))
+		for _, p := range f.Patches {
+			if p.Offset+int64(p.Width) > int64(len(data)) {
+				return fmt.Errorf("forgery %s: the patch at %d+%d does not fit %s (%d bytes)",
+					f.Name, p.Offset, p.Width, src, len(data))
+			}
+			var word [8]byte
+			binary.LittleEndian.PutUint64(word[:], p.Value)
+			copy(data[p.Offset:p.Offset+int64(p.Width)], word[:p.Width])
 		}
-		var word [8]byte
-		binary.LittleEndian.PutUint64(word[:], f.Value)
-		copy(data[f.Offset:f.Offset+int64(f.Width)], word[:f.Width])
 		out := filepath.Join(fixtures, "forgery", f.Name+".bin")
 		if err := os.WriteFile(out, data, 0o644); err != nil {
 			return err
@@ -122,15 +127,21 @@ func materialise(m *Manifest, work string) error {
 	return nil
 }
 
-// cookShape carries the chain each root's fixture is generated with, which
+// cookShape carries the chain each CASE's fixture is generated with, which
 // test/cookgen needs and the manifest does not: it is a property of the FIXTURE
 // GENERATOR, not of the conformance data, and a driver never sees it.
+//
+// `--values` is what makes SceneValued a value gate rather than a structure
+// one: without it every node is value-initialised, so the dump locks every
+// offset, every deref and every visit order and almost no VALUES, because there
+// are almost none in it.
 var cookShape = map[string][]string{
-	"Scene":    {"--ref", "head", "--chain", "ListNode", "--next", "next"},
-	"Depot":    {"--ref", "head", "--chain", "ListNode", "--next", "next"},
-	"Album":    {"--ref", "head", "--chain", "ListNode", "--next", "next"},
-	"TreeNode": {"--ref", "left", "--chain", "TreeNode", "--next", "left"},
-	"ListNode": {"--ref", "next", "--chain", "ListNode", "--next", "next"},
+	"Scene":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
+	"SceneValued": {"--ref", "head", "--chain", "ListNode", "--next", "next", "--values"},
+	"Depot":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
+	"Album":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
+	"TreeNode":    {"--ref", "left", "--chain", "TreeNode", "--next", "left"},
+	"ListNode":    {"--ref", "next", "--chain", "ListNode", "--next", "next"},
 }
 
 // deriveManifest writes what a driver reads: the committed lines plus the
@@ -150,14 +161,24 @@ func deriveManifest(m *Manifest, path string) error {
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
 	}
+	for _, h := range m.Hostiles {
+		fmt.Fprintf(&b, "json-hostile %s %s %s %s\n", h.Name, h.Unit, h.Root, h.Tree)
+	}
 	for _, c := range m.Cooks {
-		fmt.Fprintf(&b, "cook %s %s %s\n", c.Root, c.Unit, repoRelative(c.File))
+		fmt.Fprintf(&b, "cook %s %s %s %s\n", c.Case, c.Unit, c.Root, repoRelative(c.File))
 	}
 	for _, bl := range m.Blocks {
 		fmt.Fprintf(&b, "block %s %s %s\n", bl.Name, bl.Unit, bl.File)
 	}
 	for _, f := range m.Forgeries {
-		fmt.Fprintf(&b, "forgery %s %s %s %s %d\n", f.Name, f.Kind, f.Subject, repoRelative(f.File), f.Extent)
+		// the PATCH is already applied; what a driver still needs is the file,
+		// the extent its caller claims and the buffer that caller holds
+		pointer := strconv.Itoa(f.Pointer)
+		if f.Pointer < 0 {
+			pointer = "null"
+		}
+		fmt.Fprintf(&b, "forgery %s %s %s %s %d %s\n",
+			f.Name, f.Kind, f.Subject, repoRelative(f.File), f.Extent, pointer)
 	}
 	return writeFileAtomic(path, []byte(b.String()))
 }
@@ -201,14 +222,36 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{c.Root, want})
+			out = append(out, expectation{c.Case, want})
+		}
+	case "json-hostile":
+		for _, h := range m.Hostiles {
+			out = append(out, expectation{h.Name, []byte(h.Verdict() + "\n")})
 		}
 	case "block":
 		for _, b := range m.Blocks {
 			out = append(out, expectation{b.Name, []byte("open\n")})
 		}
-	case "forgery":
+	case "block-dump":
+		for _, b := range m.Blocks {
+			want, err := os.ReadFile(b.Dump)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, expectation{b.Name, want})
+		}
+	case "forgery", "cook-forgery":
+		// one surface per KIND: a backend can have a block reader and no cook
+		// reader, and the matrix says which rather than blaming one for the
+		// other. The row shape is the same either way.
+		kind := "block"
+		if surface == "cook-forgery" {
+			kind = "cook"
+		}
 		for _, f := range m.Forgeries {
+			if f.Kind != kind {
+				continue
+			}
 			out = append(out, expectation{f.Name, []byte(f.Verdict + "\n")})
 		}
 	default:
