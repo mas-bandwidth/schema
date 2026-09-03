@@ -3,7 +3,10 @@
 // message may carry a nested table, a collection, or a union of tables of its
 // own, and this unit holds the form at THREE DEPTHS — ToolBody in the root,
 // EditBody inside a transaction's edits, Origin inside an insert — so every
-// walk (wire, text, cook) descends a table arm that holds a table arm.
+// walk (wire, text, cook) descends a table arm that holds a table arm. The
+// ARRAY OF UNIONS (§2.6, §3) rides at the same three depths: history is a
+// counted batch of messages in the root, pending a fixed pair of edit bodies
+// inside a transaction, origins a counted array inside an insert.
 //
 // Every table here is FIXED-SIZE: a union of fixed table arms leaves its
 // holder fixed, and the zero-cost gate holds over this unit as it does over
@@ -53,9 +56,10 @@ table Selection
 
 table InsertText
 {
-    at     Cursor
-    text   string(32)
-    origin Origin
+    at      Cursor
+    text    string(32)
+    origin  Origin
+    origins [..2]Origin
 }
 
 table RemoveText
@@ -91,8 +95,9 @@ table SaveDocument
 
 table Transaction
 {
-    reason string(16)
-    edits  [..3]Edit
+    reason  string(16)
+    edits   [..3]Edit
+    pending [2]EditBody
 }
 
 union ToolBody
@@ -107,4 +112,5 @@ table ToolMessage
 {
     sequence uint32
     body     ToolBody
+    history  [..2]ToolBody
 }

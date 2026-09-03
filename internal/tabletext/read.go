@@ -146,7 +146,7 @@ func Shape(f *ir.Field) byte {
 // ElementShape is the same classifier one level down, for an array's elements.
 func ElementShape(f *ir.Field) byte {
 	switch {
-	case StructOf(f) != nil:
+	case StructOf(f) != nil, UnionOf(f) != nil:
 		return 'o'
 	case EnumOf(f) != nil:
 		return 's'

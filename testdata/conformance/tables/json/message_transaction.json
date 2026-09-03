@@ -17,7 +17,8 @@
                 "user": {
                   "name": "rowan"
                 }
-              }
+              },
+              "origins": []
             }
           }
         },
@@ -52,11 +53,17 @@
                   "path": "gen.lua",
                   "line": 12
                 }
-              }
+              },
+              "origins": []
             }
           }
         }
+      ],
+      "pending": [
+        {},
+        {}
       ]
     }
-  }
+  },
+  "history": []
 }

@@ -4,5 +4,6 @@
     "ping": {
       "nonce": 0
     }
-  }
+  },
+  "history": []
 }

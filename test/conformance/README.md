@@ -108,10 +108,11 @@ absences are ordinary.
 **THE MATRIX IS THE COMPLETION TRACKER.** Green cells over total cells is what
 "done" means for the tables layer, and an absence — per surface or per case — is
 the row of work that is left, named where it can be seen. The eight ports read
-`+16a` on the wire surfaces and `+15a` on the text surfaces today — the four
-variable-class instances and the twelve of the message class, a union whose
-arms are tables (docs/SPEC-TABLES.md §2.6) — and the reference answers them
-all; they become part of the count as schema#349 and the table-arm follow-on
+`+20a` on the wire surfaces and `+19a` on the text surfaces today — the four
+variable-class instances, the thirteen of the message class (a union whose
+arms are tables, and an array of unions, docs/SPEC-TABLES.md §2.6), and the
+three of the wide-scalar class (§3) — and the reference answers them all;
+they become part of the count as schema#349 and the per-construct follow-ons
 land them, one language at a time, with nothing in this data or this contract
 moving as they do.
 
