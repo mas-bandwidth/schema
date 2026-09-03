@@ -82,7 +82,7 @@ typedef struct TableBlockAllocator
 static SCHEMA_UNUSED void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return malloc( (size_t) bytes ); }
 static SCHEMA_UNUSED void table_block_default_free( void * context, void * pointer ) { (void) context; free( pointer ); }
 
-static SCHEMA_UNUSED TableBlockAllocator TableBlockDefaultAllocator( void )
+static SCHEMA_UNUSED TableBlockAllocator table_block_default_allocator( void )
 {
     TableBlockAllocator allocator;
     allocator.alloc = table_block_default_alloc;
@@ -96,9 +96,9 @@ static SCHEMA_UNUSED TableBlockAllocator TableBlockDefaultAllocator( void )
    big-endian fix-up path is a named obligation, not something a consumer
    improvises row by row. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t TableBlockByteOrder = 2; /* big */
+static SCHEMA_UNUSED const uint64_t table_block_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t TableBlockByteOrder = 1; /* little */
+static SCHEMA_UNUSED const uint64_t table_block_byte_order = 1; /* little */
 #endif
 
 /* Why Begin refused: the array, its count and its maximum (§19.1). Clamping a
@@ -124,7 +124,7 @@ typedef struct TableBlockRows
     int32_t stride;
 } TableBlockRows;
 
-static SCHEMA_UNUSED void * TableBlockRowAt( const TableBlockRows * rows, int32_t index )
+static SCHEMA_UNUSED void * table_block_row_at( const TableBlockRows * rows, int32_t index )
 {
     return (void *) ( rows->base + (ptrdiff_t) index * rows->stride );
 }
@@ -191,7 +191,7 @@ typedef struct TableBlockInfo
    the producer's NATIVE order; a consumer that reads back the byte-swapped
    value has found a foreign byte order, and one that reads back anything else
    has not found a block at all. */
-static SCHEMA_UNUSED const uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
+static SCHEMA_UNUSED const uint64_t table_block_magic = 0x4b4c42414d484353ull;
 
 static SCHEMA_UNUSED uint64_t table_block_byteswap64( uint64_t v )
 {
@@ -235,7 +235,7 @@ typedef struct TableEntityCounts
    can add to more than can ever be occupied at once.
    It is allocated ONCE, at build time, through the CALLER'S allocator, and
    released through the same triple. The fill path allocates nothing. */
-#define TableEntityBlockMaxBytes 128
+#define SCHEMA_BENCHTABLE_TABLE_ENTITY_BLOCK_MAX_BYTES 128
 
 typedef struct TableEntityBlockStorage
 {
@@ -244,22 +244,22 @@ typedef struct TableEntityBlockStorage
     TableBlockAllocator allocator;
 } TableEntityBlockStorage;
 
-/* Create allocates TableEntityBlockMaxBytes + 63 bytes through the caller's triple
+/* Create allocates SCHEMA_BENCHTABLE_TABLE_ENTITY_BLOCK_MAX_BYTES + 63 bytes through the caller's triple
    and aligns the base inside them: malloc's guarantee is not a cache
    line's, and the 64-byte base is what keeps two workers filling
    different arrays off one line (§19.1). One call, at build time. */
-static SCHEMA_UNUSED int TableEntityBlockStorageCreate( TableEntityBlockStorage * storage, const TableBlockAllocator * from )
+static SCHEMA_UNUSED int table_entity_block_storage_create( TableEntityBlockStorage * storage, const TableBlockAllocator * from )
 {
     uintptr_t raw;
     storage->allocator = *from;
-    storage->allocation = storage->allocator.alloc( storage->allocator.context, TableEntityBlockMaxBytes + 63 );
+    storage->allocation = storage->allocator.alloc( storage->allocator.context, SCHEMA_BENCHTABLE_TABLE_ENTITY_BLOCK_MAX_BYTES + 63 );
     if ( storage->allocation == NULL ) { storage->base = NULL; return 0; }
     raw = (uintptr_t) storage->allocation;
     storage->base = (uint8_t *) ( ( raw + 63 ) & ~(uintptr_t) 63 );
     return 1;
 }
 
-static SCHEMA_UNUSED void TableEntityBlockStorageDestroy( TableEntityBlockStorage * storage )
+static SCHEMA_UNUSED void table_entity_block_storage_destroy( TableEntityBlockStorage * storage )
 {
     if ( storage->allocation != NULL ) { storage->allocator.free( storage->allocator.context, storage->allocation ); }
     storage->allocation = NULL;
@@ -310,7 +310,7 @@ typedef struct TableEntityBlock
    the triples out of an instance and points at rows, with no hand-written
    struct per table. */
 extern const TableBlockInfo schema_benchtable_table_entity_block_info_;
-static SCHEMA_UNUSED const TableBlockInfo * TableEntityBlockType( void ) { return &schema_benchtable_table_entity_block_info_; }
+static SCHEMA_UNUSED const TableBlockInfo * table_entity_block_type( void ) { return &schema_benchtable_table_entity_block_info_; }
 
 /* The LAYOUT CONTRACT (docs/SPEC-TABLES.md §19.3). The compiler derived every
    number below from the declaration; these assertions are this compiler saying
@@ -355,16 +355,16 @@ SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_firing, offsetof( TableEntity
 
    Begin and BlockBytes are SINGLE-THREADED: call Begin before the workers and
    BlockBytes after they join (§19.1). `refusal` may be NULL. */
-static SCHEMA_UNUSED int TableEntityBlockBegin( TableEntityBlock * block, TableEntityBlockStorage * storage, const TableEntityCounts * counts, TableBlockRefusal * refusal )
+static SCHEMA_UNUSED int table_entity_block_begin( TableEntityBlock * block, TableEntityBlockStorage * storage, const TableEntityCounts * counts, TableBlockRefusal * refusal )
 {
     int64_t offset;
     (void) counts; (void) refusal; /* no out-of-line array: no count to refuse */
     if ( storage->base == NULL ) { return 0; } /* Create was not called, or the allocator refused */
     block->base = storage->base;
     block->projection = (TableEntityBlockProjection *) (void *) storage->base;
-    block->projection->magic = TableBlockMagic;
+    block->projection->magic = table_block_magic;
     block->projection->build_version = SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE;
-    block->projection->byte_order = TableBlockByteOrder;
+    block->projection->byte_order = table_block_byte_order;
     offset = 88; /* sizeof the projection */
     block->bytes = table_block_align( offset, 64 );
     return 1;
@@ -376,7 +376,7 @@ static SCHEMA_UNUSED int TableEntityBlockBegin( TableEntityBlock * block, TableE
    to the maxima. The tail — the bytes between the last row and the rounding —
    is UNSPECIFIED, because zeroing megabytes per frame is the cost this form
    exists to avoid. */
-static SCHEMA_UNUSED int64_t TableEntityBlockBytes( const TableEntityBlock * block )
+static SCHEMA_UNUSED int64_t table_entity_block_bytes( const TableEntityBlock * block )
 {
     int64_t used = 88;
     (void) block; /* no out-of-line array: the extent is the projection's own */
@@ -401,7 +401,7 @@ static SCHEMA_UNUSED int64_t TableEntityBlockBytes( const TableEntityBlock * blo
    mismatch is a refusal; regenerate both sides. Data that must outlive the
    build that wrote it takes the wire (§3), which this same table still has. */
 int schema_benchtable_table_entity_block_open_( TableEntityBlock * block, void * base, int64_t bytes );
-static SCHEMA_UNUSED int TableEntityBlockOpen( TableEntityBlock * block, void * base, int64_t bytes )
+static SCHEMA_UNUSED int table_entity_block_open( TableEntityBlock * block, void * base, int64_t bytes )
 {
     return schema_benchtable_table_entity_block_open_( block, base, bytes );
 }
@@ -423,7 +423,7 @@ typedef struct TableStatCounts
    can add to more than can ever be occupied at once.
    It is allocated ONCE, at build time, through the CALLER'S allocator, and
    released through the same triple. The fill path allocates nothing. */
-#define TableStatBlockMaxBytes 64
+#define SCHEMA_BENCHTABLE_TABLE_STAT_BLOCK_MAX_BYTES 64
 
 typedef struct TableStatBlockStorage
 {
@@ -432,22 +432,22 @@ typedef struct TableStatBlockStorage
     TableBlockAllocator allocator;
 } TableStatBlockStorage;
 
-/* Create allocates TableStatBlockMaxBytes + 63 bytes through the caller's triple
+/* Create allocates SCHEMA_BENCHTABLE_TABLE_STAT_BLOCK_MAX_BYTES + 63 bytes through the caller's triple
    and aligns the base inside them: malloc's guarantee is not a cache
    line's, and the 64-byte base is what keeps two workers filling
    different arrays off one line (§19.1). One call, at build time. */
-static SCHEMA_UNUSED int TableStatBlockStorageCreate( TableStatBlockStorage * storage, const TableBlockAllocator * from )
+static SCHEMA_UNUSED int table_stat_block_storage_create( TableStatBlockStorage * storage, const TableBlockAllocator * from )
 {
     uintptr_t raw;
     storage->allocator = *from;
-    storage->allocation = storage->allocator.alloc( storage->allocator.context, TableStatBlockMaxBytes + 63 );
+    storage->allocation = storage->allocator.alloc( storage->allocator.context, SCHEMA_BENCHTABLE_TABLE_STAT_BLOCK_MAX_BYTES + 63 );
     if ( storage->allocation == NULL ) { storage->base = NULL; return 0; }
     raw = (uintptr_t) storage->allocation;
     storage->base = (uint8_t *) ( ( raw + 63 ) & ~(uintptr_t) 63 );
     return 1;
 }
 
-static SCHEMA_UNUSED void TableStatBlockStorageDestroy( TableStatBlockStorage * storage )
+static SCHEMA_UNUSED void table_stat_block_storage_destroy( TableStatBlockStorage * storage )
 {
     if ( storage->allocation != NULL ) { storage->allocator.free( storage->allocator.context, storage->allocation ); }
     storage->allocation = NULL;
@@ -486,7 +486,7 @@ typedef struct TableStatBlock
    the triples out of an instance and points at rows, with no hand-written
    struct per table. */
 extern const TableBlockInfo schema_benchtable_table_stat_block_info_;
-static SCHEMA_UNUSED const TableBlockInfo * TableStatBlockType( void ) { return &schema_benchtable_table_stat_block_info_; }
+static SCHEMA_UNUSED const TableBlockInfo * table_stat_block_type( void ) { return &schema_benchtable_table_stat_block_info_; }
 
 /* The LAYOUT CONTRACT (docs/SPEC-TABLES.md §19.3). The compiler derived every
    number below from the declaration; these assertions are this compiler saying
@@ -519,16 +519,16 @@ SCHEMA_TABLE_STATIC_ASSERT( TableStat_projection_delta, offsetof( TableStatBlock
 
    Begin and BlockBytes are SINGLE-THREADED: call Begin before the workers and
    BlockBytes after they join (§19.1). `refusal` may be NULL. */
-static SCHEMA_UNUSED int TableStatBlockBegin( TableStatBlock * block, TableStatBlockStorage * storage, const TableStatCounts * counts, TableBlockRefusal * refusal )
+static SCHEMA_UNUSED int table_stat_block_begin( TableStatBlock * block, TableStatBlockStorage * storage, const TableStatCounts * counts, TableBlockRefusal * refusal )
 {
     int64_t offset;
     (void) counts; (void) refusal; /* no out-of-line array: no count to refuse */
     if ( storage->base == NULL ) { return 0; } /* Create was not called, or the allocator refused */
     block->base = storage->base;
     block->projection = (TableStatBlockProjection *) (void *) storage->base;
-    block->projection->magic = TableBlockMagic;
+    block->projection->magic = table_block_magic;
     block->projection->build_version = SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE;
-    block->projection->byte_order = TableBlockByteOrder;
+    block->projection->byte_order = table_block_byte_order;
     offset = 32; /* sizeof the projection */
     block->bytes = table_block_align( offset, 64 );
     return 1;
@@ -540,7 +540,7 @@ static SCHEMA_UNUSED int TableStatBlockBegin( TableStatBlock * block, TableStatB
    to the maxima. The tail — the bytes between the last row and the rounding —
    is UNSPECIFIED, because zeroing megabytes per frame is the cost this form
    exists to avoid. */
-static SCHEMA_UNUSED int64_t TableStatBlockBytes( const TableStatBlock * block )
+static SCHEMA_UNUSED int64_t table_stat_block_bytes( const TableStatBlock * block )
 {
     int64_t used = 32;
     (void) block; /* no out-of-line array: the extent is the projection's own */
@@ -565,7 +565,7 @@ static SCHEMA_UNUSED int64_t TableStatBlockBytes( const TableStatBlock * block )
    mismatch is a refusal; regenerate both sides. Data that must outlive the
    build that wrote it takes the wire (§3), which this same table still has. */
 int schema_benchtable_table_stat_block_open_( TableStatBlock * block, void * base, int64_t bytes );
-static SCHEMA_UNUSED int TableStatBlockOpen( TableStatBlock * block, void * base, int64_t bytes )
+static SCHEMA_UNUSED int table_stat_block_open( TableStatBlock * block, void * base, int64_t bytes )
 {
     return schema_benchtable_table_stat_block_open_( block, base, bytes );
 }

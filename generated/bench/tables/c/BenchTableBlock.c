@@ -26,7 +26,7 @@ int schema_benchtable_table_entity_block_open_( TableEntityBlock * block, void *
     if ( ( (uintptr_t) base % 64 ) != 0 ) { return 0; } /* the base's alignment */
     raw = (const uint8_t *) base;
     magic = table_block_read64( raw );
-    if ( magic != TableBlockMagic )
+    if ( magic != table_block_magic )
     {
         /* a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is
            not a block at all. Both refuse; the distinction is here so a
@@ -35,7 +35,7 @@ int schema_benchtable_table_entity_block_open_( TableEntityBlock * block, void *
         return 0;
     }
     if ( table_block_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return 0; }
-    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )
+    if ( table_block_read64( raw + 16 ) != table_block_byte_order )
     {
         return 0; /* a block of the other byte order: the fix-up path is a named obligation */
     }
@@ -90,7 +90,7 @@ int schema_benchtable_table_stat_block_open_( TableStatBlock * block, void * bas
     if ( ( (uintptr_t) base % 64 ) != 0 ) { return 0; } /* the base's alignment */
     raw = (const uint8_t *) base;
     magic = table_block_read64( raw );
-    if ( magic != TableBlockMagic )
+    if ( magic != table_block_magic )
     {
         /* a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is
            not a block at all. Both refuse; the distinction is here so a
@@ -99,7 +99,7 @@ int schema_benchtable_table_stat_block_open_( TableStatBlock * block, void * bas
         return 0;
     }
     if ( table_block_read64( raw + 8 ) != SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE ) { return 0; }
-    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )
+    if ( table_block_read64( raw + 16 ) != table_block_byte_order )
     {
         return 0; /* a block of the other byte order: the fix-up path is a named obligation */
     }

@@ -325,7 +325,7 @@ static int bench_load( TableMixed * value, const uint8_t * bytes, int64_t size )
 {
     TableReport report;
     memset( &report, 0, sizeof( report ) );
-    return TableMixedLoad( value, bytes, size, &report ) && !report.malformed;
+    return table_mixed_load( value, bytes, size, &report ) && !report.malformed;
 }
 
 static void bench_table( const char * name, const char * golden, long base_iters )
@@ -349,13 +349,13 @@ static void bench_table( const char * name, const char * golden, long base_iters
     for ( k = 0; k < NumVariants; k++ )
     {
         int64_t wrote;
-        TableMixedReset( &g_instances[k] );
+        table_mixed_reset( &g_instances[k] );
         if ( !bench_load( &g_instances[k], variant( k ), bytes_per_op ) )
         {
             fail( name, "load of a variant failed" );
             return;
         }
-        wrote = TableMixedSave( &g_instances[k], g_twin, BufferSize );
+        wrote = table_mixed_save( &g_instances[k], g_twin, BufferSize );
         if ( wrote != bytes_per_op || memcmp( g_twin, variant( k ), (size_t) bytes_per_op ) != 0 )
         {
             fail( name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
@@ -370,7 +370,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
         double elapsed;
         for ( i = 0; i < iters; i++ )
         {
-            const int64_t wrote = TableMixedSave( &g_instances[i & ( NumVariants - 1 )], g_buffer, BufferSize );
+            const int64_t wrote = table_mixed_save( &g_instances[i & ( NumVariants - 1 )], g_buffer, BufferSize );
             if ( wrote != bytes_per_op ) { fail( name, "save failed in loop" ); return; }
             bench_escape( g_buffer );
             g_sink = g_sink + (uint64_t) wrote;
@@ -387,13 +387,13 @@ static void bench_table( const char * name, const char * golden, long base_iters
         for ( i = 0; i < iters; i++ )
         {
             int64_t wrote;
-            TableMixedReset( &g_out );
+            table_mixed_reset( &g_out );
             if ( !bench_load( &g_out, variant( i & ( NumVariants - 1 ) ), bytes_per_op ) )
             {
                 fail( name, "load failed in loop" );
                 return;
             }
-            wrote = TableMixedSave( &g_out, g_buffer, BufferSize );
+            wrote = table_mixed_save( &g_out, g_buffer, BufferSize );
             if ( wrote != bytes_per_op ) { fail( name, "re-save failed in loop" ); return; }
             bench_escape( g_buffer );
             g_sink = g_sink + (uint64_t) wrote;

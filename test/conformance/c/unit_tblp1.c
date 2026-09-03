@@ -2,7 +2,7 @@
 #include "P1Table.h"
 #include "unit.h"
 
-SCHEMA_CONFORMANCE_CODEC( Chain )
+SCHEMA_CONFORMANCE_CODEC( Chain, chain )
 
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tblp1, Chain )

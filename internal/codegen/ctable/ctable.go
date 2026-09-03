@@ -38,8 +38,8 @@
 //
 //   - THE KEYED ARRAY IS A PLAIN ARRAY. C++ wraps the slots in TableKeyed<T,E>
 //     for operator[] and its None refusal. C's storage is `T slots[E.Max]`
-//     directly and the refusal lives in TableKeyedAt, a unit-level macro over
-//     TableKeyedSlot — assert plus abort, in EVERY build, exactly as C++'s
+//     directly and the refusal lives in SCHEMA_TABLE_KEYED_AT, a unit-level macro over
+//     table_keyed_slot — assert plus abort, in EVERY build, exactly as C++'s
 //     accessor refuses (docs/SPEC-TABLES.md §2.4).
 //
 //   - THE HEADER/SOURCE SPLIT IS WIDER. C++17 has inline variables, so its
@@ -111,8 +111,8 @@ func tableKindWidth(kind int) int {
 	return 0
 }
 
-func tablePut(width int) string { return fmt.Sprintf("TableWriterPut%d", width*8) }
-func tableGet(width int) string { return fmt.Sprintf("TableReaderGet%d", width*8) }
+func tablePut(width int) string { return fmt.Sprintf("table_writer_put%d", width*8) }
+func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width*8) }
 
 type tableGen struct {
 	unit        *ir.Unit
@@ -210,7 +210,7 @@ const tableKeyedAccessor = `
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )
     {
@@ -223,7 +223,7 @@ static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define TableKeyedAt( array, key ) ( (array)[ TableKeyedSlot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
 
 `
 
@@ -334,7 +334,7 @@ typedef struct TableReport
    Static field descriptors for every type in the table closure: name, wire
    id/kind, storage offset, bounds, ranges, enum names and branch guards —
    enough to walk, print, diff, edit or bind any table value at runtime with
-   no schema files. <Name>TableType() returns <Name>'s descriptor. */
+   no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
 
@@ -424,8 +424,8 @@ typedef struct TableTypeInfo
     /* put one instance back at its declared defaults, in place. A generic
        walker that fills a value has to be able to establish the defaults an
        absent field takes, and it holds no type to spell — this is the one
-       thing the descriptors could not express without it. It is <Name>ResetRaw,
-       the void * form of <Name>Reset and the same code. */
+       thing the descriptors could not express without it. It is the void *
+       form of <name>_reset and the same code. */
     void (*reset)( void * storage );` + pointerTypeMember + `
 } TableTypeInfo;
 
@@ -437,7 +437,7 @@ typedef struct TableWriter
     int overflow;
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     w.buffer = buffer;
@@ -447,31 +447,31 @@ static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capa
     return w;
 }
 
-static SCHEMA_UNUSED ` + forceInline + ` void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
+static SCHEMA_UNUSED ` + forceInline + ` void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
 {
     if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
     memcpy( w->buffer + w->offset, data, (size_t) bytes );
     w->offset += bytes;
 }
-static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
-static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPut16( TableWriter * w, uint16_t v )
+static SCHEMA_UNUSED ` + forceInline + ` void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
+static SCHEMA_UNUSED ` + forceInline + ` void table_writer_put16( TableWriter * w, uint16_t v )
 {
     uint8_t b[2];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    TableWriterRaw( w, b, 2 );
+    table_writer_raw( w, b, 2 );
 }
-static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPut32( TableWriter * w, uint32_t v )
+static SCHEMA_UNUSED ` + forceInline + ` void table_writer_put32( TableWriter * w, uint32_t v )
 {
     uint8_t b[4];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    TableWriterRaw( w, b, 4 );
+    table_writer_raw( w, b, 4 );
 }
-static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPut64( TableWriter * w, uint64_t v )
+static SCHEMA_UNUSED ` + forceInline + ` void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    TableWriterPut32( w, (uint32_t) v );
-    TableWriterPut32( w, (uint32_t) ( v >> 32 ) );
+    table_writer_put32( w, (uint32_t) v );
+    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
 }
-static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED ` + forceInline + ` void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
 {
     if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
     w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
@@ -486,7 +486,7 @@ typedef struct TableReader
     TableReport * report;
 } TableReader;
 
-static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_t size, TableReport * report )
+static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
 {
     TableReader r;
     r.buffer = buffer;
@@ -496,62 +496,62 @@ static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_
     return r;
 }
 
-static SCHEMA_UNUSED ` + forceInline + ` int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
-static SCHEMA_UNUSED ` + forceInline + ` uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED ` + forceInline + ` uint16_t TableReaderGet16( TableReader * r )
+static SCHEMA_UNUSED ` + forceInline + ` int table_reader_has( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED ` + forceInline + ` uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
+static SCHEMA_UNUSED ` + forceInline + ` uint16_t table_reader_get16( TableReader * r )
 {
     uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
     r->offset += 2;
     return v;
 }
-static SCHEMA_UNUSED ` + forceInline + ` uint32_t TableReaderGet32( TableReader * r )
+static SCHEMA_UNUSED ` + forceInline + ` uint32_t table_reader_get32( TableReader * r )
 {
     uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
                | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
     r->offset += 4;
     return v;
 }
-static SCHEMA_UNUSED ` + forceInline + ` uint64_t TableReaderGet64( TableReader * r )
+static SCHEMA_UNUSED ` + forceInline + ` uint64_t table_reader_get64( TableReader * r )
 {
-    uint64_t lo = TableReaderGet32( r );
-    uint64_t hi = TableReaderGet32( r );
+    uint64_t lo = table_reader_get32( r );
+    uint64_t hi = table_reader_get32( r );
     return lo | ( hi << 32 );
 }
 
 /* skip one payload by kind; 0 = framing damage */
-static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
+static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
     switch ( kind )
     {
         case 1: case 2: case 6:
-            if ( !TableReaderHas( r, 1 ) ) { return 0; }
+            if ( !table_reader_has( r, 1 ) ) { return 0; }
             r->offset += 1; return 1;
         case 3: case 7:
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
             r->offset += 2; return 1;
         case 4: case 8: case 10:
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
             r->offset += 4; return 1;
         case 5: case 9: case 11:
-            if ( !TableReaderHas( r, 8 ) ) { return 0; }
+            if ( !table_reader_has( r, 8 ) ) { return 0; }
             r->offset += 8; return 1;
         case 12: case 13: case 14: case 16:
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
         case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
-            if ( TableReaderGet16( r ) == 0 ) { return 1; }
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
+            if ( table_reader_get16( r ) == 0 ) { return 1; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
@@ -642,7 +642,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 			g.pf("\n")
 			for _, st := range members {
-				g.pf("static SCHEMA_UNUSED const TableTypeInfo * %sTableType( void ) { return &%s; }\n", st.Name, g.sym(st.Name, "info"))
+				g.pf("static SCHEMA_UNUSED const TableTypeInfo * %s( void ) { return &%s; }\n", g.api(st.Name, "table_type"), g.sym(st.Name, "info"))
 			}
 			g.pf("\n")
 			// the TEXT form's surface (docs/SPEC-TABLES.md §16), DECLARED here
@@ -738,8 +738,8 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 	var c strings.Builder
 	fmt.Fprintf(&c, "/* Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n   SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n   your choice. See the LICENSE exception in the schema compiler; the compiler is\n   AGPL-3.0, its output is not.\n", f.Base)
 	fmt.Fprintf(&c, "   package %s — the TABLE wire's reflection descriptors and text form\n", u.Package)
-	c.WriteString("   (docs/SPEC-TABLES.md §8, §16). Compile this file to use <Name>TableType,\n")
-	c.WriteString("   <Name>FromJson or <Name>ToJson; a project that reads neither the\n")
+	c.WriteString("   (docs/SPEC-TABLES.md §8, §16). Compile this file to use <name>_table_type,\n")
+	c.WriteString("   <name>_from_json or <name>_to_json; a project that reads neither the\n")
 	c.WriteString("   descriptors nor a text still gets the whole wire from the header. */\n\n")
 	fmt.Fprintf(&c, "#include \"%sTable.h\"\n\n", f.Base)
 	c.WriteString("#include <stdio.h>  /* the text form: number formatting */\n")
@@ -819,6 +819,29 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	return order
 }
 
+// api is the CALLABLE spelling of a name-first generated function: the §11
+// suffix set, spelled in C.
+//
+// THE RULE, AND IT IS THE PACKET EMITTER'S: a generated identifier is spelled
+// in the convention this backend's PACKET half already uses in this language,
+// because the two halves land in one project and often in one file's include
+// set, and a reader should not be able to tell which emitter wrote a line. For
+// C that convention is four rules, all of them read off `generated/c/`:
+//
+//   - TYPES are PascalCase                — ArmAlign, TableReader, <Name>Block
+//   - FUNCTIONS are snake_case            — write_arms_agree, schema_utf8_valid_
+//   - FILE-SCOPE CONSTANTS are snake_case — enum_name_ship_type
+//   - MACROS are SCREAMING_SNAKE under SCHEMA_ — SCHEMA_UNUSED
+//
+// So §11's <Name>Load is `<name>_load` here, exactly as it is `<name>_load` in
+// Rust and `<Name>Load` in Go, C# and C++: §11 names the SUFFIX SET that a
+// declaration may not collide with, and each backend spells that set in its own
+// language. A port that spelled the reference's C++ casing in C would be the
+// only backend whose table half and packet half disagree.
+func (g *tableGen) api(name, verb string) string {
+	return ir.RustSnake(name) + "_" + verb
+}
+
 // sym is the LINKER spelling of a generated symbol with external linkage.
 //
 // C has no namespaces, and the reference's separation of two generations of
@@ -829,9 +852,10 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 // emitter's own helpers use (schema_utf8_valid_).
 //
 // Nothing a consumer types looks like this. The name-first surface §11 states
-// — <Name>Load, <Name>FromJson, <Name>TableType, <Name>BlockOpen — is emitted
-// as `static` in the header and forwards to these, so a call site reads the
-// same in C as in C++ while the LINKER sees one symbol per (package, type).
+// — spelled by `api` above as <name>_load, <name>_from_json, <name>_table_type,
+// <name>_block_open — is emitted as `static` in the header and forwards to
+// these, so a call site reads as C while the LINKER sees one symbol per
+// (package, type).
 // Two units still cannot meet in ONE TRANSLATION UNIT, which is the packet
 // emitter's stated limit and unchanged by any of this.
 func (g *tableGen) sym(name, what string) string {

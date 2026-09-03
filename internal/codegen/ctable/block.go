@@ -76,7 +76,7 @@ typedef struct TableBlockAllocator
 static SCHEMA_UNUSED void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return malloc( (size_t) bytes ); }
 static SCHEMA_UNUSED void table_block_default_free( void * context, void * pointer ) { (void) context; free( pointer ); }
 
-static SCHEMA_UNUSED TableBlockAllocator TableBlockDefaultAllocator( void )
+static SCHEMA_UNUSED TableBlockAllocator table_block_default_allocator( void )
 {
     TableBlockAllocator allocator;
     allocator.alloc = table_block_default_alloc;
@@ -90,9 +90,9 @@ static SCHEMA_UNUSED TableBlockAllocator TableBlockDefaultAllocator( void )
    big-endian fix-up path is a named obligation, not something a consumer
    improvises row by row. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t TableBlockByteOrder = 2; /* big */
+static SCHEMA_UNUSED const uint64_t table_block_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t TableBlockByteOrder = 1; /* little */
+static SCHEMA_UNUSED const uint64_t table_block_byte_order = 1; /* little */
 #endif
 
 /* Why Begin refused: the array, its count and its maximum (§19.1). Clamping a
@@ -118,7 +118,7 @@ typedef struct TableBlockRows
     int32_t stride;
 } TableBlockRows;
 
-static SCHEMA_UNUSED void * TableBlockRowAt( const TableBlockRows * rows, int32_t index )
+static SCHEMA_UNUSED void * table_block_row_at( const TableBlockRows * rows, int32_t index )
 {
     return (void *) ( rows->base + (ptrdiff_t) index * rows->stride );
 }
@@ -185,7 +185,7 @@ typedef struct TableBlockInfo
    the producer's NATIVE order; a consumer that reads back the byte-swapped
    value has found a foreign byte order, and one that reads back anything else
    has not found a block at all. */
-static SCHEMA_UNUSED const uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
+static SCHEMA_UNUSED const uint64_t table_block_magic = 0x4b4c42414d484353ull;
 
 static SCHEMA_UNUSED uint64_t table_block_byteswap64( uint64_t v )
 {
@@ -353,26 +353,26 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("   can add to more than can ever be occupied at once.\n")
 	g.pf("   It is allocated ONCE, at build time, through the CALLER'S allocator, and\n")
 	g.pf("   released through the same triple. The fill path allocates nothing. */\n")
-	g.pf("#define %sBlockMaxBytes %d\n\n", name, bl.MaxBytes)
+	g.pf("#define %s %d\n\n", g.blockMaxBytesMacro(name), bl.MaxBytes)
 	g.pf("typedef struct %sBlockStorage\n{\n", name)
 	g.pf("    uint8_t * base;      /* the extent, 64-byte aligned */\n")
 	g.pf("    void * allocation;   /* what the allocator handed back */\n")
 	g.pf("    TableBlockAllocator allocator;\n")
 	g.pf("} %sBlockStorage;\n\n", name)
 
-	g.pf("/* Create allocates %sBlockMaxBytes + %d bytes through the caller's triple\n", name, ir.BlockAlign-1)
+	g.pf("/* Create allocates %s + %d bytes through the caller's triple\n", g.blockMaxBytesMacro(name), ir.BlockAlign-1)
 	g.pf("   and aligns the base inside them: malloc's guarantee is not a cache\n")
 	g.pf("   line's, and the 64-byte base is what keeps two workers filling\n")
 	g.pf("   different arrays off one line (§19.1). One call, at build time. */\n")
-	g.pf("static SCHEMA_UNUSED int %sBlockStorageCreate( %sBlockStorage * storage, const TableBlockAllocator * from )\n{\n", name, name)
+	g.pf("static SCHEMA_UNUSED int %s( %sBlockStorage * storage, const TableBlockAllocator * from )\n{\n", g.api(name, "block_storage_create"), name)
 	g.pf("    uintptr_t raw;\n")
 	g.pf("    storage->allocator = *from;\n")
-	g.pf("    storage->allocation = storage->allocator.alloc( storage->allocator.context, %sBlockMaxBytes + %d );\n", name, ir.BlockAlign-1)
+	g.pf("    storage->allocation = storage->allocator.alloc( storage->allocator.context, %s + %d );\n", g.blockMaxBytesMacro(name), ir.BlockAlign-1)
 	g.pf("    if ( storage->allocation == NULL ) { storage->base = NULL; return 0; }\n")
 	g.pf("    raw = (uintptr_t) storage->allocation;\n")
 	g.pf("    storage->base = (uint8_t *) ( ( raw + %d ) & ~(uintptr_t) %d );\n", ir.BlockAlign-1, ir.BlockAlign-1)
 	g.pf("    return 1;\n}\n\n")
-	g.pf("static SCHEMA_UNUSED void %sBlockStorageDestroy( %sBlockStorage * storage )\n{\n", name, name)
+	g.pf("static SCHEMA_UNUSED void %s( %sBlockStorage * storage )\n{\n", g.api(name, "block_storage_destroy"), name)
 	g.pf("    if ( storage->allocation != NULL ) { storage->allocator.free( storage->allocator.context, storage->allocation ); }\n")
 	g.pf("    storage->allocation = NULL;\n    storage->base = NULL;\n}\n\n")
 
@@ -407,7 +407,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("   the triples out of an instance and points at rows, with no hand-written\n")
 	g.pf("   struct per table. */\n")
 	g.pf("extern const TableBlockInfo %s;\n", g.sym(name, "block_info"))
-	g.pf("static SCHEMA_UNUSED const TableBlockInfo * %sBlockType( void ) { return &%s; }\n\n", name, g.sym(name, "block_info"))
+	g.pf("static SCHEMA_UNUSED const TableBlockInfo * %s( void ) { return &%s; }\n\n", g.api(name, "block_type"), g.sym(name, "block_info"))
 
 	g.emitBlockLayoutAsserts(bl)
 	g.emitBlockFillPath(bl)
@@ -428,7 +428,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("   mismatch is a refusal; regenerate both sides. Data that must outlive the\n")
 	g.pf("   build that wrote it takes the wire (§3), which this same table still has. */\n")
 	g.pf("int %s( %sBlock * block, void * base, int64_t bytes );\n", g.sym(name, "block_open"), name)
-	g.pf("static SCHEMA_UNUSED int %sBlockOpen( %sBlock * block, void * base, int64_t bytes )\n{\n", name, name)
+	g.pf("static SCHEMA_UNUSED int %s( %sBlock * block, void * base, int64_t bytes )\n{\n", g.api(name, "block_open"), name)
 	g.pf("    return %s( block, base, bytes );\n}\n\n", g.sym(name, "block_open"))
 
 	g.pf("/* ---- the block form of table %s: end ---- */\n\n", name)
@@ -538,8 +538,8 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("\n")
 	g.pf("   Begin and BlockBytes are SINGLE-THREADED: call Begin before the workers and\n")
 	g.pf("   BlockBytes after they join (§19.1). `refusal` may be NULL. */\n")
-	g.pf("static SCHEMA_UNUSED int %sBlockBegin( %sBlock * block, %sBlockStorage * storage, const %sCounts * counts, TableBlockRefusal * refusal )\n{\n",
-		name, name, name, name)
+	g.pf("static SCHEMA_UNUSED int %s( %sBlock * block, %sBlockStorage * storage, const %sCounts * counts, TableBlockRefusal * refusal )\n{\n",
+		g.api(name, "block_begin"), name, name, name)
 	g.pf("    int64_t offset;\n")
 	for _, a := range bl.Arrays {
 		g.pf("    if ( counts->%s < 0 || counts->%s > %d )\n    {\n", a.Field.Name, a.Field.Name, a.Max)
@@ -553,9 +553,9 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("    if ( storage->base == NULL ) { return 0; } /* Create was not called, or the allocator refused */\n")
 	g.pf("    block->base = storage->base;\n")
 	g.pf("    block->projection = (%sBlockProjection *) (void *) storage->base;\n", name)
-	g.pf("    block->projection->magic = TableBlockMagic;\n")
+	g.pf("    block->projection->magic = table_block_magic;\n")
 	g.pf("    block->projection->build_version = %s;\n", buildVersionName(g.unit.Package))
-	g.pf("    block->projection->byte_order = TableBlockByteOrder;\n")
+	g.pf("    block->projection->byte_order = table_block_byte_order;\n")
 	g.pf("    offset = %d; /* sizeof the projection */\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		g.pf("    offset = table_block_align( offset, %d ); /* max( 64, alignof( %s ) ) */\n", blockStartAlign(a), a.ElemName)
@@ -573,7 +573,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("   to the maxima. The tail — the bytes between the last row and the rounding —\n")
 	g.pf("   is UNSPECIFIED, because zeroing megabytes per frame is the cost this form\n")
 	g.pf("   exists to avoid. */\n")
-	g.pf("static SCHEMA_UNUSED int64_t %sBlockBytes( const %sBlock * block )\n{\n", name, name)
+	g.pf("static SCHEMA_UNUSED int64_t %s( const %sBlock * block )\n{\n", g.api(name, "block_bytes"), name)
 	g.pf("    int64_t used = %d;\n", bl.Projection.Size)
 	if len(bl.Arrays) == 0 {
 		g.pf("    (void) block; /* no out-of-line array: the extent is the projection's own */\n")
@@ -603,7 +603,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 		g.pf("/* %s, as a CONTIGUOUS TYPED base — available because the pitch IS sizeof\n", a.Field.Name)
 		g.pf("   (§2.7), which is how the fast path is actually written. The COUNT comes\n")
 		g.pf("   from the accessor above, out of the instance, never from a constant. */\n")
-		g.pf("static SCHEMA_UNUSED %s * %s%sSpan( const %sBlock * block )\n{\n", a.ElemName, name, field, name)
+		g.pf("static SCHEMA_UNUSED %s * %s%s( const %sBlock * block )\n{\n", a.ElemName, name, g.api(field, "span"), name)
 		g.pf("    return (%s *) (void *) ( block->base + block->projection->%s.offset_of );\n}\n\n", a.ElemName, a.Field.Name)
 	}
 	g.pf("/* ---- block fill path: end ---- */\n\n")
@@ -636,7 +636,7 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("    if ( ( (uintptr_t) base %% %d ) != 0 ) { return 0; } /* the base's alignment */\n", ir.BlockAlign)
 	g.pf("    raw = (const uint8_t *) base;\n")
 	g.pf("    magic = table_block_read64( raw );\n")
-	g.pf("    if ( magic != TableBlockMagic )\n")
+	g.pf("    if ( magic != table_block_magic )\n")
 	g.pf("    {\n")
 	g.pf("        /* a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else is\n")
 	g.pf("           not a block at all. Both refuse; the distinction is here so a\n")
@@ -645,7 +645,7 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("        return 0;\n")
 	g.pf("    }\n")
 	g.pf("    if ( table_block_read64( raw + 8 ) != %s ) { return 0; }\n", buildVersionName(g.unit.Package))
-	g.pf("    if ( table_block_read64( raw + 16 ) != TableBlockByteOrder )\n")
+	g.pf("    if ( table_block_read64( raw + 16 ) != table_block_byte_order )\n")
 	g.pf("    {\n        return 0; /* a block of the other byte order: the fix-up path is a named obligation */\n    }\n")
 	g.pf("    projection = (%sBlockProjection *) base;\n", name)
 	g.pf("    used = %d;\n", bl.Projection.Size)
@@ -848,4 +848,15 @@ func blockDescriptorRecords(b *ir.BlockUnit, bl *ir.BlockLayout) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// blockMaxBytesMacro names a block's storage extent. It is the one generated
+// value that has to be a MACRO — a caller sizes a static buffer with it, and
+// C99 has no constant expression a `static const` can serve there — so it
+// takes the macro spelling the packet emitter uses for every macro it defines:
+// SCREAMING_SNAKE under SCHEMA_, carrying the package because the preprocessor
+// is a namespace with no compiler between a generated name and a declared one.
+func (g *tableGen) blockMaxBytesMacro(name string) string {
+	return "SCHEMA_" + strings.ToUpper(g.unit.Package) + "_" +
+		strings.ToUpper(ir.RustSnake(name)) + "_BLOCK_MAX_BYTES"
 }

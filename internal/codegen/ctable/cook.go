@@ -106,7 +106,7 @@ func tableCookRuntime(pkg string) string {
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
+static SCHEMA_UNUSED const int64_t table_cook_header_bytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -120,7 +120,7 @@ static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static SCHEMA_UNUSED const uint64_t table_cook_magic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -132,16 +132,16 @@ static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
+static SCHEMA_UNUSED const uint64_t table_cook_max_align = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -154,8 +154,8 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
     return v;
 }
 
-/* TableCookOpen: THE WHOLE CHECK, in one place, because §7 states the
-   enumeration once and every generated <Name>Open is that one enumeration plus
+/* table_cook_open: THE WHOLE CHECK, in one place, because §7 states the
+   enumeration once and every generated <name>_open is that one enumeration plus
    its own root's two layout facts.
 
    THE CHECK, in order: the magic read bytewise, the byte order it establishes,
@@ -175,20 +175,20 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
     if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
     if ( table_cook_read64( raw + 8 ) != ` + buildVersionName(pkg) + ` ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
@@ -203,7 +203,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
     if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
@@ -212,7 +212,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
-    data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
+    data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
     if ( length < data_offset ) { return NULL; }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
@@ -262,7 +262,7 @@ func (g *tableGen) emitCookSurface(members []*ir.Struct) {
 
 func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	n := st.Name
-	g.pf("/* %sOpen: match the header and POINT. On a match the bytes ARE what this\n", n)
+	g.pf("/* %s: match the header and POINT. On a match the bytes ARE what this\n", g.api(n, "open"))
 	g.pf("   build wrote, in this build's layout and this build's byte order, so there\n")
 	g.pf("   is nothing to validate and nothing to fix up and the root comes back as it\n")
 	g.pf("   lies. On ANY refusal it returns NULL and the caller falls back to a wire\n")
@@ -273,7 +273,7 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	g.pf("   file's pages are touched only as they are used.\n")
 	g.pf("\n")
 	if g.isVar(st.Name) {
-		g.pf("   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH %sAt with a NULL\n", n)
+		g.pf("   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH %s with a NULL\n", g.api(n, "at"))
 		g.pf("   context: the slot holds the signed self-relative byte delta of §6.3, so a\n")
 		g.pf("   deref is one add and needs no base pointer, a whole region relocates by\n")
 		g.pf("   plain memcpy, and a delta of zero is null.\n")
@@ -288,8 +288,8 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	g.pf("   file whose provenance a person doubts is schema cook-check, offline, over\n")
 	g.pf("   the ATTRIBUTION part beside the data — a person's decision, never a\n")
 	g.pf("   parameter on a load. */\n")
-	g.pf("static SCHEMA_UNUSED const %s * %sOpen( const void * bytes, uint64_t length )\n{\n", n, n)
-	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) SCHEMA_TABLE_ALIGNOF( %s ) );\n}\n\n", n, n, n)
+	g.pf("static SCHEMA_UNUSED const %s * %s( const void * bytes, uint64_t length )\n{\n", n, g.api(n, "open"))
+	g.pf("    return (const %s *) table_cook_open( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) SCHEMA_TABLE_ALIGNOF( %s ) );\n}\n\n", n, n, n)
 }
 
 // emitCookLayoutAsserts is this backend's half of the LAYOUT CONTRACT

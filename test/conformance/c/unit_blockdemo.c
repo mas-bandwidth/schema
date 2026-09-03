@@ -218,12 +218,12 @@ int conformance_block_open( const char * name, const uint8_t * data, size_t byte
     if ( strncmp( name, "block_render", 12 ) == 0 )
     {
         RenderFrameBlock block;
-        opened = RenderFrameBlockOpen( &block, buffer.base, buffer.bytes );
+        opened = render_frame_block_open( &block, buffer.base, buffer.bytes );
     }
     else if ( strncmp( name, "block_padded", 12 ) == 0 )
     {
         PaddedFrameBlock block;
-        opened = PaddedFrameBlockOpen( &block, buffer.base, buffer.bytes );
+        opened = padded_frame_block_open( &block, buffer.base, buffer.bytes );
     }
     else
     {
@@ -243,14 +243,14 @@ int conformance_block_dump( const char * name, const uint8_t * data, size_t byte
     if ( strncmp( name, "block_render", 12 ) == 0 )
     {
         RenderFrameBlock block;
-        ok = RenderFrameBlockOpen( &block, buffer.base, buffer.bytes ) &&
-             dump_block( out, block.base, RenderFrameBlockType() );
+        ok = render_frame_block_open( &block, buffer.base, buffer.bytes ) &&
+             dump_block( out, block.base, render_frame_block_type() );
     }
     else if ( strncmp( name, "block_padded", 12 ) == 0 )
     {
         PaddedFrameBlock block;
-        ok = PaddedFrameBlockOpen( &block, buffer.base, buffer.bytes ) &&
-             dump_block( out, block.base, PaddedFrameBlockType() );
+        ok = padded_frame_block_open( &block, buffer.base, buffer.bytes ) &&
+             dump_block( out, block.base, padded_frame_block_type() );
     }
     else
     {

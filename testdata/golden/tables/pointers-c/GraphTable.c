@@ -3,8 +3,8 @@
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
    package graphdemo — the TABLE wire's reflection descriptors and text form
-   (docs/SPEC-TABLES.md §8, §16). Compile this file to use <Name>TableType,
-   <Name>FromJson or <Name>ToJson; a project that reads neither the
+   (docs/SPEC-TABLES.md §8, §16). Compile this file to use <name>_table_type,
+   <name>_from_json or <name>_to_json; a project that reads neither the
    descriptors nor a text still gets the whole wire from the header. */
 
 #include "GraphTable.h"
@@ -43,7 +43,7 @@
    '.', the runtime's is whatever the program set — so every number crosses
    this one character on the way out and on the way back in. Nothing else in
    the walk consults the locale. */
-static SCHEMA_UNUSED char TableJsonDecimalPoint( void )
+static SCHEMA_UNUSED char table_json_decimal_point( void )
 {
     const struct lconv * conv = localeconv();
     if ( conv != NULL && conv->decimal_point != NULL && conv->decimal_point[0] != 0 )
@@ -59,7 +59,7 @@ static SCHEMA_UNUSED char TableJsonDecimalPoint( void )
 
 /* finite: not a NaN, not an infinity. Written without <math.h> — the walk's
    runtime surface stays the handful of functions it already names. */
-static SCHEMA_UNUSED int TableJsonFinite( double v )
+static SCHEMA_UNUSED int table_json_finite( double v )
 {
     return v == v && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308;
 }
@@ -72,31 +72,31 @@ static SCHEMA_UNUSED int TableJsonFinite( double v )
    "???" — and it is not a name: writing it would put a spelling in the text
    that the reader then counts as unknown, turning a refusal into a silent
    loss. */
-static SCHEMA_UNUSED const char * TableJsonVariantName( const TableFieldInfo * f, uint64_t value )
+static SCHEMA_UNUSED const char * table_json_variant_name( const TableFieldInfo * f, uint64_t value )
 {
     if ( f->variants == NULL || f->enum_max < 0 || value > (uint64_t) f->enum_max ) { return NULL; }
     return f->variants[value].name;
 }
 
-static SCHEMA_UNUSED uint16_t TableJsonVariantId( const TableFieldInfo * f, uint64_t value )
+static SCHEMA_UNUSED uint16_t table_json_variant_id( const TableFieldInfo * f, uint64_t value )
 {
     if ( f->variants == NULL || f->enum_max < 0 || value > (uint64_t) f->enum_max ) { return 0; }
     return f->variants[value].id;
 }
 
-static SCHEMA_UNUSED const char * TableJsonKeyName( const TableFieldInfo * f, uint64_t key )
+static SCHEMA_UNUSED const char * table_json_key_name( const TableFieldInfo * f, uint64_t key )
 {
     if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return NULL; }
     return f->keys[key].name;
 }
 
-static SCHEMA_UNUSED uint16_t TableJsonKeyId( const TableFieldInfo * f, uint64_t key )
+static SCHEMA_UNUSED uint16_t table_json_key_id( const TableFieldInfo * f, uint64_t key )
 {
     if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return 0; }
     return f->keys[key].id;
 }
 
-static SCHEMA_UNUSED uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
+static SCHEMA_UNUSED uint64_t table_json_get_raw( const void * storage, uint32_t width )
 {
     switch ( width )
     {
@@ -109,7 +109,7 @@ static SCHEMA_UNUSED uint64_t TableJsonGetRaw( const void * storage, uint32_t wi
     return 0;
 }
 
-static SCHEMA_UNUSED void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
+static SCHEMA_UNUSED void table_json_set_raw( void * storage, uint32_t width, uint64_t value )
 {
     switch ( width )
     {
@@ -121,9 +121,9 @@ static SCHEMA_UNUSED void TableJsonSetRaw( void * storage, uint32_t width, uint6
     }
 }
 
-static SCHEMA_UNUSED int64_t TableJsonGetSigned( const void * storage, uint32_t width )
+static SCHEMA_UNUSED int64_t table_json_get_signed( const void * storage, uint32_t width )
 {
-    uint64_t raw = TableJsonGetRaw( storage, width );
+    uint64_t raw = table_json_get_raw( storage, width );
     if ( width < 8 )
     {
         uint64_t sign = (uint64_t) 1 << ( width * 8 - 1 );
@@ -138,7 +138,7 @@ static SCHEMA_UNUSED int64_t TableJsonGetSigned( const void * storage, uint32_t 
 /* a counted field's companion: a string's length, a bytes' length, a counted
    array's count. Bounded by the declared extent on the way out, so a storage
    invariant a caller broke cannot walk off the end of the array. */
-static SCHEMA_UNUSED int32_t TableJsonCount( const void * base, const TableFieldInfo * f )
+static SCHEMA_UNUSED int32_t table_json_count( const void * base, const TableFieldInfo * f )
 {
     int32_t count = 0;
     if ( !f->counted )
@@ -151,7 +151,7 @@ static SCHEMA_UNUSED int32_t TableJsonCount( const void * base, const TableField
     return count;
 }
 
-static SCHEMA_UNUSED void TableJsonSetCount( void * base, const TableFieldInfo * f, int32_t count )
+static SCHEMA_UNUSED void table_json_set_count( void * base, const TableFieldInfo * f, int32_t count )
 {
     if ( f->counted )
     {
@@ -173,7 +173,7 @@ static SCHEMA_UNUSED void TableJsonSetCount( void * base, const TableFieldInfo *
    bytes(N) is the one kind whose element kind does not decide its form: it
    shares u8 with a plain array of u8, and rides as base64. The schema type
    name settles it, and "bytes" is a keyword no declaration can claim. */
-static SCHEMA_UNUSED int TableJsonIsBytes( const TableFieldInfo * f )
+static SCHEMA_UNUSED int table_json_is_bytes( const TableFieldInfo * f )
 {
     return f->is_array && f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0;
 }
@@ -181,7 +181,7 @@ static SCHEMA_UNUSED int TableJsonIsBytes( const TableFieldInfo * f )
 /* An ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): its JSON form is an OBJECT
    keyed by variant name, not a positional array, because that is what the
    storage is — one slot per variant, addressed by the variant. */
-static SCHEMA_UNUSED int TableJsonIsKeyed( const TableFieldInfo * f )
+static SCHEMA_UNUSED int table_json_is_keyed( const TableFieldInfo * f )
 {
     return f->keys != NULL;
 }
@@ -189,7 +189,7 @@ static SCHEMA_UNUSED int TableJsonIsKeyed( const TableFieldInfo * f )
 /* THE KEY A STORAGE SLOT HOLDS (§2.4, §8): the storage shifts left, so slot i
    holds the key i + 1 and nothing is stored for None. This is the ONE place
    the walker spells the shift. */
-static SCHEMA_UNUSED uint64_t TableJsonKeyedSlotKey( int64_t slot )
+static SCHEMA_UNUSED uint64_t table_json_keyed_slot_key( int64_t slot )
 {
     return (uint64_t) ( slot + 1 );
 }
@@ -198,41 +198,41 @@ static SCHEMA_UNUSED uint64_t TableJsonKeyedSlotKey( int64_t slot )
    [0, array_bound) does, unless the enum carries max-headroom variants outside
    a table closure, where a reserved value names nothing and its key id is 0 —
    the reserved id no declared name can fold to (§5). */
-static SCHEMA_UNUSED int TableJsonKeyedSlotValid( const TableFieldInfo * f, int64_t slot )
+static SCHEMA_UNUSED int table_json_keyed_slot_valid( const TableFieldInfo * f, int64_t slot )
 {
-    return TableJsonKeyId( f, TableJsonKeyedSlotKey( slot ) ) != 0;
+    return table_json_key_id( f, table_json_keyed_slot_key( slot ) ) != 0;
 }
 
-static SCHEMA_UNUSED int TableJsonIsFlags( const TableFieldInfo * f )
+static SCHEMA_UNUSED int table_json_is_flags( const TableFieldInfo * f )
 {
     return f->variants != NULL && !f->has_variant_ids;
 }
 
-static SCHEMA_UNUSED int TableJsonIsEnum( const TableFieldInfo * f )
+static SCHEMA_UNUSED int table_json_is_enum( const TableFieldInfo * f )
 {
     return f->variants != NULL && f->has_variant_ids && f->arms == NULL;
 }
 
-static SCHEMA_UNUSED char TableJsonShape( const TableFieldInfo * f )
+static SCHEMA_UNUSED char table_json_shape( const TableFieldInfo * f )
 {
     if ( f->kind == 12 ) { return 's'; }           /* string */
-    if ( TableJsonIsBytes( f ) ) { return 's'; }   /* bytes: base64 */
-    if ( TableJsonIsKeyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
+    if ( table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
+    if ( table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
-    if ( TableJsonIsEnum( f ) ) { return 's'; }
-    if ( TableJsonIsFlags( f ) ) { return 'a'; }
+    if ( table_json_is_enum( f ) ) { return 's'; }
+    if ( table_json_is_flags( f ) ) { return 'a'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
 
 /* the ELEMENT shape of an array field — the same classifier one level down */
-static SCHEMA_UNUSED char TableJsonElementShape( const TableFieldInfo * f )
+static SCHEMA_UNUSED char table_json_element_shape( const TableFieldInfo * f )
 {
     if ( f->kind == 13 ) { return 'o'; }
-    if ( TableJsonIsEnum( f ) ) { return 's'; }
-    if ( TableJsonIsFlags( f ) ) { return 'a'; }
+    if ( table_json_is_enum( f ) ) { return 's'; }
+    if ( table_json_is_flags( f ) ) { return 'a'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -244,7 +244,7 @@ static SCHEMA_UNUSED char TableJsonElementShape( const TableFieldInfo * f )
    "active && has_target"), so evaluating it is a walk of the same
    descriptor. Nothing is inferred in the other direction: reading places
    every key it can name, and the guard is a plain bool key (§16.2). */
-static SCHEMA_UNUSED int TableJsonGuardHolds( const void * base, const TableTypeInfo * info, const char * guard )
+static SCHEMA_UNUSED int table_json_guard_holds( const void * base, const TableTypeInfo * info, const char * guard )
 {
     const char * p = guard;
     for ( ;; )
@@ -265,7 +265,7 @@ static SCHEMA_UNUSED int TableJsonGuardHolds( const void * base, const TableType
             const TableFieldInfo * f = &info->fields[i];
             if ( strlen( f->name ) == length && strncmp( f->name, start, length ) == 0 )
             {
-                value = TableJsonGetRaw( (const uint8_t *) base + f->offset, f->elem_size ) != 0;
+                value = table_json_get_raw( (const uint8_t *) base + f->offset, f->elem_size ) != 0;
                 break;
             }
         }
@@ -286,7 +286,7 @@ typedef struct TableJsonOut
     int overflow;
 } TableJsonOut;
 
-static SCHEMA_UNUSED void TableJsonRaw( TableJsonOut * out, const char * data, int64_t count )
+static SCHEMA_UNUSED void table_json_raw( TableJsonOut * out, const char * data, int64_t count )
 {
     if ( out->buffer != NULL )
     {
@@ -296,27 +296,27 @@ static SCHEMA_UNUSED void TableJsonRaw( TableJsonOut * out, const char * data, i
     out->offset += count;
 }
 
-static SCHEMA_UNUSED void TableJsonPut( TableJsonOut * out, char c ) { TableJsonRaw( out, &c, 1 ); }
+static SCHEMA_UNUSED void table_json_put( TableJsonOut * out, char c ) { table_json_raw( out, &c, 1 ); }
 
-static SCHEMA_UNUSED void TableJsonText( TableJsonOut * out, const char * s ) { TableJsonRaw( out, s, (int64_t) strlen( s ) ); }
+static SCHEMA_UNUSED void table_json_text( TableJsonOut * out, const char * s ) { table_json_raw( out, s, (int64_t) strlen( s ) ); }
 
-static SCHEMA_UNUSED void TableJsonLine( TableJsonOut * out, int32_t depth )
+static SCHEMA_UNUSED void table_json_line( TableJsonOut * out, int32_t depth )
 {
     int32_t i;
-    TableJsonPut( out, '\n' );
-    for ( i = 0; i < depth; i++ ) { TableJsonRaw( out, "  ", 2 ); }
+    table_json_put( out, '\n' );
+    for ( i = 0; i < depth; i++ ) { table_json_raw( out, "  ", 2 ); }
 }
 
-static SCHEMA_UNUSED const char * TableJsonBase64Alphabet( void )
+static SCHEMA_UNUSED const char * table_json_base64_alphabet( void )
 {
     return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 }
 
-static SCHEMA_UNUSED void TableJsonWriteBase64( TableJsonOut * out, const uint8_t * data, int32_t length )
+static SCHEMA_UNUSED void table_json_write_base64( TableJsonOut * out, const uint8_t * data, int32_t length )
 {
-    const char * alphabet = TableJsonBase64Alphabet();
+    const char * alphabet = table_json_base64_alphabet();
     int32_t i = 0;
-    TableJsonPut( out, '"' );
+    table_json_put( out, '"' );
     for ( ; i + 3 <= length; i += 3 )
     {
         uint32_t triple = ( (uint32_t) data[i] << 16 ) | ( (uint32_t) data[i+1] << 8 ) | (uint32_t) data[i+2];
@@ -325,7 +325,7 @@ static SCHEMA_UNUSED void TableJsonWriteBase64( TableJsonOut * out, const uint8_
         quad[1] = alphabet[ ( triple >> 12 ) & 0x3f ];
         quad[2] = alphabet[ ( triple >> 6 ) & 0x3f ];
         quad[3] = alphabet[ triple & 0x3f ];
-        TableJsonRaw( out, quad, 4 );
+        table_json_raw( out, quad, 4 );
     }
     if ( i < length )
     {
@@ -338,15 +338,15 @@ static SCHEMA_UNUSED void TableJsonWriteBase64( TableJsonOut * out, const uint8_
         quad[2] = '=';
         quad[3] = '=';
         if ( left == 2 ) { quad[2] = alphabet[ ( triple >> 6 ) & 0x3f ]; }
-        TableJsonRaw( out, quad, 4 );
+        table_json_raw( out, quad, 4 );
     }
-    TableJsonPut( out, '"' );
+    table_json_put( out, '"' );
 }
 
 /* One UTF-8 sequence at s, or -1 when the bytes there are not one. Rejects
    the lot: a stray continuation, an overlong form, a surrogate half, and
    anything past U+10FFFF. */
-static SCHEMA_UNUSED int32_t TableJsonUtf8( const char * s, int32_t remaining, int32_t * width )
+static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining, int32_t * width )
 {
     unsigned char lead = (unsigned char) s[0];
     int32_t want = 0;
@@ -381,55 +381,55 @@ static SCHEMA_UNUSED int32_t TableJsonUtf8( const char * s, int32_t remaining, i
    plainly: for a string holding invalid UTF-8, the round trip is NOT
    byte-identical, because the alternative is emitting a text that is not
    JSON. */
-static SCHEMA_UNUSED void TableJsonWriteString( TableJsonOut * out, const char * s, int32_t length )
+static SCHEMA_UNUSED void table_json_write_string( TableJsonOut * out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
     int32_t i;
-    TableJsonPut( out, '"' );
+    table_json_put( out, '"' );
     for ( i = 0; i < length; i++ )
     {
         unsigned char c = (unsigned char) s[i];
         switch ( c )
         {
-            case '"':  TableJsonRaw( out, "\\\"", 2 ); break;
-            case '\\': TableJsonRaw( out, "\\\\", 2 ); break;
-            case '\b': TableJsonRaw( out, "\\b", 2 ); break;
-            case '\f': TableJsonRaw( out, "\\f", 2 ); break;
-            case '\n': TableJsonRaw( out, "\\n", 2 ); break;
-            case '\r': TableJsonRaw( out, "\\r", 2 ); break;
-            case '\t': TableJsonRaw( out, "\\t", 2 ); break;
+            case '"':  table_json_raw( out, "\\\"", 2 ); break;
+            case '\\': table_json_raw( out, "\\\\", 2 ); break;
+            case '\b': table_json_raw( out, "\\b", 2 ); break;
+            case '\f': table_json_raw( out, "\\f", 2 ); break;
+            case '\n': table_json_raw( out, "\\n", 2 ); break;
+            case '\r': table_json_raw( out, "\\r", 2 ); break;
+            case '\t': table_json_raw( out, "\\t", 2 ); break;
             default:
                 if ( c < 0x20 )
                 {
                     char escape[6];
                     escape[0] = '\\'; escape[1] = 'u'; escape[2] = '0'; escape[3] = '0';
                     escape[4] = hex[ c >> 4 ]; escape[5] = hex[ c & 0xf ];
-                    TableJsonRaw( out, escape, 6 );
+                    table_json_raw( out, escape, 6 );
                 }
                 else if ( c < 0x80 )
                 {
-                    TableJsonPut( out, (char) c );
+                    table_json_put( out, (char) c );
                 }
                 else
                 {
                     int32_t width = 0;
-                    if ( TableJsonUtf8( s + i, length - i, &width ) < 0 )
+                    if ( table_json_utf8( s + i, length - i, &width ) < 0 )
                     {
-                        TableJsonRaw( out, "\xef\xbf\xbd", 3 ); /* U+FFFD, one per bad byte */
+                        table_json_raw( out, "\xef\xbf\xbd", 3 ); /* U+FFFD, one per bad byte */
                     }
                     else
                     {
-                        TableJsonRaw( out, s + i, width );
+                        table_json_raw( out, s + i, width );
                         i += width - 1;
                     }
                 }
                 break;
         }
     }
-    TableJsonPut( out, '"' );
+    table_json_put( out, '"' );
 }
 
-static SCHEMA_UNUSED void TableJsonWriteUnsigned( TableJsonOut * out, uint64_t value )
+static SCHEMA_UNUSED void table_json_write_unsigned( TableJsonOut * out, uint64_t value )
 {
     char digits[24];
     char text[24];
@@ -441,18 +441,18 @@ static SCHEMA_UNUSED void TableJsonWriteUnsigned( TableJsonOut * out, uint64_t v
         value /= 10;
     } while ( value != 0 );
     for ( i = 0; i < n; i++ ) { text[i] = digits[n - 1 - i]; }
-    TableJsonRaw( out, text, n );
+    table_json_raw( out, text, n );
 }
 
-static SCHEMA_UNUSED void TableJsonWriteSigned( TableJsonOut * out, int64_t value )
+static SCHEMA_UNUSED void table_json_write_signed( TableJsonOut * out, int64_t value )
 {
     if ( value < 0 )
     {
-        TableJsonPut( out, '-' );
-        TableJsonWriteUnsigned( out, (uint64_t) 0 - (uint64_t) value );
+        table_json_put( out, '-' );
+        table_json_write_unsigned( out, (uint64_t) 0 - (uint64_t) value );
         return;
     }
-    TableJsonWriteUnsigned( out, (uint64_t) value );
+    table_json_write_unsigned( out, (uint64_t) value );
 }
 
 /* A float writes at the SHORTEST precision that reads back as the same value
@@ -460,7 +460,7 @@ static SCHEMA_UNUSED void TableJsonWriteSigned( TableJsonOut * out, int64_t valu
    readable. Non-finite values have no JSON spelling at all, and the writer
    REFUSES rather than losing one silently — the same rule measure and save
    already apply to an enum value no variant names (§5). */
-static SCHEMA_UNUSED int TableJsonWriteFloat( TableJsonOut * out, double value, int single )
+static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double value, int single )
 {
     char text[64];
     int low = single ? 6 : 15;
@@ -468,7 +468,7 @@ static SCHEMA_UNUSED int TableJsonWriteFloat( TableJsonOut * out, double value, 
     int length = 0;
     int digits;
     char point;
-    if ( !TableJsonFinite( value ) ) { return 0; }
+    if ( !table_json_finite( value ) ) { return 0; }
     for ( digits = low; ; digits++ )
     {
         length = snprintf( text, sizeof( text ), "%.*g", digits, value );
@@ -485,7 +485,7 @@ static SCHEMA_UNUSED int TableJsonWriteFloat( TableJsonOut * out, double value, 
             if ( strtod( text, NULL ) == value ) { break; }
         }
     }
-    point = TableJsonDecimalPoint();
+    point = table_json_decimal_point();
     if ( point != '.' )
     {
         int i;
@@ -494,76 +494,76 @@ static SCHEMA_UNUSED int TableJsonWriteFloat( TableJsonOut * out, double value, 
             if ( text[i] == point ) { text[i] = '.'; }
         }
     }
-    TableJsonRaw( out, text, length );
+    table_json_raw( out, text, length );
     return 1;
 }
 
-static SCHEMA_UNUSED int TableJsonWriteValue( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth );
+static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth );
 
 /* one scalar, at one storage address: a nested object, a union, a
    vocabulary, or a number */
-static SCHEMA_UNUSED int TableJsonWriteScalar( TableJsonOut * out, const void * storage, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void * storage, const TableFieldInfo * f, int32_t depth )
 {
     if ( f->arms != NULL )
     {
         /* a union is an object with ONE key, the arm's name; None is {} */
         const TableUnionInfo * arms = f->arms;
-        uint64_t tag = TableJsonGetRaw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
+        uint64_t tag = table_json_get_raw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
         const char * arm;
         if ( tag == 0 )
         {
-            TableJsonRaw( out, "{}", 2 );
+            table_json_raw( out, "{}", 2 );
             return 1;
         }
         if ( (int64_t) tag > f->enum_max )
         {
             return 0; /* a tag no arm names, exactly as measure refuses it */
         }
-        arm = TableJsonVariantName( f, tag );
+        arm = table_json_variant_name( f, tag );
         /* and refuse on the NAME, not merely on the bound: §16.2 says a value
            no variant NAMES is refused, so the check is the name. */
         if ( arm == NULL ) { return 0; }
-        TableJsonPut( out, '{' );
-        TableJsonLine( out, depth + 1 );
-        TableJsonWriteString( out, arm, (int32_t) strlen( arm ) );
-        TableJsonRaw( out, ": ", 2 );
-        if ( !TableJsonWriteValue( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
+        table_json_put( out, '{' );
+        table_json_line( out, depth + 1 );
+        table_json_write_string( out, arm, (int32_t) strlen( arm ) );
+        table_json_raw( out, ": ", 2 );
+        if ( !table_json_write_value( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
         {
             return 0;
         }
-        TableJsonLine( out, depth );
-        TableJsonPut( out, '}' );
+        table_json_line( out, depth );
+        table_json_put( out, '}' );
         return 1;
     }
     if ( f->kind == 13 )
     {
-        return TableJsonWriteValue( out, storage, f->table, depth );
+        return table_json_write_value( out, storage, f->table, depth );
     }
-    if ( TableJsonIsEnum( f ) )
+    if ( table_json_is_enum( f ) )
     {
-        uint64_t value = TableJsonGetRaw( storage, f->elem_size );
+        uint64_t value = table_json_get_raw( storage, f->elem_size );
         const char * name;
         /* a value no variant names has no text spelling, exactly as it has no
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
-        if ( value != 0 && TableJsonVariantId( f, value ) == 0 ) { return 0; }
-        name = TableJsonVariantName( f, value );
+        if ( value != 0 && table_json_variant_id( f, value ) == 0 ) { return 0; }
+        name = table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
-        TableJsonWriteString( out, name, (int32_t) strlen( name ) );
+        table_json_write_string( out, name, (int32_t) strlen( name ) );
         return 1;
     }
-    if ( TableJsonIsFlags( f ) )
+    if ( table_json_is_flags( f ) )
     {
-        uint64_t bits = TableJsonGetRaw( storage, f->elem_size );
+        uint64_t bits = table_json_get_raw( storage, f->elem_size );
         int first = 1;
         int64_t bit;
         if ( bits == 0 )
         {
-            TableJsonRaw( out, "[]", 2 );
+            table_json_raw( out, "[]", 2 );
             return 1;
         }
-        TableJsonPut( out, '[' );
+        table_json_put( out, '[' );
         for ( bit = 0; bit < 64; bit++ )
         {
             const char * name;
@@ -572,144 +572,144 @@ static SCHEMA_UNUSED int TableJsonWriteScalar( TableJsonOut * out, const void * 
             {
                 return 0; /* a bit no variant names has no text spelling */
             }
-            name = TableJsonVariantName( f, (uint64_t) bit );
+            name = table_json_variant_name( f, (uint64_t) bit );
             if ( name == NULL ) { return 0; }
-            if ( !first ) { TableJsonPut( out, ',' ); }
+            if ( !first ) { table_json_put( out, ',' ); }
             first = 0;
-            TableJsonLine( out, depth + 1 );
-            TableJsonWriteString( out, name, (int32_t) strlen( name ) );
+            table_json_line( out, depth + 1 );
+            table_json_write_string( out, name, (int32_t) strlen( name ) );
         }
-        TableJsonLine( out, depth );
-        TableJsonPut( out, ']' );
+        table_json_line( out, depth );
+        table_json_put( out, ']' );
         return 1;
     }
     switch ( f->kind )
     {
         case 1:
-            TableJsonText( out, TableJsonGetRaw( storage, f->elem_size ) != 0 ? "true" : "false" );
+            table_json_text( out, table_json_get_raw( storage, f->elem_size ) != 0 ? "true" : "false" );
             return 1;
         case 10:
         {
             float v = 0.0f;
             memcpy( &v, storage, sizeof( v ) );
-            return TableJsonWriteFloat( out, (double) v, 1 );
+            return table_json_write_float( out, (double) v, 1 );
         }
         case 11:
         {
             double v = 0.0;
             memcpy( &v, storage, sizeof( v ) );
-            return TableJsonWriteFloat( out, v, 0 );
+            return table_json_write_float( out, v, 0 );
         }
         case 2: case 3: case 4: case 5:
-            TableJsonWriteSigned( out, TableJsonGetSigned( storage, f->elem_size ) );
+            table_json_write_signed( out, table_json_get_signed( storage, f->elem_size ) );
             return 1;
         default:
-            TableJsonWriteUnsigned( out, TableJsonGetRaw( storage, f->elem_size ) );
+            table_json_write_unsigned( out, table_json_get_raw( storage, f->elem_size ) );
             return 1;
     }
 }
 
-static SCHEMA_UNUSED int TableJsonWriteField( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
     if ( f->kind == 12 )
     {
-        TableJsonWriteString( out, (const char *) storage, TableJsonCount( base, f ) );
+        table_json_write_string( out, (const char *) storage, table_json_count( base, f ) );
         return 1;
     }
-    if ( TableJsonIsBytes( f ) )
+    if ( table_json_is_bytes( f ) )
     {
-        TableJsonWriteBase64( out, storage, TableJsonCount( base, f ) );
+        table_json_write_base64( out, storage, table_json_count( base, f ) );
         return 1;
     }
-    if ( TableJsonIsKeyed( f ) )
+    if ( table_json_is_keyed( f ) )
     {
         /* one entry per SLOT, keyed by the variant that owns it, so inserting
            a variant next season moves nothing in the text either. Slot i holds
            the key i + 1: nothing is stored for None, so nothing is written for it. */
         int first = 1;
         int64_t slot;
-        TableJsonPut( out, '{' );
+        table_json_put( out, '{' );
         for ( slot = 0; slot < f->array_bound; slot++ )
         {
             const char * key;
-            if ( !TableJsonKeyedSlotValid( f, slot ) ) { continue; }
-            if ( !first ) { TableJsonPut( out, ',' ); }
+            if ( !table_json_keyed_slot_valid( f, slot ) ) { continue; }
+            if ( !first ) { table_json_put( out, ',' ); }
             first = 0;
-            TableJsonLine( out, depth + 1 );
-            key = TableJsonKeyName( f, TableJsonKeyedSlotKey( slot ) );
-            TableJsonWriteString( out, key, (int32_t) strlen( key ) );
-            TableJsonRaw( out, ": ", 2 );
-            if ( !TableJsonWriteScalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
+            table_json_line( out, depth + 1 );
+            key = table_json_key_name( f, table_json_keyed_slot_key( slot ) );
+            table_json_write_string( out, key, (int32_t) strlen( key ) );
+            table_json_raw( out, ": ", 2 );
+            if ( !table_json_write_scalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
         }
-        if ( first ) { TableJsonRaw( out, "}", 1 ); return 1; }
-        TableJsonLine( out, depth );
-        TableJsonPut( out, '}' );
+        if ( first ) { table_json_raw( out, "}", 1 ); return 1; }
+        table_json_line( out, depth );
+        table_json_put( out, '}' );
         return 1;
     }
     if ( f->is_array )
     {
-        int32_t count = TableJsonCount( base, f );
+        int32_t count = table_json_count( base, f );
         int32_t i;
         if ( count == 0 )
         {
-            TableJsonRaw( out, "[]", 2 );
+            table_json_raw( out, "[]", 2 );
             return 1;
         }
-        TableJsonPut( out, '[' );
+        table_json_put( out, '[' );
         for ( i = 0; i < count; i++ )
         {
-            if ( i > 0 ) { TableJsonPut( out, ',' ); }
-            TableJsonLine( out, depth + 1 );
-            if ( !TableJsonWriteScalar( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) )
+            if ( i > 0 ) { table_json_put( out, ',' ); }
+            table_json_line( out, depth + 1 );
+            if ( !table_json_write_scalar( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
         }
-        TableJsonLine( out, depth );
-        TableJsonPut( out, ']' );
+        table_json_line( out, depth );
+        table_json_put( out, ']' );
         return 1;
     }
-    return TableJsonWriteScalar( out, storage, f, depth );
+    return table_json_write_scalar( out, storage, f, depth );
 }
 
 /* One instance, every field, in DECLARATION ORDER, defaults included — a
    text is for people and tools, and a text that elides is a text a reader
    has to know the schema to complete. */
-static SCHEMA_UNUSED int TableJsonWriteValue( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth )
+static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth )
 {
     int any = 0;
     int32_t i;
     for ( i = 0; i < info->num_fields; i++ )
     {
         const TableFieldInfo * f = &info->fields[i];
-        if ( f->guard[0] != 0 && !TableJsonGuardHolds( base, info, f->guard ) ) { continue; }
+        if ( f->guard[0] != 0 && !table_json_guard_holds( base, info, f->guard ) ) { continue; }
         /* an ABSENT optional writes no key: presence of the key IS the
            presence (§16.2), so an absent field is an absent key and nothing
            else would read back as absent */
         if ( f->optional &&
-             TableJsonGetRaw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
+             table_json_get_raw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
         {
             continue;
         }
-        if ( !any ) { TableJsonPut( out, '{' ); }
-        else { TableJsonPut( out, ',' ); }
+        if ( !any ) { table_json_put( out, '{' ); }
+        else { table_json_put( out, ',' ); }
         any = 1;
-        TableJsonLine( out, depth + 1 );
-        TableJsonWriteString( out, f->json, (int32_t) strlen( f->json ) );
-        TableJsonRaw( out, ": ", 2 );
-        if ( !TableJsonWriteField( out, base, f, depth + 1 ) ) { return 0; }
+        table_json_line( out, depth + 1 );
+        table_json_write_string( out, f->json, (int32_t) strlen( f->json ) );
+        table_json_raw( out, ": ", 2 );
+        if ( !table_json_write_field( out, base, f, depth + 1 ) ) { return 0; }
     }
     if ( !any )
     {
-        TableJsonRaw( out, "{}", 2 );
+        table_json_raw( out, "{}", 2 );
         return 1;
     }
-    TableJsonLine( out, depth );
-    TableJsonPut( out, '}' );
+    table_json_line( out, depth );
+    table_json_put( out, '}' );
     return 1;
 }
 
@@ -724,7 +724,7 @@ typedef struct TableJsonIn
     int bad; /* the text is not JSON: the walk stops and keeps what it placed */
 } TableJsonIn;
 
-static SCHEMA_UNUSED void TableJsonSpace( TableJsonIn * in )
+static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
 {
     while ( in->pos < in->size )
     {
@@ -737,16 +737,16 @@ static SCHEMA_UNUSED void TableJsonSpace( TableJsonIn * in )
     }
 }
 
-static SCHEMA_UNUSED char TableJsonPeek( TableJsonIn * in )
+static SCHEMA_UNUSED char table_json_peek( TableJsonIn * in )
 {
-    TableJsonSpace( in );
+    table_json_space( in );
     return in->pos < in->size ? in->text[in->pos] : 0;
 }
 
 /* the shape of the value sitting at the cursor, without consuming it */
-static SCHEMA_UNUSED char TableJsonValueShape( TableJsonIn * in )
+static SCHEMA_UNUSED char table_json_value_shape( TableJsonIn * in )
 {
-    char c = TableJsonPeek( in );
+    char c = table_json_peek( in );
     switch ( c )
     {
         case '{': return 'o';
@@ -759,7 +759,7 @@ static SCHEMA_UNUSED char TableJsonValueShape( TableJsonIn * in )
     }
 }
 
-static SCHEMA_UNUSED int TableJsonLiteral( TableJsonIn * in, const char * word )
+static SCHEMA_UNUSED int table_json_literal( TableJsonIn * in, const char * word )
 {
     int64_t length = (int64_t) strlen( word );
     if ( in->pos + length > in->size || memcmp( in->text + in->pos, word, (size_t) length ) != 0 )
@@ -772,7 +772,7 @@ static SCHEMA_UNUSED int TableJsonLiteral( TableJsonIn * in, const char * word )
 }
 
 /* one \uXXXX escape body; -1 when the four hex digits are not there */
-static SCHEMA_UNUSED int TableJsonHex4( TableJsonIn * in )
+static SCHEMA_UNUSED int table_json_hex4( TableJsonIn * in )
 {
     int value = 0;
     int i;
@@ -791,7 +791,7 @@ static SCHEMA_UNUSED int TableJsonHex4( TableJsonIn * in )
     return value;
 }
 
-static SCHEMA_UNUSED int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
+static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit )
 {
     if ( code < 0x80 ) { unit[0] = (char) code; return 1; }
     if ( code < 0x800 )
@@ -820,11 +820,11 @@ static SCHEMA_UNUSED int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
    never cut through a multi-byte character. Clamping is counted, never
    fatal, exactly as it is on the wire (§4). A NULL destination scans past a
    string without keeping it. */
-static SCHEMA_UNUSED int TableJsonScanString( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
 {
     int32_t placed = 0;
     int clamped = 0;
-    if ( TableJsonPeek( in ) != '"' ) { in->bad = 1; return 0; }
+    if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     for ( ;; )
     {
@@ -852,7 +852,7 @@ static SCHEMA_UNUSED int TableJsonScanString( TableJsonIn * in, char * out, int3
                 case 't':  unit[0] = '\t'; unit_length = 1; break;
                 case 'u':
                 {
-                    int high = TableJsonHex4( in );
+                    int high = table_json_hex4( in );
                     uint32_t code;
                     if ( high < 0 ) { in->bad = 1; return 0; }
                     code = (uint32_t) high;
@@ -862,7 +862,7 @@ static SCHEMA_UNUSED int TableJsonScanString( TableJsonIn * in, char * out, int3
                         int64_t mark = in->pos;
                         int low;
                         in->pos += 2;
-                        low = TableJsonHex4( in );
+                        low = table_json_hex4( in );
                         if ( low >= 0xdc00 && low <= 0xdfff )
                         {
                             code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
@@ -877,7 +877,7 @@ static SCHEMA_UNUSED int TableJsonScanString( TableJsonIn * in, char * out, int3
                        CESU-8 — invalid UTF-8 — out of input that was valid
                        JSON, so it reads as the replacement character */
                     if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
-                    unit_length = TableJsonEncodeUtf8( code, unit );
+                    unit_length = table_json_encode_utf8( code, unit );
                     break;
                 }
                 default: in->bad = 1; return 0;
@@ -941,10 +941,10 @@ static SCHEMA_UNUSED int TableJsonScanString( TableJsonIn * in, char * out, int3
    already promises. A permissive scan would hand "1-2" to a digit loop and
    report a clamp, and a config pipeline would never hear about it. Leading
    "+", leading zeros, ".5" and "3." are not JSON either. */
-static SCHEMA_UNUSED int TableJsonWalkNumber( TableJsonIn * in, int * integral )
+static SCHEMA_UNUSED int table_json_walk_number( TableJsonIn * in, int * integral )
 {
     int whole = 1;
-    TableJsonSpace( in );
+    table_json_space( in );
     if ( in->pos < in->size && in->text[in->pos] == '-' ) { in->pos++; }
     /* int: a lone zero, or a non-zero digit and any digits after it */
     if ( in->pos >= in->size ) { return 0; }
@@ -982,13 +982,13 @@ static SCHEMA_UNUSED int TableJsonWalkNumber( TableJsonIn * in, int * integral )
 }
 
 /* the same production, with the token kept for conversion */
-static SCHEMA_UNUSED int TableJsonScanNumber( TableJsonIn * in, char * token, int32_t capacity, int32_t * length, int * integral )
+static SCHEMA_UNUSED int table_json_scan_number( TableJsonIn * in, char * token, int32_t capacity, int32_t * length, int * integral )
 {
     int64_t start;
     int64_t count;
-    TableJsonSpace( in );
+    table_json_space( in );
     start = in->pos;
-    if ( !TableJsonWalkNumber( in, integral ) ) { return 0; }
+    if ( !table_json_walk_number( in, integral ) ) { return 0; }
     count = in->pos - start;
     if ( count <= 0 || count >= capacity ) { return 0; }
     memcpy( token, in->text + start, (size_t) count );
@@ -1000,13 +1000,13 @@ static SCHEMA_UNUSED int TableJsonScanNumber( TableJsonIn * in, char * token, in
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
    character on its way in */
-static SCHEMA_UNUSED double TableJsonTokenDouble( const char * token, int32_t length, int single )
+static SCHEMA_UNUSED double table_json_token_double( const char * token, int32_t length, int single )
 {
     char work[kTableJsonMaxNumber];
     char point;
     memcpy( work, token, (size_t) length );
     work[length] = 0;
-    point = TableJsonDecimalPoint();
+    point = table_json_decimal_point();
     if ( point != '.' )
     {
         int32_t i;
@@ -1022,7 +1022,7 @@ static SCHEMA_UNUSED double TableJsonTokenDouble( const char * token, int32_t le
 /* the token's exact integer, parsed digit by digit so no width and no
    locale can move it. Saturation is reported as a clamp, the wire's rule for
    a value outside what the reader can hold (§4). */
-static SCHEMA_UNUSED int64_t TableJsonTokenInteger( const char * token, int32_t length, int is_signed, int * saturated )
+static SCHEMA_UNUSED int64_t table_json_token_integer( const char * token, int32_t length, int is_signed, int * saturated )
 {
     int32_t i = 0;
     int negative = 0;
@@ -1060,25 +1060,25 @@ static SCHEMA_UNUSED int64_t TableJsonTokenInteger( const char * token, int32_t 
     return (int64_t) magnitude;
 }
 
-static SCHEMA_UNUSED int TableJsonSkipValue( TableJsonIn * in, int32_t depth );
+static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth );
 
-static SCHEMA_UNUSED int TableJsonSkipContainer( TableJsonIn * in, char close, int32_t depth )
+static SCHEMA_UNUSED int table_json_skip_container( TableJsonIn * in, char close, int32_t depth )
 {
     if ( depth > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
-        char c = TableJsonPeek( in );
+        char c = table_json_peek( in );
         if ( c == close ) { in->pos++; return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
         if ( close == '}' )
         {
-            if ( !TableJsonScanString( in, NULL, 0, NULL ) ) { return 0; }
-            if ( TableJsonPeek( in ) != ':' ) { in->bad = 1; return 0; }
+            if ( !table_json_scan_string( in, NULL, 0, NULL ) ) { return 0; }
+            if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
         }
-        if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
-        c = TableJsonPeek( in );
+        if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+        c = table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
         if ( c == close ) { in->pos++; return 1; }
         in->bad = 1;
@@ -1086,17 +1086,17 @@ static SCHEMA_UNUSED int TableJsonSkipContainer( TableJsonIn * in, char close, i
     }
 }
 
-static SCHEMA_UNUSED int TableJsonSkipValue( TableJsonIn * in, int32_t depth )
+static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth )
 {
-    char c = TableJsonPeek( in );
+    char c = table_json_peek( in );
     switch ( c )
     {
-        case '{': return TableJsonSkipContainer( in, '}', depth );
-        case '[': return TableJsonSkipContainer( in, ']', depth );
-        case '"': return TableJsonScanString( in, NULL, 0, NULL );
-        case 't': return TableJsonLiteral( in, "true" );
-        case 'f': return TableJsonLiteral( in, "false" );
-        case 'n': return TableJsonLiteral( in, "null" );
+        case '{': return table_json_skip_container( in, '}', depth );
+        case '[': return table_json_skip_container( in, ']', depth );
+        case '"': return table_json_scan_string( in, NULL, 0, NULL );
+        case 't': return table_json_literal( in, "true" );
+        case 'f': return table_json_literal( in, "false" );
+        case 'n': return table_json_literal( in, "null" );
         case 0:   in->bad = 1; return 0;
         default:
         {
@@ -1105,16 +1105,16 @@ static SCHEMA_UNUSED int TableJsonSkipValue( TableJsonIn * in, int32_t depth )
                the SAME production the value path scans, so an unknown key
                cannot smuggle past a number a named key would refuse. */
             int integral = 0;
-            if ( !TableJsonWalkNumber( in, &integral ) ) { in->bad = 1; return 0; }
+            if ( !table_json_walk_number( in, &integral ) ) { in->bad = 1; return 0; }
             return 1;
         }
     }
 }
 
-static SCHEMA_UNUSED int TableJsonReadTable( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth );
+static SCHEMA_UNUSED int table_json_read_table( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth );
 
 /* place one scalar at one storage address */
-static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
     char token[kTableJsonMaxNumber];
     int32_t length = 0;
@@ -1132,33 +1132,33 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
         int64_t tag = 0;
         int64_t t;
         char c;
-        if ( TableJsonPeek( in ) != '{' ) { in->bad = 1; return 0; }
+        if ( table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
-        TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
-        if ( TableJsonPeek( in ) == '}' ) { in->pos++; return 1; }
-        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+        table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
+        if ( table_json_peek( in ) == '}' ) { in->pos++; return 1; }
+        if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
         key[key_length] = 0;
-        if ( TableJsonPeek( in ) != ':' ) { in->bad = 1; return 0; }
+        if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( t = 1; t <= f->enum_max; t++ )
         {
-            const char * name = TableJsonVariantName( f, (uint64_t) t );
+            const char * name = table_json_variant_name( f, (uint64_t) t );
             if ( name != NULL && strcmp( name, key ) == 0 ) { tag = t; break; }
         }
         if ( tag == 0 )
         {
             in->report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
+            if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
         }
         else
         {
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
             arms->arms[tag].table->reset( payload );
-            if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return 0; }
-            TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, (uint64_t) tag );
+            if ( !table_json_read_table( in, payload, arms->arms[tag].table, depth + 1 ) ) { return 0; }
+            table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, (uint64_t) tag );
         }
-        c = TableJsonPeek( in );
-        if ( c == ',' ) { in->pos++; c = TableJsonPeek( in ); }
+        c = table_json_peek( in );
+        if ( c == ',' ) { in->pos++; c = table_json_peek( in ); }
         if ( c == '}' ) { in->pos++; return 1; }
         in->bad = 1; /* a second key: a one-of with two arms is not a value */
         return 0;
@@ -1166,44 +1166,44 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
     if ( f->kind == 13 )
     {
         f->table->reset( storage );
-        return TableJsonReadTable( in, storage, f->table, depth + 1 );
+        return table_json_read_table( in, storage, f->table, depth + 1 );
     }
-    if ( TableJsonIsEnum( f ) )
+    if ( table_json_is_enum( f ) )
     {
         char name[kTableJsonMaxKey];
         int32_t name_length = 0;
         int64_t v;
-        if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return 0; }
+        if ( !table_json_scan_string( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return 0; }
         name[name_length] = 0;
         for ( v = 0; v <= f->enum_max; v++ )
         {
-            const char * variant = TableJsonVariantName( f, (uint64_t) v );
+            const char * variant = table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && strcmp( variant, name ) == 0 )
             {
-                TableJsonSetRaw( storage, f->elem_size, (uint64_t) v );
+                table_json_set_raw( storage, f->elem_size, (uint64_t) v );
                 return 1;
             }
         }
         /* a name this build cannot name reads as None and counts as unknown,
            exactly as an unknown variant id does on the wire (§4) */
-        TableJsonSetRaw( storage, f->elem_size, 0 );
+        table_json_set_raw( storage, f->elem_size, 0 );
         in->report->unknown++;
         return 1;
     }
-    if ( TableJsonIsFlags( f ) )
+    if ( table_json_is_flags( f ) )
     {
         uint64_t bits = 0;
-        if ( TableJsonPeek( in ) != '[' ) { in->bad = 1; return 0; }
+        if ( table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( ;; )
         {
-            char c = TableJsonPeek( in );
+            char c = table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( c != '"' )
             {
                 in->report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
+                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else
             {
@@ -1211,11 +1211,11 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
                 int32_t name_length = 0;
                 int found = 0;
                 int64_t bit;
-                if ( !TableJsonScanString( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return 0; }
+                if ( !table_json_scan_string( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return 0; }
                 name[name_length] = 0;
                 for ( bit = 0; bit <= f->enum_max; bit++ )
                 {
-                    const char * variant = TableJsonVariantName( f, (uint64_t) bit );
+                    const char * variant = table_json_variant_name( f, (uint64_t) bit );
                     if ( variant != NULL && strcmp( variant, name ) == 0 )
                     {
                         bits |= (uint64_t) 1 << bit;
@@ -1225,24 +1225,24 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
                 }
                 if ( !found ) { in->report->unknown++; }
             }
-            c = TableJsonPeek( in );
+            c = table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
             if ( c == ']' ) { in->pos++; break; }
             in->bad = 1;
             return 0;
         }
-        TableJsonSetRaw( storage, f->elem_size, bits );
+        table_json_set_raw( storage, f->elem_size, bits );
         return 1;
     }
     if ( f->kind == 1 )
     {
-        char c = TableJsonPeek( in );
-        if ( c == 't' ) { if ( !TableJsonLiteral( in, "true" ) ) { return 0; } TableJsonSetRaw( storage, f->elem_size, 1 ); return 1; }
-        if ( !TableJsonLiteral( in, "false" ) ) { return 0; }
-        TableJsonSetRaw( storage, f->elem_size, 0 );
+        char c = table_json_peek( in );
+        if ( c == 't' ) { if ( !table_json_literal( in, "true" ) ) { return 0; } table_json_set_raw( storage, f->elem_size, 1 ); return 1; }
+        if ( !table_json_literal( in, "false" ) ) { return 0; }
+        table_json_set_raw( storage, f->elem_size, 0 );
         return 1;
     }
-    if ( !TableJsonScanNumber( in, token, kTableJsonMaxNumber, &length, &integral ) )
+    if ( !table_json_scan_number( in, token, kTableJsonMaxNumber, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
@@ -1250,7 +1250,7 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
     if ( f->kind == 10 || f->kind == 11 )
     {
         int single = f->kind == 10;
-        double fvalue = TableJsonTokenDouble( token, length, single );
+        double fvalue = table_json_token_double( token, length, single );
         /* A magnitude the field's format cannot hold is the WRONG SHAPE for
            the kind, and it never reaches storage: 1e400 is not a float64 and
            1e300 is not a float32. Storing the infinity the conversion
@@ -1258,7 +1258,7 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
            ToJsonMeasure then refuses forever (a non-finite float has no JSON
            spelling), and §16.1's one invariant is that a text which reads
            clean writes back. */
-        if ( !TableJsonFinite( fvalue ) )
+        if ( !table_json_finite( fvalue ) )
         {
             in->report->kind_mismatch++;
             return 1;
@@ -1271,7 +1271,7 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
         if ( single )
         {
             float narrow = (float) fvalue;
-            if ( !TableJsonFinite( (double) narrow ) )
+            if ( !table_json_finite( (double) narrow ) )
             {
                 in->report->kind_mismatch++;
                 return 1;
@@ -1292,12 +1292,12 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
     is_signed = f->kind >= 2 && f->kind <= 5;
     if ( integral )
     {
-        value = TableJsonTokenInteger( token, length, is_signed, &saturated );
+        value = table_json_token_integer( token, length, is_signed, &saturated );
     }
     else
     {
-        double d = TableJsonTokenDouble( token, length, 0 );
-        if ( !TableJsonFinite( d ) )
+        double d = table_json_token_double( token, length, 0 );
+        if ( !table_json_finite( d ) )
         {
             in->report->kind_mismatch++;
             return 1;
@@ -1352,22 +1352,22 @@ static SCHEMA_UNUSED int TableJsonReadScalar( TableJsonIn * in, void * storage, 
        past INT64_MAX rides here as a negative int64 by design — the token
        parser already turned a NEGATIVE token for an unsigned field into a
        clamped zero, so there is nothing left to bound. */
-    TableJsonSetRaw( storage, f->elem_size, (uint64_t) value );
+    table_json_set_raw( storage, f->elem_size, (uint64_t) value );
     return 1;
 }
 
-static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
     if ( f->kind == 12 )
     {
         int32_t length = 0;
-        if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
+        if ( !table_json_scan_string( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
-        TableJsonSetCount( base, f, length );
+        table_json_set_count( base, f, length );
         return 1;
     }
-    if ( TableJsonIsBytes( f ) )
+    if ( table_json_is_bytes( f ) )
     {
         /* base64 decodes STRAIGHT INTO the field's storage, six bits at a
            time — no window, no temporary, so a bytes(N) of any declared
@@ -1379,11 +1379,11 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
         int32_t held = 0;
         int clamped = 0;
         int malformed = 0;
-        if ( TableJsonPeek( in ) != '"' ) { in->bad = 1; return 0; }
+        if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
         in->pos++;
         memset( storage, 0, (size_t) f->array_bound );
-        TableJsonSetCount( base, f, 0 );
-        alphabet = TableJsonBase64Alphabet();
+        table_json_set_count( base, f, 0 );
+        alphabet = table_json_base64_alphabet();
         for ( ;; )
         {
             char c;
@@ -1417,10 +1417,10 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
             return 1;
         }
         if ( clamped ) { in->report->clamped++; }
-        TableJsonSetCount( base, f, placed );
+        table_json_set_count( base, f, placed );
         return 1;
     }
-    if ( TableJsonIsKeyed( f ) )
+    if ( table_json_is_keyed( f ) )
     {
         /* every slot back to its declared defaults first, so a key the text
            omits keeps them and a repeated field key cannot leave an earlier
@@ -1428,7 +1428,7 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
         int32_t i;
         char shape;
         uint64_t seen[8];
-        if ( TableJsonPeek( in ) != '{' ) { in->bad = 1; return 0; }
+        if ( table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( i = 0; i < f->array_bound; i++ )
         {
@@ -1436,7 +1436,7 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
             if ( f->kind == 13 ) { f->table->reset( slot ); }
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
-        shape = TableJsonElementShape( f );
+        shape = table_json_element_shape( f );
         /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
@@ -1445,24 +1445,24 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
         memset( seen, 0, sizeof( seen ) );
         for ( ;; )
         {
-            char c = TableJsonPeek( in );
+            char c = table_json_peek( in );
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
             int64_t slot = -1;
             int64_t v;
             if ( c == '}' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+            if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
             key[key_length] = 0;
-            if ( TableJsonPeek( in ) != ':' ) { in->bad = 1; return 0; }
+            if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
             for ( v = 0; v < f->array_bound; v++ )
             {
                 /* nothing is stored for None, so "None" finds no slot and is
                    an unknown key like any other name this reader cannot place */
                 const char * name;
-                if ( !TableJsonKeyedSlotValid( f, v ) ) { continue; }
-                name = TableJsonKeyName( f, TableJsonKeyedSlotKey( v ) );
+                if ( !table_json_keyed_slot_valid( f, v ) ) { continue; }
+                name = table_json_key_name( f, table_json_keyed_slot_key( v ) );
                 if ( name != NULL && strcmp( name, key ) == 0 ) { slot = v; break; }
             }
             if ( slot >= 0 && slot < 512 )
@@ -1474,18 +1474,18 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
             if ( slot < 0 )
             {
                 in->report->unknown++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
+                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( TableJsonValueShape( in ) != shape )
+            else if ( table_json_value_shape( in ) != shape )
             {
                 in->report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
+                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( !TableJsonReadScalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
+            else if ( !table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
-            c = TableJsonPeek( in );
+            c = table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
             if ( c == '}' ) { in->pos++; break; }
             in->bad = 1;
@@ -1503,7 +1503,7 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
            table and a union arm already get. */
         int32_t placed = 0;
         char shape;
-        if ( TableJsonPeek( in ) != '[' ) { in->bad = 1; return 0; }
+        if ( table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         if ( f->kind == 13 )
         {
@@ -1517,11 +1517,11 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
         {
             memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
         }
-        TableJsonSetCount( base, f, 0 );
-        shape = TableJsonElementShape( f );
+        table_json_set_count( base, f, 0 );
+        shape = table_json_element_shape( f );
         for ( ;; )
         {
-            char c = TableJsonPeek( in );
+            char c = table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( placed >= f->array_bound )
@@ -1529,20 +1529,20 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
                 in->report->clamped++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
+                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( TableJsonValueShape( in ) != shape )
+            else if ( table_json_value_shape( in ) != shape )
             {
                 in->report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
+                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 placed++;
             }
             else
             {
-                if ( !TableJsonReadScalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
+                if ( !table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
                 placed++;
             }
-            c = TableJsonPeek( in );
+            c = table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
             if ( c == ']' ) { in->pos++; break; }
             in->bad = 1;
@@ -1550,37 +1550,37 @@ static SCHEMA_UNUSED int TableJsonReadField( TableJsonIn * in, void * base, cons
         }
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
-        TableJsonSetCount( base, f, placed );
+        table_json_set_count( base, f, placed );
         return 1;
     }
-    return TableJsonReadScalar( in, storage, f, depth );
+    return table_json_read_scalar( in, storage, f, depth );
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and
    counted, a repeated key is last-wins and counted. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
-static SCHEMA_UNUSED int TableJsonReadTable( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth )
+static SCHEMA_UNUSED int table_json_read_table( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth )
 {
     /* duplicate tracking, bounded and allocation-free: a table with more
        fields than this still reads, its repeats simply stop being counted */
     uint64_t seen[8];
     if ( depth > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
-    if ( TableJsonPeek( in ) != '{' ) { in->bad = 1; return 0; }
+    if ( table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
     memset( seen, 0, sizeof( seen ) );
     for ( ;; )
     {
-        char c = TableJsonPeek( in );
+        char c = table_json_peek( in );
         char key[kTableJsonMaxKey];
         int32_t key_length = 0;
         int32_t index = -1;
         int32_t i;
         if ( c == '}' ) { in->pos++; return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
-        if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+        if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
         key[key_length] = 0;
-        if ( TableJsonPeek( in ) != ':' ) { in->bad = 1; return 0; }
+        if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( i = 0; i < info->num_fields; i++ )
         {
@@ -1589,7 +1589,7 @@ static SCHEMA_UNUSED int TableJsonReadTable( TableJsonIn * in, void * base, cons
         if ( index < 0 )
         {
             in->report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
+            if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
         }
         else
         {
@@ -1605,35 +1605,35 @@ static SCHEMA_UNUSED int TableJsonReadTable( TableJsonIn * in, void * base, cons
                is the key being present, so an optional is set present
                whatever its value — with one exception the page names: a JSON
                null, which reads as ABSENT rather than as a value. */
-            got = TableJsonValueShape( in );
+            got = table_json_value_shape( in );
             if ( f->optional && got == 'z' )
             {
-                if ( !TableJsonLiteral( in, "null" ) ) { return 0; }
+                if ( !table_json_literal( in, "null" ) ) { return 0; }
                 /* absent, and back at its defaults: a repeated key whose last
                    occurrence is null must not leave an earlier value standing */
                 if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
-                TableJsonSetRaw( (uint8_t *) base + f->present_offset, 1, 0 );
+                table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
             else
             {
-                if ( got != TableJsonShape( f ) )
+                if ( got != table_json_shape( f ) )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
                     in->report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return 0; }
+                    if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 }
-                else if ( !TableJsonReadField( in, base, f, depth ) )
+                else if ( !table_json_read_field( in, base, f, depth ) )
                 {
                     return 0;
                 }
                 if ( f->optional )
                 {
-                    TableJsonSetRaw( (uint8_t *) base + f->present_offset, 1, 1 );
+                    table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 1 );
                 }
             }
         }
-        c = TableJsonPeek( in );
+        c = table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
         if ( c == '}' ) { in->pos++; return 1; }
         in->bad = 1;
@@ -1643,7 +1643,7 @@ static SCHEMA_UNUSED int TableJsonReadTable( TableJsonIn * in, void * base, cons
 
 /* ---- the two entry points the per-table wrappers name ---- */
 
-static SCHEMA_UNUSED int TableJsonRead( void * value, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableJsonIn in;
@@ -1660,10 +1660,10 @@ static SCHEMA_UNUSED int TableJsonRead( void * value, const TableTypeInfo * info
         in.report->malformed = 1;
         return 0;
     }
-    ok = TableJsonReadTable( &in, value, info, 0 );
+    ok = table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
-        TableJsonSpace( &in );
+        table_json_space( &in );
         if ( in.pos != in.size ) { in.bad = 1; } /* trailing rubbish is not one text */
     }
     if ( in.bad || !ok )
@@ -1674,14 +1674,14 @@ static SCHEMA_UNUSED int TableJsonRead( void * value, const TableTypeInfo * info
     return 1;
 }
 
-static SCHEMA_UNUSED int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTypeInfo * info, char * buffer, int64_t capacity )
 {
     TableJsonOut out;
     out.buffer = buffer;
     out.capacity = capacity;
     out.offset = 0;
     out.overflow = 0;
-    if ( !TableJsonWriteValue( &out, value, info, 0 ) ) { return -1; }
+    if ( !table_json_write_value( &out, value, info, 0 ) ) { return -1; }
     /* THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
        §16.1). Every writer emits it — this walk, the reference's and
        "schema unpack" — and every reader accepts a text with or without one,
@@ -1690,7 +1690,7 @@ static SCHEMA_UNUSED int64_t TableJsonWrite( const void * value, const TableType
        convention: a text that is written to a file, pasted into a diff and
        handed back through a pipe has to be one text in all three places, and a
        buffer whose last byte is a closing brace is the one shape that is not. */
-    TableJsonPut( &out, '\n' );
+    table_json_put( &out, '\n' );
     if ( out.overflow ) { return -1; }
     return out.offset;
 }
@@ -1775,21 +1775,21 @@ const TableTypeInfo schema_graphdemo_album_info_ = { "Album", (uint32_t) sizeof(
 
 int schema_graphdemo_meta_from_json_( Meta * value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( value, &schema_graphdemo_meta_info_, text, bytes, report );
+    return table_json_read( value, &schema_graphdemo_meta_info_, text, bytes, report );
 }
 
 int64_t schema_graphdemo_meta_to_json_( const Meta * value, char * buffer, int64_t capacity )
 {
-    return TableJsonWrite( value, &schema_graphdemo_meta_info_, buffer, capacity );
+    return table_json_write( value, &schema_graphdemo_meta_info_, buffer, capacity );
 }
 
 int schema_graphdemo_settings_from_json_( Settings * value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( value, &schema_graphdemo_settings_info_, text, bytes, report );
+    return table_json_read( value, &schema_graphdemo_settings_info_, text, bytes, report );
 }
 
 int64_t schema_graphdemo_settings_to_json_( const Settings * value, char * buffer, int64_t capacity )
 {
-    return TableJsonWrite( value, &schema_graphdemo_settings_info_, buffer, capacity );
+    return table_json_write( value, &schema_graphdemo_settings_info_, buffer, capacity );
 }
 

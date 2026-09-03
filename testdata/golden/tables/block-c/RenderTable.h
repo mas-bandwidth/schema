@@ -116,7 +116,7 @@ typedef struct TableReport
    Static field descriptors for every type in the table closure: name, wire
    id/kind, storage offset, bounds, ranges, enum names and branch guards —
    enough to walk, print, diff, edit or bind any table value at runtime with
-   no schema files. <Name>TableType() returns <Name>'s descriptor. */
+   no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
 
@@ -206,8 +206,8 @@ typedef struct TableTypeInfo
     /* put one instance back at its declared defaults, in place. A generic
        walker that fills a value has to be able to establish the defaults an
        absent field takes, and it holds no type to spell — this is the one
-       thing the descriptors could not express without it. It is <Name>ResetRaw,
-       the void * form of <Name>Reset and the same code. */
+       thing the descriptors could not express without it. It is the void *
+       form of <name>_reset and the same code. */
     void (*reset)( void * storage );
 } TableTypeInfo;
 
@@ -219,7 +219,7 @@ typedef struct TableWriter
     int overflow;
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     w.buffer = buffer;
@@ -229,31 +229,31 @@ static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capa
     return w;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
 {
     if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
     memcpy( w->buffer + w->offset, data, (size_t) bytes );
     w->offset += bytes;
 }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void TableWriterPut16( TableWriter * w, uint16_t v )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_put16( TableWriter * w, uint16_t v )
 {
     uint8_t b[2];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    TableWriterRaw( w, b, 2 );
+    table_writer_raw( w, b, 2 );
 }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )
 {
     uint8_t b[4];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    TableWriterRaw( w, b, 4 );
+    table_writer_raw( w, b, 4 );
 }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void TableWriterPut64( TableWriter * w, uint64_t v )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    TableWriterPut32( w, (uint32_t) v );
-    TableWriterPut32( w, (uint32_t) ( v >> 32 ) );
+    table_writer_put32( w, (uint32_t) v );
+    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
 }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
 {
     if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
     w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
@@ -268,7 +268,7 @@ typedef struct TableReader
     TableReport * report;
 } TableReader;
 
-static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_t size, TableReport * report )
+static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
 {
     TableReader r;
     r.buffer = buffer;
@@ -278,62 +278,62 @@ static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_
     return r;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint16_t TableReaderGet16( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 {
     uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
     r->offset += 2;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )
 {
     uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
                | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
     r->offset += 4;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint64_t TableReaderGet64( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE uint64_t table_reader_get64( TableReader * r )
 {
-    uint64_t lo = TableReaderGet32( r );
-    uint64_t hi = TableReaderGet32( r );
+    uint64_t lo = table_reader_get32( r );
+    uint64_t hi = table_reader_get32( r );
     return lo | ( hi << 32 );
 }
 
 /* skip one payload by kind; 0 = framing damage */
-static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
+static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
     switch ( kind )
     {
         case 1: case 2: case 6:
-            if ( !TableReaderHas( r, 1 ) ) { return 0; }
+            if ( !table_reader_has( r, 1 ) ) { return 0; }
             r->offset += 1; return 1;
         case 3: case 7:
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
             r->offset += 2; return 1;
         case 4: case 8: case 10:
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
             r->offset += 4; return 1;
         case 5: case 9: case 11:
-            if ( !TableReaderHas( r, 8 ) ) { return 0; }
+            if ( !table_reader_has( r, 8 ) ) { return 0; }
             r->offset += 8; return 1;
         case 12: case 13: case 14: case 16:
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
         case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
-            if ( TableReaderGet16( r ) == 0 ) { return 1; }
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
+            if ( table_reader_get16( r ) == 0 ) { return 1; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
@@ -346,7 +346,7 @@ static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )
     {
@@ -359,7 +359,7 @@ static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define TableKeyedAt( array, key ) ( (array)[ TableKeyedSlot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -411,7 +411,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
+static SCHEMA_UNUSED const int64_t table_cook_header_bytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -425,7 +425,7 @@ static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static SCHEMA_UNUSED const uint64_t table_cook_magic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -437,16 +437,16 @@ static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
+static SCHEMA_UNUSED const uint64_t table_cook_max_align = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -459,8 +459,8 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
     return v;
 }
 
-/* TableCookOpen: THE WHOLE CHECK, in one place, because §7 states the
-   enumeration once and every generated <Name>Open is that one enumeration plus
+/* table_cook_open: THE WHOLE CHECK, in one place, because §7 states the
+   enumeration once and every generated <name>_open is that one enumeration plus
    its own root's two layout facts.
 
    THE CHECK, in order: the magic read bytewise, the byte order it establishes,
@@ -480,20 +480,20 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
     if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
     if ( table_cook_read64( raw + 8 ) != SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
@@ -508,7 +508,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
     if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
@@ -517,7 +517,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
-    data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
+    data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
     if ( length < data_offset ) { return NULL; }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
@@ -543,7 +543,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
 #endif /* SCHEMA_BLOCKDEMO_TABLE_COOK */
 
 /* table RenderCamera — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderCameraReset and nowhere
+   initializers, so the declared defaults live in render_camera_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderCamera {
     RenderVector3 position;
@@ -555,7 +555,7 @@ typedef struct RenderCamera {
 } RenderCamera;
 
 /* table RenderShip — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderShipReset and nowhere
+   initializers, so the declared defaults live in render_ship_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderShip {
     RenderVector3 position;
@@ -572,7 +572,7 @@ typedef struct RenderShip {
 } RenderShip;
 
 /* table RenderTurret — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderTurretReset and nowhere
+   initializers, so the declared defaults live in render_turret_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderTurret {
     RenderQuaternion rotation;
@@ -587,7 +587,7 @@ typedef struct RenderTurret {
 } RenderTurret;
 
 /* table RenderMissile — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderMissileReset and nowhere
+   initializers, so the declared defaults live in render_missile_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderMissile {
     RenderVector3 position;
@@ -600,7 +600,7 @@ typedef struct RenderMissile {
 } RenderMissile;
 
 /* table RenderDynamicProp — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderDynamicPropReset and nowhere
+   initializers, so the declared defaults live in render_dynamic_prop_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderDynamicProp {
     RenderVector3 position;
@@ -613,7 +613,7 @@ typedef struct RenderDynamicProp {
 } RenderDynamicProp;
 
 /* table RenderStaticProp — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderStaticPropReset and nowhere
+   initializers, so the declared defaults live in render_static_prop_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderStaticProp {
     RenderVector3 position;
@@ -626,7 +626,7 @@ typedef struct RenderStaticProp {
 } RenderStaticProp;
 
 /* table RenderCosmeticProp — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderCosmeticPropReset and nowhere
+   initializers, so the declared defaults live in render_cosmetic_prop_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderCosmeticProp {
     RenderVector3 position;
@@ -640,7 +640,7 @@ typedef struct RenderCosmeticProp {
 } RenderCosmeticProp;
 
 /* table RenderLaser — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderLaserReset and nowhere
+   initializers, so the declared defaults live in render_laser_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderLaser {
     RenderVector3 start;
@@ -652,7 +652,7 @@ typedef struct RenderLaser {
 } RenderLaser;
 
 /* table RenderExplosion — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderExplosionReset and nowhere
+   initializers, so the declared defaults live in render_explosion_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderExplosion {
     RenderVector3 position;
@@ -665,7 +665,7 @@ typedef struct RenderExplosion {
 } RenderExplosion;
 
 /* table RenderFrame — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RenderFrameReset and nowhere
+   initializers, so the declared defaults live in render_frame_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RenderFrame {
     uint64_t version;
@@ -691,47 +691,47 @@ typedef struct RenderFrame {
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
 
-static SCHEMA_UNUSED void RenderCameraReset( RenderCamera * value );
+static SCHEMA_UNUSED void render_camera_reset( RenderCamera * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_camera_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderShipReset( RenderShip * value );
+static SCHEMA_UNUSED void render_ship_reset( RenderShip * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_ship_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderTurretReset( RenderTurret * value );
+static SCHEMA_UNUSED void render_turret_reset( RenderTurret * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_turret_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderMissileReset( RenderMissile * value );
+static SCHEMA_UNUSED void render_missile_reset( RenderMissile * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_missile_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderDynamicPropReset( RenderDynamicProp * value );
+static SCHEMA_UNUSED void render_dynamic_prop_reset( RenderDynamicProp * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_dynamic_prop_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderStaticPropReset( RenderStaticProp * value );
+static SCHEMA_UNUSED void render_static_prop_reset( RenderStaticProp * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_static_prop_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderCosmeticPropReset( RenderCosmeticProp * value );
+static SCHEMA_UNUSED void render_cosmetic_prop_reset( RenderCosmeticProp * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_cosmetic_prop_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderLaserReset( RenderLaser * value );
+static SCHEMA_UNUSED void render_laser_reset( RenderLaser * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_laser_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderExplosionReset( RenderExplosion * value );
+static SCHEMA_UNUSED void render_explosion_reset( RenderExplosion * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_explosion_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderFrameReset( RenderFrame * value );
+static SCHEMA_UNUSED void render_frame_reset( RenderFrame * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_frame_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderVector3Reset( RenderVector3 * value );
+static SCHEMA_UNUSED void render_vector3_reset( RenderVector3 * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_vector3_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RenderQuaternionReset( RenderQuaternion * value );
+static SCHEMA_UNUSED void render_quaternion_reset( RenderQuaternion * value );
 static SCHEMA_UNUSED void schema_blockdemo_render_quaternion_reset_raw_( void * storage );
 
-static SCHEMA_UNUSED void RenderCameraReset( RenderCamera * value )
+static SCHEMA_UNUSED void render_camera_reset( RenderCamera * value )
 {
-    RenderVector3Reset( &value->position );
-    RenderQuaternionReset( &value->rotation );
+    render_vector3_reset( &value->position );
+    render_quaternion_reset( &value->rotation );
     value->camera_id = 0;
     value->camera_type = 0;
     value->target_object_id = 0;
     value->fov = 0.0f;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_camera_reset_raw_( void * storage ) { RenderCameraReset( (RenderCamera *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_camera_reset_raw_( void * storage ) { render_camera_reset( (RenderCamera *) storage ); }
 
-static SCHEMA_UNUSED void RenderShipReset( RenderShip * value )
+static SCHEMA_UNUSED void render_ship_reset( RenderShip * value )
 {
-    RenderVector3Reset( &value->position );
-    RenderQuaternionReset( &value->rotation );
+    render_vector3_reset( &value->position );
+    render_quaternion_reset( &value->rotation );
     value->flags = 0;
     value->object_id = 0;
     value->target_object_id = 0;
@@ -743,11 +743,11 @@ static SCHEMA_UNUSED void RenderShipReset( RenderShip * value )
     value->predicted_explode = 0;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_ship_reset_raw_( void * storage ) { RenderShipReset( (RenderShip *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_ship_reset_raw_( void * storage ) { render_ship_reset( (RenderShip *) storage ); }
 
-static SCHEMA_UNUSED void RenderTurretReset( RenderTurret * value )
+static SCHEMA_UNUSED void render_turret_reset( RenderTurret * value )
 {
-    RenderQuaternionReset( &value->rotation );
+    render_quaternion_reset( &value->rotation );
     value->flags = 0;
     value->object_id = 0;
     value->parent_object_id = 0;
@@ -758,12 +758,12 @@ static SCHEMA_UNUSED void RenderTurretReset( RenderTurret * value )
     value->has_target_lock = 0;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_turret_reset_raw_( void * storage ) { RenderTurretReset( (RenderTurret *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_turret_reset_raw_( void * storage ) { render_turret_reset( (RenderTurret *) storage ); }
 
-static SCHEMA_UNUSED void RenderMissileReset( RenderMissile * value )
+static SCHEMA_UNUSED void render_missile_reset( RenderMissile * value )
 {
-    RenderVector3Reset( &value->position );
-    RenderQuaternionReset( &value->rotation );
+    render_vector3_reset( &value->position );
+    render_quaternion_reset( &value->rotation );
     value->flags = 0;
     value->object_id = 0;
     value->object_sequence = 0;
@@ -771,12 +771,12 @@ static SCHEMA_UNUSED void RenderMissileReset( RenderMissile * value )
     value->team = TEAM_NONE;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_missile_reset_raw_( void * storage ) { RenderMissileReset( (RenderMissile *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_missile_reset_raw_( void * storage ) { render_missile_reset( (RenderMissile *) storage ); }
 
-static SCHEMA_UNUSED void RenderDynamicPropReset( RenderDynamicProp * value )
+static SCHEMA_UNUSED void render_dynamic_prop_reset( RenderDynamicProp * value )
 {
-    RenderVector3Reset( &value->position );
-    RenderQuaternionReset( &value->rotation );
+    render_vector3_reset( &value->position );
+    render_quaternion_reset( &value->rotation );
     value->flags = 0;
     value->object_id = 0;
     value->object_sequence = 0;
@@ -784,12 +784,12 @@ static SCHEMA_UNUSED void RenderDynamicPropReset( RenderDynamicProp * value )
     value->team = TEAM_NONE;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_dynamic_prop_reset_raw_( void * storage ) { RenderDynamicPropReset( (RenderDynamicProp *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_dynamic_prop_reset_raw_( void * storage ) { render_dynamic_prop_reset( (RenderDynamicProp *) storage ); }
 
-static SCHEMA_UNUSED void RenderStaticPropReset( RenderStaticProp * value )
+static SCHEMA_UNUSED void render_static_prop_reset( RenderStaticProp * value )
 {
-    RenderVector3Reset( &value->position );
-    RenderQuaternionReset( &value->rotation );
+    render_vector3_reset( &value->position );
+    render_quaternion_reset( &value->rotation );
     value->scale = 0.0;
     value->flags = 0;
     value->static_prop_id = 0;
@@ -797,12 +797,12 @@ static SCHEMA_UNUSED void RenderStaticPropReset( RenderStaticProp * value )
     value->team = TEAM_NONE;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_static_prop_reset_raw_( void * storage ) { RenderStaticPropReset( (RenderStaticProp *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_static_prop_reset_raw_( void * storage ) { render_static_prop_reset( (RenderStaticProp *) storage ); }
 
-static SCHEMA_UNUSED void RenderCosmeticPropReset( RenderCosmeticProp * value )
+static SCHEMA_UNUSED void render_cosmetic_prop_reset( RenderCosmeticProp * value )
 {
-    RenderVector3Reset( &value->position );
-    RenderQuaternionReset( &value->rotation );
+    render_vector3_reset( &value->position );
+    render_quaternion_reset( &value->rotation );
     value->scale = 0.0;
     value->flags = 0;
     value->cosmetic_prop_id = 0;
@@ -811,24 +811,24 @@ static SCHEMA_UNUSED void RenderCosmeticPropReset( RenderCosmeticProp * value )
     value->team = TEAM_NONE;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_cosmetic_prop_reset_raw_( void * storage ) { RenderCosmeticPropReset( (RenderCosmeticProp *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_cosmetic_prop_reset_raw_( void * storage ) { render_cosmetic_prop_reset( (RenderCosmeticProp *) storage ); }
 
-static SCHEMA_UNUSED void RenderLaserReset( RenderLaser * value )
+static SCHEMA_UNUSED void render_laser_reset( RenderLaser * value )
 {
-    RenderVector3Reset( &value->start );
-    RenderVector3Reset( &value->finish );
+    render_vector3_reset( &value->start );
+    render_vector3_reset( &value->finish );
     value->t = 0.0;
     value->laser_id = 0;
     value->laser_type = LASER_TYPE_NONE;
     value->team = TEAM_NONE;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_laser_reset_raw_( void * storage ) { RenderLaserReset( (RenderLaser *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_laser_reset_raw_( void * storage ) { render_laser_reset( (RenderLaser *) storage ); }
 
-static SCHEMA_UNUSED void RenderExplosionReset( RenderExplosion * value )
+static SCHEMA_UNUSED void render_explosion_reset( RenderExplosion * value )
 {
-    RenderVector3Reset( &value->position );
-    RenderQuaternionReset( &value->rotation );
+    render_vector3_reset( &value->position );
+    render_quaternion_reset( &value->rotation );
     value->t = 0.0;
     value->explosion_id = 0;
     value->parent_object_id = 0;
@@ -836,52 +836,52 @@ static SCHEMA_UNUSED void RenderExplosionReset( RenderExplosion * value )
     value->team = TEAM_NONE;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_explosion_reset_raw_( void * storage ) { RenderExplosionReset( (RenderExplosion *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_explosion_reset_raw_( void * storage ) { render_explosion_reset( (RenderExplosion *) storage ); }
 
-static SCHEMA_UNUSED void RenderFrameReset( RenderFrame * value )
+static SCHEMA_UNUSED void render_frame_reset( RenderFrame * value )
 {
     value->version = 0;
-    RenderCameraReset( &value->cameras[0] );
+    render_camera_reset( &value->cameras[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 1 ); i++ ) { value->cameras[i] = value->cameras[0]; } }
     value->cameras_count = 0;
-    RenderShipReset( &value->ships[0] );
+    render_ship_reset( &value->ships[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 4096 ); i++ ) { value->ships[i] = value->ships[0]; } }
     value->ships_count = 0;
-    RenderTurretReset( &value->turrets[0] );
+    render_turret_reset( &value->turrets[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 1024 ); i++ ) { value->turrets[i] = value->turrets[0]; } }
     value->turrets_count = 0;
-    RenderMissileReset( &value->missiles[0] );
+    render_missile_reset( &value->missiles[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 4096 ); i++ ) { value->missiles[i] = value->missiles[0]; } }
     value->missiles_count = 0;
-    RenderDynamicPropReset( &value->dynamic_props[0] );
+    render_dynamic_prop_reset( &value->dynamic_props[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 4096 ); i++ ) { value->dynamic_props[i] = value->dynamic_props[0]; } }
     value->dynamic_props_count = 0;
-    RenderStaticPropReset( &value->static_props[0] );
+    render_static_prop_reset( &value->static_props[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 20000 ); i++ ) { value->static_props[i] = value->static_props[0]; } }
     value->static_props_count = 0;
-    RenderCosmeticPropReset( &value->cosmetic_props[0] );
+    render_cosmetic_prop_reset( &value->cosmetic_props[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 8192 ); i++ ) { value->cosmetic_props[i] = value->cosmetic_props[0]; } }
     value->cosmetic_props_count = 0;
-    RenderLaserReset( &value->lasers[0] );
+    render_laser_reset( &value->lasers[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 32000 ); i++ ) { value->lasers[i] = value->lasers[0]; } }
     value->lasers_count = 0;
-    RenderExplosionReset( &value->explosions[0] );
+    render_explosion_reset( &value->explosions[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 32000 ); i++ ) { value->explosions[i] = value->explosions[0]; } }
     value->explosions_count = 0;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_frame_reset_raw_( void * storage ) { RenderFrameReset( (RenderFrame *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_frame_reset_raw_( void * storage ) { render_frame_reset( (RenderFrame *) storage ); }
 
-static SCHEMA_UNUSED void RenderVector3Reset( RenderVector3 * value )
+static SCHEMA_UNUSED void render_vector3_reset( RenderVector3 * value )
 {
     value->x = 0.0;
     value->y = 0.0;
     value->z = 0.0;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_vector3_reset_raw_( void * storage ) { RenderVector3Reset( (RenderVector3 *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_vector3_reset_raw_( void * storage ) { render_vector3_reset( (RenderVector3 *) storage ); }
 
-static SCHEMA_UNUSED void RenderQuaternionReset( RenderQuaternion * value )
+static SCHEMA_UNUSED void render_quaternion_reset( RenderQuaternion * value )
 {
     value->x = 0.0;
     value->y = 0.0;
@@ -889,57 +889,57 @@ static SCHEMA_UNUSED void RenderQuaternionReset( RenderQuaternion * value )
     value->w = 1.0;
 }
 
-static SCHEMA_UNUSED void schema_blockdemo_render_quaternion_reset_raw_( void * storage ) { RenderQuaternionReset( (RenderQuaternion *) storage ); }
+static SCHEMA_UNUSED void schema_blockdemo_render_quaternion_reset_raw_( void * storage ) { render_quaternion_reset( (RenderQuaternion *) storage ); }
 
 /* ---- codecs: measure/save/load per closure member ---- */
 
-static SCHEMA_UNUSED int64_t RenderCameraMeasure( const RenderCamera * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraSaveBody( TableWriter * w, const RenderCamera * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraLoadBody( TableReader * r, RenderCamera * value );
-static SCHEMA_UNUSED int64_t RenderShipMeasure( const RenderShip * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipSaveBody( TableWriter * w, const RenderShip * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( TableReader * r, RenderShip * value );
-static SCHEMA_UNUSED int64_t RenderTurretMeasure( const RenderTurret * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretSaveBody( TableWriter * w, const RenderTurret * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( TableReader * r, RenderTurret * value );
-static SCHEMA_UNUSED int64_t RenderMissileMeasure( const RenderMissile * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileSaveBody( TableWriter * w, const RenderMissile * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( TableReader * r, RenderMissile * value );
-static SCHEMA_UNUSED int64_t RenderDynamicPropMeasure( const RenderDynamicProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropSaveBody( TableWriter * w, const RenderDynamicProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody( TableReader * r, RenderDynamicProp * value );
-static SCHEMA_UNUSED int64_t RenderStaticPropMeasure( const RenderStaticProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropSaveBody( TableWriter * w, const RenderStaticProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody( TableReader * r, RenderStaticProp * value );
-static SCHEMA_UNUSED int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropSaveBody( TableWriter * w, const RenderCosmeticProp * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBody( TableReader * r, RenderCosmeticProp * value );
-static SCHEMA_UNUSED int64_t RenderLaserMeasure( const RenderLaser * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserSaveBody( TableWriter * w, const RenderLaser * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( TableReader * r, RenderLaser * value );
-static SCHEMA_UNUSED int64_t RenderExplosionMeasure( const RenderExplosion * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionSaveBody( TableWriter * w, const RenderExplosion * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( TableReader * r, RenderExplosion * value );
-static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameSaveBody( TableWriter * w, const RenderFrame * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( TableReader * r, RenderFrame * value );
-static SCHEMA_UNUSED int64_t RenderVector3Measure( const RenderVector3 * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderVector3SaveBody( TableWriter * w, const RenderVector3 * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderVector3LoadBody( TableReader * r, RenderVector3 * value );
-static SCHEMA_UNUSED int64_t RenderQuaternionMeasure( const RenderQuaternion * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderQuaternionSaveBody( TableWriter * w, const RenderQuaternion * value );
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderQuaternionLoadBody( TableReader * r, RenderQuaternion * value );
+static SCHEMA_UNUSED int64_t render_camera_measure( const RenderCamera * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_save_body( TableWriter * w, const RenderCamera * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_load_body( TableReader * r, RenderCamera * value );
+static SCHEMA_UNUSED int64_t render_ship_measure( const RenderShip * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_save_body( TableWriter * w, const RenderShip * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_load_body( TableReader * r, RenderShip * value );
+static SCHEMA_UNUSED int64_t render_turret_measure( const RenderTurret * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_save_body( TableWriter * w, const RenderTurret * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_load_body( TableReader * r, RenderTurret * value );
+static SCHEMA_UNUSED int64_t render_missile_measure( const RenderMissile * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_save_body( TableWriter * w, const RenderMissile * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_load_body( TableReader * r, RenderMissile * value );
+static SCHEMA_UNUSED int64_t render_dynamic_prop_measure( const RenderDynamicProp * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_save_body( TableWriter * w, const RenderDynamicProp * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_load_body( TableReader * r, RenderDynamicProp * value );
+static SCHEMA_UNUSED int64_t render_static_prop_measure( const RenderStaticProp * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_save_body( TableWriter * w, const RenderStaticProp * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_load_body( TableReader * r, RenderStaticProp * value );
+static SCHEMA_UNUSED int64_t render_cosmetic_prop_measure( const RenderCosmeticProp * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_save_body( TableWriter * w, const RenderCosmeticProp * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_load_body( TableReader * r, RenderCosmeticProp * value );
+static SCHEMA_UNUSED int64_t render_laser_measure( const RenderLaser * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_save_body( TableWriter * w, const RenderLaser * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_load_body( TableReader * r, RenderLaser * value );
+static SCHEMA_UNUSED int64_t render_explosion_measure( const RenderExplosion * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_save_body( TableWriter * w, const RenderExplosion * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_load_body( TableReader * r, RenderExplosion * value );
+static SCHEMA_UNUSED int64_t render_frame_measure( const RenderFrame * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_save_body( TableWriter * w, const RenderFrame * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( TableReader * r, RenderFrame * value );
+static SCHEMA_UNUSED int64_t render_vector3_measure( const RenderVector3 * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_vector3_save_body( TableWriter * w, const RenderVector3 * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_vector3_load_body( TableReader * r, RenderVector3 * value );
+static SCHEMA_UNUSED int64_t render_quaternion_measure( const RenderQuaternion * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_save_body( TableWriter * w, const RenderQuaternion * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_load_body( TableReader * r, RenderQuaternion * value );
 
-static SCHEMA_UNUSED int64_t RenderCameraMeasure( const RenderCamera * value )
+static SCHEMA_UNUSED int64_t render_camera_measure( const RenderCamera * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
     }
@@ -950,71 +950,71 @@ static SCHEMA_UNUSED int64_t RenderCameraMeasure( const RenderCamera * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraSaveBody( TableWriter * w, const RenderCamera * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_save_body( TableWriter * w, const RenderCamera * value )
 {
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_position > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0xdd45 ); TableWriterPut8( w, 13 ); /* position */
-            TableWriterPut32( w, (uint32_t) body_position );
-            if ( !RenderVector3SaveBody( w, &value->position ) ) { return 0; }
+            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
+            table_writer_put32( w, (uint32_t) body_position );
+            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
         }
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_rotation > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x60f3 ); TableWriterPut8( w, 13 ); /* rotation */
-            TableWriterPut32( w, (uint32_t) body_rotation );
-            if ( !RenderQuaternionSaveBody( w, &value->rotation ) ) { return 0; }
+            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
+            table_writer_put32( w, (uint32_t) body_rotation );
+            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
         }
     }
     if ( value->camera_id != 0 )
     {
-        TableWriterPut16( w, 0x25bd ); TableWriterPut8( w, 8 ); /* camera_id */
-        TableWriterPut32( w, (uint32_t) ( value->camera_id ) );
+        table_writer_put16( w, 0x25bd ); table_writer_put8( w, 8 ); /* camera_id */
+        table_writer_put32( w, (uint32_t) ( value->camera_id ) );
     }
     if ( value->camera_type != 0 )
     {
-        TableWriterPut16( w, 0x9920 ); TableWriterPut8( w, 8 ); /* camera_type */
-        TableWriterPut32( w, (uint32_t) ( value->camera_type ) );
+        table_writer_put16( w, 0x9920 ); table_writer_put8( w, 8 ); /* camera_type */
+        table_writer_put32( w, (uint32_t) ( value->camera_type ) );
     }
     if ( value->target_object_id != 0 )
     {
-        TableWriterPut16( w, 0x38dc ); TableWriterPut8( w, 8 ); /* target_object_id */
-        TableWriterPut32( w, (uint32_t) ( value->target_object_id ) );
+        table_writer_put16( w, 0x38dc ); table_writer_put8( w, 8 ); /* target_object_id */
+        table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
     }
     if ( value->fov != 0.0f )
     {
-        TableWriterPut16( w, 0x392f ); TableWriterPut8( w, 10 ); /* fov */
-        TableWriterPut32( w, table_float_to_bits( value->fov ) );
+        table_writer_put16( w, 0x392f ); table_writer_put8( w, 10 ); /* fov */
+        table_writer_put32( w, table_float_to_bits( value->fov ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderCameraSave( const RenderCamera * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_camera_save( const RenderCamera * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderCameraSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderCameraMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_camera_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_camera_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraLoadBody( TableReader * r, RenderCamera * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_camera_load_body( TableReader * r, RenderCamera * value )
 {
-    RenderCameraReset( value ); /* prefill declared defaults in place, then overlay */
+    render_camera_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xdd45: /* position */
@@ -1022,16 +1022,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraLoadBody( Tab
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->position );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->position );
                 }
                 r->offset += body_len;
                 break;
@@ -1041,16 +1041,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraLoadBody( Tab
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderQuaternionLoadBody( &sub, &value->rotation );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_quaternion_load_body( &sub, &value->rotation );
                 }
                 r->offset += body_len;
                 break;
@@ -1060,12 +1060,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraLoadBody( Tab
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->camera_id = decoded_v;
                 }
                 break;
@@ -1075,12 +1075,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraLoadBody( Tab
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->camera_type = decoded_v;
                 }
                 break;
@@ -1090,12 +1090,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraLoadBody( Tab
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->target_object_id = decoded_v;
                 }
                 break;
@@ -1105,42 +1105,42 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCameraLoadBody( Tab
                 if ( kind != 10 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->fov = table_bits_to_float( TableReaderGet32( &(*r) ) );
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->fov = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderCameraLoad( RenderCamera * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_camera_load( RenderCamera * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderCameraLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_camera_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderShipMeasure( const RenderShip * value )
+static SCHEMA_UNUSED int64_t render_ship_measure( const RenderShip * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
     }
@@ -1183,52 +1183,52 @@ static SCHEMA_UNUSED int64_t RenderShipMeasure( const RenderShip * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipSaveBody( TableWriter * w, const RenderShip * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_save_body( TableWriter * w, const RenderShip * value )
 {
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_position > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0xdd45 ); TableWriterPut8( w, 13 ); /* position */
-            TableWriterPut32( w, (uint32_t) body_position );
-            if ( !RenderVector3SaveBody( w, &value->position ) ) { return 0; }
+            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
+            table_writer_put32( w, (uint32_t) body_position );
+            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
         }
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_rotation > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x60f3 ); TableWriterPut8( w, 13 ); /* rotation */
-            TableWriterPut32( w, (uint32_t) body_rotation );
-            if ( !RenderQuaternionSaveBody( w, &value->rotation ) ) { return 0; }
+            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
+            table_writer_put32( w, (uint32_t) body_rotation );
+            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
         }
     }
     if ( value->flags != 0 )
     {
-        TableWriterPut16( w, 0xe64b ); TableWriterPut8( w, 9 ); /* flags */
-        TableWriterPut64( w, (uint64_t) ( value->flags ) );
+        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
+        table_writer_put64( w, (uint64_t) ( value->flags ) );
     }
     if ( value->object_id != 0 )
     {
-        TableWriterPut16( w, 0xdc71 ); TableWriterPut8( w, 8 ); /* object_id */
-        TableWriterPut32( w, (uint32_t) ( value->object_id ) );
+        table_writer_put16( w, 0xdc71 ); table_writer_put8( w, 8 ); /* object_id */
+        table_writer_put32( w, (uint32_t) ( value->object_id ) );
     }
     if ( value->target_object_id != 0 )
     {
-        TableWriterPut16( w, 0x38dc ); TableWriterPut8( w, 8 ); /* target_object_id */
-        TableWriterPut32( w, (uint32_t) ( value->target_object_id ) );
+        table_writer_put16( w, 0x38dc ); table_writer_put8( w, 8 ); /* target_object_id */
+        table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
     }
     if ( value->thrust != 0.0f )
     {
-        TableWriterPut16( w, 0x9e51 ); TableWriterPut8( w, 10 ); /* thrust */
-        TableWriterPut32( w, table_float_to_bits( value->thrust ) );
+        table_writer_put16( w, 0x9e51 ); table_writer_put8( w, 10 ); /* thrust */
+        table_writer_put32( w, table_float_to_bits( value->thrust ) );
     }
     if ( value->object_sequence != 0 )
     {
-        TableWriterPut16( w, 0x57ee ); TableWriterPut8( w, 6 ); /* object_sequence */
-        TableWriterPut8( w, (uint8_t) ( value->object_sequence ) );
+        table_writer_put16( w, 0x57ee ); table_writer_put8( w, 6 ); /* object_sequence */
+        table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
     }
     if ( value->ship_type != SHIP_TYPE_NONE )
     {
@@ -1241,8 +1241,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipSaveBody( Table
             case SHIP_TYPE_FREIGHTER: id_ship_type = 0xb617; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0x38e9 ); TableWriterPut8( w, 7 ); /* ship_type */
-        TableWriterPut16( w, id_ship_type );
+        table_writer_put16( w, 0x38e9 ); table_writer_put8( w, 7 ); /* ship_type */
+        table_writer_put16( w, id_ship_type );
     }
     if ( value->team != TEAM_NONE )
     {
@@ -1256,42 +1256,42 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipSaveBody( Table
             case TEAM_GOLD: id_team = 0xda27; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xdff1 ); TableWriterPut8( w, 7 ); /* team */
-        TableWriterPut16( w, id_team );
+        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
+        table_writer_put16( w, id_team );
     }
     if ( value->has_target_lock != 0 )
     {
-        TableWriterPut16( w, 0xf223 ); TableWriterPut8( w, 1 ); /* has_target_lock */
-        TableWriterPut8( w, value->has_target_lock ? 1 : 0 );
+        table_writer_put16( w, 0xf223 ); table_writer_put8( w, 1 ); /* has_target_lock */
+        table_writer_put8( w, value->has_target_lock ? 1 : 0 );
     }
     if ( value->predicted_explode != 0 )
     {
-        TableWriterPut16( w, 0x88bd ); TableWriterPut8( w, 1 ); /* predicted_explode */
-        TableWriterPut8( w, value->predicted_explode ? 1 : 0 );
+        table_writer_put16( w, 0x88bd ); table_writer_put8( w, 1 ); /* predicted_explode */
+        table_writer_put8( w, value->predicted_explode ? 1 : 0 );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderShipSave( const RenderShip * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_ship_save( const RenderShip * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderShipSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderShipMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_ship_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_ship_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( TableReader * r, RenderShip * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_ship_load_body( TableReader * r, RenderShip * value )
 {
-    RenderShipReset( value ); /* prefill declared defaults in place, then overlay */
+    render_ship_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xdd45: /* position */
@@ -1299,16 +1299,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->position );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->position );
                 }
                 r->offset += body_len;
                 break;
@@ -1318,16 +1318,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderQuaternionLoadBody( &sub, &value->rotation );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_quaternion_load_body( &sub, &value->rotation );
                 }
                 r->offset += body_len;
                 break;
@@ -1337,12 +1337,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->flags = decoded_v;
                 }
                 break;
@@ -1352,12 +1352,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->object_id = decoded_v;
                 }
                 break;
@@ -1367,12 +1367,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->target_object_id = decoded_v;
                 }
                 break;
@@ -1382,11 +1382,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 10 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->thrust = table_bits_to_float( TableReaderGet32( &(*r) ) );
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->thrust = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0x57ee: /* object_sequence */
@@ -1394,12 +1394,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->object_sequence = decoded_v;
                 }
                 break;
@@ -1409,12 +1409,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->ship_type = SHIP_TYPE_NONE; break;
@@ -1431,12 +1431,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->team = TEAM_NONE; break;
@@ -1454,11 +1454,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 1 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_target_lock = TableReaderGet8( &(*r) ) != 0;
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                value->has_target_lock = table_reader_get8( &(*r) ) != 0;
                 break;
             }
             case 0x88bd: /* predicted_explode */
@@ -1466,37 +1466,37 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderShipLoadBody( Table
                 if ( kind != 1 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->predicted_explode = TableReaderGet8( &(*r) ) != 0;
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                value->predicted_explode = table_reader_get8( &(*r) ) != 0;
                 break;
             }
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderShipLoad( RenderShip * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_ship_load( RenderShip * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderShipLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_ship_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderTurretMeasure( const RenderTurret * value )
+static SCHEMA_UNUSED int64_t render_turret_measure( const RenderTurret * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
     }
@@ -1525,47 +1525,47 @@ static SCHEMA_UNUSED int64_t RenderTurretMeasure( const RenderTurret * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretSaveBody( TableWriter * w, const RenderTurret * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_save_body( TableWriter * w, const RenderTurret * value )
 {
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_rotation > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x60f3 ); TableWriterPut8( w, 13 ); /* rotation */
-            TableWriterPut32( w, (uint32_t) body_rotation );
-            if ( !RenderQuaternionSaveBody( w, &value->rotation ) ) { return 0; }
+            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
+            table_writer_put32( w, (uint32_t) body_rotation );
+            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
         }
     }
     if ( value->flags != 0 )
     {
-        TableWriterPut16( w, 0xe64b ); TableWriterPut8( w, 9 ); /* flags */
-        TableWriterPut64( w, (uint64_t) ( value->flags ) );
+        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
+        table_writer_put64( w, (uint64_t) ( value->flags ) );
     }
     if ( value->object_id != 0 )
     {
-        TableWriterPut16( w, 0xdc71 ); TableWriterPut8( w, 8 ); /* object_id */
-        TableWriterPut32( w, (uint32_t) ( value->object_id ) );
+        table_writer_put16( w, 0xdc71 ); table_writer_put8( w, 8 ); /* object_id */
+        table_writer_put32( w, (uint32_t) ( value->object_id ) );
     }
     if ( value->parent_object_id != 0 )
     {
-        TableWriterPut16( w, 0xeeb6 ); TableWriterPut8( w, 8 ); /* parent_object_id */
-        TableWriterPut32( w, (uint32_t) ( value->parent_object_id ) );
+        table_writer_put16( w, 0xeeb6 ); table_writer_put8( w, 8 ); /* parent_object_id */
+        table_writer_put32( w, (uint32_t) ( value->parent_object_id ) );
     }
     if ( value->turret_index != 0 )
     {
-        TableWriterPut16( w, 0xae10 ); TableWriterPut8( w, 8 ); /* turret_index */
-        TableWriterPut32( w, (uint32_t) ( value->turret_index ) );
+        table_writer_put16( w, 0xae10 ); table_writer_put8( w, 8 ); /* turret_index */
+        table_writer_put32( w, (uint32_t) ( value->turret_index ) );
     }
     if ( value->target_object_id != 0 )
     {
-        TableWriterPut16( w, 0x38dc ); TableWriterPut8( w, 8 ); /* target_object_id */
-        TableWriterPut32( w, (uint32_t) ( value->target_object_id ) );
+        table_writer_put16( w, 0x38dc ); table_writer_put8( w, 8 ); /* target_object_id */
+        table_writer_put32( w, (uint32_t) ( value->target_object_id ) );
     }
     if ( value->object_sequence != 0 )
     {
-        TableWriterPut16( w, 0x57ee ); TableWriterPut8( w, 6 ); /* object_sequence */
-        TableWriterPut8( w, (uint8_t) ( value->object_sequence ) );
+        table_writer_put16( w, 0x57ee ); table_writer_put8( w, 6 ); /* object_sequence */
+        table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
     }
     if ( value->team != TEAM_NONE )
     {
@@ -1579,37 +1579,37 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretSaveBody( Tab
             case TEAM_GOLD: id_team = 0xda27; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xdff1 ); TableWriterPut8( w, 7 ); /* team */
-        TableWriterPut16( w, id_team );
+        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
+        table_writer_put16( w, id_team );
     }
     if ( value->has_target_lock != 0 )
     {
-        TableWriterPut16( w, 0xf223 ); TableWriterPut8( w, 1 ); /* has_target_lock */
-        TableWriterPut8( w, value->has_target_lock ? 1 : 0 );
+        table_writer_put16( w, 0xf223 ); table_writer_put8( w, 1 ); /* has_target_lock */
+        table_writer_put8( w, value->has_target_lock ? 1 : 0 );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderTurretSave( const RenderTurret * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_turret_save( const RenderTurret * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderTurretSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderTurretMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_turret_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_turret_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( TableReader * r, RenderTurret * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_turret_load_body( TableReader * r, RenderTurret * value )
 {
-    RenderTurretReset( value ); /* prefill declared defaults in place, then overlay */
+    render_turret_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x60f3: /* rotation */
@@ -1617,16 +1617,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderQuaternionLoadBody( &sub, &value->rotation );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_quaternion_load_body( &sub, &value->rotation );
                 }
                 r->offset += body_len;
                 break;
@@ -1636,12 +1636,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->flags = decoded_v;
                 }
                 break;
@@ -1651,12 +1651,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->object_id = decoded_v;
                 }
                 break;
@@ -1666,12 +1666,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->parent_object_id = decoded_v;
                 }
                 break;
@@ -1681,12 +1681,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->turret_index = decoded_v;
                 }
                 break;
@@ -1696,12 +1696,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->target_object_id = decoded_v;
                 }
                 break;
@@ -1711,12 +1711,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->object_sequence = decoded_v;
                 }
                 break;
@@ -1726,12 +1726,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->team = TEAM_NONE; break;
@@ -1749,42 +1749,42 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderTurretLoadBody( Tab
                 if ( kind != 1 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_target_lock = TableReaderGet8( &(*r) ) != 0;
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                value->has_target_lock = table_reader_get8( &(*r) ) != 0;
                 break;
             }
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderTurretLoad( RenderTurret * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_turret_load( RenderTurret * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderTurretLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_turret_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderMissileMeasure( const RenderMissile * value )
+static SCHEMA_UNUSED int64_t render_missile_measure( const RenderMissile * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
     }
@@ -1822,42 +1822,42 @@ static SCHEMA_UNUSED int64_t RenderMissileMeasure( const RenderMissile * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileSaveBody( TableWriter * w, const RenderMissile * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_save_body( TableWriter * w, const RenderMissile * value )
 {
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_position > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0xdd45 ); TableWriterPut8( w, 13 ); /* position */
-            TableWriterPut32( w, (uint32_t) body_position );
-            if ( !RenderVector3SaveBody( w, &value->position ) ) { return 0; }
+            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
+            table_writer_put32( w, (uint32_t) body_position );
+            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
         }
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_rotation > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x60f3 ); TableWriterPut8( w, 13 ); /* rotation */
-            TableWriterPut32( w, (uint32_t) body_rotation );
-            if ( !RenderQuaternionSaveBody( w, &value->rotation ) ) { return 0; }
+            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
+            table_writer_put32( w, (uint32_t) body_rotation );
+            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
         }
     }
     if ( value->flags != 0 )
     {
-        TableWriterPut16( w, 0xe64b ); TableWriterPut8( w, 9 ); /* flags */
-        TableWriterPut64( w, (uint64_t) ( value->flags ) );
+        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
+        table_writer_put64( w, (uint64_t) ( value->flags ) );
     }
     if ( value->object_id != 0 )
     {
-        TableWriterPut16( w, 0xdc71 ); TableWriterPut8( w, 8 ); /* object_id */
-        TableWriterPut32( w, (uint32_t) ( value->object_id ) );
+        table_writer_put16( w, 0xdc71 ); table_writer_put8( w, 8 ); /* object_id */
+        table_writer_put32( w, (uint32_t) ( value->object_id ) );
     }
     if ( value->object_sequence != 0 )
     {
-        TableWriterPut16( w, 0x57ee ); TableWriterPut8( w, 6 ); /* object_sequence */
-        TableWriterPut8( w, (uint8_t) ( value->object_sequence ) );
+        table_writer_put16( w, 0x57ee ); table_writer_put8( w, 6 ); /* object_sequence */
+        table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
     }
     if ( value->missile_type != MISSILE_TYPE_NONE )
     {
@@ -1869,8 +1869,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileSaveBody( Ta
             case MISSILE_TYPE_DUMB: id_missile_type = 0xd533; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0x423a ); TableWriterPut8( w, 7 ); /* missile_type */
-        TableWriterPut16( w, id_missile_type );
+        table_writer_put16( w, 0x423a ); table_writer_put8( w, 7 ); /* missile_type */
+        table_writer_put16( w, id_missile_type );
     }
     if ( value->team != TEAM_NONE )
     {
@@ -1884,32 +1884,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileSaveBody( Ta
             case TEAM_GOLD: id_team = 0xda27; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xdff1 ); TableWriterPut8( w, 7 ); /* team */
-        TableWriterPut16( w, id_team );
+        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
+        table_writer_put16( w, id_team );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderMissileSave( const RenderMissile * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_missile_save( const RenderMissile * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderMissileSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderMissileMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_missile_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_missile_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( TableReader * r, RenderMissile * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_missile_load_body( TableReader * r, RenderMissile * value )
 {
-    RenderMissileReset( value ); /* prefill declared defaults in place, then overlay */
+    render_missile_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xdd45: /* position */
@@ -1917,16 +1917,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( Ta
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->position );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->position );
                 }
                 r->offset += body_len;
                 break;
@@ -1936,16 +1936,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( Ta
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderQuaternionLoadBody( &sub, &value->rotation );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_quaternion_load_body( &sub, &value->rotation );
                 }
                 r->offset += body_len;
                 break;
@@ -1955,12 +1955,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( Ta
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->flags = decoded_v;
                 }
                 break;
@@ -1970,12 +1970,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( Ta
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->object_id = decoded_v;
                 }
                 break;
@@ -1985,12 +1985,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( Ta
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->object_sequence = decoded_v;
                 }
                 break;
@@ -2000,12 +2000,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( Ta
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->missile_type = MISSILE_TYPE_NONE; break;
@@ -2021,12 +2021,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( Ta
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->team = TEAM_NONE; break;
@@ -2042,32 +2042,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderMissileLoadBody( Ta
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderMissileLoad( RenderMissile * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_missile_load( RenderMissile * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderMissileLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_missile_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderDynamicPropMeasure( const RenderDynamicProp * value )
+static SCHEMA_UNUSED int64_t render_dynamic_prop_measure( const RenderDynamicProp * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
     }
@@ -2106,42 +2106,42 @@ static SCHEMA_UNUSED int64_t RenderDynamicPropMeasure( const RenderDynamicProp *
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropSaveBody( TableWriter * w, const RenderDynamicProp * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_save_body( TableWriter * w, const RenderDynamicProp * value )
 {
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_position > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0xdd45 ); TableWriterPut8( w, 13 ); /* position */
-            TableWriterPut32( w, (uint32_t) body_position );
-            if ( !RenderVector3SaveBody( w, &value->position ) ) { return 0; }
+            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
+            table_writer_put32( w, (uint32_t) body_position );
+            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
         }
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_rotation > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x60f3 ); TableWriterPut8( w, 13 ); /* rotation */
-            TableWriterPut32( w, (uint32_t) body_rotation );
-            if ( !RenderQuaternionSaveBody( w, &value->rotation ) ) { return 0; }
+            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
+            table_writer_put32( w, (uint32_t) body_rotation );
+            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
         }
     }
     if ( value->flags != 0 )
     {
-        TableWriterPut16( w, 0xe64b ); TableWriterPut8( w, 9 ); /* flags */
-        TableWriterPut64( w, (uint64_t) ( value->flags ) );
+        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
+        table_writer_put64( w, (uint64_t) ( value->flags ) );
     }
     if ( value->object_id != 0 )
     {
-        TableWriterPut16( w, 0xdc71 ); TableWriterPut8( w, 8 ); /* object_id */
-        TableWriterPut32( w, (uint32_t) ( value->object_id ) );
+        table_writer_put16( w, 0xdc71 ); table_writer_put8( w, 8 ); /* object_id */
+        table_writer_put32( w, (uint32_t) ( value->object_id ) );
     }
     if ( value->object_sequence != 0 )
     {
-        TableWriterPut16( w, 0x57ee ); TableWriterPut8( w, 6 ); /* object_sequence */
-        TableWriterPut8( w, (uint8_t) ( value->object_sequence ) );
+        table_writer_put16( w, 0x57ee ); table_writer_put8( w, 6 ); /* object_sequence */
+        table_writer_put8( w, (uint8_t) ( value->object_sequence ) );
     }
     if ( value->prop_type != PROP_TYPE_NONE )
     {
@@ -2154,8 +2154,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropSaveBody
             case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xe338 ); TableWriterPut8( w, 7 ); /* prop_type */
-        TableWriterPut16( w, id_prop_type );
+        table_writer_put16( w, 0xe338 ); table_writer_put8( w, 7 ); /* prop_type */
+        table_writer_put16( w, id_prop_type );
     }
     if ( value->team != TEAM_NONE )
     {
@@ -2169,32 +2169,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropSaveBody
             case TEAM_GOLD: id_team = 0xda27; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xdff1 ); TableWriterPut8( w, 7 ); /* team */
-        TableWriterPut16( w, id_team );
+        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
+        table_writer_put16( w, id_team );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderDynamicPropSave( const RenderDynamicProp * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_dynamic_prop_save( const RenderDynamicProp * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderDynamicPropSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderDynamicPropMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_dynamic_prop_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_dynamic_prop_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody( TableReader * r, RenderDynamicProp * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_dynamic_prop_load_body( TableReader * r, RenderDynamicProp * value )
 {
-    RenderDynamicPropReset( value ); /* prefill declared defaults in place, then overlay */
+    render_dynamic_prop_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xdd45: /* position */
@@ -2202,16 +2202,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->position );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->position );
                 }
                 r->offset += body_len;
                 break;
@@ -2221,16 +2221,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderQuaternionLoadBody( &sub, &value->rotation );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_quaternion_load_body( &sub, &value->rotation );
                 }
                 r->offset += body_len;
                 break;
@@ -2240,12 +2240,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->flags = decoded_v;
                 }
                 break;
@@ -2255,12 +2255,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->object_id = decoded_v;
                 }
                 break;
@@ -2270,12 +2270,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->object_sequence = decoded_v;
                 }
                 break;
@@ -2285,12 +2285,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->prop_type = PROP_TYPE_NONE; break;
@@ -2307,12 +2307,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->team = TEAM_NONE; break;
@@ -2328,32 +2328,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderDynamicPropLoadBody
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderDynamicPropLoad( RenderDynamicProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_dynamic_prop_load( RenderDynamicProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderDynamicPropLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_dynamic_prop_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderStaticPropMeasure( const RenderStaticProp * value )
+static SCHEMA_UNUSED int64_t render_static_prop_measure( const RenderStaticProp * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
     }
@@ -2392,42 +2392,42 @@ static SCHEMA_UNUSED int64_t RenderStaticPropMeasure( const RenderStaticProp * v
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropSaveBody( TableWriter * w, const RenderStaticProp * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_save_body( TableWriter * w, const RenderStaticProp * value )
 {
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_position > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0xdd45 ); TableWriterPut8( w, 13 ); /* position */
-            TableWriterPut32( w, (uint32_t) body_position );
-            if ( !RenderVector3SaveBody( w, &value->position ) ) { return 0; }
+            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
+            table_writer_put32( w, (uint32_t) body_position );
+            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
         }
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_rotation > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x60f3 ); TableWriterPut8( w, 13 ); /* rotation */
-            TableWriterPut32( w, (uint32_t) body_rotation );
-            if ( !RenderQuaternionSaveBody( w, &value->rotation ) ) { return 0; }
+            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
+            table_writer_put32( w, (uint32_t) body_rotation );
+            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
         }
     }
     if ( value->scale != 0.0 )
     {
-        TableWriterPut16( w, 0x9ee6 ); TableWriterPut8( w, 11 ); /* scale */
-        TableWriterPut64( w, table_double_to_bits( value->scale ) );
+        table_writer_put16( w, 0x9ee6 ); table_writer_put8( w, 11 ); /* scale */
+        table_writer_put64( w, table_double_to_bits( value->scale ) );
     }
     if ( value->flags != 0 )
     {
-        TableWriterPut16( w, 0xe64b ); TableWriterPut8( w, 9 ); /* flags */
-        TableWriterPut64( w, (uint64_t) ( value->flags ) );
+        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
+        table_writer_put64( w, (uint64_t) ( value->flags ) );
     }
     if ( value->static_prop_id != 0 )
     {
-        TableWriterPut16( w, 0x0f74 ); TableWriterPut8( w, 8 ); /* static_prop_id */
-        TableWriterPut32( w, (uint32_t) ( value->static_prop_id ) );
+        table_writer_put16( w, 0x0f74 ); table_writer_put8( w, 8 ); /* static_prop_id */
+        table_writer_put32( w, (uint32_t) ( value->static_prop_id ) );
     }
     if ( value->prop_type != PROP_TYPE_NONE )
     {
@@ -2440,8 +2440,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropSaveBody(
             case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xe338 ); TableWriterPut8( w, 7 ); /* prop_type */
-        TableWriterPut16( w, id_prop_type );
+        table_writer_put16( w, 0xe338 ); table_writer_put8( w, 7 ); /* prop_type */
+        table_writer_put16( w, id_prop_type );
     }
     if ( value->team != TEAM_NONE )
     {
@@ -2455,32 +2455,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropSaveBody(
             case TEAM_GOLD: id_team = 0xda27; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xdff1 ); TableWriterPut8( w, 7 ); /* team */
-        TableWriterPut16( w, id_team );
+        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
+        table_writer_put16( w, id_team );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderStaticPropSave( const RenderStaticProp * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_static_prop_save( const RenderStaticProp * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderStaticPropSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderStaticPropMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_static_prop_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_static_prop_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody( TableReader * r, RenderStaticProp * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_static_prop_load_body( TableReader * r, RenderStaticProp * value )
 {
-    RenderStaticPropReset( value ); /* prefill declared defaults in place, then overlay */
+    render_static_prop_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xdd45: /* position */
@@ -2488,16 +2488,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody(
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->position );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->position );
                 }
                 r->offset += body_len;
                 break;
@@ -2507,16 +2507,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody(
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderQuaternionLoadBody( &sub, &value->rotation );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_quaternion_load_body( &sub, &value->rotation );
                 }
                 r->offset += body_len;
                 break;
@@ -2526,11 +2526,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody(
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->scale = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->scale = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0xe64b: /* flags */
@@ -2538,12 +2538,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody(
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->flags = decoded_v;
                 }
                 break;
@@ -2553,12 +2553,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody(
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->static_prop_id = decoded_v;
                 }
                 break;
@@ -2568,12 +2568,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody(
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->prop_type = PROP_TYPE_NONE; break;
@@ -2590,12 +2590,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody(
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->team = TEAM_NONE; break;
@@ -2611,32 +2611,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderStaticPropLoadBody(
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderStaticPropLoad( RenderStaticProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_static_prop_load( RenderStaticProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderStaticPropLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_static_prop_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp * value )
+static SCHEMA_UNUSED int64_t render_cosmetic_prop_measure( const RenderCosmeticProp * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
     }
@@ -2676,47 +2676,47 @@ static SCHEMA_UNUSED int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropSaveBody( TableWriter * w, const RenderCosmeticProp * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_save_body( TableWriter * w, const RenderCosmeticProp * value )
 {
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_position > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0xdd45 ); TableWriterPut8( w, 13 ); /* position */
-            TableWriterPut32( w, (uint32_t) body_position );
-            if ( !RenderVector3SaveBody( w, &value->position ) ) { return 0; }
+            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
+            table_writer_put32( w, (uint32_t) body_position );
+            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
         }
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_rotation > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x60f3 ); TableWriterPut8( w, 13 ); /* rotation */
-            TableWriterPut32( w, (uint32_t) body_rotation );
-            if ( !RenderQuaternionSaveBody( w, &value->rotation ) ) { return 0; }
+            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
+            table_writer_put32( w, (uint32_t) body_rotation );
+            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
         }
     }
     if ( value->scale != 0.0 )
     {
-        TableWriterPut16( w, 0x9ee6 ); TableWriterPut8( w, 11 ); /* scale */
-        TableWriterPut64( w, table_double_to_bits( value->scale ) );
+        table_writer_put16( w, 0x9ee6 ); table_writer_put8( w, 11 ); /* scale */
+        table_writer_put64( w, table_double_to_bits( value->scale ) );
     }
     if ( value->flags != 0 )
     {
-        TableWriterPut16( w, 0xe64b ); TableWriterPut8( w, 9 ); /* flags */
-        TableWriterPut64( w, (uint64_t) ( value->flags ) );
+        table_writer_put16( w, 0xe64b ); table_writer_put8( w, 9 ); /* flags */
+        table_writer_put64( w, (uint64_t) ( value->flags ) );
     }
     if ( value->cosmetic_prop_id != 0 )
     {
-        TableWriterPut16( w, 0x0843 ); TableWriterPut8( w, 8 ); /* cosmetic_prop_id */
-        TableWriterPut32( w, (uint32_t) ( value->cosmetic_prop_id ) );
+        table_writer_put16( w, 0x0843 ); table_writer_put8( w, 8 ); /* cosmetic_prop_id */
+        table_writer_put32( w, (uint32_t) ( value->cosmetic_prop_id ) );
     }
     if ( value->prop_sequence != 0 )
     {
-        TableWriterPut16( w, 0x3069 ); TableWriterPut8( w, 6 ); /* prop_sequence */
-        TableWriterPut8( w, (uint8_t) ( value->prop_sequence ) );
+        table_writer_put16( w, 0x3069 ); table_writer_put8( w, 6 ); /* prop_sequence */
+        table_writer_put8( w, (uint8_t) ( value->prop_sequence ) );
     }
     if ( value->prop_type != PROP_TYPE_NONE )
     {
@@ -2729,8 +2729,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropSaveBod
             case PROP_TYPE_BEACON: id_prop_type = 0x4b61; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xe338 ); TableWriterPut8( w, 7 ); /* prop_type */
-        TableWriterPut16( w, id_prop_type );
+        table_writer_put16( w, 0xe338 ); table_writer_put8( w, 7 ); /* prop_type */
+        table_writer_put16( w, id_prop_type );
     }
     if ( value->team != TEAM_NONE )
     {
@@ -2744,32 +2744,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropSaveBod
             case TEAM_GOLD: id_team = 0xda27; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xdff1 ); TableWriterPut8( w, 7 ); /* team */
-        TableWriterPut16( w, id_team );
+        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
+        table_writer_put16( w, id_team );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderCosmeticPropSave( const RenderCosmeticProp * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_cosmetic_prop_save( const RenderCosmeticProp * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderCosmeticPropSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderCosmeticPropMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_cosmetic_prop_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_cosmetic_prop_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBody( TableReader * r, RenderCosmeticProp * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_cosmetic_prop_load_body( TableReader * r, RenderCosmeticProp * value )
 {
-    RenderCosmeticPropReset( value ); /* prefill declared defaults in place, then overlay */
+    render_cosmetic_prop_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xdd45: /* position */
@@ -2777,16 +2777,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->position );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->position );
                 }
                 r->offset += body_len;
                 break;
@@ -2796,16 +2796,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderQuaternionLoadBody( &sub, &value->rotation );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_quaternion_load_body( &sub, &value->rotation );
                 }
                 r->offset += body_len;
                 break;
@@ -2815,11 +2815,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->scale = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->scale = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0xe64b: /* flags */
@@ -2827,12 +2827,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->flags = decoded_v;
                 }
                 break;
@@ -2842,12 +2842,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->cosmetic_prop_id = decoded_v;
                 }
                 break;
@@ -2857,12 +2857,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->prop_sequence = decoded_v;
                 }
                 break;
@@ -2872,12 +2872,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->prop_type = PROP_TYPE_NONE; break;
@@ -2894,12 +2894,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->team = TEAM_NONE; break;
@@ -2915,32 +2915,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderCosmeticPropLoadBod
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderCosmeticPropLoad( RenderCosmeticProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_cosmetic_prop_load( RenderCosmeticProp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderCosmeticPropLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_cosmetic_prop_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderLaserMeasure( const RenderLaser * value )
+static SCHEMA_UNUSED int64_t render_laser_measure( const RenderLaser * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_start = RenderVector3Measure( &value->start );
+        int64_t body_start = render_vector3_measure( &value->start );
         if ( body_start < 0 ) { return -1; }
         if ( body_start > 2 ) { bytes += 3 + 4 + body_start; } /* start: all-default nested elides */
     }
     {
-        int64_t body_finish = RenderVector3Measure( &value->finish );
+        int64_t body_finish = render_vector3_measure( &value->finish );
         if ( body_finish < 0 ) { return -1; }
         if ( body_finish > 2 ) { bytes += 3 + 4 + body_finish; } /* finish: all-default nested elides */
     }
@@ -2977,37 +2977,37 @@ static SCHEMA_UNUSED int64_t RenderLaserMeasure( const RenderLaser * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserSaveBody( TableWriter * w, const RenderLaser * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_save_body( TableWriter * w, const RenderLaser * value )
 {
     {
-        int64_t body_start = RenderVector3Measure( &value->start );
+        int64_t body_start = render_vector3_measure( &value->start );
         if ( body_start < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_start > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x61f4 ); TableWriterPut8( w, 13 ); /* start */
-            TableWriterPut32( w, (uint32_t) body_start );
-            if ( !RenderVector3SaveBody( w, &value->start ) ) { return 0; }
+            table_writer_put16( w, 0x61f4 ); table_writer_put8( w, 13 ); /* start */
+            table_writer_put32( w, (uint32_t) body_start );
+            if ( !render_vector3_save_body( w, &value->start ) ) { return 0; }
         }
     }
     {
-        int64_t body_finish = RenderVector3Measure( &value->finish );
+        int64_t body_finish = render_vector3_measure( &value->finish );
         if ( body_finish < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_finish > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x2d84 ); TableWriterPut8( w, 13 ); /* finish */
-            TableWriterPut32( w, (uint32_t) body_finish );
-            if ( !RenderVector3SaveBody( w, &value->finish ) ) { return 0; }
+            table_writer_put16( w, 0x2d84 ); table_writer_put8( w, 13 ); /* finish */
+            table_writer_put32( w, (uint32_t) body_finish );
+            if ( !render_vector3_save_body( w, &value->finish ) ) { return 0; }
         }
     }
     if ( value->t != 0.0 )
     {
-        TableWriterPut16( w, 0xccaf ); TableWriterPut8( w, 11 ); /* t */
-        TableWriterPut64( w, table_double_to_bits( value->t ) );
+        table_writer_put16( w, 0xccaf ); table_writer_put8( w, 11 ); /* t */
+        table_writer_put64( w, table_double_to_bits( value->t ) );
     }
     if ( value->laser_id != 0 )
     {
-        TableWriterPut16( w, 0xc5ca ); TableWriterPut8( w, 8 ); /* laser_id */
-        TableWriterPut32( w, (uint32_t) ( value->laser_id ) );
+        table_writer_put16( w, 0xc5ca ); table_writer_put8( w, 8 ); /* laser_id */
+        table_writer_put32( w, (uint32_t) ( value->laser_id ) );
     }
     if ( value->laser_type != LASER_TYPE_NONE )
     {
@@ -3019,8 +3019,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserSaveBody( Tabl
             case LASER_TYPE_BEAM: id_laser_type = 0x1f28; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xc46a ); TableWriterPut8( w, 7 ); /* laser_type */
-        TableWriterPut16( w, id_laser_type );
+        table_writer_put16( w, 0xc46a ); table_writer_put8( w, 7 ); /* laser_type */
+        table_writer_put16( w, id_laser_type );
     }
     if ( value->team != TEAM_NONE )
     {
@@ -3034,32 +3034,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserSaveBody( Tabl
             case TEAM_GOLD: id_team = 0xda27; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xdff1 ); TableWriterPut8( w, 7 ); /* team */
-        TableWriterPut16( w, id_team );
+        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
+        table_writer_put16( w, id_team );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderLaserSave( const RenderLaser * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_laser_save( const RenderLaser * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderLaserSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderLaserMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_laser_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_laser_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( TableReader * r, RenderLaser * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_laser_load_body( TableReader * r, RenderLaser * value )
 {
-    RenderLaserReset( value ); /* prefill declared defaults in place, then overlay */
+    render_laser_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x61f4: /* start */
@@ -3067,16 +3067,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( Tabl
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->start );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->start );
                 }
                 r->offset += body_len;
                 break;
@@ -3086,16 +3086,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( Tabl
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->finish );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->finish );
                 }
                 r->offset += body_len;
                 break;
@@ -3105,11 +3105,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( Tabl
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->t = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->t = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0xc5ca: /* laser_id */
@@ -3117,12 +3117,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( Tabl
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->laser_id = decoded_v;
                 }
                 break;
@@ -3132,12 +3132,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( Tabl
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->laser_type = LASER_TYPE_NONE; break;
@@ -3153,12 +3153,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( Tabl
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->team = TEAM_NONE; break;
@@ -3174,32 +3174,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderLaserLoadBody( Tabl
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderLaserLoad( RenderLaser * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_laser_load( RenderLaser * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderLaserLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_laser_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderExplosionMeasure( const RenderExplosion * value )
+static SCHEMA_UNUSED int64_t render_explosion_measure( const RenderExplosion * value )
 {
     int64_t bytes = 2; /* terminator */
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 2 ) { bytes += 3 + 4 + body_position; } /* position: all-default nested elides */
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 2 ) { bytes += 3 + 4 + body_rotation; } /* rotation: all-default nested elides */
     }
@@ -3237,42 +3237,42 @@ static SCHEMA_UNUSED int64_t RenderExplosionMeasure( const RenderExplosion * val
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionSaveBody( TableWriter * w, const RenderExplosion * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_save_body( TableWriter * w, const RenderExplosion * value )
 {
     {
-        int64_t body_position = RenderVector3Measure( &value->position );
+        int64_t body_position = render_vector3_measure( &value->position );
         if ( body_position < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_position > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0xdd45 ); TableWriterPut8( w, 13 ); /* position */
-            TableWriterPut32( w, (uint32_t) body_position );
-            if ( !RenderVector3SaveBody( w, &value->position ) ) { return 0; }
+            table_writer_put16( w, 0xdd45 ); table_writer_put8( w, 13 ); /* position */
+            table_writer_put32( w, (uint32_t) body_position );
+            if ( !render_vector3_save_body( w, &value->position ) ) { return 0; }
         }
     }
     {
-        int64_t body_rotation = RenderQuaternionMeasure( &value->rotation );
+        int64_t body_rotation = render_quaternion_measure( &value->rotation );
         if ( body_rotation < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_rotation > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x60f3 ); TableWriterPut8( w, 13 ); /* rotation */
-            TableWriterPut32( w, (uint32_t) body_rotation );
-            if ( !RenderQuaternionSaveBody( w, &value->rotation ) ) { return 0; }
+            table_writer_put16( w, 0x60f3 ); table_writer_put8( w, 13 ); /* rotation */
+            table_writer_put32( w, (uint32_t) body_rotation );
+            if ( !render_quaternion_save_body( w, &value->rotation ) ) { return 0; }
         }
     }
     if ( value->t != 0.0 )
     {
-        TableWriterPut16( w, 0xccaf ); TableWriterPut8( w, 11 ); /* t */
-        TableWriterPut64( w, table_double_to_bits( value->t ) );
+        table_writer_put16( w, 0xccaf ); table_writer_put8( w, 11 ); /* t */
+        table_writer_put64( w, table_double_to_bits( value->t ) );
     }
     if ( value->explosion_id != 0 )
     {
-        TableWriterPut16( w, 0x5be0 ); TableWriterPut8( w, 8 ); /* explosion_id */
-        TableWriterPut32( w, (uint32_t) ( value->explosion_id ) );
+        table_writer_put16( w, 0x5be0 ); table_writer_put8( w, 8 ); /* explosion_id */
+        table_writer_put32( w, (uint32_t) ( value->explosion_id ) );
     }
     if ( value->parent_object_id != 0 )
     {
-        TableWriterPut16( w, 0xeeb6 ); TableWriterPut8( w, 8 ); /* parent_object_id */
-        TableWriterPut32( w, (uint32_t) ( value->parent_object_id ) );
+        table_writer_put16( w, 0xeeb6 ); table_writer_put8( w, 8 ); /* parent_object_id */
+        table_writer_put32( w, (uint32_t) ( value->parent_object_id ) );
     }
     if ( value->explosion_type != EXPLOSION_TYPE_NONE )
     {
@@ -3284,8 +3284,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionSaveBody( 
             case EXPLOSION_TYPE_LARGE: id_explosion_type = 0x6edf; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0x98fa ); TableWriterPut8( w, 7 ); /* explosion_type */
-        TableWriterPut16( w, id_explosion_type );
+        table_writer_put16( w, 0x98fa ); table_writer_put8( w, 7 ); /* explosion_type */
+        table_writer_put16( w, id_explosion_type );
     }
     if ( value->team != TEAM_NONE )
     {
@@ -3299,32 +3299,32 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionSaveBody( 
             case TEAM_GOLD: id_team = 0xda27; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xdff1 ); TableWriterPut8( w, 7 ); /* team */
-        TableWriterPut16( w, id_team );
+        table_writer_put16( w, 0xdff1 ); table_writer_put8( w, 7 ); /* team */
+        table_writer_put16( w, id_team );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderExplosionSave( const RenderExplosion * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_explosion_save( const RenderExplosion * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderExplosionSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderExplosionMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_explosion_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_explosion_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( TableReader * r, RenderExplosion * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_explosion_load_body( TableReader * r, RenderExplosion * value )
 {
-    RenderExplosionReset( value ); /* prefill declared defaults in place, then overlay */
+    render_explosion_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xdd45: /* position */
@@ -3332,16 +3332,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( 
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderVector3LoadBody( &sub, &value->position );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_vector3_load_body( &sub, &value->position );
                 }
                 r->offset += body_len;
                 break;
@@ -3351,16 +3351,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( 
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    RenderQuaternionLoadBody( &sub, &value->rotation );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    render_quaternion_load_body( &sub, &value->rotation );
                 }
                 r->offset += body_len;
                 break;
@@ -3370,11 +3370,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( 
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->t = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->t = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0x5be0: /* explosion_id */
@@ -3382,12 +3382,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( 
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->explosion_id = decoded_v;
                 }
                 break;
@@ -3397,12 +3397,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( 
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->parent_object_id = decoded_v;
                 }
                 break;
@@ -3412,12 +3412,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( 
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->explosion_type = EXPLOSION_TYPE_NONE; break;
@@ -3433,12 +3433,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( 
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->team = TEAM_NONE; break;
@@ -3454,23 +3454,23 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderExplosionLoadBody( 
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderExplosionLoad( RenderExplosion * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_explosion_load( RenderExplosion * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderExplosionLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_explosion_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
+static SCHEMA_UNUSED int64_t render_frame_measure( const RenderFrame * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->version != 0 ) { bytes += 3 + 8; } /* version */
@@ -3481,7 +3481,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* cameras */
         for ( i = 0; i < value->cameras_count; i++ )
         {
-            int64_t elem_cameras = RenderCameraMeasure( &value->cameras[i] );
+            int64_t elem_cameras = render_camera_measure( &value->cameras[i] );
             if ( elem_cameras < 0 ) { return -1; }
             bytes += 4 + elem_cameras;
         }
@@ -3493,7 +3493,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* ships */
         for ( i = 0; i < value->ships_count; i++ )
         {
-            int64_t elem_ships = RenderShipMeasure( &value->ships[i] );
+            int64_t elem_ships = render_ship_measure( &value->ships[i] );
             if ( elem_ships < 0 ) { return -1; }
             bytes += 4 + elem_ships;
         }
@@ -3505,7 +3505,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* turrets */
         for ( i = 0; i < value->turrets_count; i++ )
         {
-            int64_t elem_turrets = RenderTurretMeasure( &value->turrets[i] );
+            int64_t elem_turrets = render_turret_measure( &value->turrets[i] );
             if ( elem_turrets < 0 ) { return -1; }
             bytes += 4 + elem_turrets;
         }
@@ -3517,7 +3517,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* missiles */
         for ( i = 0; i < value->missiles_count; i++ )
         {
-            int64_t elem_missiles = RenderMissileMeasure( &value->missiles[i] );
+            int64_t elem_missiles = render_missile_measure( &value->missiles[i] );
             if ( elem_missiles < 0 ) { return -1; }
             bytes += 4 + elem_missiles;
         }
@@ -3529,7 +3529,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* dynamic_props */
         for ( i = 0; i < value->dynamic_props_count; i++ )
         {
-            int64_t elem_dynamic_props = RenderDynamicPropMeasure( &value->dynamic_props[i] );
+            int64_t elem_dynamic_props = render_dynamic_prop_measure( &value->dynamic_props[i] );
             if ( elem_dynamic_props < 0 ) { return -1; }
             bytes += 4 + elem_dynamic_props;
         }
@@ -3541,7 +3541,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* static_props */
         for ( i = 0; i < value->static_props_count; i++ )
         {
-            int64_t elem_static_props = RenderStaticPropMeasure( &value->static_props[i] );
+            int64_t elem_static_props = render_static_prop_measure( &value->static_props[i] );
             if ( elem_static_props < 0 ) { return -1; }
             bytes += 4 + elem_static_props;
         }
@@ -3553,7 +3553,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* cosmetic_props */
         for ( i = 0; i < value->cosmetic_props_count; i++ )
         {
-            int64_t elem_cosmetic_props = RenderCosmeticPropMeasure( &value->cosmetic_props[i] );
+            int64_t elem_cosmetic_props = render_cosmetic_prop_measure( &value->cosmetic_props[i] );
             if ( elem_cosmetic_props < 0 ) { return -1; }
             bytes += 4 + elem_cosmetic_props;
         }
@@ -3565,7 +3565,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* lasers */
         for ( i = 0; i < value->lasers_count; i++ )
         {
-            int64_t elem_lasers = RenderLaserMeasure( &value->lasers[i] );
+            int64_t elem_lasers = render_laser_measure( &value->lasers[i] );
             if ( elem_lasers < 0 ) { return -1; }
             bytes += 4 + elem_lasers;
         }
@@ -3577,7 +3577,7 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
         bytes += 3 + 4 + 5; /* explosions */
         for ( i = 0; i < value->explosions_count; i++ )
         {
-            int64_t elem_explosions = RenderExplosionMeasure( &value->explosions[i] );
+            int64_t elem_explosions = render_explosion_measure( &value->explosions[i] );
             if ( elem_explosions < 0 ) { return -1; }
             bytes += 4 + elem_explosions;
         }
@@ -3585,207 +3585,207 @@ static SCHEMA_UNUSED int64_t RenderFrameMeasure( const RenderFrame * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameSaveBody( TableWriter * w, const RenderFrame * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_save_body( TableWriter * w, const RenderFrame * value )
 {
     if ( value->version != 0 )
     {
-        TableWriterPut16( w, 0xe8e6 ); TableWriterPut8( w, 9 ); /* version */
-        TableWriterPut64( w, (uint64_t) ( value->version ) );
+        table_writer_put16( w, 0xe8e6 ); table_writer_put8( w, 9 ); /* version */
+        table_writer_put64( w, (uint64_t) ( value->version ) );
     }
     if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; } /* storage invariant */
     if ( value->cameras_count > 0 )
     {
         int64_t len_at_cameras;
         int32_t i;
-        TableWriterPut16( w, 0x8b0e ); TableWriterPut8( w, 14 ); /* cameras */
-        len_at_cameras = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->cameras_count );
+        table_writer_put16( w, 0x8b0e ); table_writer_put8( w, 14 ); /* cameras */
+        len_at_cameras = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->cameras_count );
         for ( i = 0; i < value->cameras_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderCameraSaveBody( w, &value->cameras[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_camera_save_body( w, &value->cameras[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_cameras, (uint32_t) ( w->offset - len_at_cameras - 4 ) );
+        table_writer_patch32( w, len_at_cameras, (uint32_t) ( w->offset - len_at_cameras - 4 ) );
     }
     if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; } /* storage invariant */
     if ( value->ships_count > 0 )
     {
         int64_t len_at_ships;
         int32_t i;
-        TableWriterPut16( w, 0x2d39 ); TableWriterPut8( w, 14 ); /* ships */
-        len_at_ships = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->ships_count );
+        table_writer_put16( w, 0x2d39 ); table_writer_put8( w, 14 ); /* ships */
+        len_at_ships = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->ships_count );
         for ( i = 0; i < value->ships_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderShipSaveBody( w, &value->ships[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_ship_save_body( w, &value->ships[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_ships, (uint32_t) ( w->offset - len_at_ships - 4 ) );
+        table_writer_patch32( w, len_at_ships, (uint32_t) ( w->offset - len_at_ships - 4 ) );
     }
     if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; } /* storage invariant */
     if ( value->turrets_count > 0 )
     {
         int64_t len_at_turrets;
         int32_t i;
-        TableWriterPut16( w, 0x48ad ); TableWriterPut8( w, 14 ); /* turrets */
-        len_at_turrets = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->turrets_count );
+        table_writer_put16( w, 0x48ad ); table_writer_put8( w, 14 ); /* turrets */
+        len_at_turrets = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->turrets_count );
         for ( i = 0; i < value->turrets_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderTurretSaveBody( w, &value->turrets[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_turret_save_body( w, &value->turrets[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_turrets, (uint32_t) ( w->offset - len_at_turrets - 4 ) );
+        table_writer_patch32( w, len_at_turrets, (uint32_t) ( w->offset - len_at_turrets - 4 ) );
     }
     if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; } /* storage invariant */
     if ( value->missiles_count > 0 )
     {
         int64_t len_at_missiles;
         int32_t i;
-        TableWriterPut16( w, 0xa532 ); TableWriterPut8( w, 14 ); /* missiles */
-        len_at_missiles = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->missiles_count );
+        table_writer_put16( w, 0xa532 ); table_writer_put8( w, 14 ); /* missiles */
+        len_at_missiles = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->missiles_count );
         for ( i = 0; i < value->missiles_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderMissileSaveBody( w, &value->missiles[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_missile_save_body( w, &value->missiles[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_missiles, (uint32_t) ( w->offset - len_at_missiles - 4 ) );
+        table_writer_patch32( w, len_at_missiles, (uint32_t) ( w->offset - len_at_missiles - 4 ) );
     }
     if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; } /* storage invariant */
     if ( value->dynamic_props_count > 0 )
     {
         int64_t len_at_dynamic_props;
         int32_t i;
-        TableWriterPut16( w, 0x810b ); TableWriterPut8( w, 14 ); /* dynamic_props */
-        len_at_dynamic_props = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->dynamic_props_count );
+        table_writer_put16( w, 0x810b ); table_writer_put8( w, 14 ); /* dynamic_props */
+        len_at_dynamic_props = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->dynamic_props_count );
         for ( i = 0; i < value->dynamic_props_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderDynamicPropSaveBody( w, &value->dynamic_props[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_dynamic_prop_save_body( w, &value->dynamic_props[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_dynamic_props, (uint32_t) ( w->offset - len_at_dynamic_props - 4 ) );
+        table_writer_patch32( w, len_at_dynamic_props, (uint32_t) ( w->offset - len_at_dynamic_props - 4 ) );
     }
     if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; } /* storage invariant */
     if ( value->static_props_count > 0 )
     {
         int64_t len_at_static_props;
         int32_t i;
-        TableWriterPut16( w, 0x55a9 ); TableWriterPut8( w, 14 ); /* static_props */
-        len_at_static_props = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->static_props_count );
+        table_writer_put16( w, 0x55a9 ); table_writer_put8( w, 14 ); /* static_props */
+        len_at_static_props = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->static_props_count );
         for ( i = 0; i < value->static_props_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderStaticPropSaveBody( w, &value->static_props[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_static_prop_save_body( w, &value->static_props[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_static_props, (uint32_t) ( w->offset - len_at_static_props - 4 ) );
+        table_writer_patch32( w, len_at_static_props, (uint32_t) ( w->offset - len_at_static_props - 4 ) );
     }
     if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; } /* storage invariant */
     if ( value->cosmetic_props_count > 0 )
     {
         int64_t len_at_cosmetic_props;
         int32_t i;
-        TableWriterPut16( w, 0x1142 ); TableWriterPut8( w, 14 ); /* cosmetic_props */
-        len_at_cosmetic_props = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->cosmetic_props_count );
+        table_writer_put16( w, 0x1142 ); table_writer_put8( w, 14 ); /* cosmetic_props */
+        len_at_cosmetic_props = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->cosmetic_props_count );
         for ( i = 0; i < value->cosmetic_props_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderCosmeticPropSaveBody( w, &value->cosmetic_props[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_cosmetic_prop_save_body( w, &value->cosmetic_props[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_cosmetic_props, (uint32_t) ( w->offset - len_at_cosmetic_props - 4 ) );
+        table_writer_patch32( w, len_at_cosmetic_props, (uint32_t) ( w->offset - len_at_cosmetic_props - 4 ) );
     }
     if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; } /* storage invariant */
     if ( value->lasers_count > 0 )
     {
         int64_t len_at_lasers;
         int32_t i;
-        TableWriterPut16( w, 0x411a ); TableWriterPut8( w, 14 ); /* lasers */
-        len_at_lasers = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->lasers_count );
+        table_writer_put16( w, 0x411a ); table_writer_put8( w, 14 ); /* lasers */
+        len_at_lasers = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->lasers_count );
         for ( i = 0; i < value->lasers_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderLaserSaveBody( w, &value->lasers[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_laser_save_body( w, &value->lasers[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_lasers, (uint32_t) ( w->offset - len_at_lasers - 4 ) );
+        table_writer_patch32( w, len_at_lasers, (uint32_t) ( w->offset - len_at_lasers - 4 ) );
     }
     if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; } /* storage invariant */
     if ( value->explosions_count > 0 )
     {
         int64_t len_at_explosions;
         int32_t i;
-        TableWriterPut16( w, 0x6bfb ); TableWriterPut8( w, 14 ); /* explosions */
-        len_at_explosions = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->explosions_count );
+        table_writer_put16( w, 0x6bfb ); table_writer_put8( w, 14 ); /* explosions */
+        len_at_explosions = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->explosions_count );
         for ( i = 0; i < value->explosions_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !RenderExplosionSaveBody( w, &value->explosions[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !render_explosion_save_body( w, &value->explosions[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_explosions, (uint32_t) ( w->offset - len_at_explosions - 4 ) );
+        table_writer_patch32( w, len_at_explosions, (uint32_t) ( w->offset - len_at_explosions - 4 ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderFrameSave( const RenderFrame * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_frame_save( const RenderFrame * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderFrameSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderFrameMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_frame_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_frame_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( TableReader * r, RenderFrame * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_frame_load_body( TableReader * r, RenderFrame * value )
 {
-    RenderFrameReset( value ); /* prefill declared defaults in place, then overlay */
+    render_frame_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xe8e6: /* version */
@@ -3793,12 +3793,12 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->version = decoded_v;
                 }
                 break;
@@ -3808,19 +3808,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -3832,16 +3832,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderCameraLoadBody( &elem, &value->cameras[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_camera_load_body( &elem, &value->cameras[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -3856,19 +3856,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -3880,16 +3880,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderShipLoadBody( &elem, &value->ships[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_ship_load_body( &elem, &value->ships[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -3904,19 +3904,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -3928,16 +3928,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderTurretLoadBody( &elem, &value->turrets[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_turret_load_body( &elem, &value->turrets[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -3952,19 +3952,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -3976,16 +3976,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderMissileLoadBody( &elem, &value->missiles[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_missile_load_body( &elem, &value->missiles[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -4000,19 +4000,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -4024,16 +4024,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderDynamicPropLoadBody( &elem, &value->dynamic_props[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_dynamic_prop_load_body( &elem, &value->dynamic_props[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -4048,19 +4048,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -4072,16 +4072,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderStaticPropLoadBody( &elem, &value->static_props[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_static_prop_load_body( &elem, &value->static_props[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -4096,19 +4096,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -4120,16 +4120,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderCosmeticPropLoadBody( &elem, &value->cosmetic_props[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_cosmetic_prop_load_body( &elem, &value->cosmetic_props[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -4144,19 +4144,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -4168,16 +4168,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderLaserLoadBody( &elem, &value->lasers[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_laser_load_body( &elem, &value->lasers[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -4192,19 +4192,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -4216,16 +4216,16 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            RenderExplosionLoadBody( &elem, &value->explosions[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            render_explosion_load_body( &elem, &value->explosions[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -4238,23 +4238,23 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderFrameLoadBody( Tabl
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderFrameLoad( RenderFrame * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_frame_load( RenderFrame * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderFrameLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_frame_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderVector3Measure( const RenderVector3 * value )
+static SCHEMA_UNUSED int64_t render_vector3_measure( const RenderVector3 * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->x != 0.0 ) { bytes += 3 + 8; } /* x */
@@ -4263,46 +4263,46 @@ static SCHEMA_UNUSED int64_t RenderVector3Measure( const RenderVector3 * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderVector3SaveBody( TableWriter * w, const RenderVector3 * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_vector3_save_body( TableWriter * w, const RenderVector3 * value )
 {
     if ( value->x != 0.0 )
     {
-        TableWriterPut16( w, 0xad8b ); TableWriterPut8( w, 11 ); /* x */
-        TableWriterPut64( w, table_double_to_bits( value->x ) );
+        table_writer_put16( w, 0xad8b ); table_writer_put8( w, 11 ); /* x */
+        table_writer_put64( w, table_double_to_bits( value->x ) );
     }
     if ( value->y != 0.0 )
     {
-        TableWriterPut16( w, 0xb2f8 ); TableWriterPut8( w, 11 ); /* y */
-        TableWriterPut64( w, table_double_to_bits( value->y ) );
+        table_writer_put16( w, 0xb2f8 ); table_writer_put8( w, 11 ); /* y */
+        table_writer_put64( w, table_double_to_bits( value->y ) );
     }
     if ( value->z != 0.0 )
     {
-        TableWriterPut16( w, 0xaca1 ); TableWriterPut8( w, 11 ); /* z */
-        TableWriterPut64( w, table_double_to_bits( value->z ) );
+        table_writer_put16( w, 0xaca1 ); table_writer_put8( w, 11 ); /* z */
+        table_writer_put64( w, table_double_to_bits( value->z ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderVector3Save( const RenderVector3 * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_vector3_save( const RenderVector3 * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderVector3SaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderVector3Measure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_vector3_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_vector3_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderVector3LoadBody( TableReader * r, RenderVector3 * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_vector3_load_body( TableReader * r, RenderVector3 * value )
 {
-    RenderVector3Reset( value ); /* prefill declared defaults in place, then overlay */
+    render_vector3_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xad8b: /* x */
@@ -4310,11 +4310,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderVector3LoadBody( Ta
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->x = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->x = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0xb2f8: /* y */
@@ -4322,11 +4322,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderVector3LoadBody( Ta
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->y = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->y = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0xaca1: /* z */
@@ -4334,33 +4334,33 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderVector3LoadBody( Ta
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->z = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->z = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderVector3Load( RenderVector3 * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_vector3_load( RenderVector3 * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderVector3LoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_vector3_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RenderQuaternionMeasure( const RenderQuaternion * value )
+static SCHEMA_UNUSED int64_t render_quaternion_measure( const RenderQuaternion * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->x != 0.0 ) { bytes += 3 + 8; } /* x */
@@ -4370,51 +4370,51 @@ static SCHEMA_UNUSED int64_t RenderQuaternionMeasure( const RenderQuaternion * v
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderQuaternionSaveBody( TableWriter * w, const RenderQuaternion * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_save_body( TableWriter * w, const RenderQuaternion * value )
 {
     if ( value->x != 0.0 )
     {
-        TableWriterPut16( w, 0xad8b ); TableWriterPut8( w, 11 ); /* x */
-        TableWriterPut64( w, table_double_to_bits( value->x ) );
+        table_writer_put16( w, 0xad8b ); table_writer_put8( w, 11 ); /* x */
+        table_writer_put64( w, table_double_to_bits( value->x ) );
     }
     if ( value->y != 0.0 )
     {
-        TableWriterPut16( w, 0xb2f8 ); TableWriterPut8( w, 11 ); /* y */
-        TableWriterPut64( w, table_double_to_bits( value->y ) );
+        table_writer_put16( w, 0xb2f8 ); table_writer_put8( w, 11 ); /* y */
+        table_writer_put64( w, table_double_to_bits( value->y ) );
     }
     if ( value->z != 0.0 )
     {
-        TableWriterPut16( w, 0xaca1 ); TableWriterPut8( w, 11 ); /* z */
-        TableWriterPut64( w, table_double_to_bits( value->z ) );
+        table_writer_put16( w, 0xaca1 ); table_writer_put8( w, 11 ); /* z */
+        table_writer_put64( w, table_double_to_bits( value->z ) );
     }
     if ( value->w != 1.0 )
     {
-        TableWriterPut16( w, 0xcd3a ); TableWriterPut8( w, 11 ); /* w */
-        TableWriterPut64( w, table_double_to_bits( value->w ) );
+        table_writer_put16( w, 0xcd3a ); table_writer_put8( w, 11 ); /* w */
+        table_writer_put64( w, table_double_to_bits( value->w ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RenderQuaternionSave( const RenderQuaternion * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_quaternion_save( const RenderQuaternion * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RenderQuaternionSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RenderQuaternionMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !render_quaternion_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == render_quaternion_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderQuaternionLoadBody( TableReader * r, RenderQuaternion * value )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int render_quaternion_load_body( TableReader * r, RenderQuaternion * value )
 {
-    RenderQuaternionReset( value ); /* prefill declared defaults in place, then overlay */
+    render_quaternion_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xad8b: /* x */
@@ -4422,11 +4422,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderQuaternionLoadBody(
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->x = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->x = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0xb2f8: /* y */
@@ -4434,11 +4434,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderQuaternionLoadBody(
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->y = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->y = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0xaca1: /* z */
@@ -4446,11 +4446,11 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderQuaternionLoadBody(
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->z = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->z = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             case 0xcd3a: /* w */
@@ -4458,35 +4458,35 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int RenderQuaternionLoadBody(
                 if ( kind != 11 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->w = table_bits_to_double( TableReaderGet64( &(*r) ) );
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                value->w = table_bits_to_double( table_reader_get64( &(*r) ) );
                 break;
             }
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RenderQuaternionLoad( RenderQuaternion * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_quaternion_load( RenderQuaternion * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RenderQuaternionLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return render_quaternion_load_body( &r, value );
 }
 
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
-/* RenderCameraOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_camera_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4505,12 +4505,12 @@ static SCHEMA_UNUSED int RenderQuaternionLoad( RenderQuaternion * value, const u
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderCamera * RenderCameraOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderCamera * render_camera_open( const void * bytes, uint64_t length )
 {
-    return (const RenderCamera *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCamera ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderCamera ) );
+    return (const RenderCamera *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderCamera ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderCamera ) );
 }
 
-/* RenderShipOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_ship_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4529,12 +4529,12 @@ static SCHEMA_UNUSED const RenderCamera * RenderCameraOpen( const void * bytes, 
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderShip * RenderShipOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderShip * render_ship_open( const void * bytes, uint64_t length )
 {
-    return (const RenderShip *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderShip ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderShip ) );
+    return (const RenderShip *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderShip ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderShip ) );
 }
 
-/* RenderTurretOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_turret_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4553,12 +4553,12 @@ static SCHEMA_UNUSED const RenderShip * RenderShipOpen( const void * bytes, uint
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderTurret * RenderTurretOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderTurret * render_turret_open( const void * bytes, uint64_t length )
 {
-    return (const RenderTurret *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderTurret ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderTurret ) );
+    return (const RenderTurret *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderTurret ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderTurret ) );
 }
 
-/* RenderMissileOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_missile_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4577,12 +4577,12 @@ static SCHEMA_UNUSED const RenderTurret * RenderTurretOpen( const void * bytes, 
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderMissile * RenderMissileOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderMissile * render_missile_open( const void * bytes, uint64_t length )
 {
-    return (const RenderMissile *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderMissile ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderMissile ) );
+    return (const RenderMissile *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderMissile ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderMissile ) );
 }
 
-/* RenderDynamicPropOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_dynamic_prop_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4601,12 +4601,12 @@ static SCHEMA_UNUSED const RenderMissile * RenderMissileOpen( const void * bytes
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderDynamicProp * RenderDynamicPropOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderDynamicProp * render_dynamic_prop_open( const void * bytes, uint64_t length )
 {
-    return (const RenderDynamicProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderDynamicProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderDynamicProp ) );
+    return (const RenderDynamicProp *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderDynamicProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderDynamicProp ) );
 }
 
-/* RenderStaticPropOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_static_prop_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4625,12 +4625,12 @@ static SCHEMA_UNUSED const RenderDynamicProp * RenderDynamicPropOpen( const void
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderStaticProp * RenderStaticPropOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderStaticProp * render_static_prop_open( const void * bytes, uint64_t length )
 {
-    return (const RenderStaticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderStaticProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderStaticProp ) );
+    return (const RenderStaticProp *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderStaticProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderStaticProp ) );
 }
 
-/* RenderCosmeticPropOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_cosmetic_prop_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4649,12 +4649,12 @@ static SCHEMA_UNUSED const RenderStaticProp * RenderStaticPropOpen( const void *
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderCosmeticProp * RenderCosmeticPropOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderCosmeticProp * render_cosmetic_prop_open( const void * bytes, uint64_t length )
 {
-    return (const RenderCosmeticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCosmeticProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderCosmeticProp ) );
+    return (const RenderCosmeticProp *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderCosmeticProp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderCosmeticProp ) );
 }
 
-/* RenderLaserOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_laser_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4673,12 +4673,12 @@ static SCHEMA_UNUSED const RenderCosmeticProp * RenderCosmeticPropOpen( const vo
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderLaser * RenderLaserOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderLaser * render_laser_open( const void * bytes, uint64_t length )
 {
-    return (const RenderLaser *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderLaser ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderLaser ) );
+    return (const RenderLaser *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderLaser ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderLaser ) );
 }
 
-/* RenderExplosionOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_explosion_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4697,12 +4697,12 @@ static SCHEMA_UNUSED const RenderLaser * RenderLaserOpen( const void * bytes, ui
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderExplosion * RenderExplosionOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderExplosion * render_explosion_open( const void * bytes, uint64_t length )
 {
-    return (const RenderExplosion *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderExplosion ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderExplosion ) );
+    return (const RenderExplosion *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderExplosion ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderExplosion ) );
 }
 
-/* RenderFrameOpen: match the header and POINT. On a match the bytes ARE what this
+/* render_frame_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4721,9 +4721,9 @@ static SCHEMA_UNUSED const RenderExplosion * RenderExplosionOpen( const void * b
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RenderFrame * RenderFrameOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RenderFrame * render_frame_open( const void * bytes, uint64_t length )
 {
-    return (const RenderFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderFrame ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderFrame ) );
+    return (const RenderFrame *) table_cook_open( bytes, length, (uint64_t) sizeof( RenderFrame ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RenderFrame ) );
 }
 
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
@@ -4872,18 +4872,18 @@ extern const TableTypeInfo schema_blockdemo_render_frame_info_;
 extern const TableTypeInfo schema_blockdemo_render_vector3_info_;
 extern const TableTypeInfo schema_blockdemo_render_quaternion_info_;
 
-static SCHEMA_UNUSED const TableTypeInfo * RenderCameraTableType( void ) { return &schema_blockdemo_render_camera_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderShipTableType( void ) { return &schema_blockdemo_render_ship_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderTurretTableType( void ) { return &schema_blockdemo_render_turret_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderMissileTableType( void ) { return &schema_blockdemo_render_missile_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderDynamicPropTableType( void ) { return &schema_blockdemo_render_dynamic_prop_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderStaticPropTableType( void ) { return &schema_blockdemo_render_static_prop_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderCosmeticPropTableType( void ) { return &schema_blockdemo_render_cosmetic_prop_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderLaserTableType( void ) { return &schema_blockdemo_render_laser_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderExplosionTableType( void ) { return &schema_blockdemo_render_explosion_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderFrameTableType( void ) { return &schema_blockdemo_render_frame_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderVector3TableType( void ) { return &schema_blockdemo_render_vector3_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RenderQuaternionTableType( void ) { return &schema_blockdemo_render_quaternion_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_camera_table_type( void ) { return &schema_blockdemo_render_camera_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_ship_table_type( void ) { return &schema_blockdemo_render_ship_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_turret_table_type( void ) { return &schema_blockdemo_render_turret_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_missile_table_type( void ) { return &schema_blockdemo_render_missile_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_dynamic_prop_table_type( void ) { return &schema_blockdemo_render_dynamic_prop_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_static_prop_table_type( void ) { return &schema_blockdemo_render_static_prop_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_cosmetic_prop_table_type( void ) { return &schema_blockdemo_render_cosmetic_prop_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_laser_table_type( void ) { return &schema_blockdemo_render_laser_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_explosion_table_type( void ) { return &schema_blockdemo_render_explosion_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_frame_table_type( void ) { return &schema_blockdemo_render_frame_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_vector3_table_type( void ) { return &schema_blockdemo_render_vector3_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * render_quaternion_table_type( void ) { return &schema_blockdemo_render_quaternion_info_; }
 
 /* ---- the text form (docs/SPEC-TABLES.md §16) ---- */
 
@@ -4892,12 +4892,12 @@ static SCHEMA_UNUSED const TableTypeInfo * RenderQuaternionTableType( void ) { r
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_camera_from_json_( RenderCamera * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_camera_to_json_( const RenderCamera * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderCameraFromJson( RenderCamera * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_camera_from_json( RenderCamera * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_camera_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderCameraToJsonMeasure( const RenderCamera * value ) { return schema_blockdemo_render_camera_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderCameraToJson( const RenderCamera * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_camera_to_json_measure( const RenderCamera * value ) { return schema_blockdemo_render_camera_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_camera_to_json( const RenderCamera * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_camera_to_json_( value, buffer, capacity );
 }
@@ -4907,12 +4907,12 @@ static SCHEMA_UNUSED int64_t RenderCameraToJson( const RenderCamera * value, cha
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_ship_from_json_( RenderShip * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_ship_to_json_( const RenderShip * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderShipFromJson( RenderShip * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_ship_from_json( RenderShip * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_ship_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderShipToJsonMeasure( const RenderShip * value ) { return schema_blockdemo_render_ship_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderShipToJson( const RenderShip * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_ship_to_json_measure( const RenderShip * value ) { return schema_blockdemo_render_ship_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_ship_to_json( const RenderShip * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_ship_to_json_( value, buffer, capacity );
 }
@@ -4922,12 +4922,12 @@ static SCHEMA_UNUSED int64_t RenderShipToJson( const RenderShip * value, char * 
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_turret_from_json_( RenderTurret * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_turret_to_json_( const RenderTurret * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderTurretFromJson( RenderTurret * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_turret_from_json( RenderTurret * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_turret_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderTurretToJsonMeasure( const RenderTurret * value ) { return schema_blockdemo_render_turret_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderTurretToJson( const RenderTurret * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_turret_to_json_measure( const RenderTurret * value ) { return schema_blockdemo_render_turret_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_turret_to_json( const RenderTurret * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_turret_to_json_( value, buffer, capacity );
 }
@@ -4937,12 +4937,12 @@ static SCHEMA_UNUSED int64_t RenderTurretToJson( const RenderTurret * value, cha
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_missile_from_json_( RenderMissile * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_missile_to_json_( const RenderMissile * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderMissileFromJson( RenderMissile * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_missile_from_json( RenderMissile * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_missile_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderMissileToJsonMeasure( const RenderMissile * value ) { return schema_blockdemo_render_missile_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderMissileToJson( const RenderMissile * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_missile_to_json_measure( const RenderMissile * value ) { return schema_blockdemo_render_missile_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_missile_to_json( const RenderMissile * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_missile_to_json_( value, buffer, capacity );
 }
@@ -4952,12 +4952,12 @@ static SCHEMA_UNUSED int64_t RenderMissileToJson( const RenderMissile * value, c
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_dynamic_prop_from_json_( RenderDynamicProp * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_dynamic_prop_to_json_( const RenderDynamicProp * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderDynamicPropFromJson( RenderDynamicProp * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_dynamic_prop_from_json( RenderDynamicProp * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_dynamic_prop_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderDynamicPropToJsonMeasure( const RenderDynamicProp * value ) { return schema_blockdemo_render_dynamic_prop_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderDynamicPropToJson( const RenderDynamicProp * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_dynamic_prop_to_json_measure( const RenderDynamicProp * value ) { return schema_blockdemo_render_dynamic_prop_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_dynamic_prop_to_json( const RenderDynamicProp * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_dynamic_prop_to_json_( value, buffer, capacity );
 }
@@ -4967,12 +4967,12 @@ static SCHEMA_UNUSED int64_t RenderDynamicPropToJson( const RenderDynamicProp * 
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_static_prop_from_json_( RenderStaticProp * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_static_prop_to_json_( const RenderStaticProp * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderStaticPropFromJson( RenderStaticProp * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_static_prop_from_json( RenderStaticProp * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_static_prop_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderStaticPropToJsonMeasure( const RenderStaticProp * value ) { return schema_blockdemo_render_static_prop_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderStaticPropToJson( const RenderStaticProp * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_static_prop_to_json_measure( const RenderStaticProp * value ) { return schema_blockdemo_render_static_prop_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_static_prop_to_json( const RenderStaticProp * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_static_prop_to_json_( value, buffer, capacity );
 }
@@ -4982,12 +4982,12 @@ static SCHEMA_UNUSED int64_t RenderStaticPropToJson( const RenderStaticProp * va
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_cosmetic_prop_from_json_( RenderCosmeticProp * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_cosmetic_prop_to_json_( const RenderCosmeticProp * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderCosmeticPropFromJson( RenderCosmeticProp * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_cosmetic_prop_from_json( RenderCosmeticProp * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_cosmetic_prop_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderCosmeticPropToJsonMeasure( const RenderCosmeticProp * value ) { return schema_blockdemo_render_cosmetic_prop_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderCosmeticPropToJson( const RenderCosmeticProp * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_cosmetic_prop_to_json_measure( const RenderCosmeticProp * value ) { return schema_blockdemo_render_cosmetic_prop_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_cosmetic_prop_to_json( const RenderCosmeticProp * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_cosmetic_prop_to_json_( value, buffer, capacity );
 }
@@ -4997,12 +4997,12 @@ static SCHEMA_UNUSED int64_t RenderCosmeticPropToJson( const RenderCosmeticProp 
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_laser_from_json_( RenderLaser * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_laser_to_json_( const RenderLaser * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderLaserFromJson( RenderLaser * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_laser_from_json( RenderLaser * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_laser_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderLaserToJsonMeasure( const RenderLaser * value ) { return schema_blockdemo_render_laser_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderLaserToJson( const RenderLaser * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_laser_to_json_measure( const RenderLaser * value ) { return schema_blockdemo_render_laser_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_laser_to_json( const RenderLaser * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_laser_to_json_( value, buffer, capacity );
 }
@@ -5012,12 +5012,12 @@ static SCHEMA_UNUSED int64_t RenderLaserToJson( const RenderLaser * value, char 
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_explosion_from_json_( RenderExplosion * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_explosion_to_json_( const RenderExplosion * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderExplosionFromJson( RenderExplosion * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_explosion_from_json( RenderExplosion * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_explosion_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderExplosionToJsonMeasure( const RenderExplosion * value ) { return schema_blockdemo_render_explosion_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderExplosionToJson( const RenderExplosion * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_explosion_to_json_measure( const RenderExplosion * value ) { return schema_blockdemo_render_explosion_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_explosion_to_json( const RenderExplosion * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_explosion_to_json_( value, buffer, capacity );
 }
@@ -5027,12 +5027,12 @@ static SCHEMA_UNUSED int64_t RenderExplosionToJson( const RenderExplosion * valu
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_frame_from_json_( RenderFrame * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_frame_to_json_( const RenderFrame * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderFrameFromJson( RenderFrame * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_frame_from_json( RenderFrame * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_frame_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderFrameToJsonMeasure( const RenderFrame * value ) { return schema_blockdemo_render_frame_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderFrameToJson( const RenderFrame * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_frame_to_json_measure( const RenderFrame * value ) { return schema_blockdemo_render_frame_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_frame_to_json( const RenderFrame * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_frame_to_json_( value, buffer, capacity );
 }
@@ -5042,12 +5042,12 @@ static SCHEMA_UNUSED int64_t RenderFrameToJson( const RenderFrame * value, char 
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_vector3_from_json_( RenderVector3 * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_vector3_to_json_( const RenderVector3 * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderVector3FromJson( RenderVector3 * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_vector3_from_json( RenderVector3 * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_vector3_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderVector3ToJsonMeasure( const RenderVector3 * value ) { return schema_blockdemo_render_vector3_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderVector3ToJson( const RenderVector3 * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_vector3_to_json_measure( const RenderVector3 * value ) { return schema_blockdemo_render_vector3_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_vector3_to_json( const RenderVector3 * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_vector3_to_json_( value, buffer, capacity );
 }
@@ -5057,12 +5057,12 @@ static SCHEMA_UNUSED int64_t RenderVector3ToJson( const RenderVector3 * value, c
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_quaternion_from_json_( RenderQuaternion * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_blockdemo_render_quaternion_to_json_( const RenderQuaternion * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RenderQuaternionFromJson( RenderQuaternion * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int render_quaternion_from_json( RenderQuaternion * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_blockdemo_render_quaternion_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RenderQuaternionToJsonMeasure( const RenderQuaternion * value ) { return schema_blockdemo_render_quaternion_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RenderQuaternionToJson( const RenderQuaternion * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t render_quaternion_to_json_measure( const RenderQuaternion * value ) { return schema_blockdemo_render_quaternion_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t render_quaternion_to_json( const RenderQuaternion * value, char * buffer, int64_t capacity )
 {
     return schema_blockdemo_render_quaternion_to_json_( value, buffer, capacity );
 }

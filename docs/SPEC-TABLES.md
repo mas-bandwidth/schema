@@ -1887,18 +1887,18 @@ TYPE are distinguished by a nullable member here:
 
 ```c
 SceneBuilder builder;                       /* the mutable life */
-SceneBuilderInit( &builder );               /* the arena, and the root node */
-Scene * root = SceneBuilderRoot( &builder );   /* NULL once locked */
+scene_builder_init( &builder );               /* the arena, and the root node */
+Scene * root = scene_builder_root( &builder );   /* NULL once locked */
 
 TableSink sink;                             /* WHERE a node comes from */
 sink.region = NULL;                         /* exactly one of the two is set */
 sink.worker = &builder.main;
-ListNode * node = ListNodeEmplace( &sink, &root->head );
+ListNode * node = list_node_emplace( &sink, &root->head );
 
-SceneBuilderLock( &builder );               /* one way; builder.region is the
+scene_builder_lock( &builder );               /* one way; builder.region is the
                                                packed region, builder.region_bytes
                                                its length */
-SceneBuilderShutdown( &builder );           /* releases the arena and the region */
+scene_builder_shutdown( &builder );           /* releases the arena and the region */
 ```
 
 - **`TableSink`** carries a `region` and a `worker` and exactly one is
@@ -3820,6 +3820,17 @@ in build version (§20.5).
   emits `<X>Open` for every TABLE (§7) — a root is any table — so that spelling
   is a definition and not only a claim, and it is claimed for every closure
   member all the same, on this list's own rule.
+
+  **THIS LIST IS A SUFFIX SET, NOT A CASING.** Each backend spells the set in
+  ITS OWN LANGUAGE, and specifically in the convention that language's PACKET
+  half already uses, because the two halves land in one project and a reader
+  should not be able to tell which emitter wrote a line. C++, C# and Go write
+  `<X>Load`; Rust writes `<x>_load`; C writes `<x>_load` too — types PascalCase,
+  functions and file-scope constants snake_case, macros SCREAMING_SNAKE under
+  `SCHEMA_`, which is exactly what `generated/c/` carries for the packet wire.
+  The CLAIM is unaffected: a closure member `X` claims `X` followed by each
+  suffix in the schema's own spelling, and the checker refuses the declaration,
+  not the emitted identifier.
 
   **GO SPELLS THE SAME VERBS AS FREE FUNCTIONS, because Go has them**:
   `<X>Open` and `<X>At` are package-level, exactly as C++'s are, and `<X>Cook`

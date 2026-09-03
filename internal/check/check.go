@@ -2588,14 +2588,25 @@ func (c *checker) checkClaimedNames() {
 		for _, gen := range tablenames.Claimed() {
 			what := "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)"
 			if gen[0] >= 'a' && gen[0] <= 'z' {
-				// UNEXPORTED IS NOT PRIVATE. A Go package is one namespace, so
-				// a lowercase runtime name is a package-scope name a
+				// UNEXPORTED IS NOT PRIVATE, AND NEITHER IS snake_case. A
+				// lowercase runtime name is still a unit-scope name a
 				// declaration collides with exactly as a PascalCase one does —
-				// `const tableJsonMaxDepth = 5` beside a table is a
-				// redeclaration and the unit does not compile. The diagnostic
-				// says which half, because a reader meeting it will otherwise
-				// wonder why an unexported name was reserved (§11).
-				what = "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
+				// `const tableJsonMaxDepth = 5` beside a table is a Go
+				// redeclaration, and `int table_json_count;` beside one is a C
+				// redeclaration. The diagnostic says WHICH BACKEND, because a
+				// reader meeting it will otherwise wonder why a lowercase name
+				// was reserved (§11) — and the answer differs by language, so
+				// it is read from the registry rather than guessed from the
+				// spelling.
+				by := tablenames.By(gen)
+				switch {
+				case by&tablenames.Go != 0 && by&tablenames.C == 0:
+					what = "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
+				case by&tablenames.C != 0 && by&tablenames.Go == 0:
+					what = "the generated TABLE-wire runtime's C half, which spells its functions snake_case — the packet emitter's convention in that language — with no namespace to put them in (docs/SPEC-TABLES.md §11)"
+				default:
+					what = "the generated TABLE-wire runtime's Go and C halves, which both put lowercase names at unit scope (docs/SPEC-TABLES.md §11)"
+				}
 			}
 			add(gen, what, unitPos)
 		}
@@ -2955,6 +2966,7 @@ func (c *checker) cReservedMacros() map[string]bool {
 		"SCHEMA_C_SPINE_INLINE_DEFINED", "SCHEMA_UTF8_VALID_DEFINED", "SCHEMA_FLAG_APPEND_DEFINED",
 		// the table backend's (internal/codegen/ctable)
 		"SCHEMA_TABLE_ALIGNOF", "SCHEMA_TABLE_ATOMIC", "SCHEMA_TABLE_STATIC_ASSERT",
+		"SCHEMA_TABLE_KEYED_AT",
 	} {
 		out[fixed] = true
 	}

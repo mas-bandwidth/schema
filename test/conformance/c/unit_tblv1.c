@@ -2,7 +2,7 @@
 #include "V1Table.h"
 #include "unit.h"
 
-SCHEMA_CONFORMANCE_CODEC( Cfg )
+SCHEMA_CONFORMANCE_CODEC( Cfg, cfg )
 
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tblv1, Cfg )

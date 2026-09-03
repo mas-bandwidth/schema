@@ -4072,7 +4072,7 @@ tables-c-big-endian: build/schema_test_c_soak_be
 	@echo "big-endian C leg: the tolerant wire crosses the byte order — same goldens, byte for byte"
 
 # THE KEYED None REFUSAL, C side (docs/SPEC-TABLES.md §2.4). C's accessor is a
-# macro over TableKeyedSlot rather than an operator[] — the one spelling that
+# macro over table_keyed_slot rather than an operator[] — the one spelling that
 # differs from the reference — and the refusal inside it is the same assert plus
 # the same abort. -DNDEBUG is the configuration that removes the assert and the
 # configuration a game ships; the child must still die.

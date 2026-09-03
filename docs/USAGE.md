@@ -753,18 +753,18 @@ reference:
 #include "ConfigTable.h"
 
 ShipConfig ship;
-ShipConfigReset( &ship );          /* C has no member initializers: this IS
+ship_config_reset( &ship );          /* C has no member initializers: this IS
                                       where the declared defaults live */
 ship.health = 250.0f;
 
-int64_t size = ShipConfigMeasure( &ship );      /* exact, writes nothing */
+int64_t size = ship_config_measure( &ship );      /* exact, writes nothing */
 uint8_t * buffer = malloc( (size_t) size );      /* or any storage you own */
-ShipConfigSave( &ship, buffer, size );           /* returns size, or -1 */
+ship_config_save( &ship, buffer, size );           /* returns size, or -1 */
 
 TableReport report;
 ShipConfig loaded;
 memset( &report, 0, sizeof( report ) );
-if ( !ShipConfigLoad( &loaded, buffer, size, &report ) )
+if ( !ship_config_load( &loaded, buffer, size, &report ) )
 {
     /* framing damage: report.malformed is set, the good prefix is kept */
 }
@@ -797,13 +797,13 @@ refusal live; the refusal is an assert plus an abort and it stands in every
 build, exactly as C++'s accessor refuses:
 
 ```c
-TableKeyedAt( fleet.ships, SHIP_TYPE_BOMBER ).health *= 2.0f;
+SCHEMA_TABLE_KEYED_AT( fleet.ships, SHIP_TYPE_BOMBER ).health *= 2.0f;
 
 /* walking every slot: the key is 1 .. E_MAX, never a storage index */
 int32_t key;
 for ( key = 1; key <= SHIP_TYPE_MAX; key++ )
 {
-    ShipConfig * ship = &TableKeyedAt( fleet.ships, key );
+    ShipConfig * ship = &SCHEMA_TABLE_KEYED_AT( fleet.ships, key );
     ship->health *= 2.0f;
 }
 ```
@@ -1414,49 +1414,52 @@ TableCtx ctx;
 Scene * root;
 int64_t wire_bytes, region_bytes;
 
-SceneBuilderInit( &builder );            /* the arena, and the root node */
-root = SceneBuilderRoot( &builder );     /* NULL once locked */
+scene_builder_init( &builder );            /* the arena, and the root node */
+root = scene_builder_root( &builder );     /* NULL once locked */
 
 sink.region = NULL;                      /* allocate in the ARENA */
 sink.worker = &builder.main;             /* one worker per thread (§6.4) */
-ListNode * head = ListNodeEmplace( &sink, &root->head );
+ListNode * head = list_node_emplace( &sink, &root->head );
 head->value = 1;
 
 /* the wire, straight out of the MUTABLE form: the ctx names the arena */
 ctx.arena = &builder.arena;
-wire_bytes = SceneMeasure( &ctx, root );
-SceneSave( &ctx, root, buffer, wire_bytes );
+wire_bytes = scene_measure( &ctx, root );
+scene_save( &ctx, root, buffer, wire_bytes );
 
-SceneBuilderLock( &builder );            /* one way; there is no unlock */
+scene_builder_lock( &builder );            /* one way; there is no unlock */
 /* the const form is builder.region, builder.region_bytes bytes of it, and a
    NULL context is what says "a packed region" to every walk */
 {
     const Scene * packed = (const Scene *) builder.region;
-    const ListNode * first = ListNodeAt( NULL, &packed->head );
+    const ListNode * first = list_node_at( NULL, &packed->head );
     (void) first;
 }
-SceneBuilderShutdown( &builder );
+scene_builder_shutdown( &builder );
 ```
 
 Reading from the wire is the same three steps, and the caller owns the region:
 
 ```c
-region_bytes = SceneLoadMeasure( wire, wire_size );   /* exact, reads no values */
+region_bytes = scene_load_measure( wire, wire_size );   /* exact, reads no values */
 uint8_t * region = your_allocator( region_bytes );
 TableReport report;
 memset( &report, 0, sizeof( report ) );
-const Scene * scene = SceneLoad( region, region_bytes, wire, wire_size, &report );
-const ListNode * node = ListNodeAt( NULL, &scene->head );  /* one add */
+const Scene * scene = scene_load( region, region_bytes, wire, wire_size, &report );
+const ListNode * node = list_node_at( NULL, &scene->head );  /* one add */
 ```
 
 **The builder's members ARE its accessors.** C++ has `AsConst`, `Region`,
 `RegionBytes` and `Locked`; C has `builder.region` — the packed const form,
 NULL until `Lock` succeeds — `builder.region_bytes`, and
-`builder.arena.locked`. `SceneBuilderRoot` returns NULL once locked, which is
+`builder.arena.locked`. `scene_builder_root` returns NULL once locked, which is
 what sends you to `builder.region`.
 
-**`<T>At` and `<T>Emplace` exist only for a table something POINTS AT**, which
-is the same rule C++ follows: a table nobody points at needs neither.
+**`<name>_at` and `<name>_emplace` exist only for a table something POINTS
+AT**, which is the same rule C++ follows: a table nobody points at needs
+neither. The spelling is C's own — this target's packet half writes
+`read_ship_config`, so its table half writes `ship_config_load`, and §11's
+`<Name>At` is `<name>_at` here for the same reason it is `<name>_at` in Rust.
 
 ### Byte buffers: `bytes(N)`
 

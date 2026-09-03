@@ -116,7 +116,7 @@ typedef struct TableReport
    Static field descriptors for every type in the table closure: name, wire
    id/kind, storage offset, bounds, ranges, enum names and branch guards —
    enough to walk, print, diff, edit or bind any table value at runtime with
-   no schema files. <Name>TableType() returns <Name>'s descriptor. */
+   no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
 
@@ -206,8 +206,8 @@ typedef struct TableTypeInfo
     /* put one instance back at its declared defaults, in place. A generic
        walker that fills a value has to be able to establish the defaults an
        absent field takes, and it holds no type to spell — this is the one
-       thing the descriptors could not express without it. It is <Name>ResetRaw,
-       the void * form of <Name>Reset and the same code. */
+       thing the descriptors could not express without it. It is the void *
+       form of <name>_reset and the same code. */
     void (*reset)( void * storage );
 } TableTypeInfo;
 
@@ -219,7 +219,7 @@ typedef struct TableWriter
     int overflow;
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     w.buffer = buffer;
@@ -229,31 +229,31 @@ static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capa
     return w;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
 {
     if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
     memcpy( w->buffer + w->offset, data, (size_t) bytes );
     w->offset += bytes;
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPut16( TableWriter * w, uint16_t v )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put16( TableWriter * w, uint16_t v )
 {
     uint8_t b[2];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    TableWriterRaw( w, b, 2 );
+    table_writer_raw( w, b, 2 );
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )
 {
     uint8_t b[4];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    TableWriterRaw( w, b, 4 );
+    table_writer_raw( w, b, 4 );
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPut64( TableWriter * w, uint64_t v )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    TableWriterPut32( w, (uint32_t) v );
-    TableWriterPut32( w, (uint32_t) ( v >> 32 ) );
+    table_writer_put32( w, (uint32_t) v );
+    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
 {
     if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
     w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
@@ -268,7 +268,7 @@ typedef struct TableReader
     TableReport * report;
 } TableReader;
 
-static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_t size, TableReport * report )
+static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
 {
     TableReader r;
     r.buffer = buffer;
@@ -278,62 +278,62 @@ static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_
     return r;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint16_t TableReaderGet16( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 {
     uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
     r->offset += 2;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )
 {
     uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
                | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
     r->offset += 4;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint64_t TableReaderGet64( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint64_t table_reader_get64( TableReader * r )
 {
-    uint64_t lo = TableReaderGet32( r );
-    uint64_t hi = TableReaderGet32( r );
+    uint64_t lo = table_reader_get32( r );
+    uint64_t hi = table_reader_get32( r );
     return lo | ( hi << 32 );
 }
 
 /* skip one payload by kind; 0 = framing damage */
-static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
+static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
     switch ( kind )
     {
         case 1: case 2: case 6:
-            if ( !TableReaderHas( r, 1 ) ) { return 0; }
+            if ( !table_reader_has( r, 1 ) ) { return 0; }
             r->offset += 1; return 1;
         case 3: case 7:
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
             r->offset += 2; return 1;
         case 4: case 8: case 10:
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
             r->offset += 4; return 1;
         case 5: case 9: case 11:
-            if ( !TableReaderHas( r, 8 ) ) { return 0; }
+            if ( !table_reader_has( r, 8 ) ) { return 0; }
             r->offset += 8; return 1;
         case 12: case 13: case 14: case 16:
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
         case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
-            if ( TableReaderGet16( r ) == 0 ) { return 1; }
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
+            if ( table_reader_get16( r ) == 0 ) { return 1; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
@@ -346,7 +346,7 @@ static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )
     {
@@ -359,7 +359,7 @@ static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define TableKeyedAt( array, key ) ( (array)[ TableKeyedSlot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -411,7 +411,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
+static SCHEMA_UNUSED const int64_t table_cook_header_bytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -425,7 +425,7 @@ static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static SCHEMA_UNUSED const uint64_t table_cook_magic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -437,16 +437,16 @@ static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
+static SCHEMA_UNUSED const uint64_t table_cook_max_align = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -459,8 +459,8 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
     return v;
 }
 
-/* TableCookOpen: THE WHOLE CHECK, in one place, because §7 states the
-   enumeration once and every generated <Name>Open is that one enumeration plus
+/* table_cook_open: THE WHOLE CHECK, in one place, because §7 states the
+   enumeration once and every generated <name>_open is that one enumeration plus
    its own root's two layout facts.
 
    THE CHECK, in order: the magic read bytewise, the byte order it establishes,
@@ -480,20 +480,20 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
     if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
     if ( table_cook_read64( raw + 8 ) != SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
@@ -508,7 +508,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
     if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
@@ -517,7 +517,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
-    data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
+    data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
     if ( length < data_offset ) { return NULL; }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
@@ -543,7 +543,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
 #endif /* SCHEMA_TABLEDEMO_TABLE_COOK */
 
 /* table RangedSigned — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RangedSignedReset and nowhere
+   initializers, so the declared defaults live in ranged_signed_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RangedSigned {
     int8_t i8_span;
@@ -567,7 +567,7 @@ typedef struct RangedSigned {
 } RangedSigned;
 
 /* table RangedUnsigned — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RangedUnsignedReset and nowhere
+   initializers, so the declared defaults live in ranged_unsigned_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RangedUnsigned {
     uint8_t u8_span;
@@ -591,7 +591,7 @@ typedef struct RangedUnsigned {
 } RangedUnsigned;
 
 /* table RangedWidths — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in RangedWidthsReset and nowhere
+   initializers, so the declared defaults live in ranged_widths_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct RangedWidths {
     uint32_t b8;
@@ -604,14 +604,14 @@ typedef struct RangedWidths {
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
 
-static SCHEMA_UNUSED void RangedSignedReset( RangedSigned * value );
+static SCHEMA_UNUSED void ranged_signed_reset( RangedSigned * value );
 static SCHEMA_UNUSED void schema_tabledemo_ranged_signed_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RangedUnsignedReset( RangedUnsigned * value );
+static SCHEMA_UNUSED void ranged_unsigned_reset( RangedUnsigned * value );
 static SCHEMA_UNUSED void schema_tabledemo_ranged_unsigned_reset_raw_( void * storage );
-static SCHEMA_UNUSED void RangedWidthsReset( RangedWidths * value );
+static SCHEMA_UNUSED void ranged_widths_reset( RangedWidths * value );
 static SCHEMA_UNUSED void schema_tabledemo_ranged_widths_reset_raw_( void * storage );
 
-static SCHEMA_UNUSED void RangedSignedReset( RangedSigned * value )
+static SCHEMA_UNUSED void ranged_signed_reset( RangedSigned * value )
 {
     value->i8_span = 0;
     value->i8_low = 0;
@@ -633,9 +633,9 @@ static SCHEMA_UNUSED void RangedSignedReset( RangedSigned * value )
     value->edges_count = 0;
 }
 
-static SCHEMA_UNUSED void schema_tabledemo_ranged_signed_reset_raw_( void * storage ) { RangedSignedReset( (RangedSigned *) storage ); }
+static SCHEMA_UNUSED void schema_tabledemo_ranged_signed_reset_raw_( void * storage ) { ranged_signed_reset( (RangedSigned *) storage ); }
 
-static SCHEMA_UNUSED void RangedUnsignedReset( RangedUnsigned * value )
+static SCHEMA_UNUSED void ranged_unsigned_reset( RangedUnsigned * value )
 {
     value->u8_span = 0;
     value->u8_low = 0;
@@ -657,9 +657,9 @@ static SCHEMA_UNUSED void RangedUnsignedReset( RangedUnsigned * value )
     value->counts_count = 0;
 }
 
-static SCHEMA_UNUSED void schema_tabledemo_ranged_unsigned_reset_raw_( void * storage ) { RangedUnsignedReset( (RangedUnsigned *) storage ); }
+static SCHEMA_UNUSED void schema_tabledemo_ranged_unsigned_reset_raw_( void * storage ) { ranged_unsigned_reset( (RangedUnsigned *) storage ); }
 
-static SCHEMA_UNUSED void RangedWidthsReset( RangedWidths * value )
+static SCHEMA_UNUSED void ranged_widths_reset( RangedWidths * value )
 {
     value->b8 = 0;
     value->b16 = 0;
@@ -669,21 +669,21 @@ static SCHEMA_UNUSED void RangedWidthsReset( RangedWidths * value )
     value->b48 = 0;
 }
 
-static SCHEMA_UNUSED void schema_tabledemo_ranged_widths_reset_raw_( void * storage ) { RangedWidthsReset( (RangedWidths *) storage ); }
+static SCHEMA_UNUSED void schema_tabledemo_ranged_widths_reset_raw_( void * storage ) { ranged_widths_reset( (RangedWidths *) storage ); }
 
 /* ---- codecs: measure/save/load per closure member ---- */
 
-static SCHEMA_UNUSED int64_t RangedSignedMeasure( const RangedSigned * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedSaveBody( TableWriter * w, const RangedSigned * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( TableReader * r, RangedSigned * value );
-static SCHEMA_UNUSED int64_t RangedUnsignedMeasure( const RangedUnsigned * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedSaveBody( TableWriter * w, const RangedUnsigned * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( TableReader * r, RangedUnsigned * value );
-static SCHEMA_UNUSED int64_t RangedWidthsMeasure( const RangedWidths * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsSaveBody( TableWriter * w, const RangedWidths * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( TableReader * r, RangedWidths * value );
+static SCHEMA_UNUSED int64_t ranged_signed_measure( const RangedSigned * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_signed_save_body( TableWriter * w, const RangedSigned * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_signed_load_body( TableReader * r, RangedSigned * value );
+static SCHEMA_UNUSED int64_t ranged_unsigned_measure( const RangedUnsigned * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_unsigned_save_body( TableWriter * w, const RangedUnsigned * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_unsigned_load_body( TableReader * r, RangedUnsigned * value );
+static SCHEMA_UNUSED int64_t ranged_widths_measure( const RangedWidths * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_widths_save_body( TableWriter * w, const RangedWidths * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_widths_load_body( TableReader * r, RangedWidths * value );
 
-static SCHEMA_UNUSED int64_t RangedSignedMeasure( const RangedSigned * value )
+static SCHEMA_UNUSED int64_t ranged_signed_measure( const RangedSigned * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->i8_span != 0 ) { bytes += 3 + 1; } /* i8_span */
@@ -710,125 +710,125 @@ static SCHEMA_UNUSED int64_t RangedSignedMeasure( const RangedSigned * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedSaveBody( TableWriter * w, const RangedSigned * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_signed_save_body( TableWriter * w, const RangedSigned * value )
 {
     if ( value->i8_span != 0 )
     {
-        TableWriterPut16( w, 0x8d4f ); TableWriterPut8( w, 2 ); /* i8_span */
-        TableWriterPut8( w, (uint8_t) ( value->i8_span ) );
+        table_writer_put16( w, 0x8d4f ); table_writer_put8( w, 2 ); /* i8_span */
+        table_writer_put8( w, (uint8_t) ( value->i8_span ) );
     }
     if ( value->i8_low != 0 )
     {
-        TableWriterPut16( w, 0xe337 ); TableWriterPut8( w, 2 ); /* i8_low */
-        TableWriterPut8( w, (uint8_t) ( value->i8_low ) );
+        table_writer_put16( w, 0xe337 ); table_writer_put8( w, 2 ); /* i8_low */
+        table_writer_put8( w, (uint8_t) ( value->i8_low ) );
     }
     if ( value->i8_high != 0 )
     {
-        TableWriterPut16( w, 0x6a5f ); TableWriterPut8( w, 2 ); /* i8_high */
-        TableWriterPut8( w, (uint8_t) ( value->i8_high ) );
+        table_writer_put16( w, 0x6a5f ); table_writer_put8( w, 2 ); /* i8_high */
+        table_writer_put8( w, (uint8_t) ( value->i8_high ) );
     }
     if ( value->i8_inside != 0 )
     {
-        TableWriterPut16( w, 0x8eee ); TableWriterPut8( w, 2 ); /* i8_inside */
-        TableWriterPut8( w, (uint8_t) ( value->i8_inside ) );
+        table_writer_put16( w, 0x8eee ); table_writer_put8( w, 2 ); /* i8_inside */
+        table_writer_put8( w, (uint8_t) ( value->i8_inside ) );
     }
     if ( value->i16_span != 0 )
     {
-        TableWriterPut16( w, 0x0a1e ); TableWriterPut8( w, 3 ); /* i16_span */
-        TableWriterPut16( w, (uint16_t) ( value->i16_span ) );
+        table_writer_put16( w, 0x0a1e ); table_writer_put8( w, 3 ); /* i16_span */
+        table_writer_put16( w, (uint16_t) ( value->i16_span ) );
     }
     if ( value->i16_low != 0 )
     {
-        TableWriterPut16( w, 0xaaae ); TableWriterPut8( w, 3 ); /* i16_low */
-        TableWriterPut16( w, (uint16_t) ( value->i16_low ) );
+        table_writer_put16( w, 0xaaae ); table_writer_put8( w, 3 ); /* i16_low */
+        table_writer_put16( w, (uint16_t) ( value->i16_low ) );
     }
     if ( value->i16_high != 0 )
     {
-        TableWriterPut16( w, 0xe8f2 ); TableWriterPut8( w, 3 ); /* i16_high */
-        TableWriterPut16( w, (uint16_t) ( value->i16_high ) );
+        table_writer_put16( w, 0xe8f2 ); table_writer_put8( w, 3 ); /* i16_high */
+        table_writer_put16( w, (uint16_t) ( value->i16_high ) );
     }
     if ( value->i16_inside != 0 )
     {
-        TableWriterPut16( w, 0x1a0e ); TableWriterPut8( w, 3 ); /* i16_inside */
-        TableWriterPut16( w, (uint16_t) ( value->i16_inside ) );
+        table_writer_put16( w, 0x1a0e ); table_writer_put8( w, 3 ); /* i16_inside */
+        table_writer_put16( w, (uint16_t) ( value->i16_inside ) );
     }
     if ( value->i32_span != 0 )
     {
-        TableWriterPut16( w, 0x6bd1 ); TableWriterPut8( w, 4 ); /* i32_span */
-        TableWriterPut32( w, (uint32_t) ( value->i32_span ) );
+        table_writer_put16( w, 0x6bd1 ); table_writer_put8( w, 4 ); /* i32_span */
+        table_writer_put32( w, (uint32_t) ( value->i32_span ) );
     }
     if ( value->i32_low != 0 )
     {
-        TableWriterPut16( w, 0xb8e0 ); TableWriterPut8( w, 4 ); /* i32_low */
-        TableWriterPut32( w, (uint32_t) ( value->i32_low ) );
+        table_writer_put16( w, 0xb8e0 ); table_writer_put8( w, 4 ); /* i32_low */
+        table_writer_put32( w, (uint32_t) ( value->i32_low ) );
     }
     if ( value->i32_high != 0 )
     {
-        TableWriterPut16( w, 0x3806 ); TableWriterPut8( w, 4 ); /* i32_high */
-        TableWriterPut32( w, (uint32_t) ( value->i32_high ) );
+        table_writer_put16( w, 0x3806 ); table_writer_put8( w, 4 ); /* i32_high */
+        table_writer_put32( w, (uint32_t) ( value->i32_high ) );
     }
     if ( value->i32_inside != 0 )
     {
-        TableWriterPut16( w, 0x9a24 ); TableWriterPut8( w, 4 ); /* i32_inside */
-        TableWriterPut32( w, (uint32_t) ( value->i32_inside ) );
+        table_writer_put16( w, 0x9a24 ); table_writer_put8( w, 4 ); /* i32_inside */
+        table_writer_put32( w, (uint32_t) ( value->i32_inside ) );
     }
     if ( value->i64_span != 0 )
     {
-        TableWriterPut16( w, 0xf086 ); TableWriterPut8( w, 5 ); /* i64_span */
-        TableWriterPut64( w, (uint64_t) ( value->i64_span ) );
+        table_writer_put16( w, 0xf086 ); table_writer_put8( w, 5 ); /* i64_span */
+        table_writer_put64( w, (uint64_t) ( value->i64_span ) );
     }
     if ( value->i64_low != 0 )
     {
-        TableWriterPut16( w, 0xc705 ); TableWriterPut8( w, 5 ); /* i64_low */
-        TableWriterPut64( w, (uint64_t) ( value->i64_low ) );
+        table_writer_put16( w, 0xc705 ); table_writer_put8( w, 5 ); /* i64_low */
+        table_writer_put64( w, (uint64_t) ( value->i64_low ) );
     }
     if ( value->i64_high != 0 )
     {
-        TableWriterPut16( w, 0x328e ); TableWriterPut8( w, 5 ); /* i64_high */
-        TableWriterPut64( w, (uint64_t) ( value->i64_high ) );
+        table_writer_put16( w, 0x328e ); table_writer_put8( w, 5 ); /* i64_high */
+        table_writer_put64( w, (uint64_t) ( value->i64_high ) );
     }
     if ( value->i64_inside != 0 )
     {
-        TableWriterPut16( w, 0x7d51 ); TableWriterPut8( w, 5 ); /* i64_inside */
-        TableWriterPut64( w, (uint64_t) ( value->i64_inside ) );
+        table_writer_put16( w, 0x7d51 ); table_writer_put8( w, 5 ); /* i64_inside */
+        table_writer_put64( w, (uint64_t) ( value->i64_inside ) );
     }
     if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0; } /* storage invariant */
     if ( value->edges_count > 0 )
     {
         int64_t len_at_edges;
         int32_t i;
-        TableWriterPut16( w, 0xb1cb ); TableWriterPut8( w, 14 ); /* edges */
-        len_at_edges = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 3 ); TableWriterPut32( w, (uint32_t) value->edges_count );
+        table_writer_put16( w, 0xb1cb ); table_writer_put8( w, 14 ); /* edges */
+        len_at_edges = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 3 ); table_writer_put32( w, (uint32_t) value->edges_count );
         for ( i = 0; i < value->edges_count; i++ )
         {
-            TableWriterPut16( w, (uint16_t) ( value->edges[i] ) );
+            table_writer_put16( w, (uint16_t) ( value->edges[i] ) );
         }
-        TableWriterPatch32( w, len_at_edges, (uint32_t) ( w->offset - len_at_edges - 4 ) );
+        table_writer_patch32( w, len_at_edges, (uint32_t) ( w->offset - len_at_edges - 4 ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RangedSignedSave( const RangedSigned * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t ranged_signed_save( const RangedSigned * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RangedSignedSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RangedSignedMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !ranged_signed_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == ranged_signed_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( TableReader * r, RangedSigned * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_signed_load_body( TableReader * r, RangedSigned * value )
 {
-    RangedSignedReset( value ); /* prefill declared defaults in place, then overlay */
+    ranged_signed_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x8d4f: /* i8_span */
@@ -836,12 +836,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 2 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int8_t decoded_v = (int8_t) TableReaderGet8( &(*r) );
+                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
                     value->i8_span = decoded_v;
                 }
                 break;
@@ -851,12 +851,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 2 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int8_t decoded_v = (int8_t) TableReaderGet8( &(*r) );
+                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
                     if ( decoded_v > 126 ) { decoded_v = 126; r->report->clamped++; }
                     value->i8_low = decoded_v;
                 }
@@ -867,12 +867,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 2 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int8_t decoded_v = (int8_t) TableReaderGet8( &(*r) );
+                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
                     if ( decoded_v < -127 ) { decoded_v = -127; r->report->clamped++; }
                     value->i8_high = decoded_v;
                 }
@@ -883,12 +883,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 2 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int8_t decoded_v = (int8_t) TableReaderGet8( &(*r) );
+                    int8_t decoded_v = (int8_t) table_reader_get8( &(*r) );
                     if ( decoded_v < -127 ) { decoded_v = -127; r->report->clamped++; }
                     else if ( decoded_v > 126 ) { decoded_v = 126; r->report->clamped++; }
                     value->i8_inside = decoded_v;
@@ -900,12 +900,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 3 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int16_t decoded_v = (int16_t) TableReaderGet16( &(*r) );
+                    int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
                     value->i16_span = decoded_v;
                 }
                 break;
@@ -915,12 +915,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 3 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int16_t decoded_v = (int16_t) TableReaderGet16( &(*r) );
+                    int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
                     if ( decoded_v > 32766 ) { decoded_v = 32766; r->report->clamped++; }
                     value->i16_low = decoded_v;
                 }
@@ -931,12 +931,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 3 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int16_t decoded_v = (int16_t) TableReaderGet16( &(*r) );
+                    int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
                     if ( decoded_v < -32767 ) { decoded_v = -32767; r->report->clamped++; }
                     value->i16_high = decoded_v;
                 }
@@ -947,12 +947,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 3 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int16_t decoded_v = (int16_t) TableReaderGet16( &(*r) );
+                    int16_t decoded_v = (int16_t) table_reader_get16( &(*r) );
                     if ( decoded_v < -32767 ) { decoded_v = -32767; r->report->clamped++; }
                     else if ( decoded_v > 32766 ) { decoded_v = 32766; r->report->clamped++; }
                     value->i16_inside = decoded_v;
@@ -964,12 +964,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     value->i32_span = decoded_v;
                 }
                 break;
@@ -979,12 +979,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     if ( decoded_v > 2147483646 ) { decoded_v = 2147483646; r->report->clamped++; }
                     value->i32_low = decoded_v;
                 }
@@ -995,12 +995,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < -2147483647 ) { decoded_v = -2147483647; r->report->clamped++; }
                     value->i32_high = decoded_v;
                 }
@@ -1011,12 +1011,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < -2147483647 ) { decoded_v = -2147483647; r->report->clamped++; }
                     else if ( decoded_v > 2147483646 ) { decoded_v = 2147483646; r->report->clamped++; }
                     value->i32_inside = decoded_v;
@@ -1028,12 +1028,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 5 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int64_t decoded_v = (int64_t) TableReaderGet64( &(*r) );
+                    int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
                     value->i64_span = decoded_v;
                 }
                 break;
@@ -1043,12 +1043,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 5 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int64_t decoded_v = (int64_t) TableReaderGet64( &(*r) );
+                    int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
                     if ( decoded_v > 9223372036854775806ll ) { decoded_v = 9223372036854775806ll; r->report->clamped++; }
                     value->i64_low = decoded_v;
                 }
@@ -1059,12 +1059,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 5 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int64_t decoded_v = (int64_t) TableReaderGet64( &(*r) );
+                    int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
                     if ( decoded_v < -9223372036854775807ll ) { decoded_v = -9223372036854775807ll; r->report->clamped++; }
                     value->i64_high = decoded_v;
                 }
@@ -1075,12 +1075,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 5 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int64_t decoded_v = (int64_t) TableReaderGet64( &(*r) );
+                    int64_t decoded_v = (int64_t) table_reader_get64( &(*r) );
                     if ( decoded_v < -9223372036854775807ll ) { decoded_v = -9223372036854775807ll; r->report->clamped++; }
                     else if ( decoded_v > 9223372036854775806ll ) { decoded_v = 9223372036854775806ll; r->report->clamped++; }
                     value->i64_inside = decoded_v;
@@ -1092,19 +1092,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -1116,12 +1116,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
-                        if ( !TableReaderHas( &sub, 2 ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 2 ) ) { r->report->malformed = 1; break; }
                         {
-                            int16_t decoded_v = (int16_t) TableReaderGet16( &sub );
+                            int16_t decoded_v = (int16_t) table_reader_get16( &sub );
                             value->edges[i] = decoded_v;
                         }
                         decoded = i + 1;
@@ -1134,23 +1134,23 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedSignedLoadBody( Tab
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RangedSignedLoad( RangedSigned * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int ranged_signed_load( RangedSigned * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RangedSignedLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return ranged_signed_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RangedUnsignedMeasure( const RangedUnsigned * value )
+static SCHEMA_UNUSED int64_t ranged_unsigned_measure( const RangedUnsigned * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->u8_span != 0 ) { bytes += 3 + 1; } /* u8_span */
@@ -1177,125 +1177,125 @@ static SCHEMA_UNUSED int64_t RangedUnsignedMeasure( const RangedUnsigned * value
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedSaveBody( TableWriter * w, const RangedUnsigned * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_unsigned_save_body( TableWriter * w, const RangedUnsigned * value )
 {
     if ( value->u8_span != 0 )
     {
-        TableWriterPut16( w, 0x6434 ); TableWriterPut8( w, 6 ); /* u8_span */
-        TableWriterPut8( w, (uint8_t) ( value->u8_span ) );
+        table_writer_put16( w, 0x6434 ); table_writer_put8( w, 6 ); /* u8_span */
+        table_writer_put8( w, (uint8_t) ( value->u8_span ) );
     }
     if ( value->u8_low != 0 )
     {
-        TableWriterPut16( w, 0xb24e ); TableWriterPut8( w, 6 ); /* u8_low */
-        TableWriterPut8( w, (uint8_t) ( value->u8_low ) );
+        table_writer_put16( w, 0xb24e ); table_writer_put8( w, 6 ); /* u8_low */
+        table_writer_put8( w, (uint8_t) ( value->u8_low ) );
     }
     if ( value->u8_high != 1 )
     {
-        TableWriterPut16( w, 0x202a ); TableWriterPut8( w, 6 ); /* u8_high */
-        TableWriterPut8( w, (uint8_t) ( value->u8_high ) );
+        table_writer_put16( w, 0x202a ); table_writer_put8( w, 6 ); /* u8_high */
+        table_writer_put8( w, (uint8_t) ( value->u8_high ) );
     }
     if ( value->u8_inside != 1 )
     {
-        TableWriterPut16( w, 0x8fbf ); TableWriterPut8( w, 6 ); /* u8_inside */
-        TableWriterPut8( w, (uint8_t) ( value->u8_inside ) );
+        table_writer_put16( w, 0x8fbf ); table_writer_put8( w, 6 ); /* u8_inside */
+        table_writer_put8( w, (uint8_t) ( value->u8_inside ) );
     }
     if ( value->u16_span != 0 )
     {
-        TableWriterPut16( w, 0xd410 ); TableWriterPut8( w, 7 ); /* u16_span */
-        TableWriterPut16( w, (uint16_t) ( value->u16_span ) );
+        table_writer_put16( w, 0xd410 ); table_writer_put8( w, 7 ); /* u16_span */
+        table_writer_put16( w, (uint16_t) ( value->u16_span ) );
     }
     if ( value->u16_low != 0 )
     {
-        TableWriterPut16( w, 0x6f72 ); TableWriterPut8( w, 7 ); /* u16_low */
-        TableWriterPut16( w, (uint16_t) ( value->u16_low ) );
+        table_writer_put16( w, 0x6f72 ); table_writer_put8( w, 7 ); /* u16_low */
+        table_writer_put16( w, (uint16_t) ( value->u16_low ) );
     }
     if ( value->u16_high != 1 )
     {
-        TableWriterPut16( w, 0x1364 ); TableWriterPut8( w, 7 ); /* u16_high */
-        TableWriterPut16( w, (uint16_t) ( value->u16_high ) );
+        table_writer_put16( w, 0x1364 ); table_writer_put8( w, 7 ); /* u16_high */
+        table_writer_put16( w, (uint16_t) ( value->u16_high ) );
     }
     if ( value->u16_inside != 1 )
     {
-        TableWriterPut16( w, 0xbf32 ); TableWriterPut8( w, 7 ); /* u16_inside */
-        TableWriterPut16( w, (uint16_t) ( value->u16_inside ) );
+        table_writer_put16( w, 0xbf32 ); table_writer_put8( w, 7 ); /* u16_inside */
+        table_writer_put16( w, (uint16_t) ( value->u16_inside ) );
     }
     if ( value->u32_span != 0 )
     {
-        TableWriterPut16( w, 0x0513 ); TableWriterPut8( w, 8 ); /* u32_span */
-        TableWriterPut32( w, (uint32_t) ( value->u32_span ) );
+        table_writer_put16( w, 0x0513 ); table_writer_put8( w, 8 ); /* u32_span */
+        table_writer_put32( w, (uint32_t) ( value->u32_span ) );
     }
     if ( value->u32_low != 0 )
     {
-        TableWriterPut16( w, 0x4cce ); TableWriterPut8( w, 8 ); /* u32_low */
-        TableWriterPut32( w, (uint32_t) ( value->u32_low ) );
+        table_writer_put16( w, 0x4cce ); table_writer_put8( w, 8 ); /* u32_low */
+        table_writer_put32( w, (uint32_t) ( value->u32_low ) );
     }
     if ( value->u32_high != 1 )
     {
-        TableWriterPut16( w, 0xa2da ); TableWriterPut8( w, 8 ); /* u32_high */
-        TableWriterPut32( w, (uint32_t) ( value->u32_high ) );
+        table_writer_put16( w, 0xa2da ); table_writer_put8( w, 8 ); /* u32_high */
+        table_writer_put32( w, (uint32_t) ( value->u32_high ) );
     }
     if ( value->u32_inside != 1 )
     {
-        TableWriterPut16( w, 0xf596 ); TableWriterPut8( w, 8 ); /* u32_inside */
-        TableWriterPut32( w, (uint32_t) ( value->u32_inside ) );
+        table_writer_put16( w, 0xf596 ); table_writer_put8( w, 8 ); /* u32_inside */
+        table_writer_put32( w, (uint32_t) ( value->u32_inside ) );
     }
     if ( value->u64_span != 0 )
     {
-        TableWriterPut16( w, 0x6e8d ); TableWriterPut8( w, 9 ); /* u64_span */
-        TableWriterPut64( w, (uint64_t) ( value->u64_span ) );
+        table_writer_put16( w, 0x6e8d ); table_writer_put8( w, 9 ); /* u64_span */
+        table_writer_put64( w, (uint64_t) ( value->u64_span ) );
     }
     if ( value->u64_low != 0 )
     {
-        TableWriterPut16( w, 0x95b5 ); TableWriterPut8( w, 9 ); /* u64_low */
-        TableWriterPut64( w, (uint64_t) ( value->u64_low ) );
+        table_writer_put16( w, 0x95b5 ); table_writer_put8( w, 9 ); /* u64_low */
+        table_writer_put64( w, (uint64_t) ( value->u64_low ) );
     }
     if ( value->u64_high != 1ull )
     {
-        TableWriterPut16( w, 0x15e4 ); TableWriterPut8( w, 9 ); /* u64_high */
-        TableWriterPut64( w, (uint64_t) ( value->u64_high ) );
+        table_writer_put16( w, 0x15e4 ); table_writer_put8( w, 9 ); /* u64_high */
+        table_writer_put64( w, (uint64_t) ( value->u64_high ) );
     }
     if ( value->u64_inside != 1ull )
     {
-        TableWriterPut16( w, 0x2ce0 ); TableWriterPut8( w, 9 ); /* u64_inside */
-        TableWriterPut64( w, (uint64_t) ( value->u64_inside ) );
+        table_writer_put16( w, 0x2ce0 ); table_writer_put8( w, 9 ); /* u64_inside */
+        table_writer_put64( w, (uint64_t) ( value->u64_inside ) );
     }
     if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0; } /* storage invariant */
     if ( value->counts_count > 0 )
     {
         int64_t len_at_counts;
         int32_t i;
-        TableWriterPut16( w, 0xe27a ); TableWriterPut8( w, 14 ); /* counts */
-        len_at_counts = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 9 ); TableWriterPut32( w, (uint32_t) value->counts_count );
+        table_writer_put16( w, 0xe27a ); table_writer_put8( w, 14 ); /* counts */
+        len_at_counts = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 9 ); table_writer_put32( w, (uint32_t) value->counts_count );
         for ( i = 0; i < value->counts_count; i++ )
         {
-            TableWriterPut64( w, (uint64_t) ( value->counts[i] ) );
+            table_writer_put64( w, (uint64_t) ( value->counts[i] ) );
         }
-        TableWriterPatch32( w, len_at_counts, (uint32_t) ( w->offset - len_at_counts - 4 ) );
+        table_writer_patch32( w, len_at_counts, (uint32_t) ( w->offset - len_at_counts - 4 ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RangedUnsignedSave( const RangedUnsigned * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t ranged_unsigned_save( const RangedUnsigned * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RangedUnsignedSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RangedUnsignedMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !ranged_unsigned_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == ranged_unsigned_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( TableReader * r, RangedUnsigned * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_unsigned_load_body( TableReader * r, RangedUnsigned * value )
 {
-    RangedUnsignedReset( value ); /* prefill declared defaults in place, then overlay */
+    ranged_unsigned_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x6434: /* u8_span */
@@ -1303,12 +1303,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->u8_span = decoded_v;
                 }
                 break;
@@ -1318,12 +1318,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     if ( decoded_v > 254 ) { decoded_v = 254; r->report->clamped++; }
                     value->u8_low = decoded_v;
                 }
@@ -1334,12 +1334,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
                     value->u8_high = decoded_v;
                 }
@@ -1350,12 +1350,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
                     else if ( decoded_v > 254 ) { decoded_v = 254; r->report->clamped++; }
                     value->u8_inside = decoded_v;
@@ -1367,12 +1367,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t decoded_v = (uint16_t) TableReaderGet16( &(*r) );
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
                     value->u16_span = decoded_v;
                 }
                 break;
@@ -1382,12 +1382,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t decoded_v = (uint16_t) TableReaderGet16( &(*r) );
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
                     if ( decoded_v > 65534 ) { decoded_v = 65534; r->report->clamped++; }
                     value->u16_low = decoded_v;
                 }
@@ -1398,12 +1398,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t decoded_v = (uint16_t) TableReaderGet16( &(*r) );
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
                     if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
                     value->u16_high = decoded_v;
                 }
@@ -1414,12 +1414,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t decoded_v = (uint16_t) TableReaderGet16( &(*r) );
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
                     if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
                     else if ( decoded_v > 65534 ) { decoded_v = 65534; r->report->clamped++; }
                     value->u16_inside = decoded_v;
@@ -1431,12 +1431,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->u32_span = decoded_v;
                 }
                 break;
@@ -1446,12 +1446,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     if ( decoded_v > 4294967294 ) { decoded_v = 4294967294; r->report->clamped++; }
                     value->u32_low = decoded_v;
                 }
@@ -1462,12 +1462,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
                     value->u32_high = decoded_v;
                 }
@@ -1478,12 +1478,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
                     else if ( decoded_v > 4294967294 ) { decoded_v = 4294967294; r->report->clamped++; }
                     value->u32_inside = decoded_v;
@@ -1495,12 +1495,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->u64_span = decoded_v;
                 }
                 break;
@@ -1510,12 +1510,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     if ( decoded_v > 18446744073709551614ull ) { decoded_v = 18446744073709551614ull; r->report->clamped++; }
                     value->u64_low = decoded_v;
                 }
@@ -1526,12 +1526,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     if ( decoded_v < 1ull ) { decoded_v = 1ull; r->report->clamped++; }
                     value->u64_high = decoded_v;
                 }
@@ -1542,12 +1542,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     if ( decoded_v < 1ull ) { decoded_v = 1ull; r->report->clamped++; }
                     else if ( decoded_v > 18446744073709551614ull ) { decoded_v = 18446744073709551614ull; r->report->clamped++; }
                     value->u64_inside = decoded_v;
@@ -1559,19 +1559,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -1583,12 +1583,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
-                        if ( !TableReaderHas( &sub, 8 ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 8 ) ) { r->report->malformed = 1; break; }
                         {
-                            uint64_t decoded_v = (uint64_t) TableReaderGet64( &sub );
+                            uint64_t decoded_v = (uint64_t) table_reader_get64( &sub );
                             value->counts[i] = decoded_v;
                         }
                         decoded = i + 1;
@@ -1601,23 +1601,23 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedUnsignedLoadBody( T
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RangedUnsignedLoad( RangedUnsigned * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int ranged_unsigned_load( RangedUnsigned * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RangedUnsignedLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return ranged_unsigned_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t RangedWidthsMeasure( const RangedWidths * value )
+static SCHEMA_UNUSED int64_t ranged_widths_measure( const RangedWidths * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->b8 != 0 ) { bytes += 3 + 1; } /* b8 */
@@ -1629,61 +1629,61 @@ static SCHEMA_UNUSED int64_t RangedWidthsMeasure( const RangedWidths * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsSaveBody( TableWriter * w, const RangedWidths * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_widths_save_body( TableWriter * w, const RangedWidths * value )
 {
     if ( value->b8 != 0 )
     {
-        TableWriterPut16( w, 0xa7cb ); TableWriterPut8( w, 6 ); /* b8 */
-        TableWriterPut8( w, (uint8_t) ( value->b8 ) );
+        table_writer_put16( w, 0xa7cb ); table_writer_put8( w, 6 ); /* b8 */
+        table_writer_put8( w, (uint8_t) ( value->b8 ) );
     }
     if ( value->b16 != 0 )
     {
-        TableWriterPut16( w, 0xb643 ); TableWriterPut8( w, 7 ); /* b16 */
-        TableWriterPut16( w, (uint16_t) ( value->b16 ) );
+        table_writer_put16( w, 0xb643 ); table_writer_put8( w, 7 ); /* b16 */
+        table_writer_put16( w, (uint16_t) ( value->b16 ) );
     }
     if ( value->b32 != 0 )
     {
-        TableWriterPut16( w, 0x33f2 ); TableWriterPut8( w, 8 ); /* b32 */
-        TableWriterPut32( w, (uint32_t) ( value->b32 ) );
+        table_writer_put16( w, 0x33f2 ); table_writer_put8( w, 8 ); /* b32 */
+        table_writer_put32( w, (uint32_t) ( value->b32 ) );
     }
     if ( value->b64 != 0 )
     {
-        TableWriterPut16( w, 0x75dc ); TableWriterPut8( w, 9 ); /* b64 */
-        TableWriterPut64( w, (uint64_t) ( value->b64 ) );
+        table_writer_put16( w, 0x75dc ); table_writer_put8( w, 9 ); /* b64 */
+        table_writer_put64( w, (uint64_t) ( value->b64 ) );
     }
     if ( value->b12 != 0 )
     {
-        TableWriterPut16( w, 0xbcf7 ); TableWriterPut8( w, 7 ); /* b12 */
-        TableWriterPut16( w, (uint16_t) ( value->b12 ) );
+        table_writer_put16( w, 0xbcf7 ); table_writer_put8( w, 7 ); /* b12 */
+        table_writer_put16( w, (uint16_t) ( value->b12 ) );
     }
     if ( value->b48 != 0 )
     {
-        TableWriterPut16( w, 0x9797 ); TableWriterPut8( w, 9 ); /* b48 */
-        TableWriterPut64( w, (uint64_t) ( value->b48 ) );
+        table_writer_put16( w, 0x9797 ); table_writer_put8( w, 9 ); /* b48 */
+        table_writer_put64( w, (uint64_t) ( value->b48 ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t RangedWidthsSave( const RangedWidths * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t ranged_widths_save( const RangedWidths * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !RangedWidthsSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == RangedWidthsMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !ranged_widths_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == ranged_widths_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( TableReader * r, RangedWidths * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ranged_widths_load_body( TableReader * r, RangedWidths * value )
 {
-    RangedWidthsReset( value ); /* prefill declared defaults in place, then overlay */
+    ranged_widths_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xa7cb: /* b8 */
@@ -1691,12 +1691,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( Tab
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->b8 = decoded_v;
                 }
                 break;
@@ -1706,12 +1706,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( Tab
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t decoded_v = (uint16_t) TableReaderGet16( &(*r) );
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
                     value->b16 = decoded_v;
                 }
                 break;
@@ -1721,12 +1721,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( Tab
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->b32 = decoded_v;
                 }
                 break;
@@ -1736,12 +1736,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( Tab
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     value->b64 = decoded_v;
                 }
                 break;
@@ -1751,12 +1751,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( Tab
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t decoded_v = (uint16_t) TableReaderGet16( &(*r) );
+                    uint16_t decoded_v = (uint16_t) table_reader_get16( &(*r) );
                     if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r->report->clamped++; } /* bits(12) width clamp */
                     value->b12 = decoded_v;
                 }
@@ -1767,12 +1767,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( Tab
                 if ( kind != 9 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint64_t decoded_v = (uint64_t) TableReaderGet64( &(*r) );
+                    uint64_t decoded_v = (uint64_t) table_reader_get64( &(*r) );
                     if ( decoded_v > 281474976710655ull ) { decoded_v = 281474976710655ull; r->report->clamped++; } /* bits(48) width clamp */
                     value->b48 = decoded_v;
                 }
@@ -1781,25 +1781,25 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int RangedWidthsLoadBody( Tab
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int RangedWidthsLoad( RangedWidths * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int ranged_widths_load( RangedWidths * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return RangedWidthsLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return ranged_widths_load_body( &r, value );
 }
 
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
-/* RangedSignedOpen: match the header and POINT. On a match the bytes ARE what this
+/* ranged_signed_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -1818,12 +1818,12 @@ static SCHEMA_UNUSED int RangedWidthsLoad( RangedWidths * value, const uint8_t *
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RangedSigned * RangedSignedOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RangedSigned * ranged_signed_open( const void * bytes, uint64_t length )
 {
-    return (const RangedSigned *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedSigned ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RangedSigned ) );
+    return (const RangedSigned *) table_cook_open( bytes, length, (uint64_t) sizeof( RangedSigned ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RangedSigned ) );
 }
 
-/* RangedUnsignedOpen: match the header and POINT. On a match the bytes ARE what this
+/* ranged_unsigned_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -1842,12 +1842,12 @@ static SCHEMA_UNUSED const RangedSigned * RangedSignedOpen( const void * bytes, 
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RangedUnsigned * RangedUnsignedOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RangedUnsigned * ranged_unsigned_open( const void * bytes, uint64_t length )
 {
-    return (const RangedUnsigned *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedUnsigned ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RangedUnsigned ) );
+    return (const RangedUnsigned *) table_cook_open( bytes, length, (uint64_t) sizeof( RangedUnsigned ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RangedUnsigned ) );
 }
 
-/* RangedWidthsOpen: match the header and POINT. On a match the bytes ARE what this
+/* ranged_widths_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -1866,9 +1866,9 @@ static SCHEMA_UNUSED const RangedUnsigned * RangedUnsignedOpen( const void * byt
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const RangedWidths * RangedWidthsOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const RangedWidths * ranged_widths_open( const void * bytes, uint64_t length )
 {
-    return (const RangedWidths *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedWidths ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RangedWidths ) );
+    return (const RangedWidths *) table_cook_open( bytes, length, (uint64_t) sizeof( RangedWidths ), (uint64_t) SCHEMA_TABLE_ALIGNOF( RangedWidths ) );
 }
 
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
@@ -1945,9 +1945,9 @@ extern const TableTypeInfo schema_tabledemo_ranged_signed_info_;
 extern const TableTypeInfo schema_tabledemo_ranged_unsigned_info_;
 extern const TableTypeInfo schema_tabledemo_ranged_widths_info_;
 
-static SCHEMA_UNUSED const TableTypeInfo * RangedSignedTableType( void ) { return &schema_tabledemo_ranged_signed_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RangedUnsignedTableType( void ) { return &schema_tabledemo_ranged_unsigned_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * RangedWidthsTableType( void ) { return &schema_tabledemo_ranged_widths_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * ranged_signed_table_type( void ) { return &schema_tabledemo_ranged_signed_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * ranged_unsigned_table_type( void ) { return &schema_tabledemo_ranged_unsigned_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * ranged_widths_table_type( void ) { return &schema_tabledemo_ranged_widths_info_; }
 
 /* ---- the text form (docs/SPEC-TABLES.md §16) ---- */
 
@@ -1956,12 +1956,12 @@ static SCHEMA_UNUSED const TableTypeInfo * RangedWidthsTableType( void ) { retur
    RangesTable.c; compile it to use them. */
 int schema_tabledemo_ranged_signed_from_json_( RangedSigned * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_tabledemo_ranged_signed_to_json_( const RangedSigned * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RangedSignedFromJson( RangedSigned * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int ranged_signed_from_json( RangedSigned * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_tabledemo_ranged_signed_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RangedSignedToJsonMeasure( const RangedSigned * value ) { return schema_tabledemo_ranged_signed_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RangedSignedToJson( const RangedSigned * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t ranged_signed_to_json_measure( const RangedSigned * value ) { return schema_tabledemo_ranged_signed_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t ranged_signed_to_json( const RangedSigned * value, char * buffer, int64_t capacity )
 {
     return schema_tabledemo_ranged_signed_to_json_( value, buffer, capacity );
 }
@@ -1971,12 +1971,12 @@ static SCHEMA_UNUSED int64_t RangedSignedToJson( const RangedSigned * value, cha
    RangesTable.c; compile it to use them. */
 int schema_tabledemo_ranged_unsigned_from_json_( RangedUnsigned * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_tabledemo_ranged_unsigned_to_json_( const RangedUnsigned * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RangedUnsignedFromJson( RangedUnsigned * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int ranged_unsigned_from_json( RangedUnsigned * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_tabledemo_ranged_unsigned_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RangedUnsignedToJsonMeasure( const RangedUnsigned * value ) { return schema_tabledemo_ranged_unsigned_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RangedUnsignedToJson( const RangedUnsigned * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t ranged_unsigned_to_json_measure( const RangedUnsigned * value ) { return schema_tabledemo_ranged_unsigned_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t ranged_unsigned_to_json( const RangedUnsigned * value, char * buffer, int64_t capacity )
 {
     return schema_tabledemo_ranged_unsigned_to_json_( value, buffer, capacity );
 }
@@ -1986,12 +1986,12 @@ static SCHEMA_UNUSED int64_t RangedUnsignedToJson( const RangedUnsigned * value,
    RangesTable.c; compile it to use them. */
 int schema_tabledemo_ranged_widths_from_json_( RangedWidths * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_tabledemo_ranged_widths_to_json_( const RangedWidths * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int RangedWidthsFromJson( RangedWidths * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int ranged_widths_from_json( RangedWidths * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_tabledemo_ranged_widths_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t RangedWidthsToJsonMeasure( const RangedWidths * value ) { return schema_tabledemo_ranged_widths_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t RangedWidthsToJson( const RangedWidths * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t ranged_widths_to_json_measure( const RangedWidths * value ) { return schema_tabledemo_ranged_widths_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t ranged_widths_to_json( const RangedWidths * value, char * buffer, int64_t capacity )
 {
     return schema_tabledemo_ranged_widths_to_json_( value, buffer, capacity );
 }

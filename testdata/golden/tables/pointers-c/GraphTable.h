@@ -118,7 +118,7 @@ typedef struct TableReport
    Static field descriptors for every type in the table closure: name, wire
    id/kind, storage offset, bounds, ranges, enum names and branch guards —
    enough to walk, print, diff, edit or bind any table value at runtime with
-   no schema files. <Name>TableType() returns <Name>'s descriptor. */
+   no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
 
@@ -209,8 +209,8 @@ typedef struct TableTypeInfo
     /* put one instance back at its declared defaults, in place. A generic
        walker that fills a value has to be able to establish the defaults an
        absent field takes, and it holds no type to spell — this is the one
-       thing the descriptors could not express without it. It is <Name>ResetRaw,
-       the void * form of <Name>Reset and the same code. */
+       thing the descriptors could not express without it. It is the void *
+       form of <name>_reset and the same code. */
     void (*reset)( void * storage );
     /* the DERIVED mode (docs/SPEC-TABLES.md): 0 = fixed-size, a plain
        relocatable struct; 1 = variable-length, built through a builder
@@ -227,7 +227,7 @@ typedef struct TableWriter
     int overflow;
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     w.buffer = buffer;
@@ -237,31 +237,31 @@ static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capa
     return w;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
 {
     if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
     memcpy( w->buffer + w->offset, data, (size_t) bytes );
     w->offset += bytes;
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPut16( TableWriter * w, uint16_t v )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_put16( TableWriter * w, uint16_t v )
 {
     uint8_t b[2];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    TableWriterRaw( w, b, 2 );
+    table_writer_raw( w, b, 2 );
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )
 {
     uint8_t b[4];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    TableWriterRaw( w, b, 4 );
+    table_writer_raw( w, b, 4 );
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPut64( TableWriter * w, uint64_t v )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    TableWriterPut32( w, (uint32_t) v );
-    TableWriterPut32( w, (uint32_t) ( v >> 32 ) );
+    table_writer_put32( w, (uint32_t) v );
+    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
 {
     if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
     w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
@@ -276,7 +276,7 @@ typedef struct TableReader
     TableReport * report;
 } TableReader;
 
-static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_t size, TableReport * report )
+static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
 {
     TableReader r;
     r.buffer = buffer;
@@ -286,62 +286,62 @@ static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_
     return r;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint16_t TableReaderGet16( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 {
     uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
     r->offset += 2;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )
 {
     uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
                | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
     r->offset += 4;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint64_t TableReaderGet64( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint64_t table_reader_get64( TableReader * r )
 {
-    uint64_t lo = TableReaderGet32( r );
-    uint64_t hi = TableReaderGet32( r );
+    uint64_t lo = table_reader_get32( r );
+    uint64_t hi = table_reader_get32( r );
     return lo | ( hi << 32 );
 }
 
 /* skip one payload by kind; 0 = framing damage */
-static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
+static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
     switch ( kind )
     {
         case 1: case 2: case 6:
-            if ( !TableReaderHas( r, 1 ) ) { return 0; }
+            if ( !table_reader_has( r, 1 ) ) { return 0; }
             r->offset += 1; return 1;
         case 3: case 7:
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
             r->offset += 2; return 1;
         case 4: case 8: case 10:
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
             r->offset += 4; return 1;
         case 5: case 9: case 11:
-            if ( !TableReaderHas( r, 8 ) ) { return 0; }
+            if ( !table_reader_has( r, 8 ) ) { return 0; }
             r->offset += 8; return 1;
         case 12: case 13: case 14: case 16:
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
         case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
-            if ( TableReaderGet16( r ) == 0 ) { return 1; }
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
+            if ( table_reader_get16( r ) == 0 ) { return 1; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
@@ -354,7 +354,7 @@ static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )
     {
@@ -367,7 +367,7 @@ static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define TableKeyedAt( array, key ) ( (array)[ TableKeyedSlot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -404,7 +404,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
 
 /* ---- the one atomic this runtime needs, FEATURE TESTED ----
 
-   TableArenaCas32 is a compare-exchange on a uint32_t with acquire-release
+   table_arena_cas32 is a compare-exchange on a uint32_t with acquire-release
    ordering. C99 has no atomics of its own, so the spelling is tested for
    rather than assumed — the same shape the packet emitter's inlining demand
    takes. A compiler with none of the four gets the plain fallback, which is
@@ -415,15 +415,15 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
 #define SCHEMA_TABLE_ATOMIC 1
 typedef _Atomic( uint32_t ) TableAtomicU32;
 typedef _Atomic( uint8_t * ) TableAtomicPtr;
-static SCHEMA_UNUSED int TableArenaCas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
+static SCHEMA_UNUSED int table_arena_cas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
 {
     return atomic_compare_exchange_weak_explicit( slot, expected, desired, memory_order_acq_rel, memory_order_acquire );
 }
-#define TableAtomicLoad32( slot ) atomic_load_explicit( ( slot ), memory_order_acquire )
-#define TableAtomicStore32( slot, v ) atomic_store_explicit( ( slot ), ( v ), memory_order_relaxed )
-#define TableAtomicLoadPtr( slot ) atomic_load_explicit( ( slot ), memory_order_acquire )
-#define TableAtomicStorePtr( slot, v ) atomic_store_explicit( ( slot ), ( v ), memory_order_relaxed )
-static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
+#define table_atomic_load32( slot ) atomic_load_explicit( ( slot ), memory_order_acquire )
+#define table_atomic_store32( slot, v ) atomic_store_explicit( ( slot ), ( v ), memory_order_relaxed )
+#define table_atomic_load_ptr( slot ) atomic_load_explicit( ( slot ), memory_order_acquire )
+#define table_atomic_store_ptr( slot, v ) atomic_store_explicit( ( slot ), ( v ), memory_order_relaxed )
+static SCHEMA_UNUSED int table_arena_cas_ptr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
 {
     return atomic_compare_exchange_strong_explicit( slot, expected, desired, memory_order_acq_rel, memory_order_acquire );
 }
@@ -431,15 +431,15 @@ static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** exp
 #define SCHEMA_TABLE_ATOMIC 1
 typedef uint32_t TableAtomicU32;
 typedef uint8_t * TableAtomicPtr;
-static SCHEMA_UNUSED int TableArenaCas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
+static SCHEMA_UNUSED int table_arena_cas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
 {
     return __atomic_compare_exchange_n( slot, expected, desired, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE );
 }
-#define TableAtomicLoad32( slot ) __atomic_load_n( ( slot ), __ATOMIC_ACQUIRE )
-#define TableAtomicStore32( slot, v ) __atomic_store_n( ( slot ), ( v ), __ATOMIC_RELAXED )
-#define TableAtomicLoadPtr( slot ) __atomic_load_n( ( slot ), __ATOMIC_ACQUIRE )
-#define TableAtomicStorePtr( slot, v ) __atomic_store_n( ( slot ), ( v ), __ATOMIC_RELAXED )
-static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
+#define table_atomic_load32( slot ) __atomic_load_n( ( slot ), __ATOMIC_ACQUIRE )
+#define table_atomic_store32( slot, v ) __atomic_store_n( ( slot ), ( v ), __ATOMIC_RELAXED )
+#define table_atomic_load_ptr( slot ) __atomic_load_n( ( slot ), __ATOMIC_ACQUIRE )
+#define table_atomic_store_ptr( slot, v ) __atomic_store_n( ( slot ), ( v ), __ATOMIC_RELAXED )
+static SCHEMA_UNUSED int table_arena_cas_ptr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
 {
     return __atomic_compare_exchange_n( slot, expected, desired, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE );
 }
@@ -448,18 +448,18 @@ static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** exp
 #include <intrin.h>
 typedef volatile uint32_t TableAtomicU32;
 typedef uint8_t * volatile TableAtomicPtr;
-static int TableArenaCas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
+static int table_arena_cas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
 {
     long was = _InterlockedCompareExchange( (volatile long *) slot, (long) desired, (long) *expected );
     if ( (uint32_t) was == *expected ) { return 1; }
     *expected = (uint32_t) was;
     return 0;
 }
-#define TableAtomicLoad32( slot ) ( *( slot ) )
-#define TableAtomicStore32( slot, v ) ( *( slot ) = ( v ) )
-#define TableAtomicLoadPtr( slot ) ( *( slot ) )
-#define TableAtomicStorePtr( slot, v ) ( *( slot ) = ( v ) )
-static int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
+#define table_atomic_load32( slot ) ( *( slot ) )
+#define table_atomic_store32( slot, v ) ( *( slot ) = ( v ) )
+#define table_atomic_load_ptr( slot ) ( *( slot ) )
+#define table_atomic_store_ptr( slot, v ) ( *( slot ) = ( v ) )
+static int table_arena_cas_ptr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
 {
     void * was = _InterlockedCompareExchangePointer( (void * volatile *) slot, desired, *expected );
     if ( was == *expected ) { return 1; }
@@ -474,17 +474,17 @@ static int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t
 #define SCHEMA_TABLE_ATOMIC 0
 typedef uint32_t TableAtomicU32;
 typedef uint8_t * TableAtomicPtr;
-static SCHEMA_UNUSED int TableArenaCas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
+static SCHEMA_UNUSED int table_arena_cas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
 {
     if ( *slot != *expected ) { *expected = *slot; return 0; }
     *slot = desired;
     return 1;
 }
-#define TableAtomicLoad32( slot ) ( *( slot ) )
-#define TableAtomicStore32( slot, v ) ( *( slot ) = ( v ) )
-#define TableAtomicLoadPtr( slot ) ( *( slot ) )
-#define TableAtomicStorePtr( slot, v ) ( *( slot ) = ( v ) )
-static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
+#define table_atomic_load32( slot ) ( *( slot ) )
+#define table_atomic_store32( slot, v ) ( *( slot ) = ( v ) )
+#define table_atomic_load_ptr( slot ) ( *( slot ) )
+#define table_atomic_store_ptr( slot, v ) ( *( slot ) = ( v ) )
+static SCHEMA_UNUSED int table_arena_cas_ptr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
 {
     if ( *slot != *expected ) { *expected = *slot; return 0; }
     *slot = desired;
@@ -516,10 +516,10 @@ typedef struct TableRef
     int64_t value;
 } TableRef;
 
-static SCHEMA_UNUSED int TableRefNull( const TableRef * ref ) { return ref->value == 0; }
+static SCHEMA_UNUSED int table_ref_null( const TableRef * ref ) { return ref->value == 0; }
 
-static SCHEMA_UNUSED uint32_t TableAlignUp( uint32_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( (uint32_t) kTableAlign - 1 ); }
-static SCHEMA_UNUSED int64_t TableAlignUp64( int64_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( (int64_t) kTableAlign - 1 ); }
+static SCHEMA_UNUSED uint32_t table_align_up( uint32_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( (uint32_t) kTableAlign - 1 ); }
+static SCHEMA_UNUSED int64_t table_align_up64( int64_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( (int64_t) kTableAlign - 1 ); }
 
 /* ---- the arena: segmented, slab-handed, lock-free by ownership ----
 
@@ -546,47 +546,47 @@ typedef struct TableArena
     int locked;            /* MONOTONIC: Lock is one-way, there is no unlock */
 } TableArena;
 
-static SCHEMA_UNUSED void TableArenaInit( TableArena * arena )
+static SCHEMA_UNUSED void table_arena_init( TableArena * arena )
 {
     uint32_t i;
     for ( i = 0; i < kTableMaxSegments; i++ )
     {
-        TableAtomicStorePtr( &arena->segments[i], (uint8_t *) NULL );
+        table_atomic_store_ptr( &arena->segments[i], (uint8_t *) NULL );
     }
-    TableAtomicStore32( &arena->cursor, 0 );
+    table_atomic_store32( &arena->cursor, 0 );
     arena->locked = 0;
 }
 
-static SCHEMA_UNUSED void TableArenaShutdown( TableArena * arena )
+static SCHEMA_UNUSED void table_arena_shutdown( TableArena * arena )
 {
     uint32_t i;
     for ( i = 0; i < kTableMaxSegments; i++ )
     {
-        uint8_t * segment = TableAtomicLoadPtr( &arena->segments[i] );
+        uint8_t * segment = table_atomic_load_ptr( &arena->segments[i] );
         if ( segment != NULL )
         {
             uint8_t * expected = segment;
-            if ( TableArenaCasPtr( &arena->segments[i], &expected, (uint8_t *) NULL ) ) { free( segment ); }
+            if ( table_arena_cas_ptr( &arena->segments[i], &expected, (uint8_t *) NULL ) ) { free( segment ); }
         }
     }
-    TableAtomicStore32( &arena->cursor, 0 );
+    table_atomic_store32( &arena->cursor, 0 );
 }
 
 /* one L1 load plus an add: the segment table is 8 KiB and stays hot */
-static SCHEMA_UNUSED uint8_t * TableArenaAt( const TableArena * arena, uint32_t offset )
+static SCHEMA_UNUSED uint8_t * table_arena_at( const TableArena * arena, uint32_t offset )
 {
     TableAtomicPtr * slot = (TableAtomicPtr *) &arena->segments[ offset >> kTableSegmentBits ];
-    return TableAtomicLoadPtr( slot ) + ( offset & kTableSegmentMask );
+    return table_atomic_load_ptr( slot ) + ( offset & kTableSegmentMask );
 }
 
-/* TableArenaGrabSlab hands one worker its next private slab. Returns
+/* table_arena_grab_slab hands one worker its next private slab. Returns
    kTableAllocFailed when the arena's address space or the allocator is
    exhausted — a loud refusal, never a silent smaller slab. */
-static SCHEMA_UNUSED uint32_t TableArenaGrabSlab( TableArena * arena )
+static SCHEMA_UNUSED uint32_t table_arena_grab_slab( TableArena * arena )
 {
     for ( ;; )
     {
-        uint32_t cursor = TableAtomicLoad32( &arena->cursor );
+        uint32_t cursor = table_atomic_load32( &arena->cursor );
         uint32_t segment = cursor >> kTableSegmentBits;
         uint32_t used = cursor & kTableSegmentMask;
         uint32_t next_segment;
@@ -594,7 +594,7 @@ static SCHEMA_UNUSED uint32_t TableArenaGrabSlab( TableArena * arena )
            is the documented slack */
         if ( used + kTableSlabBytes < kTableSegmentSize )
         {
-            if ( TableAtomicLoadPtr( &arena->segments[segment] ) == NULL )
+            if ( table_atomic_load_ptr( &arena->segments[segment] ) == NULL )
             {
                 /* calloc, NOT malloc: Lock copies whole nodes, PADDING
                    INCLUDED, so anything uninitialised here reaches a packed
@@ -604,12 +604,12 @@ static SCHEMA_UNUSED uint32_t TableArenaGrabSlab( TableArena * arena )
                 uint8_t * memory = (uint8_t *) calloc( 1, kTableSegmentSize );
                 uint8_t * expected = NULL;
                 if ( memory == NULL ) { return kTableAllocFailed; }
-                if ( !TableArenaCasPtr( &arena->segments[segment], &expected, memory ) )
+                if ( !table_arena_cas_ptr( &arena->segments[segment], &expected, memory ) )
                 {
                     free( memory ); /* another worker published this segment first */
                 }
             }
-            if ( TableArenaCas32( &arena->cursor, &cursor, cursor + kTableSlabBytes ) )
+            if ( table_arena_cas32( &arena->cursor, &cursor, cursor + kTableSlabBytes ) )
             {
                 return ( segment << kTableSegmentBits ) | used;
             }
@@ -617,7 +617,7 @@ static SCHEMA_UNUSED uint32_t TableArenaGrabSlab( TableArena * arena )
         }
         next_segment = segment + 1;
         if ( next_segment >= kTableMaxSegments ) { return kTableAllocFailed; } /* 4 GiB: the arena offset's ceiling */
-        TableArenaCas32( &arena->cursor, &cursor, next_segment << kTableSegmentBits );
+        table_arena_cas32( &arena->cursor, &cursor, next_segment << kTableSegmentBits );
     }
 }
 
@@ -639,7 +639,7 @@ typedef struct TableWorker
 
 /* one worker per thread: take one, allocate on it, and synchronize your own
    writes to nodes another worker allocated */
-static SCHEMA_UNUSED TableWorker TableWorkerMake( TableArena * arena )
+static SCHEMA_UNUSED TableWorker table_worker_make( TableArena * arena )
 {
     TableWorker worker;
     worker.arena = arena;
@@ -648,19 +648,19 @@ static SCHEMA_UNUSED TableWorker TableWorkerMake( TableArena * arena )
     return worker;
 }
 
-/* TableWorkerBump reserves the bytes of arena for one node and hands back its
+/* table_worker_bump reserves the bytes of arena for one node and hands back its
    arena offset, or kTableAllocFailed. It is the untyped half of every
-   generated <Name>Emplace: the type's own size and its Reset stay in the
+   generated <name>_emplace: the type's own size and its reset stay in the
    generated code, where they can be spelled. */
-static SCHEMA_UNUSED uint32_t TableWorkerBump( TableWorker * worker, uint32_t bytes )
+static SCHEMA_UNUSED uint32_t table_worker_bump( TableWorker * worker, uint32_t bytes )
 {
     uint32_t at;
     if ( worker->arena == NULL || worker->arena->locked ) { return kTableAllocFailed; }
-    bytes = TableAlignUp( bytes );
+    bytes = table_align_up( bytes );
     if ( bytes > kTableSlabBytes ) { return kTableAllocFailed; } /* a node larger than a slab: refused, never split */
     if ( worker->end == 0 || worker->next + bytes > worker->end )
     {
-        uint32_t offset = TableArenaGrabSlab( worker->arena );
+        uint32_t offset = table_arena_grab_slab( worker->arena );
         if ( offset == kTableAllocFailed ) { return kTableAllocFailed; }
         worker->next = offset;
         worker->end = offset + kTableSlabBytes;
@@ -677,7 +677,7 @@ static SCHEMA_UNUSED uint32_t TableWorkerBump( TableWorker * worker, uint32_t by
    C has one struct and one rule: a NULL arena means a REGION, where a slot
    holds a self-relative delta; a non-NULL arena means the mutable form, where
    a slot holds an arena offset. A NULL ctx is a region too, so a consumer
-   dereferencing inside a cooked region writes <Name>At( NULL, &slot ). */
+   dereferencing inside a cooked region writes <name>_at( NULL, &slot ). */
 typedef struct TableCtx
 {
     const TableArena * arena;
@@ -749,7 +749,7 @@ typedef struct TableSink
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
+static SCHEMA_UNUSED const int64_t table_cook_header_bytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -763,7 +763,7 @@ static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static SCHEMA_UNUSED const uint64_t table_cook_magic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -775,16 +775,16 @@ static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
+static SCHEMA_UNUSED const uint64_t table_cook_max_align = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -797,8 +797,8 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
     return v;
 }
 
-/* TableCookOpen: THE WHOLE CHECK, in one place, because §7 states the
-   enumeration once and every generated <Name>Open is that one enumeration plus
+/* table_cook_open: THE WHOLE CHECK, in one place, because §7 states the
+   enumeration once and every generated <name>_open is that one enumeration plus
    its own root's two layout facts.
 
    THE CHECK, in order: the magic read bytewise, the byte order it establishes,
@@ -818,20 +818,20 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
     if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
     if ( table_cook_read64( raw + 8 ) != SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
@@ -846,7 +846,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
     if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
@@ -855,7 +855,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
-    data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
+    data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
     if ( length < data_offset ) { return NULL; }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
@@ -881,7 +881,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
 #endif /* SCHEMA_GRAPHDEMO_TABLE_COOK */
 
 /* table Meta — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in MetaReset and nowhere
+   initializers, so the declared defaults live in meta_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct Meta {
     int32_t build;
@@ -890,7 +890,7 @@ typedef struct Meta {
 } Meta;
 
 /* table Settings — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in SettingsReset and nowhere
+   initializers, so the declared defaults live in settings_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct Settings {
     int32_t quality;
@@ -899,7 +899,7 @@ typedef struct Settings {
 } Settings;
 
 /* table ListNode — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in ListNodeReset and nowhere
+   initializers, so the declared defaults live in list_node_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct ListNode {
     int32_t value;
@@ -909,7 +909,7 @@ typedef struct ListNode {
 } ListNode;
 
 /* table TreeNode — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in TreeNodeReset and nowhere
+   initializers, so the declared defaults live in tree_node_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct TreeNode {
     char label[12 + 1]; /* string(12): N + 1 for the terminator the wire does not carry */
@@ -919,7 +919,7 @@ typedef struct TreeNode {
 } TreeNode;
 
 /* table Layer — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in LayerReset and nowhere
+   initializers, so the declared defaults live in layer_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct Layer {
     int32_t depth;
@@ -927,7 +927,7 @@ typedef struct Layer {
 } Layer;
 
 /* table Scene — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in SceneReset and nowhere
+   initializers, so the declared defaults live in scene_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct Scene {
     char name[24 + 1]; /* string(24): N + 1 for the terminator the wire does not carry */
@@ -944,7 +944,7 @@ typedef struct Scene {
 } Scene;
 
 /* table Depot — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in DepotReset and nowhere
+   initializers, so the declared defaults live in depot_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct Depot {
     char name[12 + 1]; /* string(12): N + 1 for the terminator the wire does not carry */
@@ -956,7 +956,7 @@ typedef struct Depot {
 } Depot;
 
 /* table Album — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in AlbumReset and nowhere
+   initializers, so the declared defaults live in album_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct Album {
     char name[16 + 1]; /* string(16): N + 1 for the terminator the wire does not carry */
@@ -970,42 +970,42 @@ typedef struct Album {
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
 
-static SCHEMA_UNUSED void MetaReset( Meta * value );
+static SCHEMA_UNUSED void meta_reset( Meta * value );
 static SCHEMA_UNUSED void schema_graphdemo_meta_reset_raw_( void * storage );
-static SCHEMA_UNUSED void SettingsReset( Settings * value );
+static SCHEMA_UNUSED void settings_reset( Settings * value );
 static SCHEMA_UNUSED void schema_graphdemo_settings_reset_raw_( void * storage );
-static SCHEMA_UNUSED void ListNodeReset( ListNode * value );
+static SCHEMA_UNUSED void list_node_reset( ListNode * value );
 static SCHEMA_UNUSED void schema_graphdemo_list_node_reset_raw_( void * storage );
-static SCHEMA_UNUSED void TreeNodeReset( TreeNode * value );
+static SCHEMA_UNUSED void tree_node_reset( TreeNode * value );
 static SCHEMA_UNUSED void schema_graphdemo_tree_node_reset_raw_( void * storage );
-static SCHEMA_UNUSED void LayerReset( Layer * value );
+static SCHEMA_UNUSED void layer_reset( Layer * value );
 static SCHEMA_UNUSED void schema_graphdemo_layer_reset_raw_( void * storage );
-static SCHEMA_UNUSED void SceneReset( Scene * value );
+static SCHEMA_UNUSED void scene_reset( Scene * value );
 static SCHEMA_UNUSED void schema_graphdemo_scene_reset_raw_( void * storage );
-static SCHEMA_UNUSED void DepotReset( Depot * value );
+static SCHEMA_UNUSED void depot_reset( Depot * value );
 static SCHEMA_UNUSED void schema_graphdemo_depot_reset_raw_( void * storage );
-static SCHEMA_UNUSED void AlbumReset( Album * value );
+static SCHEMA_UNUSED void album_reset( Album * value );
 static SCHEMA_UNUSED void schema_graphdemo_album_reset_raw_( void * storage );
 
-static SCHEMA_UNUSED void MetaReset( Meta * value )
+static SCHEMA_UNUSED void meta_reset( Meta * value )
 {
     value->build = 1;
     memset( value->tag, 0, sizeof( value->tag ) );
     value->tag_length = 0;
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_meta_reset_raw_( void * storage ) { MetaReset( (Meta *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_meta_reset_raw_( void * storage ) { meta_reset( (Meta *) storage ); }
 
-static SCHEMA_UNUSED void SettingsReset( Settings * value )
+static SCHEMA_UNUSED void settings_reset( Settings * value )
 {
     value->quality = 2;
     memset( value->label, 0, sizeof( value->label ) );
     value->label_length = 0;
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_settings_reset_raw_( void * storage ) { SettingsReset( (Settings *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_settings_reset_raw_( void * storage ) { settings_reset( (Settings *) storage ); }
 
-static SCHEMA_UNUSED void ListNodeReset( ListNode * value )
+static SCHEMA_UNUSED void list_node_reset( ListNode * value )
 {
     value->value = 0;
     memset( value->name, 0, sizeof( value->name ) );
@@ -1013,9 +1013,9 @@ static SCHEMA_UNUSED void ListNodeReset( ListNode * value )
     value->next.value = 0; /* *ListNode — null */
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_list_node_reset_raw_( void * storage ) { ListNodeReset( (ListNode *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_list_node_reset_raw_( void * storage ) { list_node_reset( (ListNode *) storage ); }
 
-static SCHEMA_UNUSED void TreeNodeReset( TreeNode * value )
+static SCHEMA_UNUSED void tree_node_reset( TreeNode * value )
 {
     memset( value->label, 0, sizeof( value->label ) );
     value->label_length = 0;
@@ -1023,17 +1023,17 @@ static SCHEMA_UNUSED void TreeNodeReset( TreeNode * value )
     value->right.value = 0; /* *TreeNode — null */
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_tree_node_reset_raw_( void * storage ) { TreeNodeReset( (TreeNode *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_tree_node_reset_raw_( void * storage ) { tree_node_reset( (TreeNode *) storage ); }
 
-static SCHEMA_UNUSED void LayerReset( Layer * value )
+static SCHEMA_UNUSED void layer_reset( Layer * value )
 {
     value->depth = 0;
     value->head.value = 0; /* *ListNode — null */
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_layer_reset_raw_( void * storage ) { LayerReset( (Layer *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_layer_reset_raw_( void * storage ) { layer_reset( (Layer *) storage ); }
 
-static SCHEMA_UNUSED void SceneReset( Scene * value )
+static SCHEMA_UNUSED void scene_reset( Scene * value )
 {
     memset( value->name, 0, sizeof( value->name ) );
     value->name_length = 0;
@@ -1042,40 +1042,40 @@ static SCHEMA_UNUSED void SceneReset( Scene * value )
     value->tree.value = 0; /* *TreeNode — null */
     value->settings.value = 0; /* *Settings — null */
     value->alias.value = 0; /* *ListNode — null */
-    LayerReset( &value->ground );
-    LayerReset( &value->layers[0] );
+    layer_reset( &value->ground );
+    layer_reset( &value->layers[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 4 ); i++ ) { value->layers[i] = value->layers[0]; } }
     value->layers_count = 0;
-    MetaReset( &value->meta );
+    meta_reset( &value->meta );
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_scene_reset_raw_( void * storage ) { SceneReset( (Scene *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_scene_reset_raw_( void * storage ) { scene_reset( (Scene *) storage ); }
 
-static SCHEMA_UNUSED void DepotReset( Depot * value )
+static SCHEMA_UNUSED void depot_reset( Depot * value )
 {
     memset( value->name, 0, sizeof( value->name ) );
     value->name_length = 0;
-    LayerReset( &value->banks[0] );
+    layer_reset( &value->banks[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( TIER_MAX ); i++ ) { value->banks[i] = value->banks[0]; } }
-    MetaReset( &value->spare );
+    meta_reset( &value->spare );
     value->spare_present = 0;
     value->head.value = 0; /* *ListNode — null */
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_depot_reset_raw_( void * storage ) { DepotReset( (Depot *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_depot_reset_raw_( void * storage ) { depot_reset( (Depot *) storage ); }
 
-static SCHEMA_UNUSED void AlbumReset( Album * value )
+static SCHEMA_UNUSED void album_reset( Album * value )
 {
     memset( value->name, 0, sizeof( value->name ) );
     value->name_length = 0;
-    ColourReset( &value->tint );
-    StampReset( &value->stamp );
-    MarkerReset( &value->marker );
+    colour_reset( &value->tint );
+    stamp_reset( &value->stamp );
+    marker_reset( &value->marker );
     value->pin.value = 0; /* *Marker — null */
     value->head.value = 0; /* *ListNode — null */
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_album_reset_raw_( void * storage ) { AlbumReset( (Album *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_album_reset_raw_( void * storage ) { album_reset( (Album *) storage ); }
 
 /* ---- pointer targets: allocation and resolution (docs/SPEC-TABLES.md §2) ----
 
@@ -1083,126 +1083,126 @@ static SCHEMA_UNUSED void schema_graphdemo_album_reset_raw_( void * storage ) { 
    which: with an arena it is an offset; with none it is a self-relative
    delta, so the deref below is one add and needs no base pointer. */
 
-/* Settings is a pointer target. SettingsAt resolves a slot in EITHER form: a NULL ctx,
+/* Settings is a pointer target. settings_at resolves a slot in EITHER form: a NULL ctx,
    or one whose arena is NULL, is a REGION, where the slot holds a signed
    self-relative delta and the deref is one add. */
-static SCHEMA_UNUSED Settings * SettingsAt( const TableCtx * ctx, const TableRef * ref )
+static SCHEMA_UNUSED Settings * settings_at( const TableCtx * ctx, const TableRef * ref )
 {
     if ( ref->value == 0 ) { return NULL; }
     if ( ctx != NULL && ctx->arena != NULL )
     {
-        return (Settings *) TableArenaAt( ctx->arena, (uint32_t) ref->value );
+        return (Settings *) table_arena_at( ctx->arena, (uint32_t) ref->value );
     }
     return (Settings *) (void *) ( (uint8_t *) (void *) ref + ref->value );
 }
 /* bump one Settings into the sink the caller gave: a region sink places it in the
    caller's exact region and the slot comes out self-relative; a worker
    allocates it in the arena and the slot holds the arena offset. */
-static SCHEMA_UNUSED Settings * SettingsEmplace( TableSink * sink, TableRef * slot )
+static SCHEMA_UNUSED Settings * settings_emplace( TableSink * sink, TableRef * slot )
 {
     if ( sink == NULL ) { return NULL; }
     if ( sink->region != NULL )
     {
-        int64_t at = TableAlignUp64( sink->region->used );
+        int64_t at = table_align_up64( sink->region->used );
         Settings * node;
         if ( at + (int64_t) sizeof( Settings ) > sink->region->capacity ) { return NULL; }
-        sink->region->used = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
+        sink->region->used = at + table_align_up64( (int64_t) sizeof( Settings ) );
         node = (Settings *) (void *) ( sink->region->base + at );
-        SettingsReset( node );
+        settings_reset( node );
         slot->value = (int64_t) ( ( sink->region->base + at ) - (uint8_t *) (void *) slot );
         return node;
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = TableWorkerBump( sink->worker, (uint32_t) sizeof( Settings ) );
+        uint32_t at = table_worker_bump( sink->worker, (uint32_t) sizeof( Settings ) );
         Settings * node;
         if ( at == kTableAllocFailed ) { return NULL; }
-        node = (Settings *) (void *) TableArenaAt( sink->worker->arena, at );
-        SettingsReset( node );
+        node = (Settings *) (void *) table_arena_at( sink->worker->arena, at );
+        settings_reset( node );
         slot->value = (int64_t) at;
         return node;
     }
     return NULL;
 }
 
-/* ListNode is a pointer target. ListNodeAt resolves a slot in EITHER form: a NULL ctx,
+/* ListNode is a pointer target. list_node_at resolves a slot in EITHER form: a NULL ctx,
    or one whose arena is NULL, is a REGION, where the slot holds a signed
    self-relative delta and the deref is one add. */
-static SCHEMA_UNUSED ListNode * ListNodeAt( const TableCtx * ctx, const TableRef * ref )
+static SCHEMA_UNUSED ListNode * list_node_at( const TableCtx * ctx, const TableRef * ref )
 {
     if ( ref->value == 0 ) { return NULL; }
     if ( ctx != NULL && ctx->arena != NULL )
     {
-        return (ListNode *) TableArenaAt( ctx->arena, (uint32_t) ref->value );
+        return (ListNode *) table_arena_at( ctx->arena, (uint32_t) ref->value );
     }
     return (ListNode *) (void *) ( (uint8_t *) (void *) ref + ref->value );
 }
 /* bump one ListNode into the sink the caller gave: a region sink places it in the
    caller's exact region and the slot comes out self-relative; a worker
    allocates it in the arena and the slot holds the arena offset. */
-static SCHEMA_UNUSED ListNode * ListNodeEmplace( TableSink * sink, TableRef * slot )
+static SCHEMA_UNUSED ListNode * list_node_emplace( TableSink * sink, TableRef * slot )
 {
     if ( sink == NULL ) { return NULL; }
     if ( sink->region != NULL )
     {
-        int64_t at = TableAlignUp64( sink->region->used );
+        int64_t at = table_align_up64( sink->region->used );
         ListNode * node;
         if ( at + (int64_t) sizeof( ListNode ) > sink->region->capacity ) { return NULL; }
-        sink->region->used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+        sink->region->used = at + table_align_up64( (int64_t) sizeof( ListNode ) );
         node = (ListNode *) (void *) ( sink->region->base + at );
-        ListNodeReset( node );
+        list_node_reset( node );
         slot->value = (int64_t) ( ( sink->region->base + at ) - (uint8_t *) (void *) slot );
         return node;
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = TableWorkerBump( sink->worker, (uint32_t) sizeof( ListNode ) );
+        uint32_t at = table_worker_bump( sink->worker, (uint32_t) sizeof( ListNode ) );
         ListNode * node;
         if ( at == kTableAllocFailed ) { return NULL; }
-        node = (ListNode *) (void *) TableArenaAt( sink->worker->arena, at );
-        ListNodeReset( node );
+        node = (ListNode *) (void *) table_arena_at( sink->worker->arena, at );
+        list_node_reset( node );
         slot->value = (int64_t) at;
         return node;
     }
     return NULL;
 }
 
-/* TreeNode is a pointer target. TreeNodeAt resolves a slot in EITHER form: a NULL ctx,
+/* TreeNode is a pointer target. tree_node_at resolves a slot in EITHER form: a NULL ctx,
    or one whose arena is NULL, is a REGION, where the slot holds a signed
    self-relative delta and the deref is one add. */
-static SCHEMA_UNUSED TreeNode * TreeNodeAt( const TableCtx * ctx, const TableRef * ref )
+static SCHEMA_UNUSED TreeNode * tree_node_at( const TableCtx * ctx, const TableRef * ref )
 {
     if ( ref->value == 0 ) { return NULL; }
     if ( ctx != NULL && ctx->arena != NULL )
     {
-        return (TreeNode *) TableArenaAt( ctx->arena, (uint32_t) ref->value );
+        return (TreeNode *) table_arena_at( ctx->arena, (uint32_t) ref->value );
     }
     return (TreeNode *) (void *) ( (uint8_t *) (void *) ref + ref->value );
 }
 /* bump one TreeNode into the sink the caller gave: a region sink places it in the
    caller's exact region and the slot comes out self-relative; a worker
    allocates it in the arena and the slot holds the arena offset. */
-static SCHEMA_UNUSED TreeNode * TreeNodeEmplace( TableSink * sink, TableRef * slot )
+static SCHEMA_UNUSED TreeNode * tree_node_emplace( TableSink * sink, TableRef * slot )
 {
     if ( sink == NULL ) { return NULL; }
     if ( sink->region != NULL )
     {
-        int64_t at = TableAlignUp64( sink->region->used );
+        int64_t at = table_align_up64( sink->region->used );
         TreeNode * node;
         if ( at + (int64_t) sizeof( TreeNode ) > sink->region->capacity ) { return NULL; }
-        sink->region->used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
+        sink->region->used = at + table_align_up64( (int64_t) sizeof( TreeNode ) );
         node = (TreeNode *) (void *) ( sink->region->base + at );
-        TreeNodeReset( node );
+        tree_node_reset( node );
         slot->value = (int64_t) ( ( sink->region->base + at ) - (uint8_t *) (void *) slot );
         return node;
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = TableWorkerBump( sink->worker, (uint32_t) sizeof( TreeNode ) );
+        uint32_t at = table_worker_bump( sink->worker, (uint32_t) sizeof( TreeNode ) );
         TreeNode * node;
         if ( at == kTableAllocFailed ) { return NULL; }
-        node = (TreeNode *) (void *) TableArenaAt( sink->worker->arena, at );
-        TreeNodeReset( node );
+        node = (TreeNode *) (void *) table_arena_at( sink->worker->arena, at );
+        tree_node_reset( node );
         slot->value = (int64_t) at;
         return node;
     }
@@ -1211,56 +1211,56 @@ static SCHEMA_UNUSED TreeNode * TreeNodeEmplace( TableSink * sink, TableRef * sl
 
 /* ---- codecs: measure/save/load per closure member ---- */
 
-static SCHEMA_UNUSED int64_t MetaMeasure( const Meta * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int MetaSaveBody( TableWriter * w, const Meta * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int MetaLoadBody( TableReader * r, Meta * value );
-static SCHEMA_UNUSED int64_t SettingsMeasure( const Settings * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int SettingsSaveBody( TableWriter * w, const Settings * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int SettingsLoadBody( TableReader * r, Settings * value );
-static SCHEMA_UNUSED int64_t ListNodeMeasureBody( const TableCtx * ctx, const ListNode * value, int32_t depth );
-static SCHEMA_UNUSED int ListNodeSaveBody( const TableCtx * ctx, TableWriter * w, const ListNode * value, int32_t depth );
-static SCHEMA_UNUSED int ListNodeLoadBody( TableReader * r, TableSink * sink, ListNode * value, int32_t depth );
-static SCHEMA_UNUSED int64_t TreeNodeMeasureBody( const TableCtx * ctx, const TreeNode * value, int32_t depth );
-static SCHEMA_UNUSED int TreeNodeSaveBody( const TableCtx * ctx, TableWriter * w, const TreeNode * value, int32_t depth );
-static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, TreeNode * value, int32_t depth );
-static SCHEMA_UNUSED int64_t LayerMeasureBody( const TableCtx * ctx, const Layer * value, int32_t depth );
-static SCHEMA_UNUSED int LayerSaveBody( const TableCtx * ctx, TableWriter * w, const Layer * value, int32_t depth );
-static SCHEMA_UNUSED int LayerLoadBody( TableReader * r, TableSink * sink, Layer * value, int32_t depth );
-static SCHEMA_UNUSED int64_t SceneMeasureBody( const TableCtx * ctx, const Scene * value, int32_t depth );
-static SCHEMA_UNUSED int SceneSaveBody( const TableCtx * ctx, TableWriter * w, const Scene * value, int32_t depth );
-static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene * value, int32_t depth );
-static SCHEMA_UNUSED int64_t DepotMeasureBody( const TableCtx * ctx, const Depot * value, int32_t depth );
-static SCHEMA_UNUSED int DepotSaveBody( const TableCtx * ctx, TableWriter * w, const Depot * value, int32_t depth );
-static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot * value, int32_t depth );
-static SCHEMA_UNUSED int64_t AlbumMeasureBody( const TableCtx * ctx, const Album * value, int32_t depth );
-static SCHEMA_UNUSED int AlbumSaveBody( const TableCtx * ctx, TableWriter * w, const Album * value, int32_t depth );
-static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album * value, int32_t depth );
+static SCHEMA_UNUSED int64_t meta_measure( const Meta * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int meta_save_body( TableWriter * w, const Meta * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int meta_load_body( TableReader * r, Meta * value );
+static SCHEMA_UNUSED int64_t settings_measure( const Settings * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int settings_save_body( TableWriter * w, const Settings * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int settings_load_body( TableReader * r, Settings * value );
+static SCHEMA_UNUSED int64_t list_node_measure_body( const TableCtx * ctx, const ListNode * value, int32_t depth );
+static SCHEMA_UNUSED int list_node_save_body( const TableCtx * ctx, TableWriter * w, const ListNode * value, int32_t depth );
+static SCHEMA_UNUSED int list_node_load_body( TableReader * r, TableSink * sink, ListNode * value, int32_t depth );
+static SCHEMA_UNUSED int64_t tree_node_measure_body( const TableCtx * ctx, const TreeNode * value, int32_t depth );
+static SCHEMA_UNUSED int tree_node_save_body( const TableCtx * ctx, TableWriter * w, const TreeNode * value, int32_t depth );
+static SCHEMA_UNUSED int tree_node_load_body( TableReader * r, TableSink * sink, TreeNode * value, int32_t depth );
+static SCHEMA_UNUSED int64_t layer_measure_body( const TableCtx * ctx, const Layer * value, int32_t depth );
+static SCHEMA_UNUSED int layer_save_body( const TableCtx * ctx, TableWriter * w, const Layer * value, int32_t depth );
+static SCHEMA_UNUSED int layer_load_body( TableReader * r, TableSink * sink, Layer * value, int32_t depth );
+static SCHEMA_UNUSED int64_t scene_measure_body( const TableCtx * ctx, const Scene * value, int32_t depth );
+static SCHEMA_UNUSED int scene_save_body( const TableCtx * ctx, TableWriter * w, const Scene * value, int32_t depth );
+static SCHEMA_UNUSED int scene_load_body( TableReader * r, TableSink * sink, Scene * value, int32_t depth );
+static SCHEMA_UNUSED int64_t depot_measure_body( const TableCtx * ctx, const Depot * value, int32_t depth );
+static SCHEMA_UNUSED int depot_save_body( const TableCtx * ctx, TableWriter * w, const Depot * value, int32_t depth );
+static SCHEMA_UNUSED int depot_load_body( TableReader * r, TableSink * sink, Depot * value, int32_t depth );
+static SCHEMA_UNUSED int64_t album_measure_body( const TableCtx * ctx, const Album * value, int32_t depth );
+static SCHEMA_UNUSED int album_save_body( const TableCtx * ctx, TableWriter * w, const Album * value, int32_t depth );
+static SCHEMA_UNUSED int album_load_body( TableReader * r, TableSink * sink, Album * value, int32_t depth );
 
 /* ---- pointer-graph walkers: pack (Lock), size (Load) ---- */
 
-static SCHEMA_UNUSED int64_t SettingsPackMeasure( const TableCtx * ctx, const Settings * value, int32_t depth );
-static SCHEMA_UNUSED int SettingsPack( const TableCtx * ctx, const Settings * src, Settings * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
-static SCHEMA_UNUSED int64_t SettingsLoadMeasureBody( TableReader * r, int32_t depth );
-static SCHEMA_UNUSED int64_t ListNodePackMeasure( const TableCtx * ctx, const ListNode * value, int32_t depth );
-static SCHEMA_UNUSED int ListNodePack( const TableCtx * ctx, const ListNode * src, ListNode * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
-static SCHEMA_UNUSED int64_t ListNodeLoadMeasureBody( TableReader * r, int32_t depth );
-static SCHEMA_UNUSED int64_t TreeNodePackMeasure( const TableCtx * ctx, const TreeNode * value, int32_t depth );
-static SCHEMA_UNUSED int TreeNodePack( const TableCtx * ctx, const TreeNode * src, TreeNode * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
-static SCHEMA_UNUSED int64_t TreeNodeLoadMeasureBody( TableReader * r, int32_t depth );
-static SCHEMA_UNUSED int64_t LayerPackMeasure( const TableCtx * ctx, const Layer * value, int32_t depth );
-static SCHEMA_UNUSED int LayerPack( const TableCtx * ctx, const Layer * src, Layer * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
-static SCHEMA_UNUSED int64_t LayerLoadMeasureBody( TableReader * r, int32_t depth );
-static SCHEMA_UNUSED int64_t ScenePackMeasure( const TableCtx * ctx, const Scene * value, int32_t depth );
-static SCHEMA_UNUSED int ScenePack( const TableCtx * ctx, const Scene * src, Scene * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
-static SCHEMA_UNUSED int64_t SceneLoadMeasureBody( TableReader * r, int32_t depth );
-static SCHEMA_UNUSED int64_t DepotPackMeasure( const TableCtx * ctx, const Depot * value, int32_t depth );
-static SCHEMA_UNUSED int DepotPack( const TableCtx * ctx, const Depot * src, Depot * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
-static SCHEMA_UNUSED int64_t DepotLoadMeasureBody( TableReader * r, int32_t depth );
-static SCHEMA_UNUSED int64_t AlbumPackMeasure( const TableCtx * ctx, const Album * value, int32_t depth );
-static SCHEMA_UNUSED int AlbumPack( const TableCtx * ctx, const Album * src, Album * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
-static SCHEMA_UNUSED int64_t AlbumLoadMeasureBody( TableReader * r, int32_t depth );
+static SCHEMA_UNUSED int64_t settings_pack_measure( const TableCtx * ctx, const Settings * value, int32_t depth );
+static SCHEMA_UNUSED int settings_pack( const TableCtx * ctx, const Settings * src, Settings * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
+static SCHEMA_UNUSED int64_t settings_load_measure_body( TableReader * r, int32_t depth );
+static SCHEMA_UNUSED int64_t list_node_pack_measure( const TableCtx * ctx, const ListNode * value, int32_t depth );
+static SCHEMA_UNUSED int list_node_pack( const TableCtx * ctx, const ListNode * src, ListNode * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
+static SCHEMA_UNUSED int64_t list_node_load_measure_body( TableReader * r, int32_t depth );
+static SCHEMA_UNUSED int64_t tree_node_pack_measure( const TableCtx * ctx, const TreeNode * value, int32_t depth );
+static SCHEMA_UNUSED int tree_node_pack( const TableCtx * ctx, const TreeNode * src, TreeNode * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
+static SCHEMA_UNUSED int64_t tree_node_load_measure_body( TableReader * r, int32_t depth );
+static SCHEMA_UNUSED int64_t layer_pack_measure( const TableCtx * ctx, const Layer * value, int32_t depth );
+static SCHEMA_UNUSED int layer_pack( const TableCtx * ctx, const Layer * src, Layer * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
+static SCHEMA_UNUSED int64_t layer_load_measure_body( TableReader * r, int32_t depth );
+static SCHEMA_UNUSED int64_t scene_pack_measure( const TableCtx * ctx, const Scene * value, int32_t depth );
+static SCHEMA_UNUSED int scene_pack( const TableCtx * ctx, const Scene * src, Scene * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
+static SCHEMA_UNUSED int64_t scene_load_measure_body( TableReader * r, int32_t depth );
+static SCHEMA_UNUSED int64_t depot_pack_measure( const TableCtx * ctx, const Depot * value, int32_t depth );
+static SCHEMA_UNUSED int depot_pack( const TableCtx * ctx, const Depot * src, Depot * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
+static SCHEMA_UNUSED int64_t depot_load_measure_body( TableReader * r, int32_t depth );
+static SCHEMA_UNUSED int64_t album_pack_measure( const TableCtx * ctx, const Album * value, int32_t depth );
+static SCHEMA_UNUSED int album_pack( const TableCtx * ctx, const Album * src, Album * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );
+static SCHEMA_UNUSED int64_t album_load_measure_body( TableReader * r, int32_t depth );
 
-static SCHEMA_UNUSED int64_t MetaMeasure( const Meta * value )
+static SCHEMA_UNUSED int64_t meta_measure( const Meta * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->build != 1 ) { bytes += 3 + 4; } /* build */
@@ -1269,43 +1269,43 @@ static SCHEMA_UNUSED int64_t MetaMeasure( const Meta * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int MetaSaveBody( TableWriter * w, const Meta * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int meta_save_body( TableWriter * w, const Meta * value )
 {
     if ( value->build != 1 )
     {
-        TableWriterPut16( w, 0x3138 ); TableWriterPut8( w, 4 ); /* build */
-        TableWriterPut32( w, (uint32_t) ( value->build ) );
+        table_writer_put16( w, 0x3138 ); table_writer_put8( w, 4 ); /* build */
+        table_writer_put32( w, (uint32_t) ( value->build ) );
     }
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; } /* storage invariant */
     if ( value->tag_length > 0 )
     {
-        TableWriterPut16( w, 0xbc64 ); TableWriterPut8( w, 12 ); /* tag */
-        TableWriterPut32( w, (uint32_t) value->tag_length );
-        TableWriterRaw( w, value->tag, value->tag_length );
+        table_writer_put16( w, 0xbc64 ); table_writer_put8( w, 12 ); /* tag */
+        table_writer_put32( w, (uint32_t) value->tag_length );
+        table_writer_raw( w, value->tag, value->tag_length );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t MetaSave( const Meta * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t meta_save( const Meta * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !MetaSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == MetaMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !meta_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == meta_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int MetaLoadBody( TableReader * r, Meta * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int meta_load_body( TableReader * r, Meta * value )
 {
-    MetaReset( value ); /* prefill declared defaults in place, then overlay */
+    meta_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x3138: /* build */
@@ -1313,12 +1313,12 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int MetaLoadBody( TableReader
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
                     else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
                     value->build = decoded_v;
@@ -1330,14 +1330,14 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int MetaLoadBody( TableReader
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 8 ) { keep = 8; r->report->clamped++; }
                 memcpy( value->tag, r->buffer + r->offset, keep );
@@ -1349,23 +1349,23 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int MetaLoadBody( TableReader
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int MetaLoad( Meta * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int meta_load( Meta * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return MetaLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return meta_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t SettingsMeasure( const Settings * value )
+static SCHEMA_UNUSED int64_t settings_measure( const Settings * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->quality != 2 ) { bytes += 3 + 4; } /* quality */
@@ -1374,43 +1374,43 @@ static SCHEMA_UNUSED int64_t SettingsMeasure( const Settings * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int SettingsSaveBody( TableWriter * w, const Settings * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int settings_save_body( TableWriter * w, const Settings * value )
 {
     if ( value->quality != 2 )
     {
-        TableWriterPut16( w, 0xcaf3 ); TableWriterPut8( w, 4 ); /* quality */
-        TableWriterPut32( w, (uint32_t) ( value->quality ) );
+        table_writer_put16( w, 0xcaf3 ); table_writer_put8( w, 4 ); /* quality */
+        table_writer_put32( w, (uint32_t) ( value->quality ) );
     }
     if ( value->label_length < 0 || value->label_length > 16 ) { return 0; } /* storage invariant */
     if ( value->label_length > 0 )
     {
-        TableWriterPut16( w, 0xe16a ); TableWriterPut8( w, 12 ); /* label */
-        TableWriterPut32( w, (uint32_t) value->label_length );
-        TableWriterRaw( w, value->label, value->label_length );
+        table_writer_put16( w, 0xe16a ); table_writer_put8( w, 12 ); /* label */
+        table_writer_put32( w, (uint32_t) value->label_length );
+        table_writer_raw( w, value->label, value->label_length );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t SettingsSave( const Settings * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t settings_save( const Settings * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !SettingsSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == SettingsMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !settings_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == settings_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int SettingsLoadBody( TableReader * r, Settings * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int settings_load_body( TableReader * r, Settings * value )
 {
-    SettingsReset( value ); /* prefill declared defaults in place, then overlay */
+    settings_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xcaf3: /* quality */
@@ -1418,12 +1418,12 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int SettingsLoadBody( TableRe
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
                     else if ( decoded_v > 4 ) { decoded_v = 4; r->report->clamped++; }
                     value->quality = decoded_v;
@@ -1435,14 +1435,14 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int SettingsLoadBody( TableRe
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 16 ) { keep = 16; r->report->clamped++; }
                 memcpy( value->label, r->buffer + r->offset, keep );
@@ -1454,23 +1454,23 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int SettingsLoadBody( TableRe
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int SettingsLoad( Settings * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int settings_load( Settings * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return SettingsLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return settings_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t ListNodeMeasureBody( const TableCtx * ctx, const ListNode * value, int32_t depth )
+static SCHEMA_UNUSED int64_t list_node_measure_body( const TableCtx * ctx, const ListNode * value, int32_t depth )
 {
     int64_t bytes = 2; /* terminator */
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
@@ -1478,10 +1478,10 @@ static SCHEMA_UNUSED int64_t ListNodeMeasureBody( const TableCtx * ctx, const Li
     if ( value->name_length < 0 || value->name_length > 12 ) { return -1; } /* storage invariant */
     if ( value->name_length > 0 ) { bytes += 3 + 4 + value->name_length; } /* name */
     {
-        const ListNode * pointee_next = ListNodeAt( ctx, &value->next ); /* *ListNode */
+        const ListNode * pointee_next = list_node_at( ctx, &value->next ); /* *ListNode */
         if ( pointee_next != NULL )
         {
-            int64_t body_next = ListNodeMeasureBody( ctx, pointee_next, depth + 1 );
+            int64_t body_next = list_node_measure_body( ctx, pointee_next, depth + 1 );
             if ( body_next < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -1491,48 +1491,48 @@ static SCHEMA_UNUSED int64_t ListNodeMeasureBody( const TableCtx * ctx, const Li
     return bytes;
 }
 
-static SCHEMA_UNUSED int ListNodeSaveBody( const TableCtx * ctx, TableWriter * w, const ListNode * value, int32_t depth )
+static SCHEMA_UNUSED int list_node_save_body( const TableCtx * ctx, TableWriter * w, const ListNode * value, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; } /* a data cycle, or a chain past the cap */
     if ( value->value != 0 )
     {
-        TableWriterPut16( w, 0x9194 ); TableWriterPut8( w, 4 ); /* value */
-        TableWriterPut32( w, (uint32_t) ( value->value ) );
+        table_writer_put16( w, 0x9194 ); table_writer_put8( w, 4 ); /* value */
+        table_writer_put32( w, (uint32_t) ( value->value ) );
     }
     if ( value->name_length < 0 || value->name_length > 12 ) { return 0; } /* storage invariant */
     if ( value->name_length > 0 )
     {
-        TableWriterPut16( w, 0x30df ); TableWriterPut8( w, 12 ); /* name */
-        TableWriterPut32( w, (uint32_t) value->name_length );
-        TableWriterRaw( w, value->name, value->name_length );
+        table_writer_put16( w, 0x30df ); table_writer_put8( w, 12 ); /* name */
+        table_writer_put32( w, (uint32_t) value->name_length );
+        table_writer_raw( w, value->name, value->name_length );
     }
     {
-        const ListNode * pointee_next = ListNodeAt( ctx, &value->next ); /* *ListNode */
+        const ListNode * pointee_next = list_node_at( ctx, &value->next ); /* *ListNode */
         if ( pointee_next != NULL )
         {
-            int64_t body_next = ListNodeMeasureBody( ctx, pointee_next, depth + 1 );
+            int64_t body_next = list_node_measure_body( ctx, pointee_next, depth + 1 );
             if ( body_next < 0 ) { return 0; }
-            TableWriterPut16( w, 0xd15e ); TableWriterPut8( w, 13 ); /* next — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_next );
-            if ( !ListNodeSaveBody( ctx, w, pointee_next, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0xd15e ); table_writer_put8( w, 13 ); /* next — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_next );
+            if ( !list_node_save_body( ctx, w, pointee_next, depth + 1 ) ) { return 0; }
         }
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int ListNodeLoadBody( TableReader * r, TableSink * sink, ListNode * value, int32_t depth )
+static SCHEMA_UNUSED int list_node_load_body( TableReader * r, TableSink * sink, ListNode * value, int32_t depth )
 {
-    ListNodeReset( value ); /* prefill declared defaults in place, then overlay */
+    list_node_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x9194: /* value */
@@ -1540,12 +1540,12 @@ static SCHEMA_UNUSED int ListNodeLoadBody( TableReader * r, TableSink * sink, Li
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     value->value = decoded_v;
                 }
                 break;
@@ -1555,14 +1555,14 @@ static SCHEMA_UNUSED int ListNodeLoadBody( TableReader * r, TableSink * sink, Li
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 12 ) { keep = 12; r->report->clamped++; }
                 memcpy( value->name, r->buffer + r->offset, keep );
@@ -1576,13 +1576,13 @@ static SCHEMA_UNUSED int ListNodeLoadBody( TableReader * r, TableSink * sink, Li
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -1592,7 +1592,7 @@ static SCHEMA_UNUSED int ListNodeLoadBody( TableReader * r, TableSink * sink, Li
                     break;
                 }
                 {
-                    ListNode * pointee = ListNodeEmplace( sink, &value->next );
+                    ListNode * pointee = list_node_emplace( sink, &value->next );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -1600,8 +1600,8 @@ static SCHEMA_UNUSED int ListNodeLoadBody( TableReader * r, TableSink * sink, Li
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    ListNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    list_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -1609,24 +1609,24 @@ static SCHEMA_UNUSED int ListNodeLoadBody( TableReader * r, TableSink * sink, Li
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int64_t TreeNodeMeasureBody( const TableCtx * ctx, const TreeNode * value, int32_t depth )
+static SCHEMA_UNUSED int64_t tree_node_measure_body( const TableCtx * ctx, const TreeNode * value, int32_t depth )
 {
     int64_t bytes = 2; /* terminator */
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     if ( value->label_length < 0 || value->label_length > 12 ) { return -1; } /* storage invariant */
     if ( value->label_length > 0 ) { bytes += 3 + 4 + value->label_length; } /* label */
     {
-        const TreeNode * pointee_left = TreeNodeAt( ctx, &value->left ); /* *TreeNode */
+        const TreeNode * pointee_left = tree_node_at( ctx, &value->left ); /* *TreeNode */
         if ( pointee_left != NULL )
         {
-            int64_t body_left = TreeNodeMeasureBody( ctx, pointee_left, depth + 1 );
+            int64_t body_left = tree_node_measure_body( ctx, pointee_left, depth + 1 );
             if ( body_left < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -1634,10 +1634,10 @@ static SCHEMA_UNUSED int64_t TreeNodeMeasureBody( const TableCtx * ctx, const Tr
         }
     }
     {
-        const TreeNode * pointee_right = TreeNodeAt( ctx, &value->right ); /* *TreeNode */
+        const TreeNode * pointee_right = tree_node_at( ctx, &value->right ); /* *TreeNode */
         if ( pointee_right != NULL )
         {
-            int64_t body_right = TreeNodeMeasureBody( ctx, pointee_right, depth + 1 );
+            int64_t body_right = tree_node_measure_body( ctx, pointee_right, depth + 1 );
             if ( body_right < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -1647,54 +1647,54 @@ static SCHEMA_UNUSED int64_t TreeNodeMeasureBody( const TableCtx * ctx, const Tr
     return bytes;
 }
 
-static SCHEMA_UNUSED int TreeNodeSaveBody( const TableCtx * ctx, TableWriter * w, const TreeNode * value, int32_t depth )
+static SCHEMA_UNUSED int tree_node_save_body( const TableCtx * ctx, TableWriter * w, const TreeNode * value, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; } /* a data cycle, or a chain past the cap */
     if ( value->label_length < 0 || value->label_length > 12 ) { return 0; } /* storage invariant */
     if ( value->label_length > 0 )
     {
-        TableWriterPut16( w, 0xe16a ); TableWriterPut8( w, 12 ); /* label */
-        TableWriterPut32( w, (uint32_t) value->label_length );
-        TableWriterRaw( w, value->label, value->label_length );
+        table_writer_put16( w, 0xe16a ); table_writer_put8( w, 12 ); /* label */
+        table_writer_put32( w, (uint32_t) value->label_length );
+        table_writer_raw( w, value->label, value->label_length );
     }
     {
-        const TreeNode * pointee_left = TreeNodeAt( ctx, &value->left ); /* *TreeNode */
+        const TreeNode * pointee_left = tree_node_at( ctx, &value->left ); /* *TreeNode */
         if ( pointee_left != NULL )
         {
-            int64_t body_left = TreeNodeMeasureBody( ctx, pointee_left, depth + 1 );
+            int64_t body_left = tree_node_measure_body( ctx, pointee_left, depth + 1 );
             if ( body_left < 0 ) { return 0; }
-            TableWriterPut16( w, 0xfe3a ); TableWriterPut8( w, 13 ); /* left — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_left );
-            if ( !TreeNodeSaveBody( ctx, w, pointee_left, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0xfe3a ); table_writer_put8( w, 13 ); /* left — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_left );
+            if ( !tree_node_save_body( ctx, w, pointee_left, depth + 1 ) ) { return 0; }
         }
     }
     {
-        const TreeNode * pointee_right = TreeNodeAt( ctx, &value->right ); /* *TreeNode */
+        const TreeNode * pointee_right = tree_node_at( ctx, &value->right ); /* *TreeNode */
         if ( pointee_right != NULL )
         {
-            int64_t body_right = TreeNodeMeasureBody( ctx, pointee_right, depth + 1 );
+            int64_t body_right = tree_node_measure_body( ctx, pointee_right, depth + 1 );
             if ( body_right < 0 ) { return 0; }
-            TableWriterPut16( w, 0x5506 ); TableWriterPut8( w, 13 ); /* right — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_right );
-            if ( !TreeNodeSaveBody( ctx, w, pointee_right, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0x5506 ); table_writer_put8( w, 13 ); /* right — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_right );
+            if ( !tree_node_save_body( ctx, w, pointee_right, depth + 1 ) ) { return 0; }
         }
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, TreeNode * value, int32_t depth )
+static SCHEMA_UNUSED int tree_node_load_body( TableReader * r, TableSink * sink, TreeNode * value, int32_t depth )
 {
-    TreeNodeReset( value ); /* prefill declared defaults in place, then overlay */
+    tree_node_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xe16a: /* label */
@@ -1702,14 +1702,14 @@ static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, Tr
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 12 ) { keep = 12; r->report->clamped++; }
                 memcpy( value->label, r->buffer + r->offset, keep );
@@ -1723,13 +1723,13 @@ static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, Tr
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -1739,7 +1739,7 @@ static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, Tr
                     break;
                 }
                 {
-                    TreeNode * pointee = TreeNodeEmplace( sink, &value->left );
+                    TreeNode * pointee = tree_node_emplace( sink, &value->left );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -1747,8 +1747,8 @@ static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, Tr
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    TreeNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    tree_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -1758,13 +1758,13 @@ static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, Tr
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -1774,7 +1774,7 @@ static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, Tr
                     break;
                 }
                 {
-                    TreeNode * pointee = TreeNodeEmplace( sink, &value->right );
+                    TreeNode * pointee = tree_node_emplace( sink, &value->right );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -1782,8 +1782,8 @@ static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, Tr
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    TreeNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    tree_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -1791,23 +1791,23 @@ static SCHEMA_UNUSED int TreeNodeLoadBody( TableReader * r, TableSink * sink, Tr
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int64_t LayerMeasureBody( const TableCtx * ctx, const Layer * value, int32_t depth )
+static SCHEMA_UNUSED int64_t layer_measure_body( const TableCtx * ctx, const Layer * value, int32_t depth )
 {
     int64_t bytes = 2; /* terminator */
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     if ( value->depth != 0 ) { bytes += 3 + 4; } /* depth */
     {
-        const ListNode * pointee_head = ListNodeAt( ctx, &value->head ); /* *ListNode */
+        const ListNode * pointee_head = list_node_at( ctx, &value->head ); /* *ListNode */
         if ( pointee_head != NULL )
         {
-            int64_t body_head = ListNodeMeasureBody( ctx, pointee_head, depth + 1 );
+            int64_t body_head = list_node_measure_body( ctx, pointee_head, depth + 1 );
             if ( body_head < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -1817,41 +1817,41 @@ static SCHEMA_UNUSED int64_t LayerMeasureBody( const TableCtx * ctx, const Layer
     return bytes;
 }
 
-static SCHEMA_UNUSED int LayerSaveBody( const TableCtx * ctx, TableWriter * w, const Layer * value, int32_t depth )
+static SCHEMA_UNUSED int layer_save_body( const TableCtx * ctx, TableWriter * w, const Layer * value, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; } /* a data cycle, or a chain past the cap */
     if ( value->depth != 0 )
     {
-        TableWriterPut16( w, 0x609f ); TableWriterPut8( w, 4 ); /* depth */
-        TableWriterPut32( w, (uint32_t) ( value->depth ) );
+        table_writer_put16( w, 0x609f ); table_writer_put8( w, 4 ); /* depth */
+        table_writer_put32( w, (uint32_t) ( value->depth ) );
     }
     {
-        const ListNode * pointee_head = ListNodeAt( ctx, &value->head ); /* *ListNode */
+        const ListNode * pointee_head = list_node_at( ctx, &value->head ); /* *ListNode */
         if ( pointee_head != NULL )
         {
-            int64_t body_head = ListNodeMeasureBody( ctx, pointee_head, depth + 1 );
+            int64_t body_head = list_node_measure_body( ctx, pointee_head, depth + 1 );
             if ( body_head < 0 ) { return 0; }
-            TableWriterPut16( w, 0x79aa ); TableWriterPut8( w, 13 ); /* head — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_head );
-            if ( !ListNodeSaveBody( ctx, w, pointee_head, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0x79aa ); table_writer_put8( w, 13 ); /* head — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_head );
+            if ( !list_node_save_body( ctx, w, pointee_head, depth + 1 ) ) { return 0; }
         }
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int LayerLoadBody( TableReader * r, TableSink * sink, Layer * value, int32_t depth )
+static SCHEMA_UNUSED int layer_load_body( TableReader * r, TableSink * sink, Layer * value, int32_t depth )
 {
-    LayerReset( value ); /* prefill declared defaults in place, then overlay */
+    layer_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x609f: /* depth */
@@ -1859,12 +1859,12 @@ static SCHEMA_UNUSED int LayerLoadBody( TableReader * r, TableSink * sink, Layer
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
                     else if ( decoded_v > 64 ) { decoded_v = 64; r->report->clamped++; }
                     value->depth = decoded_v;
@@ -1876,13 +1876,13 @@ static SCHEMA_UNUSED int LayerLoadBody( TableReader * r, TableSink * sink, Layer
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -1892,7 +1892,7 @@ static SCHEMA_UNUSED int LayerLoadBody( TableReader * r, TableSink * sink, Layer
                     break;
                 }
                 {
-                    ListNode * pointee = ListNodeEmplace( sink, &value->head );
+                    ListNode * pointee = list_node_emplace( sink, &value->head );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -1900,8 +1900,8 @@ static SCHEMA_UNUSED int LayerLoadBody( TableReader * r, TableSink * sink, Layer
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    ListNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    list_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -1909,14 +1909,14 @@ static SCHEMA_UNUSED int LayerLoadBody( TableReader * r, TableSink * sink, Layer
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int64_t SceneMeasureBody( const TableCtx * ctx, const Scene * value, int32_t depth )
+static SCHEMA_UNUSED int64_t scene_measure_body( const TableCtx * ctx, const Scene * value, int32_t depth )
 {
     int64_t bytes = 2; /* terminator */
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
@@ -1924,10 +1924,10 @@ static SCHEMA_UNUSED int64_t SceneMeasureBody( const TableCtx * ctx, const Scene
     if ( value->name_length > 0 ) { bytes += 3 + 4 + value->name_length; } /* name */
     if ( value->version != 1 ) { bytes += 3 + 4; } /* version */
     {
-        const ListNode * pointee_head = ListNodeAt( ctx, &value->head ); /* *ListNode */
+        const ListNode * pointee_head = list_node_at( ctx, &value->head ); /* *ListNode */
         if ( pointee_head != NULL )
         {
-            int64_t body_head = ListNodeMeasureBody( ctx, pointee_head, depth + 1 );
+            int64_t body_head = list_node_measure_body( ctx, pointee_head, depth + 1 );
             if ( body_head < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -1935,10 +1935,10 @@ static SCHEMA_UNUSED int64_t SceneMeasureBody( const TableCtx * ctx, const Scene
         }
     }
     {
-        const TreeNode * pointee_tree = TreeNodeAt( ctx, &value->tree ); /* *TreeNode */
+        const TreeNode * pointee_tree = tree_node_at( ctx, &value->tree ); /* *TreeNode */
         if ( pointee_tree != NULL )
         {
-            int64_t body_tree = TreeNodeMeasureBody( ctx, pointee_tree, depth + 1 );
+            int64_t body_tree = tree_node_measure_body( ctx, pointee_tree, depth + 1 );
             if ( body_tree < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -1946,10 +1946,10 @@ static SCHEMA_UNUSED int64_t SceneMeasureBody( const TableCtx * ctx, const Scene
         }
     }
     {
-        const Settings * pointee_settings = SettingsAt( ctx, &value->settings ); /* *Settings */
+        const Settings * pointee_settings = settings_at( ctx, &value->settings ); /* *Settings */
         if ( pointee_settings != NULL )
         {
-            int64_t body_settings = SettingsMeasure( pointee_settings );
+            int64_t body_settings = settings_measure( pointee_settings );
             if ( body_settings < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -1957,10 +1957,10 @@ static SCHEMA_UNUSED int64_t SceneMeasureBody( const TableCtx * ctx, const Scene
         }
     }
     {
-        const ListNode * pointee_alias = ListNodeAt( ctx, &value->alias ); /* *ListNode */
+        const ListNode * pointee_alias = list_node_at( ctx, &value->alias ); /* *ListNode */
         if ( pointee_alias != NULL )
         {
-            int64_t body_alias = ListNodeMeasureBody( ctx, pointee_alias, depth + 1 );
+            int64_t body_alias = list_node_measure_body( ctx, pointee_alias, depth + 1 );
             if ( body_alias < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -1968,7 +1968,7 @@ static SCHEMA_UNUSED int64_t SceneMeasureBody( const TableCtx * ctx, const Scene
         }
     }
     {
-        int64_t body_ground = LayerMeasureBody( ctx, &value->ground, depth );
+        int64_t body_ground = layer_measure_body( ctx, &value->ground, depth );
         if ( body_ground < 0 ) { return -1; }
         if ( body_ground > 2 ) { bytes += 3 + 4 + body_ground; } /* ground: all-default nested elides */
     }
@@ -1979,86 +1979,86 @@ static SCHEMA_UNUSED int64_t SceneMeasureBody( const TableCtx * ctx, const Scene
         bytes += 3 + 4 + 5; /* layers */
         for ( i = 0; i < value->layers_count; i++ )
         {
-            int64_t elem_layers = LayerMeasureBody( ctx, &value->layers[i], depth );
+            int64_t elem_layers = layer_measure_body( ctx, &value->layers[i], depth );
             if ( elem_layers < 0 ) { return -1; }
             bytes += 4 + elem_layers;
         }
     }
     {
-        int64_t body_meta = MetaMeasure( &value->meta );
+        int64_t body_meta = meta_measure( &value->meta );
         if ( body_meta < 0 ) { return -1; }
         if ( body_meta > 2 ) { bytes += 3 + 4 + body_meta; } /* meta: all-default nested elides */
     }
     return bytes;
 }
 
-static SCHEMA_UNUSED int SceneSaveBody( const TableCtx * ctx, TableWriter * w, const Scene * value, int32_t depth )
+static SCHEMA_UNUSED int scene_save_body( const TableCtx * ctx, TableWriter * w, const Scene * value, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; } /* a data cycle, or a chain past the cap */
     if ( value->name_length < 0 || value->name_length > 24 ) { return 0; } /* storage invariant */
     if ( value->name_length > 0 )
     {
-        TableWriterPut16( w, 0x30df ); TableWriterPut8( w, 12 ); /* name */
-        TableWriterPut32( w, (uint32_t) value->name_length );
-        TableWriterRaw( w, value->name, value->name_length );
+        table_writer_put16( w, 0x30df ); table_writer_put8( w, 12 ); /* name */
+        table_writer_put32( w, (uint32_t) value->name_length );
+        table_writer_raw( w, value->name, value->name_length );
     }
     if ( value->version != 1 )
     {
-        TableWriterPut16( w, 0xe8e6 ); TableWriterPut8( w, 4 ); /* version */
-        TableWriterPut32( w, (uint32_t) ( value->version ) );
+        table_writer_put16( w, 0xe8e6 ); table_writer_put8( w, 4 ); /* version */
+        table_writer_put32( w, (uint32_t) ( value->version ) );
     }
     {
-        const ListNode * pointee_head = ListNodeAt( ctx, &value->head ); /* *ListNode */
+        const ListNode * pointee_head = list_node_at( ctx, &value->head ); /* *ListNode */
         if ( pointee_head != NULL )
         {
-            int64_t body_head = ListNodeMeasureBody( ctx, pointee_head, depth + 1 );
+            int64_t body_head = list_node_measure_body( ctx, pointee_head, depth + 1 );
             if ( body_head < 0 ) { return 0; }
-            TableWriterPut16( w, 0x79aa ); TableWriterPut8( w, 13 ); /* head — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_head );
-            if ( !ListNodeSaveBody( ctx, w, pointee_head, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0x79aa ); table_writer_put8( w, 13 ); /* head — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_head );
+            if ( !list_node_save_body( ctx, w, pointee_head, depth + 1 ) ) { return 0; }
         }
     }
     {
-        const TreeNode * pointee_tree = TreeNodeAt( ctx, &value->tree ); /* *TreeNode */
+        const TreeNode * pointee_tree = tree_node_at( ctx, &value->tree ); /* *TreeNode */
         if ( pointee_tree != NULL )
         {
-            int64_t body_tree = TreeNodeMeasureBody( ctx, pointee_tree, depth + 1 );
+            int64_t body_tree = tree_node_measure_body( ctx, pointee_tree, depth + 1 );
             if ( body_tree < 0 ) { return 0; }
-            TableWriterPut16( w, 0x595e ); TableWriterPut8( w, 13 ); /* tree — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_tree );
-            if ( !TreeNodeSaveBody( ctx, w, pointee_tree, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0x595e ); table_writer_put8( w, 13 ); /* tree — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_tree );
+            if ( !tree_node_save_body( ctx, w, pointee_tree, depth + 1 ) ) { return 0; }
         }
     }
     {
-        const Settings * pointee_settings = SettingsAt( ctx, &value->settings ); /* *Settings */
+        const Settings * pointee_settings = settings_at( ctx, &value->settings ); /* *Settings */
         if ( pointee_settings != NULL )
         {
-            int64_t body_settings = SettingsMeasure( pointee_settings );
+            int64_t body_settings = settings_measure( pointee_settings );
             if ( body_settings < 0 ) { return 0; }
-            TableWriterPut16( w, 0x130e ); TableWriterPut8( w, 13 ); /* settings — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_settings );
-            if ( !SettingsSaveBody( w, pointee_settings ) ) { return 0; }
+            table_writer_put16( w, 0x130e ); table_writer_put8( w, 13 ); /* settings — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_settings );
+            if ( !settings_save_body( w, pointee_settings ) ) { return 0; }
         }
     }
     {
-        const ListNode * pointee_alias = ListNodeAt( ctx, &value->alias ); /* *ListNode */
+        const ListNode * pointee_alias = list_node_at( ctx, &value->alias ); /* *ListNode */
         if ( pointee_alias != NULL )
         {
-            int64_t body_alias = ListNodeMeasureBody( ctx, pointee_alias, depth + 1 );
+            int64_t body_alias = list_node_measure_body( ctx, pointee_alias, depth + 1 );
             if ( body_alias < 0 ) { return 0; }
-            TableWriterPut16( w, 0xfc71 ); TableWriterPut8( w, 13 ); /* alias — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_alias );
-            if ( !ListNodeSaveBody( ctx, w, pointee_alias, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0xfc71 ); table_writer_put8( w, 13 ); /* alias — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_alias );
+            if ( !list_node_save_body( ctx, w, pointee_alias, depth + 1 ) ) { return 0; }
         }
     }
     {
-        int64_t body_ground = LayerMeasureBody( ctx, &value->ground, depth );
+        int64_t body_ground = layer_measure_body( ctx, &value->ground, depth );
         if ( body_ground < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_ground > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x5bdf ); TableWriterPut8( w, 13 ); /* ground */
-            TableWriterPut32( w, (uint32_t) body_ground );
-            if ( !LayerSaveBody( ctx, w, &value->ground, depth ) ) { return 0; }
+            table_writer_put16( w, 0x5bdf ); table_writer_put8( w, 13 ); /* ground */
+            table_writer_put32( w, (uint32_t) body_ground );
+            if ( !layer_save_body( ctx, w, &value->ground, depth ) ) { return 0; }
         }
     }
     if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0; } /* storage invariant */
@@ -2066,46 +2066,46 @@ static SCHEMA_UNUSED int SceneSaveBody( const TableCtx * ctx, TableWriter * w, c
     {
         int64_t len_at_layers;
         int32_t i;
-        TableWriterPut16( w, 0x1ee8 ); TableWriterPut8( w, 14 ); /* layers */
-        len_at_layers = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->layers_count );
+        table_writer_put16( w, 0x1ee8 ); table_writer_put8( w, 14 ); /* layers */
+        len_at_layers = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->layers_count );
         for ( i = 0; i < value->layers_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !LayerSaveBody( ctx, w, &value->layers[i], depth ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !layer_save_body( ctx, w, &value->layers[i], depth ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_layers, (uint32_t) ( w->offset - len_at_layers - 4 ) );
+        table_writer_patch32( w, len_at_layers, (uint32_t) ( w->offset - len_at_layers - 4 ) );
     }
     {
-        int64_t body_meta = MetaMeasure( &value->meta );
+        int64_t body_meta = meta_measure( &value->meta );
         if ( body_meta < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_meta > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0xcea6 ); TableWriterPut8( w, 13 ); /* meta */
-            TableWriterPut32( w, (uint32_t) body_meta );
-            if ( !MetaSaveBody( w, &value->meta ) ) { return 0; }
+            table_writer_put16( w, 0xcea6 ); table_writer_put8( w, 13 ); /* meta */
+            table_writer_put32( w, (uint32_t) body_meta );
+            if ( !meta_save_body( w, &value->meta ) ) { return 0; }
         }
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene * value, int32_t depth )
+static SCHEMA_UNUSED int scene_load_body( TableReader * r, TableSink * sink, Scene * value, int32_t depth )
 {
-    SceneReset( value ); /* prefill declared defaults in place, then overlay */
+    scene_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x30df: /* name */
@@ -2113,14 +2113,14 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 24 ) { keep = 24; r->report->clamped++; }
                 memcpy( value->name, r->buffer + r->offset, keep );
@@ -2134,12 +2134,12 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
                     else if ( decoded_v > 99 ) { decoded_v = 99; r->report->clamped++; }
                     value->version = decoded_v;
@@ -2151,13 +2151,13 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -2167,7 +2167,7 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                     break;
                 }
                 {
-                    ListNode * pointee = ListNodeEmplace( sink, &value->head );
+                    ListNode * pointee = list_node_emplace( sink, &value->head );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -2175,8 +2175,8 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    ListNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    list_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -2186,13 +2186,13 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -2202,7 +2202,7 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                     break;
                 }
                 {
-                    TreeNode * pointee = TreeNodeEmplace( sink, &value->tree );
+                    TreeNode * pointee = tree_node_emplace( sink, &value->tree );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -2210,8 +2210,8 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    TreeNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    tree_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -2221,13 +2221,13 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -2237,7 +2237,7 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                     break;
                 }
                 {
-                    Settings * pointee = SettingsEmplace( sink, &value->settings );
+                    Settings * pointee = settings_emplace( sink, &value->settings );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -2245,8 +2245,8 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    SettingsLoadBody( &sub, pointee );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    settings_load_body( &sub, pointee );
                 }
                 r->offset += body_len;
                 break;
@@ -2256,13 +2256,13 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -2272,7 +2272,7 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                     break;
                 }
                 {
-                    ListNode * pointee = ListNodeEmplace( sink, &value->alias );
+                    ListNode * pointee = list_node_emplace( sink, &value->alias );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -2280,8 +2280,8 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    ListNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    list_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -2291,16 +2291,16 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    LayerLoadBody( &sub, sink, &value->ground, depth );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    layer_load_body( &sub, sink, &value->ground, depth );
                 }
                 r->offset += body_len;
                 break;
@@ -2310,19 +2310,19 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -2334,16 +2334,16 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            LayerLoadBody( &elem, sink, &value->layers[i], depth );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            layer_load_body( &elem, sink, &value->layers[i], depth );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -2358,16 +2358,16 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    MetaLoadBody( &sub, &value->meta );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    meta_load_body( &sub, &value->meta );
                 }
                 r->offset += body_len;
                 break;
@@ -2375,14 +2375,14 @@ static SCHEMA_UNUSED int SceneLoadBody( TableReader * r, TableSink * sink, Scene
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int64_t DepotMeasureBody( const TableCtx * ctx, const Depot * value, int32_t depth )
+static SCHEMA_UNUSED int64_t depot_measure_body( const TableCtx * ctx, const Depot * value, int32_t depth )
 {
     int64_t bytes = 2; /* terminator */
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
@@ -2393,7 +2393,7 @@ static SCHEMA_UNUSED int64_t DepotMeasureBody( const TableCtx * ctx, const Depot
         int32_t i;
         for ( i = 0; i < TIER_MAX; i++ ) /* [Tier]: every stored slot is a named variant's */
         {
-            int64_t elem_bytes = LayerMeasureBody( ctx, &value->banks[i], depth );
+            int64_t elem_bytes = layer_measure_body( ctx, &value->banks[i], depth );
             if ( elem_bytes < 0 ) { return -1; }
             if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
             uint16_t key_id = 0;
@@ -2411,15 +2411,15 @@ static SCHEMA_UNUSED int64_t DepotMeasureBody( const TableCtx * ctx, const Depot
     }
     if ( value->spare_present ) /* ?Meta: presence decides, not content */
     {
-        int64_t body_spare = MetaMeasure( &value->spare );
+        int64_t body_spare = meta_measure( &value->spare );
         if ( body_spare < 0 ) { return -1; }
         bytes += 3 + 4 + body_spare; /* spare */
     }
     {
-        const ListNode * pointee_head = ListNodeAt( ctx, &value->head ); /* *ListNode */
+        const ListNode * pointee_head = list_node_at( ctx, &value->head ); /* *ListNode */
         if ( pointee_head != NULL )
         {
-            int64_t body_head = ListNodeMeasureBody( ctx, pointee_head, depth + 1 );
+            int64_t body_head = list_node_measure_body( ctx, pointee_head, depth + 1 );
             if ( body_head < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -2429,22 +2429,22 @@ static SCHEMA_UNUSED int64_t DepotMeasureBody( const TableCtx * ctx, const Depot
     return bytes;
 }
 
-static SCHEMA_UNUSED int DepotSaveBody( const TableCtx * ctx, TableWriter * w, const Depot * value, int32_t depth )
+static SCHEMA_UNUSED int depot_save_body( const TableCtx * ctx, TableWriter * w, const Depot * value, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; } /* a data cycle, or a chain past the cap */
     if ( value->name_length < 0 || value->name_length > 12 ) { return 0; } /* storage invariant */
     if ( value->name_length > 0 )
     {
-        TableWriterPut16( w, 0x30df ); TableWriterPut8( w, 12 ); /* name */
-        TableWriterPut32( w, (uint32_t) value->name_length );
-        TableWriterRaw( w, value->name, value->name_length );
+        table_writer_put16( w, 0x30df ); table_writer_put8( w, 12 ); /* name */
+        table_writer_put32( w, (uint32_t) value->name_length );
+        table_writer_raw( w, value->name, value->name_length );
     }
     {
         uint32_t pairs_banks = 0;
         int32_t i;
         for ( i = 0; i < TIER_MAX; i++ ) /* [Tier]: every stored slot is a named variant's */
         {
-            int64_t elem_bytes = LayerMeasureBody( ctx, &value->banks[i], depth );
+            int64_t elem_bytes = layer_measure_body( ctx, &value->banks[i], depth );
             if ( elem_bytes < 0 ) { return 0; }
             if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
             uint16_t key_id = 0;
@@ -2464,16 +2464,16 @@ static SCHEMA_UNUSED int DepotSaveBody( const TableCtx * ctx, TableWriter * w, c
             /* KIND 16, not 14: a keyed body and a positional one are
                incompatible, so a reader of the other kind must see a kind
                mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2) */
-            TableWriterPut16( w, 0x7f34 ); TableWriterPut8( w, 16 ); /* banks (keyed by Tier) */
-            len_at_banks = w->offset; TableWriterPut32( w, 0 );
-            TableWriterPut8( w, 13 ); TableWriterPut32( w, pairs_banks );
+            table_writer_put16( w, 0x7f34 ); table_writer_put8( w, 16 ); /* banks (keyed by Tier) */
+            len_at_banks = w->offset; table_writer_put32( w, 0 );
+            table_writer_put8( w, 13 ); table_writer_put32( w, pairs_banks );
             /* ASCENDING BY VARIANT ORDINAL, which is slot order — this
                writer's choice, and a reader must not rely on it: every
                slot is found by its key (docs/SPEC-TABLES.md §3.2) */
             for ( i = 0; i < TIER_MAX; i++ )
             {
                 int64_t elem_len_at_banks;
-                int64_t elem_bytes = LayerMeasureBody( ctx, &value->banks[i], depth );
+                int64_t elem_bytes = layer_measure_body( ctx, &value->banks[i], depth );
                 if ( elem_bytes < 0 ) { return 0; }
                 if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
                 uint16_t key_id = 0;
@@ -2485,49 +2485,49 @@ static SCHEMA_UNUSED int DepotSaveBody( const TableCtx * ctx, TableWriter * w, c
                     default: return 0; /* no variant names this value: no wire identity */
                 }
                 (void) key_id;
-                TableWriterPut16( w, key_id ); /* the slot's VARIANT id, not its position */
-                elem_len_at_banks = w->offset; TableWriterPut32( w, 0 );
-                if ( !LayerSaveBody( ctx, w, &value->banks[i], depth ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at_banks, (uint32_t) ( w->offset - elem_len_at_banks - 4 ) );
+                table_writer_put16( w, key_id ); /* the slot's VARIANT id, not its position */
+                elem_len_at_banks = w->offset; table_writer_put32( w, 0 );
+                if ( !layer_save_body( ctx, w, &value->banks[i], depth ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at_banks, (uint32_t) ( w->offset - elem_len_at_banks - 4 ) );
             }
-            TableWriterPatch32( w, len_at_banks, (uint32_t) ( w->offset - len_at_banks - 4 ) );
+            table_writer_patch32( w, len_at_banks, (uint32_t) ( w->offset - len_at_banks - 4 ) );
         }
     }
     if ( value->spare_present ) /* ?Meta */
     {
-        int64_t body_spare = MetaMeasure( &value->spare );
+        int64_t body_spare = meta_measure( &value->spare );
         if ( body_spare < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        TableWriterPut16( w, 0x3a4f ); TableWriterPut8( w, 13 ); /* spare */
-        TableWriterPut32( w, (uint32_t) body_spare );
-        if ( !MetaSaveBody( w, &value->spare ) ) { return 0; }
+        table_writer_put16( w, 0x3a4f ); table_writer_put8( w, 13 ); /* spare */
+        table_writer_put32( w, (uint32_t) body_spare );
+        if ( !meta_save_body( w, &value->spare ) ) { return 0; }
     }
     {
-        const ListNode * pointee_head = ListNodeAt( ctx, &value->head ); /* *ListNode */
+        const ListNode * pointee_head = list_node_at( ctx, &value->head ); /* *ListNode */
         if ( pointee_head != NULL )
         {
-            int64_t body_head = ListNodeMeasureBody( ctx, pointee_head, depth + 1 );
+            int64_t body_head = list_node_measure_body( ctx, pointee_head, depth + 1 );
             if ( body_head < 0 ) { return 0; }
-            TableWriterPut16( w, 0x79aa ); TableWriterPut8( w, 13 ); /* head — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_head );
-            if ( !ListNodeSaveBody( ctx, w, pointee_head, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0x79aa ); table_writer_put8( w, 13 ); /* head — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_head );
+            if ( !list_node_save_body( ctx, w, pointee_head, depth + 1 ) ) { return 0; }
         }
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot * value, int32_t depth )
+static SCHEMA_UNUSED int depot_load_body( TableReader * r, TableSink * sink, Depot * value, int32_t depth )
 {
-    DepotReset( value ); /* prefill declared defaults in place, then overlay */
+    depot_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x30df: /* name */
@@ -2535,14 +2535,14 @@ static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 12 ) { keep = 12; r->report->clamped++; }
                 memcpy( value->name, r->buffer + r->offset, keep );
@@ -2556,33 +2556,33 @@ static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot
                 if ( kind != 16 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     TableReader sub;
                     uint32_t i;
                     if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < count; i++ )
                     {
                         uint16_t key;
                         uint32_t elem_len;
                         Tier slot;
-                        if ( !TableReaderHas( &sub, 2 ) ) { r->report->malformed = 1; break; }
-                        key = TableReaderGet16( &sub );
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 2 ) ) { r->report->malformed = 1; break; }
+                        key = table_reader_get16( &sub );
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         if ( key == 0 )
                         {
                             /* None is the NULL KEY: 0 is the reserved id no declared
@@ -2610,8 +2610,8 @@ static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot
                             }
                         }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            LayerLoadBody( &elem, sink, &value->banks[(int32_t) slot - 1], depth );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            layer_load_body( &elem, sink, &value->banks[(int32_t) slot - 1], depth );
                         }
                         sub.offset += elem_len;
                     }
@@ -2624,16 +2624,16 @@ static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    MetaLoadBody( &sub, &value->spare );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    meta_load_body( &sub, &value->spare );
                 }
                 r->offset += body_len;
                 value->spare_present = 1;
@@ -2644,13 +2644,13 @@ static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -2660,7 +2660,7 @@ static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot
                     break;
                 }
                 {
-                    ListNode * pointee = ListNodeEmplace( sink, &value->head );
+                    ListNode * pointee = list_node_emplace( sink, &value->head );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -2668,8 +2668,8 @@ static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    ListNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    list_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -2677,39 +2677,39 @@ static SCHEMA_UNUSED int DepotLoadBody( TableReader * r, TableSink * sink, Depot
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int64_t AlbumMeasureBody( const TableCtx * ctx, const Album * value, int32_t depth )
+static SCHEMA_UNUSED int64_t album_measure_body( const TableCtx * ctx, const Album * value, int32_t depth )
 {
     int64_t bytes = 2; /* terminator */
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     if ( value->name_length < 0 || value->name_length > 16 ) { return -1; } /* storage invariant */
     if ( value->name_length > 0 ) { bytes += 3 + 4 + value->name_length; } /* name */
     {
-        int64_t body_tint = ColourMeasure( &value->tint );
+        int64_t body_tint = colour_measure( &value->tint );
         if ( body_tint < 0 ) { return -1; }
         if ( body_tint > 2 ) { bytes += 3 + 4 + body_tint; } /* tint: all-default nested elides */
     }
     {
-        int64_t body_stamp = StampMeasure( &value->stamp );
+        int64_t body_stamp = stamp_measure( &value->stamp );
         if ( body_stamp < 0 ) { return -1; }
         if ( body_stamp > 2 ) { bytes += 3 + 4 + body_stamp; } /* stamp: all-default nested elides */
     }
     {
-        int64_t body_marker = MarkerMeasureBody( ctx, &value->marker, depth );
+        int64_t body_marker = marker_measure_body( ctx, &value->marker, depth );
         if ( body_marker < 0 ) { return -1; }
         if ( body_marker > 2 ) { bytes += 3 + 4 + body_marker; } /* marker: all-default nested elides */
     }
     {
-        const Marker * pointee_pin = MarkerAt( ctx, &value->pin ); /* *Marker */
+        const Marker * pointee_pin = marker_at( ctx, &value->pin ); /* *Marker */
         if ( pointee_pin != NULL )
         {
-            int64_t body_pin = MarkerMeasureBody( ctx, pointee_pin, depth + 1 );
+            int64_t body_pin = marker_measure_body( ctx, pointee_pin, depth + 1 );
             if ( body_pin < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -2717,10 +2717,10 @@ static SCHEMA_UNUSED int64_t AlbumMeasureBody( const TableCtx * ctx, const Album
         }
     }
     {
-        const ListNode * pointee_head = ListNodeAt( ctx, &value->head ); /* *ListNode */
+        const ListNode * pointee_head = list_node_at( ctx, &value->head ); /* *ListNode */
         if ( pointee_head != NULL )
         {
-            int64_t body_head = ListNodeMeasureBody( ctx, pointee_head, depth + 1 );
+            int64_t body_head = list_node_measure_body( ctx, pointee_head, depth + 1 );
             if ( body_head < 0 ) { return -1; }
             /* a pointer's PRESENCE is the payload: it rides even when the
                pointee is all-default, or null and non-null would be one */
@@ -2730,84 +2730,84 @@ static SCHEMA_UNUSED int64_t AlbumMeasureBody( const TableCtx * ctx, const Album
     return bytes;
 }
 
-static SCHEMA_UNUSED int AlbumSaveBody( const TableCtx * ctx, TableWriter * w, const Album * value, int32_t depth )
+static SCHEMA_UNUSED int album_save_body( const TableCtx * ctx, TableWriter * w, const Album * value, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; } /* a data cycle, or a chain past the cap */
     if ( value->name_length < 0 || value->name_length > 16 ) { return 0; } /* storage invariant */
     if ( value->name_length > 0 )
     {
-        TableWriterPut16( w, 0x30df ); TableWriterPut8( w, 12 ); /* name */
-        TableWriterPut32( w, (uint32_t) value->name_length );
-        TableWriterRaw( w, value->name, value->name_length );
+        table_writer_put16( w, 0x30df ); table_writer_put8( w, 12 ); /* name */
+        table_writer_put32( w, (uint32_t) value->name_length );
+        table_writer_raw( w, value->name, value->name_length );
     }
     {
-        int64_t body_tint = ColourMeasure( &value->tint );
+        int64_t body_tint = colour_measure( &value->tint );
         if ( body_tint < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_tint > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x82b9 ); TableWriterPut8( w, 13 ); /* tint */
-            TableWriterPut32( w, (uint32_t) body_tint );
-            if ( !ColourSaveBody( w, &value->tint ) ) { return 0; }
+            table_writer_put16( w, 0x82b9 ); table_writer_put8( w, 13 ); /* tint */
+            table_writer_put32( w, (uint32_t) body_tint );
+            if ( !colour_save_body( w, &value->tint ) ) { return 0; }
         }
     }
     {
-        int64_t body_stamp = StampMeasure( &value->stamp );
+        int64_t body_stamp = stamp_measure( &value->stamp );
         if ( body_stamp < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_stamp > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x0dc6 ); TableWriterPut8( w, 13 ); /* stamp */
-            TableWriterPut32( w, (uint32_t) body_stamp );
-            if ( !StampSaveBody( w, &value->stamp ) ) { return 0; }
+            table_writer_put16( w, 0x0dc6 ); table_writer_put8( w, 13 ); /* stamp */
+            table_writer_put32( w, (uint32_t) body_stamp );
+            if ( !stamp_save_body( w, &value->stamp ) ) { return 0; }
         }
     }
     {
-        int64_t body_marker = MarkerMeasureBody( ctx, &value->marker, depth );
+        int64_t body_marker = marker_measure_body( ctx, &value->marker, depth );
         if ( body_marker < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_marker > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x866f ); TableWriterPut8( w, 13 ); /* marker */
-            TableWriterPut32( w, (uint32_t) body_marker );
-            if ( !MarkerSaveBody( ctx, w, &value->marker, depth ) ) { return 0; }
+            table_writer_put16( w, 0x866f ); table_writer_put8( w, 13 ); /* marker */
+            table_writer_put32( w, (uint32_t) body_marker );
+            if ( !marker_save_body( ctx, w, &value->marker, depth ) ) { return 0; }
         }
     }
     {
-        const Marker * pointee_pin = MarkerAt( ctx, &value->pin ); /* *Marker */
+        const Marker * pointee_pin = marker_at( ctx, &value->pin ); /* *Marker */
         if ( pointee_pin != NULL )
         {
-            int64_t body_pin = MarkerMeasureBody( ctx, pointee_pin, depth + 1 );
+            int64_t body_pin = marker_measure_body( ctx, pointee_pin, depth + 1 );
             if ( body_pin < 0 ) { return 0; }
-            TableWriterPut16( w, 0x69d5 ); TableWriterPut8( w, 13 ); /* pin — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_pin );
-            if ( !MarkerSaveBody( ctx, w, pointee_pin, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0x69d5 ); table_writer_put8( w, 13 ); /* pin — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_pin );
+            if ( !marker_save_body( ctx, w, pointee_pin, depth + 1 ) ) { return 0; }
         }
     }
     {
-        const ListNode * pointee_head = ListNodeAt( ctx, &value->head ); /* *ListNode */
+        const ListNode * pointee_head = list_node_at( ctx, &value->head ); /* *ListNode */
         if ( pointee_head != NULL )
         {
-            int64_t body_head = ListNodeMeasureBody( ctx, pointee_head, depth + 1 );
+            int64_t body_head = list_node_measure_body( ctx, pointee_head, depth + 1 );
             if ( body_head < 0 ) { return 0; }
-            TableWriterPut16( w, 0x79aa ); TableWriterPut8( w, 13 ); /* head — the pointee rides as a nested body */
-            TableWriterPut32( w, (uint32_t) body_head );
-            if ( !ListNodeSaveBody( ctx, w, pointee_head, depth + 1 ) ) { return 0; }
+            table_writer_put16( w, 0x79aa ); table_writer_put8( w, 13 ); /* head — the pointee rides as a nested body */
+            table_writer_put32( w, (uint32_t) body_head );
+            if ( !list_node_save_body( ctx, w, pointee_head, depth + 1 ) ) { return 0; }
         }
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album * value, int32_t depth )
+static SCHEMA_UNUSED int album_load_body( TableReader * r, TableSink * sink, Album * value, int32_t depth )
 {
-    AlbumReset( value ); /* prefill declared defaults in place, then overlay */
+    album_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x30df: /* name */
@@ -2815,14 +2815,14 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 16 ) { keep = 16; r->report->clamped++; }
                 memcpy( value->name, r->buffer + r->offset, keep );
@@ -2836,16 +2836,16 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    ColourLoadBody( &sub, &value->tint );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    colour_load_body( &sub, &value->tint );
                 }
                 r->offset += body_len;
                 break;
@@ -2855,16 +2855,16 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    StampLoadBody( &sub, &value->stamp );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    stamp_load_body( &sub, &value->stamp );
                 }
                 r->offset += body_len;
                 break;
@@ -2874,16 +2874,16 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    MarkerLoadBody( &sub, sink, &value->marker, depth );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    marker_load_body( &sub, sink, &value->marker, depth );
                 }
                 r->offset += body_len;
                 break;
@@ -2893,13 +2893,13 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -2909,7 +2909,7 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                     break;
                 }
                 {
-                    Marker * pointee = MarkerEmplace( sink, &value->pin );
+                    Marker * pointee = marker_emplace( sink, &value->pin );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -2917,8 +2917,8 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    MarkerLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    marker_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -2928,13 +2928,13 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 if ( depth >= kTableMaxDepth )
                 {
                     /* past the nesting cap: the subtree is refused, the pointer stays
@@ -2944,7 +2944,7 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                     break;
                 }
                 {
-                    ListNode * pointee = ListNodeEmplace( sink, &value->head );
+                    ListNode * pointee = list_node_emplace( sink, &value->head );
                     TableReader sub;
                     if ( pointee == NULL )
                     {
@@ -2952,8 +2952,8 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
                         r->offset += body_len;
                         break;
                     }
-                    sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    ListNodeLoadBody( &sub, sink, pointee, depth + 1 );
+                    sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    list_node_load_body( &sub, sink, pointee, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -2961,17 +2961,17 @@ static SCHEMA_UNUSED int AlbumLoadBody( TableReader * r, TableSink * sink, Album
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-/* SettingsPackMeasure: the packed region bytes of everything Settings POINTS AT.
+/* settings_pack_measure: the packed region bytes of everything Settings POINTS AT.
    Aliasing is not preserved: two pointers to one node pack as two nodes,
    exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3). */
-static SCHEMA_UNUSED int64_t SettingsPackMeasure( const TableCtx * ctx, const Settings * value, int32_t depth )
+static SCHEMA_UNUSED int64_t settings_pack_measure( const TableCtx * ctx, const Settings * value, int32_t depth )
 {
     int64_t bytes = 0;
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
@@ -2979,13 +2979,13 @@ static SCHEMA_UNUSED int64_t SettingsPackMeasure( const TableCtx * ctx, const Se
     return bytes;
 }
 
-/* SettingsPack: copy src into dst (already placed), then lay every pointee out
+/* settings_pack: copy src into dst (already placed), then lay every pointee out
    depth-first behind it, in FIELD ORDER, by bump allocation.
 
    The pre-order is what makes a region simple to reason about: a child
    always lands after the slot naming it, so region deltas are strictly
    positive and a packed region cannot contain a cycle. */
-static SCHEMA_UNUSED int SettingsPack( const TableCtx * ctx, const Settings * src, Settings * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
+static SCHEMA_UNUSED int settings_pack( const TableCtx * ctx, const Settings * src, Settings * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; }
     memcpy( (void *) dst, (const void *) src, sizeof( Settings ) ); /* a plain struct, by construction */
@@ -2993,205 +2993,205 @@ static SCHEMA_UNUSED int SettingsPack( const TableCtx * ctx, const Settings * sr
     return 1;
 }
 
-/* SettingsLoadMeasureBody: region bytes for the nodes under this wire body.
+/* settings_load_measure_body: region bytes for the nodes under this wire body.
    Framing only — no field value is decoded, so a caller can size its
    buffer before a single byte is placed. */
-static SCHEMA_UNUSED int64_t SettingsLoadMeasureBody( TableReader * r, int32_t depth )
+static SCHEMA_UNUSED int64_t settings_load_measure_body( TableReader * r, int32_t depth )
 {
     int64_t bytes = 0;
     (void) r; (void) depth; /* nothing below this body allocates */
     return bytes;
 }
 
-/* ListNodePackMeasure: the packed region bytes of everything ListNode POINTS AT.
+/* list_node_pack_measure: the packed region bytes of everything ListNode POINTS AT.
    Aliasing is not preserved: two pointers to one node pack as two nodes,
    exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3). */
-static SCHEMA_UNUSED int64_t ListNodePackMeasure( const TableCtx * ctx, const ListNode * value, int32_t depth )
+static SCHEMA_UNUSED int64_t list_node_pack_measure( const TableCtx * ctx, const ListNode * value, int32_t depth )
 {
     int64_t bytes = 0;
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     {
-        const ListNode * pointee = ListNodeAt( ctx, &value->next ); /* next */
+        const ListNode * pointee = list_node_at( ctx, &value->next ); /* next */
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = list_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( ListNode ) ) + inner;
         }
     }
     return bytes;
 }
 
-/* ListNodePack: copy src into dst (already placed), then lay every pointee out
+/* list_node_pack: copy src into dst (already placed), then lay every pointee out
    depth-first behind it, in FIELD ORDER, by bump allocation.
 
    The pre-order is what makes a region simple to reason about: a child
    always lands after the slot naming it, so region deltas are strictly
    positive and a packed region cannot contain a cycle. */
-static SCHEMA_UNUSED int ListNodePack( const TableCtx * ctx, const ListNode * src, ListNode * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
+static SCHEMA_UNUSED int list_node_pack( const TableCtx * ctx, const ListNode * src, ListNode * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; }
     memcpy( (void *) dst, (const void *) src, sizeof( ListNode ) ); /* a plain struct, by construction */
     {
         const ListNode * pointee;
         dst->next.value = 0; /* next */
-        pointee = ListNodeAt( ctx, &src->next );
+        pointee = list_node_at( ctx, &src->next );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             ListNode * child;
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( ListNode ) );
             child = (ListNode *) (void *) ( base + at );
             dst->next.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->next );
-            if ( !ListNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !list_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     return 1;
 }
 
-/* ListNodeLoadMeasureBody: region bytes for the nodes under this wire body.
+/* list_node_load_measure_body: region bytes for the nodes under this wire body.
    Framing only — no field value is decoded, so a caller can size its
    buffer before a single byte is placed. */
-static SCHEMA_UNUSED int64_t ListNodeLoadMeasureBody( TableReader * r, int32_t depth )
+static SCHEMA_UNUSED int64_t list_node_load_measure_body( TableReader * r, int32_t depth )
 {
     int64_t bytes = 0;
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { return bytes; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { return bytes; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return bytes; }
-        if ( !TableReaderHas( r, 1 ) ) { return bytes; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { return bytes; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xd15e: /* next (*ListNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) );
-                    bytes += ListNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( ListNode ) );
+                    bytes += list_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
             }
             default:
             {
-                if ( !TableReaderSkip( r, kind ) ) { return bytes; }
+                if ( !table_reader_skip( r, kind ) ) { return bytes; }
                 break;
             }
         }
     }
 }
 
-/* TreeNodePackMeasure: the packed region bytes of everything TreeNode POINTS AT.
+/* tree_node_pack_measure: the packed region bytes of everything TreeNode POINTS AT.
    Aliasing is not preserved: two pointers to one node pack as two nodes,
    exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3). */
-static SCHEMA_UNUSED int64_t TreeNodePackMeasure( const TableCtx * ctx, const TreeNode * value, int32_t depth )
+static SCHEMA_UNUSED int64_t tree_node_pack_measure( const TableCtx * ctx, const TreeNode * value, int32_t depth )
 {
     int64_t bytes = 0;
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     {
-        const TreeNode * pointee = TreeNodeAt( ctx, &value->left ); /* left */
+        const TreeNode * pointee = tree_node_at( ctx, &value->left ); /* left */
         if ( pointee != NULL )
         {
-            int64_t inner = TreeNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = tree_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( TreeNode ) ) + inner;
         }
     }
     {
-        const TreeNode * pointee = TreeNodeAt( ctx, &value->right ); /* right */
+        const TreeNode * pointee = tree_node_at( ctx, &value->right ); /* right */
         if ( pointee != NULL )
         {
-            int64_t inner = TreeNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = tree_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( TreeNode ) ) + inner;
         }
     }
     return bytes;
 }
 
-/* TreeNodePack: copy src into dst (already placed), then lay every pointee out
+/* tree_node_pack: copy src into dst (already placed), then lay every pointee out
    depth-first behind it, in FIELD ORDER, by bump allocation.
 
    The pre-order is what makes a region simple to reason about: a child
    always lands after the slot naming it, so region deltas are strictly
    positive and a packed region cannot contain a cycle. */
-static SCHEMA_UNUSED int TreeNodePack( const TableCtx * ctx, const TreeNode * src, TreeNode * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
+static SCHEMA_UNUSED int tree_node_pack( const TableCtx * ctx, const TreeNode * src, TreeNode * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; }
     memcpy( (void *) dst, (const void *) src, sizeof( TreeNode ) ); /* a plain struct, by construction */
     {
         const TreeNode * pointee;
         dst->left.value = 0; /* left */
-        pointee = TreeNodeAt( ctx, &src->left );
+        pointee = tree_node_at( ctx, &src->left );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             TreeNode * child;
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( TreeNode ) );
             child = (TreeNode *) (void *) ( base + at );
             dst->left.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->left );
-            if ( !TreeNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !tree_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     {
         const TreeNode * pointee;
         dst->right.value = 0; /* right */
-        pointee = TreeNodeAt( ctx, &src->right );
+        pointee = tree_node_at( ctx, &src->right );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             TreeNode * child;
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( TreeNode ) );
             child = (TreeNode *) (void *) ( base + at );
             dst->right.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->right );
-            if ( !TreeNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !tree_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     return 1;
 }
 
-/* TreeNodeLoadMeasureBody: region bytes for the nodes under this wire body.
+/* tree_node_load_measure_body: region bytes for the nodes under this wire body.
    Framing only — no field value is decoded, so a caller can size its
    buffer before a single byte is placed. */
-static SCHEMA_UNUSED int64_t TreeNodeLoadMeasureBody( TableReader * r, int32_t depth )
+static SCHEMA_UNUSED int64_t tree_node_load_measure_body( TableReader * r, int32_t depth )
 {
     int64_t bytes = 0;
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { return bytes; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { return bytes; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return bytes; }
-        if ( !TableReaderHas( r, 1 ) ) { return bytes; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { return bytes; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xfe3a: /* left (*TreeNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-                    bytes += TreeNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( TreeNode ) );
+                    bytes += tree_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -3199,283 +3199,283 @@ static SCHEMA_UNUSED int64_t TreeNodeLoadMeasureBody( TableReader * r, int32_t d
             case 0x5506: /* right (*TreeNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-                    bytes += TreeNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( TreeNode ) );
+                    bytes += tree_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
             }
             default:
             {
-                if ( !TableReaderSkip( r, kind ) ) { return bytes; }
+                if ( !table_reader_skip( r, kind ) ) { return bytes; }
                 break;
             }
         }
     }
 }
 
-/* LayerPackMeasure: the packed region bytes of everything Layer POINTS AT.
+/* layer_pack_measure: the packed region bytes of everything Layer POINTS AT.
    Aliasing is not preserved: two pointers to one node pack as two nodes,
    exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3). */
-static SCHEMA_UNUSED int64_t LayerPackMeasure( const TableCtx * ctx, const Layer * value, int32_t depth )
+static SCHEMA_UNUSED int64_t layer_pack_measure( const TableCtx * ctx, const Layer * value, int32_t depth )
 {
     int64_t bytes = 0;
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     {
-        const ListNode * pointee = ListNodeAt( ctx, &value->head ); /* head */
+        const ListNode * pointee = list_node_at( ctx, &value->head ); /* head */
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = list_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( ListNode ) ) + inner;
         }
     }
     return bytes;
 }
 
-/* LayerPack: copy src into dst (already placed), then lay every pointee out
+/* layer_pack: copy src into dst (already placed), then lay every pointee out
    depth-first behind it, in FIELD ORDER, by bump allocation.
 
    The pre-order is what makes a region simple to reason about: a child
    always lands after the slot naming it, so region deltas are strictly
    positive and a packed region cannot contain a cycle. */
-static SCHEMA_UNUSED int LayerPack( const TableCtx * ctx, const Layer * src, Layer * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
+static SCHEMA_UNUSED int layer_pack( const TableCtx * ctx, const Layer * src, Layer * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; }
     memcpy( (void *) dst, (const void *) src, sizeof( Layer ) ); /* a plain struct, by construction */
     {
         const ListNode * pointee;
         dst->head.value = 0; /* head */
-        pointee = ListNodeAt( ctx, &src->head );
+        pointee = list_node_at( ctx, &src->head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             ListNode * child;
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( ListNode ) );
             child = (ListNode *) (void *) ( base + at );
             dst->head.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->head );
-            if ( !ListNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !list_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     return 1;
 }
 
-/* LayerLoadMeasureBody: region bytes for the nodes under this wire body.
+/* layer_load_measure_body: region bytes for the nodes under this wire body.
    Framing only — no field value is decoded, so a caller can size its
    buffer before a single byte is placed. */
-static SCHEMA_UNUSED int64_t LayerLoadMeasureBody( TableReader * r, int32_t depth )
+static SCHEMA_UNUSED int64_t layer_load_measure_body( TableReader * r, int32_t depth )
 {
     int64_t bytes = 0;
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { return bytes; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { return bytes; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return bytes; }
-        if ( !TableReaderHas( r, 1 ) ) { return bytes; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { return bytes; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x79aa: /* head (*ListNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) );
-                    bytes += ListNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( ListNode ) );
+                    bytes += list_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
             }
             default:
             {
-                if ( !TableReaderSkip( r, kind ) ) { return bytes; }
+                if ( !table_reader_skip( r, kind ) ) { return bytes; }
                 break;
             }
         }
     }
 }
 
-/* ScenePackMeasure: the packed region bytes of everything Scene POINTS AT.
+/* scene_pack_measure: the packed region bytes of everything Scene POINTS AT.
    Aliasing is not preserved: two pointers to one node pack as two nodes,
    exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3). */
-static SCHEMA_UNUSED int64_t ScenePackMeasure( const TableCtx * ctx, const Scene * value, int32_t depth )
+static SCHEMA_UNUSED int64_t scene_pack_measure( const TableCtx * ctx, const Scene * value, int32_t depth )
 {
     int64_t bytes = 0;
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     {
-        const ListNode * pointee = ListNodeAt( ctx, &value->head ); /* head */
+        const ListNode * pointee = list_node_at( ctx, &value->head ); /* head */
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = list_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( ListNode ) ) + inner;
         }
     }
     {
-        const TreeNode * pointee = TreeNodeAt( ctx, &value->tree ); /* tree */
+        const TreeNode * pointee = tree_node_at( ctx, &value->tree ); /* tree */
         if ( pointee != NULL )
         {
-            int64_t inner = TreeNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = tree_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( TreeNode ) ) + inner;
         }
     }
     {
-        const Settings * pointee = SettingsAt( ctx, &value->settings ); /* settings */
+        const Settings * pointee = settings_at( ctx, &value->settings ); /* settings */
         if ( pointee != NULL )
         {
-            int64_t inner = SettingsPackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = settings_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( Settings ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( Settings ) ) + inner;
         }
     }
     {
-        const ListNode * pointee = ListNodeAt( ctx, &value->alias ); /* alias */
+        const ListNode * pointee = list_node_at( ctx, &value->alias ); /* alias */
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = list_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( ListNode ) ) + inner;
         }
     }
     { /* ground (nested by value) */
-        int64_t inner = LayerPackMeasure( ctx, &value->ground, depth );
+        int64_t inner = layer_pack_measure( ctx, &value->ground, depth );
         if ( inner < 0 ) { return -1; }
         bytes += inner;
     }
     { int32_t i; for ( i = 0; i < value->layers_count && i < 4; i++ ) /* layers */
     {
-        int64_t inner = LayerPackMeasure( ctx, &value->layers[i], depth );
+        int64_t inner = layer_pack_measure( ctx, &value->layers[i], depth );
         if ( inner < 0 ) { return -1; }
         bytes += inner;
     } }
     return bytes;
 }
 
-/* ScenePack: copy src into dst (already placed), then lay every pointee out
+/* scene_pack: copy src into dst (already placed), then lay every pointee out
    depth-first behind it, in FIELD ORDER, by bump allocation.
 
    The pre-order is what makes a region simple to reason about: a child
    always lands after the slot naming it, so region deltas are strictly
    positive and a packed region cannot contain a cycle. */
-static SCHEMA_UNUSED int ScenePack( const TableCtx * ctx, const Scene * src, Scene * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
+static SCHEMA_UNUSED int scene_pack( const TableCtx * ctx, const Scene * src, Scene * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; }
     memcpy( (void *) dst, (const void *) src, sizeof( Scene ) ); /* a plain struct, by construction */
     {
         const ListNode * pointee;
         dst->head.value = 0; /* head */
-        pointee = ListNodeAt( ctx, &src->head );
+        pointee = list_node_at( ctx, &src->head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             ListNode * child;
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( ListNode ) );
             child = (ListNode *) (void *) ( base + at );
             dst->head.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->head );
-            if ( !ListNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !list_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     {
         const TreeNode * pointee;
         dst->tree.value = 0; /* tree */
-        pointee = TreeNodeAt( ctx, &src->tree );
+        pointee = tree_node_at( ctx, &src->tree );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             TreeNode * child;
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( TreeNode ) );
             child = (TreeNode *) (void *) ( base + at );
             dst->tree.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->tree );
-            if ( !TreeNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !tree_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     {
         const Settings * pointee;
         dst->settings.value = 0; /* settings */
-        pointee = SettingsAt( ctx, &src->settings );
+        pointee = settings_at( ctx, &src->settings );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             Settings * child;
             if ( at + (int64_t) sizeof( Settings ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
+            *used = at + table_align_up64( (int64_t) sizeof( Settings ) );
             child = (Settings *) (void *) ( base + at );
             dst->settings.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->settings );
-            if ( !SettingsPack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !settings_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     {
         const ListNode * pointee;
         dst->alias.value = 0; /* alias */
-        pointee = ListNodeAt( ctx, &src->alias );
+        pointee = list_node_at( ctx, &src->alias );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             ListNode * child;
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( ListNode ) );
             child = (ListNode *) (void *) ( base + at );
             dst->alias.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->alias );
-            if ( !ListNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !list_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     { /* ground (nested by value) */
-        if ( !LayerPack( ctx, &src->ground, &dst->ground, base, capacity, used, depth ) ) { return 0; }
+        if ( !layer_pack( ctx, &src->ground, &dst->ground, base, capacity, used, depth ) ) { return 0; }
     }
     { int32_t i; for ( i = 0; i < src->layers_count && i < 4; i++ ) /* layers */
     {
-        if ( !LayerPack( ctx, &src->layers[i], &dst->layers[i], base, capacity, used, depth ) ) { return 0; }
+        if ( !layer_pack( ctx, &src->layers[i], &dst->layers[i], base, capacity, used, depth ) ) { return 0; }
     } }
     return 1;
 }
 
-/* SceneLoadMeasureBody: region bytes for the nodes under this wire body.
+/* scene_load_measure_body: region bytes for the nodes under this wire body.
    Framing only — no field value is decoded, so a caller can size its
    buffer before a single byte is placed. */
-static SCHEMA_UNUSED int64_t SceneLoadMeasureBody( TableReader * r, int32_t depth )
+static SCHEMA_UNUSED int64_t scene_load_measure_body( TableReader * r, int32_t depth )
 {
     int64_t bytes = 0;
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { return bytes; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { return bytes; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return bytes; }
-        if ( !TableReaderHas( r, 1 ) ) { return bytes; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { return bytes; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x79aa: /* head (*ListNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) );
-                    bytes += ListNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( ListNode ) );
+                    bytes += list_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -3483,15 +3483,15 @@ static SCHEMA_UNUSED int64_t SceneLoadMeasureBody( TableReader * r, int32_t dept
             case 0x595e: /* tree (*TreeNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-                    bytes += TreeNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( TreeNode ) );
+                    bytes += tree_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -3499,15 +3499,15 @@ static SCHEMA_UNUSED int64_t SceneLoadMeasureBody( TableReader * r, int32_t dept
             case 0x130e: /* settings (*Settings) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( Settings ) );
-                    bytes += SettingsLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( Settings ) );
+                    bytes += settings_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -3515,15 +3515,15 @@ static SCHEMA_UNUSED int64_t SceneLoadMeasureBody( TableReader * r, int32_t dept
             case 0xfc71: /* alias (*ListNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) );
-                    bytes += ListNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( ListNode ) );
+                    bytes += list_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -3532,14 +3532,14 @@ static SCHEMA_UNUSED int64_t SceneLoadMeasureBody( TableReader * r, int32_t dept
             {
                 uint32_t body_len;
                 int64_t body_end;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 body_end = r->offset + body_len;
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += LayerLoadMeasureBody( &sub, depth );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += layer_load_measure_body( &sub, depth );
                 }
                 r->offset = body_end;
                 break;
@@ -3548,28 +3548,28 @@ static SCHEMA_UNUSED int64_t SceneLoadMeasureBody( TableReader * r, int32_t dept
             {
                 uint32_t body_len;
                 int64_t body_end;
-                if ( kind != 14 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 14 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
                     uint32_t count;
                     TableReader elems;
                     uint32_t i;
-                    TableReaderGet8( r ); /* element kind */
-                    count = TableReaderGet32( r );
-                    elems = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    table_reader_get8( r ); /* element kind */
+                    count = table_reader_get32( r );
+                    elems = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < count && i < (uint32_t) ( 4 ); i++ )
                     {
                         uint32_t elem_len;
                         TableReader elem;
-                        if ( !TableReaderHas( &elems, 4 ) ) { break; }
-                        elem_len = TableReaderGet32( &elems );
-                        if ( !TableReaderHas( &elems, elem_len ) ) { break; }
-                        elem = TableReaderMake( elems.buffer + elems.offset, elem_len, r->report );
-                        bytes += LayerLoadMeasureBody( &elem, depth );
+                        if ( !table_reader_has( &elems, 4 ) ) { break; }
+                        elem_len = table_reader_get32( &elems );
+                        if ( !table_reader_has( &elems, elem_len ) ) { break; }
+                        elem = table_reader_make( elems.buffer + elems.offset, elem_len, r->report );
+                        bytes += layer_load_measure_body( &elem, depth );
                         elems.offset += elem_len;
                     }
                 }
@@ -3578,99 +3578,99 @@ static SCHEMA_UNUSED int64_t SceneLoadMeasureBody( TableReader * r, int32_t dept
             }
             default:
             {
-                if ( !TableReaderSkip( r, kind ) ) { return bytes; }
+                if ( !table_reader_skip( r, kind ) ) { return bytes; }
                 break;
             }
         }
     }
 }
 
-/* DepotPackMeasure: the packed region bytes of everything Depot POINTS AT.
+/* depot_pack_measure: the packed region bytes of everything Depot POINTS AT.
    Aliasing is not preserved: two pointers to one node pack as two nodes,
    exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3). */
-static SCHEMA_UNUSED int64_t DepotPackMeasure( const TableCtx * ctx, const Depot * value, int32_t depth )
+static SCHEMA_UNUSED int64_t depot_pack_measure( const TableCtx * ctx, const Depot * value, int32_t depth )
 {
     int64_t bytes = 0;
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     {
-        const ListNode * pointee = ListNodeAt( ctx, &value->head ); /* head */
+        const ListNode * pointee = list_node_at( ctx, &value->head ); /* head */
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = list_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( ListNode ) ) + inner;
         }
     }
     { int32_t i; for ( i = 0; i < (int32_t) ( TIER_MAX ); i++ ) /* banks */
     {
-        int64_t inner = LayerPackMeasure( ctx, &value->banks[i], depth );
+        int64_t inner = layer_pack_measure( ctx, &value->banks[i], depth );
         if ( inner < 0 ) { return -1; }
         bytes += inner;
     } }
     return bytes;
 }
 
-/* DepotPack: copy src into dst (already placed), then lay every pointee out
+/* depot_pack: copy src into dst (already placed), then lay every pointee out
    depth-first behind it, in FIELD ORDER, by bump allocation.
 
    The pre-order is what makes a region simple to reason about: a child
    always lands after the slot naming it, so region deltas are strictly
    positive and a packed region cannot contain a cycle. */
-static SCHEMA_UNUSED int DepotPack( const TableCtx * ctx, const Depot * src, Depot * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
+static SCHEMA_UNUSED int depot_pack( const TableCtx * ctx, const Depot * src, Depot * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; }
     memcpy( (void *) dst, (const void *) src, sizeof( Depot ) ); /* a plain struct, by construction */
     {
         const ListNode * pointee;
         dst->head.value = 0; /* head */
-        pointee = ListNodeAt( ctx, &src->head );
+        pointee = list_node_at( ctx, &src->head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             ListNode * child;
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( ListNode ) );
             child = (ListNode *) (void *) ( base + at );
             dst->head.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->head );
-            if ( !ListNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !list_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     { int32_t i; for ( i = 0; i < (int32_t) ( TIER_MAX ); i++ ) /* banks */
     {
-        if ( !LayerPack( ctx, &src->banks[i], &dst->banks[i], base, capacity, used, depth ) ) { return 0; }
+        if ( !layer_pack( ctx, &src->banks[i], &dst->banks[i], base, capacity, used, depth ) ) { return 0; }
     } }
     return 1;
 }
 
-/* DepotLoadMeasureBody: region bytes for the nodes under this wire body.
+/* depot_load_measure_body: region bytes for the nodes under this wire body.
    Framing only — no field value is decoded, so a caller can size its
    buffer before a single byte is placed. */
-static SCHEMA_UNUSED int64_t DepotLoadMeasureBody( TableReader * r, int32_t depth )
+static SCHEMA_UNUSED int64_t depot_load_measure_body( TableReader * r, int32_t depth )
 {
     int64_t bytes = 0;
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { return bytes; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { return bytes; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return bytes; }
-        if ( !TableReaderHas( r, 1 ) ) { return bytes; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { return bytes; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x79aa: /* head (*ListNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) );
-                    bytes += ListNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( ListNode ) );
+                    bytes += list_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -3679,30 +3679,30 @@ static SCHEMA_UNUSED int64_t DepotLoadMeasureBody( TableReader * r, int32_t dept
             {
                 uint32_t body_len;
                 int64_t body_end;
-                if ( kind != 16 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 16 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
                     uint32_t count;
                     TableReader elems;
                     uint32_t i;
-                    TableReaderGet8( r ); /* element kind */
-                    count = TableReaderGet32( r );
-                    elems = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    table_reader_get8( r ); /* element kind */
+                    count = table_reader_get32( r );
+                    elems = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < count && i < (uint32_t) ( TIER_MAX ); i++ )
                     {
                         uint32_t elem_len;
                         TableReader elem;
-                        if ( !TableReaderHas( &elems, 2 ) ) { break; }
-                        TableReaderGet16( &elems ); /* the slot's variant id */
-                        if ( !TableReaderHas( &elems, 4 ) ) { break; }
-                        elem_len = TableReaderGet32( &elems );
-                        if ( !TableReaderHas( &elems, elem_len ) ) { break; }
-                        elem = TableReaderMake( elems.buffer + elems.offset, elem_len, r->report );
-                        bytes += LayerLoadMeasureBody( &elem, depth );
+                        if ( !table_reader_has( &elems, 2 ) ) { break; }
+                        table_reader_get16( &elems ); /* the slot's variant id */
+                        if ( !table_reader_has( &elems, 4 ) ) { break; }
+                        elem_len = table_reader_get32( &elems );
+                        if ( !table_reader_has( &elems, elem_len ) ) { break; }
+                        elem = table_reader_make( elems.buffer + elems.offset, elem_len, r->report );
+                        bytes += layer_load_measure_body( &elem, depth );
                         elems.offset += elem_len;
                     }
                 }
@@ -3711,121 +3711,121 @@ static SCHEMA_UNUSED int64_t DepotLoadMeasureBody( TableReader * r, int32_t dept
             }
             default:
             {
-                if ( !TableReaderSkip( r, kind ) ) { return bytes; }
+                if ( !table_reader_skip( r, kind ) ) { return bytes; }
                 break;
             }
         }
     }
 }
 
-/* AlbumPackMeasure: the packed region bytes of everything Album POINTS AT.
+/* album_pack_measure: the packed region bytes of everything Album POINTS AT.
    Aliasing is not preserved: two pointers to one node pack as two nodes,
    exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3). */
-static SCHEMA_UNUSED int64_t AlbumPackMeasure( const TableCtx * ctx, const Album * value, int32_t depth )
+static SCHEMA_UNUSED int64_t album_pack_measure( const TableCtx * ctx, const Album * value, int32_t depth )
 {
     int64_t bytes = 0;
     if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */
     {
-        const Marker * pointee = MarkerAt( ctx, &value->pin ); /* pin */
+        const Marker * pointee = marker_at( ctx, &value->pin ); /* pin */
         if ( pointee != NULL )
         {
-            int64_t inner = MarkerPackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = marker_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( Marker ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( Marker ) ) + inner;
         }
     }
     {
-        const ListNode * pointee = ListNodeAt( ctx, &value->head ); /* head */
+        const ListNode * pointee = list_node_at( ctx, &value->head ); /* head */
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, pointee, depth + 1 );
+            int64_t inner = list_node_pack_measure( ctx, pointee, depth + 1 );
             if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bytes += table_align_up64( (int64_t) sizeof( ListNode ) ) + inner;
         }
     }
     { /* marker (nested by value) */
-        int64_t inner = MarkerPackMeasure( ctx, &value->marker, depth );
+        int64_t inner = marker_pack_measure( ctx, &value->marker, depth );
         if ( inner < 0 ) { return -1; }
         bytes += inner;
     }
     return bytes;
 }
 
-/* AlbumPack: copy src into dst (already placed), then lay every pointee out
+/* album_pack: copy src into dst (already placed), then lay every pointee out
    depth-first behind it, in FIELD ORDER, by bump allocation.
 
    The pre-order is what makes a region simple to reason about: a child
    always lands after the slot naming it, so region deltas are strictly
    positive and a packed region cannot contain a cycle. */
-static SCHEMA_UNUSED int AlbumPack( const TableCtx * ctx, const Album * src, Album * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
+static SCHEMA_UNUSED int album_pack( const TableCtx * ctx, const Album * src, Album * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return 0; }
     memcpy( (void *) dst, (const void *) src, sizeof( Album ) ); /* a plain struct, by construction */
     {
         const Marker * pointee;
         dst->pin.value = 0; /* pin */
-        pointee = MarkerAt( ctx, &src->pin );
+        pointee = marker_at( ctx, &src->pin );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             Marker * child;
             if ( at + (int64_t) sizeof( Marker ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
+            *used = at + table_align_up64( (int64_t) sizeof( Marker ) );
             child = (Marker *) (void *) ( base + at );
             dst->pin.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->pin );
-            if ( !MarkerPack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !marker_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     {
         const ListNode * pointee;
         dst->head.value = 0; /* head */
-        pointee = ListNodeAt( ctx, &src->head );
+        pointee = list_node_at( ctx, &src->head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( *used );
+            int64_t at = table_align_up64( *used );
             ListNode * child;
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return 0; }
-            *used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+            *used = at + table_align_up64( (int64_t) sizeof( ListNode ) );
             child = (ListNode *) (void *) ( base + at );
             dst->head.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->head );
-            if ( !ListNodePack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
+            if ( !list_node_pack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }
         }
     }
     { /* marker (nested by value) */
-        if ( !MarkerPack( ctx, &src->marker, &dst->marker, base, capacity, used, depth ) ) { return 0; }
+        if ( !marker_pack( ctx, &src->marker, &dst->marker, base, capacity, used, depth ) ) { return 0; }
     }
     return 1;
 }
 
-/* AlbumLoadMeasureBody: region bytes for the nodes under this wire body.
+/* album_load_measure_body: region bytes for the nodes under this wire body.
    Framing only — no field value is decoded, so a caller can size its
    buffer before a single byte is placed. */
-static SCHEMA_UNUSED int64_t AlbumLoadMeasureBody( TableReader * r, int32_t depth )
+static SCHEMA_UNUSED int64_t album_load_measure_body( TableReader * r, int32_t depth )
 {
     int64_t bytes = 0;
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { return bytes; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { return bytes; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return bytes; }
-        if ( !TableReaderHas( r, 1 ) ) { return bytes; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { return bytes; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x69d5: /* pin (*Marker) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( Marker ) );
-                    bytes += MarkerLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( Marker ) );
+                    bytes += marker_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -3833,15 +3833,15 @@ static SCHEMA_UNUSED int64_t AlbumLoadMeasureBody( TableReader * r, int32_t dept
             case 0x79aa: /* head (*ListNode) */
             {
                 uint32_t body_len;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 if ( depth < kTableMaxDepth )
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) );
-                    bytes += ListNodeLoadMeasureBody( &sub, depth + 1 );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += table_align_up64( (int64_t) sizeof( ListNode ) );
+                    bytes += list_node_load_measure_body( &sub, depth + 1 );
                 }
                 r->offset += body_len;
                 break;
@@ -3850,21 +3850,21 @@ static SCHEMA_UNUSED int64_t AlbumLoadMeasureBody( TableReader * r, int32_t dept
             {
                 uint32_t body_len;
                 int64_t body_end;
-                if ( kind != 13 ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }
-                if ( !TableReaderHas( r, 4 ) ) { return bytes; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { return bytes; }
+                if ( kind != 13 ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }
+                if ( !table_reader_has( r, 4 ) ) { return bytes; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { return bytes; }
                 body_end = r->offset + body_len;
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    bytes += MarkerLoadMeasureBody( &sub, depth );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    bytes += marker_load_measure_body( &sub, depth );
                 }
                 r->offset = body_end;
                 break;
             }
             default:
             {
-                if ( !TableReaderSkip( r, kind ) ) { return bytes; }
+                if ( !table_reader_skip( r, kind ) ) { return bytes; }
                 break;
             }
         }
@@ -3890,51 +3890,51 @@ typedef struct ListNodeBuilder
     TableArena arena;
     TableWorker main;       /* the calling thread's allocation front */
     TableRef root_ref;
-    uint8_t * region;       /* the packed const form, produced by ListNodeBuilderLock */
+    uint8_t * region;       /* the packed const form, produced by list_node_builder_lock */
     int64_t region_bytes;
 } ListNodeBuilder;
 
 /* Allocate a node in THIS thread's front: no lock, no atomic per node. One
    worker per thread; allocate on your own, and synchronize your own writes
    to nodes another worker allocated (§6.4). */
-static SCHEMA_UNUSED int ListNodeBuilderInit( ListNodeBuilder * builder )
+static SCHEMA_UNUSED int list_node_builder_init( ListNodeBuilder * builder )
 {
     uint32_t at;
-    TableArenaInit( &builder->arena );
-    builder->main = TableWorkerMake( &builder->arena );
+    table_arena_init( &builder->arena );
+    builder->main = table_worker_make( &builder->arena );
     builder->root_ref.value = 0;
     builder->region = NULL;
     builder->region_bytes = 0;
     /* the ROOT is allocated like any node and is not a pointer target, so
-       it takes the arena's untyped bump directly rather than an ListNodeEmplace
+       it takes the arena's untyped bump directly rather than an list_node_emplace
        that only a pointed-at table has */
-    at = TableWorkerBump( &builder->main, (uint32_t) sizeof( ListNode ) );
+    at = table_worker_bump( &builder->main, (uint32_t) sizeof( ListNode ) );
     if ( at == kTableAllocFailed ) { return 0; }
     builder->root_ref.value = (int64_t) at;
-    ListNodeReset( (ListNode *) (void *) TableArenaAt( &builder->arena, at ) );
+    list_node_reset( (ListNode *) (void *) table_arena_at( &builder->arena, at ) );
     return 1;
 }
 
-static SCHEMA_UNUSED void ListNodeBuilderShutdown( ListNodeBuilder * builder )
+static SCHEMA_UNUSED void list_node_builder_shutdown( ListNodeBuilder * builder )
 {
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     free( builder->region );
     builder->region = NULL;
     builder->region_bytes = 0;
 }
 
 /* The mutable root, or NULL once the builder is locked. */
-static SCHEMA_UNUSED ListNode * ListNodeBuilderRoot( ListNodeBuilder * builder )
+static SCHEMA_UNUSED ListNode * list_node_builder_root( ListNodeBuilder * builder )
 {
     if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }
-    return (ListNode *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
+    return (ListNode *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
 }
 
 /* Lock is ONE WAY and it is the compaction: the segmented arena becomes one
    exact-packed region with zero slack, references rewritten self-relative,
    and the mutable life released. Single-threaded: call it after the workers
    have joined. The region comes back in builder->region. */
-static SCHEMA_UNUSED int ListNodeBuilderLock( ListNodeBuilder * builder )
+static SCHEMA_UNUSED int list_node_builder_lock( ListNodeBuilder * builder )
 {
     TableCtx ctx;
     const ListNode * root;
@@ -3943,15 +3943,15 @@ static SCHEMA_UNUSED int ListNodeBuilderLock( ListNodeBuilder * builder )
     if ( builder->arena.locked ) { return builder->region != NULL; }
     if ( builder->root_ref.value == 0 ) { return 0; }
     ctx.arena = &builder->arena;
-    root = (const ListNode *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
-    below = ListNodePackMeasure( &ctx, root, 1 );
+    root = (const ListNode *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
+    below = list_node_pack_measure( &ctx, root, 1 );
     if ( below < 0 ) { return 0; } /* a data cycle, or a chain past kTableMaxDepth */
-    total = TableAlignUp64( (int64_t) sizeof( ListNode ) ) + below;
+    total = table_align_up64( (int64_t) sizeof( ListNode ) ) + below;
     packed = (uint8_t *) malloc( (size_t) total ); /* the AUTHORING path may allocate */
     if ( packed == NULL ) { return 0; }
     memset( packed, 0, (size_t) total );
-    used = TableAlignUp64( (int64_t) sizeof( ListNode ) );
-    if ( !ListNodePack( &ctx, root, (ListNode *) (void *) packed, packed, total, &used, 1 ) || used != total )
+    used = table_align_up64( (int64_t) sizeof( ListNode ) );
+    if ( !list_node_pack( &ctx, root, (ListNode *) (void *) packed, packed, total, &used, 1 ) || used != total )
     {
         free( packed );
         return 0;
@@ -3959,7 +3959,7 @@ static SCHEMA_UNUSED int ListNodeBuilderLock( ListNodeBuilder * builder )
     builder->region = packed;
     builder->region_bytes = total;
     builder->arena.locked = 1; /* MONOTONIC: there is no unlock */
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     return 1;
 }
 
@@ -3969,38 +3969,38 @@ static SCHEMA_UNUSED int ListNodeBuilderLock( ListNodeBuilder * builder )
    arena, is a packed REGION — what Lock and Load produce — and a ctx naming
    a builder's arena is the mutable form. C++ spells the two as overloads;
    one parameter says the same thing here. */
-static SCHEMA_UNUSED int64_t ListNodeMeasure( const TableCtx * ctx, const ListNode * root )
+static SCHEMA_UNUSED int64_t list_node_measure( const TableCtx * ctx, const ListNode * root )
 {
-    return root != NULL ? ListNodeMeasureBody( ctx, root, 1 ) : -1;
+    return root != NULL ? list_node_measure_body( ctx, root, 1 ) : -1;
 }
 
-static SCHEMA_UNUSED int64_t ListNodeSave( const TableCtx * ctx, const ListNode * root, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t list_node_save( const TableCtx * ctx, const ListNode * root, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     if ( root == NULL ) { return -1; }
-    w = TableWriterMake( buffer, capacity );
-    if ( !ListNodeSaveBody( ctx, &w, root, 1 ) ) { return -1; }
-    return w.offset; /* == ListNodeMeasure( ctx, root ) */
+    w = table_writer_make( buffer, capacity );
+    if ( !list_node_save_body( ctx, &w, root, 1 ) ) { return -1; }
+    return w.offset; /* == list_node_measure( ctx, root ) */
 }
 
-/* ListNodeLoadMeasure: the exact region bytes a wire buffer will need. The
+/* list_node_load_measure: the exact region bytes a wire buffer will need. The
    caller owns the allocation — generated load code allocates nothing. */
-static SCHEMA_UNUSED int64_t ListNodeLoadMeasure( const uint8_t * wire, int64_t wire_bytes )
+static SCHEMA_UNUSED int64_t list_node_load_measure( const uint8_t * wire, int64_t wire_bytes )
 {
     TableReport ignored;
     TableReader r;
     int64_t below;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( wire, wire_bytes, &ignored );
-    below = ListNodeLoadMeasureBody( &r, 1 );
+    r = table_reader_make( wire, wire_bytes, &ignored );
+    below = list_node_load_measure_body( &r, 1 );
     if ( below < 0 ) { below = 0; }
-    return TableAlignUp64( (int64_t) sizeof( ListNode ) ) + below;
+    return table_align_up64( (int64_t) sizeof( ListNode ) ) + below;
 }
 
-/* ListNodeLoad: decode the tolerant wire into the caller's exact-sized region and
+/* list_node_load: decode the tolerant wire into the caller's exact-sized region and
    return the root. Partial results are kept, as everywhere on this wire —
    the report says what happened. NULL means the CALLER's buffer was wrong. */
-static SCHEMA_UNUSED const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED const ListNode * list_node_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4015,18 +4015,18 @@ static SCHEMA_UNUSED const ListNode * ListNodeLoad( uint8_t * region, int64_t re
     memset( region, 0, (size_t) region_bytes );
     region_sink.base = region;
     region_sink.capacity = region_bytes;
-    region_sink.used = TableAlignUp64( (int64_t) sizeof( ListNode ) );
+    region_sink.used = table_align_up64( (int64_t) sizeof( ListNode ) );
     sink.region = &region_sink;
     sink.worker = NULL;
     root = (ListNode *) (void *) region;
-    r = TableReaderMake( wire, wire_bytes, out );
-    ListNodeLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    list_node_load_body( &r, &sink, root, 1 );
     return root;
 }
 
-/* ListNodeLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+/* list_node_load_builder: the TOOL's path — the same tolerant decode into a fresh
    builder, so loaded data can be edited and locked again. */
-static SCHEMA_UNUSED int ListNodeLoadBuilder( ListNodeBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED int list_node_load_builder( ListNodeBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4035,12 +4035,12 @@ static SCHEMA_UNUSED int ListNodeLoadBuilder( ListNodeBuilder * builder, const u
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
     out = report != NULL ? report : &ignored;
-    root = ListNodeBuilderRoot( builder );
+    root = list_node_builder_root( builder );
     if ( root == NULL ) { out->malformed = 1; return 0; }
     sink.region = NULL;
     sink.worker = &builder->main;
-    r = TableReaderMake( wire, wire_bytes, out );
-    return ListNodeLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    return list_node_load_body( &r, &sink, root, 1 );
 }
 
 /* ---- TreeNode: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -4062,51 +4062,51 @@ typedef struct TreeNodeBuilder
     TableArena arena;
     TableWorker main;       /* the calling thread's allocation front */
     TableRef root_ref;
-    uint8_t * region;       /* the packed const form, produced by TreeNodeBuilderLock */
+    uint8_t * region;       /* the packed const form, produced by tree_node_builder_lock */
     int64_t region_bytes;
 } TreeNodeBuilder;
 
 /* Allocate a node in THIS thread's front: no lock, no atomic per node. One
    worker per thread; allocate on your own, and synchronize your own writes
    to nodes another worker allocated (§6.4). */
-static SCHEMA_UNUSED int TreeNodeBuilderInit( TreeNodeBuilder * builder )
+static SCHEMA_UNUSED int tree_node_builder_init( TreeNodeBuilder * builder )
 {
     uint32_t at;
-    TableArenaInit( &builder->arena );
-    builder->main = TableWorkerMake( &builder->arena );
+    table_arena_init( &builder->arena );
+    builder->main = table_worker_make( &builder->arena );
     builder->root_ref.value = 0;
     builder->region = NULL;
     builder->region_bytes = 0;
     /* the ROOT is allocated like any node and is not a pointer target, so
-       it takes the arena's untyped bump directly rather than an TreeNodeEmplace
+       it takes the arena's untyped bump directly rather than an tree_node_emplace
        that only a pointed-at table has */
-    at = TableWorkerBump( &builder->main, (uint32_t) sizeof( TreeNode ) );
+    at = table_worker_bump( &builder->main, (uint32_t) sizeof( TreeNode ) );
     if ( at == kTableAllocFailed ) { return 0; }
     builder->root_ref.value = (int64_t) at;
-    TreeNodeReset( (TreeNode *) (void *) TableArenaAt( &builder->arena, at ) );
+    tree_node_reset( (TreeNode *) (void *) table_arena_at( &builder->arena, at ) );
     return 1;
 }
 
-static SCHEMA_UNUSED void TreeNodeBuilderShutdown( TreeNodeBuilder * builder )
+static SCHEMA_UNUSED void tree_node_builder_shutdown( TreeNodeBuilder * builder )
 {
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     free( builder->region );
     builder->region = NULL;
     builder->region_bytes = 0;
 }
 
 /* The mutable root, or NULL once the builder is locked. */
-static SCHEMA_UNUSED TreeNode * TreeNodeBuilderRoot( TreeNodeBuilder * builder )
+static SCHEMA_UNUSED TreeNode * tree_node_builder_root( TreeNodeBuilder * builder )
 {
     if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }
-    return (TreeNode *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
+    return (TreeNode *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
 }
 
 /* Lock is ONE WAY and it is the compaction: the segmented arena becomes one
    exact-packed region with zero slack, references rewritten self-relative,
    and the mutable life released. Single-threaded: call it after the workers
    have joined. The region comes back in builder->region. */
-static SCHEMA_UNUSED int TreeNodeBuilderLock( TreeNodeBuilder * builder )
+static SCHEMA_UNUSED int tree_node_builder_lock( TreeNodeBuilder * builder )
 {
     TableCtx ctx;
     const TreeNode * root;
@@ -4115,15 +4115,15 @@ static SCHEMA_UNUSED int TreeNodeBuilderLock( TreeNodeBuilder * builder )
     if ( builder->arena.locked ) { return builder->region != NULL; }
     if ( builder->root_ref.value == 0 ) { return 0; }
     ctx.arena = &builder->arena;
-    root = (const TreeNode *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
-    below = TreeNodePackMeasure( &ctx, root, 1 );
+    root = (const TreeNode *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
+    below = tree_node_pack_measure( &ctx, root, 1 );
     if ( below < 0 ) { return 0; } /* a data cycle, or a chain past kTableMaxDepth */
-    total = TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + below;
+    total = table_align_up64( (int64_t) sizeof( TreeNode ) ) + below;
     packed = (uint8_t *) malloc( (size_t) total ); /* the AUTHORING path may allocate */
     if ( packed == NULL ) { return 0; }
     memset( packed, 0, (size_t) total );
-    used = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-    if ( !TreeNodePack( &ctx, root, (TreeNode *) (void *) packed, packed, total, &used, 1 ) || used != total )
+    used = table_align_up64( (int64_t) sizeof( TreeNode ) );
+    if ( !tree_node_pack( &ctx, root, (TreeNode *) (void *) packed, packed, total, &used, 1 ) || used != total )
     {
         free( packed );
         return 0;
@@ -4131,7 +4131,7 @@ static SCHEMA_UNUSED int TreeNodeBuilderLock( TreeNodeBuilder * builder )
     builder->region = packed;
     builder->region_bytes = total;
     builder->arena.locked = 1; /* MONOTONIC: there is no unlock */
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     return 1;
 }
 
@@ -4141,38 +4141,38 @@ static SCHEMA_UNUSED int TreeNodeBuilderLock( TreeNodeBuilder * builder )
    arena, is a packed REGION — what Lock and Load produce — and a ctx naming
    a builder's arena is the mutable form. C++ spells the two as overloads;
    one parameter says the same thing here. */
-static SCHEMA_UNUSED int64_t TreeNodeMeasure( const TableCtx * ctx, const TreeNode * root )
+static SCHEMA_UNUSED int64_t tree_node_measure( const TableCtx * ctx, const TreeNode * root )
 {
-    return root != NULL ? TreeNodeMeasureBody( ctx, root, 1 ) : -1;
+    return root != NULL ? tree_node_measure_body( ctx, root, 1 ) : -1;
 }
 
-static SCHEMA_UNUSED int64_t TreeNodeSave( const TableCtx * ctx, const TreeNode * root, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t tree_node_save( const TableCtx * ctx, const TreeNode * root, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     if ( root == NULL ) { return -1; }
-    w = TableWriterMake( buffer, capacity );
-    if ( !TreeNodeSaveBody( ctx, &w, root, 1 ) ) { return -1; }
-    return w.offset; /* == TreeNodeMeasure( ctx, root ) */
+    w = table_writer_make( buffer, capacity );
+    if ( !tree_node_save_body( ctx, &w, root, 1 ) ) { return -1; }
+    return w.offset; /* == tree_node_measure( ctx, root ) */
 }
 
-/* TreeNodeLoadMeasure: the exact region bytes a wire buffer will need. The
+/* tree_node_load_measure: the exact region bytes a wire buffer will need. The
    caller owns the allocation — generated load code allocates nothing. */
-static SCHEMA_UNUSED int64_t TreeNodeLoadMeasure( const uint8_t * wire, int64_t wire_bytes )
+static SCHEMA_UNUSED int64_t tree_node_load_measure( const uint8_t * wire, int64_t wire_bytes )
 {
     TableReport ignored;
     TableReader r;
     int64_t below;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( wire, wire_bytes, &ignored );
-    below = TreeNodeLoadMeasureBody( &r, 1 );
+    r = table_reader_make( wire, wire_bytes, &ignored );
+    below = tree_node_load_measure_body( &r, 1 );
     if ( below < 0 ) { below = 0; }
-    return TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + below;
+    return table_align_up64( (int64_t) sizeof( TreeNode ) ) + below;
 }
 
-/* TreeNodeLoad: decode the tolerant wire into the caller's exact-sized region and
+/* tree_node_load: decode the tolerant wire into the caller's exact-sized region and
    return the root. Partial results are kept, as everywhere on this wire —
    the report says what happened. NULL means the CALLER's buffer was wrong. */
-static SCHEMA_UNUSED const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED const TreeNode * tree_node_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4187,18 +4187,18 @@ static SCHEMA_UNUSED const TreeNode * TreeNodeLoad( uint8_t * region, int64_t re
     memset( region, 0, (size_t) region_bytes );
     region_sink.base = region;
     region_sink.capacity = region_bytes;
-    region_sink.used = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
+    region_sink.used = table_align_up64( (int64_t) sizeof( TreeNode ) );
     sink.region = &region_sink;
     sink.worker = NULL;
     root = (TreeNode *) (void *) region;
-    r = TableReaderMake( wire, wire_bytes, out );
-    TreeNodeLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    tree_node_load_body( &r, &sink, root, 1 );
     return root;
 }
 
-/* TreeNodeLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+/* tree_node_load_builder: the TOOL's path — the same tolerant decode into a fresh
    builder, so loaded data can be edited and locked again. */
-static SCHEMA_UNUSED int TreeNodeLoadBuilder( TreeNodeBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED int tree_node_load_builder( TreeNodeBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4207,12 +4207,12 @@ static SCHEMA_UNUSED int TreeNodeLoadBuilder( TreeNodeBuilder * builder, const u
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
     out = report != NULL ? report : &ignored;
-    root = TreeNodeBuilderRoot( builder );
+    root = tree_node_builder_root( builder );
     if ( root == NULL ) { out->malformed = 1; return 0; }
     sink.region = NULL;
     sink.worker = &builder->main;
-    r = TableReaderMake( wire, wire_bytes, out );
-    return TreeNodeLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    return tree_node_load_body( &r, &sink, root, 1 );
 }
 
 /* ---- Layer: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -4234,51 +4234,51 @@ typedef struct LayerBuilder
     TableArena arena;
     TableWorker main;       /* the calling thread's allocation front */
     TableRef root_ref;
-    uint8_t * region;       /* the packed const form, produced by LayerBuilderLock */
+    uint8_t * region;       /* the packed const form, produced by layer_builder_lock */
     int64_t region_bytes;
 } LayerBuilder;
 
 /* Allocate a node in THIS thread's front: no lock, no atomic per node. One
    worker per thread; allocate on your own, and synchronize your own writes
    to nodes another worker allocated (§6.4). */
-static SCHEMA_UNUSED int LayerBuilderInit( LayerBuilder * builder )
+static SCHEMA_UNUSED int layer_builder_init( LayerBuilder * builder )
 {
     uint32_t at;
-    TableArenaInit( &builder->arena );
-    builder->main = TableWorkerMake( &builder->arena );
+    table_arena_init( &builder->arena );
+    builder->main = table_worker_make( &builder->arena );
     builder->root_ref.value = 0;
     builder->region = NULL;
     builder->region_bytes = 0;
     /* the ROOT is allocated like any node and is not a pointer target, so
-       it takes the arena's untyped bump directly rather than an LayerEmplace
+       it takes the arena's untyped bump directly rather than an layer_emplace
        that only a pointed-at table has */
-    at = TableWorkerBump( &builder->main, (uint32_t) sizeof( Layer ) );
+    at = table_worker_bump( &builder->main, (uint32_t) sizeof( Layer ) );
     if ( at == kTableAllocFailed ) { return 0; }
     builder->root_ref.value = (int64_t) at;
-    LayerReset( (Layer *) (void *) TableArenaAt( &builder->arena, at ) );
+    layer_reset( (Layer *) (void *) table_arena_at( &builder->arena, at ) );
     return 1;
 }
 
-static SCHEMA_UNUSED void LayerBuilderShutdown( LayerBuilder * builder )
+static SCHEMA_UNUSED void layer_builder_shutdown( LayerBuilder * builder )
 {
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     free( builder->region );
     builder->region = NULL;
     builder->region_bytes = 0;
 }
 
 /* The mutable root, or NULL once the builder is locked. */
-static SCHEMA_UNUSED Layer * LayerBuilderRoot( LayerBuilder * builder )
+static SCHEMA_UNUSED Layer * layer_builder_root( LayerBuilder * builder )
 {
     if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }
-    return (Layer *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
+    return (Layer *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
 }
 
 /* Lock is ONE WAY and it is the compaction: the segmented arena becomes one
    exact-packed region with zero slack, references rewritten self-relative,
    and the mutable life released. Single-threaded: call it after the workers
    have joined. The region comes back in builder->region. */
-static SCHEMA_UNUSED int LayerBuilderLock( LayerBuilder * builder )
+static SCHEMA_UNUSED int layer_builder_lock( LayerBuilder * builder )
 {
     TableCtx ctx;
     const Layer * root;
@@ -4287,15 +4287,15 @@ static SCHEMA_UNUSED int LayerBuilderLock( LayerBuilder * builder )
     if ( builder->arena.locked ) { return builder->region != NULL; }
     if ( builder->root_ref.value == 0 ) { return 0; }
     ctx.arena = &builder->arena;
-    root = (const Layer *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
-    below = LayerPackMeasure( &ctx, root, 1 );
+    root = (const Layer *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
+    below = layer_pack_measure( &ctx, root, 1 );
     if ( below < 0 ) { return 0; } /* a data cycle, or a chain past kTableMaxDepth */
-    total = TableAlignUp64( (int64_t) sizeof( Layer ) ) + below;
+    total = table_align_up64( (int64_t) sizeof( Layer ) ) + below;
     packed = (uint8_t *) malloc( (size_t) total ); /* the AUTHORING path may allocate */
     if ( packed == NULL ) { return 0; }
     memset( packed, 0, (size_t) total );
-    used = TableAlignUp64( (int64_t) sizeof( Layer ) );
-    if ( !LayerPack( &ctx, root, (Layer *) (void *) packed, packed, total, &used, 1 ) || used != total )
+    used = table_align_up64( (int64_t) sizeof( Layer ) );
+    if ( !layer_pack( &ctx, root, (Layer *) (void *) packed, packed, total, &used, 1 ) || used != total )
     {
         free( packed );
         return 0;
@@ -4303,7 +4303,7 @@ static SCHEMA_UNUSED int LayerBuilderLock( LayerBuilder * builder )
     builder->region = packed;
     builder->region_bytes = total;
     builder->arena.locked = 1; /* MONOTONIC: there is no unlock */
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     return 1;
 }
 
@@ -4313,38 +4313,38 @@ static SCHEMA_UNUSED int LayerBuilderLock( LayerBuilder * builder )
    arena, is a packed REGION — what Lock and Load produce — and a ctx naming
    a builder's arena is the mutable form. C++ spells the two as overloads;
    one parameter says the same thing here. */
-static SCHEMA_UNUSED int64_t LayerMeasure( const TableCtx * ctx, const Layer * root )
+static SCHEMA_UNUSED int64_t layer_measure( const TableCtx * ctx, const Layer * root )
 {
-    return root != NULL ? LayerMeasureBody( ctx, root, 1 ) : -1;
+    return root != NULL ? layer_measure_body( ctx, root, 1 ) : -1;
 }
 
-static SCHEMA_UNUSED int64_t LayerSave( const TableCtx * ctx, const Layer * root, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t layer_save( const TableCtx * ctx, const Layer * root, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     if ( root == NULL ) { return -1; }
-    w = TableWriterMake( buffer, capacity );
-    if ( !LayerSaveBody( ctx, &w, root, 1 ) ) { return -1; }
-    return w.offset; /* == LayerMeasure( ctx, root ) */
+    w = table_writer_make( buffer, capacity );
+    if ( !layer_save_body( ctx, &w, root, 1 ) ) { return -1; }
+    return w.offset; /* == layer_measure( ctx, root ) */
 }
 
-/* LayerLoadMeasure: the exact region bytes a wire buffer will need. The
+/* layer_load_measure: the exact region bytes a wire buffer will need. The
    caller owns the allocation — generated load code allocates nothing. */
-static SCHEMA_UNUSED int64_t LayerLoadMeasure( const uint8_t * wire, int64_t wire_bytes )
+static SCHEMA_UNUSED int64_t layer_load_measure( const uint8_t * wire, int64_t wire_bytes )
 {
     TableReport ignored;
     TableReader r;
     int64_t below;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( wire, wire_bytes, &ignored );
-    below = LayerLoadMeasureBody( &r, 1 );
+    r = table_reader_make( wire, wire_bytes, &ignored );
+    below = layer_load_measure_body( &r, 1 );
     if ( below < 0 ) { below = 0; }
-    return TableAlignUp64( (int64_t) sizeof( Layer ) ) + below;
+    return table_align_up64( (int64_t) sizeof( Layer ) ) + below;
 }
 
-/* LayerLoad: decode the tolerant wire into the caller's exact-sized region and
+/* layer_load: decode the tolerant wire into the caller's exact-sized region and
    return the root. Partial results are kept, as everywhere on this wire —
    the report says what happened. NULL means the CALLER's buffer was wrong. */
-static SCHEMA_UNUSED const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED const Layer * layer_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4359,18 +4359,18 @@ static SCHEMA_UNUSED const Layer * LayerLoad( uint8_t * region, int64_t region_b
     memset( region, 0, (size_t) region_bytes );
     region_sink.base = region;
     region_sink.capacity = region_bytes;
-    region_sink.used = TableAlignUp64( (int64_t) sizeof( Layer ) );
+    region_sink.used = table_align_up64( (int64_t) sizeof( Layer ) );
     sink.region = &region_sink;
     sink.worker = NULL;
     root = (Layer *) (void *) region;
-    r = TableReaderMake( wire, wire_bytes, out );
-    LayerLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    layer_load_body( &r, &sink, root, 1 );
     return root;
 }
 
-/* LayerLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+/* layer_load_builder: the TOOL's path — the same tolerant decode into a fresh
    builder, so loaded data can be edited and locked again. */
-static SCHEMA_UNUSED int LayerLoadBuilder( LayerBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED int layer_load_builder( LayerBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4379,12 +4379,12 @@ static SCHEMA_UNUSED int LayerLoadBuilder( LayerBuilder * builder, const uint8_t
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
     out = report != NULL ? report : &ignored;
-    root = LayerBuilderRoot( builder );
+    root = layer_builder_root( builder );
     if ( root == NULL ) { out->malformed = 1; return 0; }
     sink.region = NULL;
     sink.worker = &builder->main;
-    r = TableReaderMake( wire, wire_bytes, out );
-    return LayerLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    return layer_load_body( &r, &sink, root, 1 );
 }
 
 /* ---- Scene: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -4406,51 +4406,51 @@ typedef struct SceneBuilder
     TableArena arena;
     TableWorker main;       /* the calling thread's allocation front */
     TableRef root_ref;
-    uint8_t * region;       /* the packed const form, produced by SceneBuilderLock */
+    uint8_t * region;       /* the packed const form, produced by scene_builder_lock */
     int64_t region_bytes;
 } SceneBuilder;
 
 /* Allocate a node in THIS thread's front: no lock, no atomic per node. One
    worker per thread; allocate on your own, and synchronize your own writes
    to nodes another worker allocated (§6.4). */
-static SCHEMA_UNUSED int SceneBuilderInit( SceneBuilder * builder )
+static SCHEMA_UNUSED int scene_builder_init( SceneBuilder * builder )
 {
     uint32_t at;
-    TableArenaInit( &builder->arena );
-    builder->main = TableWorkerMake( &builder->arena );
+    table_arena_init( &builder->arena );
+    builder->main = table_worker_make( &builder->arena );
     builder->root_ref.value = 0;
     builder->region = NULL;
     builder->region_bytes = 0;
     /* the ROOT is allocated like any node and is not a pointer target, so
-       it takes the arena's untyped bump directly rather than an SceneEmplace
+       it takes the arena's untyped bump directly rather than an scene_emplace
        that only a pointed-at table has */
-    at = TableWorkerBump( &builder->main, (uint32_t) sizeof( Scene ) );
+    at = table_worker_bump( &builder->main, (uint32_t) sizeof( Scene ) );
     if ( at == kTableAllocFailed ) { return 0; }
     builder->root_ref.value = (int64_t) at;
-    SceneReset( (Scene *) (void *) TableArenaAt( &builder->arena, at ) );
+    scene_reset( (Scene *) (void *) table_arena_at( &builder->arena, at ) );
     return 1;
 }
 
-static SCHEMA_UNUSED void SceneBuilderShutdown( SceneBuilder * builder )
+static SCHEMA_UNUSED void scene_builder_shutdown( SceneBuilder * builder )
 {
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     free( builder->region );
     builder->region = NULL;
     builder->region_bytes = 0;
 }
 
 /* The mutable root, or NULL once the builder is locked. */
-static SCHEMA_UNUSED Scene * SceneBuilderRoot( SceneBuilder * builder )
+static SCHEMA_UNUSED Scene * scene_builder_root( SceneBuilder * builder )
 {
     if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }
-    return (Scene *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
+    return (Scene *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
 }
 
 /* Lock is ONE WAY and it is the compaction: the segmented arena becomes one
    exact-packed region with zero slack, references rewritten self-relative,
    and the mutable life released. Single-threaded: call it after the workers
    have joined. The region comes back in builder->region. */
-static SCHEMA_UNUSED int SceneBuilderLock( SceneBuilder * builder )
+static SCHEMA_UNUSED int scene_builder_lock( SceneBuilder * builder )
 {
     TableCtx ctx;
     const Scene * root;
@@ -4459,15 +4459,15 @@ static SCHEMA_UNUSED int SceneBuilderLock( SceneBuilder * builder )
     if ( builder->arena.locked ) { return builder->region != NULL; }
     if ( builder->root_ref.value == 0 ) { return 0; }
     ctx.arena = &builder->arena;
-    root = (const Scene *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
-    below = ScenePackMeasure( &ctx, root, 1 );
+    root = (const Scene *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
+    below = scene_pack_measure( &ctx, root, 1 );
     if ( below < 0 ) { return 0; } /* a data cycle, or a chain past kTableMaxDepth */
-    total = TableAlignUp64( (int64_t) sizeof( Scene ) ) + below;
+    total = table_align_up64( (int64_t) sizeof( Scene ) ) + below;
     packed = (uint8_t *) malloc( (size_t) total ); /* the AUTHORING path may allocate */
     if ( packed == NULL ) { return 0; }
     memset( packed, 0, (size_t) total );
-    used = TableAlignUp64( (int64_t) sizeof( Scene ) );
-    if ( !ScenePack( &ctx, root, (Scene *) (void *) packed, packed, total, &used, 1 ) || used != total )
+    used = table_align_up64( (int64_t) sizeof( Scene ) );
+    if ( !scene_pack( &ctx, root, (Scene *) (void *) packed, packed, total, &used, 1 ) || used != total )
     {
         free( packed );
         return 0;
@@ -4475,7 +4475,7 @@ static SCHEMA_UNUSED int SceneBuilderLock( SceneBuilder * builder )
     builder->region = packed;
     builder->region_bytes = total;
     builder->arena.locked = 1; /* MONOTONIC: there is no unlock */
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     return 1;
 }
 
@@ -4485,38 +4485,38 @@ static SCHEMA_UNUSED int SceneBuilderLock( SceneBuilder * builder )
    arena, is a packed REGION — what Lock and Load produce — and a ctx naming
    a builder's arena is the mutable form. C++ spells the two as overloads;
    one parameter says the same thing here. */
-static SCHEMA_UNUSED int64_t SceneMeasure( const TableCtx * ctx, const Scene * root )
+static SCHEMA_UNUSED int64_t scene_measure( const TableCtx * ctx, const Scene * root )
 {
-    return root != NULL ? SceneMeasureBody( ctx, root, 1 ) : -1;
+    return root != NULL ? scene_measure_body( ctx, root, 1 ) : -1;
 }
 
-static SCHEMA_UNUSED int64_t SceneSave( const TableCtx * ctx, const Scene * root, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t scene_save( const TableCtx * ctx, const Scene * root, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     if ( root == NULL ) { return -1; }
-    w = TableWriterMake( buffer, capacity );
-    if ( !SceneSaveBody( ctx, &w, root, 1 ) ) { return -1; }
-    return w.offset; /* == SceneMeasure( ctx, root ) */
+    w = table_writer_make( buffer, capacity );
+    if ( !scene_save_body( ctx, &w, root, 1 ) ) { return -1; }
+    return w.offset; /* == scene_measure( ctx, root ) */
 }
 
-/* SceneLoadMeasure: the exact region bytes a wire buffer will need. The
+/* scene_load_measure: the exact region bytes a wire buffer will need. The
    caller owns the allocation — generated load code allocates nothing. */
-static SCHEMA_UNUSED int64_t SceneLoadMeasure( const uint8_t * wire, int64_t wire_bytes )
+static SCHEMA_UNUSED int64_t scene_load_measure( const uint8_t * wire, int64_t wire_bytes )
 {
     TableReport ignored;
     TableReader r;
     int64_t below;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( wire, wire_bytes, &ignored );
-    below = SceneLoadMeasureBody( &r, 1 );
+    r = table_reader_make( wire, wire_bytes, &ignored );
+    below = scene_load_measure_body( &r, 1 );
     if ( below < 0 ) { below = 0; }
-    return TableAlignUp64( (int64_t) sizeof( Scene ) ) + below;
+    return table_align_up64( (int64_t) sizeof( Scene ) ) + below;
 }
 
-/* SceneLoad: decode the tolerant wire into the caller's exact-sized region and
+/* scene_load: decode the tolerant wire into the caller's exact-sized region and
    return the root. Partial results are kept, as everywhere on this wire —
    the report says what happened. NULL means the CALLER's buffer was wrong. */
-static SCHEMA_UNUSED const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED const Scene * scene_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4531,18 +4531,18 @@ static SCHEMA_UNUSED const Scene * SceneLoad( uint8_t * region, int64_t region_b
     memset( region, 0, (size_t) region_bytes );
     region_sink.base = region;
     region_sink.capacity = region_bytes;
-    region_sink.used = TableAlignUp64( (int64_t) sizeof( Scene ) );
+    region_sink.used = table_align_up64( (int64_t) sizeof( Scene ) );
     sink.region = &region_sink;
     sink.worker = NULL;
     root = (Scene *) (void *) region;
-    r = TableReaderMake( wire, wire_bytes, out );
-    SceneLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    scene_load_body( &r, &sink, root, 1 );
     return root;
 }
 
-/* SceneLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+/* scene_load_builder: the TOOL's path — the same tolerant decode into a fresh
    builder, so loaded data can be edited and locked again. */
-static SCHEMA_UNUSED int SceneLoadBuilder( SceneBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED int scene_load_builder( SceneBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4551,12 +4551,12 @@ static SCHEMA_UNUSED int SceneLoadBuilder( SceneBuilder * builder, const uint8_t
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
     out = report != NULL ? report : &ignored;
-    root = SceneBuilderRoot( builder );
+    root = scene_builder_root( builder );
     if ( root == NULL ) { out->malformed = 1; return 0; }
     sink.region = NULL;
     sink.worker = &builder->main;
-    r = TableReaderMake( wire, wire_bytes, out );
-    return SceneLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    return scene_load_body( &r, &sink, root, 1 );
 }
 
 /* ---- Depot: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -4578,51 +4578,51 @@ typedef struct DepotBuilder
     TableArena arena;
     TableWorker main;       /* the calling thread's allocation front */
     TableRef root_ref;
-    uint8_t * region;       /* the packed const form, produced by DepotBuilderLock */
+    uint8_t * region;       /* the packed const form, produced by depot_builder_lock */
     int64_t region_bytes;
 } DepotBuilder;
 
 /* Allocate a node in THIS thread's front: no lock, no atomic per node. One
    worker per thread; allocate on your own, and synchronize your own writes
    to nodes another worker allocated (§6.4). */
-static SCHEMA_UNUSED int DepotBuilderInit( DepotBuilder * builder )
+static SCHEMA_UNUSED int depot_builder_init( DepotBuilder * builder )
 {
     uint32_t at;
-    TableArenaInit( &builder->arena );
-    builder->main = TableWorkerMake( &builder->arena );
+    table_arena_init( &builder->arena );
+    builder->main = table_worker_make( &builder->arena );
     builder->root_ref.value = 0;
     builder->region = NULL;
     builder->region_bytes = 0;
     /* the ROOT is allocated like any node and is not a pointer target, so
-       it takes the arena's untyped bump directly rather than an DepotEmplace
+       it takes the arena's untyped bump directly rather than an depot_emplace
        that only a pointed-at table has */
-    at = TableWorkerBump( &builder->main, (uint32_t) sizeof( Depot ) );
+    at = table_worker_bump( &builder->main, (uint32_t) sizeof( Depot ) );
     if ( at == kTableAllocFailed ) { return 0; }
     builder->root_ref.value = (int64_t) at;
-    DepotReset( (Depot *) (void *) TableArenaAt( &builder->arena, at ) );
+    depot_reset( (Depot *) (void *) table_arena_at( &builder->arena, at ) );
     return 1;
 }
 
-static SCHEMA_UNUSED void DepotBuilderShutdown( DepotBuilder * builder )
+static SCHEMA_UNUSED void depot_builder_shutdown( DepotBuilder * builder )
 {
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     free( builder->region );
     builder->region = NULL;
     builder->region_bytes = 0;
 }
 
 /* The mutable root, or NULL once the builder is locked. */
-static SCHEMA_UNUSED Depot * DepotBuilderRoot( DepotBuilder * builder )
+static SCHEMA_UNUSED Depot * depot_builder_root( DepotBuilder * builder )
 {
     if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }
-    return (Depot *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
+    return (Depot *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
 }
 
 /* Lock is ONE WAY and it is the compaction: the segmented arena becomes one
    exact-packed region with zero slack, references rewritten self-relative,
    and the mutable life released. Single-threaded: call it after the workers
    have joined. The region comes back in builder->region. */
-static SCHEMA_UNUSED int DepotBuilderLock( DepotBuilder * builder )
+static SCHEMA_UNUSED int depot_builder_lock( DepotBuilder * builder )
 {
     TableCtx ctx;
     const Depot * root;
@@ -4631,15 +4631,15 @@ static SCHEMA_UNUSED int DepotBuilderLock( DepotBuilder * builder )
     if ( builder->arena.locked ) { return builder->region != NULL; }
     if ( builder->root_ref.value == 0 ) { return 0; }
     ctx.arena = &builder->arena;
-    root = (const Depot *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
-    below = DepotPackMeasure( &ctx, root, 1 );
+    root = (const Depot *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
+    below = depot_pack_measure( &ctx, root, 1 );
     if ( below < 0 ) { return 0; } /* a data cycle, or a chain past kTableMaxDepth */
-    total = TableAlignUp64( (int64_t) sizeof( Depot ) ) + below;
+    total = table_align_up64( (int64_t) sizeof( Depot ) ) + below;
     packed = (uint8_t *) malloc( (size_t) total ); /* the AUTHORING path may allocate */
     if ( packed == NULL ) { return 0; }
     memset( packed, 0, (size_t) total );
-    used = TableAlignUp64( (int64_t) sizeof( Depot ) );
-    if ( !DepotPack( &ctx, root, (Depot *) (void *) packed, packed, total, &used, 1 ) || used != total )
+    used = table_align_up64( (int64_t) sizeof( Depot ) );
+    if ( !depot_pack( &ctx, root, (Depot *) (void *) packed, packed, total, &used, 1 ) || used != total )
     {
         free( packed );
         return 0;
@@ -4647,7 +4647,7 @@ static SCHEMA_UNUSED int DepotBuilderLock( DepotBuilder * builder )
     builder->region = packed;
     builder->region_bytes = total;
     builder->arena.locked = 1; /* MONOTONIC: there is no unlock */
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     return 1;
 }
 
@@ -4657,38 +4657,38 @@ static SCHEMA_UNUSED int DepotBuilderLock( DepotBuilder * builder )
    arena, is a packed REGION — what Lock and Load produce — and a ctx naming
    a builder's arena is the mutable form. C++ spells the two as overloads;
    one parameter says the same thing here. */
-static SCHEMA_UNUSED int64_t DepotMeasure( const TableCtx * ctx, const Depot * root )
+static SCHEMA_UNUSED int64_t depot_measure( const TableCtx * ctx, const Depot * root )
 {
-    return root != NULL ? DepotMeasureBody( ctx, root, 1 ) : -1;
+    return root != NULL ? depot_measure_body( ctx, root, 1 ) : -1;
 }
 
-static SCHEMA_UNUSED int64_t DepotSave( const TableCtx * ctx, const Depot * root, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t depot_save( const TableCtx * ctx, const Depot * root, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     if ( root == NULL ) { return -1; }
-    w = TableWriterMake( buffer, capacity );
-    if ( !DepotSaveBody( ctx, &w, root, 1 ) ) { return -1; }
-    return w.offset; /* == DepotMeasure( ctx, root ) */
+    w = table_writer_make( buffer, capacity );
+    if ( !depot_save_body( ctx, &w, root, 1 ) ) { return -1; }
+    return w.offset; /* == depot_measure( ctx, root ) */
 }
 
-/* DepotLoadMeasure: the exact region bytes a wire buffer will need. The
+/* depot_load_measure: the exact region bytes a wire buffer will need. The
    caller owns the allocation — generated load code allocates nothing. */
-static SCHEMA_UNUSED int64_t DepotLoadMeasure( const uint8_t * wire, int64_t wire_bytes )
+static SCHEMA_UNUSED int64_t depot_load_measure( const uint8_t * wire, int64_t wire_bytes )
 {
     TableReport ignored;
     TableReader r;
     int64_t below;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( wire, wire_bytes, &ignored );
-    below = DepotLoadMeasureBody( &r, 1 );
+    r = table_reader_make( wire, wire_bytes, &ignored );
+    below = depot_load_measure_body( &r, 1 );
     if ( below < 0 ) { below = 0; }
-    return TableAlignUp64( (int64_t) sizeof( Depot ) ) + below;
+    return table_align_up64( (int64_t) sizeof( Depot ) ) + below;
 }
 
-/* DepotLoad: decode the tolerant wire into the caller's exact-sized region and
+/* depot_load: decode the tolerant wire into the caller's exact-sized region and
    return the root. Partial results are kept, as everywhere on this wire —
    the report says what happened. NULL means the CALLER's buffer was wrong. */
-static SCHEMA_UNUSED const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED const Depot * depot_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4703,18 +4703,18 @@ static SCHEMA_UNUSED const Depot * DepotLoad( uint8_t * region, int64_t region_b
     memset( region, 0, (size_t) region_bytes );
     region_sink.base = region;
     region_sink.capacity = region_bytes;
-    region_sink.used = TableAlignUp64( (int64_t) sizeof( Depot ) );
+    region_sink.used = table_align_up64( (int64_t) sizeof( Depot ) );
     sink.region = &region_sink;
     sink.worker = NULL;
     root = (Depot *) (void *) region;
-    r = TableReaderMake( wire, wire_bytes, out );
-    DepotLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    depot_load_body( &r, &sink, root, 1 );
     return root;
 }
 
-/* DepotLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+/* depot_load_builder: the TOOL's path — the same tolerant decode into a fresh
    builder, so loaded data can be edited and locked again. */
-static SCHEMA_UNUSED int DepotLoadBuilder( DepotBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED int depot_load_builder( DepotBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4723,12 +4723,12 @@ static SCHEMA_UNUSED int DepotLoadBuilder( DepotBuilder * builder, const uint8_t
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
     out = report != NULL ? report : &ignored;
-    root = DepotBuilderRoot( builder );
+    root = depot_builder_root( builder );
     if ( root == NULL ) { out->malformed = 1; return 0; }
     sink.region = NULL;
     sink.worker = &builder->main;
-    r = TableReaderMake( wire, wire_bytes, out );
-    return DepotLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    return depot_load_body( &r, &sink, root, 1 );
 }
 
 /* ---- Album: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -4750,51 +4750,51 @@ typedef struct AlbumBuilder
     TableArena arena;
     TableWorker main;       /* the calling thread's allocation front */
     TableRef root_ref;
-    uint8_t * region;       /* the packed const form, produced by AlbumBuilderLock */
+    uint8_t * region;       /* the packed const form, produced by album_builder_lock */
     int64_t region_bytes;
 } AlbumBuilder;
 
 /* Allocate a node in THIS thread's front: no lock, no atomic per node. One
    worker per thread; allocate on your own, and synchronize your own writes
    to nodes another worker allocated (§6.4). */
-static SCHEMA_UNUSED int AlbumBuilderInit( AlbumBuilder * builder )
+static SCHEMA_UNUSED int album_builder_init( AlbumBuilder * builder )
 {
     uint32_t at;
-    TableArenaInit( &builder->arena );
-    builder->main = TableWorkerMake( &builder->arena );
+    table_arena_init( &builder->arena );
+    builder->main = table_worker_make( &builder->arena );
     builder->root_ref.value = 0;
     builder->region = NULL;
     builder->region_bytes = 0;
     /* the ROOT is allocated like any node and is not a pointer target, so
-       it takes the arena's untyped bump directly rather than an AlbumEmplace
+       it takes the arena's untyped bump directly rather than an album_emplace
        that only a pointed-at table has */
-    at = TableWorkerBump( &builder->main, (uint32_t) sizeof( Album ) );
+    at = table_worker_bump( &builder->main, (uint32_t) sizeof( Album ) );
     if ( at == kTableAllocFailed ) { return 0; }
     builder->root_ref.value = (int64_t) at;
-    AlbumReset( (Album *) (void *) TableArenaAt( &builder->arena, at ) );
+    album_reset( (Album *) (void *) table_arena_at( &builder->arena, at ) );
     return 1;
 }
 
-static SCHEMA_UNUSED void AlbumBuilderShutdown( AlbumBuilder * builder )
+static SCHEMA_UNUSED void album_builder_shutdown( AlbumBuilder * builder )
 {
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     free( builder->region );
     builder->region = NULL;
     builder->region_bytes = 0;
 }
 
 /* The mutable root, or NULL once the builder is locked. */
-static SCHEMA_UNUSED Album * AlbumBuilderRoot( AlbumBuilder * builder )
+static SCHEMA_UNUSED Album * album_builder_root( AlbumBuilder * builder )
 {
     if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }
-    return (Album *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
+    return (Album *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
 }
 
 /* Lock is ONE WAY and it is the compaction: the segmented arena becomes one
    exact-packed region with zero slack, references rewritten self-relative,
    and the mutable life released. Single-threaded: call it after the workers
    have joined. The region comes back in builder->region. */
-static SCHEMA_UNUSED int AlbumBuilderLock( AlbumBuilder * builder )
+static SCHEMA_UNUSED int album_builder_lock( AlbumBuilder * builder )
 {
     TableCtx ctx;
     const Album * root;
@@ -4803,15 +4803,15 @@ static SCHEMA_UNUSED int AlbumBuilderLock( AlbumBuilder * builder )
     if ( builder->arena.locked ) { return builder->region != NULL; }
     if ( builder->root_ref.value == 0 ) { return 0; }
     ctx.arena = &builder->arena;
-    root = (const Album *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );
-    below = AlbumPackMeasure( &ctx, root, 1 );
+    root = (const Album *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
+    below = album_pack_measure( &ctx, root, 1 );
     if ( below < 0 ) { return 0; } /* a data cycle, or a chain past kTableMaxDepth */
-    total = TableAlignUp64( (int64_t) sizeof( Album ) ) + below;
+    total = table_align_up64( (int64_t) sizeof( Album ) ) + below;
     packed = (uint8_t *) malloc( (size_t) total ); /* the AUTHORING path may allocate */
     if ( packed == NULL ) { return 0; }
     memset( packed, 0, (size_t) total );
-    used = TableAlignUp64( (int64_t) sizeof( Album ) );
-    if ( !AlbumPack( &ctx, root, (Album *) (void *) packed, packed, total, &used, 1 ) || used != total )
+    used = table_align_up64( (int64_t) sizeof( Album ) );
+    if ( !album_pack( &ctx, root, (Album *) (void *) packed, packed, total, &used, 1 ) || used != total )
     {
         free( packed );
         return 0;
@@ -4819,7 +4819,7 @@ static SCHEMA_UNUSED int AlbumBuilderLock( AlbumBuilder * builder )
     builder->region = packed;
     builder->region_bytes = total;
     builder->arena.locked = 1; /* MONOTONIC: there is no unlock */
-    TableArenaShutdown( &builder->arena );
+    table_arena_shutdown( &builder->arena );
     return 1;
 }
 
@@ -4829,38 +4829,38 @@ static SCHEMA_UNUSED int AlbumBuilderLock( AlbumBuilder * builder )
    arena, is a packed REGION — what Lock and Load produce — and a ctx naming
    a builder's arena is the mutable form. C++ spells the two as overloads;
    one parameter says the same thing here. */
-static SCHEMA_UNUSED int64_t AlbumMeasure( const TableCtx * ctx, const Album * root )
+static SCHEMA_UNUSED int64_t album_measure( const TableCtx * ctx, const Album * root )
 {
-    return root != NULL ? AlbumMeasureBody( ctx, root, 1 ) : -1;
+    return root != NULL ? album_measure_body( ctx, root, 1 ) : -1;
 }
 
-static SCHEMA_UNUSED int64_t AlbumSave( const TableCtx * ctx, const Album * root, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t album_save( const TableCtx * ctx, const Album * root, uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     if ( root == NULL ) { return -1; }
-    w = TableWriterMake( buffer, capacity );
-    if ( !AlbumSaveBody( ctx, &w, root, 1 ) ) { return -1; }
-    return w.offset; /* == AlbumMeasure( ctx, root ) */
+    w = table_writer_make( buffer, capacity );
+    if ( !album_save_body( ctx, &w, root, 1 ) ) { return -1; }
+    return w.offset; /* == album_measure( ctx, root ) */
 }
 
-/* AlbumLoadMeasure: the exact region bytes a wire buffer will need. The
+/* album_load_measure: the exact region bytes a wire buffer will need. The
    caller owns the allocation — generated load code allocates nothing. */
-static SCHEMA_UNUSED int64_t AlbumLoadMeasure( const uint8_t * wire, int64_t wire_bytes )
+static SCHEMA_UNUSED int64_t album_load_measure( const uint8_t * wire, int64_t wire_bytes )
 {
     TableReport ignored;
     TableReader r;
     int64_t below;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( wire, wire_bytes, &ignored );
-    below = AlbumLoadMeasureBody( &r, 1 );
+    r = table_reader_make( wire, wire_bytes, &ignored );
+    below = album_load_measure_body( &r, 1 );
     if ( below < 0 ) { below = 0; }
-    return TableAlignUp64( (int64_t) sizeof( Album ) ) + below;
+    return table_align_up64( (int64_t) sizeof( Album ) ) + below;
 }
 
-/* AlbumLoad: decode the tolerant wire into the caller's exact-sized region and
+/* album_load: decode the tolerant wire into the caller's exact-sized region and
    return the root. Partial results are kept, as everywhere on this wire —
    the report says what happened. NULL means the CALLER's buffer was wrong. */
-static SCHEMA_UNUSED const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED const Album * album_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4875,18 +4875,18 @@ static SCHEMA_UNUSED const Album * AlbumLoad( uint8_t * region, int64_t region_b
     memset( region, 0, (size_t) region_bytes );
     region_sink.base = region;
     region_sink.capacity = region_bytes;
-    region_sink.used = TableAlignUp64( (int64_t) sizeof( Album ) );
+    region_sink.used = table_align_up64( (int64_t) sizeof( Album ) );
     sink.region = &region_sink;
     sink.worker = NULL;
     root = (Album *) (void *) region;
-    r = TableReaderMake( wire, wire_bytes, out );
-    AlbumLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    album_load_body( &r, &sink, root, 1 );
     return root;
 }
 
-/* AlbumLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
+/* album_load_builder: the TOOL's path — the same tolerant decode into a fresh
    builder, so loaded data can be edited and locked again. */
-static SCHEMA_UNUSED int AlbumLoadBuilder( AlbumBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
+static SCHEMA_UNUSED int album_load_builder( AlbumBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out;
@@ -4895,17 +4895,17 @@ static SCHEMA_UNUSED int AlbumLoadBuilder( AlbumBuilder * builder, const uint8_t
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
     out = report != NULL ? report : &ignored;
-    root = AlbumBuilderRoot( builder );
+    root = album_builder_root( builder );
     if ( root == NULL ) { out->malformed = 1; return 0; }
     sink.region = NULL;
     sink.worker = &builder->main;
-    r = TableReaderMake( wire, wire_bytes, out );
-    return AlbumLoadBody( &r, &sink, root, 1 );
+    r = table_reader_make( wire, wire_bytes, out );
+    return album_load_body( &r, &sink, root, 1 );
 }
 
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
-/* MetaOpen: match the header and POINT. On a match the bytes ARE what this
+/* meta_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4924,12 +4924,12 @@ static SCHEMA_UNUSED int AlbumLoadBuilder( AlbumBuilder * builder, const uint8_t
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const Meta * MetaOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const Meta * meta_open( const void * bytes, uint64_t length )
 {
-    return (const Meta *) TableCookOpen( bytes, length, (uint64_t) sizeof( Meta ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Meta ) );
+    return (const Meta *) table_cook_open( bytes, length, (uint64_t) sizeof( Meta ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Meta ) );
 }
 
-/* SettingsOpen: match the header and POINT. On a match the bytes ARE what this
+/* settings_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4948,12 +4948,12 @@ static SCHEMA_UNUSED const Meta * MetaOpen( const void * bytes, uint64_t length 
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const Settings * SettingsOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const Settings * settings_open( const void * bytes, uint64_t length )
 {
-    return (const Settings *) TableCookOpen( bytes, length, (uint64_t) sizeof( Settings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Settings ) );
+    return (const Settings *) table_cook_open( bytes, length, (uint64_t) sizeof( Settings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Settings ) );
 }
 
-/* ListNodeOpen: match the header and POINT. On a match the bytes ARE what this
+/* list_node_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4963,7 +4963,7 @@ static SCHEMA_UNUSED const Settings * SettingsOpen( const void * bytes, uint64_t
    megabyte cook and a one gigabyte cook open in the same time, and a mapped
    file's pages are touched only as they are used.
 
-   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH ListNodeAt with a NULL
+   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH list_node_at with a NULL
    context: the slot holds the signed self-relative byte delta of §6.3, so a
    deref is one add and needs no base pointer, a whole region relocates by
    plain memcpy, and a delta of zero is null.
@@ -4973,12 +4973,12 @@ static SCHEMA_UNUSED const Settings * SettingsOpen( const void * bytes, uint64_t
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const ListNode * ListNodeOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const ListNode * list_node_open( const void * bytes, uint64_t length )
 {
-    return (const ListNode *) TableCookOpen( bytes, length, (uint64_t) sizeof( ListNode ), (uint64_t) SCHEMA_TABLE_ALIGNOF( ListNode ) );
+    return (const ListNode *) table_cook_open( bytes, length, (uint64_t) sizeof( ListNode ), (uint64_t) SCHEMA_TABLE_ALIGNOF( ListNode ) );
 }
 
-/* TreeNodeOpen: match the header and POINT. On a match the bytes ARE what this
+/* tree_node_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -4988,7 +4988,7 @@ static SCHEMA_UNUSED const ListNode * ListNodeOpen( const void * bytes, uint64_t
    megabyte cook and a one gigabyte cook open in the same time, and a mapped
    file's pages are touched only as they are used.
 
-   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH TreeNodeAt with a NULL
+   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH tree_node_at with a NULL
    context: the slot holds the signed self-relative byte delta of §6.3, so a
    deref is one add and needs no base pointer, a whole region relocates by
    plain memcpy, and a delta of zero is null.
@@ -4998,12 +4998,12 @@ static SCHEMA_UNUSED const ListNode * ListNodeOpen( const void * bytes, uint64_t
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const TreeNode * TreeNodeOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const TreeNode * tree_node_open( const void * bytes, uint64_t length )
 {
-    return (const TreeNode *) TableCookOpen( bytes, length, (uint64_t) sizeof( TreeNode ), (uint64_t) SCHEMA_TABLE_ALIGNOF( TreeNode ) );
+    return (const TreeNode *) table_cook_open( bytes, length, (uint64_t) sizeof( TreeNode ), (uint64_t) SCHEMA_TABLE_ALIGNOF( TreeNode ) );
 }
 
-/* LayerOpen: match the header and POINT. On a match the bytes ARE what this
+/* layer_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -5013,7 +5013,7 @@ static SCHEMA_UNUSED const TreeNode * TreeNodeOpen( const void * bytes, uint64_t
    megabyte cook and a one gigabyte cook open in the same time, and a mapped
    file's pages are touched only as they are used.
 
-   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH LayerAt with a NULL
+   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH layer_at with a NULL
    context: the slot holds the signed self-relative byte delta of §6.3, so a
    deref is one add and needs no base pointer, a whole region relocates by
    plain memcpy, and a delta of zero is null.
@@ -5023,12 +5023,12 @@ static SCHEMA_UNUSED const TreeNode * TreeNodeOpen( const void * bytes, uint64_t
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const Layer * LayerOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const Layer * layer_open( const void * bytes, uint64_t length )
 {
-    return (const Layer *) TableCookOpen( bytes, length, (uint64_t) sizeof( Layer ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Layer ) );
+    return (const Layer *) table_cook_open( bytes, length, (uint64_t) sizeof( Layer ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Layer ) );
 }
 
-/* SceneOpen: match the header and POINT. On a match the bytes ARE what this
+/* scene_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -5038,7 +5038,7 @@ static SCHEMA_UNUSED const Layer * LayerOpen( const void * bytes, uint64_t lengt
    megabyte cook and a one gigabyte cook open in the same time, and a mapped
    file's pages are touched only as they are used.
 
-   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH SceneAt with a NULL
+   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH scene_at with a NULL
    context: the slot holds the signed self-relative byte delta of §6.3, so a
    deref is one add and needs no base pointer, a whole region relocates by
    plain memcpy, and a delta of zero is null.
@@ -5048,12 +5048,12 @@ static SCHEMA_UNUSED const Layer * LayerOpen( const void * bytes, uint64_t lengt
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const Scene * SceneOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const Scene * scene_open( const void * bytes, uint64_t length )
 {
-    return (const Scene *) TableCookOpen( bytes, length, (uint64_t) sizeof( Scene ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Scene ) );
+    return (const Scene *) table_cook_open( bytes, length, (uint64_t) sizeof( Scene ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Scene ) );
 }
 
-/* DepotOpen: match the header and POINT. On a match the bytes ARE what this
+/* depot_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -5063,7 +5063,7 @@ static SCHEMA_UNUSED const Scene * SceneOpen( const void * bytes, uint64_t lengt
    megabyte cook and a one gigabyte cook open in the same time, and a mapped
    file's pages are touched only as they are used.
 
-   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH DepotAt with a NULL
+   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH depot_at with a NULL
    context: the slot holds the signed self-relative byte delta of §6.3, so a
    deref is one add and needs no base pointer, a whole region relocates by
    plain memcpy, and a delta of zero is null.
@@ -5073,12 +5073,12 @@ static SCHEMA_UNUSED const Scene * SceneOpen( const void * bytes, uint64_t lengt
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const Depot * DepotOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const Depot * depot_open( const void * bytes, uint64_t length )
 {
-    return (const Depot *) TableCookOpen( bytes, length, (uint64_t) sizeof( Depot ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Depot ) );
+    return (const Depot *) table_cook_open( bytes, length, (uint64_t) sizeof( Depot ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Depot ) );
 }
 
-/* AlbumOpen: match the header and POINT. On a match the bytes ARE what this
+/* album_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -5088,7 +5088,7 @@ static SCHEMA_UNUSED const Depot * DepotOpen( const void * bytes, uint64_t lengt
    megabyte cook and a one gigabyte cook open in the same time, and a mapped
    file's pages are touched only as they are used.
 
-   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH AlbumAt with a NULL
+   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH album_at with a NULL
    context: the slot holds the signed self-relative byte delta of §6.3, so a
    deref is one add and needs no base pointer, a whole region relocates by
    plain memcpy, and a delta of zero is null.
@@ -5098,9 +5098,9 @@ static SCHEMA_UNUSED const Depot * DepotOpen( const void * bytes, uint64_t lengt
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const Album * AlbumOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const Album * album_open( const void * bytes, uint64_t length )
 {
-    return (const Album *) TableCookOpen( bytes, length, (uint64_t) sizeof( Album ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Album ) );
+    return (const Album *) table_cook_open( bytes, length, (uint64_t) sizeof( Album ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Album ) );
 }
 
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
@@ -5187,14 +5187,14 @@ extern const TableTypeInfo schema_graphdemo_scene_info_;
 extern const TableTypeInfo schema_graphdemo_depot_info_;
 extern const TableTypeInfo schema_graphdemo_album_info_;
 
-static SCHEMA_UNUSED const TableTypeInfo * MetaTableType( void ) { return &schema_graphdemo_meta_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * SettingsTableType( void ) { return &schema_graphdemo_settings_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * ListNodeTableType( void ) { return &schema_graphdemo_list_node_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * TreeNodeTableType( void ) { return &schema_graphdemo_tree_node_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * LayerTableType( void ) { return &schema_graphdemo_layer_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * SceneTableType( void ) { return &schema_graphdemo_scene_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * DepotTableType( void ) { return &schema_graphdemo_depot_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * AlbumTableType( void ) { return &schema_graphdemo_album_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * meta_table_type( void ) { return &schema_graphdemo_meta_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * settings_table_type( void ) { return &schema_graphdemo_settings_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * list_node_table_type( void ) { return &schema_graphdemo_list_node_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * tree_node_table_type( void ) { return &schema_graphdemo_tree_node_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * layer_table_type( void ) { return &schema_graphdemo_layer_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * scene_table_type( void ) { return &schema_graphdemo_scene_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * depot_table_type( void ) { return &schema_graphdemo_depot_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * album_table_type( void ) { return &schema_graphdemo_album_info_; }
 
 /* ---- the text form (docs/SPEC-TABLES.md §16) ---- */
 
@@ -5203,12 +5203,12 @@ static SCHEMA_UNUSED const TableTypeInfo * AlbumTableType( void ) { return &sche
    GraphTable.c; compile it to use them. */
 int schema_graphdemo_meta_from_json_( Meta * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_graphdemo_meta_to_json_( const Meta * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int MetaFromJson( Meta * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int meta_from_json( Meta * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_graphdemo_meta_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t MetaToJsonMeasure( const Meta * value ) { return schema_graphdemo_meta_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t MetaToJson( const Meta * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t meta_to_json_measure( const Meta * value ) { return schema_graphdemo_meta_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t meta_to_json( const Meta * value, char * buffer, int64_t capacity )
 {
     return schema_graphdemo_meta_to_json_( value, buffer, capacity );
 }
@@ -5218,39 +5218,39 @@ static SCHEMA_UNUSED int64_t MetaToJson( const Meta * value, char * buffer, int6
    GraphTable.c; compile it to use them. */
 int schema_graphdemo_settings_from_json_( Settings * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_graphdemo_settings_to_json_( const Settings * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int SettingsFromJson( Settings * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int settings_from_json( Settings * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_graphdemo_settings_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t SettingsToJsonMeasure( const Settings * value ) { return schema_graphdemo_settings_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t SettingsToJson( const Settings * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t settings_to_json_measure( const Settings * value ) { return schema_graphdemo_settings_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t settings_to_json( const Settings * value, char * buffer, int64_t capacity )
 {
     return schema_graphdemo_settings_to_json_( value, buffer, capacity );
 }
 
 /* ListNode is VARIABLE-LENGTH. Its text form reads through the builder
    (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
-   no ListNodeFromJson and no ListNodeToJson exist to call. */
+   no list_node_from_json and no list_node_to_json exist to call. */
 
 /* TreeNode is VARIABLE-LENGTH. Its text form reads through the builder
    (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
-   no TreeNodeFromJson and no TreeNodeToJson exist to call. */
+   no tree_node_from_json and no tree_node_to_json exist to call. */
 
 /* Layer is VARIABLE-LENGTH. Its text form reads through the builder
    (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
-   no LayerFromJson and no LayerToJson exist to call. */
+   no layer_from_json and no layer_to_json exist to call. */
 
 /* Scene is VARIABLE-LENGTH. Its text form reads through the builder
    (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
-   no SceneFromJson and no SceneToJson exist to call. */
+   no scene_from_json and no scene_to_json exist to call. */
 
 /* Depot is VARIABLE-LENGTH. Its text form reads through the builder
    (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
-   no DepotFromJson and no DepotToJson exist to call. */
+   no depot_from_json and no depot_to_json exist to call. */
 
 /* Album is VARIABLE-LENGTH. Its text form reads through the builder
    (docs/SPEC-TABLES.md §16.1), which this backend does not emit yet:
-   no AlbumFromJson and no AlbumToJson exist to call. */
+   no album_from_json and no album_to_json exist to call. */
 
 
 #ifdef __cplusplus

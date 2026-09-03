@@ -9,7 +9,7 @@
  * configuration a game ships and exactly the one that removes an assert. The
  * child must still die. Its Makefile gate requires that.
  *
- * C's accessor is a macro over TableKeyedSlot rather than an operator[], which
+ * C's accessor is a macro over table_keyed_slot rather than an operator[], which
  * is the ONE spelling that differs from the reference; the refusal inside it is
  * the same assert plus the same abort, and this gate is what says so.
  */
@@ -39,8 +39,8 @@ int main( void )
            reaches an accessor in a real program */
         Team key = TEAM_NONE;
         (void) quiet;
-        KeyedConfigReset( &cfg );
-        TableKeyedAt( cfg.teams, key ).spawn_count = 1; /* never reached */
+        keyed_config_reset( &cfg );
+        SCHEMA_TABLE_KEYED_AT( cfg.teams, key ).spawn_count = 1; /* never reached */
         _exit( 0 );
     }
     if ( child < 0 )

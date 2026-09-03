@@ -6,13 +6,13 @@
 #include "PackTable.h"
 #include "unit.h"
 
-SCHEMA_CONFORMANCE_CODEC( RootConfig )
-SCHEMA_CONFORMANCE_CODEC( ProfileConfig )
-SCHEMA_CONFORMANCE_CODEC( LoadoutConfig )
-SCHEMA_CONFORMANCE_CODEC( WideBlob )
-SCHEMA_CONFORMANCE_CODEC( ArchiveConfig )
-SCHEMA_CONFORMANCE_CODEC( KeyedConfig )
-SCHEMA_CONFORMANCE_CODEC( PackConfig )
+SCHEMA_CONFORMANCE_CODEC( RootConfig, root_config )
+SCHEMA_CONFORMANCE_CODEC( ProfileConfig, profile_config )
+SCHEMA_CONFORMANCE_CODEC( LoadoutConfig, loadout_config )
+SCHEMA_CONFORMANCE_CODEC( WideBlob, wide_blob )
+SCHEMA_CONFORMANCE_CODEC( ArchiveConfig, archive_config )
+SCHEMA_CONFORMANCE_CODEC( KeyedConfig, keyed_config )
+SCHEMA_CONFORMANCE_CODEC( PackConfig, pack_config )
 
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, RootConfig ),

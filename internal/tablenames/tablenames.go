@@ -178,7 +178,7 @@ var registry = []Name{
 	// nothing declares the block form, every fixed table has one, and a table
 	// gains and loses it as its closure gains and loses a pointer.
 	{Name: "TableBlockAllocator", By: Cpp | C, What: "the caller's alloc/free pair, used once at build time"},
-	{Name: "TableBlockDefaultAllocator", By: Cpp | C, What: "the malloc/free pair, for a caller with none of its own"},
+	{Name: "TableBlockDefaultAllocator", By: Cpp, What: "the malloc/free pair, for a caller with none of its own"},
 	{Name: "table_block_default_alloc", By: Cpp | C, What: "the default allocator's alloc half"},
 	{Name: "table_block_default_free", By: Cpp | C, What: "the default allocator's free half"},
 	{Name: "TableBlockTriple", By: Cpp | Cs | Rust | Go | C, What: "one array's (offset_of, count, stride)"},
@@ -193,11 +193,11 @@ var registry = []Name{
 	{Name: "TableBlockSpan", By: Cpp, What: "one array's rows as a contiguous view (C# uses ReadOnlySpan)"},
 	{Name: "TableBlockFieldInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a block field's reflection descriptor"},
 	{Name: "TableBlockInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a block's reflection descriptor"},
-	{Name: "TableBlockMagic", By: Cpp | Cs | Rust | Go | C, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableBlockMagic", By: Cpp | Cs | Rust | Go, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 	{Name: "TableBlockLayout", By: Cs | Java, What: "the layout contract's check, run once. C# spells it a nested class of Schema and Java puts it at package scope, so the claim is the UNION"},
 	{Name: "TableBlockLayout", By: Cs, What: "the C# layout contract's check, run once", Scoped: true},
 	{Name: "TableBlockRead64", By: Cs, What: "the C# prologue read (a Schema member, so it claims nothing)", Scoped: true},
-	{Name: "TableBlockByteOrder", By: Cpp | Cs | Go | Rust | C, What: "this build's byte order, as the prologue carries it", RustConst: true},
+	{Name: "TableBlockByteOrder", By: Cpp | Cs | Go | Rust, What: "this build's byte order, as the prologue carries it", RustConst: true},
 	{Name: "table_block_byteswap64", By: Cpp | C, What: "the byte-order check's swap"},
 	{Name: "table_block_read64", By: Cpp | C, What: "the prologue read BYTEWISE"},
 	{Name: "table_block_align", By: Cpp | C, What: "round an offset up to an alignment"},
@@ -209,10 +209,10 @@ var registry = []Name{
 	// variable-length names above: a table gains and loses its cook reader as
 	// its closure gains and loses a pointer, and a name free today must not
 	// become a collision tomorrow.
-	{Name: "TableCookOpen", By: Cpp | C, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
-	{Name: "TableCookMagic", By: Cpp | Cs | Go | Rust | C, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
-	{Name: "TableCookByteOrder", By: Cpp | Cs | Go | Rust | C, What: "this build's byte order, as a cooked header records it", RustConst: true},
-	{Name: "TableCookMaxAlign", By: Cpp | Cs | Go | Rust | C, What: "the greatest region alignment a cooked header may name", RustConst: true},
+	{Name: "TableCookOpen", By: Cpp, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
+	{Name: "TableCookMagic", By: Cpp | Cs | Go | Rust, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableCookByteOrder", By: Cpp | Cs | Go | Rust, What: "this build's byte order, as a cooked header records it", RustConst: true},
+	{Name: "TableCookMaxAlign", By: Cpp | Cs | Go | Rust, What: "the greatest region alignment a cooked header may name", RustConst: true},
 	{Name: "table_cook_read64", By: Cpp | C, What: "the cooked header read BYTEWISE"},
 
 	// ---- the RUST backend's own spellings (internal/codegen/rusttable) ----
@@ -404,20 +404,20 @@ var registry = []Name{
 	// the wire reader and writer's operations. C++ spells these as member
 	// functions of TableWriter and TableReader, which claim nothing; C has no
 	// members, so each is a name.
-	{Name: "TableWriterMake", By: C, What: "a writer over a caller's buffer"},
-	{Name: "TableWriterRaw", By: C, What: "the writer's byte move"},
-	{Name: "TableWriterPut8", By: C, What: "the writer's u8"},
-	{Name: "TableWriterPut16", By: C, What: "the writer's little-endian u16"},
-	{Name: "TableWriterPut32", By: C, What: "the writer's little-endian u32"},
-	{Name: "TableWriterPut64", By: C, What: "the writer's little-endian u64"},
-	{Name: "TableWriterPatch32", By: C, What: "the writer's back-patch of a length prefix"},
-	{Name: "TableReaderMake", By: C, What: "a reader over a caller's buffer"},
-	{Name: "TableReaderHas", By: C, What: "the reader's remaining-bytes question"},
-	{Name: "TableReaderGet8", By: C, What: "the reader's u8"},
-	{Name: "TableReaderGet16", By: C, What: "the reader's little-endian u16"},
-	{Name: "TableReaderGet32", By: C, What: "the reader's little-endian u32"},
-	{Name: "TableReaderGet64", By: C, What: "the reader's little-endian u64"},
-	{Name: "TableReaderSkip", By: C, What: "skip one payload by kind — the tolerant read's unknown-field path"},
+	{Name: "table_writer_make", By: C, What: "a writer over a caller's buffer"},
+	{Name: "table_writer_raw", By: C, What: "the writer's byte move"},
+	{Name: "table_writer_put8", By: C, What: "the writer's u8"},
+	{Name: "table_writer_put16", By: C, What: "the writer's little-endian u16"},
+	{Name: "table_writer_put32", By: C, What: "the writer's little-endian u32"},
+	{Name: "table_writer_put64", By: C, What: "the writer's little-endian u64"},
+	{Name: "table_writer_patch32", By: C, What: "the writer's back-patch of a length prefix"},
+	{Name: "table_reader_make", By: C, What: "a reader over a caller's buffer"},
+	{Name: "table_reader_has", By: C, What: "the reader's remaining-bytes question"},
+	{Name: "table_reader_get8", By: C, What: "the reader's u8"},
+	{Name: "table_reader_get16", By: C, What: "the reader's little-endian u16"},
+	{Name: "table_reader_get32", By: C, What: "the reader's little-endian u32"},
+	{Name: "table_reader_get64", By: C, What: "the reader's little-endian u64"},
+	{Name: "table_reader_skip", By: C, What: "skip one payload by kind — the tolerant read's unknown-field path"},
 
 	// the descriptors' VOCABULARY, as data. C++ spells an enum's names and wire
 	// ids as captureless lambdas in the field descriptor; C has none, and a
@@ -428,21 +428,20 @@ var registry = []Name{
 	// the ENUM-KEYED array (docs/SPEC-TABLES.md §2.4). C's storage IS the array,
 	// so there is no TableKeyed to emit; what C++ puts in operator[] — the
 	// left shift and the None refusal — lives in these two.
-	{Name: "TableKeyedSlot", By: C, What: "the storage index a key names, refusing None in every build"},
-	{Name: "TableKeyedAt", By: C, What: "keyed[key] as an lvalue, over TableKeyedSlot"},
+	{Name: "table_keyed_slot", By: C, What: "the storage index a key names, refusing None in every build"},
 
 	// the VARIABLE-LENGTH runtime's C spellings (docs/SPEC-TABLES.md §6). The
 	// arena and the worker are C++'s too; everything a member function or a
 	// template did there is a name here.
-	{Name: "TableRefNull", By: C, What: "is this reference slot null (§6.3)"},
-	{Name: "TableAlignUp", By: C, What: "round a u32 arena offset up to the node alignment"},
-	{Name: "TableAlignUp64", By: C, What: "round an i64 region offset up to the node alignment"},
-	{Name: "TableArenaInit", By: C, What: "start one arena"},
-	{Name: "TableArenaShutdown", By: C, What: "release one arena's segments"},
-	{Name: "TableArenaAt", By: C, What: "resolve an arena offset — one L1 load plus an add"},
-	{Name: "TableArenaGrabSlab", By: C, What: "hand one worker its next private slab"},
-	{Name: "TableWorkerMake", By: C, What: "one thread's allocation front"},
-	{Name: "TableWorkerBump", By: C, What: "reserve one node's bytes in a worker's slab, untyped"},
+	{Name: "table_ref_null", By: C, What: "is this reference slot null (§6.3)"},
+	{Name: "table_align_up", By: C, What: "round a u32 arena offset up to the node alignment"},
+	{Name: "table_align_up64", By: C, What: "round an i64 region offset up to the node alignment"},
+	{Name: "table_arena_init", By: C, What: "start one arena"},
+	{Name: "table_arena_shutdown", By: C, What: "release one arena's segments"},
+	{Name: "table_arena_at", By: C, What: "resolve an arena offset — one L1 load plus an add"},
+	{Name: "table_arena_grab_slab", By: C, What: "hand one worker its next private slab"},
+	{Name: "table_worker_make", By: C, What: "one thread's allocation front"},
+	{Name: "table_worker_bump", By: C, What: "reserve one node's bytes in a worker's slab, untyped"},
 	{Name: "TableCtx", By: C, What: "which encoding a walk is reading: an arena's offsets, or a region's self-relative deltas"},
 	{Name: "TableRegionSink", By: C, What: "bump-allocation into the caller's exact region"},
 	{Name: "TableSink", By: C, What: "where a node comes from — a region sink or a worker; C's form of the reference's Sink template parameter"},
@@ -452,15 +451,15 @@ var registry = []Name{
 	// compiler picks, so a schema cannot become illegal by changing compilers.
 	{Name: "TableAtomicU32", By: C, What: "the arena cursor's atomic u32"},
 	{Name: "TableAtomicPtr", By: C, What: "an arena segment's atomic pointer"},
-	{Name: "TableAtomicLoad32", By: C, What: "an acquire load of the cursor"},
-	{Name: "TableAtomicStore32", By: C, What: "a relaxed store of the cursor"},
-	{Name: "TableAtomicLoadPtr", By: C, What: "an acquire load of a segment"},
-	{Name: "TableAtomicStorePtr", By: C, What: "a relaxed store of a segment"},
-	{Name: "TableArenaCas32", By: C, What: "the slab handout's compare-exchange"},
-	{Name: "TableArenaCasPtr", By: C, What: "the segment publication's compare-exchange"},
+	{Name: "table_atomic_load32", By: C, What: "an acquire load of the cursor"},
+	{Name: "table_atomic_store32", By: C, What: "a relaxed store of the cursor"},
+	{Name: "table_atomic_load_ptr", By: C, What: "an acquire load of a segment"},
+	{Name: "table_atomic_store_ptr", By: C, What: "a relaxed store of a segment"},
+	{Name: "table_arena_cas32", By: C, What: "the slab handout's compare-exchange"},
+	{Name: "table_arena_cas_ptr", By: C, What: "the segment publication's compare-exchange"},
 
 	// the BLOCK form's C spellings (§19)
-	{Name: "TableBlockRowAt", By: C, What: "one row of an array, at the pitch the instance gives"},
+	{Name: "table_block_row_at", By: C, What: "one row of an array, at the pitch the instance gives"},
 
 	// THE TUNING CONSTANTS, which C spells as #define and the other two as
 	// typed constants inside their own scope. A macro is not scoped by
@@ -473,7 +472,7 @@ var registry = []Name{
 	{Name: "kTableSegmentMask", By: C, What: "the offset inside a segment"},
 	{Name: "kTableSegmentSize", By: C, What: "the arena's segment size"},
 	{Name: "kTableSlabBytes", By: C, What: "one worker's slab: one atomic per slab, none per node"},
-	{Name: "kTableCookHeaderBytes", By: C, What: "the cooked header's 64 bytes (§7.1)"},
+	{Name: "table_cook_header_bytes", By: C, What: "the cooked header's 64 bytes (§7.1)"},
 	{Name: "kTableJsonMaxDepth", By: C, What: "the text form's nesting cap"},
 	{Name: "kTableJsonMaxKey", By: C, What: "the longest key that can name a field"},
 	{Name: "kTableJsonMaxNumber", By: C, What: "the longest numeric token the walk converts"},
@@ -485,60 +484,75 @@ var registry = []Name{
 	// family with one job, and the registry lists them rather than filtering
 	// them: a scan that has to recognise a prefix is a scan that goes blind the
 	// day a name leaves the family.
-	{Name: "TableJsonBase64Alphabet", By: C, What: "the text form's walk"},
-	{Name: "TableJsonCount", By: C, What: "the text form's walk"},
-	{Name: "TableJsonDecimalPoint", By: C, What: "the text form's walk"},
-	{Name: "TableJsonElementShape", By: C, What: "the text form's walk"},
-	{Name: "TableJsonEncodeUtf8", By: C, What: "the text form's walk"},
-	{Name: "TableJsonFinite", By: C, What: "the text form's walk"},
-	{Name: "TableJsonGetRaw", By: C, What: "the text form's walk"},
-	{Name: "TableJsonGetSigned", By: C, What: "the text form's walk"},
-	{Name: "TableJsonGuardHolds", By: C, What: "the text form's walk"},
-	{Name: "TableJsonHex4", By: C, What: "the text form's walk"},
+	{Name: "table_json_base64_alphabet", By: C, What: "the text form's walk"},
+	{Name: "table_json_count", By: C, What: "the text form's walk"},
+	{Name: "table_json_decimal_point", By: C, What: "the text form's walk"},
+	{Name: "table_json_element_shape", By: C, What: "the text form's walk"},
+	{Name: "table_json_encode_utf8", By: C, What: "the text form's walk"},
+	{Name: "table_json_finite", By: C, What: "the text form's walk"},
+	{Name: "table_json_get_raw", By: C, What: "the text form's walk"},
+	{Name: "table_json_get_signed", By: C, What: "the text form's walk"},
+	{Name: "table_json_guard_holds", By: C, What: "the text form's walk"},
+	{Name: "table_json_hex4", By: C, What: "the text form's walk"},
 	{Name: "TableJsonIn", By: C, What: "the text form's walk"},
-	{Name: "TableJsonIsBytes", By: C, What: "the text form's walk"},
-	{Name: "TableJsonIsEnum", By: C, What: "the text form's walk"},
-	{Name: "TableJsonIsFlags", By: C, What: "the text form's walk"},
-	{Name: "TableJsonIsKeyed", By: C, What: "the text form's walk"},
-	{Name: "TableJsonKeyId", By: C, What: "the text form's walk"},
-	{Name: "TableJsonKeyName", By: C, What: "the text form's walk"},
-	{Name: "TableJsonKeyedSlotKey", By: C, What: "the text form's walk"},
-	{Name: "TableJsonKeyedSlotValid", By: C, What: "the text form's walk"},
-	{Name: "TableJsonLine", By: C, What: "the text form's walk"},
-	{Name: "TableJsonLiteral", By: C, What: "the text form's walk"},
+	{Name: "table_json_is_bytes", By: C, What: "the text form's walk"},
+	{Name: "table_json_is_enum", By: C, What: "the text form's walk"},
+	{Name: "table_json_is_flags", By: C, What: "the text form's walk"},
+	{Name: "table_json_is_keyed", By: C, What: "the text form's walk"},
+	{Name: "table_json_key_id", By: C, What: "the text form's walk"},
+	{Name: "table_json_key_name", By: C, What: "the text form's walk"},
+	{Name: "table_json_keyed_slot_key", By: C, What: "the text form's walk"},
+	{Name: "table_json_keyed_slot_valid", By: C, What: "the text form's walk"},
+	{Name: "table_json_line", By: C, What: "the text form's walk"},
+	{Name: "table_json_literal", By: C, What: "the text form's walk"},
 	{Name: "TableJsonOut", By: C, What: "the text form's walk"},
-	{Name: "TableJsonPeek", By: C, What: "the text form's walk"},
-	{Name: "TableJsonPut", By: C, What: "the text form's walk"},
-	{Name: "TableJsonRaw", By: C, What: "the text form's walk"},
-	{Name: "TableJsonRead", By: C, What: "the text form's walk"},
-	{Name: "TableJsonReadField", By: C, What: "the text form's walk"},
-	{Name: "TableJsonReadScalar", By: C, What: "the text form's walk"},
-	{Name: "TableJsonReadTable", By: C, What: "the text form's walk"},
-	{Name: "TableJsonScanNumber", By: C, What: "the text form's walk"},
-	{Name: "TableJsonScanString", By: C, What: "the text form's walk"},
-	{Name: "TableJsonSetCount", By: C, What: "the text form's walk"},
-	{Name: "TableJsonSetRaw", By: C, What: "the text form's walk"},
-	{Name: "TableJsonShape", By: C, What: "the text form's walk"},
-	{Name: "TableJsonSkipContainer", By: C, What: "the text form's walk"},
-	{Name: "TableJsonSkipValue", By: C, What: "the text form's walk"},
-	{Name: "TableJsonSpace", By: C, What: "the text form's walk"},
-	{Name: "TableJsonText", By: C, What: "the text form's walk"},
-	{Name: "TableJsonTokenDouble", By: C, What: "the text form's walk"},
-	{Name: "TableJsonTokenInteger", By: C, What: "the text form's walk"},
-	{Name: "TableJsonUtf8", By: C, What: "the text form's walk"},
-	{Name: "TableJsonValueShape", By: C, What: "the text form's walk"},
-	{Name: "TableJsonVariantId", By: C, What: "the text form's walk"},
-	{Name: "TableJsonVariantName", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWalkNumber", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWrite", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWriteBase64", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWriteField", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWriteFloat", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWriteScalar", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWriteSigned", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWriteString", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWriteUnsigned", By: C, What: "the text form's walk"},
-	{Name: "TableJsonWriteValue", By: C, What: "the text form's walk"},
+	{Name: "table_json_peek", By: C, What: "the text form's walk"},
+	{Name: "table_json_put", By: C, What: "the text form's walk"},
+	{Name: "table_json_raw", By: C, What: "the text form's walk"},
+	{Name: "table_json_read", By: C, What: "the text form's walk"},
+	{Name: "table_json_read_field", By: C, What: "the text form's walk"},
+	{Name: "table_json_read_scalar", By: C, What: "the text form's walk"},
+	{Name: "table_json_read_table", By: C, What: "the text form's walk"},
+	{Name: "table_json_scan_number", By: C, What: "the text form's walk"},
+	{Name: "table_json_scan_string", By: C, What: "the text form's walk"},
+	{Name: "table_json_set_count", By: C, What: "the text form's walk"},
+	{Name: "table_json_set_raw", By: C, What: "the text form's walk"},
+	{Name: "table_json_shape", By: C, What: "the text form's walk"},
+	{Name: "table_json_skip_container", By: C, What: "the text form's walk"},
+	{Name: "table_json_skip_value", By: C, What: "the text form's walk"},
+	{Name: "table_json_space", By: C, What: "the text form's walk"},
+	{Name: "table_json_text", By: C, What: "the text form's walk"},
+	{Name: "table_json_token_double", By: C, What: "the text form's walk"},
+	{Name: "table_json_token_integer", By: C, What: "the text form's walk"},
+	{Name: "table_json_utf8", By: C, What: "the text form's walk"},
+	{Name: "table_json_value_shape", By: C, What: "the text form's walk"},
+	{Name: "table_json_variant_id", By: C, What: "the text form's walk"},
+	{Name: "table_json_variant_name", By: C, What: "the text form's walk"},
+	{Name: "table_json_walk_number", By: C, What: "the text form's walk"},
+	{Name: "table_json_write", By: C, What: "the text form's walk"},
+	{Name: "table_json_write_base64", By: C, What: "the text form's walk"},
+	{Name: "table_json_write_field", By: C, What: "the text form's walk"},
+	{Name: "table_json_write_float", By: C, What: "the text form's walk"},
+	{Name: "table_json_write_scalar", By: C, What: "the text form's walk"},
+	{Name: "table_json_write_signed", By: C, What: "the text form's walk"},
+	{Name: "table_json_write_string", By: C, What: "the text form's walk"},
+	{Name: "table_json_write_unsigned", By: C, What: "the text form's walk"},
+	{Name: "table_json_write_value", By: C, What: "the text form's walk"},
+
+	// The C spellings of names the other backends carry in PascalCase. They
+	// are separate entries because they are separate SPELLINGS: C spells a
+	// function and a file-scope constant snake_case, which is the convention
+	// its packet half already uses, so the same runtime value is one identifier
+	// in Rust and C++ and a different identifier here. Both are claimed for
+	// every target, because the claim is front-end law and a unit legal under
+	// one backend must be legal under all of them.
+	{Name: "table_block_default_allocator", By: C, What: "the malloc/free pair, for a caller with none of its own"},
+	{Name: "table_block_magic", By: C, What: "the block prologue's magic, and the byte-order check with it"},
+	{Name: "table_block_byte_order", By: C, What: "this build's byte order, as the prologue carries it"},
+	{Name: "table_cook_open", By: C, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
+	{Name: "table_cook_magic", By: C, What: "the cooked header's magic, and the byte-order check with it"},
+	{Name: "table_cook_byte_order", By: C, What: "this build's byte order, as a cooked header records it"},
+	{Name: "table_cook_max_align", By: C, What: "the greatest region alignment a cooked header may name"},
 }
 
 // All returns the whole registry, sorted by name.
@@ -599,4 +613,19 @@ func Registered(name string) bool {
 		}
 	}
 	return false
+}
+
+// By is the set of backends that define name, or 0 when nothing does.
+//
+// A diagnostic that names a lowercase claim needs this: C and Go both put
+// lowercase runtime names at unit scope, for different reasons — a Go package
+// is one namespace, and C has no namespace at all — and a message that guessed
+// from the spelling would tell half of its readers about the wrong language.
+func By(name string) Backend {
+	for _, n := range registry {
+		if n.Name == name {
+			return n.By
+		}
+	}
+	return 0
 }

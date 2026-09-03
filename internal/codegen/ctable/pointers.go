@@ -45,23 +45,23 @@ const (
 // before pointers existed.
 func (g *tableGen) measureCall(name, expr, depth string) string {
 	if g.isVar(name) {
-		return fmt.Sprintf("%sMeasureBody( ctx, %s, %s )", name, expr, depth)
+		return fmt.Sprintf("%s( ctx, %s, %s )", g.api(name, "measure_body"), expr, depth)
 	}
-	return fmt.Sprintf("%sMeasure( %s )", name, expr)
+	return fmt.Sprintf("%s( %s )", g.api(name, "measure"), expr)
 }
 
 func (g *tableGen) saveCall(name, expr, depth string) string {
 	if g.isVar(name) {
-		return fmt.Sprintf("%sSaveBody( ctx, w, %s, %s )", name, expr, depth)
+		return fmt.Sprintf("%s( ctx, w, %s, %s )", g.api(name, "save_body"), expr, depth)
 	}
-	return fmt.Sprintf("%sSaveBody( w, %s )", name, expr)
+	return fmt.Sprintf("%s( w, %s )", g.api(name, "save_body"), expr)
 }
 
 func (g *tableGen) loadCall(name, reader, expr, depth string) string {
 	if g.isVar(name) {
-		return fmt.Sprintf("%sLoadBody( %s, sink, %s, %s )", name, reader, expr, depth)
+		return fmt.Sprintf("%s( %s, sink, %s, %s )", g.api(name, "load_body"), reader, expr, depth)
 	}
-	return fmt.Sprintf("%sLoadBody( %s, %s )", name, reader, expr)
+	return fmt.Sprintf("%s( %s, %s )", g.api(name, "load_body"), reader, expr)
 }
 
 // needsWalkers returns true when a member needs the pointer-graph walkers:
@@ -128,22 +128,22 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	g.pf("/* ---- codecs: measure/save/load per closure member ---- */\n\n")
 	for _, st := range members {
 		if g.isVar(st.Name) {
-			g.pf("static SCHEMA_UNUSED int64_t %sMeasureBody( const TableCtx * ctx, const %s * value, int32_t depth );\n", st.Name, st.Name)
-			g.pf("static SCHEMA_UNUSED int %sSaveBody( const TableCtx * ctx, TableWriter * w, const %s * value, int32_t depth );\n", st.Name, st.Name)
-			g.pf("static SCHEMA_UNUSED int %sLoadBody( TableReader * r, TableSink * sink, %s * value, int32_t depth );\n", st.Name, st.Name)
+			g.pf("static SCHEMA_UNUSED int64_t %s( const TableCtx * ctx, const %s * value, int32_t depth );\n", g.api(st.Name, "measure_body"), st.Name)
+			g.pf("static SCHEMA_UNUSED int %s( const TableCtx * ctx, TableWriter * w, const %s * value, int32_t depth );\n", g.api(st.Name, "save_body"), st.Name)
+			g.pf("static SCHEMA_UNUSED int %s( TableReader * r, TableSink * sink, %s * value, int32_t depth );\n", g.api(st.Name, "load_body"), st.Name)
 			continue
 		}
-		g.pf("static SCHEMA_UNUSED int64_t %sMeasure( const %s * value );\n", st.Name, st.Name)
-		g.pf("static SCHEMA_UNUSED %s int %sSaveBody( TableWriter * w, const %s * value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
-		g.pf("static SCHEMA_UNUSED %s int %sLoadBody( TableReader * r, %s * value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
+		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value );\n", g.api(st.Name, "measure"), st.Name)
+		g.pf("static SCHEMA_UNUSED %s int %s( TableWriter * w, const %s * value );\n", tableInlineMacro(g.unit.Package), g.api(st.Name, "save_body"), st.Name)
+		g.pf("static SCHEMA_UNUSED %s int %s( TableReader * r, %s * value );\n", tableInlineMacro(g.unit.Package), g.api(st.Name, "load_body"), st.Name)
 	}
 	g.pf("\n")
 	if vars := g.varMembers(members); len(vars) > 0 {
 		g.pf("/* ---- pointer-graph walkers: pack (Lock), size (Load) ---- */\n\n")
 		for _, st := range vars {
-			g.pf("static SCHEMA_UNUSED int64_t %sPackMeasure( const TableCtx * ctx, const %s * value, int32_t depth );\n", st.Name, st.Name)
-			g.pf("static SCHEMA_UNUSED int %sPack( const TableCtx * ctx, const %s * src, %s * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );\n", st.Name, st.Name, st.Name)
-			g.pf("static SCHEMA_UNUSED int64_t %sLoadMeasureBody( TableReader * r, int32_t depth );\n", st.Name)
+			g.pf("static SCHEMA_UNUSED int64_t %s( const TableCtx * ctx, const %s * value, int32_t depth );\n", g.api(st.Name, "pack_measure"), st.Name)
+			g.pf("static SCHEMA_UNUSED int %s( const TableCtx * ctx, const %s * src, %s * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth );\n", g.api(st.Name, "pack"), st.Name, st.Name)
+			g.pf("static SCHEMA_UNUSED int64_t %s( TableReader * r, int32_t depth );\n", g.api(st.Name, "load_measure_body"))
 		}
 		g.pf("\n")
 	}
@@ -153,34 +153,34 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 // allocation entries.
 func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 	n := st.Name
-	g.pf("/* %s is a pointer target. %sAt resolves a slot in EITHER form: a NULL ctx,\n", n, n)
+	g.pf("/* %s is a pointer target. %s resolves a slot in EITHER form: a NULL ctx,\n", n, g.api(n, "at"))
 	g.pf("   or one whose arena is NULL, is a REGION, where the slot holds a signed\n")
 	g.pf("   self-relative delta and the deref is one add. */\n")
-	g.pf("static SCHEMA_UNUSED %s * %sAt( const TableCtx * ctx, const TableRef * ref )\n{\n", n, n)
+	g.pf("static SCHEMA_UNUSED %s * %s( const TableCtx * ctx, const TableRef * ref )\n{\n", n, g.api(n, "at"))
 	g.pf("    if ( ref->value == 0 ) { return NULL; }\n")
 	g.pf("    if ( ctx != NULL && ctx->arena != NULL )\n")
-	g.pf("    {\n        return (%s *) TableArenaAt( ctx->arena, (uint32_t) ref->value );\n    }\n", n)
+	g.pf("    {\n        return (%s *) table_arena_at( ctx->arena, (uint32_t) ref->value );\n    }\n", n)
 	g.pf("    return (%s *) (void *) ( (uint8_t *) (void *) ref + ref->value );\n}\n", n)
 	g.pf("/* bump one %s into the sink the caller gave: a region sink places it in the\n", n)
 	g.pf("   caller's exact region and the slot comes out self-relative; a worker\n")
 	g.pf("   allocates it in the arena and the slot holds the arena offset. */\n")
-	g.pf("static SCHEMA_UNUSED %s * %sEmplace( TableSink * sink, TableRef * slot )\n{\n", n, n)
+	g.pf("static SCHEMA_UNUSED %s * %s( TableSink * sink, TableRef * slot )\n{\n", n, g.api(n, "emplace"))
 	g.pf("    if ( sink == NULL ) { return NULL; }\n")
 	g.pf("    if ( sink->region != NULL )\n    {\n")
-	g.pf("        int64_t at = TableAlignUp64( sink->region->used );\n")
+	g.pf("        int64_t at = table_align_up64( sink->region->used );\n")
 	g.pf("        %s * node;\n", n)
 	g.pf("        if ( at + (int64_t) sizeof( %s ) > sink->region->capacity ) { return NULL; }\n", n)
-	g.pf("        sink->region->used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("        sink->region->used = at + table_align_up64( (int64_t) sizeof( %s ) );\n", n)
 	g.pf("        node = (%s *) (void *) ( sink->region->base + at );\n", n)
-	g.pf("        %sReset( node );\n", n)
+	g.pf("        %s( node );\n", g.api(n, "reset"))
 	g.pf("        slot->value = (int64_t) ( ( sink->region->base + at ) - (uint8_t *) (void *) slot );\n")
 	g.pf("        return node;\n    }\n")
 	g.pf("    if ( sink->worker != NULL )\n    {\n")
-	g.pf("        uint32_t at = TableWorkerBump( sink->worker, (uint32_t) sizeof( %s ) );\n", n)
+	g.pf("        uint32_t at = table_worker_bump( sink->worker, (uint32_t) sizeof( %s ) );\n", n)
 	g.pf("        %s * node;\n", n)
 	g.pf("        if ( at == kTableAllocFailed ) { return NULL; }\n")
-	g.pf("        node = (%s *) (void *) TableArenaAt( sink->worker->arena, at );\n", n)
-	g.pf("        %sReset( node );\n", n)
+	g.pf("        node = (%s *) (void *) table_arena_at( sink->worker->arena, at );\n", n)
+	g.pf("        %s( node );\n", g.api(n, "reset"))
 	g.pf("        slot->value = (int64_t) at;\n")
 	g.pf("        return node;\n    }\n")
 	g.pf("    return NULL;\n}\n\n")
@@ -208,10 +208,10 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 // emitPackMeasure emits the exact byte count of a value's DESCENDANT nodes in
 // the packed form — Lock's sizing half.
 func (g *tableGen) emitPackMeasure(st *ir.Struct) {
-	g.pf("/* %sPackMeasure: the packed region bytes of everything %s POINTS AT.\n", st.Name, st.Name)
+	g.pf("/* %s: the packed region bytes of everything %s POINTS AT.\n", g.api(st.Name, "pack_measure"), st.Name)
 	g.pf("   Aliasing is not preserved: two pointers to one node pack as two nodes,\n")
 	g.pf("   exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3). */\n")
-	g.pf("static SCHEMA_UNUSED int64_t %sPackMeasure( const TableCtx * ctx, const %s * value, int32_t depth )\n{\n", st.Name, st.Name)
+	g.pf("static SCHEMA_UNUSED int64_t %s( const TableCtx * ctx, const %s * value, int32_t depth )\n{\n", g.api(st.Name, "pack_measure"), st.Name)
 	g.pf("    int64_t bytes = 0;\n")
 	g.pf("    if ( depth > kTableMaxDepth ) { return -1; } /* a data cycle, or a chain past the cap */\n")
 	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
@@ -220,16 +220,16 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 	for _, f := range pointerFields(st) {
 		t := f.Type.Name
 		g.pf("    {\n")
-		g.pf("        const %s * pointee = %sAt( ctx, &value->%s ); /* %s */\n", t, t, f.Name, f.Name)
+		g.pf("        const %s * pointee = %s( ctx, &value->%s ); /* %s */\n", t, g.api(t, "at"), f.Name, f.Name)
 		g.pf("        if ( pointee != NULL )\n        {\n")
-		g.pf("            int64_t inner = %sPackMeasure( ctx, pointee, depth + 1 );\n", t)
+		g.pf("            int64_t inner = %s( ctx, pointee, depth + 1 );\n", g.api(t, "pack_measure"))
 		g.pf("            if ( inner < 0 ) { return -1; }\n")
-		g.pf("            bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
+		g.pf("            bytes += table_align_up64( (int64_t) sizeof( %s ) ) + inner;\n", t)
 		g.pf("        }\n    }\n")
 	}
 	for _, f := range g.byValueVariableFields(st) {
 		g.emitVariableByValueWalk(f, func(expr string) {
-			g.pf("        int64_t inner = %sPackMeasure( ctx, %s, depth );\n", f.Type.Name, expr)
+			g.pf("        int64_t inner = %s( ctx, %s, depth );\n", g.api(f.Type.Name, "pack_measure"), expr)
 			g.pf("        if ( inner < 0 ) { return -1; }\n")
 			g.pf("        bytes += inner;\n")
 		})
@@ -265,13 +265,13 @@ func (g *tableGen) emitVariableByValueWalk(f *ir.Field, body func(expr string)) 
 // depth-first behind it, rewriting every reference into the region's
 // self-relative encoding.
 func (g *tableGen) emitPack(st *ir.Struct) {
-	g.pf("/* %sPack: copy src into dst (already placed), then lay every pointee out\n", st.Name)
+	g.pf("/* %s: copy src into dst (already placed), then lay every pointee out\n", g.api(st.Name, "pack"))
 	g.pf("   depth-first behind it, in FIELD ORDER, by bump allocation.\n")
 	g.pf("\n")
 	g.pf("   The pre-order is what makes a region simple to reason about: a child\n")
 	g.pf("   always lands after the slot naming it, so region deltas are strictly\n")
 	g.pf("   positive and a packed region cannot contain a cycle. */\n")
-	g.pf("static SCHEMA_UNUSED int %sPack( const TableCtx * ctx, const %s * src, %s * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )\n{\n", st.Name, st.Name, st.Name)
+	g.pf("static SCHEMA_UNUSED int %s( const TableCtx * ctx, const %s * src, %s * dst, uint8_t * base, int64_t capacity, int64_t * used, int32_t depth )\n{\n", g.api(st.Name, "pack"), st.Name, st.Name)
 	g.pf("    if ( depth > kTableMaxDepth ) { return 0; }\n")
 	g.pf("    memcpy( (void *) dst, (const void *) src, sizeof( %s ) ); /* a plain struct, by construction */\n", st.Name)
 	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
@@ -282,15 +282,15 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 		g.pf("    {\n")
 		g.pf("        const %s * pointee;\n", t)
 		g.pf("        dst->%s.value = 0; /* %s */\n", f.Name, f.Name)
-		g.pf("        pointee = %sAt( ctx, &src->%s );\n", t, f.Name)
+		g.pf("        pointee = %s( ctx, &src->%s );\n", g.api(t, "at"), f.Name)
 		g.pf("        if ( pointee != NULL )\n        {\n")
-		g.pf("            int64_t at = TableAlignUp64( *used );\n")
+		g.pf("            int64_t at = table_align_up64( *used );\n")
 		g.pf("            %s * child;\n", t)
 		g.pf("            if ( at + (int64_t) sizeof( %s ) > capacity ) { return 0; }\n", t)
-		g.pf("            *used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
+		g.pf("            *used = at + table_align_up64( (int64_t) sizeof( %s ) );\n", t)
 		g.pf("            child = (%s *) (void *) ( base + at );\n", t)
 		g.pf("            dst->%s.value = (int64_t) ( ( base + at ) - (const uint8_t *) (const void *) &dst->%s );\n", f.Name, f.Name)
-		g.pf("            if ( !%sPack( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }\n", t)
+		g.pf("            if ( !%s( ctx, pointee, child, base, capacity, used, depth + 1 ) ) { return 0; }\n", g.api(t, "pack"))
 		g.pf("        }\n    }\n")
 	}
 	for _, f := range g.byValueVariableFields(st) {
@@ -302,7 +302,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 func (g *tableGen) emitVariableByValueWalkPack(f *ir.Field) {
 	t := f.Type.Name
 	call := func(srcExpr, dstExpr string) {
-		g.pf("        if ( !%sPack( ctx, %s, %s, base, capacity, used, depth ) ) { return 0; }\n", t, srcExpr, dstExpr)
+		g.pf("        if ( !%s( ctx, %s, %s, base, capacity, used, depth ) ) { return 0; }\n", g.api(t, "pack"), srcExpr, dstExpr)
 	}
 	bound := fmt.Sprintf("%d", f.ArrayBound)
 	if f.KeyEnum != "" {
@@ -330,10 +330,10 @@ func (g *tableGen) emitVariableByValueWalkPack(f *ir.Field) {
 func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 	ptrs := pointerFields(st)
 	nested := g.byValueVariableFields(st)
-	g.pf("/* %sLoadMeasureBody: region bytes for the nodes under this wire body.\n", st.Name)
+	g.pf("/* %s: region bytes for the nodes under this wire body.\n", g.api(st.Name, "load_measure_body"))
 	g.pf("   Framing only — no field value is decoded, so a caller can size its\n")
 	g.pf("   buffer before a single byte is placed. */\n")
-	g.pf("static SCHEMA_UNUSED int64_t %sLoadMeasureBody( TableReader * r, int32_t depth )\n{\n", st.Name)
+	g.pf("static SCHEMA_UNUSED int64_t %s( TableReader * r, int32_t depth )\n{\n", g.api(st.Name, "load_measure_body"))
 	g.pf("    int64_t bytes = 0;\n")
 	if len(ptrs) == 0 && len(nested) == 0 {
 		g.pf("    (void) r; (void) depth; /* nothing below this body allocates */\n")
@@ -342,24 +342,24 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 	}
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint16_t field_id;\n        uint8_t kind;\n")
-	g.pf("        if ( !TableReaderHas( r, 2 ) ) { return bytes; }\n")
-	g.pf("        field_id = TableReaderGet16( r );\n")
+	g.pf("        if ( !table_reader_has( r, 2 ) ) { return bytes; }\n")
+	g.pf("        field_id = table_reader_get16( r );\n")
 	g.pf("        if ( field_id == 0 ) { return bytes; }\n")
-	g.pf("        if ( !TableReaderHas( r, 1 ) ) { return bytes; }\n")
-	g.pf("        kind = TableReaderGet8( r );\n")
+	g.pf("        if ( !table_reader_has( r, 1 ) ) { return bytes; }\n")
+	g.pf("        kind = table_reader_get8( r );\n")
 	g.pf("        switch ( field_id )\n        {\n")
 	for _, f := range ptrs {
 		t := f.Type.Name
 		g.pf("            case 0x%04x: /* %s (*%s) */\n            {\n", ir.TableFieldId(f), f.Name, t)
 		g.pf("                uint32_t body_len;\n")
-		g.pf("                if ( kind != %d ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }\n", tkTable)
-		g.pf("                if ( !TableReaderHas( r, 4 ) ) { return bytes; }\n")
-		g.pf("                body_len = TableReaderGet32( r );\n")
-		g.pf("                if ( !TableReaderHas( r, body_len ) ) { return bytes; }\n")
+		g.pf("                if ( kind != %d ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }\n", tkTable)
+		g.pf("                if ( !table_reader_has( r, 4 ) ) { return bytes; }\n")
+		g.pf("                body_len = table_reader_get32( r );\n")
+		g.pf("                if ( !table_reader_has( r, body_len ) ) { return bytes; }\n")
 		g.pf("                if ( depth < kTableMaxDepth )\n                {\n")
-		g.pf("                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );\n")
-		g.pf("                    bytes += TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
-		g.pf("                    bytes += %sLoadMeasureBody( &sub, depth + 1 );\n", t)
+		g.pf("                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );\n")
+		g.pf("                    bytes += table_align_up64( (int64_t) sizeof( %s ) );\n", t)
+		g.pf("                    bytes += %s( &sub, depth + 1 );\n", g.api(t, "load_measure_body"))
 		g.pf("                }\n")
 		g.pf("                r->offset += body_len;\n")
 		g.pf("                break;\n            }\n")
@@ -379,22 +379,22 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 		}
 		g.pf("            case 0x%04x: /* %s (%s nested by value) */\n            {\n", ir.TableFieldId(f), f.Name, t)
 		g.pf("                uint32_t body_len;\n                int64_t body_end;\n")
-		g.pf("                if ( kind != %d ) { if ( !TableReaderSkip( r, kind ) ) { return bytes; } break; }\n", wireKind)
-		g.pf("                if ( !TableReaderHas( r, 4 ) ) { return bytes; }\n")
-		g.pf("                body_len = TableReaderGet32( r );\n")
-		g.pf("                if ( !TableReaderHas( r, body_len ) ) { return bytes; }\n")
+		g.pf("                if ( kind != %d ) { if ( !table_reader_skip( r, kind ) ) { return bytes; } break; }\n", wireKind)
+		g.pf("                if ( !table_reader_has( r, 4 ) ) { return bytes; }\n")
+		g.pf("                body_len = table_reader_get32( r );\n")
+		g.pf("                if ( !table_reader_has( r, body_len ) ) { return bytes; }\n")
 		g.pf("                body_end = r->offset + body_len;\n")
 		if f.Array == ir.ArrayNone && f.KeyEnum == "" {
 			g.pf("                {\n")
-			g.pf("                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );\n")
-			g.pf("                    bytes += %sLoadMeasureBody( &sub, depth );\n", t)
+			g.pf("                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );\n")
+			g.pf("                    bytes += %s( &sub, depth );\n", g.api(t, "load_measure_body"))
 			g.pf("                }\n")
 		} else {
 			g.pf("                if ( body_len >= 5 )\n                {\n")
 			g.pf("                    uint32_t count;\n                    TableReader elems;\n                    uint32_t i;\n")
-			g.pf("                    TableReaderGet8( r ); /* element kind */\n")
-			g.pf("                    count = TableReaderGet32( r );\n")
-			g.pf("                    elems = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );\n")
+			g.pf("                    table_reader_get8( r ); /* element kind */\n")
+			g.pf("                    count = table_reader_get32( r );\n")
+			g.pf("                    elems = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );\n")
 			g.pf("                    for ( i = 0; i < count && i < (uint32_t) ( %s ); i++ )\n                    {\n", bound)
 			g.pf("                        uint32_t elem_len;\n                        TableReader elem;\n")
 			if f.KeyEnum != "" {
@@ -403,14 +403,14 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 				// framing only, so it skips the key without naming it — but it
 				// must skip it, or every element length after the first is read
 				// out of a key's bytes
-				g.pf("                        if ( !TableReaderHas( &elems, 2 ) ) { break; }\n")
-				g.pf("                        TableReaderGet16( &elems ); /* the slot's variant id */\n")
+				g.pf("                        if ( !table_reader_has( &elems, 2 ) ) { break; }\n")
+				g.pf("                        table_reader_get16( &elems ); /* the slot's variant id */\n")
 			}
-			g.pf("                        if ( !TableReaderHas( &elems, 4 ) ) { break; }\n")
-			g.pf("                        elem_len = TableReaderGet32( &elems );\n")
-			g.pf("                        if ( !TableReaderHas( &elems, elem_len ) ) { break; }\n")
-			g.pf("                        elem = TableReaderMake( elems.buffer + elems.offset, elem_len, r->report );\n")
-			g.pf("                        bytes += %sLoadMeasureBody( &elem, depth );\n", t)
+			g.pf("                        if ( !table_reader_has( &elems, 4 ) ) { break; }\n")
+			g.pf("                        elem_len = table_reader_get32( &elems );\n")
+			g.pf("                        if ( !table_reader_has( &elems, elem_len ) ) { break; }\n")
+			g.pf("                        elem = table_reader_make( elems.buffer + elems.offset, elem_len, r->report );\n")
+			g.pf("                        bytes += %s( &elem, depth );\n", g.api(t, "load_measure_body"))
 			g.pf("                        elems.offset += elem_len;\n")
 			g.pf("                    }\n")
 			g.pf("                }\n")
@@ -419,7 +419,7 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 		g.pf("                break;\n            }\n")
 	}
 	g.pf("            default:\n            {\n")
-	g.pf("                if ( !TableReaderSkip( r, kind ) ) { return bytes; }\n")
+	g.pf("                if ( !table_reader_skip( r, kind ) ) { return bytes; }\n")
 	g.pf("                break;\n            }\n")
 	g.pf("        }\n    }\n}\n\n")
 }
@@ -446,62 +446,62 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableArena arena;\n")
 	g.pf("    TableWorker main;       /* the calling thread's allocation front */\n")
 	g.pf("    TableRef root_ref;\n")
-	g.pf("    uint8_t * region;       /* the packed const form, produced by %sBuilderLock */\n", n)
+	g.pf("    uint8_t * region;       /* the packed const form, produced by %s */\n", g.api(n, "builder_lock"))
 	g.pf("    int64_t region_bytes;\n")
 	g.pf("} %sBuilder;\n\n", n)
 
 	g.pf("/* Allocate a node in THIS thread's front: no lock, no atomic per node. One\n")
 	g.pf("   worker per thread; allocate on your own, and synchronize your own writes\n")
 	g.pf("   to nodes another worker allocated (§6.4). */\n")
-	g.pf("static SCHEMA_UNUSED int %sBuilderInit( %sBuilder * builder )\n{\n", n, n)
+	g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder )\n{\n", g.api(n, "builder_init"), n)
 	g.pf("    uint32_t at;\n")
-	g.pf("    TableArenaInit( &builder->arena );\n")
-	g.pf("    builder->main = TableWorkerMake( &builder->arena );\n")
+	g.pf("    table_arena_init( &builder->arena );\n")
+	g.pf("    builder->main = table_worker_make( &builder->arena );\n")
 	g.pf("    builder->root_ref.value = 0;\n")
 	g.pf("    builder->region = NULL;\n")
 	g.pf("    builder->region_bytes = 0;\n")
 	g.pf("    /* the ROOT is allocated like any node and is not a pointer target, so\n")
-	g.pf("       it takes the arena's untyped bump directly rather than an %sEmplace\n", n)
+	g.pf("       it takes the arena's untyped bump directly rather than an %s\n", g.api(n, "emplace"))
 	g.pf("       that only a pointed-at table has */\n")
-	g.pf("    at = TableWorkerBump( &builder->main, (uint32_t) sizeof( %s ) );\n", n)
+	g.pf("    at = table_worker_bump( &builder->main, (uint32_t) sizeof( %s ) );\n", n)
 	g.pf("    if ( at == kTableAllocFailed ) { return 0; }\n")
 	g.pf("    builder->root_ref.value = (int64_t) at;\n")
-	g.pf("    %sReset( (%s *) (void *) TableArenaAt( &builder->arena, at ) );\n", n, n)
+	g.pf("    %s( (%s *) (void *) table_arena_at( &builder->arena, at ) );\n", g.api(n, "reset"), n)
 	g.pf("    return 1;\n}\n\n")
 
-	g.pf("static SCHEMA_UNUSED void %sBuilderShutdown( %sBuilder * builder )\n{\n", n, n)
-	g.pf("    TableArenaShutdown( &builder->arena );\n")
+	g.pf("static SCHEMA_UNUSED void %s( %sBuilder * builder )\n{\n", g.api(n, "builder_shutdown"), n)
+	g.pf("    table_arena_shutdown( &builder->arena );\n")
 	g.pf("    free( builder->region );\n")
 	g.pf("    builder->region = NULL;\n    builder->region_bytes = 0;\n}\n\n")
 
 	g.pf("/* The mutable root, or NULL once the builder is locked. */\n")
-	g.pf("static SCHEMA_UNUSED %s * %sBuilderRoot( %sBuilder * builder )\n{\n", n, n, n)
+	g.pf("static SCHEMA_UNUSED %s * %s( %sBuilder * builder )\n{\n", n, g.api(n, "builder_root"), n)
 	g.pf("    if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }\n")
-	g.pf("    return (%s *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );\n}\n\n", n)
+	g.pf("    return (%s *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );\n}\n\n", n)
 
 	g.pf("/* Lock is ONE WAY and it is the compaction: the segmented arena becomes one\n")
 	g.pf("   exact-packed region with zero slack, references rewritten self-relative,\n")
 	g.pf("   and the mutable life released. Single-threaded: call it after the workers\n")
 	g.pf("   have joined. The region comes back in builder->region. */\n")
-	g.pf("static SCHEMA_UNUSED int %sBuilderLock( %sBuilder * builder )\n{\n", n, n)
+	g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder )\n{\n", g.api(n, "builder_lock"), n)
 	g.pf("    TableCtx ctx;\n    const %s * root;\n    int64_t below, total, used;\n    uint8_t * packed;\n", n)
 	g.pf("    if ( builder->arena.locked ) { return builder->region != NULL; }\n")
 	g.pf("    if ( builder->root_ref.value == 0 ) { return 0; }\n")
 	g.pf("    ctx.arena = &builder->arena;\n")
-	g.pf("    root = (const %s *) (void *) TableArenaAt( &builder->arena, (uint32_t) builder->root_ref.value );\n", n)
-	g.pf("    below = %sPackMeasure( &ctx, root, 1 );\n", n)
+	g.pf("    root = (const %s *) (void *) table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );\n", n)
+	g.pf("    below = %s( &ctx, root, 1 );\n", g.api(n, "pack_measure"))
 	g.pf("    if ( below < 0 ) { return 0; } /* a data cycle, or a chain past kTableMaxDepth */\n")
-	g.pf("    total = TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n", n)
+	g.pf("    total = table_align_up64( (int64_t) sizeof( %s ) ) + below;\n", n)
 	g.pf("    packed = (uint8_t *) malloc( (size_t) total ); /* the AUTHORING path may allocate */\n")
 	g.pf("    if ( packed == NULL ) { return 0; }\n")
 	g.pf("    memset( packed, 0, (size_t) total );\n")
-	g.pf("    used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
-	g.pf("    if ( !%sPack( &ctx, root, (%s *) (void *) packed, packed, total, &used, 1 ) || used != total )\n    {\n", n, n)
+	g.pf("    used = table_align_up64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    if ( !%s( &ctx, root, (%s *) (void *) packed, packed, total, &used, 1 ) || used != total )\n    {\n", g.api(n, "pack"), n)
 	g.pf("        free( packed );\n        return 0;\n    }\n")
 	g.pf("    builder->region = packed;\n")
 	g.pf("    builder->region_bytes = total;\n")
 	g.pf("    builder->arena.locked = 1; /* MONOTONIC: there is no unlock */\n")
-	g.pf("    TableArenaShutdown( &builder->arena );\n")
+	g.pf("    table_arena_shutdown( &builder->arena );\n")
 	g.pf("    return 1;\n}\n\n")
 
 	// wire out
@@ -511,29 +511,29 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("   arena, is a packed REGION — what Lock and Load produce — and a ctx naming\n")
 	g.pf("   a builder's arena is the mutable form. C++ spells the two as overloads;\n")
 	g.pf("   one parameter says the same thing here. */\n")
-	g.pf("static SCHEMA_UNUSED int64_t %sMeasure( const TableCtx * ctx, const %s * root )\n{\n", n, n)
-	g.pf("    return root != NULL ? %sMeasureBody( ctx, root, 1 ) : -1;\n}\n\n", n)
-	g.pf("static SCHEMA_UNUSED int64_t %sSave( const TableCtx * ctx, const %s * root, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
+	g.pf("static SCHEMA_UNUSED int64_t %s( const TableCtx * ctx, const %s * root )\n{\n", g.api(n, "measure"), n)
+	g.pf("    return root != NULL ? %s( ctx, root, 1 ) : -1;\n}\n\n", g.api(n, "measure_body"))
+	g.pf("static SCHEMA_UNUSED int64_t %s( const TableCtx * ctx, const %s * root, uint8_t * buffer, int64_t capacity )\n{\n", g.api(n, "save"), n)
 	g.pf("    TableWriter w;\n")
 	g.pf("    if ( root == NULL ) { return -1; }\n")
-	g.pf("    w = TableWriterMake( buffer, capacity );\n")
-	g.pf("    if ( !%sSaveBody( ctx, &w, root, 1 ) ) { return -1; }\n", n)
-	g.pf("    return w.offset; /* == %sMeasure( ctx, root ) */\n}\n\n", n)
+	g.pf("    w = table_writer_make( buffer, capacity );\n")
+	g.pf("    if ( !%s( ctx, &w, root, 1 ) ) { return -1; }\n", g.api(n, "save_body"))
+	g.pf("    return w.offset; /* == %s( ctx, root ) */\n}\n\n", g.api(n, "measure"))
 
 	// load
-	g.pf("/* %sLoadMeasure: the exact region bytes a wire buffer will need. The\n", n)
+	g.pf("/* %s: the exact region bytes a wire buffer will need. The\n", g.api(n, "load_measure"))
 	g.pf("   caller owns the allocation — generated load code allocates nothing. */\n")
-	g.pf("static SCHEMA_UNUSED int64_t %sLoadMeasure( const uint8_t * wire, int64_t wire_bytes )\n{\n", n)
+	g.pf("static SCHEMA_UNUSED int64_t %s( const uint8_t * wire, int64_t wire_bytes )\n{\n", g.api(n, "load_measure"))
 	g.pf("    TableReport ignored;\n    TableReader r;\n    int64_t below;\n")
 	g.pf("    memset( &ignored, 0, sizeof( ignored ) );\n")
-	g.pf("    r = TableReaderMake( wire, wire_bytes, &ignored );\n")
-	g.pf("    below = %sLoadMeasureBody( &r, 1 );\n", n)
+	g.pf("    r = table_reader_make( wire, wire_bytes, &ignored );\n")
+	g.pf("    below = %s( &r, 1 );\n", g.api(n, "load_measure_body"))
 	g.pf("    if ( below < 0 ) { below = 0; }\n")
-	g.pf("    return TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n}\n\n", n)
-	g.pf("/* %sLoad: decode the tolerant wire into the caller's exact-sized region and\n", n)
+	g.pf("    return table_align_up64( (int64_t) sizeof( %s ) ) + below;\n}\n\n", n)
+	g.pf("/* %s: decode the tolerant wire into the caller's exact-sized region and\n", g.api(n, "load"))
 	g.pf("   return the root. Partial results are kept, as everywhere on this wire —\n")
 	g.pf("   the report says what happened. NULL means the CALLER's buffer was wrong. */\n")
-	g.pf("static SCHEMA_UNUSED const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("static SCHEMA_UNUSED const %s * %s( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, g.api(n, "load"))
 	g.pf("    TableReport ignored;\n    TableReport * out;\n    TableRegionSink region_sink;\n    TableSink sink;\n    %s * root;\n    TableReader r;\n", n)
 	g.pf("    memset( &ignored, 0, sizeof( ignored ) );\n")
 	g.pf("    out = report != NULL ? report : &ignored;\n")
@@ -542,23 +542,23 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    memset( region, 0, (size_t) region_bytes );\n")
 	g.pf("    region_sink.base = region;\n")
 	g.pf("    region_sink.capacity = region_bytes;\n")
-	g.pf("    region_sink.used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    region_sink.used = table_align_up64( (int64_t) sizeof( %s ) );\n", n)
 	g.pf("    sink.region = &region_sink;\n    sink.worker = NULL;\n")
 	g.pf("    root = (%s *) (void *) region;\n", n)
-	g.pf("    r = TableReaderMake( wire, wire_bytes, out );\n")
-	g.pf("    %sLoadBody( &r, &sink, root, 1 );\n", n)
+	g.pf("    r = table_reader_make( wire, wire_bytes, out );\n")
+	g.pf("    %s( &r, &sink, root, 1 );\n", g.api(n, "load_body"))
 	g.pf("    return root;\n}\n\n")
-	g.pf("/* %sLoadBuilder: the TOOL's path — the same tolerant decode into a fresh\n", n)
+	g.pf("/* %s: the TOOL's path — the same tolerant decode into a fresh\n", g.api(n, "load_builder"))
 	g.pf("   builder, so loaded data can be edited and locked again. */\n")
-	g.pf("static SCHEMA_UNUSED int %sLoadBuilder( %sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, n)
+	g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", g.api(n, "load_builder"), n)
 	g.pf("    TableReport ignored;\n    TableReport * out;\n    %s * root;\n    TableSink sink;\n    TableReader r;\n", n)
 	g.pf("    memset( &ignored, 0, sizeof( ignored ) );\n")
 	g.pf("    out = report != NULL ? report : &ignored;\n")
-	g.pf("    root = %sBuilderRoot( builder );\n", n)
+	g.pf("    root = %s( builder );\n", g.api(n, "builder_root"))
 	g.pf("    if ( root == NULL ) { out->malformed = 1; return 0; }\n")
 	g.pf("    sink.region = NULL;\n    sink.worker = &builder->main;\n")
-	g.pf("    r = TableReaderMake( wire, wire_bytes, out );\n")
-	g.pf("    return %sLoadBody( &r, &sink, root, 1 );\n}\n\n", n)
+	g.pf("    r = table_reader_make( wire, wire_bytes, out );\n")
+	g.pf("    return %s( &r, &sink, root, 1 );\n}\n\n", g.api(n, "load_body"))
 }
 
 // emitRelocatabilityPreamble writes the note above the layout contract, which

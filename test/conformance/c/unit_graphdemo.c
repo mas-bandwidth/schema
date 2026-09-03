@@ -31,26 +31,26 @@ typedef struct CookRoot
     CookTypeFn type;
 } CookRoot;
 
-static const void * open_scene( const void * b, uint64_t n ) { return SceneOpen( b, n ); }
-static const void * open_depot( const void * b, uint64_t n ) { return DepotOpen( b, n ); }
-static const void * open_album( const void * b, uint64_t n ) { return AlbumOpen( b, n ); }
-static const void * open_tree( const void * b, uint64_t n ) { return TreeNodeOpen( b, n ); }
-static const void * open_list( const void * b, uint64_t n ) { return ListNodeOpen( b, n ); }
-static const void * open_marker( const void * b, uint64_t n ) { return MarkerOpen( b, n ); }
+static const void * open_scene( const void * b, uint64_t n ) { return scene_open( b, n ); }
+static const void * open_depot( const void * b, uint64_t n ) { return depot_open( b, n ); }
+static const void * open_album( const void * b, uint64_t n ) { return album_open( b, n ); }
+static const void * open_tree( const void * b, uint64_t n ) { return tree_node_open( b, n ); }
+static const void * open_list( const void * b, uint64_t n ) { return list_node_open( b, n ); }
+static const void * open_marker( const void * b, uint64_t n ) { return marker_open( b, n ); }
 /* the FIXED class: a cook of one is ONE REGION OF ONE NODE (§7), and it is the
    same header match. */
-static const void * open_settings( const void * b, uint64_t n ) { return SettingsOpen( b, n ); }
-static const void * open_stamp( const void * b, uint64_t n ) { return StampOpen( b, n ); }
+static const void * open_settings( const void * b, uint64_t n ) { return settings_open( b, n ); }
+static const void * open_stamp( const void * b, uint64_t n ) { return stamp_open( b, n ); }
 
 static const CookRoot roots[] = {
-    { "Scene", open_scene, SceneTableType },
-    { "Depot", open_depot, DepotTableType },
-    { "Album", open_album, AlbumTableType },
-    { "TreeNode", open_tree, TreeNodeTableType },
-    { "ListNode", open_list, ListNodeTableType },
-    { "Marker", open_marker, MarkerTableType },
-    { "Settings", open_settings, SettingsTableType },
-    { "Stamp", open_stamp, StampTableType }
+    { "Scene", open_scene, scene_table_type },
+    { "Depot", open_depot, depot_table_type },
+    { "Album", open_album, album_table_type },
+    { "TreeNode", open_tree, tree_node_table_type },
+    { "ListNode", open_list, list_node_table_type },
+    { "Marker", open_marker, marker_table_type },
+    { "Settings", open_settings, settings_table_type },
+    { "Stamp", open_stamp, stamp_table_type }
 };
 
 static const CookRoot * find_root( const char * name )

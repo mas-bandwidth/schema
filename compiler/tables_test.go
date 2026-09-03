@@ -1676,10 +1676,10 @@ func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
 		t.Fatal("no ProbeTable.h")
 	}
 	for _, want := range []string{
-		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int ConfigSaveBody( TableWriter * w, const Config * value )",
-		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int ConfigLoadBody( TableReader * r, Config * value )",
-		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )",
-		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int config_save_body( TableWriter * w, const Config * value )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int config_load_body( TableReader * r, Config * value )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )",
 	} {
 		if !strings.Contains(header, want) {
 			t.Errorf("the fixed class did not carry the force-inline qualifier: %q", want)
@@ -1688,17 +1688,17 @@ func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
 	// the VARIABLE class's bodies must not carry it: their pointer walk can
 	// recurse, and a recursive always_inline does not compile under gcc
 	for _, forbidden := range []string{
-		"SCHEMA_PROBE_TABLE_INLINE int NodeSaveBody",
-		"SCHEMA_PROBE_TABLE_INLINE int NodeLoadBody",
-		"SCHEMA_PROBE_TABLE_INLINE int64_t NodePackMeasure",
-		"SCHEMA_PROBE_TABLE_INLINE int NodePack",
+		"SCHEMA_PROBE_TABLE_INLINE int node_save_body",
+		"SCHEMA_PROBE_TABLE_INLINE int node_load_body",
+		"SCHEMA_PROBE_TABLE_INLINE int64_t node_pack_measure",
+		"SCHEMA_PROBE_TABLE_INLINE int node_pack",
 	} {
 		if strings.Contains(header, forbidden) {
 			t.Errorf("a variable-length table's body was force-inlined; its pointer walk can recurse: %q", forbidden)
 		}
 	}
 	// MEASURE stays plain in both classes, as it does in the reference
-	if strings.Contains(header, "SCHEMA_PROBE_TABLE_INLINE int64_t ConfigMeasure") {
+	if strings.Contains(header, "SCHEMA_PROBE_TABLE_INLINE int64_t config_measure") {
 		t.Error("Measure was force-inlined; it holds no cursor and merges no stores")
 	}
 	// and the macro is PACKAGE-SCOPED, so several units' headers can meet in

@@ -1397,11 +1397,17 @@ tree mirrors the schema tree a person navigates.
   `schema_<package>_<type>_<what>_` — because C has no namespace and two
   units whose type names collide have to LINK together, which is what the
   conformance driver itself does. The name-first surface SPEC-TABLES.md §11
-  states — `<Name>Load`, `<Name>FromJson`, `<Name>TableType`,
-  `<Name>BlockOpen` — is `static` in the header and forwards to them, so a
-  call site reads the same in C as in C++. Two units still cannot be included
-  into ONE translation unit, which is the C target's standing limit and
-  unchanged by tables.
+  states is `static` in the header and forwards to them, and it is **spelled in
+  the convention this target's PACKET half already uses** — types PascalCase,
+  functions and file-scope constants snake_case, macros SCREAMING_SNAKE under
+  `SCHEMA_` — so §11's `<Name>Load` is `<name>_load` here, `<name>_from_json`,
+  `<name>_table_type`, `<name>_block_open`. §11 names the SUFFIX SET a
+  declaration may not collide with; each target spells that set in its own
+  language, exactly as Rust spells it `<name>_load` and Go, C# and C++ spell it
+  `<Name>Load`. A table half that spelled C++'s casing in C would be the only
+  place in this compiler where two halves of one target disagree. Two units
+  still cannot be included into ONE translation unit, which is the C target's
+  standing limit and unchanged by tables.
   **The C target reserves `SCHEMA_` and `schema_`**, and it is the one place a
   generated name and a declared name meet with no compiler between them:
   constants, enum variants and flag masks are all `#define`s here, so a

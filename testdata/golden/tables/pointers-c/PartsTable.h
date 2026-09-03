@@ -116,7 +116,7 @@ typedef struct TableReport
    Static field descriptors for every type in the table closure: name, wire
    id/kind, storage offset, bounds, ranges, enum names and branch guards —
    enough to walk, print, diff, edit or bind any table value at runtime with
-   no schema files. <Name>TableType() returns <Name>'s descriptor. */
+   no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
 
@@ -207,8 +207,8 @@ typedef struct TableTypeInfo
     /* put one instance back at its declared defaults, in place. A generic
        walker that fills a value has to be able to establish the defaults an
        absent field takes, and it holds no type to spell — this is the one
-       thing the descriptors could not express without it. It is <Name>ResetRaw,
-       the void * form of <Name>Reset and the same code. */
+       thing the descriptors could not express without it. It is the void *
+       form of <name>_reset and the same code. */
     void (*reset)( void * storage );
     /* the DERIVED mode (docs/SPEC-TABLES.md): 0 = fixed-size, a plain
        relocatable struct; 1 = variable-length, built through a builder
@@ -225,7 +225,7 @@ typedef struct TableWriter
     int overflow;
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     w.buffer = buffer;
@@ -235,31 +235,31 @@ static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capa
     return w;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
 {
     if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
     memcpy( w->buffer + w->offset, data, (size_t) bytes );
     w->offset += bytes;
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPut16( TableWriter * w, uint16_t v )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_put16( TableWriter * w, uint16_t v )
 {
     uint8_t b[2];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    TableWriterRaw( w, b, 2 );
+    table_writer_raw( w, b, 2 );
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )
 {
     uint8_t b[4];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    TableWriterRaw( w, b, 4 );
+    table_writer_raw( w, b, 4 );
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPut64( TableWriter * w, uint64_t v )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    TableWriterPut32( w, (uint32_t) v );
-    TableWriterPut32( w, (uint32_t) ( v >> 32 ) );
+    table_writer_put32( w, (uint32_t) v );
+    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
 {
     if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
     w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
@@ -274,7 +274,7 @@ typedef struct TableReader
     TableReport * report;
 } TableReader;
 
-static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_t size, TableReport * report )
+static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
 {
     TableReader r;
     r.buffer = buffer;
@@ -284,62 +284,62 @@ static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_
     return r;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint16_t TableReaderGet16( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 {
     uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
     r->offset += 2;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )
 {
     uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
                | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
     r->offset += 4;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint64_t TableReaderGet64( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE uint64_t table_reader_get64( TableReader * r )
 {
-    uint64_t lo = TableReaderGet32( r );
-    uint64_t hi = TableReaderGet32( r );
+    uint64_t lo = table_reader_get32( r );
+    uint64_t hi = table_reader_get32( r );
     return lo | ( hi << 32 );
 }
 
 /* skip one payload by kind; 0 = framing damage */
-static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
+static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
     switch ( kind )
     {
         case 1: case 2: case 6:
-            if ( !TableReaderHas( r, 1 ) ) { return 0; }
+            if ( !table_reader_has( r, 1 ) ) { return 0; }
             r->offset += 1; return 1;
         case 3: case 7:
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
             r->offset += 2; return 1;
         case 4: case 8: case 10:
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
             r->offset += 4; return 1;
         case 5: case 9: case 11:
-            if ( !TableReaderHas( r, 8 ) ) { return 0; }
+            if ( !table_reader_has( r, 8 ) ) { return 0; }
             r->offset += 8; return 1;
         case 12: case 13: case 14: case 16:
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
         case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
-            if ( TableReaderGet16( r ) == 0 ) { return 1; }
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
+            if ( table_reader_get16( r ) == 0 ) { return 1; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
@@ -352,7 +352,7 @@ static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )
     {
@@ -365,7 +365,7 @@ static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define TableKeyedAt( array, key ) ( (array)[ TableKeyedSlot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -402,7 +402,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
 
 /* ---- the one atomic this runtime needs, FEATURE TESTED ----
 
-   TableArenaCas32 is a compare-exchange on a uint32_t with acquire-release
+   table_arena_cas32 is a compare-exchange on a uint32_t with acquire-release
    ordering. C99 has no atomics of its own, so the spelling is tested for
    rather than assumed — the same shape the packet emitter's inlining demand
    takes. A compiler with none of the four gets the plain fallback, which is
@@ -413,15 +413,15 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
 #define SCHEMA_TABLE_ATOMIC 1
 typedef _Atomic( uint32_t ) TableAtomicU32;
 typedef _Atomic( uint8_t * ) TableAtomicPtr;
-static SCHEMA_UNUSED int TableArenaCas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
+static SCHEMA_UNUSED int table_arena_cas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
 {
     return atomic_compare_exchange_weak_explicit( slot, expected, desired, memory_order_acq_rel, memory_order_acquire );
 }
-#define TableAtomicLoad32( slot ) atomic_load_explicit( ( slot ), memory_order_acquire )
-#define TableAtomicStore32( slot, v ) atomic_store_explicit( ( slot ), ( v ), memory_order_relaxed )
-#define TableAtomicLoadPtr( slot ) atomic_load_explicit( ( slot ), memory_order_acquire )
-#define TableAtomicStorePtr( slot, v ) atomic_store_explicit( ( slot ), ( v ), memory_order_relaxed )
-static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
+#define table_atomic_load32( slot ) atomic_load_explicit( ( slot ), memory_order_acquire )
+#define table_atomic_store32( slot, v ) atomic_store_explicit( ( slot ), ( v ), memory_order_relaxed )
+#define table_atomic_load_ptr( slot ) atomic_load_explicit( ( slot ), memory_order_acquire )
+#define table_atomic_store_ptr( slot, v ) atomic_store_explicit( ( slot ), ( v ), memory_order_relaxed )
+static SCHEMA_UNUSED int table_arena_cas_ptr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
 {
     return atomic_compare_exchange_strong_explicit( slot, expected, desired, memory_order_acq_rel, memory_order_acquire );
 }
@@ -429,15 +429,15 @@ static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** exp
 #define SCHEMA_TABLE_ATOMIC 1
 typedef uint32_t TableAtomicU32;
 typedef uint8_t * TableAtomicPtr;
-static SCHEMA_UNUSED int TableArenaCas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
+static SCHEMA_UNUSED int table_arena_cas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
 {
     return __atomic_compare_exchange_n( slot, expected, desired, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE );
 }
-#define TableAtomicLoad32( slot ) __atomic_load_n( ( slot ), __ATOMIC_ACQUIRE )
-#define TableAtomicStore32( slot, v ) __atomic_store_n( ( slot ), ( v ), __ATOMIC_RELAXED )
-#define TableAtomicLoadPtr( slot ) __atomic_load_n( ( slot ), __ATOMIC_ACQUIRE )
-#define TableAtomicStorePtr( slot, v ) __atomic_store_n( ( slot ), ( v ), __ATOMIC_RELAXED )
-static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
+#define table_atomic_load32( slot ) __atomic_load_n( ( slot ), __ATOMIC_ACQUIRE )
+#define table_atomic_store32( slot, v ) __atomic_store_n( ( slot ), ( v ), __ATOMIC_RELAXED )
+#define table_atomic_load_ptr( slot ) __atomic_load_n( ( slot ), __ATOMIC_ACQUIRE )
+#define table_atomic_store_ptr( slot, v ) __atomic_store_n( ( slot ), ( v ), __ATOMIC_RELAXED )
+static SCHEMA_UNUSED int table_arena_cas_ptr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
 {
     return __atomic_compare_exchange_n( slot, expected, desired, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE );
 }
@@ -446,18 +446,18 @@ static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** exp
 #include <intrin.h>
 typedef volatile uint32_t TableAtomicU32;
 typedef uint8_t * volatile TableAtomicPtr;
-static int TableArenaCas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
+static int table_arena_cas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
 {
     long was = _InterlockedCompareExchange( (volatile long *) slot, (long) desired, (long) *expected );
     if ( (uint32_t) was == *expected ) { return 1; }
     *expected = (uint32_t) was;
     return 0;
 }
-#define TableAtomicLoad32( slot ) ( *( slot ) )
-#define TableAtomicStore32( slot, v ) ( *( slot ) = ( v ) )
-#define TableAtomicLoadPtr( slot ) ( *( slot ) )
-#define TableAtomicStorePtr( slot, v ) ( *( slot ) = ( v ) )
-static int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
+#define table_atomic_load32( slot ) ( *( slot ) )
+#define table_atomic_store32( slot, v ) ( *( slot ) = ( v ) )
+#define table_atomic_load_ptr( slot ) ( *( slot ) )
+#define table_atomic_store_ptr( slot, v ) ( *( slot ) = ( v ) )
+static int table_arena_cas_ptr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
 {
     void * was = _InterlockedCompareExchangePointer( (void * volatile *) slot, desired, *expected );
     if ( was == *expected ) { return 1; }
@@ -472,17 +472,17 @@ static int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t
 #define SCHEMA_TABLE_ATOMIC 0
 typedef uint32_t TableAtomicU32;
 typedef uint8_t * TableAtomicPtr;
-static SCHEMA_UNUSED int TableArenaCas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
+static SCHEMA_UNUSED int table_arena_cas32( TableAtomicU32 * slot, uint32_t * expected, uint32_t desired )
 {
     if ( *slot != *expected ) { *expected = *slot; return 0; }
     *slot = desired;
     return 1;
 }
-#define TableAtomicLoad32( slot ) ( *( slot ) )
-#define TableAtomicStore32( slot, v ) ( *( slot ) = ( v ) )
-#define TableAtomicLoadPtr( slot ) ( *( slot ) )
-#define TableAtomicStorePtr( slot, v ) ( *( slot ) = ( v ) )
-static SCHEMA_UNUSED int TableArenaCasPtr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
+#define table_atomic_load32( slot ) ( *( slot ) )
+#define table_atomic_store32( slot, v ) ( *( slot ) = ( v ) )
+#define table_atomic_load_ptr( slot ) ( *( slot ) )
+#define table_atomic_store_ptr( slot, v ) ( *( slot ) = ( v ) )
+static SCHEMA_UNUSED int table_arena_cas_ptr( TableAtomicPtr * slot, uint8_t ** expected, uint8_t * desired )
 {
     if ( *slot != *expected ) { *expected = *slot; return 0; }
     *slot = desired;
@@ -514,10 +514,10 @@ typedef struct TableRef
     int64_t value;
 } TableRef;
 
-static SCHEMA_UNUSED int TableRefNull( const TableRef * ref ) { return ref->value == 0; }
+static SCHEMA_UNUSED int table_ref_null( const TableRef * ref ) { return ref->value == 0; }
 
-static SCHEMA_UNUSED uint32_t TableAlignUp( uint32_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( (uint32_t) kTableAlign - 1 ); }
-static SCHEMA_UNUSED int64_t TableAlignUp64( int64_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( (int64_t) kTableAlign - 1 ); }
+static SCHEMA_UNUSED uint32_t table_align_up( uint32_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( (uint32_t) kTableAlign - 1 ); }
+static SCHEMA_UNUSED int64_t table_align_up64( int64_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( (int64_t) kTableAlign - 1 ); }
 
 /* ---- the arena: segmented, slab-handed, lock-free by ownership ----
 
@@ -544,47 +544,47 @@ typedef struct TableArena
     int locked;            /* MONOTONIC: Lock is one-way, there is no unlock */
 } TableArena;
 
-static SCHEMA_UNUSED void TableArenaInit( TableArena * arena )
+static SCHEMA_UNUSED void table_arena_init( TableArena * arena )
 {
     uint32_t i;
     for ( i = 0; i < kTableMaxSegments; i++ )
     {
-        TableAtomicStorePtr( &arena->segments[i], (uint8_t *) NULL );
+        table_atomic_store_ptr( &arena->segments[i], (uint8_t *) NULL );
     }
-    TableAtomicStore32( &arena->cursor, 0 );
+    table_atomic_store32( &arena->cursor, 0 );
     arena->locked = 0;
 }
 
-static SCHEMA_UNUSED void TableArenaShutdown( TableArena * arena )
+static SCHEMA_UNUSED void table_arena_shutdown( TableArena * arena )
 {
     uint32_t i;
     for ( i = 0; i < kTableMaxSegments; i++ )
     {
-        uint8_t * segment = TableAtomicLoadPtr( &arena->segments[i] );
+        uint8_t * segment = table_atomic_load_ptr( &arena->segments[i] );
         if ( segment != NULL )
         {
             uint8_t * expected = segment;
-            if ( TableArenaCasPtr( &arena->segments[i], &expected, (uint8_t *) NULL ) ) { free( segment ); }
+            if ( table_arena_cas_ptr( &arena->segments[i], &expected, (uint8_t *) NULL ) ) { free( segment ); }
         }
     }
-    TableAtomicStore32( &arena->cursor, 0 );
+    table_atomic_store32( &arena->cursor, 0 );
 }
 
 /* one L1 load plus an add: the segment table is 8 KiB and stays hot */
-static SCHEMA_UNUSED uint8_t * TableArenaAt( const TableArena * arena, uint32_t offset )
+static SCHEMA_UNUSED uint8_t * table_arena_at( const TableArena * arena, uint32_t offset )
 {
     TableAtomicPtr * slot = (TableAtomicPtr *) &arena->segments[ offset >> kTableSegmentBits ];
-    return TableAtomicLoadPtr( slot ) + ( offset & kTableSegmentMask );
+    return table_atomic_load_ptr( slot ) + ( offset & kTableSegmentMask );
 }
 
-/* TableArenaGrabSlab hands one worker its next private slab. Returns
+/* table_arena_grab_slab hands one worker its next private slab. Returns
    kTableAllocFailed when the arena's address space or the allocator is
    exhausted — a loud refusal, never a silent smaller slab. */
-static SCHEMA_UNUSED uint32_t TableArenaGrabSlab( TableArena * arena )
+static SCHEMA_UNUSED uint32_t table_arena_grab_slab( TableArena * arena )
 {
     for ( ;; )
     {
-        uint32_t cursor = TableAtomicLoad32( &arena->cursor );
+        uint32_t cursor = table_atomic_load32( &arena->cursor );
         uint32_t segment = cursor >> kTableSegmentBits;
         uint32_t used = cursor & kTableSegmentMask;
         uint32_t next_segment;
@@ -592,7 +592,7 @@ static SCHEMA_UNUSED uint32_t TableArenaGrabSlab( TableArena * arena )
            is the documented slack */
         if ( used + kTableSlabBytes < kTableSegmentSize )
         {
-            if ( TableAtomicLoadPtr( &arena->segments[segment] ) == NULL )
+            if ( table_atomic_load_ptr( &arena->segments[segment] ) == NULL )
             {
                 /* calloc, NOT malloc: Lock copies whole nodes, PADDING
                    INCLUDED, so anything uninitialised here reaches a packed
@@ -602,12 +602,12 @@ static SCHEMA_UNUSED uint32_t TableArenaGrabSlab( TableArena * arena )
                 uint8_t * memory = (uint8_t *) calloc( 1, kTableSegmentSize );
                 uint8_t * expected = NULL;
                 if ( memory == NULL ) { return kTableAllocFailed; }
-                if ( !TableArenaCasPtr( &arena->segments[segment], &expected, memory ) )
+                if ( !table_arena_cas_ptr( &arena->segments[segment], &expected, memory ) )
                 {
                     free( memory ); /* another worker published this segment first */
                 }
             }
-            if ( TableArenaCas32( &arena->cursor, &cursor, cursor + kTableSlabBytes ) )
+            if ( table_arena_cas32( &arena->cursor, &cursor, cursor + kTableSlabBytes ) )
             {
                 return ( segment << kTableSegmentBits ) | used;
             }
@@ -615,7 +615,7 @@ static SCHEMA_UNUSED uint32_t TableArenaGrabSlab( TableArena * arena )
         }
         next_segment = segment + 1;
         if ( next_segment >= kTableMaxSegments ) { return kTableAllocFailed; } /* 4 GiB: the arena offset's ceiling */
-        TableArenaCas32( &arena->cursor, &cursor, next_segment << kTableSegmentBits );
+        table_arena_cas32( &arena->cursor, &cursor, next_segment << kTableSegmentBits );
     }
 }
 
@@ -637,7 +637,7 @@ typedef struct TableWorker
 
 /* one worker per thread: take one, allocate on it, and synchronize your own
    writes to nodes another worker allocated */
-static SCHEMA_UNUSED TableWorker TableWorkerMake( TableArena * arena )
+static SCHEMA_UNUSED TableWorker table_worker_make( TableArena * arena )
 {
     TableWorker worker;
     worker.arena = arena;
@@ -646,19 +646,19 @@ static SCHEMA_UNUSED TableWorker TableWorkerMake( TableArena * arena )
     return worker;
 }
 
-/* TableWorkerBump reserves the bytes of arena for one node and hands back its
+/* table_worker_bump reserves the bytes of arena for one node and hands back its
    arena offset, or kTableAllocFailed. It is the untyped half of every
-   generated <Name>Emplace: the type's own size and its Reset stay in the
+   generated <name>_emplace: the type's own size and its reset stay in the
    generated code, where they can be spelled. */
-static SCHEMA_UNUSED uint32_t TableWorkerBump( TableWorker * worker, uint32_t bytes )
+static SCHEMA_UNUSED uint32_t table_worker_bump( TableWorker * worker, uint32_t bytes )
 {
     uint32_t at;
     if ( worker->arena == NULL || worker->arena->locked ) { return kTableAllocFailed; }
-    bytes = TableAlignUp( bytes );
+    bytes = table_align_up( bytes );
     if ( bytes > kTableSlabBytes ) { return kTableAllocFailed; } /* a node larger than a slab: refused, never split */
     if ( worker->end == 0 || worker->next + bytes > worker->end )
     {
-        uint32_t offset = TableArenaGrabSlab( worker->arena );
+        uint32_t offset = table_arena_grab_slab( worker->arena );
         if ( offset == kTableAllocFailed ) { return kTableAllocFailed; }
         worker->next = offset;
         worker->end = offset + kTableSlabBytes;
@@ -675,7 +675,7 @@ static SCHEMA_UNUSED uint32_t TableWorkerBump( TableWorker * worker, uint32_t by
    C has one struct and one rule: a NULL arena means a REGION, where a slot
    holds a self-relative delta; a non-NULL arena means the mutable form, where
    a slot holds an arena offset. A NULL ctx is a region too, so a consumer
-   dereferencing inside a cooked region writes <Name>At( NULL, &slot ). */
+   dereferencing inside a cooked region writes <name>_at( NULL, &slot ). */
 typedef struct TableCtx
 {
     const TableArena * arena;
@@ -747,7 +747,7 @@ typedef struct TableSink
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
+static SCHEMA_UNUSED const int64_t table_cook_header_bytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -761,7 +761,7 @@ static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static SCHEMA_UNUSED const uint64_t table_cook_magic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -773,16 +773,16 @@ static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
+static SCHEMA_UNUSED const uint64_t table_cook_max_align = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -795,8 +795,8 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
     return v;
 }
 
-/* TableCookOpen: THE WHOLE CHECK, in one place, because §7 states the
-   enumeration once and every generated <Name>Open is that one enumeration plus
+/* table_cook_open: THE WHOLE CHECK, in one place, because §7 states the
+   enumeration once and every generated <name>_open is that one enumeration plus
    its own root's two layout facts.
 
    THE CHECK, in order: the magic read bytewise, the byte order it establishes,
@@ -816,20 +816,20 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
     if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
     if ( table_cook_read64( raw + 8 ) != SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
@@ -844,7 +844,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
     if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
@@ -853,7 +853,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
-    data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
+    data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
     if ( length < data_offset ) { return NULL; }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
@@ -879,7 +879,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
 #endif /* SCHEMA_GRAPHDEMO_TABLE_COOK */
 
 /* table Stamp — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in StampReset and nowhere
+   initializers, so the declared defaults live in stamp_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct Stamp {
     char tag[8 + 1]; /* string(8): N + 1 for the terminator the wire does not carry */
@@ -889,39 +889,39 @@ typedef struct Stamp {
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
 
-static SCHEMA_UNUSED void StampReset( Stamp * value );
+static SCHEMA_UNUSED void stamp_reset( Stamp * value );
 static SCHEMA_UNUSED void schema_graphdemo_stamp_reset_raw_( void * storage );
-static SCHEMA_UNUSED void ColourReset( Colour * value );
+static SCHEMA_UNUSED void colour_reset( Colour * value );
 static SCHEMA_UNUSED void schema_graphdemo_colour_reset_raw_( void * storage );
 
-static SCHEMA_UNUSED void StampReset( Stamp * value )
+static SCHEMA_UNUSED void stamp_reset( Stamp * value )
 {
     memset( value->tag, 0, sizeof( value->tag ) );
     value->tag_length = 0;
     value->seq = 0;
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_stamp_reset_raw_( void * storage ) { StampReset( (Stamp *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_stamp_reset_raw_( void * storage ) { stamp_reset( (Stamp *) storage ); }
 
-static SCHEMA_UNUSED void ColourReset( Colour * value )
+static SCHEMA_UNUSED void colour_reset( Colour * value )
 {
     value->r = 0;
     value->g = 0;
     value->b = 0;
 }
 
-static SCHEMA_UNUSED void schema_graphdemo_colour_reset_raw_( void * storage ) { ColourReset( (Colour *) storage ); }
+static SCHEMA_UNUSED void schema_graphdemo_colour_reset_raw_( void * storage ) { colour_reset( (Colour *) storage ); }
 
 /* ---- codecs: measure/save/load per closure member ---- */
 
-static SCHEMA_UNUSED int64_t StampMeasure( const Stamp * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int StampSaveBody( TableWriter * w, const Stamp * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int StampLoadBody( TableReader * r, Stamp * value );
-static SCHEMA_UNUSED int64_t ColourMeasure( const Colour * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int ColourSaveBody( TableWriter * w, const Colour * value );
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int ColourLoadBody( TableReader * r, Colour * value );
+static SCHEMA_UNUSED int64_t stamp_measure( const Stamp * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int stamp_save_body( TableWriter * w, const Stamp * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int stamp_load_body( TableReader * r, Stamp * value );
+static SCHEMA_UNUSED int64_t colour_measure( const Colour * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_save_body( TableWriter * w, const Colour * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_load_body( TableReader * r, Colour * value );
 
-static SCHEMA_UNUSED int64_t StampMeasure( const Stamp * value )
+static SCHEMA_UNUSED int64_t stamp_measure( const Stamp * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return -1; } /* storage invariant */
@@ -930,43 +930,43 @@ static SCHEMA_UNUSED int64_t StampMeasure( const Stamp * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int StampSaveBody( TableWriter * w, const Stamp * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int stamp_save_body( TableWriter * w, const Stamp * value )
 {
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; } /* storage invariant */
     if ( value->tag_length > 0 )
     {
-        TableWriterPut16( w, 0xbc64 ); TableWriterPut8( w, 12 ); /* tag */
-        TableWriterPut32( w, (uint32_t) value->tag_length );
-        TableWriterRaw( w, value->tag, value->tag_length );
+        table_writer_put16( w, 0xbc64 ); table_writer_put8( w, 12 ); /* tag */
+        table_writer_put32( w, (uint32_t) value->tag_length );
+        table_writer_raw( w, value->tag, value->tag_length );
     }
     if ( value->seq != 0 )
     {
-        TableWriterPut16( w, 0xc29b ); TableWriterPut8( w, 4 ); /* seq */
-        TableWriterPut32( w, (uint32_t) ( value->seq ) );
+        table_writer_put16( w, 0xc29b ); table_writer_put8( w, 4 ); /* seq */
+        table_writer_put32( w, (uint32_t) ( value->seq ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t StampSave( const Stamp * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t stamp_save( const Stamp * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !StampSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == StampMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !stamp_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == stamp_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int StampLoadBody( TableReader * r, Stamp * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int stamp_load_body( TableReader * r, Stamp * value )
 {
-    StampReset( value ); /* prefill declared defaults in place, then overlay */
+    stamp_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xbc64: /* tag */
@@ -974,14 +974,14 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int StampLoadBody( TableReade
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 8 ) { keep = 8; r->report->clamped++; }
                 memcpy( value->tag, r->buffer + r->offset, keep );
@@ -995,12 +995,12 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int StampLoadBody( TableReade
                 if ( kind != 4 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    int32_t decoded_v = (int32_t) TableReaderGet32( &(*r) );
+                    int32_t decoded_v = (int32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
                     else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
                     value->seq = decoded_v;
@@ -1010,23 +1010,23 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int StampLoadBody( TableReade
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int StampLoad( Stamp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int stamp_load( Stamp * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return StampLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return stamp_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t ColourMeasure( const Colour * value )
+static SCHEMA_UNUSED int64_t colour_measure( const Colour * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->r != 0 ) { bytes += 3 + 1; } /* r */
@@ -1035,46 +1035,46 @@ static SCHEMA_UNUSED int64_t ColourMeasure( const Colour * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int ColourSaveBody( TableWriter * w, const Colour * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_save_body( TableWriter * w, const Colour * value )
 {
     if ( value->r != 0 )
     {
-        TableWriterPut16( w, 0xb019 ); TableWriterPut8( w, 6 ); /* r */
-        TableWriterPut8( w, (uint8_t) ( value->r ) );
+        table_writer_put16( w, 0xb019 ); table_writer_put8( w, 6 ); /* r */
+        table_writer_put8( w, (uint8_t) ( value->r ) );
     }
     if ( value->g != 0 )
     {
-        TableWriterPut16( w, 0xc40a ); TableWriterPut8( w, 6 ); /* g */
-        TableWriterPut8( w, (uint8_t) ( value->g ) );
+        table_writer_put16( w, 0xc40a ); table_writer_put8( w, 6 ); /* g */
+        table_writer_put8( w, (uint8_t) ( value->g ) );
     }
     if ( value->b != 0 )
     {
-        TableWriterPut16( w, 0xcae9 ); TableWriterPut8( w, 6 ); /* b */
-        TableWriterPut8( w, (uint8_t) ( value->b ) );
+        table_writer_put16( w, 0xcae9 ); table_writer_put8( w, 6 ); /* b */
+        table_writer_put8( w, (uint8_t) ( value->b ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t ColourSave( const Colour * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t colour_save( const Colour * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !ColourSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == ColourMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !colour_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == colour_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int ColourLoadBody( TableReader * r, Colour * value )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int colour_load_body( TableReader * r, Colour * value )
 {
-    ColourReset( value ); /* prefill declared defaults in place, then overlay */
+    colour_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xb019: /* r */
@@ -1082,12 +1082,12 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int ColourLoadBody( TableRead
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->r = decoded_v;
                 }
                 break;
@@ -1097,12 +1097,12 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int ColourLoadBody( TableRead
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->g = decoded_v;
                 }
                 break;
@@ -1112,12 +1112,12 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int ColourLoadBody( TableRead
                 if ( kind != 6 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint8_t decoded_v = (uint8_t) TableReaderGet8( &(*r) );
+                    uint8_t decoded_v = (uint8_t) table_reader_get8( &(*r) );
                     value->b = decoded_v;
                 }
                 break;
@@ -1125,25 +1125,25 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int ColourLoadBody( TableRead
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int ColourLoad( Colour * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int colour_load( Colour * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return ColourLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return colour_load_body( &r, value );
 }
 
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
-/* StampOpen: match the header and POINT. On a match the bytes ARE what this
+/* stamp_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -1162,9 +1162,9 @@ static SCHEMA_UNUSED int ColourLoad( Colour * value, const uint8_t * buffer, int
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const Stamp * StampOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const Stamp * stamp_open( const void * bytes, uint64_t length )
 {
-    return (const Stamp *) TableCookOpen( bytes, length, (uint64_t) sizeof( Stamp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Stamp ) );
+    return (const Stamp *) table_cook_open( bytes, length, (uint64_t) sizeof( Stamp ), (uint64_t) SCHEMA_TABLE_ALIGNOF( Stamp ) );
 }
 
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
@@ -1207,8 +1207,8 @@ SCHEMA_TABLE_STATIC_ASSERT( Colour_b_offset, offsetof( Colour, b ) == 2, "Colour
 extern const TableTypeInfo schema_graphdemo_stamp_info_;
 extern const TableTypeInfo schema_graphdemo_colour_info_;
 
-static SCHEMA_UNUSED const TableTypeInfo * StampTableType( void ) { return &schema_graphdemo_stamp_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * ColourTableType( void ) { return &schema_graphdemo_colour_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * stamp_table_type( void ) { return &schema_graphdemo_stamp_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * colour_table_type( void ) { return &schema_graphdemo_colour_info_; }
 
 /* ---- the text form (docs/SPEC-TABLES.md §16) ---- */
 
@@ -1217,12 +1217,12 @@ static SCHEMA_UNUSED const TableTypeInfo * ColourTableType( void ) { return &sch
    PartsTable.c; compile it to use them. */
 int schema_graphdemo_stamp_from_json_( Stamp * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_graphdemo_stamp_to_json_( const Stamp * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int StampFromJson( Stamp * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int stamp_from_json( Stamp * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_graphdemo_stamp_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t StampToJsonMeasure( const Stamp * value ) { return schema_graphdemo_stamp_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t StampToJson( const Stamp * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t stamp_to_json_measure( const Stamp * value ) { return schema_graphdemo_stamp_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t stamp_to_json( const Stamp * value, char * buffer, int64_t capacity )
 {
     return schema_graphdemo_stamp_to_json_( value, buffer, capacity );
 }
@@ -1232,12 +1232,12 @@ static SCHEMA_UNUSED int64_t StampToJson( const Stamp * value, char * buffer, in
    PartsTable.c; compile it to use them. */
 int schema_graphdemo_colour_from_json_( Colour * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_graphdemo_colour_to_json_( const Colour * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int ColourFromJson( Colour * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int colour_from_json( Colour * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_graphdemo_colour_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t ColourToJsonMeasure( const Colour * value ) { return schema_graphdemo_colour_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t ColourToJson( const Colour * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t colour_to_json_measure( const Colour * value ) { return schema_graphdemo_colour_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t colour_to_json( const Colour * value, char * buffer, int64_t capacity )
 {
     return schema_graphdemo_colour_to_json_( value, buffer, capacity );
 }

@@ -116,7 +116,7 @@ typedef struct TableReport
    Static field descriptors for every type in the table closure: name, wire
    id/kind, storage offset, bounds, ranges, enum names and branch guards —
    enough to walk, print, diff, edit or bind any table value at runtime with
-   no schema files. <Name>TableType() returns <Name>'s descriptor. */
+   no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
 struct TableTypeInfo;
 
@@ -206,8 +206,8 @@ typedef struct TableTypeInfo
     /* put one instance back at its declared defaults, in place. A generic
        walker that fills a value has to be able to establish the defaults an
        absent field takes, and it holds no type to spell — this is the one
-       thing the descriptors could not express without it. It is <Name>ResetRaw,
-       the void * form of <Name>Reset and the same code. */
+       thing the descriptors could not express without it. It is the void *
+       form of <name>_reset and the same code. */
     void (*reset)( void * storage );
 } TableTypeInfo;
 
@@ -219,7 +219,7 @@ typedef struct TableWriter
     int overflow;
 } TableWriter;
 
-static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED TableWriter table_writer_make( uint8_t * buffer, int64_t capacity )
 {
     TableWriter w;
     w.buffer = buffer;
@@ -229,31 +229,31 @@ static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capa
     return w;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_raw( TableWriter * w, const void * data, int64_t bytes )
 {
     if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
     memcpy( w->buffer + w->offset, data, (size_t) bytes );
     w->offset += bytes;
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPut16( TableWriter * w, uint16_t v )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put8( TableWriter * w, uint8_t v ) { table_writer_raw( w, &v, 1 ); }
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put16( TableWriter * w, uint16_t v )
 {
     uint8_t b[2];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
-    TableWriterRaw( w, b, 2 );
+    table_writer_raw( w, b, 2 );
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )
 {
     uint8_t b[4];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
-    TableWriterRaw( w, b, 4 );
+    table_writer_raw( w, b, 4 );
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPut64( TableWriter * w, uint64_t v )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_put64( TableWriter * w, uint64_t v )
 {
-    TableWriterPut32( w, (uint32_t) v );
-    TableWriterPut32( w, (uint32_t) ( v >> 32 ) );
+    table_writer_put32( w, (uint32_t) v );
+    table_writer_put32( w, (uint32_t) ( v >> 32 ) );
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_writer_patch32( TableWriter * w, int64_t at, uint32_t v )
 {
     if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
     w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
@@ -268,7 +268,7 @@ typedef struct TableReader
     TableReport * report;
 } TableReader;
 
-static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_t size, TableReport * report )
+static SCHEMA_UNUSED TableReader table_reader_make( const uint8_t * buffer, int64_t size, TableReport * report )
 {
     TableReader r;
     r.buffer = buffer;
@@ -278,62 +278,62 @@ static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_
     return r;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint16_t TableReaderGet16( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int table_reader_has( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint8_t table_reader_get8( TableReader * r ) { return r->buffer[r->offset++]; }
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint16_t table_reader_get16( TableReader * r )
 {
     uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
     r->offset += 2;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )
 {
     uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
                | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
     r->offset += 4;
     return v;
 }
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint64_t TableReaderGet64( TableReader * r )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE uint64_t table_reader_get64( TableReader * r )
 {
-    uint64_t lo = TableReaderGet32( r );
-    uint64_t hi = TableReaderGet32( r );
+    uint64_t lo = table_reader_get32( r );
+    uint64_t hi = table_reader_get32( r );
     return lo | ( hi << 32 );
 }
 
 /* skip one payload by kind; 0 = framing damage */
-static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
+static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
 {
     switch ( kind )
     {
         case 1: case 2: case 6:
-            if ( !TableReaderHas( r, 1 ) ) { return 0; }
+            if ( !table_reader_has( r, 1 ) ) { return 0; }
             r->offset += 1; return 1;
         case 3: case 7:
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
             r->offset += 2; return 1;
         case 4: case 8: case 10:
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
             r->offset += 4; return 1;
         case 5: case 9: case 11:
-            if ( !TableReaderHas( r, 8 ) ) { return 0; }
+            if ( !table_reader_has( r, 8 ) ) { return 0; }
             r->offset += 8; return 1;
         case 12: case 13: case 14: case 16:
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
         case 15: /* union: u16 arm id, then the arm length-prefixed (id 0 = empty, no body) */
         {
             uint32_t n;
-            if ( !TableReaderHas( r, 2 ) ) { return 0; }
-            if ( TableReaderGet16( r ) == 0 ) { return 1; }
-            if ( !TableReaderHas( r, 4 ) ) { return 0; }
-            n = TableReaderGet32( r );
-            if ( !TableReaderHas( r, n ) ) { return 0; }
+            if ( !table_reader_has( r, 2 ) ) { return 0; }
+            if ( table_reader_get16( r ) == 0 ) { return 1; }
+            if ( !table_reader_has( r, 4 ) ) { return 0; }
+            n = table_reader_get32( r );
+            if ( !table_reader_has( r, n ) ) { return 0; }
             r->offset += n;
             return 1;
         }
@@ -346,7 +346,7 @@ static SCHEMA_UNUSED int TableReaderSkip( TableReader * r, uint8_t kind )
    build. The storage shifts left and holds no slot for None, so a build that
    skipped this compare would index one element BEFORE the array — undefined
    behaviour in the configuration a game ships. */
-static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
+static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key )
 {
     if ( key == 0 )
     {
@@ -359,7 +359,7 @@ static SCHEMA_UNUSED int32_t TableKeyedSlot( int32_t key )
 /* keyed[key] — the slot a variant owns, as an LVALUE. The key is evaluated
    once. ITERATION is the surface a consumer of the whole array wants: walk
    1..E_MAX and index with the key, so a call site writes no shift. */
-#define TableKeyedAt( array, key ) ( (array)[ TableKeyedSlot( (int32_t) ( key ) ) ] )
+#define SCHEMA_TABLE_KEYED_AT( array, key ) ( (array)[ table_keyed_slot( (int32_t) ( key ) ) ] )
 
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -411,7 +411,7 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
    directory (§6.3), and NOTHING THAT READS THE STRUCTURE TOUCHES IT: it is
    written beside the data for schema cook-check, so a build that ships no
    tooling need not carry it at all. */
-static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
+static SCHEMA_UNUSED const int64_t table_cook_header_bytes = 64;
 
 /* THE MAGIC'S VALUE, and a consumer written from the page needs the constant
    rather than a description of one. It is "SCHMCOOK" read as ASCII in the byte
@@ -425,7 +425,7 @@ static SCHEMA_UNUSED const int64_t kTableCookHeaderBytes = 64;
    OTHER order — or something that is not a cook. All three answers but the
    first refuse, and a cook and a BLOCK are separated here too, because a
    form's identity belongs in its magic rather than in a second digest. */
-static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static SCHEMA_UNUSED const uint64_t table_cook_magic = 0x4b4f4f434d484353ull;
 
 /* THIS BUILD's byte order, as the header's own word carries it. The magic is
    what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -437,16 +437,16 @@ static SCHEMA_UNUSED const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
    GENERATION input, little for every target schema generates for today, so
    two builds of one schema for two orders emit the same id. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 2; /* big */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t TableCookByteOrder = 1; /* little */
+static SCHEMA_UNUSED const uint64_t table_cook_byte_order = 1; /* little */
 #endif
 
 /* The greatest region alignment a cooked file may name. The DATA part begins
    at align_up( 64, alignment ), which is 64 for every unit this language can
    declare — the largest alignment it has is sixteen — so a word past this cap
    describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1). */
-static SCHEMA_UNUSED const uint64_t TableCookMaxAlign = 64;
+static SCHEMA_UNUSED const uint64_t table_cook_max_align = 64;
 
 /* The header read, BYTEWISE. memcpy is the portable spelling of "these eight
    bytes, in this machine's order"; every compiler this repo builds under folds
@@ -459,8 +459,8 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
     return v;
 }
 
-/* TableCookOpen: THE WHOLE CHECK, in one place, because §7 states the
-   enumeration once and every generated <Name>Open is that one enumeration plus
+/* table_cook_open: THE WHOLE CHECK, in one place, because §7 states the
+   enumeration once and every generated <name>_open is that one enumeration plus
    its own root's two layout facts.
 
    THE CHECK, in order: the magic read bytewise, the byte order it establishes,
@@ -480,20 +480,20 @@ static SCHEMA_UNUSED uint64_t table_cook_read64( const uint8_t * p )
    refuse, and an addition that wrapped would be the defect the comparison
    after it was supposed to catch. Nothing past length is read on any path,
    including every refusing one. */
-static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
+static SCHEMA_UNUSED const uint8_t * table_cook_open( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align )
 {
     const uint8_t * raw;
     uint64_t data_length, attribution_length, alignment, data_offset;
     const uint8_t * base;
     if ( bytes == NULL ) { return NULL; }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return NULL; }
+    if ( length < (uint64_t) table_cook_header_bytes ) { return NULL; }
     raw = (const uint8_t *) bytes;
     /* the MAGIC, bytewise and first: it is what establishes the byte order
        every other header word is read in, so nothing else may be read before
        it. A byte-reversed constant is a cook of the other order and refuses
        here, which is why the order never reaches a fix-up pass. */
-    if ( table_cook_read64( raw ) != TableCookMagic ) { return NULL; }
-    if ( table_cook_read64( raw + 16 ) != TableCookByteOrder ) { return NULL; }
+    if ( table_cook_read64( raw ) != table_cook_magic ) { return NULL; }
+    if ( table_cook_read64( raw + 16 ) != table_cook_byte_order ) { return NULL; }
     if ( table_cook_read64( raw + 8 ) != SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE ) { return NULL; }
     /* the RESERVED words: a non-zero one means a writer used a form this build
        does not understand, and Open refuses rather than ignoring it. */
@@ -508,7 +508,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
        puts the attribution part on an eight-byte boundary without a second
        padding rule) and never past the cap above; a word that is none of those
        rounds nothing and aligns nothing, so it is refused before it is used. */
-    if ( alignment < 8 || alignment > TableCookMaxAlign ) { return NULL; }
+    if ( alignment < 8 || alignment > table_cook_max_align ) { return NULL; }
     if ( ( alignment & ( alignment - 1 ) ) != 0 ) { return NULL; }
     /* and it must be an alignment THE ROOT CAN SIT AT, since the root is at
        the region's base: both are powers of two, so "at least the root's"
@@ -517,7 +517,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
     /* The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
        a header field, because a fact a reader computes is a fact two writers
        cannot disagree about. */
-    data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
+    data_offset = ( (uint64_t) table_cook_header_bytes + alignment - 1 ) & ~( alignment - 1 );
     if ( length < data_offset ) { return NULL; }
     /* the two part lengths against the length the caller passed. The whole
        file is data_offset + data_length + attribution_length, and a length
@@ -543,7 +543,7 @@ static SCHEMA_UNUSED const uint8_t * TableCookOpen( const void * bytes, uint64_t
 #endif /* SCHEMA_TABLEDEMO_TABLE_COOK */
 
 /* table GunnerSettings — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in GunnerSettingsReset and nowhere
+   initializers, so the declared defaults live in gunner_settings_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct GunnerSettings {
     float reaction;
@@ -553,7 +553,7 @@ typedef struct GunnerSettings {
 } GunnerSettings;
 
 /* table ShipEntry — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in ShipEntryReset and nowhere
+   initializers, so the declared defaults live in ship_entry_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct ShipEntry {
     char display_name[32 + 1]; /* string(32): N + 1 for the terminator the wire does not carry */
@@ -567,7 +567,7 @@ typedef struct ShipEntry {
 } ShipEntry;
 
 /* table GlobalSettings — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in GlobalSettingsReset and nowhere
+   initializers, so the declared defaults live in global_settings_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct GlobalSettings {
     uint32_t tick_rate;
@@ -578,7 +578,7 @@ typedef struct GlobalSettings {
 } GlobalSettings;
 
 /* table PackConfig — TABLE-wire storage: relocatable, bounded. C has no member
-   initializers, so the declared defaults live in PackConfigReset and nowhere
+   initializers, so the declared defaults live in pack_config_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct PackConfig {
     uint32_t version;
@@ -591,16 +591,16 @@ typedef struct PackConfig {
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
 
-static SCHEMA_UNUSED void GunnerSettingsReset( GunnerSettings * value );
+static SCHEMA_UNUSED void gunner_settings_reset( GunnerSettings * value );
 static SCHEMA_UNUSED void schema_tabledemo_gunner_settings_reset_raw_( void * storage );
-static SCHEMA_UNUSED void ShipEntryReset( ShipEntry * value );
+static SCHEMA_UNUSED void ship_entry_reset( ShipEntry * value );
 static SCHEMA_UNUSED void schema_tabledemo_ship_entry_reset_raw_( void * storage );
-static SCHEMA_UNUSED void GlobalSettingsReset( GlobalSettings * value );
+static SCHEMA_UNUSED void global_settings_reset( GlobalSettings * value );
 static SCHEMA_UNUSED void schema_tabledemo_global_settings_reset_raw_( void * storage );
-static SCHEMA_UNUSED void PackConfigReset( PackConfig * value );
+static SCHEMA_UNUSED void pack_config_reset( PackConfig * value );
 static SCHEMA_UNUSED void schema_tabledemo_pack_config_reset_raw_( void * storage );
 
-static SCHEMA_UNUSED void GunnerSettingsReset( GunnerSettings * value )
+static SCHEMA_UNUSED void gunner_settings_reset( GunnerSettings * value )
 {
     value->reaction = 0.2f;
     value->tracking = 0;
@@ -608,9 +608,9 @@ static SCHEMA_UNUSED void GunnerSettingsReset( GunnerSettings * value )
     value->callsign_length = 0;
 }
 
-static SCHEMA_UNUSED void schema_tabledemo_gunner_settings_reset_raw_( void * storage ) { GunnerSettingsReset( (GunnerSettings *) storage ); }
+static SCHEMA_UNUSED void schema_tabledemo_gunner_settings_reset_raw_( void * storage ) { gunner_settings_reset( (GunnerSettings *) storage ); }
 
-static SCHEMA_UNUSED void ShipEntryReset( ShipEntry * value )
+static SCHEMA_UNUSED void ship_entry_reset( ShipEntry * value )
 {
     memset( value->display_name, 0, sizeof( value->display_name ) );
     value->display_name_length = 0;
@@ -618,13 +618,13 @@ static SCHEMA_UNUSED void ShipEntryReset( ShipEntry * value )
     value->mass = 1.0f;
     memset( value->hardpoints, 0, sizeof( value->hardpoints ) );
     value->hardpoints_count = 0;
-    GunnerSettingsReset( &value->gunner );
+    gunner_settings_reset( &value->gunner );
     value->gunner_present = 0;
 }
 
-static SCHEMA_UNUSED void schema_tabledemo_ship_entry_reset_raw_( void * storage ) { ShipEntryReset( (ShipEntry *) storage ); }
+static SCHEMA_UNUSED void schema_tabledemo_ship_entry_reset_raw_( void * storage ) { ship_entry_reset( (ShipEntry *) storage ); }
 
-static SCHEMA_UNUSED void GlobalSettingsReset( GlobalSettings * value )
+static SCHEMA_UNUSED void global_settings_reset( GlobalSettings * value )
 {
     value->tick_rate = 60;
     value->difficulty = DIFFICULTY_NORMAL;
@@ -633,38 +633,38 @@ static SCHEMA_UNUSED void GlobalSettingsReset( GlobalSettings * value )
     memset( value->spawn_delays, 0, sizeof( value->spawn_delays ) );
 }
 
-static SCHEMA_UNUSED void schema_tabledemo_global_settings_reset_raw_( void * storage ) { GlobalSettingsReset( (GlobalSettings *) storage ); }
+static SCHEMA_UNUSED void schema_tabledemo_global_settings_reset_raw_( void * storage ) { global_settings_reset( (GlobalSettings *) storage ); }
 
-static SCHEMA_UNUSED void PackConfigReset( PackConfig * value )
+static SCHEMA_UNUSED void pack_config_reset( PackConfig * value )
 {
     value->version = 1;
-    GlobalSettingsReset( &value->global );
-    ShipEntryReset( &value->ships[0] );
+    global_settings_reset( &value->global );
+    ship_entry_reset( &value->ships[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( SHIP_TYPE_MAX ); i++ ) { value->ships[i] = value->ships[0]; } }
     memset( value->thresholds, 0, sizeof( value->thresholds ) );
-    ShipEntryReset( &value->reserves[0] );
+    ship_entry_reset( &value->reserves[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 3 ); i++ ) { value->reserves[i] = value->reserves[0]; } }
     value->reserves_count = 0;
 }
 
-static SCHEMA_UNUSED void schema_tabledemo_pack_config_reset_raw_( void * storage ) { PackConfigReset( (PackConfig *) storage ); }
+static SCHEMA_UNUSED void schema_tabledemo_pack_config_reset_raw_( void * storage ) { pack_config_reset( (PackConfig *) storage ); }
 
 /* ---- codecs: measure/save/load per closure member ---- */
 
-static SCHEMA_UNUSED int64_t GunnerSettingsMeasure( const GunnerSettings * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GunnerSettingsSaveBody( TableWriter * w, const GunnerSettings * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GunnerSettingsLoadBody( TableReader * r, GunnerSettings * value );
-static SCHEMA_UNUSED int64_t ShipEntryMeasure( const ShipEntry * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntrySaveBody( TableWriter * w, const ShipEntry * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableReader * r, ShipEntry * value );
-static SCHEMA_UNUSED int64_t GlobalSettingsMeasure( const GlobalSettings * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsSaveBody( TableWriter * w, const GlobalSettings * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsLoadBody( TableReader * r, GlobalSettings * value );
-static SCHEMA_UNUSED int64_t PackConfigMeasure( const PackConfig * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigSaveBody( TableWriter * w, const PackConfig * value );
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( TableReader * r, PackConfig * value );
+static SCHEMA_UNUSED int64_t gunner_settings_measure( const GunnerSettings * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_save_body( TableWriter * w, const GunnerSettings * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_load_body( TableReader * r, GunnerSettings * value );
+static SCHEMA_UNUSED int64_t ship_entry_measure( const ShipEntry * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_save_body( TableWriter * w, const ShipEntry * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( TableReader * r, ShipEntry * value );
+static SCHEMA_UNUSED int64_t global_settings_measure( const GlobalSettings * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_save_body( TableWriter * w, const GlobalSettings * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_load_body( TableReader * r, GlobalSettings * value );
+static SCHEMA_UNUSED int64_t pack_config_measure( const PackConfig * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_save_body( TableWriter * w, const PackConfig * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_load_body( TableReader * r, PackConfig * value );
 
-static SCHEMA_UNUSED int64_t GunnerSettingsMeasure( const GunnerSettings * value )
+static SCHEMA_UNUSED int64_t gunner_settings_measure( const GunnerSettings * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->reaction != 0.2f ) { bytes += 3 + 4; } /* reaction */
@@ -674,48 +674,48 @@ static SCHEMA_UNUSED int64_t GunnerSettingsMeasure( const GunnerSettings * value
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GunnerSettingsSaveBody( TableWriter * w, const GunnerSettings * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_save_body( TableWriter * w, const GunnerSettings * value )
 {
     if ( value->reaction != 0.2f )
     {
-        TableWriterPut16( w, 0x900f ); TableWriterPut8( w, 10 ); /* reaction */
-        TableWriterPut32( w, table_float_to_bits( value->reaction ) );
+        table_writer_put16( w, 0x900f ); table_writer_put8( w, 10 ); /* reaction */
+        table_writer_put32( w, table_float_to_bits( value->reaction ) );
     }
     if ( value->tracking != 0 )
     {
-        TableWriterPut16( w, 0x53d5 ); TableWriterPut8( w, 1 ); /* tracking */
-        TableWriterPut8( w, value->tracking ? 1 : 0 );
+        table_writer_put16( w, 0x53d5 ); table_writer_put8( w, 1 ); /* tracking */
+        table_writer_put8( w, value->tracking ? 1 : 0 );
     }
     if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; } /* storage invariant */
     if ( value->callsign_length > 0 )
     {
-        TableWriterPut16( w, 0x74dc ); TableWriterPut8( w, 12 ); /* callsign */
-        TableWriterPut32( w, (uint32_t) value->callsign_length );
-        TableWriterRaw( w, value->callsign, value->callsign_length );
+        table_writer_put16( w, 0x74dc ); table_writer_put8( w, 12 ); /* callsign */
+        table_writer_put32( w, (uint32_t) value->callsign_length );
+        table_writer_raw( w, value->callsign, value->callsign_length );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t GunnerSettingsSave( const GunnerSettings * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t gunner_settings_save( const GunnerSettings * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !GunnerSettingsSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == GunnerSettingsMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !gunner_settings_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == gunner_settings_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GunnerSettingsLoadBody( TableReader * r, GunnerSettings * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_load_body( TableReader * r, GunnerSettings * value )
 {
-    GunnerSettingsReset( value ); /* prefill declared defaults in place, then overlay */
+    gunner_settings_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x900f: /* reaction */
@@ -723,11 +723,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GunnerSettingsLoadBody( T
                 if ( kind != 10 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->reaction = table_bits_to_float( TableReaderGet32( &(*r) ) );
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->reaction = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0x53d5: /* tracking */
@@ -735,11 +735,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GunnerSettingsLoadBody( T
                 if ( kind != 1 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->tracking = TableReaderGet8( &(*r) ) != 0;
+                if ( !table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
+                value->tracking = table_reader_get8( &(*r) ) != 0;
                 break;
             }
             case 0x74dc: /* callsign */
@@ -747,14 +747,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GunnerSettingsLoadBody( T
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 24 ) { keep = 24; r->report->clamped++; }
                 memcpy( value->callsign, r->buffer + r->offset, keep );
@@ -766,23 +766,23 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GunnerSettingsLoadBody( T
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int GunnerSettingsLoad( GunnerSettings * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int gunner_settings_load( GunnerSettings * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return GunnerSettingsLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return gunner_settings_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t ShipEntryMeasure( const ShipEntry * value )
+static SCHEMA_UNUSED int64_t ship_entry_measure( const ShipEntry * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return -1; } /* storage invariant */
@@ -796,77 +796,77 @@ static SCHEMA_UNUSED int64_t ShipEntryMeasure( const ShipEntry * value )
     }
     if ( value->gunner_present ) /* ?GunnerSettings: presence decides, not content */
     {
-        int64_t body_gunner = GunnerSettingsMeasure( &value->gunner );
+        int64_t body_gunner = gunner_settings_measure( &value->gunner );
         if ( body_gunner < 0 ) { return -1; }
         bytes += 3 + 4 + body_gunner; /* gunner */
     }
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntrySaveBody( TableWriter * w, const ShipEntry * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_save_body( TableWriter * w, const ShipEntry * value )
 {
     if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; } /* storage invariant */
     if ( value->display_name_length > 0 )
     {
-        TableWriterPut16( w, 0xcb8b ); TableWriterPut8( w, 12 ); /* display_name */
-        TableWriterPut32( w, (uint32_t) value->display_name_length );
-        TableWriterRaw( w, value->display_name, value->display_name_length );
+        table_writer_put16( w, 0xcb8b ); table_writer_put8( w, 12 ); /* display_name */
+        table_writer_put32( w, (uint32_t) value->display_name_length );
+        table_writer_raw( w, value->display_name, value->display_name_length );
     }
     if ( value->health != 100.0f )
     {
-        TableWriterPut16( w, 0x8617 ); TableWriterPut8( w, 10 ); /* health */
-        TableWriterPut32( w, table_float_to_bits( value->health ) );
+        table_writer_put16( w, 0x8617 ); table_writer_put8( w, 10 ); /* health */
+        table_writer_put32( w, table_float_to_bits( value->health ) );
     }
     if ( value->mass != 1.0f )
     {
-        TableWriterPut16( w, 0xe7a6 ); TableWriterPut8( w, 10 ); /* mass */
-        TableWriterPut32( w, table_float_to_bits( value->mass ) );
+        table_writer_put16( w, 0xe7a6 ); table_writer_put8( w, 10 ); /* mass */
+        table_writer_put32( w, table_float_to_bits( value->mass ) );
     }
     if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; } /* storage invariant */
     if ( value->hardpoints_count > 0 )
     {
         int64_t len_at_hardpoints;
         int32_t i;
-        TableWriterPut16( w, 0xc4b2 ); TableWriterPut8( w, 14 ); /* hardpoints */
-        len_at_hardpoints = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 4 ); TableWriterPut32( w, (uint32_t) value->hardpoints_count );
+        table_writer_put16( w, 0xc4b2 ); table_writer_put8( w, 14 ); /* hardpoints */
+        len_at_hardpoints = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 4 ); table_writer_put32( w, (uint32_t) value->hardpoints_count );
         for ( i = 0; i < value->hardpoints_count; i++ )
         {
-            TableWriterPut32( w, (uint32_t) ( value->hardpoints[i] ) );
+            table_writer_put32( w, (uint32_t) ( value->hardpoints[i] ) );
         }
-        TableWriterPatch32( w, len_at_hardpoints, (uint32_t) ( w->offset - len_at_hardpoints - 4 ) );
+        table_writer_patch32( w, len_at_hardpoints, (uint32_t) ( w->offset - len_at_hardpoints - 4 ) );
     }
     if ( value->gunner_present ) /* ?GunnerSettings */
     {
-        int64_t body_gunner = GunnerSettingsMeasure( &value->gunner );
+        int64_t body_gunner = gunner_settings_measure( &value->gunner );
         if ( body_gunner < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
-        TableWriterPut16( w, 0x2bc9 ); TableWriterPut8( w, 13 ); /* gunner */
-        TableWriterPut32( w, (uint32_t) body_gunner );
-        if ( !GunnerSettingsSaveBody( w, &value->gunner ) ) { return 0; }
+        table_writer_put16( w, 0x2bc9 ); table_writer_put8( w, 13 ); /* gunner */
+        table_writer_put32( w, (uint32_t) body_gunner );
+        if ( !gunner_settings_save_body( w, &value->gunner ) ) { return 0; }
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t ShipEntrySave( const ShipEntry * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t ship_entry_save( const ShipEntry * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !ShipEntrySaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == ShipEntryMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !ship_entry_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == ship_entry_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableReader * r, ShipEntry * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( TableReader * r, ShipEntry * value )
 {
-    ShipEntryReset( value ); /* prefill declared defaults in place, then overlay */
+    ship_entry_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xcb8b: /* display_name */
@@ -874,14 +874,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableR
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 32 ) { keep = 32; r->report->clamped++; }
                 memcpy( value->display_name, r->buffer + r->offset, keep );
@@ -895,11 +895,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableR
                 if ( kind != 10 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->health = table_bits_to_float( TableReaderGet32( &(*r) ) );
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->health = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0xe7a6: /* mass */
@@ -907,11 +907,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableR
                 if ( kind != 10 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->mass = table_bits_to_float( TableReaderGet32( &(*r) ) );
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                value->mass = table_bits_to_float( table_reader_get32( &(*r) ) );
                 break;
             }
             case 0xc4b2: /* hardpoints */
@@ -919,19 +919,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableR
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -943,12 +943,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableR
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
                         {
-                            int32_t decoded_v = (int32_t) TableReaderGet32( &sub );
+                            int32_t decoded_v = (int32_t) table_reader_get32( &sub );
                             if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
                             else if ( decoded_v > 8 ) { decoded_v = 8; r->report->clamped++; }
                             value->hardpoints[i] = decoded_v;
@@ -965,16 +965,16 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableR
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    GunnerSettingsLoadBody( &sub, &value->gunner );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    gunner_settings_load_body( &sub, &value->gunner );
                 }
                 r->offset += body_len;
                 value->gunner_present = 1;
@@ -983,23 +983,23 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ShipEntryLoadBody( TableR
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int ShipEntryLoad( ShipEntry * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int ship_entry_load( ShipEntry * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return ShipEntryLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return ship_entry_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t GlobalSettingsMeasure( const GlobalSettings * value )
+static SCHEMA_UNUSED int64_t global_settings_measure( const GlobalSettings * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->tick_rate != 60 ) { bytes += 3 + 4; } /* tick_rate */
@@ -1031,12 +1031,12 @@ static SCHEMA_UNUSED int64_t GlobalSettingsMeasure( const GlobalSettings * value
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsSaveBody( TableWriter * w, const GlobalSettings * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_save_body( TableWriter * w, const GlobalSettings * value )
 {
     if ( value->tick_rate != 60 )
     {
-        TableWriterPut16( w, 0x1953 ); TableWriterPut8( w, 8 ); /* tick_rate */
-        TableWriterPut32( w, (uint32_t) ( value->tick_rate ) );
+        table_writer_put16( w, 0x1953 ); table_writer_put8( w, 8 ); /* tick_rate */
+        table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
     }
     if ( value->difficulty != DIFFICULTY_NORMAL )
     {
@@ -1049,15 +1049,15 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsSaveBody( T
             case DIFFICULTY_HARD: id_difficulty = 0xc313; break;
             default: return 0; /* no variant names this value: no wire identity */
         }
-        TableWriterPut16( w, 0xd53f ); TableWriterPut8( w, 7 ); /* difficulty */
-        TableWriterPut16( w, id_difficulty );
+        table_writer_put16( w, 0xd53f ); table_writer_put8( w, 7 ); /* difficulty */
+        table_writer_put16( w, id_difficulty );
     }
     if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; } /* storage invariant */
     if ( value->build_note_length > 0 )
     {
-        TableWriterPut16( w, 0xb2d4 ); TableWriterPut8( w, 12 ); /* build_note */
-        TableWriterPut32( w, (uint32_t) value->build_note_length );
-        TableWriterRaw( w, value->build_note, value->build_note_length );
+        table_writer_put16( w, 0xb2d4 ); table_writer_put8( w, 12 ); /* build_note */
+        table_writer_put32( w, (uint32_t) value->build_note_length );
+        table_writer_raw( w, value->build_note, value->build_note_length );
     }
     {
         int all_default_spawn_delays = 1;
@@ -1066,39 +1066,39 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsSaveBody( T
         if ( !all_default_spawn_delays )
         {
             int64_t len_at_spawn_delays;
-            TableWriterPut16( w, 0x7c01 ); TableWriterPut8( w, 14 ); /* spawn_delays (fixed [3]) */
-            len_at_spawn_delays = w->offset; TableWriterPut32( w, 0 );
-            TableWriterPut8( w, 10 ); TableWriterPut32( w, 3 );
+            table_writer_put16( w, 0x7c01 ); table_writer_put8( w, 14 ); /* spawn_delays (fixed [3]) */
+            len_at_spawn_delays = w->offset; table_writer_put32( w, 0 );
+            table_writer_put8( w, 10 ); table_writer_put32( w, 3 );
             for ( i = 0; i < 3; i++ )
             {
-                TableWriterPut32( w, table_float_to_bits( value->spawn_delays[i] ) );
+                table_writer_put32( w, table_float_to_bits( value->spawn_delays[i] ) );
             }
-            TableWriterPatch32( w, len_at_spawn_delays, (uint32_t) ( w->offset - len_at_spawn_delays - 4 ) );
+            table_writer_patch32( w, len_at_spawn_delays, (uint32_t) ( w->offset - len_at_spawn_delays - 4 ) );
         }
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t GlobalSettingsSave( const GlobalSettings * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t global_settings_save( const GlobalSettings * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !GlobalSettingsSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == GlobalSettingsMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !global_settings_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == global_settings_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsLoadBody( TableReader * r, GlobalSettings * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_load_body( TableReader * r, GlobalSettings * value )
 {
-    GlobalSettingsReset( value ); /* prefill declared defaults in place, then overlay */
+    global_settings_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0x1953: /* tick_rate */
@@ -1106,12 +1106,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsLoadBody( T
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     if ( decoded_v < 1 ) { decoded_v = 1; r->report->clamped++; }
                     else if ( decoded_v > 240 ) { decoded_v = 240; r->report->clamped++; }
                     value->tick_rate = decoded_v;
@@ -1123,12 +1123,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsLoadBody( T
                 if ( kind != 7 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 2 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint16_t variant = TableReaderGet16( &(*r) );
+                    uint16_t variant = table_reader_get16( &(*r) );
                     switch ( variant )
                     {
                         case 0: value->difficulty = DIFFICULTY_NONE; break;
@@ -1145,14 +1145,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsLoadBody( T
                 if ( kind != 12 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t len;
                 uint32_t keep;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                len = table_reader_get32( r );
+                if ( !table_reader_has( r, len ) ) { r->report->malformed = 1; return 0; }
                 keep = len;
                 if ( keep > 48 ) { keep = 48; r->report->clamped++; }
                 memcpy( value->build_note, r->buffer + r->offset, keep );
@@ -1166,19 +1166,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsLoadBody( T
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -1189,11 +1189,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsLoadBody( T
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        value->spawn_delays[i] = table_bits_to_float( TableReaderGet32( &sub ) );
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        value->spawn_delays[i] = table_bits_to_float( table_reader_get32( &sub ) );
                     }
                 }
                 r->offset = body_end; /* excess elements and slack skip via the length */
@@ -1202,28 +1202,28 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int GlobalSettingsLoadBody( T
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int GlobalSettingsLoad( GlobalSettings * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int global_settings_load( GlobalSettings * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return GlobalSettingsLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return global_settings_load_body( &r, value );
 }
 
-static SCHEMA_UNUSED int64_t PackConfigMeasure( const PackConfig * value )
+static SCHEMA_UNUSED int64_t pack_config_measure( const PackConfig * value )
 {
     int64_t bytes = 2; /* terminator */
     if ( value->version != 1 ) { bytes += 3 + 4; } /* version */
     {
-        int64_t body_global = GlobalSettingsMeasure( &value->global );
+        int64_t body_global = global_settings_measure( &value->global );
         if ( body_global < 0 ) { return -1; }
         if ( body_global > 2 ) { bytes += 3 + 4 + body_global; } /* global: all-default nested elides */
     }
@@ -1232,7 +1232,7 @@ static SCHEMA_UNUSED int64_t PackConfigMeasure( const PackConfig * value )
         int32_t i;
         for ( i = 0; i < SHIP_TYPE_MAX; i++ ) /* [ShipType]: every stored slot is a named variant's */
         {
-            int64_t elem_bytes = ShipEntryMeasure( &value->ships[i] );
+            int64_t elem_bytes = ship_entry_measure( &value->ships[i] );
             if ( elem_bytes < 0 ) { return -1; }
             if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
             uint16_t key_id = 0;
@@ -1276,7 +1276,7 @@ static SCHEMA_UNUSED int64_t PackConfigMeasure( const PackConfig * value )
         bytes += 3 + 4 + 5; /* reserves */
         for ( i = 0; i < value->reserves_count; i++ )
         {
-            int64_t elem_reserves = ShipEntryMeasure( &value->reserves[i] );
+            int64_t elem_reserves = ship_entry_measure( &value->reserves[i] );
             if ( elem_reserves < 0 ) { return -1; }
             bytes += 4 + elem_reserves;
         }
@@ -1284,21 +1284,21 @@ static SCHEMA_UNUSED int64_t PackConfigMeasure( const PackConfig * value )
     return bytes;
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigSaveBody( TableWriter * w, const PackConfig * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_save_body( TableWriter * w, const PackConfig * value )
 {
     if ( value->version != 1 )
     {
-        TableWriterPut16( w, 0xe8e6 ); TableWriterPut8( w, 8 ); /* version */
-        TableWriterPut32( w, (uint32_t) ( value->version ) );
+        table_writer_put16( w, 0xe8e6 ); table_writer_put8( w, 8 ); /* version */
+        table_writer_put32( w, (uint32_t) ( value->version ) );
     }
     {
-        int64_t body_global = GlobalSettingsMeasure( &value->global );
+        int64_t body_global = global_settings_measure( &value->global );
         if ( body_global < 0 ) { return 0; } /* storage invariant, refused as measure refuses it */
         if ( body_global > 2 ) /* all-default nested elides */
         {
-            TableWriterPut16( w, 0x1b51 ); TableWriterPut8( w, 13 ); /* global */
-            TableWriterPut32( w, (uint32_t) body_global );
-            if ( !GlobalSettingsSaveBody( w, &value->global ) ) { return 0; }
+            table_writer_put16( w, 0x1b51 ); table_writer_put8( w, 13 ); /* global */
+            table_writer_put32( w, (uint32_t) body_global );
+            if ( !global_settings_save_body( w, &value->global ) ) { return 0; }
         }
     }
     {
@@ -1306,7 +1306,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigSaveBody( Table
         int32_t i;
         for ( i = 0; i < SHIP_TYPE_MAX; i++ ) /* [ShipType]: every stored slot is a named variant's */
         {
-            int64_t elem_bytes = ShipEntryMeasure( &value->ships[i] );
+            int64_t elem_bytes = ship_entry_measure( &value->ships[i] );
             if ( elem_bytes < 0 ) { return 0; }
             if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
             uint16_t key_id = 0;
@@ -1327,16 +1327,16 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigSaveBody( Table
             /* KIND 16, not 14: a keyed body and a positional one are
                incompatible, so a reader of the other kind must see a kind
                mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2) */
-            TableWriterPut16( w, 0x2d39 ); TableWriterPut8( w, 16 ); /* ships (keyed by ShipType) */
-            len_at_ships = w->offset; TableWriterPut32( w, 0 );
-            TableWriterPut8( w, 13 ); TableWriterPut32( w, pairs_ships );
+            table_writer_put16( w, 0x2d39 ); table_writer_put8( w, 16 ); /* ships (keyed by ShipType) */
+            len_at_ships = w->offset; table_writer_put32( w, 0 );
+            table_writer_put8( w, 13 ); table_writer_put32( w, pairs_ships );
             /* ASCENDING BY VARIANT ORDINAL, which is slot order — this
                writer's choice, and a reader must not rely on it: every
                slot is found by its key (docs/SPEC-TABLES.md §3.2) */
             for ( i = 0; i < SHIP_TYPE_MAX; i++ )
             {
                 int64_t elem_len_at_ships;
-                int64_t elem_bytes = ShipEntryMeasure( &value->ships[i] );
+                int64_t elem_bytes = ship_entry_measure( &value->ships[i] );
                 if ( elem_bytes < 0 ) { return 0; }
                 if ( elem_bytes <= 2 ) { continue; } /* an all-default slot elides */
                 uint16_t key_id = 0;
@@ -1349,12 +1349,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigSaveBody( Table
                     default: return 0; /* no variant names this value: no wire identity */
                 }
                 (void) key_id;
-                TableWriterPut16( w, key_id ); /* the slot's VARIANT id, not its position */
-                elem_len_at_ships = w->offset; TableWriterPut32( w, 0 );
-                if ( !ShipEntrySaveBody( w, &value->ships[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at_ships, (uint32_t) ( w->offset - elem_len_at_ships - 4 ) );
+                table_writer_put16( w, key_id ); /* the slot's VARIANT id, not its position */
+                elem_len_at_ships = w->offset; table_writer_put32( w, 0 );
+                if ( !ship_entry_save_body( w, &value->ships[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at_ships, (uint32_t) ( w->offset - elem_len_at_ships - 4 ) );
             }
-            TableWriterPatch32( w, len_at_ships, (uint32_t) ( w->offset - len_at_ships - 4 ) );
+            table_writer_patch32( w, len_at_ships, (uint32_t) ( w->offset - len_at_ships - 4 ) );
         }
     }
     {
@@ -1381,9 +1381,9 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigSaveBody( Table
             /* KIND 16, not 14: a keyed body and a positional one are
                incompatible, so a reader of the other kind must see a kind
                mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2) */
-            TableWriterPut16( w, 0xb2eb ); TableWriterPut8( w, 16 ); /* thresholds (keyed by Difficulty) */
-            len_at_thresholds = w->offset; TableWriterPut32( w, 0 );
-            TableWriterPut8( w, 4 ); TableWriterPut32( w, pairs_thresholds );
+            table_writer_put16( w, 0xb2eb ); table_writer_put8( w, 16 ); /* thresholds (keyed by Difficulty) */
+            len_at_thresholds = w->offset; table_writer_put32( w, 0 );
+            table_writer_put8( w, 4 ); table_writer_put32( w, pairs_thresholds );
             /* ASCENDING BY VARIANT ORDINAL, which is slot order — this
                writer's choice, and a reader must not rely on it: every
                slot is found by its key (docs/SPEC-TABLES.md §3.2) */
@@ -1401,12 +1401,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigSaveBody( Table
                     default: return 0; /* no variant names this value: no wire identity */
                 }
                 (void) key_id;
-                TableWriterPut16( w, key_id ); /* the slot's VARIANT id, not its position */
-                elem_len_at_thresholds = w->offset; TableWriterPut32( w, 0 );
-                TableWriterPut32( w, (uint32_t) ( value->thresholds[i] ) );
-                TableWriterPatch32( w, elem_len_at_thresholds, (uint32_t) ( w->offset - elem_len_at_thresholds - 4 ) );
+                table_writer_put16( w, key_id ); /* the slot's VARIANT id, not its position */
+                elem_len_at_thresholds = w->offset; table_writer_put32( w, 0 );
+                table_writer_put32( w, (uint32_t) ( value->thresholds[i] ) );
+                table_writer_patch32( w, elem_len_at_thresholds, (uint32_t) ( w->offset - elem_len_at_thresholds - 4 ) );
             }
-            TableWriterPatch32( w, len_at_thresholds, (uint32_t) ( w->offset - len_at_thresholds - 4 ) );
+            table_writer_patch32( w, len_at_thresholds, (uint32_t) ( w->offset - len_at_thresholds - 4 ) );
         }
     }
     if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; } /* storage invariant */
@@ -1414,43 +1414,43 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigSaveBody( Table
     {
         int64_t len_at_reserves;
         int32_t i;
-        TableWriterPut16( w, 0x049d ); TableWriterPut8( w, 14 ); /* reserves */
-        len_at_reserves = w->offset; TableWriterPut32( w, 0 );
-        TableWriterPut8( w, 13 ); TableWriterPut32( w, (uint32_t) value->reserves_count );
+        table_writer_put16( w, 0x049d ); table_writer_put8( w, 14 ); /* reserves */
+        len_at_reserves = w->offset; table_writer_put32( w, 0 );
+        table_writer_put8( w, 13 ); table_writer_put32( w, (uint32_t) value->reserves_count );
         for ( i = 0; i < value->reserves_count; i++ )
         {
             {
                 int64_t elem_len_at = w->offset;
-                TableWriterPut32( w, 0 );
-                if ( !ShipEntrySaveBody( w, &value->reserves[i] ) ) { return 0; }
-                TableWriterPatch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
+                table_writer_put32( w, 0 );
+                if ( !ship_entry_save_body( w, &value->reserves[i] ) ) { return 0; }
+                table_writer_patch32( w, elem_len_at, (uint32_t) ( w->offset - elem_len_at - 4 ) );
             }
         }
-        TableWriterPatch32( w, len_at_reserves, (uint32_t) ( w->offset - len_at_reserves - 4 ) );
+        table_writer_patch32( w, len_at_reserves, (uint32_t) ( w->offset - len_at_reserves - 4 ) );
     }
-    TableWriterPut16( w, 0 ); /* terminator */
+    table_writer_put16( w, 0 ); /* terminator */
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int64_t PackConfigSave( const PackConfig * value, uint8_t * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t pack_config_save( const PackConfig * value, uint8_t * buffer, int64_t capacity )
 {
-    TableWriter w = TableWriterMake( buffer, capacity );
-    if ( !PackConfigSaveBody( &w, value ) ) { return -1; }
-    return w.offset; /* == PackConfigMeasure( value ) */
+    TableWriter w = table_writer_make( buffer, capacity );
+    if ( !pack_config_save_body( &w, value ) ) { return -1; }
+    return w.offset; /* == pack_config_measure( value ) */
 }
 
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( TableReader * r, PackConfig * value )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int pack_config_load_body( TableReader * r, PackConfig * value )
 {
-    PackConfigReset( value ); /* prefill declared defaults in place, then overlay */
+    pack_config_reset( value ); /* prefill declared defaults in place, then overlay */
     for ( ;; )
     {
         uint16_t field_id;
         uint8_t kind;
-        if ( !TableReaderHas( r, 2 ) ) { r->report->malformed = 1; return 0; }
-        field_id = TableReaderGet16( r );
+        if ( !table_reader_has( r, 2 ) ) { r->report->malformed = 1; return 0; }
+        field_id = table_reader_get16( r );
         if ( field_id == 0 ) { return 1; }
-        if ( !TableReaderHas( r, 1 ) ) { r->report->malformed = 1; return 0; }
-        kind = TableReaderGet8( r );
+        if ( !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }
+        kind = table_reader_get8( r );
         switch ( field_id )
         {
             case 0xe8e6: /* version */
@@ -1458,12 +1458,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
                 if ( kind != 8 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
-                if ( !TableReaderHas( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    uint32_t decoded_v = (uint32_t) TableReaderGet32( &(*r) );
+                    uint32_t decoded_v = (uint32_t) table_reader_get32( &(*r) );
                     value->version = decoded_v;
                 }
                 break;
@@ -1473,16 +1473,16 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
                 if ( kind != 13 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 {
-                    TableReader sub = TableReaderMake( r->buffer + r->offset, body_len, r->report );
-                    GlobalSettingsLoadBody( &sub, &value->global );
+                    TableReader sub = table_reader_make( r->buffer + r->offset, body_len, r->report );
+                    global_settings_load_body( &sub, &value->global );
                 }
                 r->offset += body_len;
                 break;
@@ -1492,33 +1492,33 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
                 if ( kind != 16 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     TableReader sub;
                     uint32_t i;
                     if ( elem_kind != 13 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < count; i++ )
                     {
                         uint16_t key;
                         uint32_t elem_len;
                         ShipType slot;
-                        if ( !TableReaderHas( &sub, 2 ) ) { r->report->malformed = 1; break; }
-                        key = TableReaderGet16( &sub );
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 2 ) ) { r->report->malformed = 1; break; }
+                        key = table_reader_get16( &sub );
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         if ( key == 0 )
                         {
                             /* None is the NULL KEY: 0 is the reserved id no declared
@@ -1547,8 +1547,8 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
                             }
                         }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            ShipEntryLoadBody( &elem, &value->ships[(int32_t) slot - 1] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            ship_entry_load_body( &elem, &value->ships[(int32_t) slot - 1] );
                         }
                         sub.offset += elem_len;
                     }
@@ -1561,33 +1561,33 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
                 if ( kind != 16 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     TableReader sub;
                     uint32_t i;
                     if ( elem_kind != 4 ) { r->report->kind_mismatch++; r->offset = body_end; break; }
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < count; i++ )
                     {
                         uint16_t key;
                         uint32_t elem_len;
                         Difficulty slot;
-                        if ( !TableReaderHas( &sub, 2 ) ) { r->report->malformed = 1; break; }
-                        key = TableReaderGet16( &sub );
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 2 ) ) { r->report->malformed = 1; break; }
+                        key = table_reader_get16( &sub );
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         if ( key == 0 )
                         {
                             /* None is the NULL KEY: 0 is the reserved id no declared
@@ -1616,10 +1616,10 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
                             }
                         }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            if ( !TableReaderHas( &elem, 4 ) ) { r->report->malformed = 1; sub.offset += elem_len; continue; }
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            if ( !table_reader_has( &elem, 4 ) ) { r->report->malformed = 1; sub.offset += elem_len; continue; }
                             {
-                                int32_t decoded_v = (int32_t) TableReaderGet32( &elem );
+                                int32_t decoded_v = (int32_t) table_reader_get32( &elem );
                                 if ( decoded_v < 0 ) { decoded_v = 0; r->report->clamped++; }
                                 else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->clamped++; }
                                 value->thresholds[(int32_t) slot - 1] = decoded_v;
@@ -1636,19 +1636,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
                 if ( kind != 14 )
                 {
                     r->report->kind_mismatch++;
-                    if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                     break;
                 }
                 uint32_t body_len;
                 int64_t body_end;
-                if ( !TableReaderHas( r, 4 ) ) { r->report->malformed = 1; return 0; }
-                body_len = TableReaderGet32( r );
-                if ( !TableReaderHas( r, body_len ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_has( r, 4 ) ) { r->report->malformed = 1; return 0; }
+                body_len = table_reader_get32( r );
+                if ( !table_reader_has( r, body_len ) ) { r->report->malformed = 1; return 0; }
                 body_end = r->offset + body_len;
                 if ( body_len >= 5 )
                 {
-                    uint8_t elem_kind = TableReaderGet8( r );
-                    uint32_t count = TableReaderGet32( r );
+                    uint8_t elem_kind = table_reader_get8( r );
+                    uint32_t count = table_reader_get32( r );
                     uint32_t keep;
                     TableReader sub;
                     uint32_t i;
@@ -1660,16 +1660,16 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
                        cannot cover keeps the decoded prefix, flags malformed, and
                        the parent continues at the next field — following fields'
                        bytes are never fabricated into elements */
-                    sub = TableReaderMake( r->buffer + r->offset, body_end - r->offset, r->report );
+                    sub = table_reader_make( r->buffer + r->offset, body_end - r->offset, r->report );
                     for ( i = 0; i < keep; i++ )
                     {
                         uint32_t elem_len;
-                        if ( !TableReaderHas( &sub, 4 ) ) { r->report->malformed = 1; break; }
-                        elem_len = TableReaderGet32( &sub );
-                        if ( !TableReaderHas( &sub, elem_len ) ) { r->report->malformed = 1; break; }
+                        if ( !table_reader_has( &sub, 4 ) ) { r->report->malformed = 1; break; }
+                        elem_len = table_reader_get32( &sub );
+                        if ( !table_reader_has( &sub, elem_len ) ) { r->report->malformed = 1; break; }
                         {
-                            TableReader elem = TableReaderMake( sub.buffer + sub.offset, elem_len, r->report );
-                            ShipEntryLoadBody( &elem, &value->reserves[i] );
+                            TableReader elem = table_reader_make( sub.buffer + sub.offset, elem_len, r->report );
+                            ship_entry_load_body( &elem, &value->reserves[i] );
                         }
                         sub.offset += elem_len;
                         decoded = i + 1;
@@ -1682,25 +1682,25 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int PackConfigLoadBody( Table
             default:
             {
                 r->report->unknown++;
-                if ( !TableReaderSkip( r, kind ) ) { r->report->malformed = 1; return 0; }
+                if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }
                 break;
             }
         }
     }
 }
 
-static SCHEMA_UNUSED int PackConfigLoad( PackConfig * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int pack_config_load( PackConfig * value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
     TableReader r;
     memset( &ignored, 0, sizeof( ignored ) );
-    r = TableReaderMake( buffer, bytes, report != NULL ? report : &ignored );
-    return PackConfigLoadBody( &r, value );
+    r = table_reader_make( buffer, bytes, report != NULL ? report : &ignored );
+    return pack_config_load_body( &r, value );
 }
 
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 
-/* GunnerSettingsOpen: match the header and POINT. On a match the bytes ARE what this
+/* gunner_settings_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -1719,12 +1719,12 @@ static SCHEMA_UNUSED int PackConfigLoad( PackConfig * value, const uint8_t * buf
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const GunnerSettings * GunnerSettingsOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const GunnerSettings * gunner_settings_open( const void * bytes, uint64_t length )
 {
-    return (const GunnerSettings *) TableCookOpen( bytes, length, (uint64_t) sizeof( GunnerSettings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( GunnerSettings ) );
+    return (const GunnerSettings *) table_cook_open( bytes, length, (uint64_t) sizeof( GunnerSettings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( GunnerSettings ) );
 }
 
-/* ShipEntryOpen: match the header and POINT. On a match the bytes ARE what this
+/* ship_entry_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -1743,12 +1743,12 @@ static SCHEMA_UNUSED const GunnerSettings * GunnerSettingsOpen( const void * byt
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const ShipEntry * ShipEntryOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const ShipEntry * ship_entry_open( const void * bytes, uint64_t length )
 {
-    return (const ShipEntry *) TableCookOpen( bytes, length, (uint64_t) sizeof( ShipEntry ), (uint64_t) SCHEMA_TABLE_ALIGNOF( ShipEntry ) );
+    return (const ShipEntry *) table_cook_open( bytes, length, (uint64_t) sizeof( ShipEntry ), (uint64_t) SCHEMA_TABLE_ALIGNOF( ShipEntry ) );
 }
 
-/* GlobalSettingsOpen: match the header and POINT. On a match the bytes ARE what this
+/* global_settings_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -1767,12 +1767,12 @@ static SCHEMA_UNUSED const ShipEntry * ShipEntryOpen( const void * bytes, uint64
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const GlobalSettings * GlobalSettingsOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const GlobalSettings * global_settings_open( const void * bytes, uint64_t length )
 {
-    return (const GlobalSettings *) TableCookOpen( bytes, length, (uint64_t) sizeof( GlobalSettings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( GlobalSettings ) );
+    return (const GlobalSettings *) table_cook_open( bytes, length, (uint64_t) sizeof( GlobalSettings ), (uint64_t) SCHEMA_TABLE_ALIGNOF( GlobalSettings ) );
 }
 
-/* PackConfigOpen: match the header and POINT. On a match the bytes ARE what this
+/* pack_config_open: match the header and POINT. On a match the bytes ARE what this
    build wrote, in this build's layout and this build's byte order, so there
    is nothing to validate and nothing to fix up and the root comes back as it
    lies. On ANY refusal it returns NULL and the caller falls back to a wire
@@ -1791,9 +1791,9 @@ static SCHEMA_UNUSED const GlobalSettings * GlobalSettingsOpen( const void * byt
    file whose provenance a person doubts is schema cook-check, offline, over
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
-static SCHEMA_UNUSED const PackConfig * PackConfigOpen( const void * bytes, uint64_t length )
+static SCHEMA_UNUSED const PackConfig * pack_config_open( const void * bytes, uint64_t length )
 {
-    return (const PackConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( PackConfig ), (uint64_t) SCHEMA_TABLE_ALIGNOF( PackConfig ) );
+    return (const PackConfig *) table_cook_open( bytes, length, (uint64_t) sizeof( PackConfig ), (uint64_t) SCHEMA_TABLE_ALIGNOF( PackConfig ) );
 }
 
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
@@ -1850,10 +1850,10 @@ extern const TableTypeInfo schema_tabledemo_ship_entry_info_;
 extern const TableTypeInfo schema_tabledemo_global_settings_info_;
 extern const TableTypeInfo schema_tabledemo_pack_config_info_;
 
-static SCHEMA_UNUSED const TableTypeInfo * GunnerSettingsTableType( void ) { return &schema_tabledemo_gunner_settings_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * ShipEntryTableType( void ) { return &schema_tabledemo_ship_entry_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * GlobalSettingsTableType( void ) { return &schema_tabledemo_global_settings_info_; }
-static SCHEMA_UNUSED const TableTypeInfo * PackConfigTableType( void ) { return &schema_tabledemo_pack_config_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * gunner_settings_table_type( void ) { return &schema_tabledemo_gunner_settings_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * ship_entry_table_type( void ) { return &schema_tabledemo_ship_entry_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * global_settings_table_type( void ) { return &schema_tabledemo_global_settings_info_; }
+static SCHEMA_UNUSED const TableTypeInfo * pack_config_table_type( void ) { return &schema_tabledemo_pack_config_info_; }
 
 /* ---- the text form (docs/SPEC-TABLES.md §16) ---- */
 
@@ -1862,12 +1862,12 @@ static SCHEMA_UNUSED const TableTypeInfo * PackConfigTableType( void ) { return 
    PackTable.c; compile it to use them. */
 int schema_tabledemo_gunner_settings_from_json_( GunnerSettings * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_tabledemo_gunner_settings_to_json_( const GunnerSettings * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int GunnerSettingsFromJson( GunnerSettings * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int gunner_settings_from_json( GunnerSettings * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_tabledemo_gunner_settings_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t GunnerSettingsToJsonMeasure( const GunnerSettings * value ) { return schema_tabledemo_gunner_settings_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t GunnerSettingsToJson( const GunnerSettings * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t gunner_settings_to_json_measure( const GunnerSettings * value ) { return schema_tabledemo_gunner_settings_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t gunner_settings_to_json( const GunnerSettings * value, char * buffer, int64_t capacity )
 {
     return schema_tabledemo_gunner_settings_to_json_( value, buffer, capacity );
 }
@@ -1877,12 +1877,12 @@ static SCHEMA_UNUSED int64_t GunnerSettingsToJson( const GunnerSettings * value,
    PackTable.c; compile it to use them. */
 int schema_tabledemo_ship_entry_from_json_( ShipEntry * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_tabledemo_ship_entry_to_json_( const ShipEntry * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int ShipEntryFromJson( ShipEntry * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int ship_entry_from_json( ShipEntry * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_tabledemo_ship_entry_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t ShipEntryToJsonMeasure( const ShipEntry * value ) { return schema_tabledemo_ship_entry_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t ShipEntryToJson( const ShipEntry * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t ship_entry_to_json_measure( const ShipEntry * value ) { return schema_tabledemo_ship_entry_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t ship_entry_to_json( const ShipEntry * value, char * buffer, int64_t capacity )
 {
     return schema_tabledemo_ship_entry_to_json_( value, buffer, capacity );
 }
@@ -1892,12 +1892,12 @@ static SCHEMA_UNUSED int64_t ShipEntryToJson( const ShipEntry * value, char * bu
    PackTable.c; compile it to use them. */
 int schema_tabledemo_global_settings_from_json_( GlobalSettings * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_tabledemo_global_settings_to_json_( const GlobalSettings * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int GlobalSettingsFromJson( GlobalSettings * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int global_settings_from_json( GlobalSettings * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_tabledemo_global_settings_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t GlobalSettingsToJsonMeasure( const GlobalSettings * value ) { return schema_tabledemo_global_settings_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t GlobalSettingsToJson( const GlobalSettings * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t global_settings_to_json_measure( const GlobalSettings * value ) { return schema_tabledemo_global_settings_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t global_settings_to_json( const GlobalSettings * value, char * buffer, int64_t capacity )
 {
     return schema_tabledemo_global_settings_to_json_( value, buffer, capacity );
 }
@@ -1907,12 +1907,12 @@ static SCHEMA_UNUSED int64_t GlobalSettingsToJson( const GlobalSettings * value,
    PackTable.c; compile it to use them. */
 int schema_tabledemo_pack_config_from_json_( PackConfig * value, const char * text, int64_t bytes, TableReport * report );
 int64_t schema_tabledemo_pack_config_to_json_( const PackConfig * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int PackConfigFromJson( PackConfig * value, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int pack_config_from_json( PackConfig * value, const char * text, int64_t bytes, TableReport * report )
 {
     return schema_tabledemo_pack_config_from_json_( value, text, bytes, report );
 }
-static SCHEMA_UNUSED int64_t PackConfigToJsonMeasure( const PackConfig * value ) { return schema_tabledemo_pack_config_to_json_( value, NULL, 0 ); }
-static SCHEMA_UNUSED int64_t PackConfigToJson( const PackConfig * value, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t pack_config_to_json_measure( const PackConfig * value ) { return schema_tabledemo_pack_config_to_json_( value, NULL, 0 ); }
+static SCHEMA_UNUSED int64_t pack_config_to_json( const PackConfig * value, char * buffer, int64_t capacity )
 {
     return schema_tabledemo_pack_config_to_json_( value, buffer, capacity );
 }
