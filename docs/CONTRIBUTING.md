@@ -90,14 +90,44 @@ If a change alters the wire, it changes the protocol id, which means every
 deployment built on the old one has to redeploy both sides. That is a real cost
 to somebody, so it needs to be worth it.
 
-## Adding a language backend
+## Adding a language
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing nine consume, plus one entry in `compiler/builtin.go` implementing
-`compiler.Generator` — the public registration interface, which is the only way
-any target reaches the driver. The cross-language harness is what makes this
-tractable: generate the corpus in your language, encode the same values, and the
-goldens tell you immediately whether you agree with the other targets bit for bit.
+existing nine consume, plus one file in `compiler/` — `target_<lang>.go` —
+that registers it as a `compiler.Generator`, the public registration interface
+and the only way any target reaches the driver. The cross-language harness is
+what makes this tractable: generate the corpus in your language, encode the
+same values, and the goldens tell you immediately whether you agree with the
+other targets bit for bit.
+
+**Every registry a port joins is one file or one directory per language,
+discovered rather than listed**, so a port touches nothing another port
+touches and two ports landing in one week do not conflict:
+
+| what | the language's own file | how it is found |
+|---|---|---|
+| the target | `compiler/target_<lang>.go` (`target_javascript.go`: a `_js` suffix is a Go build constraint) | its `init` registers the generator |
+| the runtime's claimed names | `internal/tablenames/<lang>.go` | its `init` defines the backend's bit and names |
+| the compiler's tests | `compiler/tables<lang>_test.go` | the package |
+| the build | `make/<lang>.mk` | the Makefile's wildcard include; the file registers its `test-<lang>` leg, its conformance build, its bench unit and its goldens |
+| the conformance leg | `test/conformance/<lang>/driver` and `ci.json` | the harness discovers the driver; `harness matrix` builds the pull-request matrix from the rows |
+| the tables bench leg | `bench/tables/<lang>/leg` | `bench/tables/run.sh` runs every leg |
+| the shape gate's exemptions | `bench/<lang>/SHAPE-GATE.allow`, `bench/tables/<lang>/SHAPE-GATE.allow` | the gate reads every ledger under the tree |
+| the goldens | `testdata/golden/<lang>/`, `testdata/golden/tables/<unit>-<lang>/` | the tests that pin them |
+
+`make registry` prints what the build discovered, and the registry gate
+(`test/conformance/harness/registry_test.go`) plants a fake language in a copy
+of the tree and requires the harness, the CI matrix, the bench pass and the
+Makefile to find it with no shared file edited. If a port needs to edit a file
+that lists languages, that is a defect in the registry, not a step.
+
+**Two shared edits are tolerated, and are the whole list.** A toolchain with
+no step yet in `.github/workflows/ci.yml` (and the `test` job of
+`certify.yml`) adds one step, keyed on a new `ci.json` field; and the
+per-language prose in [SPEC.md](SPEC.md), [SPEC-TABLES.md](SPEC-TABLES.md)
+and [USAGE.md](USAGE.md) is prose, written by hand where the language's
+section sits. Those pages have no generated table today; when one exists it
+will come from the conformance matrix.
 
 You do not have to be in this repository to try one. `compiler.Generator` is
 public, so a generator can live in your own module, register on a
