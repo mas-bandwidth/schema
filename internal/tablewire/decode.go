@@ -273,8 +273,11 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 		return false
 	}
 	end := r.off + bodyLen
-	decoded := 0
+	// A body too short for its own header (element kind and count) is INERT,
+	// as the reference reads it: the field keeps the value it has — a repeat
+	// under this id replaces nothing — and the walk continues past the length.
 	if bodyLen >= 5 {
+		decoded := 0
 		ek := r.u8()
 		count := int(r.u32())
 		if int(ek) != ir.TableElemKind(f) {
@@ -314,9 +317,9 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 				decoded = i + 1
 			}
 		}
-	}
-	if counted {
-		fv.Count = decoded
+		if counted {
+			fv.Count = decoded
+		}
 	}
 	if f.Type.Optional {
 		// the field rode with its own element kind (or a body too short to
@@ -513,7 +516,16 @@ func (r *wireReader) scalar(cell *tabletext.Cell, f *ir.Field, atField bool) boo
 		cell.B = r.u8() != 0
 		return true
 	case ir.TableKindF32:
-		v := float64(math.Float32frombits(r.u32()))
+		bits := r.u32()
+		if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
+			// a NaN's PAYLOAD IS DATA the reference carries bit for bit: the
+			// hardware float32→float64 conversion would set the quiet bit, so
+			// the widening is done on the bits. A NaN compares outside every
+			// range, so the clamp below could not fire on it anyway.
+			cell.F = widenF32NaN(bits)
+			return true
+		}
+		v := float64(math.Float32frombits(bits))
 		if f.HasFloatRange {
 			if v < f.FMin {
 				v = f.FMin

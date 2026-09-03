@@ -2323,9 +2323,10 @@ tables-cpp-release:
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control
 
-# the string read's `has( len )`: a length past the body is then copied
+# the string read's `has( len )`: a length past the body is then copied, so the
+# sabotaged leg decodes a value out of a neighbor's bytes where the oracle stops
 tables-wire-fuzz-length-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.has( len ) ) { r.report->malformed = true; return false; }|// NEGATIVE CONTROL: the length check is gone|,the report differs)
+	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.has( len ) ) { r.report->malformed = true; return false; }|// NEGATIVE CONTROL: the length check is gone|,the decoded value differs)
 
 # the numbering's `index - 1 >= map.count`: an index past the node table then
 # reads a directory entry the region does not hold

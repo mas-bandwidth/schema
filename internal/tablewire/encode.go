@@ -370,7 +370,7 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 			w.u8(0)
 		}
 	case ir.TableKindF32:
-		w.u32(math.Float32bits(float32(cell.F)))
+		w.u32(narrowF32(cell.F))
 	case ir.TableKindF64:
 		w.u64(math.Float64bits(cell.F))
 	case ir.TableKindTable:
@@ -466,4 +466,29 @@ func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 		return cell.I == def.I
 	}
 	return cell.U == def.U
+}
+
+// A float32 NaN's PAYLOAD IS DATA the reference carries bit for bit, and the
+// hardware conversions between float32 and float64 set the quiet bit on a
+// signaling one — so a NaN crosses the two widths by bit surgery instead, the
+// 23 payload bits riding in the top of the double's 52. The round trip through
+// these two is exact for every float32 NaN.
+
+func widenF32NaN(bits uint32) float64 {
+	sign := uint64(bits>>31) << 63
+	payload := uint64(bits&0x007FFFFF) << 29
+	return math.Float64frombits(sign | 0x7FF0000000000000 | payload)
+}
+
+func narrowF32(v float64) uint32 {
+	b := math.Float64bits(v)
+	if b&0x7FF0000000000000 == 0x7FF0000000000000 && b&0x000FFFFFFFFFFFFF != 0 {
+		sign := uint32(b>>63) << 31
+		payload := uint32((b >> 29) & 0x007FFFFF)
+		if payload == 0 {
+			payload = 0x00400000 // a payload below float32's bits still reads NaN, never infinity
+		}
+		return sign | 0x7F800000 | payload
+	}
+	return math.Float32bits(float32(v))
 }

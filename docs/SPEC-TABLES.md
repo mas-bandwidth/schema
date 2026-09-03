@@ -2742,9 +2742,10 @@ that replays it:
 
 **The line it prints** is the row the register carries: the seed, the seed
 count over the root count, the enumerated and random mutant counts, the wall
-and the rate — `wire-fuzz: seed 24845619678, 47 seeds over 15 roots, 138416
-enumerated + 100000 random = 238416 mutants, 0 divergences, ...`. `SEED` and
-`N` are the two knobs, on the command line and on the `make` line.
+and the rate — `wire-fuzz: seed 24845619678, 58 seeds over 18 roots, 58659
+enumerated + 3000000 random = 3058659 mutants, 0 divergences, 91.8 s, 33321
+mutants/s`. `SEED` and `N` are the two knobs, on the command line and on the
+`make` line.
 
 **The C++ reference runs it twice**, as `make tables-wire-fuzz`: plain, which
 is the divergence oracle at speed, and under ASan and UBSan, which turns a
@@ -2762,7 +2763,7 @@ guards:
 
 | control | what it removes | what must go red |
 |---|---|---|
-| `tables-wire-fuzz-length-negative-control` | the string read's `has( len )` in the tolerant reader | the report: the oracle says malformed and the leg does not |
+| `tables-wire-fuzz-length-negative-control` | the string read's `has( len )` in the tolerant reader | the value: the leg decodes a string out of a neighbor's bytes where the oracle stops at the body |
 | `tables-wire-fuzz-index-negative-control` | `index - 1 >= count` in the numbering's resolve, the variable-class loader | the report: the leg counts a kind mismatch off a directory entry the region does not hold |
 
 Both go red PLAIN, without a sanitizer, which is what says the oracle and not
