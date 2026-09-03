@@ -78,7 +78,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 		"make-golden": "update-goldens-zz",
 	}
 	for what, needle := range want {
-		key := strings.SplitN(what, "-", 2)[0]
+		key, _, _ := strings.Cut(what, "-")
 		if !strings.Contains(after[key], needle) {
 			t.Errorf("%s did not discover the planted language: want %q in\n%s", key, needle, after[key])
 		}
