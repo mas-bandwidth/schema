@@ -1285,9 +1285,14 @@ static void test_pointer_lifecycle()
     check_scene( (const graphdemo::Scene *) moved );
     free( moved );
 
-    // wire -> const region, sized EXACTLY by the pre-pass
-    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
-    CHECK( region_need == builder.RegionBytes() ); // the two forms agree
+    // wire -> const region, sized EXACTLY by the pre-pass. LoadMeasure reports
+    // the DATA bytes and the ATTRIBUTION bytes separately (docs/SPEC-TABLES.md
+    // §6.3, §6.5), and it is the DATA half a locked region answers with: the
+    // node directory is what a LOADED region gains and Lock does not write yet.
+    int64_t attribution = 0;
+    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote, &attribution );
+    CHECK( attribution > 0 );
+    CHECK( region_need - attribution == builder.RegionBytes() ); // the two forms agree on the data
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
     const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
@@ -1300,11 +1305,13 @@ static void test_pointer_lifecycle()
     CHECK( graphdemo::SceneSave( loaded, again, sizeof( again ) ) == wrote );
     CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
 
-    // a region one byte short refuses rather than overrunning
+    // a region short of what LoadMeasure asked for REFUSES rather than
+    // overrunning, and NULL is the answer that says the CALLER's buffer was
+    // wrong — not a partial decode of the writer's data
     uint8_t * tight = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport short_report;
     const graphdemo::Scene * partial = graphdemo::SceneLoad( tight, region_need - 8, wire, wrote, &short_report );
-    CHECK( partial != NULL && short_report.malformed ); // partial result, flagged
+    CHECK( partial == NULL && short_report.malformed );
     free( tight );
 
     free( region );
@@ -1414,6 +1421,26 @@ static void test_pointer_shared_node()
         CHECK( r->left.value < 0 ); // the later reference points BACK
         CHECK( builder.RegionBytes() == scene_bytes() + 4 * tree_node_bytes() ); // four nodes, not five
 
+        // A DAG ROUND-TRIPS AS A DAG (docs/SPEC-TABLES.md §3.1): the wire
+        // numbers the shared node once, so a loader materializes one node and
+        // stores that index in both slots — four records for five references.
+        static uint8_t dag_wire[1024];
+        const int64_t dag_wrote = graphdemo::SceneSave( builder.AsConst(), dag_wire, sizeof( dag_wire ) );
+        CHECK( dag_wrote > 0 );
+        int64_t dag_attribution = 0;
+        const int64_t dag_need = graphdemo::SceneLoadMeasure( dag_wire, dag_wrote, &dag_attribution );
+        CHECK( dag_attribution == 5 * 16 ); // the root and its four nodes
+        uint8_t * dag_region = (uint8_t *) malloc( (size_t) dag_need );
+        graphdemo::TableReport dag_report;
+        const graphdemo::Scene * dag = graphdemo::SceneLoad( dag_region, dag_need, dag_wire, dag_wrote, &dag_report );
+        CHECK( dag != NULL && !dag_report.malformed && dag_report.unknown == 0 && dag_report.kind_mismatch == 0 );
+        const graphdemo::TreeNode * dt = graphdemo::TreeNodeAt( dag->tree );
+        CHECK( graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( dt->left )->left ) ==
+               graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( dt->right )->left ) );
+        CHECK( strcmp( graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( dt->right )->left )->label, "shared" ) == 0 );
+        CHECK( dag_need - dag_attribution == builder.RegionBytes() ); // and the same data bytes
+        free( dag_region );
+
         // a region holding a back-reference still relocates by pure memcpy
         uint8_t * moved = (uint8_t *) malloc( (size_t) builder.RegionBytes() );
         memcpy( moved, builder.Region(), (size_t) builder.RegionBytes() );
@@ -1424,11 +1451,9 @@ static void test_pointer_shared_node()
         free( moved );
     }
 
-    // THE WIRE IS STILL THE NESTED FORM, and this says so in its own voice:
-    // the C++ backend writes a pointee inline under kind 13, not as a u32
-    // index into a flat node table, so a save duplicates a shared node and a
-    // load reconstructs two. §3.1's backend status states the limitation and
-    // schema#251 carries the emitter to the flat form; Lock, above, is done.
+    // AND THE WIRE HOLDS IT TOO (docs/SPEC-TABLES.md §3.1): the numbering is by
+    // first visit, so a node two slots name takes ONE index and writes ONE
+    // record, and a loader materializes one node and stores that index in both.
     {
         graphdemo::SceneBuilder builder;
         graphdemo::Scene * root = builder.GetRoot();
@@ -1447,8 +1472,7 @@ static void test_pointer_shared_node()
         const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
         CHECK( loaded != NULL && !report.malformed );
         CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
-        CHECK( graphdemo::ListNodeAt( loaded->alias )->value == 1234 );
-        CHECK( graphdemo::ListNodeAt( loaded->head ) != graphdemo::ListNodeAt( loaded->alias ) );
+        CHECK( graphdemo::ListNodeAt( loaded->head ) == graphdemo::ListNodeAt( loaded->alias ) );
         free( region );
     }
 }
@@ -1497,47 +1521,64 @@ static void test_pointer_cycle_refused()
     }
 }
 
-// ---- the depth cap: a chain past it refuses, and the wire stops at it ----
+// ---- A CHAIN'S LENGTH IS NOT A DEPTH (docs/SPEC-TABLES.md §3.1) ----
+//
+// The flat node table removed the wire's depth cap: no pointer edge is a
+// nesting level, so a chain of any length is a flat list of records and the
+// LOAD side is a scan with no traversal bound at all. A 260-node chain is the
+// case that could not be saved at all under the nested form, where 129 links
+// were already too many.
 
-static void test_pointer_depth_cap()
+static void test_pointer_long_chain()
 {
-    // a chain exactly AT the cap saves; the cap counts nesting levels, and the
-    // root is level 1
+    const int count = 260;
+
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.GetRoot();
+    graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+    head->value = 0;
+    root->head = head;
+    graphdemo::ListNode * tail = head;
+    for ( int i = 1; i < count; i++ )
     {
-        graphdemo::SceneBuilder builder;
-        graphdemo::Scene * root = builder.GetRoot();
-        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
-        head->value = 0;
-        root->head = head;
-        graphdemo::ListNode * tail = head;
-        for ( int i = 1; i < graphdemo::kTableMaxDepth - 1; i++ )
-        {
-            graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
-            node->value = i;
-            tail->next = node;
-            tail = node;
-        }
-        CHECK( graphdemo::SceneMeasure( builder ) > 0 );
+        graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+        node->value = i;
+        tail->next = node;
+        tail = node;
     }
-    // one link past it refuses instead of recursing away
+
+    const int64_t need = graphdemo::SceneMeasure( builder );
+    CHECK( need > 0 );
+    uint8_t * wire = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneSave( builder, wire, need ) == need );
+
+    // and back: every value in order, through a region the caller sized
+    int64_t attribution = 0;
+    const int64_t region_need = graphdemo::SceneLoadMeasure( wire, need, &attribution );
+    CHECK( attribution == (int64_t) ( count + 1 ) * 16 ); // one entry a node, the root's included
+    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+    graphdemo::TableReport report;
+    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, need, &report );
+    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    int walked = 0;
+    for ( const graphdemo::ListNode * at = graphdemo::ListNodeAt( loaded->head ); at != NULL; at = graphdemo::ListNodeAt( at->next ) )
     {
-        graphdemo::SceneBuilder builder;
-        graphdemo::Scene * root = builder.GetRoot();
-        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
-        root->head = head;
-        graphdemo::ListNode * tail = head;
-        for ( int i = 1; i < graphdemo::kTableMaxDepth + 8; i++ )
-        {
-            graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
-            node->value = i;
-            tail->next = node;
-            tail = node;
-        }
-        static uint8_t buffer[65536];
-        CHECK( graphdemo::SceneMeasure( builder ) == -1 );
-        CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
-        CHECK( !builder.Lock() );
+        CHECK( at->value == walked );
+        walked++;
     }
+    CHECK( walked == count );
+
+    // a loaded region re-saves to the same bytes
+    uint8_t * again = (uint8_t *) malloc( (size_t) need );
+    CHECK( graphdemo::SceneSave( loaded, again, need ) == need );
+    CHECK( memcmp( wire, again, (size_t) need ) == 0 );
+
+    // and the compaction takes it too
+    CHECK( builder.Lock() );
+
+    free( again );
+    free( region );
+    free( wire );
 }
 
 // ---- the arena grows without invalidating anything ----
@@ -1659,17 +1700,22 @@ static void test_pointer_evolution_old_reader_new_data()
     int64_t wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
     CHECK( wrote > 0 );
 
-    // P1 has `link` as a BY-VALUE nesting and no `next` at all. A pointer rides
-    // with a by-value nesting's framing, so the first Link decodes cleanly and
-    // the chain's tail lands as one unknown field.
+    // P1 has `link` as a BY-VALUE nesting, so it meets an INDEX where it wants
+    // a body: a kind mismatch, counted, and the field keeps its declared
+    // defaults. The node table rides under a reserved id P1 cannot name, so it
+    // is skipped by its length and counted UNKNOWN once per transport field —
+    // which is what an "a build without kind 17" difference looks like (§4).
+    // The rest of the root's body reads on, which is the whole point of writing
+    // the table LAST.
     tblp1::Chain out;
     tblp1::TableReport report;
     CHECK( tblp1::ChainLoad( out, wire, wrote, &report ) );
     CHECK( !report.malformed );
-    CHECK( report.unknown == 1 ); // Link.next, which P1 cannot name
+    CHECK( report.kind_mismatch == 1 );
+    CHECK( report.unknown == 1 );
     CHECK( strcmp( out.name, "chain" ) == 0 );
-    CHECK( out.link.value == 11 );
-    CHECK( strcmp( out.link.tag, "one" ) == 0 );
+    CHECK( out.link.value == 0 );      // the declared default: nothing was decoded
+    CHECK( out.link.tag_length == 0 );
 }
 
 static void test_pointer_evolution_new_reader_old_data()
@@ -1684,31 +1730,34 @@ static void test_pointer_evolution_new_reader_old_data()
     int64_t wrote = tblp1::ChainSave( v1, wire, sizeof( wire ) );
     CHECK( wrote > 0 && wrote == tblp1::ChainMeasure( v1 ) );
 
-    // P2 has `link` as a POINTER: the same body allocates one node
+    // P2 has `link` as a POINTER: it meets a BODY where it wants an index, and
+    // that is a kind mismatch, counted, with the pointer left null. It is the
+    // edit kind 17 exists to make loud — four bytes of index and four bytes of
+    // a plausible length are the same four bytes to a shared kind.
     int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     tblp2::TableReport report;
     const tblp2::Chain * out = tblp2::ChainLoad( region, region_need, wire, wrote, &report );
     CHECK( out != NULL );
-    CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    CHECK( !report.malformed && report.unknown == 0 );
+    CHECK( report.kind_mismatch == 1 );
     CHECK( strcmp( out->name, "aged" ) == 0 );
-    const tblp2::Link * link = tblp2::LinkAt( out->link );
-    CHECK( link != NULL && link->value == 77 && strcmp( link->tag, "old" ) == 0 );
-    CHECK( tblp2::LinkAt( link->next ) == NULL ); // a field old data never wrote is null
+    CHECK( tblp2::LinkAt( out->link ) == NULL );
     free( region );
 
-    // and into a BUILDER — the tool's path: load, edit, lock again
+    // and into a BUILDER — the tool's path: the same verdict, and the builder
+    // is still usable afterwards
     tblp2::ChainBuilder builder;
     tblp2::TableReport builder_report;
     CHECK( tblp2::ChainLoadBuilder( builder, wire, wrote, &builder_report ) );
-    CHECK( !builder_report.malformed );
-    tblp2::Link * loaded = tblp2::LinkAt( builder.arena, builder.GetRoot()->link );
-    CHECK( loaded != NULL && loaded->value == 77 );
+    CHECK( !builder_report.malformed && builder_report.kind_mismatch == 1 );
+    CHECK( strcmp( builder.GetRoot()->name, "aged" ) == 0 );
+    CHECK( builder.GetRoot()->link.null() );
     tblp2::TableSlot<tblp2::Link> added = builder.Alloc<tblp2::Link>();
     added->value = 88;
-    loaded->next = added;
+    builder.GetRoot()->link = added;
     CHECK( builder.Lock() );
-    CHECK( tblp2::LinkAt( tblp2::LinkAt( builder.AsConst()->link )->next )->value == 88 );
+    CHECK( tblp2::LinkAt( builder.AsConst()->link )->value == 88 );
 }
 
 // ---- a null pointer elides; a non-null one rides even when all-default ----
@@ -1723,7 +1772,10 @@ static void test_pointer_null_and_empty()
     graphdemo::TableSlot<graphdemo::ListNode> node = one.Alloc<graphdemo::ListNode>();
     one.GetRoot()->head = node; // an ALL-DEFAULT pointee behind a non-null pointer
     int64_t with_empty = graphdemo::SceneMeasure( one );
-    CHECK( with_empty == 2 + 3 + 4 + 2 ); // id + kind + length + the empty body
+    // the root: an index field (id, kind, u32) and the terminator; the node
+    // table: one field (id, kind, L) with the count and one record of an empty
+    // body (§3.1)
+    CHECK( with_empty == ( 3 + 4 + 2 ) + ( 3 + 4 + 8 + 12 + 2 ) );
 
     uint8_t wire[64];
     int64_t wrote = graphdemo::SceneSave( one, wire, sizeof( wire ) );
@@ -1755,7 +1807,7 @@ static void test_pointer_reflection()
 
     const graphdemo::TableFieldInfo * head = graph_field( scene, "head" );
     CHECK( head != NULL && head->is_pointer );
-    CHECK( head->kind == 13 ); // a pointer rides as a nested table body
+    CHECK( head->kind == 17 ); // a pointer rides as a u32 NODE INDEX (§3.1)
     CHECK( head->elem_size == sizeof( graphdemo::TableRef ) );
     CHECK( head->table == graphdemo::ListNodeTableType() ); // the TARGET's descriptor
     CHECK( !head->is_array && !head->counted );
@@ -1859,7 +1911,8 @@ static void test_depth_agrees_through_by_value_nesting()
     head->value = 0;
     builder.GetRoot()->ground.head = head;
     graphdemo::ListNode * tail = head;
-    for ( int i = 1; i < graphdemo::kTableMaxDepth - 1; i++ ) // 127 nodes
+    const int chain = 300; // past anything a nesting-based form could carry
+    for ( int i = 1; i < chain; i++ )
     {
         graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
         node->value = i;
@@ -1886,7 +1939,7 @@ static void test_depth_agrees_through_by_value_nesting()
         CHECK( node->value == walked );
         walked++;
     }
-    CHECK( walked == graphdemo::kTableMaxDepth - 1 );
+    CHECK( walked == chain );
     free( wire );
     free( region );
 }
@@ -1982,8 +2035,9 @@ static void test_cross_file_pointer_unit()
     CHECK( graphdemo::ListNodeAt( locked->head )->value == 5 );
 
     // and the round trip through the wire
-    int64_t region_need = graphdemo::AlbumLoadMeasure( wire, need );
-    CHECK( region_need == builder.RegionBytes() );
+    int64_t album_attribution = 0;
+    int64_t region_need = graphdemo::AlbumLoadMeasure( wire, need, &album_attribution );
+    CHECK( region_need - album_attribution == builder.RegionBytes() );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     graphdemo::TableReport report;
     const graphdemo::Album * loaded = graphdemo::AlbumLoad( region, region_need, wire, need, &report );
@@ -2065,9 +2119,12 @@ static void test_optional_round_trip()
     check_exact_capacity( set, tblv1::CfgMeasure, tblv1::CfgSave );
 }
 
-// ---- ?T, *T and a plain nesting are ONE framing: the three-way evolution
-// ---- (docs/SPEC-TABLES.md §2.3, §3.1). P1 nests by value, P2 points, P3 marks
-// ---- optional, and every pair reads both directions.
+// ---- T and ?T are ONE framing; *T is its OWN (docs/SPEC-TABLES.md §2.3,
+// ---- §3.1). P1 nests by value, P3 marks optional, and those two are wire
+// ---- identical in both directions. P2 POINTS, and under the flat node table a
+// ---- pointer field rides as a u32 index under kind 17 — so moving a field
+// ---- between the two shapes is an ordinary, REPORTED kind mismatch and never
+// ---- a silent reinterpretation. That is the whole reason kind 17 is spent.
 
 static void test_optional_three_way_evolution()
 {
@@ -2090,6 +2147,9 @@ static void test_optional_three_way_evolution()
     CHECK( w_opt == w_value );
     CHECK( memcmp( wire, other, (size_t) w_value ) == 0 );
 
+    // and the POINTER is a different framing, by design: seven bytes for the
+    // index where the other two carry a body, plus the node table the body
+    // moved into
     tblp2::ChainBuilder builder;
     tblp2::Chain * root = builder.GetRoot();
     set_string( root->name, root->name_length, "one" );
@@ -2097,8 +2157,8 @@ static void test_optional_three_way_evolution()
     node->value = 66;
     root->link = node;
     int64_t w_ptr = tblp2::ChainSave( builder, other, sizeof( other ) );
-    CHECK( w_ptr == w_value );
-    CHECK( memcmp( wire, other, (size_t) w_value ) == 0 );
+    CHECK( w_ptr > 0 && w_ptr == tblp2::ChainMeasure( builder ) );
+    CHECK( w_ptr != w_value );
 
     // ?T -> by value: the optional's body decodes as a nesting
     int64_t wrote = tblp3::ChainSave( optional, wire, sizeof( wire ) );
@@ -2108,14 +2168,17 @@ static void test_optional_three_way_evolution()
     CHECK( !r1.malformed && r1.unknown == 0 && r1.kind_mismatch == 0 );
     CHECK( into_value.link.value == 66 && strcmp( into_value.name, "one" ) == 0 );
 
-    // ?T -> *T: the same body allocates one node
+    // ?T -> *T: a NESTED BODY where an INDEX is declared is a kind mismatch,
+    // counted and skipped, and the pointer stays null. The old promise was that
+    // this reinterpreted silently; the flat form spends a kind so it cannot.
     int64_t region_need = tblp2::ChainLoadMeasure( wire, wrote );
     uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
     tblp2::TableReport r2;
     const tblp2::Chain * into_pointer = tblp2::ChainLoad( region, region_need, wire, wrote, &r2 );
-    CHECK( into_pointer != NULL && !r2.malformed && r2.unknown == 0 );
-    const tblp2::Link * link = tblp2::LinkAt( into_pointer->link );
-    CHECK( link != NULL && link->value == 66 );
+    CHECK( into_pointer != NULL && !r2.malformed );
+    CHECK( r2.kind_mismatch == 1 && r2.unknown == 0 );
+    CHECK( tblp2::LinkAt( into_pointer->link ) == NULL );
+    CHECK( strcmp( into_pointer->name, "one" ) == 0 ); // the rest of the body reads on
     free( region );
 
     // by value -> ?T: a nested body that rode lands PRESENT
@@ -2126,13 +2189,18 @@ static void test_optional_three_way_evolution()
     CHECK( !r3.malformed && r3.unknown == 0 && r3.kind_mismatch == 0 );
     CHECK( from_value.link_present && from_value.link.value == 66 );
 
-    // *T -> ?T: a non-null pointee lands PRESENT
+    // *T -> ?T: the INDEX is a kind mismatch where a body is declared, and the
+    // node table rides under a reserved id this reader cannot name, so it is
+    // skipped by its length and counted UNKNOWN — which is exactly the
+    // difference §4 exists to report: "a build without kind 17".
     wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
     tblp3::Chain from_pointer;
     tblp3::TableReport r4;
     CHECK( tblp3::ChainLoad( from_pointer, wire, wrote, &r4 ) );
-    CHECK( !r4.malformed && r4.unknown == 0 );
-    CHECK( from_pointer.link_present && from_pointer.link.value == 66 );
+    CHECK( !r4.malformed );
+    CHECK( r4.kind_mismatch == 1 && r4.unknown == 1 );
+    CHECK( !from_pointer.link_present );
+    CHECK( strcmp( from_pointer.name, "one" ) == 0 );
 
     // ---- and where the three DIVERGE, which is at all-default. A by-value T
     // ---- has no presence bit, so it cannot tell "absent" from "present with
@@ -2153,8 +2221,7 @@ static void test_optional_three_way_evolution()
     bare_builder.GetRoot()->link = bare_builder.Alloc<tblp2::Link>(); // non-null, all-default
     static uint8_t third[512];
     int64_t w_bare_pointer = tblp2::ChainSave( bare_builder, third, sizeof( third ) );
-    CHECK( w_bare_pointer == w_bare_optional );     // ?T and *T still agree exactly
-    CHECK( memcmp( other, third, (size_t) w_bare_optional ) == 0 );
+    CHECK( w_bare_pointer > w_bare_value );         // a non-null pointer ALWAYS rides
 
     // and the by-value writer's bytes read back as ABSENT, with a clean report:
     // nothing was lost, the elision IS the meaning
@@ -2173,8 +2240,9 @@ static void test_optional_three_way_evolution()
     CHECK( tblp3::ChainLoad( from_null, wire, wrote, &r5 ) );
     CHECK( !r5.malformed && !from_null.link_present );
 
-    // and a PRESENT all-default optional reads back as a non-null pointer to
-    // an empty node: presence survives the trip in both languages
+    // and a PRESENT all-default optional read as a POINTER is the same reported
+    // mismatch as any other: presence rode, and the reader that wanted an index
+    // says so rather than inventing a node
     tblp3::Chain empty_present;
     set_string( empty_present.name, empty_present.name_length, "one" );
     empty_present.link_present = true;
@@ -2184,7 +2252,8 @@ static void test_optional_three_way_evolution()
     tblp2::TableReport r6;
     const tblp2::Chain * empty_pointer = tblp2::ChainLoad( region, region_need, wire, wrote, &r6 );
     CHECK( empty_pointer != NULL );
-    CHECK( tblp2::LinkAt( empty_pointer->link ) != NULL ); // NOT null: presence rode
+    CHECK( r6.kind_mismatch == 1 );
+    CHECK( tblp2::LinkAt( empty_pointer->link ) == NULL );
     free( region );
 }
 
@@ -2928,10 +2997,43 @@ static void reload_table_golden( const char * name,
     }
 }
 
-// Every file in testdata/wire/tables, read by the type that wrote it. The
-// three pointer-form goldens are read by their by-value and optional twins,
-// which is exactly right: the three spellings are ONE FRAMING (§3), and the
-// twins' Save is the one that answers in bytes.
+// A VARIABLE-class golden reloads through its OWN reader, because there is no
+// twin any more: a pointer field rides as a u32 index into the flat node table
+// and a by-value nesting rides as a body, so only the writer's own reader can
+// answer in bytes. The form is a region and a root pointer, never a value
+// (docs/SPEC-TABLES.md §6.2).
+static void reload_pointer_golden( const char * name )
+{
+    const int64_t pinned = read_table_golden( name );
+    if ( pinned < 0 ) return;
+    const int64_t need = tblp2::ChainLoadMeasure( golden_pinned, pinned );
+    uint8_t * region = (uint8_t *) malloc( (size_t) need );
+    tblp2::TableReport report;
+    const tblp2::Chain * root = tblp2::ChainLoad( region, need, golden_pinned, pinned, &report );
+    if ( root == NULL || report.malformed )
+    {
+        printf( "FAIL table wire golden %s does not load\n", name );
+        failures++;
+        free( region );
+        return;
+    }
+    // its own writer's bytes: nothing in them is unknown, nothing mismatches —
+    // and the reserved node-table id is NOT unknown to a reader holding the
+    // numbering (§3.1)
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+    const int64_t wrote = tblp2::ChainSave( root, golden_again, sizeof( golden_again ) );
+    if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
+    {
+        printf( "FAIL table wire golden %s re-saves differently: %lld bytes out, %lld pinned\n",
+                name, (long long) wrote, (long long) pinned );
+        failures++;
+    }
+    free( region );
+}
+
+// Every file in testdata/wire/tables, read by the type that wrote it. T and ?T
+// are ONE FRAMING, so the by-value and optional goldens read each other; *T is
+// its own, so the two pointer goldens read through their own reader (§3.1).
 static void test_golden_reload()
 {
     reload_table_golden( "root_full", tabledemo::RootConfigLoad, tabledemo::RootConfigSave );
@@ -2948,10 +3050,10 @@ static void test_golden_reload()
     reload_table_golden( "v2_seams", tblv2::CfgLoad, tblv2::CfgSave );
     reload_table_golden( "chain_value", tblp1::ChainLoad, tblp1::ChainSave );
     reload_table_golden( "chain_value_empty", tblp1::ChainLoad, tblp1::ChainSave );
-    reload_table_golden( "chain_pointer", tblp1::ChainLoad, tblp1::ChainSave );
+    reload_pointer_golden( "chain_pointer" );
     reload_table_golden( "chain_optional", tblp3::ChainLoad, tblp3::ChainSave );
     reload_table_golden( "chain_optional_empty", tblp3::ChainLoad, tblp3::ChainSave );
-    reload_table_golden( "chain_pointer_empty", tblp3::ChainLoad, tblp3::ChainSave );
+    reload_pointer_golden( "chain_pointer_empty" );
 }
 
 // The pinned instances, built here and mirrored VALUE FOR VALUE by every port
@@ -4953,6 +5055,8 @@ static void test_golden_seams()
         CHECK( w_opt == wrote && memcmp( buffer, other, (size_t) wrote ) == 0 );
         pin_table_golden( "chain_optional", other, w_opt );
 
+        // the POINTER spelling is its OWN bytes: a u32 index under kind 17 and
+        // the body moved into the node table (docs/SPEC-TABLES.md §3.1)
         tblp2::ChainBuilder builder;
         tblp2::Chain * root = builder.GetRoot();
         set_string( root->name, root->name_length, "chain" );
@@ -4962,7 +5066,7 @@ static void test_golden_seams()
         root->link = node;
         CHECK( builder.Lock() );
         int64_t w_ptr = tblp2::ChainSave( builder, other, sizeof( other ) );
-        CHECK( w_ptr == wrote && memcmp( buffer, other, (size_t) wrote ) == 0 );
+        CHECK( w_ptr > wrote );
         pin_table_golden( "chain_pointer", other, w_ptr );
     }
 
@@ -4988,7 +5092,7 @@ static void test_golden_seams()
         CHECK( builder.Lock() );
         static uint8_t pointered[4096];
         int64_t w_ptr = tblp2::ChainSave( builder, pointered, sizeof( pointered ) );
-        CHECK( w_ptr == w_opt && memcmp( pointered, other, (size_t) w_ptr ) == 0 );
+        CHECK( w_ptr > w_value ); // the index rides, and so does its node's record
         pin_table_golden( "chain_pointer_empty", pointered, w_ptr );
     }
 }
@@ -5162,7 +5266,7 @@ int main()
     test_lock_layout_stable();
     test_pointer_shared_node();
     test_pointer_cycle_refused();
-    test_pointer_depth_cap();
+    test_pointer_long_chain();
     test_builder_grow();
     test_builder_workers();
     test_pointer_evolution_old_reader_new_data();

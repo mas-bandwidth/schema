@@ -92,6 +92,16 @@ func TableScalarKind(f *Field) int {
 		case *Flags:
 			return TableKindU64
 		case *Struct:
+			// A POINTER to a table is a NODE INDEX, not a nested body: it rides
+			// as four bytes under kind 17 into the flat node table
+			// (docs/SPEC-TABLES.md §3.1). Spending the distinct kind costs no
+			// wire byte and closes an edit that would otherwise be silent — a
+			// stored index reading back as a plausible u32, a number read as an
+			// index — and it makes the by-value/pointer edit an ordinary kind
+			// mismatch instead.
+			if f.Type.Pointer {
+				return TableKindPointer
+			}
 			return TableKindTable
 		case *Union:
 			return TableKindUnion

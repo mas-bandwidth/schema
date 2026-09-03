@@ -151,9 +151,6 @@ func CookProjection(u *Unit) string {
 func cookFieldLine(fl FieldLayout, enums map[string]*Enum, unions map[string]*Union) string {
 	f := fl.Field
 	kind := TableScalarKind(f)
-	if f.Type.Pointer {
-		kind = TableKindPointer
-	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "    field %04x kind=%d offset=%d size=%d", TableFieldId(f), kind, fl.Offset, fl.Size)
 

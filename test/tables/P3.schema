@@ -1,8 +1,10 @@
-// P3.schema — the OPTIONAL side of the three-way evolution set: P1 nests
-// Link BY VALUE, P2 points at it, P3 marks it `?Link`. All three framings are
-// one framing (docs/SPEC-TABLES.md §3.1), so a schema may move the field among
-// them and no byte moves. P3 stays FIXED-SIZE: an optional costs one presence
-// bool and no pointer, so Chain is still a plain struct.
+// P3.schema — the OPTIONAL side of the evolution set: P1 nests Link BY VALUE,
+// P3 marks it `?Link`, and those TWO are one framing (docs/SPEC-TABLES.md
+// §2.3), so a schema may move the field between them and no byte moves. P2
+// POINTS at it, and that is its own framing — a node index under kind 17 — so
+// the edit to or from a pointer is reported rather than silent (§3.1). P3 stays
+// FIXED-SIZE: an optional costs one presence bool and no pointer, so Chain is
+// still a plain struct.
 package tblp3
 
 table Link

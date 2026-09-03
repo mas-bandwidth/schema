@@ -568,20 +568,28 @@ value on the wire. On load, a field that rode sets `present = true`; a
 field that did not leaves `present = false` with the value at its declared
 defaults.
 
-The framing is exactly the non-optional field's, which makes `?T`, `*T`
-and a plain `T` nesting **one framing with three spellings**: for any value
-that is not entirely default, a schema may move a field among the three and
-no byte moves, in either direction.
+The framing is exactly the non-optional field's, which makes `?T` and a
+plain `T` nesting **one framing with two spellings**: for any value that is
+not entirely default, a schema may move a field between the two and no byte
+moves, in either direction.
 
-**The one difference is at the empty end**, and it follows from the two
-elision rules above: a plain `T` holding nothing but defaults is not
-written at all, while a PRESENT `?T` and a non-null `*T` are written even
-then. No direction misdecodes — an absent field reads as the declared
-default by value, as null through a pointer, and as absent through an
-optional, each of which is the right answer — but the bytes are not
-identical for an all-default value, and an implementer should not be
-promised that they are. The corpus holds all six directions, and the
-byte-identity of the three writers **over non-default content**.
+**`*T` IS NOT IN THAT FAMILY, and the difference is deliberate.** A pointer
+rides as a node index under its own kind `17` (§3.1), because a body that may
+be named twice cannot also sit inline at one of its names. So moving a field
+between a pointer and either of the other two is a REPORTED edit: §4's kind
+mismatch, counted, with the field taking its declared default and the rest of
+the body reading on. A shared kind would have made that edit silent — a stored
+index reading back as a plausible length — and the wire spends a kind rather
+than allow it.
+
+**The remaining difference between `T` and `?T` is at the empty end**, and it
+follows from the two elision rules above: a plain `T` holding nothing but
+defaults is not written at all, while a PRESENT `?T` is written even then. No
+direction misdecodes — an absent field reads as the declared default by value
+and as absent through an optional, each of which is the right answer — but the
+bytes are not identical for an all-default value, and an implementer should not
+be promised that they are. The corpus holds both directions, and the
+byte-identity of the two writers **over non-default content**.
 
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask
 and any scalar. It is refused, by name, on:
@@ -1039,31 +1047,36 @@ moves not one byte of a value-only table: a fixed-size table has no
 pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
-**Backend status for this section: the TOOL writes it and no BACKEND does.**
+**Backend status for this section: the TOOL and the C++ REFERENCE write it;
+the C port still writes the NESTED form, and every other backend refuses a
+pointered unit's wire by name (§11).**
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
-as tooling (§17.1) — writes and reads the flat node table exactly as stated
-here, which is what lets `schema cook` produce a region from a wire (§7). What
-a reader of today's generated code finds instead is the earlier NESTED form:
-the C++ and C
-table backends — the two that accept a pointered unit, since C# refuses one by
-name (§11) — write a pointer field's pointee inline as a nested
-table body under kind `13`, not as a `u32` index under kind `17`. Kind `17`
-is not in the kind vocabulary any backend emits, and no node table rides.
-Three consequences follow, and they are the reasons the flat form is the
-law: a node two parents name is written once per parent and reads back as
-that many nodes, so identity does not survive a save; a pointer chain IS a
-nesting depth; and that depth is therefore bounded, by a generated
-`kTableMaxDepth` of 128, with a graph past the cap — or a data cycle —
-refused by measure and save rather than written. Moving the emitter to the
-flat node table is tracked as schema#251.
+as tooling (§17.1) — and the generated C++ codecs are two implementations of
+this section, written from it rather than from each other, and each reads what
+the other wrote: the cross-implementation lock runs a graph carrying a shared
+node, a chain, a diamond and a by-value nesting through both directions and
+requires byte identity, and it checks the SIZES too, because the region and
+attribution bytes C++ derives from the framing alone are the two parts the
+tool's cook writes.
 
-**The REGION is not in that gap.** `Lock` carries the one-entry-per-node map
-this section describes, in C++ today: a shared node is packed once, a later
-reference resolves to the one body it has, and a data cycle is named at the
-reference that closes it rather than found by running out of depth (§6.2). So
-the two forms disagree on exactly one thing and it is named — a save from a
-region writes a shared node once per reference because the WIRE it writes is
-still the nested one, and that is the whole of what #251 moves.
+**The C port is the one backend that carries a pointered unit and does not
+carry this form yet**, because it was mirrored from the C++ backend while that
+backend still wrote the earlier NESTED one: a pointee inline as a body under
+kind `13`, no node table, and the three consequences that are the reasons this
+form is the law — a node two parents name written once per parent, a pointer
+chain that IS a nesting depth, and a cap on that depth. Its wire is part of
+schema#349 with the seven that have no variable class at all. What every
+backend DOES carry already is kind `17`'s row in the fixed-width skip rule,
+because a fixed-class reader meeting a pointered writer's field has to step
+over it whether or not it can write one.
+
+**What that edit MOVED, stated once.** A pointer field's kind changed from `13`
+to `17` and a pointered save gained the node table, so every pointered unit's
+wire bytes moved and the TABLES BASELINE (§18) was moved with a recorded
+reason. No value-only table moved one byte, which is the zero-cost property
+(§2.2) doing its job, and no BUILD VERSION moved: §20.2's projection already
+rendered a pointer slot as kind `17`, so the id was never describing the
+nested form.
 
 **Kind `17` costs nothing and closes an edit that would otherwise be
 silent.** A node index is four bytes and so is a `uint32`, so under a
@@ -1085,7 +1098,11 @@ any other.
 
 - **`0` is null.**
 - **`1` is the ROOT** — the body that hosts the node table. A pointer may
-  name it, so a child pointing back at its root is expressible.
+  RESOLVE to it, so a reader meeting index `1` reads the root; but a WRITER
+  cannot produce one, because the root's entry is open for the whole walk and a
+  reference to an open entry is a cycle (below). The index is spent on the root
+  so that the numbering has one origin and a reader needs no second rule, not
+  so that a child may point back.
 - **`2` and up are the node table's records, in order**: record `k`
   (1-based) is node index `k + 1`.
 - The numbering is the **first-visit order of a depth-first pre-order
@@ -1323,13 +1340,12 @@ does not spend.
 
 ```
 table Palette { id int32 }
-table Node    { value int32  next *Node  owner *Scene  palette *Palette }
+table Node    { value int32  next *Node  palette *Palette }
 table Scene   { head *Node   palette *Palette }
 ```
 
-with `scene.head = A`, `A.next = B`, both nodes' `owner` naming the root,
-and `A.palette`, `B.palette` and `scene.palette` all naming one `Palette`
-P, a save writes:
+with `scene.head = A`, `A.next = B`, and `A.palette`, `B.palette` and
+`scene.palette` all naming one `Palette` P, a save writes:
 
 ```
 root body (Scene)
@@ -1338,9 +1354,8 @@ root body (Scene)
   0xFFFF   kind 12  L    the node table, in one field here
                     node_count = 3
                     rec 1  type Node     len  { value=1, next=3,
-                                                owner=1, palette=4 }
-                    rec 2  type Node     len  { value=2, owner=1,
                                                 palette=4 }
+                    rec 2  type Node     len  { value=2, palette=4 }
                     rec 3  type Palette  len  { id=7 }
   0x0000                 terminator
 ```
@@ -1348,9 +1363,11 @@ root body (Scene)
 The root is index 1; A is 2 (`scene.head`); B is 3 (`A.next`); P is 4 —
 reached while descending B, BEFORE `A.palette` is read, because the walk
 is depth-first. P is written once and named three times. `B.next` is
-null, so it is not written at all. `owner = 1` names an index BELOW the
-node that carries it: indices run in the walk's order, and no reference
-has to respect that order.
+null, so it is not written at all. **`B.palette = 4` names an index ABOVE
+the node that carries it and `A.palette = 4` names one BELOW**: indices run
+in the walk's order, and no reference has to respect that order. What no
+reference in a save can do is name index `1`, because reaching the root
+again is reaching an entry still open — the cycle refusal, above.
 
 ### 3.2 Enum-keyed arrays on the wire: slots by name
 
@@ -1992,12 +2009,17 @@ separately, so a caller may place them together or apart and may release
 the attribution once `Load` returns. `Cook` writes them as two parts for
 the same reason (§7).
 
-**Backend status: the TOOL writes the directory and no BACKEND does
-(schema#251).** `schema cook` writes it as the cooked file's attribution part
-and `schema cook-check` reads it, so the form below has a writer and a reader
-in the compiler. A C++ region still carries its data and nothing beside it —
-`Lock` packs the bodies and `Load` resolves indices without a resident
-directory — and that half lands with the emitter.
+**Backend status: `Load` writes the directory and `Lock` does not yet.** A
+region a C++ `Load` produces carries the trailer this section describes, and it
+has to: the directory IS the load path's numbering, filled from the framing in
+pass one so that an index resolves whichever way it points, and `LoadMeasure`
+reports its bytes separately so the caller may place it apart and release it
+once `Load` returns (§6.5). `schema cook` writes the same form as the cooked
+file's attribution part and `schema cook-check` reads it. What `Lock` produces
+is still data alone — a locked region and a loaded one agree byte for byte on
+the DATA and differ in that the loaded one carries attribution beside it — and
+filling the directory from the pack `Lock` is already doing is the remaining
+half, named in §15.
 
 **The price, stated.** Twelve bytes a node on the wire (an 8-byte type id
 and a 4-byte length per record) and sixteen a node of attribution, which
@@ -3795,14 +3817,16 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **24 suffixes**, and a declaration spelling one of them is
+  each of these **32 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **40 in all**:
+  seven follow below, for **48 in all**:
 
   ```
-  Measure  MeasureBody  Save  SaveBody  Load  LoadBody  Reset
-  LoadMeasure  LoadMeasureBody  LoadBuilder  TableType  Builder
+  Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
+  Reset  LoadMeasure  LoadBuilder  TableType  Builder
   At  Emplace  Pack  PackMeasure
+  Number  NumberFrom  MeasureWire  SaveWire
+  NodeStorage  NodePlace  NodeAlloc  NodeBody
   Cook  CookMeasure  Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   ```
@@ -3810,9 +3834,9 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here — 24, then
+  checker's own, and this section is held to it: the three lists here — 32, then
   the block form's nine, then the C backend's seven — are `tableGeneratedVerbs`
-  entire, spelling for spelling and 40 in all, because a claim the page states
+  entire, spelling for spelling and 48 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
@@ -4799,37 +4823,21 @@ inspects everything in the schema built:
   **What the map buys where it buys anything is not close**: a 24-node graph
   whose every node is named twice packed 671 MB in 189 ms without it and 1,136
   bytes in 0.009 ms with it.
-- **§3.1'S ROOT BACK-REFERENCE: two rules in one section, and only one can
-  hold.** The numbering says index `1` is the root and that "a pointer may name
-  it, so a child pointing back at its root is expressible", and the worked
-  example writes `owner = 1` from two nodes. The cycle rule in the same section
-  says a reference to an entry still open is a cycle — and the root's entry is
-  open for the whole walk, so that graph is refused, by the tool's numbering
-  and by the C++ `Lock` alike, and §11 lists the refusal by name. Either the
-  root is exempt from the open colouring, which needs saying and needs a reason
-  the exemption stops there, or the bullet and the example go. Nothing here
-  decides it. WHAT IS IMPLEMENTED IS THE REFUSAL, because it is what the tool
-  does and an implementation mirrors the reference rather than inventing a
-  third answer.
-- **THE CURSOR HOISTED OUT OF THE WRITER, in the GO backend** — the port's
-  generated `…SaveBody` calls the writer's puts, and each put loads
-  `Buffer`, `Capacity` and `Offset` from the writer and stores `Offset` back.
-  Go INLINES those puts already, and the round-trip survives the inlining:
-  Go has no `restrict` and does not separate a `[]byte`'s payload from the
-  struct that names it, so the store through `Buffer` is assumed to alias the
-  writer. This is the same defect #350 removed in C++, where forcing the
-  bodies inline was enough for clang to disambiguate; in Go there is no flag —
-  `-gcflags=all=-l=4` moves the leg by nothing outside noise. The shape that
-  fixes it is generated, not a switch: carry the cursor in locals across a
-  whole body, merge the per-field bounds checks into one, and write back once.
-  **Measured worth: 1.42x on the write body** over the mechanism in isolation
-  (92 fields of `tag16, kind8, value32`, output asserted byte-identical),
-  which is the reason it is named rather than guessed at.
-- **The TEXT FORM for the variable class** (§16.1) — a second walker that
-  fills a builder rather than an instance, emitted only in units that
-  declare a pointer, so a pointer-free unit carries nothing for it. The
-  surface is designed and stated; no backend emits it, and a pointered unit
-  is refused by name until one does.
+- **`Lock`'S NODE DIRECTORY.** §6.3's trailer is what a `Load`ed region carries
+  and a `Lock`ed one does not, so the two agree on the DATA and differ in what
+  sits beside it. Filling it costs `Lock` nothing it is not already doing — the
+  pack knows every node's offset and the numbering already holds the order — and
+  what it buys is that `Cook` can be handed a locked region rather than a wire.
+  Until it lands, cooking goes through the wire, which is what `schema cook`
+  does anyway.
+- **THE NUMBERING WALK, ITERATIVE.** The walk recurses once per POINTER EDGE on
+  the authoring side (§3.1), so a graph deeper than the C stack is a build-time
+  crash rather than a refusal. The wire has no such bound — a chain's length is
+  not a depth and LOAD is a scan — and a builder's graph is a build's own data
+  and not hostile input, which is why it is priced here rather than fixed now.
+  What it needs is a resumable per-type field cursor, because the ORDER is
+  first-visit depth-first pre-order and a breadth-first walk would number a
+  different graph.
 - **`?` on an array, a string or `bytes`** (§2.3): a presence bit beside an
   existing count or length wants a decision about what the pair means before
   it becomes wire. Wrap the field in a table and make that optional today.
@@ -5073,6 +5081,17 @@ invariant culture; Java rounds the double's EXACT decimal expansion through
 two answers differ on a tie. A tie is discarded by the shortest-round-trip loop
 at every precision but the last — and at the last there is no loop left to save
 it, which is why the mode is named rather than left to the default.
+
+**THE TOOL REFUSES BOTH DIRECTIONS, and the reason the WRITE side had to be
+refused out loud is worth stating.** `schema pack` has always refused a
+variable root by name. `schema unpack` did not, and it decoded one correctly —
+the node table and all — then wrote a text with a null at every pointer and a
+SILENT report, because a REFERENCE has no spelling here yet. The round trip
+that catches an incomplete text is `pack`, and `pack` is the half that was
+already refusing, so nothing could catch it. Both directions now refuse the
+class by name, before a file is written, and the gate is that the refusal fires
+with its negative control showing what it stands in front of: the same wire,
+unpacked without the refusal, writes 122 nodes as a null.
 
 **Rust's walk allocates nothing, and that is a gate rather than a claim**:
 numbers format through a stack sink the size of the C++ walker's own

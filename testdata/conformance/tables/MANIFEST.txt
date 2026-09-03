@@ -61,10 +61,8 @@ instance v2_cfg               tblv2     Cfg           testdata/wire/tables/v2_cf
 instance v2_seams             tblv2     Cfg           testdata/wire/tables/v2_seams.bin
 instance chain_value          tblp1     Chain         testdata/wire/tables/chain_value.bin
 instance chain_value_empty    tblp1     Chain         testdata/wire/tables/chain_value_empty.bin
-instance chain_pointer        tblp1     Chain         testdata/wire/tables/chain_pointer.bin
 instance chain_optional       tblp3     Chain         testdata/wire/tables/chain_optional.bin
 instance chain_optional_empty tblp3     Chain         testdata/wire/tables/chain_optional_empty.bin
-instance chain_pointer_empty  tblp3     Chain         testdata/wire/tables/chain_pointer_empty.bin
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -77,6 +75,16 @@ report p1_as_p3       tblp3 Chain testdata/wire/tables/chain_value.bin
 report p3_as_p1       tblp1 Chain testdata/wire/tables/chain_optional.bin
 report p1_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_value_empty.bin
 report p3_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_optional_empty.bin
+
+# THE POINTER SPELLING IS ITS OWN FRAMING (§3.1). T and ?T are wire-identical
+# and read each other as instances above; *T rides as a u32 NODE INDEX under
+# kind 17 with the body in the node table, so a reader of either other spelling
+# meets a kind mismatch and a node table it cannot name. These two are the
+# evolution cases that edit says exist, and the counters are the expectation.
+report p2_as_p1       tblp1 Chain testdata/wire/tables/chain_pointer.bin
+report p2_as_p3       tblp3 Chain testdata/wire/tables/chain_pointer.bin
+report p2_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_pointer_empty.bin
+report p2_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_pointer_empty.bin
 
 block block_render blockdemo testdata/wire/tables/block_render.bin testdata/conformance/tables/block/block_render.dump
 block block_padded blockdemo testdata/wire/tables/block_padded.bin testdata/conformance/tables/block/block_padded.dump

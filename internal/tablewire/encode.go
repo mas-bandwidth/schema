@@ -55,13 +55,20 @@ type encoder struct {
 // invariant is held where it is load-bearing, on the generated code, by the
 // mandatory battery there.
 
-// RefuseVariable refuses a VARIABLE-LENGTH root by name. A pointer-bearing
-// table is never held by value: it is built through an arena and read through a
-// region (§6.2), and its text form reads through the builder — a named
-// follow-on the generated C++ does not emit either (§16.2).
+// RefuseVariable refuses a VARIABLE-LENGTH root by name, and BOTH DIRECTIONS OF
+// THE TEXT FORM take it. A pointer-bearing table is never held by value: it is
+// built through an arena and read through a region (§6.2), and its text form
+// reads and writes through the builder — a named follow-on the generated C++
+// does not emit either (§16.2).
+//
+// UNPACK refuses for the same reason PACK does, and schema#374 is why it says
+// so out loud: a text with a pointer nulled at every edge is not a partial
+// answer, it is a text that does not carry the instance — and the round trip
+// that would have caught it is the one PACK refuses to run. A refusal is the
+// only honest answer until §16 has the form.
 func RefuseVariable(m *tabletext.Model, st *ir.Struct) error {
 	if ir.VariableTables(m.Unit)[st.Name] {
-		return fmt.Errorf("%s is VARIABLE-LENGTH — a pointer in its by-value closure — and the text form of one reads through its builder, a named follow-on (docs/SPEC-TABLES.md §16.2, §15); pack a fixed-size root", st.Name)
+		return fmt.Errorf("%s is VARIABLE-LENGTH — a pointer in its by-value closure — and the text form of one reads through its builder, a named follow-on (docs/SPEC-TABLES.md §16.2, §15); pack and unpack a fixed-size root", st.Name)
 	}
 	return nil
 }

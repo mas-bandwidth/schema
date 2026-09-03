@@ -172,6 +172,22 @@ var registry = []Name{
 	{Name: "TablePackMap", By: Cpp, What: "the pack walk's identity map"},
 	{Name: "TablePackEntry", By: Cpp, What: "one node's entry in it: where it landed, and whether its descent is open"},
 
+	// the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1): the numbering a save
+	// derives, the directory a load fills, and the record scan that is the
+	// whole of load's bound. Emitted into a pointered unit's header only, and
+	// claimed whenever a unit declares a table, on the same terms as the
+	// variable-length names above.
+	{Name: "TableNumbering", By: Cpp, What: "one save's numbering: the identity map and the nodes in index order"},
+	{Name: "TableNodeEntry", By: Cpp, What: "one numbered node, with the thunks that reach its codec"},
+	{Name: "TableNodeMeasure", By: Cpp, What: "the numbering's bridge to a member's MeasureBody, by argument-dependent lookup"},
+	{Name: "TableNodeSave", By: Cpp, What: "the same bridge to a member's SaveBody"},
+	{Name: "TableNodeMeasureThunk", By: Cpp, What: "the instantiation a numbering stores for a node's measure"},
+	{Name: "TableNodeSaveThunk", By: Cpp, What: "the instantiation a numbering stores for a node's save"},
+	{Name: "TableNodeDirEntry", By: Cpp, What: "one entry of a region's node directory: an offset and a type id"},
+	{Name: "TableNodeMap", By: Cpp, What: "the resident numbering a pointer slot resolves through"},
+	{Name: "TableNodeResolve", By: Cpp, What: "place one node index in a pointer slot, or report why it did not"},
+	{Name: "TableNodeScan", By: Cpp, What: "the record scan over a root body's node-table fields"},
+
 	// the BLOCK FORM's runtime (docs/SPEC-TABLES.md §19), emitted into
 	// <Base>Block.h / <Base>Block.cs and into no Table source at all. Claimed
 	// whenever a unit declares a table, on the same terms as everything above:

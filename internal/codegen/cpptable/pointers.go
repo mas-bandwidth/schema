@@ -18,42 +18,38 @@ import (
 
 func (g *tableGen) isVar(name string) bool { return g.variable[name] }
 
-// ---- what the depth cap counts (docs/SPEC-TABLES.md §3.1) ----
+// ---- NO EDGE CHARGES WIRE DEPTH (docs/SPEC-TABLES.md §3.1) ----
 //
-// ONLY POINTER EDGES CHARGE DEPTH. By-value nesting — a table inside a table,
-// or a bounded array of them — charges nothing, because by-value composition is
-// already finite: the checker refuses by-value cycles, so its nesting is
-// bounded by the schema itself and cannot be driven by data.
+// A pointer field rides as a u32 INDEX into the flat node table, so a pointer
+// edge is not a nesting level: a chain's length is not a depth, and there is no
+// depth cap on the wire in either direction. What nesting remains is BY-VALUE
+// nesting, whose depth is fixed by the SCHEMA and cannot be driven by data,
+// because §2 refuses by-value cycles.
 //
-// This has to hold in ALL FOUR walks — measure, save, load and pack — or the
-// forms disagree about which structures are legal, and a structure that Locks
-// is refused by the wire. The two constants below are the whole rule.
-const (
-	depthSame = "depth"     // by-value nesting: the schema already bounds it
-	depthDown = "depth + 1" // a pointer edge: only DATA can make this deep
-)
+// The walks that still recurse over pointer edges are the AUTHORING side's —
+// the numbering and the pack — and what bounds those is the identity map, not a
+// counter: a reference to an entry still open is a cycle, refused by name (§6.2).
 
 // measureCall renders a nested MEASURE call on a closure member: a variable
-// member takes the resolution context and the depth, a fixed one takes
-// neither — so a fixed table's codec is character-for-character what it was
-// before pointers existed.
-func (g *tableGen) measureCall(name, expr, depth string) string {
+// member takes the resolution context, a fixed one takes none — so a fixed
+// table's codec is character-for-character what it was before pointers existed.
+func (g *tableGen) measureCall(name, expr string) string {
 	if g.isVar(name) {
-		return fmt.Sprintf("%sMeasureBody( ctx, %s, %s )", name, expr, depth)
+		return fmt.Sprintf("%sMeasureBody( ctx, %s )", name, expr)
 	}
 	return fmt.Sprintf("%sMeasure( %s )", name, expr)
 }
 
-func (g *tableGen) saveCall(name, expr, depth string) string {
+func (g *tableGen) saveCall(name, expr string) string {
 	if g.isVar(name) {
-		return fmt.Sprintf("%sSaveBody( ctx, w, %s, %s )", name, expr, depth)
+		return fmt.Sprintf("%sSaveBody( ctx, numbering, w, %s )", name, expr)
 	}
 	return fmt.Sprintf("%sSaveBody( w, %s )", name, expr)
 }
 
-func (g *tableGen) loadCall(name, reader, expr, depth string) string {
+func (g *tableGen) loadCall(name, reader, expr string) string {
 	if g.isVar(name) {
-		return fmt.Sprintf("%sLoadBody( %s, sink, %s, %s )", name, reader, expr, depth)
+		return fmt.Sprintf("%sLoadBody( %s, nodes, %s )", name, reader, expr)
 	}
 	return fmt.Sprintf("%sLoadBody( %s, %s )", name, reader, expr)
 }
@@ -123,9 +119,10 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	g.pf("// ---- codecs: measure/save/load per closure member ----\n\n")
 	for _, st := range members {
 		if g.isVar(st.Name) {
-			g.pf("template <typename Ctx> inline int64_t %sMeasureBody( const Ctx & ctx, const %s & value, int32_t depth );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool %sSaveBody( const Ctx & ctx, TableWriter & w, const %s & value, int32_t depth );\n", st.Name, st.Name)
-			g.pf("template <typename Sink> inline bool %sLoadBody( TableReader & r, Sink & sink, %s & value, int32_t depth );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline int64_t %sMeasureBody( const Ctx & ctx, const %s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const %s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const %s & value );\n", st.Name, st.Name)
+			g.pf("inline bool %sLoadBody( TableReader & r, const TableNodeMap & nodes, %s & value );\n", st.Name, st.Name)
 			continue
 		}
 		g.pf("inline int64_t %sMeasure( const %s & value );\n", st.Name, st.Name)
@@ -134,14 +131,42 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	}
 	g.pf("\n")
 	if vars := g.varMembers(members); len(vars) > 0 {
-		g.pf("// ---- pointer-graph walkers: pack (Lock), size (Load) ----\n\n")
+		g.pf("// ---- pointer-graph walkers: number (measure/save), pack (Lock) ----\n\n")
 		for _, st := range vars {
-			g.pf("template <typename Ctx> inline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value, int32_t depth );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );\n", st.Name, st.Name, st.Name)
-			g.pf("inline int64_t %sLoadMeasureBody( TableReader & r, int32_t depth );\n", st.Name)
+			g.pf("template <typename Ctx> inline bool %sNumber( const Ctx & ctx, TableNumbering & numbering, const %s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used );\n", st.Name, st.Name, st.Name)
 		}
 		g.pf("\n")
+		g.emitNodeThunkOverloads(vars)
 	}
+}
+
+// emitNodeThunkOverloads bridges the numbering's type-erased entries back to
+// each member's own codec (docs/SPEC-TABLES.md §3.1).
+//
+// The numbering stores an instantiation at the site it numbers a node, where
+// the target's type is STATICALLY known, and these overloads are what the
+// instantiation resolves through — reached by argument-dependent lookup on the
+// member's own namespace, exactly as the arena's TableReset hook is. That is
+// what lets ONE numbering span the files of a unit: a file names only the
+// members it declares, and the file that nests them picks these up through the
+// include it already has.
+func (g *tableGen) emitNodeThunkOverloads(vars []*ir.Struct) {
+	g.pf("// ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----\n\n")
+	for _, st := range vars {
+		if !g.isVar(st.Name) {
+			// a pointer target may itself be pointer-free, and a FIXED table's
+			// codec is character-for-character what it was before pointers
+			// existed — it takes neither the context nor the numbering
+			g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const %s & value ) { return %sMeasure( value ); }\n", st.Name, st.Name)
+			g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, const %s & value ) { return %sSaveBody( w, value ); }\n", st.Name, st.Name)
+			continue
+		}
+		g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const %s & value ) { return %sMeasureBody( ctx, value ); }\n", st.Name, st.Name)
+		g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const %s & value ) { return %sSaveBody( ctx, numbering, w, value ); }\n", st.Name, st.Name)
+	}
+	g.pf("\n")
 }
 
 // emitArenaResetHook gives the arena's generic Alloc a way to reach a node's
@@ -190,15 +215,6 @@ func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 	g.pf("    return ref.value != 0 ? (%s *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;\n}\n", n)
 	g.pf("inline const %s * %sAt( const TableArena & arena, const TableRef & ref )\n{\n", n, n)
 	g.pf("    return ref.value != 0 ? (const %s *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;\n}\n", n)
-	g.pf("// bump one %s into the caller's exact region; the slot comes out self-relative\n", n)
-	g.pf("inline %s * %sEmplace( TableRegionSink & sink, TableRef & slot )\n{\n", n, n)
-	g.pf("    int64_t at = TableAlignUp64( sink.used );\n")
-	g.pf("    if ( at + (int64_t) sizeof( %s ) > sink.capacity ) { return NULL; }\n", n)
-	g.pf("    sink.used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
-	g.pf("    %s * node = new ( sink.base + at ) %s; // the lifetime; the defaults are the line below\n", n, n)
-	g.pf("    %sReset( *node ); // one member at a time, never `%s{}` over the aggregate (#320)\n", n, n)
-	g.pf("    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );\n")
-	g.pf("    return node;\n}\n")
 	g.pf("// allocate one %s in the arena; the slot holds the arena offset\n", n)
 	g.pf("inline %s * %sEmplace( TableWorker & worker, TableRef & slot )\n{\n", n, n)
 	g.pf("    TableSlot<%s> allocated = worker.Alloc<%s>();\n", n, n)
@@ -214,15 +230,66 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 	}
 	for _, st := range g.varMembers(members) {
 		g.owner = st
+		g.emitNumber(st)
 		g.emitPackMeasure(st)
 		g.emitPack(st)
-		g.emitLoadMeasureBody(st)
 	}
 	for _, st := range members {
 		if g.isVar(st.Name) {
 			g.emitBuilderAndPublicSurface(st)
 		}
 	}
+}
+
+// emitNumber emits the NUMBERING WALK (docs/SPEC-TABLES.md §3.1): the
+// first-visit order of a depth-first pre-order walk from the root over POINTER
+// EDGES ONLY — fields in declaration order, array elements in index order, and
+// descending through every by-value edge there is to reach the pointer fields
+// inside them. A node takes its index the first time it is reached and never
+// again.
+//
+// The numbering is DETERMINISTIC AND RE-DERIVED, NEVER CARRIED: measure derives
+// it from the graph and save derives the same one from the same graph, and
+// nothing passes between them. That is what makes measure == save hold across a
+// pointer graph.
+func (g *tableGen) emitNumber(st *ir.Struct) {
+	g.pf("// %sNumber: number everything %s POINTS AT, in first-visit order.\n", st.Name, st.Name)
+	g.pf("// A reference to an entry whose descent is still OPEN is a data cycle,\n")
+	g.pf("// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).\n")
+	g.pf("template <typename Ctx>\ninline bool %sNumber( const Ctx & ctx, TableNumbering & numbering, const %s & value )\n{\n", st.Name, st.Name)
+	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+		g.pf("    (void) ctx; (void) numbering; (void) value; // no pointers below this node\n")
+	}
+	for _, f := range pointerFields(st) {
+		t := f.Type.Name
+		g.pf("    {\n")
+		g.pf("        const %s * pointee = %sAt( ctx, value.%s ); // %s\n", t, t, f.Name, f.Name)
+		g.pf("        if ( pointee != NULL )\n        {\n")
+		g.pf("            bool taken = false;\n")
+		g.pf("            int64_t slot = 0;\n")
+		g.pf("            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,\n")
+		g.pf("                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit\n")
+		g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
+		g.pf("            if ( !taken )\n            {\n")
+		g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
+		g.pf("            }\n            else\n            {\n")
+		g.pf("                TableNodeEntry node;\n")
+		g.pf("                node.node = (const void *) pointee;\n")
+		g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableTypeId(t), t)
+		g.pf("                node.measure = &TableNodeMeasureThunk<Ctx, %s>;\n", t)
+		g.pf("                node.save = &TableNodeSaveThunk<Ctx, %s>;\n", t)
+		g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
+		g.pf("                if ( !%sNumber( ctx, numbering, *pointee ) ) { return false; }\n", t)
+		g.pf("                TablePackMapClose( numbering.seen, (const void *) pointee, slot );\n")
+		g.pf("            }\n")
+		g.pf("        }\n    }\n")
+	}
+	for _, f := range g.byValueVariableFields(st) {
+		g.emitVariableByValueWalk(f, func(expr string) {
+			g.pf("        if ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", f.Type.Name, expr)
+		})
+	}
+	g.pf("    return true;\n}\n\n")
 }
 
 // emitPackMeasure emits the exact byte count of a value's DESCENDANT nodes in
@@ -232,8 +299,7 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 	g.pf("// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a\n")
 	g.pf("// node two references name is measured ONCE and packed once, and a\n")
 	g.pf("// reference to a node whose descent is still open is a data cycle, refused.\n")
-	g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value, int32_t depth )\n{\n", st.Name, st.Name)
-	g.pf("    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap\n")
+	g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    int64_t bytes = 0;\n")
 	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
 		g.pf("    (void) ctx; (void) seen; (void) value; // no pointers below this node\n")
@@ -252,7 +318,7 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 		g.pf("            if ( !taken )\n            {\n")
 		g.pf("                if ( entry->open != 0 ) { return -1; } // a data cycle\n")
 		g.pf("            }\n            else\n            {\n")
-		g.pf("                int64_t inner = %sPackMeasure( ctx, seen, *pointee, depth + 1 );\n", t)
+		g.pf("                int64_t inner = %sPackMeasure( ctx, seen, *pointee );\n", t)
 		g.pf("                if ( inner < 0 ) { return -1; }\n")
 		g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
 		g.pf("                bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
@@ -261,7 +327,7 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 	}
 	for _, f := range g.byValueVariableFields(st) {
 		g.emitVariableByValueWalk(f, func(expr string) {
-			g.pf("        int64_t inner = %sPackMeasure( ctx, seen, %s, depth );\n", f.Type.Name, expr)
+			g.pf("        int64_t inner = %sPackMeasure( ctx, seen, %s );\n", f.Type.Name, expr)
 			g.pf("        if ( inner < 0 ) { return -1; }\n")
 			g.pf("        bytes += inner;\n")
 		})
@@ -302,8 +368,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 	g.pf("// required sign (§6.3), and sharing and a back-reference are one fact. A\n")
 	g.pf("// reference to a node whose descent is still OPEN is a cycle, and this\n")
 	g.pf("// refuses it rather than packing one.\n")
-	g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )\n{\n", st.Name, st.Name, st.Name)
-	g.pf("    if ( depth > kTableMaxDepth ) { return false; }\n")
+	g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used )\n{\n", st.Name, st.Name, st.Name)
 	g.pf("    memcpy( (void *) &dst, (const void *) &src, sizeof( %s ) ); // trivially copyable, by construction\n", st.Name)
 	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
 		g.pf("    (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;\n")
@@ -327,7 +392,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 		g.pf("                used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
 		g.pf("                %s * child = new ( base + at ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", t, t)
 		g.pf("                dst.%s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.%s );\n", f.Name, f.Name)
-		g.pf("                if ( !%sPack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }\n", t)
+		g.pf("                if ( !%sPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }\n", t)
 		g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
 		g.pf("            }\n")
 		g.pf("        }\n    }\n")
@@ -341,7 +406,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 func (g *tableGen) emitVariableByValueWalkPack(f *ir.Field) {
 	t := f.Type.Name
 	call := func(srcExpr, dstExpr string) {
-		g.pf("        if ( !%sPack( ctx, seen, %s, %s, base, capacity, used, depth ) ) { return false; }\n", t, srcExpr, dstExpr)
+		g.pf("        if ( !%sPack( ctx, seen, %s, %s, base, capacity, used ) ) { return false; }\n", t, srcExpr, dstExpr)
 	}
 	switch f.Array {
 	case ir.ArrayNone:
@@ -357,97 +422,6 @@ func (g *tableGen) emitVariableByValueWalkPack(f *ir.Field) {
 		call(g.arrayBase("src.", f)+"[i]", g.arrayBase("dst.", f)+"[i]")
 		g.pf("    }\n")
 	}
-}
-
-// emitLoadMeasureBody emits the wire sizing pre-pass: how many region bytes
-// the nodes BELOW this body will need. Skip-based — it reads framing and
-// nothing else, which is what lets a caller own the allocation (SPEC §7).
-func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
-	ptrs := pointerFields(st)
-	nested := g.byValueVariableFields(st)
-	g.pf("// %sLoadMeasureBody: region bytes for the nodes under this wire body.\n", st.Name)
-	g.pf("// Framing only — no field value is decoded, so a caller can size its\n")
-	g.pf("// buffer before a single byte is placed.\n")
-	g.pf("inline int64_t %sLoadMeasureBody( TableReader & r, int32_t depth )\n{\n", st.Name)
-	g.pf("    int64_t bytes = 0;\n")
-	if len(ptrs) == 0 && len(nested) == 0 {
-		g.pf("    (void) r; (void) depth; // nothing below this body allocates\n")
-		g.pf("    return bytes;\n}\n\n")
-		return
-	}
-	g.pf("    for ( ;; )\n    {\n")
-	g.pf("        if ( !r.has( 2 ) ) { return bytes; }\n")
-	g.pf("        uint16_t field_id = r.get16();\n")
-	g.pf("        if ( field_id == 0 ) { return bytes; }\n")
-	g.pf("        if ( !r.has( 1 ) ) { return bytes; }\n")
-	g.pf("        uint8_t kind = r.get8();\n")
-	g.pf("        switch ( field_id )\n        {\n")
-	for _, f := range ptrs {
-		t := f.Type.Name
-		g.pf("            case 0x%04x: // %s (*%s)\n            {\n", ir.TableFieldId(f), f.Name, t)
-		g.pf("                if ( kind != %d ) { if ( !r.skip( kind ) ) { return bytes; } break; }\n", tkTable)
-		g.pf("                if ( !r.has( 4 ) ) { return bytes; }\n")
-		g.pf("                uint32_t body_len = r.get32();\n")
-		g.pf("                if ( !r.has( body_len ) ) { return bytes; }\n")
-		g.pf("                if ( depth < kTableMaxDepth )\n                {\n")
-		g.pf("                    bytes += TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
-		g.pf("                    TableReader sub( r.buffer + r.offset, body_len, r.report );\n")
-		g.pf("                    bytes += %sLoadMeasureBody( sub, depth + 1 );\n", t)
-		g.pf("                }\n")
-		g.pf("                r.offset += body_len;\n")
-		g.pf("                break;\n            }\n")
-	}
-	for _, f := range nested {
-		t := f.Type.Name
-		wireKind := tkTable
-		if f.Array != ir.ArrayNone {
-			wireKind = tkArray
-		}
-		if f.KeyEnum != "" {
-			wireKind = tkKeyed // a keyed body is its own kind (docs/SPEC-TABLES.md §3.2)
-		}
-		g.pf("            case 0x%04x: // %s (%s nested by value)\n            {\n", ir.TableFieldId(f), f.Name, t)
-		g.pf("                if ( kind != %d ) { if ( !r.skip( kind ) ) { return bytes; } break; }\n", wireKind)
-		g.pf("                if ( !r.has( 4 ) ) { return bytes; }\n")
-		g.pf("                uint32_t body_len = r.get32();\n")
-		g.pf("                if ( !r.has( body_len ) ) { return bytes; }\n")
-		g.pf("                int64_t body_end = r.offset + body_len;\n")
-		if f.Array == ir.ArrayNone {
-			g.pf("                {\n")
-			g.pf("                    TableReader sub( r.buffer + r.offset, body_len, r.report );\n")
-			g.pf("                    bytes += %sLoadMeasureBody( sub, depth );\n", t)
-			g.pf("                }\n")
-		} else {
-			g.pf("                if ( body_len >= 5 )\n                {\n")
-			g.pf("                    r.get8(); // element kind\n")
-			g.pf("                    uint32_t count = r.get32();\n")
-			g.pf("                    TableReader elems( r.buffer + r.offset, body_end - r.offset, r.report );\n")
-			g.pf("                    for ( uint32_t i = 0; i < count && i < %d; i++ )\n                    {\n", f.ArrayBound)
-			if f.KeyEnum != "" {
-				// an ENUM-KEYED array puts the slot's variant id before the
-				// element's length (docs/SPEC-TABLES.md §3.2). The pre-pass reads
-				// framing only, so it skips the key without naming it — but it
-				// must skip it, or every element length after the first is read
-				// out of a key's bytes
-				g.pf("                        if ( !elems.has( 2 ) ) { break; }\n")
-				g.pf("                        elems.get16(); // the slot's variant id\n")
-			}
-			g.pf("                        if ( !elems.has( 4 ) ) { break; }\n")
-			g.pf("                        uint32_t elem_len = elems.get32();\n")
-			g.pf("                        if ( !elems.has( elem_len ) ) { break; }\n")
-			g.pf("                        TableReader elem( elems.buffer + elems.offset, elem_len, r.report );\n")
-			g.pf("                        bytes += %sLoadMeasureBody( elem, depth );\n", t)
-			g.pf("                        elems.offset += elem_len;\n")
-			g.pf("                    }\n")
-			g.pf("                }\n")
-		}
-		g.pf("                r.offset = body_end;\n")
-		g.pf("                break;\n            }\n")
-	}
-	g.pf("            default:\n            {\n")
-	g.pf("                if ( !r.skip( kind ) ) { return bytes; }\n")
-	g.pf("                break;\n            }\n")
-	g.pf("        }\n    }\n}\n\n")
 }
 
 // ---- the builder and the public surface ----
@@ -515,9 +489,9 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    int64_t root_slot = 0;\n")
 	g.pf("    int64_t below = -1;\n")
 	g.pf("    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )\n    {\n")
-	g.pf("        below = %sPackMeasure( ctx, seen, root, 1 );\n", n)
+	g.pf("        below = %sPackMeasure( ctx, seen, root );\n", n)
 	g.pf("    }\n")
-	g.pf("    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth\n")
+	g.pf("    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it\n")
 	g.pf("    int64_t total = TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n", n)
 	g.pf("    uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate\n")
 	g.pf("    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }\n")
@@ -531,7 +505,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // rehashes nothing.\n")
 	g.pf("    TablePackMapReset( seen );\n")
 	g.pf("    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||\n")
-	g.pf("         !%sPack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )\n    {\n", n)
+	g.pf("         !%sPack( ctx, seen, root, *destination, packed, total, used ) || used != total )\n    {\n", n)
 	g.pf("        TablePackMapShutdown( seen );\n")
 	g.pf("        free( packed );\n        return false;\n    }\n")
 	g.pf("    TablePackMapShutdown( seen );\n")
@@ -542,64 +516,334 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    return true;\n}\n\n")
 
 	// wire out
-	g.pf("// ---- %s on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----\n\n", n)
+	g.pf("// ---- %s on the wire: the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----\n", n)
+	g.pf("//\n")
+	g.pf("// A pointered save writes every reachable node ONCE, into a node table under\n")
+	g.pf("// the reserved id 0xFFFF, and a pointer field rides as a u32 INDEX into it\n")
+	g.pf("// under kind 17. No pointer edge is a nesting level, so a chain's length is\n")
+	g.pf("// not a depth and two references to one node are one node.\n\n")
+
+	g.emitRootNodeDispatch(st)
+
+	g.pf("// The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the\n")
+	g.pf("// root takes index 1 and its entry stays open for the whole walk, so a\n")
+	g.pf("// reference back at it is the cycle it is (§3.1).\n")
+	g.pf("template <typename Ctx>\ninline bool %sNumberFrom( const Ctx & ctx, TableNumbering & numbering, const %s & root )\n{\n", n, n)
+	g.pf("    bool taken = false;\n")
+	g.pf("    int64_t slot = 0;\n")
+	g.pf("    if ( TablePackMapReach( numbering.seen, (const void *) &root, (int64_t) kTableNodeIndexRoot, taken, slot ) == NULL ) { return false; }\n")
+	g.pf("    return %sNumber( ctx, numbering, root );\n}\n\n", n)
+
+	g.pf("template <typename Ctx>\ninline int64_t %sMeasureWire( const Ctx & ctx, const %s & root )\n{\n", n, n)
+	g.pf("    TableNumbering numbering;\n")
+	g.pf("    TableNumberingInit( numbering );\n")
+	g.pf("    int64_t bytes = -1;\n")
+	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) )\n    {\n", n)
+	g.pf("        bytes = %sMeasureBody( ctx, root );\n", n)
+	g.pf("        if ( bytes >= 0 )\n        {\n")
+	g.pf("            int64_t table = TableNodeTableMeasure( ctx, numbering );\n")
+	g.pf("            bytes = table < 0 ? -1 : bytes + table;\n")
+	g.pf("        }\n    }\n")
+	g.pf("    TableNumberingShutdown( numbering );\n")
+	g.pf("    return bytes;\n}\n\n")
+
+	g.pf("template <typename Ctx>\ninline int64_t %sSaveWire( const Ctx & ctx, const %s & root, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
+	g.pf("    TableNumbering numbering;\n")
+	g.pf("    TableNumberingInit( numbering );\n")
+	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }\n", n)
+	g.pf("    TableWriter w( buffer, capacity );\n")
+	g.pf("    // the root's own fields, then the node table's fields, then the\n")
+	g.pf("    // terminator: a reader that gives up inside the table has already\n")
+	g.pf("    // decoded the ROOT'S OWN FIELDS (§3.1)\n")
+	g.pf("    bool ok = %sSaveBodyFields( ctx, numbering, w, root ) && TableNodeTableSave( ctx, w, numbering );\n", n)
+	g.pf("    TableNumberingShutdown( numbering );\n")
+	g.pf("    if ( !ok ) { return -1; }\n")
+	g.pf("    w.put16( 0 );\n")
+	g.pf("    if ( w.overflow ) { return -1; } // the caller's buffer was too small\n")
+	g.pf("    return w.offset; // == %sMeasure( root )\n}\n\n", n)
+
 	g.pf("inline int64_t %sMeasure( const %s * root )\n{\n", n, n)
+	g.pf("    if ( root == NULL ) { return -1; }\n")
 	g.pf("    TableRegionCtx ctx;\n")
-	g.pf("    return root != NULL ? %sMeasureBody( ctx, *root, 1 ) : -1;\n}\n\n", n)
+	g.pf("    return %sMeasureWire( ctx, *root );\n}\n\n", n)
 	g.pf("inline int64_t %sSave( const %s * root, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
 	g.pf("    if ( root == NULL ) { return -1; }\n")
 	g.pf("    TableRegionCtx ctx;\n")
-	g.pf("    TableWriter w( buffer, capacity );\n")
-	g.pf("    if ( !%sSaveBody( ctx, w, *root, 1 ) ) { return -1; }\n", n)
-	g.pf("    return w.offset; // == %sMeasure( root )\n}\n\n", n)
+	g.pf("    return %sSaveWire( ctx, *root, buffer, capacity );\n}\n\n", n)
 	g.pf("inline int64_t %sMeasure( const %sBuilder & builder )\n{\n", n, n)
 	g.pf("    if ( builder.region != NULL ) { return %sMeasure( builder.AsConst() ); }\n", n)
 	g.pf("    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed\n")
 	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
-	g.pf("    return %sMeasureBody( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );\n}\n\n", n, n)
+	g.pf("    return %sMeasureWire( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ) );\n}\n\n", n, n)
 	g.pf("inline int64_t %sSave( const %sBuilder & builder, uint8_t * buffer, int64_t capacity )\n{\n", n, n)
 	g.pf("    if ( builder.region != NULL ) { return %sSave( builder.AsConst(), buffer, capacity ); }\n", n)
 	g.pf("    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed\n")
 	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
-	g.pf("    TableWriter w( buffer, capacity );\n")
-	g.pf("    if ( !%sSaveBody( ctx, w, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }\n", n, n)
-	g.pf("    return w.offset;\n}\n\n")
+	g.pf("    return %sSaveWire( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity );\n}\n\n", n, n)
 
 	// load
-	g.pf("// %sLoadMeasure: the exact region bytes a wire buffer will need. The\n", n)
-	g.pf("// caller owns the allocation — generated load code allocates nothing.\n")
-	g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire, int64_t wire_bytes )\n{\n", n)
+	g.pf("// %sLoadMeasure: the exact region bytes a wire buffer will need, and it is\n", n)
+	g.pf("// ONE SCAN — a record's type id gives its storage size, its length gives the\n")
+	g.pf("// next record — reading no field value at all, so the caller owns the\n")
+	g.pf("// allocation and can refuse a number it did not expect (§6.5).\n")
+	g.pf("//\n")
+	g.pf("// It reports the DATA bytes and the ATTRIBUTION bytes separately, because the\n")
+	g.pf("// attribution is the wire's numbering made resident (§6.3) and a caller may\n")
+	g.pf("// release it once Load returns. The answer is their sum.\n")
+	g.pf("inline int64_t %sLoadMeasure( const uint8_t * wire, int64_t wire_bytes, int64_t * attribution_bytes = NULL )\n{\n", n)
 	g.pf("    TableReport ignored;\n")
-	g.pf("    TableReader r( wire, wire_bytes, &ignored );\n")
-	g.pf("    int64_t below = %sLoadMeasureBody( r, 1 );\n", n)
-	g.pf("    if ( below < 0 ) { below = 0; }\n")
-	g.pf("    return TableAlignUp64( (int64_t) sizeof( %s ) ) + below;\n}\n\n", n)
+	g.pf("    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored );\n")
+	g.pf("    int64_t data = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    int64_t records = 0;\n")
+	g.pf("    uint64_t type_id = 0;\n")
+	g.pf("    const uint8_t * body = NULL;\n")
+	g.pf("    int64_t length = 0;\n")
+	g.pf("    while ( TableNodeScanNext( scan, type_id, body, length ) )\n    {\n")
+	g.pf("        records++;\n")
+	g.pf("        int64_t storage = %sNodeStorage( type_id );\n", n)
+	g.pf("        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none\n")
+	g.pf("    }\n")
+	g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
+	g.pf("    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }\n")
+	g.pf("    return data + attribution;\n}\n\n")
+
 	g.pf("// %sLoad: decode the tolerant wire into the caller's exact-sized region and\n", n)
-	g.pf("// return the root. Partial results are kept, as everywhere on this wire —\n")
-	g.pf("// the report says what happened. NULL means the CALLER's buffer was wrong.\n")
+	g.pf("// return the root. LOAD IS A SCAN, and that is the whole of its bound: it\n")
+	g.pf("// follows no reference, so there is no depth cap, no visited set and no\n")
+	g.pf("// ordering rule on the indices. Partial results are kept, as everywhere on\n")
+	g.pf("// this wire — the report says what happened. NULL means the CALLER's buffer\n")
+	g.pf("// was wrong.\n")
 	g.pf("inline const %s * %sLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    if ( region == NULL || region_bytes < (int64_t) sizeof( %s ) ) { out->malformed = true; return NULL; }\n", n)
 	g.pf("    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }\n")
 	g.pf("    memset( region, 0, (size_t) region_bytes );\n")
-	g.pf("    TableRegionSink sink;\n")
-	g.pf("    sink.base = region;\n")
-	g.pf("    sink.capacity = region_bytes;\n")
-	g.pf("    sink.used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    uint64_t type_id = 0;\n")
+	g.pf("    const uint8_t * body = NULL;\n")
+	g.pf("    int64_t length = 0;\n\n")
+	g.pf("    // the record count and the data bytes, from the FRAMING alone\n")
+	g.pf("    int64_t data = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("    int64_t records = 0;\n")
+	g.pf("    {\n")
+	g.pf("        TableReport counting;\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );\n")
+	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
+	g.pf("            records++;\n")
+	g.pf("            int64_t storage = %sNodeStorage( type_id );\n", n)
+	g.pf("            if ( storage > 0 ) { data += storage; }\n")
+	g.pf("        }\n    }\n")
+	g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
+	g.pf("    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }\n\n")
+	g.pf("    TableNodeMap nodes;\n")
+	g.pf("    nodes.base = region;\n")
+	g.pf("    nodes.entries = (const TableNodeDirEntry *) ( region + data );\n")
+	g.pf("    nodes.count = records + 1;\n")
+	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );\n")
+	g.pf("    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)\n")
+	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableTypeId(st.Name))
 	g.pf("    %s * root = new ( region ) %s; // lifetime only: LoadBody's first act is %sReset\n", n, n, n)
+	g.pf("    %sReset( *root );\n\n", n)
+	g.pf("    // PASS ONE: fill the numbering from the framing, so that an index\n")
+	g.pf("    // resolves whichever way it points. It reads no body.\n")
+	g.pf("    {\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
+	g.pf("        int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
+	g.pf("        int64_t k = 0;\n")
+	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
+	g.pf("            int64_t storage = %sNodeStorage( type_id );\n", n)
+	g.pf("            if ( storage <= 0 )\n            {\n")
+	g.pf("                // a record whose type id this build cannot name KEEPS ITS\n")
+	g.pf("                // INDEX, is counted once here and not once per pointer, and\n")
+	g.pf("                // every reference to it reads null (§3.1)\n")
+	g.pf("                out->unknown++;\n")
+	g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
+	g.pf("                directory[k + 1].type_id = type_id;\n")
+	g.pf("            }\n            else\n            {\n")
+	g.pf("                directory[k + 1].offset = (uint64_t) used;\n")
+	g.pf("                directory[k + 1].type_id = type_id;\n")
+	g.pf("                %sNodePlace( type_id, region + used );\n", n)
+	g.pf("                used += storage;\n")
+	g.pf("            }\n")
+	g.pf("            k++;\n")
+	g.pf("        }\n")
+	g.pf("        nodes.good = TableNodeScanWhole( scan );\n")
+	g.pf("        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing\n")
+	g.pf("    }\n\n")
+	g.pf("    // PASS TWO: decode each body into its own storage. A forward index\n")
+	g.pf("    // resolves without scratch, because pass one already placed every node.\n")
+	g.pf("    if ( nodes.good )\n    {\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
+	g.pf("        int64_t k = 0;\n")
+	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
+	g.pf("            if ( directory[k + 1].offset != kTableNodeAbsent )\n            {\n")
+	g.pf("                TableReader sub( body, length, out );\n")
+	g.pf("                %sNodeBody( type_id, sub, nodes, region + directory[k + 1].offset );\n", n)
+	g.pf("            }\n")
+	g.pf("            k++;\n")
+	g.pf("        }\n    }\n\n")
+	g.pf("    // and the ROOT's own body last, so every index it carries resolves\n")
+	g.pf("    // against a numbering already known good or already known bad\n")
 	g.pf("    TableReader r( wire, wire_bytes, out );\n")
-	g.pf("    %sLoadBody( r, sink, *root, 1 );\n", n)
+	g.pf("    %sLoadBody( r, nodes, *root );\n", n)
 	g.pf("    return root;\n}\n\n")
+
 	g.pf("// %sLoadBuilder: the TOOL's path — the same tolerant decode into a fresh\n", n)
-	g.pf("// builder, so loaded data can be edited and locked again.\n")
+	g.pf("// builder, so loaded data can be edited and locked again. The numbering is\n")
+	g.pf("// the same one; what differs is where a node lives and therefore what a\n")
+	g.pf("// resolved slot holds — an arena offset here, a self-relative delta there.\n")
 	g.pf("inline bool %sLoadBuilder( %sBuilder & builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    %s * root = builder.GetRoot();\n", n)
 	g.pf("    if ( root == NULL ) { out->malformed = true; return false; }\n")
+	g.pf("    uint64_t type_id = 0;\n")
+	g.pf("    const uint8_t * body = NULL;\n")
+	g.pf("    int64_t length = 0;\n")
+	g.pf("    int64_t records = 0;\n")
+	g.pf("    {\n")
+	g.pf("        TableReport counting;\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );\n")
+	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) ) { records++; }\n")
+	g.pf("    }\n")
+	g.pf("    // the AUTHORING side may allocate (§6.5), and this is the tool's path\n")
+	g.pf("    TableNodeDirEntry * directory = (TableNodeDirEntry *) calloc( (size_t) ( records + 1 ), sizeof( TableNodeDirEntry ) );\n")
+	g.pf("    if ( directory == NULL ) { out->malformed = true; return false; }\n")
+	g.pf("    directory[0].offset = (uint64_t) builder.root_ref.value;\n")
+	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableTypeId(st.Name))
+	g.pf("    TableNodeMap nodes;\n")
+	g.pf("    nodes.base = NULL;\n")
+	g.pf("    nodes.entries = directory;\n")
+	g.pf("    nodes.count = records + 1;\n")
+	g.pf("    nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here\n")
+	g.pf("    {\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
+	g.pf("        int64_t k = 0;\n")
+	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
+	g.pf("            uint32_t at = %sNodeAlloc( type_id, builder.main );\n", n)
+	g.pf("            if ( at == 0 )\n            {\n")
+	g.pf("                out->unknown++;\n")
+	g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
+	g.pf("            }\n            else\n            {\n")
+	g.pf("                directory[k + 1].offset = (uint64_t) at;\n")
+	g.pf("            }\n")
+	g.pf("            directory[k + 1].type_id = type_id;\n")
+	g.pf("            k++;\n")
+	g.pf("        }\n")
+	g.pf("        nodes.good = TableNodeScanWhole( scan );\n")
+	g.pf("        if ( !nodes.good ) { out->malformed = true; }\n")
+	g.pf("    }\n")
+	g.pf("    if ( nodes.good )\n    {\n")
+	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );\n")
+	g.pf("        int64_t k = 0;\n")
+	g.pf("        while ( TableNodeScanNext( scan, type_id, body, length ) )\n        {\n")
+	g.pf("            if ( directory[k + 1].offset != kTableNodeAbsent )\n            {\n")
+	g.pf("                TableReader sub( body, length, out );\n")
+	g.pf("                %sNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );\n", n)
+	g.pf("            }\n")
+	g.pf("            k++;\n")
+	g.pf("        }\n    }\n")
 	g.pf("    TableReader r( wire, wire_bytes, out );\n")
-	g.pf("    return %sLoadBody( r, builder.main, *root, 1 );\n}\n\n", n)
+	g.pf("    bool ok = %sLoadBody( r, nodes, *root );\n", n)
+	g.pf("    free( directory );\n")
+	g.pf("    return ok;\n}\n\n")
+}
+
+// emitRootNodeDispatch emits the three answers a LOAD needs about a wire type
+// id, over the members this root's numbering can name (docs/SPEC-TABLES.md §3.1).
+//
+// It is emitted PER ROOT and over the pointer-REACHABLE set, which is exactly
+// the set this root's own walkers already name — so every type it spells is one
+// whose header this file already includes, and a unit whose files point at each
+// other needs no registry and no cross-file cycle (§11).
+func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
+	n := st.Name
+	reachable := g.pointerReachable(st)
+
+	g.pf("// %sNodeStorage: the region bytes one record commands, or -1 for a type id\n", n)
+	g.pf("// this build cannot name — which keeps its index and reads null.\n")
+	g.pf("inline int64_t %sNodeStorage( uint64_t type_id )\n{\n", n)
+	g.pf("    switch ( type_id )\n    {\n")
+	for _, t := range reachable {
+		g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name)
+	}
+	g.pf("        default: break;\n    }\n")
+	g.pf("    return -1;\n}\n\n")
+
+	g.pf("// %sNodePlace: start one record's node's lifetime in the storage pass one\n", n)
+	g.pf("// reserved for it, holding exactly the declared defaults.\n")
+	g.pf("inline void %sNodePlace( uint64_t type_id, uint8_t * at )\n{\n", n)
+	g.pf("    switch ( type_id )\n    {\n")
+	for _, t := range reachable {
+		g.pf("        case 0x%016xull: { %s * node = new ( at ) %s; %sReset( *node ); break; } // %s\n",
+			ir.TableTypeId(t.Name), t.Name, t.Name, t.Name, t.Name)
+	}
+	g.pf("        default: break;\n    }\n}\n\n")
+
+	g.pf("// %sNodeAlloc: the TOOL's path — one record's node in the builder's arena.\n", n)
+	g.pf("// Zero is the arena's null, and it is also what a type id this build cannot\n")
+	g.pf("// name answers.\n")
+	g.pf("inline uint32_t %sNodeAlloc( uint64_t type_id, TableWorker & worker )\n{\n", n)
+	g.pf("    switch ( type_id )\n    {\n")
+	for _, t := range reachable {
+		g.pf("        case 0x%016xull: return (uint32_t) worker.Alloc<%s>().ref.value; // %s\n", ir.TableTypeId(t.Name), t.Name, t.Name)
+	}
+	g.pf("        default: break;\n    }\n")
+	g.pf("    return 0;\n}\n\n")
+
+	g.pf("// %sNodeBody: PASS TWO's half — decode one record's body into the storage it\n", n)
+	g.pf("// already owns.\n")
+	g.pf("inline void %sNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )\n{\n", n)
+	anyVar := false
+	for _, t := range reachable {
+		if g.isVar(t.Name) {
+			anyVar = true
+		}
+	}
+	if !anyVar {
+		g.pf("    (void) nodes; // every node this root can name is a FIXED table\n")
+	}
+	g.pf("    switch ( type_id )\n    {\n")
+	for _, t := range reachable {
+		call := fmt.Sprintf("%sLoadBody( r, nodes, *(%s *) at )", t.Name, t.Name)
+		if !g.isVar(t.Name) {
+			call = fmt.Sprintf("%sLoadBody( r, *(%s *) at )", t.Name, t.Name)
+		}
+		g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableTypeId(t.Name), call, t.Name)
+	}
+	g.pf("        default: break;\n    }\n}\n\n")
+}
+
+// pointerReachable returns the closure members this root's numbering can name:
+// every table reached through a POINTER EDGE, directly or by descending through
+// by-value nesting to reach the pointer fields inside it, in first-visit order.
+func (g *tableGen) pointerReachable(root *ir.Struct) []*ir.Struct {
+	named := map[string]bool{}
+	visited := map[string]bool{}
+	var out []*ir.Struct
+	var descend func(st *ir.Struct)
+	descend = func(st *ir.Struct) {
+		if visited[st.Name] {
+			return
+		}
+		visited[st.Name] = true
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			ref, ok := f.Type.Ref.(*ir.Struct)
+			if !ok {
+				continue
+			}
+			if f.Type.Pointer && !named[ref.Name] {
+				named[ref.Name] = true
+				out = append(out, ref)
+			}
+			descend(ref)
+		}
+	}
+	descend(root)
+	return out
 }
 
 // emitRelocatabilityPreamble writes the comment above the static asserts,
