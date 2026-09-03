@@ -342,7 +342,7 @@ rename in the same commit, and refuses: a corpus identifier named under
 a bench-shaped source path outside them, or a shape's wire size written down as
 a literal.
 
-Every place that does not yet comply is named in `bench/SHAPE-GATE.allow` with
+Every place that does not yet comply is named in a `SHAPE-GATE.allow` — `bench/SHAPE-GATE.allow` for shared tooling, one beside each leg for its own — with
 an exact count. The count is a ratchet: growing it fails, and so does leaving it
 too high once the debt is paid. `go run ./bench/tools/shapegate -ledger`
 regenerates the lines. What the gate cannot see is stated at the top of

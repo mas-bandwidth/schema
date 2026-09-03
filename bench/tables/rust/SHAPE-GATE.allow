@@ -1,0 +1,5 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
+# Paths are repository-relative.
+
+names bench/tables/rust/src/main.rs 1 shape-blind leg: `TableMixed` as the bench_table type argument, once — its reset/save/load are snake_case free functions the corpus vocabulary does not spell, so the Rust leg names the shape in exactly one place (callsite)

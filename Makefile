@@ -2167,7 +2167,8 @@ fmt: bin/schema
 	./bin/schema fmt bench/corpus/BenchTable.schema
 
 # The one-benchmark rule, made mechanical: no hand-coded measurement of a
-# schema shape anywhere in this repo except what bench/SHAPE-GATE.allow names.
+# schema shape anywhere in this repo except what a SHAPE-GATE.allow names —
+# bench/SHAPE-GATE.allow for shared tooling, one beside each leg for its own.
 shape-gate:
 	go run ./bench/tools/shapegate
 

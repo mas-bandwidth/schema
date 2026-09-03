@@ -614,7 +614,8 @@ jobs:
   # sanctioned benchmark — this repo's data-driven bench — and shape knowledge
   # belongs in bench/corpus and the generated code. This job refuses a commit
   # that hand-codes measurement of a schema shape anywhere else. Every current
-  # exception is named in bench/SHAPE-GATE.allow with an exact count that can
+  # exception is named in a SHAPE-GATE.allow — bench/SHAPE-GATE.allow for shared
+  # tooling, one beside each leg for its own — with an exact count that can
   # only shrink.
   shape-gate:
     runs-on: ubuntu-latest

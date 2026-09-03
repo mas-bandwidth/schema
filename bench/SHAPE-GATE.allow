@@ -53,19 +53,7 @@
 # wire size fails this gate on the next push.
 # ---------------------------------------------------------------------------
 
-names bench/c/bench_main.c 4 shape-blind leg: 3 comments naming the shape + `#define BM_TYPE BenchMixed`, the generated type handed to the data-driven driver (callsite)
-names bench/cpp/bench_main.cpp 3 shape-blind leg: 2 comments + `bench::BenchMixed` as the template argument to bench_datadriven (callsite)
-names bench/cs/src/Program.cs 3 shape-blind leg: 1 comment + `Bench.BenchMixed` as the BenchDataDriven type argument (callsite), + `extra` in "one extra untimed pass" (prose)
-names bench/dart/main.dart 3 shape-blind leg: 1 comment + `BenchMixed` as the gateDataDriven type argument and `BenchMixed.new` constructor tear-off (callsite)
-names bench/elixir/main.exs 1 shape-blind leg: the header comment naming the shape this leg measures (comment)
-names bench/elixir/runner.exs 2 shape-blind leg: 1 header comment (comment) + `sequence` in "replaying one sequence the branch predictor could memorize" (prose)
-names bench/go/main.go 3 shape-blind leg: 1 comment + `bench.BenchMixed` as the benchDataDriven type argument (callsite), + `extra` in "one extra untimed pass" (prose)
-names bench/java/Main.java 6 shape-blind leg: 1 comment + 5 `Bench.BenchMixed` callsites — the instance array, the decode target, and the generated read/write calls. Java has no generics over the generated type, so the driver names it inline instead of once (callsite)
-names bench/js/main.mjs 2 shape-blind leg: 1 comment + `bench.BenchMixed` passed to benchDataDrivenFlat (callsite)
-names bench/rust/src/main.rs 2 shape-blind leg: 1 comment + `benchgen::BenchMixed` as the bench_datadriven type parameter (callsite)
 
-consts bench/c/bench_main.c 1 a comment stating the variant file is 64 x 438 bytes; no 438 in code (comment)
-consts bench/java/Main.java 3 three references to GitHub issue #156, which collides with the declared 156-bit total of a corpus shape. A pure false positive of the numeric check, kept visible rather than special-cased (prose)
 
 # ---------------------------------------------------------------------------
 # THE CORPUS TOOLING — shape knowledge in ONE place, deliberately.
@@ -158,15 +146,6 @@ timing test/conformance/rust/src/main.rs 3 the Rust SOAK's deadline and its inte
 # table's name was invisible to it, and a leg could have hand-written one.
 # ---------------------------------------------------------------------------
 
-names bench/tables/cpp/table_main.cpp 4 shape-blind leg: 1 comment + `benchtable::TableMixed` as the bench_table template argument and its Reset/Save/Load call sites (callsite)
-names bench/tables/cs/src/Program.cs 2 shape-blind leg: `Benchtable.TableMixed` as the BenchTable type argument and its constructor (callsite)
-names bench/tables/dart/table_main.dart 2 shape-blind leg: `TableMixed` as the benchTable type argument and its constructor tear-off — its reset/save/load are METHODS on the value, taken as closures the corpus vocabulary does not spell (callsite)
-names bench/tables/go/table_main.go 2 shape-blind leg: `benchtable.TableMixed` as the benchTable type argument and in the one load closure's signature (callsite)
-names bench/tables/js/main.mjs 1 shape-blind leg: `TableMixed` once, as the constructor the four generated call sites are named from (callsite)
-names bench/tables/rust/src/main.rs 1 shape-blind leg: `TableMixed` as the bench_table type argument, once — its reset/save/load are snake_case free functions the corpus vocabulary does not spell, so the Rust leg names the shape in exactly one place (callsite)
-names bench/tables/java/src/Main.java 2 shape-blind leg: `benchtable.BenchTableTable.TableMixed` as the benchTable type argument and its constructor reference (callsite)
-consts bench/tables/java/src/Main.java 1 the round-robin variant mask `(i & (NUM_VARIANTS - 1))` folds to a literal the numeric check reads as a corpus bit total. A pure false positive, kept visible rather than special-cased (prose)
-names bench/tables/c/table_main.c 3 shape-blind leg: C has no template to pass the type through, so `TableMixed` is named where the storage is declared and at its Reset/Save/Load call sites — no field, no pinned value, no wire size (callsite)
 
 # The tables corpus's golden pinner and oracle: correctness code, no clock.
 # It is the ONE place that names a field of BenchTable.schema, which is what
@@ -182,6 +161,5 @@ paths test/bench/table_main.cpp 1 the tables corpus's producer and §1.5 oracle:
 # clock reads decide when to stop. It names no shape it did not get from the
 # conformance corpus's own manifest, and it reports no time.
 
-timing test/dart-tables/soak.dart 1 the Dart port's soak: one Stopwatch BOUNDS the run, and what is watched is a BYTE COMPARISON of every round trip; no time is reported and no shape is measured
 timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BOUNDS the loop, the allocation counter is what is watched — no time is reported and no shape is measured
 timing test/java-tables/src/Main.java 7 the Java tables leg's SOAK and ALLOCATION gates: a wall clock bounding a duration and a warm-up window, over a corpus it never names — no shape measured, no rate reported

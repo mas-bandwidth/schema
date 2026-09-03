@@ -6,7 +6,7 @@
 // repo's data-driven bench. Shape knowledge lives in two places and nowhere
 // else — bench/corpus/*.schema (the definition) and the code the compiler
 // GENERATES from it. The nine language runners are hand-written and stay that
-// way, but they are SHAPE-BLIND: timing, buffers, CSV and loops only. A runner
+// way, but they are SHAPE-BLIND: return nil, fmt.Errorf("%s:%d: unknown check %q (want names|timing|paths|consts)", rel, n, parts[0]), buffers, CSV and loops only. A runner
 // that names a field, hardcodes a wire size, or grows its own timed loop over a
 // hand-serialized struct is the divergence class the owner named — nine
 // hand-written approximations of one benchmark, drifting apart silently.
@@ -38,8 +38,9 @@
 //	          runner derives sizes from the committed corpus at run time; a
 //	          hand-coded one has to write the shape's size down somewhere.
 //
-//	ledger    Every exemption in bench/SHAPE-GATE.allow still matches a real
-//	          file at exactly its recorded count. An entry whose file is gone
+//	ledger    Every exemption in every SHAPE-GATE.allow — bench/SHAPE-GATE.allow
+//	          for the shared tooling, one beside each leg for its own — still
+//	          matches a real file at exactly its recorded count. An entry whose file is gone
 //	          FAILS. An entry whose count DROPPED fails too, and prints the new
 //	          number to write. The debt can only shrink.
 //
@@ -119,7 +120,14 @@ const corpusDir = "bench/corpus/"
 // wire sizes, so the constant vocabulary needs no parsing to be authoritative.
 const goldenGlob = "testdata/wire/bench_*.bin"
 
-const ledgerPath = "bench/SHAPE-GATE.allow"
+// ledgerName — the register's file name. bench/SHAPE-GATE.allow states the
+// format and the rules and carries the shared tooling's entries; every leg's
+// own entries sit in a SHAPE-GATE.allow beside it (bench/<lang>/,
+// bench/tables/<lang>/), so a port adds a file and edits no shared one. Every
+// entry's path is repository-relative whichever file carries it.
+const ledgerName = "SHAPE-GATE.allow"
+
+const ledgerPath = "bench/" + ledgerName
 
 // sourceExts — the file kinds a benchmark can be written in.
 var sourceExts = map[string]bool{
@@ -351,6 +359,7 @@ func wireConstants(root string) (map[int]string, error) {
 // debt cannot grow, and when it shrinks the gate says so and makes you write
 // the smaller number down. When it reaches zero the entry is deleted.
 type ledgerEntry struct {
+	file  string // the SHAPE-GATE.allow this entry is in
 	check string
 	path  string
 	count int
@@ -358,11 +367,45 @@ type ledgerEntry struct {
 	why   string
 }
 
+// readLedger reads every SHAPE-GATE.allow under root, in path order.
 func readLedger(root string) ([]ledgerEntry, error) {
-	f, err := os.Open(filepath.Join(root, ledgerPath))
-	if os.IsNotExist(err) {
-		return nil, nil
+	var files []string
+	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if p != root && skipDirs[info.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.Name() == ledgerName {
+			files = append(files, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	sort.Strings(files)
+	var out []ledgerEntry
+	for _, p := range files {
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return nil, err
+		}
+		entries, err := readLedgerFile(p, filepath.ToSlash(rel))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, entries...)
+	}
+	return out, nil
+}
+
+func readLedgerFile(path, rel string) ([]ledgerEntry, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -379,18 +422,18 @@ func readLedger(root string) ([]ledgerEntry, error) {
 		}
 		parts := strings.SplitN(line, " ", 4)
 		if len(parts) < 4 {
-			return nil, fmt.Errorf("%s:%d: want `<check> <path> <count> <reason>`, got %q", ledgerPath, n, line)
+			return nil, fmt.Errorf("%s:%d: want `<check> <path> <count> <reason>`, got %q", rel, n, line)
 		}
 		c, err := strconv.Atoi(parts[2])
 		if err != nil {
-			return nil, fmt.Errorf("%s:%d: count %q is not a number", ledgerPath, n, parts[2])
+			return nil, fmt.Errorf("%s:%d: count %q is not a number", rel, n, parts[2])
 		}
 		switch parts[0] {
 		case "names", "timing", "paths", "consts":
 		default:
 			return nil, fmt.Errorf("%s:%d: unknown check %q (want names|timing|paths|consts)", ledgerPath, n, parts[0])
 		}
-		out = append(out, ledgerEntry{check: parts[0], path: parts[1], count: c, line: n, why: parts[3]})
+		out = append(out, ledgerEntry{file: rel, check: parts[0], path: parts[1], count: c, line: n, why: parts[3]})
 	}
 	return out, sc.Err()
 }
@@ -470,7 +513,7 @@ func run(root string) error {
 			}
 			return nil
 		}
-		if rel == ledgerPath {
+		if info.Name() == ledgerName {
 			return nil
 		}
 
@@ -612,13 +655,13 @@ func reconcile(found map[string]map[string]*finding, ledger []ledgerEntry) error
 		if !ok {
 			refusals = append(refusals, fmt.Sprintf(
 				"LEDGER  %s:%d\n    `%s %s %d` matches nothing — the file is gone or clean.\n    Delete this line.",
-				ledgerPath, e.line, e.check, e.path, e.count))
+				e.file, e.line, e.check, e.path, e.count))
 			continue
 		}
 		if f.count < e.count {
 			refusals = append(refusals, fmt.Sprintf(
 				"LEDGER  %s:%d\n    `%s %s %d` is stale — the file now has %d.\n    Lower the count to %d. The ledger only shrinks.",
-				ledgerPath, e.line, e.check, e.path, e.count, f.count, f.count))
+				e.file, e.line, e.check, e.path, e.count, f.count, f.count))
 		}
 	}
 
@@ -637,8 +680,9 @@ func reconcile(found map[string]map[string]*finding, ledger []ledgerEntry) error
 // find out what the gate is for before deciding what to do about it.
 const theRule = `The estate has ONE benchmark: this repo's data-driven bench (bench/README.md).
 Hand-written runners are fine. Hand-written MEASUREMENT of a schema shape is not.
-If a refusal above is a deliberate, owner-ruled exception, add it to ` + ledgerPath + `
-with its exact count and the reason.`
+If a refusal above is a deliberate, owner-ruled exception, add it to the
+` + ledgerName + ` beside the leg (bench/<lang>/, bench/tables/<lang>/) — or to
+` + ledgerPath + ` for shared tooling — with its exact count and the reason.`
 
 // ------------------------------------------------------------------------------------------
 
