@@ -94,7 +94,8 @@ nothing about what it does carry.
 per-case absence safe rather than a place to hide: an absence from the
 reference leg — `cpp`, first in the discovered registry, and the one
 `conformance-pin` takes its pins from — is the corpus losing its own
-expectation, not a port's missing feature. It belongs to that registry alone: a run handed a SUBSTITUTED one with
+expectation, not a port's missing feature. It belongs to that registry alone:
+a run handed a SUBSTITUTED one with
 `--drivers`, as the big-endian leg does for its single Go driver, is one leg of
 a port and not the matrix, so its first line is not the reference and its
 absences are ordinary.

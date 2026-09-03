@@ -83,7 +83,14 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 			t.Errorf("%s did not discover the planted language: want %q in\n%s", key, needle, after[key])
 		}
 	}
+	// a CI row with no driver behind it is refused, not run
+	writeFile(t, filepath.Join(tree, "test", "conformance", "zy", "ci.json"), `{"targets": "build/conformance-zy"}`+"\n")
+	if _, err := matrix(filepath.Join(tree, "test", "conformance")); err == nil || !strings.Contains(err.Error(), "zy") {
+		t.Errorf("a ci.json with no driver was not refused: %v", err)
+	}
+
 	// the reference leg stays first whatever is planted
+
 	if !strings.HasPrefix(after["harness"], "cpp ") {
 		t.Errorf("the reference leg is not first: %s", after["harness"])
 	}

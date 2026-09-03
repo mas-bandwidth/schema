@@ -6,7 +6,7 @@
 // repo's data-driven bench. Shape knowledge lives in two places and nowhere
 // else — bench/corpus/*.schema (the definition) and the code the compiler
 // GENERATES from it. The nine language runners are hand-written and stay that
-// way, but they are SHAPE-BLIND: return nil, fmt.Errorf("%s:%d: unknown check %q (want names|timing|paths|consts)", rel, n, parts[0]), buffers, CSV and loops only. A runner
+// way, but they are SHAPE-BLIND: timing, buffers, CSV and loops only. A runner
 // that names a field, hardcodes a wire size, or grows its own timed loop over a
 // hand-serialized struct is the divergence class the owner named — nine
 // hand-written approximations of one benchmark, drifting apart silently.
@@ -431,7 +431,7 @@ func readLedgerFile(path, rel string) ([]ledgerEntry, error) {
 		switch parts[0] {
 		case "names", "timing", "paths", "consts":
 		default:
-			return nil, fmt.Errorf("%s:%d: unknown check %q (want names|timing|paths|consts)", ledgerPath, n, parts[0])
+			return nil, fmt.Errorf("%s:%d: unknown check %q (want names|timing|paths|consts)", rel, n, parts[0])
 		}
 		out = append(out, ledgerEntry{file: rel, check: parts[0], path: parts[1], count: c, line: n, why: parts[3]})
 	}

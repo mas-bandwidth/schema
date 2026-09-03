@@ -105,12 +105,28 @@ func loadDrivers(path string) (drivers []driver, discovered bool, err error) {
 // leg.
 //
 // A driver with no ci.json is an error: a leg the harness runs locally and CI
-// never sees is the gap this registry exists to close.
+// never sees is the gap this registry exists to close. So is a ci.json with no
+// driver: a row CI would run for a leg that does not exist.
 func matrix(dir string) ([]byte, error) {
 	drivers, err := discoverDrivers(dir)
 	if err != nil {
 		return nil, err
 	}
+	registered := map[string]bool{}
+	for _, d := range drivers {
+		registered[d.lang] = true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		path := filepath.Join(dir, e.Name(), "ci.json")
+		if _, err := os.Stat(path); err == nil && !registered[e.Name()] {
+			return nil, fmt.Errorf("%s: a CI row for a leg with no driver at %s/%s/driver", path, dir, e.Name())
+		}
+	}
+
 	keys := map[string]bool{"lang": true, "targets": true}
 	var rows []map[string]string
 	for _, d := range drivers {
