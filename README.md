@@ -75,7 +75,7 @@ type ShipState
 }
 ```
 
-Write your data types once and generate bit-packed serialization code to read and write them. Best for client/server messages and state where the client speaks the same binary protocol or won't be allowed to connect to the server.
+Write your data types once and generate bit-packed serialization code to read and write them. Best for client/server messages and state where the client speaks the same binary protocol as the server or won't be allowed to connect.
 
 ## Performance
 
