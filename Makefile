@@ -651,6 +651,28 @@ tables-rust-big-endian: build/tables-generated-rust/.stamp
 		cargo check --quiet --target $(RUST_BE_TARGET) && \
 		echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), every layout const assert with it"
 
+# THE RUST SOAK (docs/SPEC-TABLES.md: "every read path allocates nothing").
+# Every instance of the conformance corpus, wire-loaded and re-saved and
+# text-read and text-written, in a loop, with the bytes compared every
+# iteration — so a run that drifted stops rather than merely getting slower —
+# and with LIVE ALLOCATED BYTES as the instrument.
+#
+# The instrument is the point. RSS answers a different question, and an
+# allocator that grew by one byte per iteration would take a very long time to
+# show up in it; the driver installs a counting global allocator, takes a
+# baseline after a warm pass, and REFUSES the run if the number moved.
+#
+# It is a by-hand gate at an hour. SOAK_SECONDS shortens it for a working
+# check; the number the port was landed on is 3600.
+SOAK_SECONDS ?= 3600
+
+# It reads the DERIVED manifest the harness writes, so `conformance` is the
+# dependency: a soak over a corpus whose matrix is red would be timing a
+# defect.
+.PHONY: tables-rust-soak
+tables-rust-soak: conformance
+	./build/conformance-rust build/conformance/manifest.txt soak $(SOAK_SECONDS)
+
 .PHONY: tables-rust-fuzz
 tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
 	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
