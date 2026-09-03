@@ -587,10 +587,10 @@ allocates, a fixed table WITH a union may allocate for the arm in a language
 that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
-A table lives on its own wire — evolution-tolerant TLV, carried by C++, by C#,
-by Go, by Rust and by Java (every port carries the fixed class, wire and text
-form both; the pointer surface ON THE WIRE is a follow-on in every one of them —
-their cook and block accelerators read a pointered unit today). Field
+A table lives on its own wire — evolution-tolerant TLV, carried by C++ and C
+(both classes) and by C#, Go, Rust and Java (the fixed class, wire and text
+form both; the pointer surface ON THE WIRE is a follow-on in those four — their
+cook and block accelerators read a pointered unit today). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
@@ -699,9 +699,86 @@ if (report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0)
 }
 ```
 
+**The C surface is the same three functions, name first, over buffers the
+caller owns** — the same spelling as C++ with a pointer where C++ takes a
+reference:
+
+```c
+#include "ConfigTable.h"
+
+ShipConfig ship;
+ShipConfigReset( &ship );          /* C has no member initializers: this IS
+                                      where the declared defaults live */
+ship.health = 250.0f;
+
+int64_t size = ShipConfigMeasure( &ship );      /* exact, writes nothing */
+uint8_t * buffer = malloc( (size_t) size );      /* or any storage you own */
+ShipConfigSave( &ship, buffer, size );           /* returns size, or -1 */
+
+TableReport report;
+ShipConfig loaded;
+memset( &report, 0, sizeof( report ) );
+if ( !ShipConfigLoad( &loaded, buffer, size, &report ) )
+{
+    /* framing damage: report.malformed is set, the good prefix is kept */
+}
+if ( report.unknown || report.kind_mismatch || report.clamped )
+{
+    /* the data came from a different schema generation — loaded is still
+       fully usable; log the counts so drift is visible */
+}
+```
+
+Generation produces `<Base>Table.h` and `<Base>Table.c`. **The header is the
+whole wire** — the storage structs, `Reset`, `Measure`, `Save`, `Load` and
+`<Name>Open`, all `static` and inlinable, with no serialize dependency and no
+object file to link. **The `.c` carries the reflection descriptors and the
+text form**, so a translation unit that only reads and writes the wire
+compiles neither; compile it when you call `<Name>TableType`,
+`<Name>FromJson` or `<Name>ToJson`.
+
+Two schema units LINK together — every external the table backend emits
+carries the package, `schema_<package>_<type>_<what>_` — so a program may hold
+two generations of one schema, which is what the conformance driver does with
+`tblv1::Cfg` and `tblv2::Cfg`. Two units cannot be INCLUDED into one
+translation unit: C has no namespace, and that limit is the C target's
+standing one rather than anything tables added.
+
+An enum-keyed array is a plain `T slots[E_MAX]` — one slot per named variant,
+nothing for `None`, the key `k` at index `k - 1`. **Index it by the ENUM
+VALUE through `TableKeyedAt`**, which is where the left shift and the `None`
+refusal live; the refusal is an assert plus an abort and it stands in every
+build, exactly as C++'s accessor refuses:
+
+```c
+TableKeyedAt( fleet.ships, SHIP_TYPE_BOMBER ).health *= 2.0f;
+
+/* walking every slot: the key is 1 .. E_MAX, never a storage index */
+int32_t key;
+for ( key = 1; key <= SHIP_TYPE_MAX; key++ )
+{
+    ShipConfig * ship = &TableKeyedAt( fleet.ships, key );
+    ship->health *= 2.0f;
+}
+```
+
+A `?T` is the value beside a `<name>_present` byte, a `string(N)` a
+`char[N + 1]` beside an `int32_t <name>_length`, a `bytes(N)` a `uint8_t[N]`
+beside its length, and a union its tag beside `as.<arm>` — the same spelling
+the packet backend uses, because a table's closure decodes into the packet
+backend's own structs.
+
+`<Name>TableType()` returns the reflection descriptor. Its vocabulary columns
+are TABLES rather than functions: `variants` is indexed by the enum's value
+and `keys` by an enum-keyed array's KEY, each entry a `(name, id)` pair, with
+a NULL name for a value the declared set does not name. C has no captureless
+lambda, and a named function per enum would claim a name per enum, so the
+same facts ride as constant data — every question the descriptors answer
+elsewhere has an answer here, asked of an array instead of a call.
+
 The bytes are the same bytes: a shared golden corpus pins C++'s encoding of a
-set of instances and the C# leg byte-compares its own `Save` against it, then
-loads those very files. `string(N)` and `bytes(N)` are a `byte[N]` beside an
+set of instances and the C# and C legs byte-compare their own `Save` against
+it, then load those very files. `string(N)` and `bytes(N)` are a `byte[N]` beside an
 `int` used length, arrays a `T[N]` beside an `int` used count, `?T` a value
 beside a `<Name>Present` bool, and a union is its tag beside one pre-allocated
 arm — the same spelling the packet backend uses, because a table's closure
@@ -1679,7 +1756,7 @@ puts the two back together when you want to check one.
 ### The build version: what a cooked asset is stored under
 
 *`schema build-version [--facts]` prints the id and the projection it digests,
-both pinned as goldens; the C++ and C# block backends emit `BuildVersion` and
+both pinned as goldens; the C++, C# and C block backends emit `BuildVersion` and
 stamp it into every block's prologue; `schema cook` stamps the same id into
 every cooked header, and `cook-check`, the C++ `<Root>Open` and the C#
 `<Root>Cook.Open` each read it back and compare. What is still owed is

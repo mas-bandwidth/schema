@@ -45,31 +45,38 @@ typedef struct Case
     const char * unit;
     const char * root;
     const char * wire;
+    /* an EXACT case re-saves to the same bytes it was loaded from; an
+       EVOLUTION SEAM is read by a type that did not write it, so what comes
+       back out is this reader's own encoding and shorter. The byte compare
+       runs on the exact ones, which is what makes this a cross-endian gate as
+       well as a leak gate: the tolerant wire is little-endian by construction
+       (§3), so a big-endian build must reproduce the same bytes. */
+    int exact;
 } Case;
 
 /* the corpus the conformance manifest names, in one list: every instance the
    wire surface reads, plus the four evolution seams, so the loop exercises the
    tolerant paths as well as the exact ones */
 static const Case cases[] = {
-    { "tabledemo", "RootConfig", "testdata/wire/tables/root_full.bin" },
-    { "tabledemo", "RootConfig", "testdata/wire/tables/root_default.bin" },
-    { "tabledemo", "ProfileConfig", "testdata/wire/tables/profile_elide.bin" },
-    { "tabledemo", "LoadoutConfig", "testdata/wire/tables/loadout_full.bin" },
-    { "tabledemo", "WideBlob", "testdata/wire/tables/wide_blob.bin" },
-    { "tabledemo", "ArchiveConfig", "testdata/wire/tables/archive.bin" },
-    { "tabledemo", "KeyedConfig", "testdata/wire/tables/keyed_config.bin" },
-    { "tabledemo", "KeyedConfig", "testdata/wire/tables/keyed_default.bin" },
-    { "tblv1", "Cfg", "testdata/wire/tables/v1_cfg.bin" },
-    { "tblv1", "Cfg", "testdata/wire/tables/v1_seams.bin" },
-    { "tblv2", "Cfg", "testdata/wire/tables/v2_cfg.bin" },
-    { "tblv2", "Cfg", "testdata/wire/tables/v2_seams.bin" },
-    { "tblp1", "Chain", "testdata/wire/tables/chain_value.bin" },
-    { "tblp3", "Chain", "testdata/wire/tables/chain_optional.bin" },
+    { "tabledemo", "RootConfig", "testdata/wire/tables/root_full.bin", 1 },
+    { "tabledemo", "RootConfig", "testdata/wire/tables/root_default.bin", 1 },
+    { "tabledemo", "ProfileConfig", "testdata/wire/tables/profile_elide.bin", 1 },
+    { "tabledemo", "LoadoutConfig", "testdata/wire/tables/loadout_full.bin", 1 },
+    { "tabledemo", "WideBlob", "testdata/wire/tables/wide_blob.bin", 1 },
+    { "tabledemo", "ArchiveConfig", "testdata/wire/tables/archive.bin", 1 },
+    { "tabledemo", "KeyedConfig", "testdata/wire/tables/keyed_config.bin", 1 },
+    { "tabledemo", "KeyedConfig", "testdata/wire/tables/keyed_default.bin", 1 },
+    { "tblv1", "Cfg", "testdata/wire/tables/v1_cfg.bin", 1 },
+    { "tblv1", "Cfg", "testdata/wire/tables/v1_seams.bin", 1 },
+    { "tblv2", "Cfg", "testdata/wire/tables/v2_cfg.bin", 1 },
+    { "tblv2", "Cfg", "testdata/wire/tables/v2_seams.bin", 1 },
+    { "tblp1", "Chain", "testdata/wire/tables/chain_value.bin", 1 },
+    { "tblp3", "Chain", "testdata/wire/tables/chain_optional.bin", 1 },
     /* the EVOLUTION SEAMS: bytes read by a type that did not write them */
-    { "tblv2", "Cfg", "testdata/wire/tables/v1_cfg.bin" },
-    { "tblv1", "Cfg", "testdata/wire/tables/v2_seams.bin" },
-    { "tblp3", "Chain", "testdata/wire/tables/chain_value.bin" },
-    { "tblp1", "Chain", "testdata/wire/tables/chain_optional.bin" }
+    { "tblv2", "Cfg", "testdata/wire/tables/v1_cfg.bin", 0 },
+    { "tblv1", "Cfg", "testdata/wire/tables/v2_seams.bin", 0 },
+    { "tblp3", "Chain", "testdata/wire/tables/chain_value.bin", 0 },
+    { "tblp1", "Chain", "testdata/wire/tables/chain_optional.bin", 0 }
 };
 
 typedef const ConformanceCodec * ( *UnitFn )( int * count );
@@ -160,6 +167,21 @@ int main( int argc, char ** argv )
             loaded[i].text_bytes = loaded[i].codec->to_json( value, NULL, 0 );
             loaded[i].text = loaded[i].text_bytes > 0 ? (char *) malloc( (size_t) loaded[i].text_bytes + 1 ) : NULL;
             if ( loaded[i].scratch == NULL ) { return 1; }
+            /* THE GOLDEN GATE, before the clock and before anything else: an
+               EXACT case must come back BYTE FOR BYTE. That is what makes this
+               binary a cross-endian gate as well as a leak gate — the tolerant
+               wire is little-endian by construction (§3), so a big-endian build
+               running this over the same goldens has to reproduce them. */
+            if ( cases[i].exact )
+            {
+                if ( loaded[i].codec->save( value, loaded[i].scratch, loaded[i].scratch_bytes ) != (int64_t) loaded[i].bytes ||
+                     memcmp( loaded[i].scratch, loaded[i].wire, loaded[i].bytes ) != 0 )
+                {
+                    fprintf( stderr, "soak: %s does not re-save to its own bytes — refusing to soak a codec "
+                             "that does not reproduce the corpus\n", cases[i].wire );
+                    return 1;
+                }
+            }
         }
     }
 

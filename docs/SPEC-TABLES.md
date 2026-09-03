@@ -148,13 +148,13 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++, and C#, Go, Rust and Java for the FIXED class.** C++
-carries both classes; C#, Go, Rust and Java carry the fixed class (§6.1) —
-optionals, enum-keyed arrays, the text form (§16) and all — and each refuses a
-unit whose closure declares a pointer, naming its variable class as a follow-on.
-Every other backend refuses a unit that declares tables at all, by name, with
-this document cited. The remaining per-language backends are named follow-ons
-(§15).
+**Backend status: C++ and C, and C#, Go, Rust and Java for the FIXED class.**
+C++ and C carry both classes; C#, Go, Rust and Java carry the fixed class
+(§6.1) — optionals, enum-keyed arrays, the text form (§16) and all — and each
+refuses a unit whose closure declares a pointer, naming its variable class as a
+follow-on. Every other backend refuses a unit that declares tables at all, by
+name, with this document cited. The remaining per-language backends are named
+follow-ons (§15).
 
 **The RUST backend's own three divergences**, each forced by the language and
 each named where it is spelled rather than discovered in the source. The
@@ -282,7 +282,7 @@ byte-swapped and its order word is not this reader's — which is what the two
 FOREIGN surfaces ask for, and `make tables-java-order` holds the same property
 over a whole big-endian cook the tool wrote.
 
-**The BLOCK FORM (§2.7, §19) is live in C++, C#, Go, Rust and Java**, and it took C++ and
+**The BLOCK FORM (§2.7, §19) is live in C++, C#, Go, Rust, Java and C**, and it took C++ and
 C# TOGETHER to land, because the form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path
@@ -300,7 +300,9 @@ generated padding as C#'s do and the layout contract as the refusing `init()`
 above; Java emits `<Table>Block.java` per block-form table and `<Name>Row.java`
 per record, whose generated ACCESSORS read each field at its offset because
 there is no struct to lay out, with the layout contract as the
-accessors-against-descriptors check above. **The unit's
+accessors-against-descriptors check above; and C emits `<Base>Block.h` and
+`<Base>Block.c` on the C++ pair's terms, with the layout contract asserted at
+compile time under C99's own means (§20.3). **The unit's
 shared runtime is named by the PACKAGE in every port, so file order cannot
 reach it (§19.2)** — and in Java the package IS the unit scope, so each runtime
 type is a file of its own name and no rule is needed at all. The READ side is what the ported backends carry: a block is
@@ -4698,7 +4700,7 @@ inspects everything in the schema built:
   does, and it is not stable before JDK 22 where this backend compiles at
   `--release 17`; both `open`s already take a `long` length, which is the seat
   that overload takes when the floor moves.
-- **Per-language backends beyond C++ and C#** (the refusal in §11 names this).
+- **Per-language backends beyond C++, C# and C** (the refusal in §11 names this).
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12), and the FIXED class is what that
   needs: storage structs, measure/save/load over caller-owned buffers, the
@@ -4987,7 +4989,7 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class, in C++, C#, Rust and Java.** No
+**Backend status for this section: the FIXED class, in C++, C#, Rust, Java and C.** No
 backend implements the variable class's text form yet — a pointered unit
 gets no `FromJson`, refused by name with this section cited, never emitted
 with the function missing — and the second walker it needs, emitted only in

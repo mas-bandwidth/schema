@@ -2527,6 +2527,7 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_block_endian bu
 	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
 	@echo "big-endian leg: a cook opens NATIVELY in the order it was cooked for, whole graph and all, and a cook of the other order is refused by the magic"
 	$(MAKE) tables-cook-endian
+	$(MAKE) tables-c-big-endian
 
 # THE COOK IS THE HOST'S BUSINESS IN NEITHER DIRECTION (docs/SPEC-TABLES.md §7).
 # The byte order is settled AT COOK TIME for the TARGET build, so what a cook
@@ -2848,6 +2849,9 @@ generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/go
 	./bin/schema generate --lang go --out generated/bench/tables/go bench/corpus/BenchTable.schema
 	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
+generated/bench/tables/c/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/c
+	./bin/schema generate --lang c --out generated/bench/tables/c bench/corpus/BenchTable.schema
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
@@ -2941,7 +2945,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c build/schema_test_bench_table generated/bench/tables/cs/.stamp generated/bench/tables/go/.stamp generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c build/schema_test_bench_table build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan generated/bench/tables/cs/.stamp generated/bench/tables/go/.stamp generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	$(MAKE) check-zero-range-negative-control
@@ -2964,6 +2968,15 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-refuses-pointers
 	cd test/cs-tables && dotnet run
+	# THE C TABLES LEG (docs/SPEC-TABLES.md; test/conformance/README.md): the
+	# same corpus in C, with the two gates that hold the emitter honest, the
+	# forgery fuzzer under ASan and UBSan, and a short soak. The HOUR-long soak
+	# is a release act rather than a per-build one: `make tables-c-soak
+	# SOAK_SECONDS=3600`.
+	$(MAKE) tables-c-zero-cost
+	$(MAKE) tables-c-json-walk
+	$(MAKE) tables-c-fuzz
+	$(MAKE) tables-c-soak SOAK_SECONDS=20
 	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as
 	# data, one driver per language, and the matrix that says which surfaces a
 	# backend has. It rides here rather than at the end because the two legs it
@@ -2982,6 +2995,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	cd test/go-tables && go test -count 1 .
 	$(MAKE) tables-go-fuzz-extent-negative-control
 	$(MAKE) tables-go-fuzz-maximum-negative-control
+<<<<<<< HEAD
 	# THE JAVA PORT's own instruments (docs/SPEC-TABLES.md). ONE conformance
 	# negative control rides here, the C# and Go legs' twin; the second one,
 	# the fuzz oracle's control and the SOAK are `make tables-java-release`,
@@ -2997,6 +3011,9 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-java-fuzz
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
+=======
+	$(MAKE) conformance-negative-control-c
+>>>>>>> 6f4ed8f (the c bench leg, the negative control, the big-endian leg, and the pages' C rows)
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
@@ -3138,7 +3155,11 @@ bench-table-check: build/schema_test_bench_table
 # estate's bench rules — core 15, server stopped, not live, blessed per run;
 # a run on a shared interactive machine is a pairing check and the board says
 # which one it is.
+<<<<<<< HEAD
 bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp generated/bench/tables/java/.stamp bench-table-check
+=======
+bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/c/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp bench-table-check
+>>>>>>> 6f4ed8f (the c bench leg, the negative control, the big-endian leg, and the pages' C rows)
 	bench/tables/run.sh
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
@@ -3599,6 +3620,7 @@ conformance-negative-control-go-walk: build/conformance-harness
 	@grep -m1 "go / json-read" $(CONFORMANCE_NEGATIVE_GOWALK)/log
 	@echo "negative control: one field offset off in the Go walk turns the harness RED on json-read alone"
 
+<<<<<<< HEAD
 # THE JAVA LEG's NEGATIVE CONTROL, and it is the C# one's twin because the two
 # ports have the same shape: the walk is EMITTER SOURCE — one constant in
 # internal/codegen/javatable/json.go — so the sabotage lands in the emitter and
@@ -3706,6 +3728,11 @@ conformance-negative-control-java-block: build/conformance-harness
 	@echo "negative control: one missing pitch check in the Java block Open turns the harness RED on forgery alone"
 
 .PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-go conformance-negative-control-go-walk conformance-negative-control-java conformance-negative-control-java-block conformance-negative-control-c conformance-negative-control-c-foreign build-conformance-cs build-conformance-java
+=======
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-go conformance-negative-control-go-walk build-conformance-cs
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs build-conformance-cs
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-c build-conformance-cs
+>>>>>>> 6f4ed8f (the c bench leg, the negative control, the big-endian leg, and the pages' C rows)
 
 # THE C TABLES LEG (docs/SPEC-TABLES.md, test/conformance/README.md) ----------
 #
@@ -3871,3 +3898,103 @@ tables-c-fuzz: build/schema_test_c_fuzz
 tables-c: build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz
 	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
 	$(MAKE) tables-c-soak SOAK_SECONDS=20
+
+# THE NEGATIVE CONTROL FOR THE C LEG, and it is the C# control's twin over the
+# C emitter: a green matrix row proves nothing until the row is shown capable
+# of going red. One field index in the C WALK is sabotaged — the reader takes
+# its neighbour's descriptor — and the harness must go red on `json-read`
+# ALONE. The second half is the point: json-write must stay green, because the
+# sabotage is in the READER; and `wire` must stay green, because the wire codec
+# is a different half of the same backend. A control that turned the whole
+# column red would be saying "something broke" rather than "the C reader broke".
+#
+# Nothing tracked is written to: the emitter source is patched into a COPY and
+# reached through a Go build overlay, so an interrupt cannot leave a sabotaged
+# working tree.
+CONFORMANCE_NEGATIVE_C := build/conformance-negative-c
+CONFORMANCE_NEGATIVE_C_SED := s|const TableFieldInfo \* f = &info->fields\[index\];|const TableFieldInfo * f = \&info->fields[( index ^ 1 ) < info->num_fields ? ( index ^ 1 ) : index]; /* SABOTAGED */|
+.PHONY: conformance-negative-control-c
+conformance-negative-control-c: build/conformance-harness
+	@rm -rf $(CONFORMANCE_NEGATIVE_C) && mkdir -p $(CONFORMANCE_NEGATIVE_C)
+	@sed '$(CONFORMANCE_NEGATIVE_C_SED)' internal/codegen/ctable/json.go > $(CONFORMANCE_NEGATIVE_C)/ctable-json.go.txt
+	@cmp -s internal/codegen/ctable/json.go $(CONFORMANCE_NEGATIVE_C)/ctable-json.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/json.go":"%s/$(CONFORMANCE_NEGATIVE_C)/ctable-json.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_C)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_C)/overlay.json -o $(CONFORMANCE_NEGATIVE_C)/schema ./cmd/schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/examples tables/examples
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/block tables/block
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/pointers tables/pointers
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/v1 test/tables/V1.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/v2 test/tables/V2.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p1 test/tables/P1.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p3 test/tables/P3.schema
+	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_C)/generated/*/*Table.c || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -Itest/conformance/c \
+		-I$(CONFORMANCE_NEGATIVE_C)/generated/examples -I$(CONFORMANCE_NEGATIVE_C)/generated/v1 \
+		-I$(CONFORMANCE_NEGATIVE_C)/generated/v2 -I$(CONFORMANCE_NEGATIVE_C)/generated/p1 \
+		-I$(CONFORMANCE_NEGATIVE_C)/generated/p3 -I$(CONFORMANCE_NEGATIVE_C)/generated/block \
+		-I$(CONFORMANCE_NEGATIVE_C)/generated/pointers \
+		test/conformance/c/main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
+		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
+		test/conformance/c/unit_blockdemo.c test/conformance/c/unit_graphdemo.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/examples/TablesTable.c $(CONFORMANCE_NEGATIVE_C)/generated/examples/WideTable.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/examples/NestedTable.c $(CONFORMANCE_NEGATIVE_C)/generated/examples/KeyedTable.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/examples/PackTable.c $(CONFORMANCE_NEGATIVE_C)/generated/examples/GuardedTable.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/examples/RangesTable.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/v1/V1Table.c $(CONFORMANCE_NEGATIVE_C)/generated/v2/V2Table.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/p1/P1Table.c $(CONFORMANCE_NEGATIVE_C)/generated/p3/P3Table.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/block/RenderBlock.c $(CONFORMANCE_NEGATIVE_C)/generated/block/RenderTable.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/block/PaddedBlock.c $(CONFORMANCE_NEGATIVE_C)/generated/block/PaddedTable.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/pointers/GraphTable.c $(CONFORMANCE_NEGATIVE_C)/generated/pointers/MarksTable.c \
+		$(CONFORMANCE_NEGATIVE_C)/generated/pointers/PartsTable.c -o $(CONFORMANCE_NEGATIVE_C)/driver-bin -lm
+	@printf '#!/bin/sh\nexec %s/driver-bin "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C)" > $(CONFORMANCE_NEGATIVE_C)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_C)/driver
+	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C)" > $(CONFORMANCE_NEGATIVE_C)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_C)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_C)/work > $(CONFORMANCE_NEGATIVE_C)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a sabotaged C walker left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; \
+	fi
+	@grep -q "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
+		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
+	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_C)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
+	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_C)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
+	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
+	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
+
+# THE BIG-ENDIAN C LEG (docs/SPEC-TABLES.md §3). The tolerant wire is
+# little-endian by construction — the generated writer spells every width out
+# byte by byte and the reader reassembles them the same way — so a BIG-ENDIAN
+# build has to reproduce the same goldens a little-endian host wrote. The soak
+# binary's golden gate is exactly that assertion, so the leg is the same binary
+# cross-compiled and run for zero seconds: it loads the whole corpus, re-saves
+# every exact case and byte-compares, then stops.
+#
+# BE_CC names what CI installed, the way BE_CXX does for the C++ legs; the pair
+# is not a system binary and not assumed.
+BE_CC ?= s390x-linux-gnu-gcc
+
+build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_main.c
+	@mkdir -p build
+	$(BE_CC) -std=c99 -Wall -Wextra -Werror -Wshadow -O2 -ffp-contract=off -static \
+		$(C_CONFORMANCE_INCLUDES) \
+		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
+		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
+		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
+		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
+		build/tables-generated-c/examples/PackTable.c build/tables-generated-c/examples/GuardedTable.c \
+		build/tables-generated-c/examples/RangesTable.c \
+		build/tables-generated-c/v1/V1Table.c build/tables-generated-c/v2/V2Table.c \
+		build/tables-generated-c/p1/P1Table.c build/tables-generated-c/p3/P3Table.c -o $@ -lm
+
+.PHONY: tables-c-big-endian
+tables-c-big-endian: build/schema_test_c_soak_be
+	$(BE_RUN) ./build/schema_test_c_soak_be 0
+	@echo "big-endian C leg: the tolerant wire crosses the byte order — same goldens, byte for byte"

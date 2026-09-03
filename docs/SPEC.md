@@ -1385,7 +1385,23 @@ tree mirrors the schema tree a person navigates.
   inherits no serialize runtime — and a project that never walks them never
   includes the header or compiles the source.
 - **C:** the same data/wire header pair per schema file (`<Base>.h` /
-  `<Base>Wire.h`), mirroring the C++ split in C's own types.
+  `<Base>Wire.h`), mirroring the C++ split in C's own types. A unit that
+  declares TABLES emits one further pair per schema file — `<Base>Table.h`
+  and `<Base>Table.c` — on the C++ pair's terms and for the C++ pair's
+  reason, plus `<Base>Block.h` / `<Base>Block.c` for the block form
+  (SPEC-TABLES.md §19). The split is WIDER here than in C++: C has no inline
+  variables, so the reflection descriptors and the text form's generic walk
+  are DEFINED in the `.c` and only declared in the header, and a translation
+  unit that includes the header for the wire codecs pays for neither.
+  **Every external the table backend emits carries the package** —
+  `schema_<package>_<type>_<what>_` — because C has no namespace and two
+  units whose type names collide have to LINK together, which is what the
+  conformance driver itself does. The name-first surface SPEC-TABLES.md §11
+  states — `<Name>Load`, `<Name>FromJson`, `<Name>TableType`,
+  `<Name>BlockOpen` — is `static` in the header and forwards to them, so a
+  call site reads the same in C as in C++. Two units still cannot be included
+  into ONE translation unit, which is the C target's standing limit and
+  unchanged by tables.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
   packages are order-free across files, so there is no topo sort and no
   include graph to refuse.
