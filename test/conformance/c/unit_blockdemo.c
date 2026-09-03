@@ -122,8 +122,11 @@ static int dump_record( ConformanceText * out, const uint8_t * storage, const Ta
             memcpy( &used, storage + f->count_offset, sizeof( used ) );
             if ( used < 0 || used > f->array_bound )
             {
-                fprintf( stderr, "driver: %s.%s carries a used length of %d, outside [ 0, %d ]\n",
-                         info->name, f->name, used, f->array_bound );
+                if ( !conformance_quiet )
+                {
+                    fprintf( stderr, "driver: %s.%s carries a used length of %d, outside [ 0, %d ]\n",
+                             info->name, f->name, used, f->array_bound );
+                }
                 return 0;
             }
             conformance_text_add( out, "  " );

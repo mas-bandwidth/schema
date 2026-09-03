@@ -24,6 +24,11 @@
 
 #include "driver.h"
 
+/* the bytes an Open actually reads: a cooked header is 64, a block projection
+   is its prologue plus one sixteen-byte triple per out-of-line array, and the
+   widest in this corpus is under 200. 256 covers both with room. */
+#define kPrologueRegion 256
+
 static uint64_t rng_state;
 
 static uint64_t next_random( void )
@@ -67,13 +72,43 @@ typedef struct Subject
     size_t bytes;
 } Subject;
 
+/* OPEN, AND THEN READ WHAT IT HANDED BACK.
+
+   An Open only VALIDATES: it checks the prologue, the triples and the header
+   and points. A fuzzer that stopped there would prove the checks never crash
+   and nothing at all about whether they are load-bearing — deleting the
+   rows-inside-the-extent check leaves such a fuzzer green, which is what its
+   negative control found. So a successful open is followed by the walk a
+   CONSUMER makes: every row of every array, every node of the graph. That is
+   where a check that stopped guarding shows up, as a read past the extent the
+   caller claimed, in a redzone. */
 static int open_subject( const Subject * s, const uint8_t * data, size_t bytes, int64_t extent, int pointer )
 {
+    ConformanceText walk;
+    int opened;
+    memset( &walk, 0, sizeof( walk ) );
     if ( strcmp( s->kind, "block" ) == 0 )
     {
-        return conformance_block_open( s->name, data, bytes, extent, pointer );
+        opened = conformance_block_open( s->name, data, bytes, extent, pointer );
+        if ( opened && extent < 0 && pointer == 0 )
+        {
+            /* the row walk reads at the FILE's own length and an aligned base,
+               which is the shape conformance_block_dump takes; a claim the
+               caller shortened is the open path's business and already fuzzed
+               above */
+            conformance_block_dump( s->name, data, bytes, &walk );
+        }
     }
-    return conformance_cook_open( s->name, data, bytes, extent, pointer );
+    else
+    {
+        opened = conformance_cook_open( s->name, data, bytes, extent, pointer );
+        if ( opened && extent < 0 && pointer == 0 )
+        {
+            conformance_cook_dump( s->name, data, bytes, &walk );
+        }
+    }
+    free( walk.data );
+    return opened;
 }
 
 int main( void )
@@ -95,6 +130,7 @@ int main( void )
     uint64_t i;
     size_t s;
 
+    conformance_quiet = 1; /* a forged file whose walk refuses is the correct outcome */
     rng_state = seed;
     for ( s = 0; s < num_subjects; s++ )
     {
@@ -121,13 +157,47 @@ int main( void )
         if ( damaged == NULL ) { return 1; }
         memcpy( damaged, subject->clean, subject->bytes );
 
-        /* ONE WORD, anywhere in the file: the header, a triple, a row, the
-           padding. Where the check does not read, the answer is `open` and
-           that is correct. */
+        /* ONE WORD — and WHERE it lands is the whole design.
+
+           A block image is half a megabyte and its prologue and triples are
+           the first hundred-odd bytes of it, so a uniformly random offset
+           lands in a ROW essentially every time: such a fuzzer explores the
+           bytes no check reads and proves only that the reader does not crash
+           on them. Half the damage therefore goes to the PROLOGUE REGION,
+           where every word an Open actually reads lives — the magic, the build
+           version, the byte order, each triple's offset_of, count and stride,
+           the cooked header's eight words — and half goes anywhere at all, so
+           the row bytes stay covered too. Where the check does not read, the
+           answer is `open` and that is correct. */
         width = 1 << ( next_random() % 4 ); /* 1, 2, 4 or 8 bytes */
-        offset = (size_t) ( next_random() % subject->bytes );
+        if ( ( next_random() % 2 ) == 0 && subject->bytes > kPrologueRegion )
+        {
+            offset = (size_t) ( next_random() % kPrologueRegion );
+        }
+        else
+        {
+            offset = (size_t) ( next_random() % subject->bytes );
+        }
         if ( offset + (size_t) width > subject->bytes ) { offset = subject->bytes - (size_t) width; }
-        value = next_random();
+        /* AND WHAT the word becomes matters as much as where it lands. A random
+           64-bit value is astronomically unlikely to be a legal-but-escaping
+           count — the band a maximum still admits — so a quarter of the
+           damage is a SMALL integer and a quarter is a value near one of the
+           file's own, which is where a check that stopped guarding shows.
+           The rest stays uniformly random, which is what covers the words no
+           check reads. */
+        switch ( next_random() % 4 )
+        {
+            case 0: value = next_random() % 8192; break;
+            case 1:
+            {
+                uint64_t nearby = 0;
+                memcpy( &nearby, subject->clean + offset, (size_t) width );
+                value = nearby + ( next_random() % 512 ) - 256;
+                break;
+            }
+            default: value = next_random(); break;
+        }
         for ( w = 0; w < width; w++ ) { damaged[offset + w] = (uint8_t) ( value >> ( w * 8 ) ); }
 
         /* the EXTENT and the BASE are the caller's facts, and neither is in the

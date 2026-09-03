@@ -93,7 +93,14 @@ int conformance_block_open( const char * name, const uint8_t * data, size_t byte
 int conformance_block_dump( const char * name, const uint8_t * data, size_t bytes, ConformanceText * out );
 
 /* the COOK unit (graphdemo): the canonical node dump, and the forgery
- * battery's one question */
+ * battery's one question.
+ *
+ * conformance_quiet silences the walk's own refusal messages. A driver run
+ * wants them — a walk that refused is a case that failed. The FUZZER does not:
+ * a forged file whose walk refuses is the CORRECT outcome, tens of thousands of
+ * times, and the noise would bury the one message that matters. It is a flag
+ * rather than a redirect because the sanitizers write to stderr too. */
+extern int conformance_quiet;
 int conformance_cook_dump( const char * root, const uint8_t * data, size_t bytes, ConformanceText * out );
 int conformance_cook_open( const char * root, const uint8_t * data, size_t bytes, int64_t extent, int pointer );
 

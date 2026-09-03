@@ -2984,6 +2984,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-c-zero-cost
 	$(MAKE) tables-c-json-walk
 	$(MAKE) tables-c-fuzz
+	$(MAKE) tables-c-fuzz-negative-control
 	$(MAKE) tables-c-variable
 	$(MAKE) tables-c-keyed-none-refusal-ndebug
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
@@ -3862,7 +3863,7 @@ build/conformance-c-asan: build/tables-generated-c/.stamp $(wildcard test/confor
 # The cook fixtures are a DECLARED prerequisite and not an accident of the
 # tree: test/cookgen writes them deterministically, and a fuzzer whose subject
 # happens to be lying around is a fuzzer that passes by not running.
-build/schema_test_c_fuzz: build/tables-generated-c/.stamp build/cook-open/.stamp test/c-tables/fuzz_main.c $(wildcard test/conformance/c/*.h)
+build/schema_test_c_fuzz: build/tables-generated-c/.stamp build/cook-open/.stamp test/c-tables/fuzz_main.c $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O1 -ffp-contract=off $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) \
@@ -3879,7 +3880,7 @@ build/schema_test_c_fuzz: build/tables-generated-c/.stamp build/cook-open/.stamp
 # and hour one, and a leak of one byte per iteration is what it exists to find.
 #   make tables-c-soak SOAK_SECONDS=3600
 SOAK_SECONDS ?= 20
-build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_main.c
+build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_main.c $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O2 -ffp-contract=off $(C_CONFORMANCE_INCLUDES) \
@@ -3903,7 +3904,7 @@ tables-c-fuzz: build/schema_test_c_fuzz
 # THE C TABLES LEG, whole. Everything above, plus the conformance driver under
 # the sanitizers over every surface it answers.
 .PHONY: tables-c
-tables-c: build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz tables-c-variable
+tables-c: build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz tables-c-fuzz-negative-control tables-c-variable
 	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
 	$(MAKE) tables-c-keyed-none-refusal-ndebug
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
@@ -3991,7 +3992,7 @@ conformance-negative-control-c: build/conformance-harness
 # is not a system binary and not assumed.
 BE_CC ?= s390x-linux-gnu-gcc
 
-build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_main.c
+build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_main.c $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
 	$(BE_CC) -std=c99 -Wall -Wextra -Werror -Wshadow -O2 -ffp-contract=off -static \
 		$(C_CONFORMANCE_INCLUDES) \
@@ -4077,3 +4078,43 @@ build/schema_test_c_variable_asan: build/tables-generated-c/.stamp test/c-tables
 tables-c-variable: build/schema_test_c_variable build/schema_test_c_variable_asan
 	./build/schema_test_c_variable
 	./build/schema_test_c_variable_asan
+
+# THE NEGATIVE CONTROL FOR THE FORGERY FUZZER, and it is the one that changed
+# the fuzzer's design.
+#
+# A fuzzer that only OPENS a forged file proves the checks never crash and
+# nothing at all about whether they are load-bearing — an Open validates and
+# points, so a removed guard produces a wrong `open` and no symptom. This
+# control is what said so: with the extent pair deleted from a COPY of the
+# generated reader, the original fuzzer stayed green. It goes red now, because
+# the fuzzer WALKS what it opened and the walk is where a guard that stopped
+# guarding reads past the caller's buffer, into a redzone.
+#
+# The guards deleted are BOTH halves of the extent bound — the rows-inside-the-
+# extent check and the padding check that catches the same forgery as a side
+# effect. Deleting one alone leaves the reader correct, which is itself worth
+# knowing and is why this control names two lines rather than one.
+.PHONY: tables-c-fuzz-negative-control
+tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/.stamp
+	@rm -rf build/c-fuzz-sabotage && mkdir -p build/c-fuzz-sabotage
+	@cp -r build/tables-generated-c/block build/c-fuzz-sabotage/
+	@sed -i.bak -e 's|if ( rows > (uint64_t) bytes - offset_of ) { return 0; }|/* SABOTAGED */|' \
+	            -e 's|if ( padding > bytes - used ) { return 0; }|/* SABOTAGED */|' \
+		build/c-fuzz-sabotage/block/RenderBlock.c
+	@grep -q SABOTAGED build/c-fuzz-sabotage/block/RenderBlock.c || \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
+	$(CC) -std=c99 -Wall -Wextra -Wno-error -O1 -ffp-contract=off $(C_SANITIZE) \
+		-Itest/conformance/c -Ibuild/c-fuzz-sabotage/block -Ibuild/tables-generated-c/pointers \
+		test/c-tables/fuzz_main.c test/conformance/c/unit_blockdemo.c test/conformance/c/unit_graphdemo.c \
+		build/c-fuzz-sabotage/block/RenderBlock.c build/c-fuzz-sabotage/block/RenderTable.c \
+		build/c-fuzz-sabotage/block/PaddedBlock.c build/c-fuzz-sabotage/block/PaddedTable.c \
+		build/tables-generated-c/pointers/GraphTable.c build/tables-generated-c/pointers/MarksTable.c \
+		build/tables-generated-c/pointers/PartsTable.c -o build/c-fuzz-sabotage/fuzz -lm
+	@if SEED=1 N=50000 ./build/c-fuzz-sabotage/fuzz > build/c-fuzz-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the extent guards are gone and the fuzzer stayed green — it is not reading what it opens"; \
+		cat build/c-fuzz-sabotage/log; exit 1; \
+	fi
+	@grep -q "heap-buffer-overflow" build/c-fuzz-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red for some other reason"; \
+		  cat build/c-fuzz-sabotage/log; exit 1; }
+	@echo "negative control: deleting the block reader's extent guards turns the forgery fuzzer RED, as a heap over-read"

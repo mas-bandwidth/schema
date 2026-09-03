@@ -83,9 +83,11 @@ typedef struct Walk
     int failed;
 } Walk;
 
+int conformance_quiet = 0;
+
 static void walk_fail( Walk * w, const char * why )
 {
-    if ( !w->failed ) { fprintf( stderr, "driver: %s\n", why ); }
+    if ( !w->failed && !conformance_quiet ) { fprintf( stderr, "driver: %s\n", why ); }
     w->failed = 1;
 }
 
@@ -260,12 +262,24 @@ static void walk_storage( Walk * w, const uint8_t * storage, const TableTypeInfo
                 dump_line( w, name, "null" ); /* NULL IN A REGION IS A DELTA OF ZERO (§6.3) */
                 continue;
             }
+            /* THE DELTA IS DATA, so it is added as an INTEGER and bounded
+               BEFORE it becomes a pointer. `slot + delta` is what reads
+               naturally and it is undefined behaviour: a forged delta near
+               2^63 overflows the pointer itself, and the range check after it
+               is then examining a value the standard never promised. Unsigned
+               addition wraps by definition, and a wrapped offset lands outside
+               [0, data_length) and refuses like any other. The forgery fuzzer
+               found this the moment it started WALKING what it opened. */
             slot = storage + f->offset;
-            target = slot + delta;
-            if ( target < w->region || target >= w->region + w->data_length )
             {
-                walk_fail( w, "a reference resolves outside the region" );
-                return;
+                uint64_t slot_at = (uint64_t) ( slot - w->region );
+                uint64_t target_at = slot_at + (uint64_t) delta;
+                if ( target_at >= w->data_length )
+                {
+                    walk_fail( w, "a reference resolves outside the region" );
+                    return;
+                }
+                target = w->region + target_at;
             }
             if ( f->table == NULL )
             {
