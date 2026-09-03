@@ -5932,9 +5932,9 @@ Tooling cooks before any game binary exists, so Y has to be knowable from the
 schema alone. The compiler owns every fact in it, including the layout: it
 computes each record's layout from its own C ABI model — the model §19.3
 states and both backends MUST assert against (§20.3) — and emits the id as one
-constant. A build whose compiler lays a record out differently is meant to
-fail to BUILD, loudly, naming the type and the field; those asserts are owed
-and not yet emitted, which §20.3 states in full.
+constant. A build whose compiler lays a record out differently fails to BUILD,
+loudly, naming the type and the field; §20.3 states the asserts in full and
+names the one closure they do not yet reach.
 
 **Backend status: the id, its projection and both READ sides are LIVE.**
 `schema build-version` prints the id and `schema build-version --facts` prints
