@@ -239,7 +239,9 @@ struct TableReader
 // NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
 // key of 0 is malformed, and INDEXING BY IT IS A PROGRAM ERROR IN EVERY
 // CONFIGURATION — caught by operator[], which cannot see a runtime key any
-// earlier, and REFUSED UNCONDITIONALLY. NDEBUG does not remove the compare:
+// earlier, and REFUSED UNCONDITIONALLY. A KEY PAST Max IS THE SAME ERROR for
+// the same reason — it names a variant this enum does not have — so the
+// accessor refuses BOTH ENDS. NDEBUG does not remove the compare:
 // there is NO UB PATH here in any build. ITERATION is still the surface a
 // consumer of the whole array wants: begin()/end() walk every stored slot and
 // yield the KEY, 1..E.Max, so a call site writes no bound, no cast, no shift
@@ -254,28 +256,32 @@ struct TableKeyed
 
     T & operator[]( E key )
     {
-        RefuseNone( key );
+        RefuseKey( key );
         return slots[ (int32_t) key - 1 ];
     }
     const T & operator[]( E key ) const
     {
-        RefuseNone( key );
+        RefuseKey( key );
         return slots[ (int32_t) key - 1 ];
     }
 
-    // THE REFUSAL, and it stands in EVERY BUILD. The storage shifts left and
-    // holds no slot for None, so a build that skipped this compare would index
-    // one element BEFORE the array — undefined behaviour in the configuration
-    // a game ships. A None key is a program error, so the accessor ends the
-    // program rather than reading something. The assert carries the message
-    // where a debugger can read it and NDEBUG removes that; the abort is what
-    // stands after it. The cost is one perfectly-predicted compare, on a path
-    // that reads config.
-    static void RefuseNone( E key )
+    // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
+    // holds one slot per NAMED variant: nothing for None below it and nothing
+    // above Max, so a build that skipped this compare would index one element
+    // BEFORE the array or past its end — undefined behaviour in the
+    // configuration a game ships. Either key is a program error, so the
+    // accessor ends the program rather than reading something. The assert
+    // carries the message where a debugger can read it and NDEBUG removes
+    // that; the abort is what stands after it.
+    //
+    // ONE UNSIGNED COMPARE COVERS BOTH ENDS: the storage index is key - 1, and
+    // None's is -1, which wraps above kSlots unsigned. The cost is one
+    // perfectly-predicted compare, on a path that reads config.
+    static void RefuseKey( E key )
     {
-        if ( key == E::None )
+        if ( (uint32_t) ( (int32_t) key - 1 ) >= (uint32_t) kSlots )
         {
-            assert( false && "None is the null key of an enum-keyed array: it keys no slot" );
+            assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
             abort();
         }
     }

@@ -2474,6 +2474,41 @@ static void test_keyed_none_index_refused()
     }
 }
 
+// ---- and operator[] REFUSES A KEY PAST Max, the same way (docs/SPEC-TABLES.md §2.4) ----
+//
+// The storage holds one slot per NAMED variant, so a key above Max names a
+// variant this enum does not have and there is no slot for it to land in: the
+// same program error as None, refused at the same compare, in every build.
+// `make tables-keyed-max-refusal-ndebug` is the half that proves NDEBUG does
+// not remove it, and its own negative control proves that gate has teeth.
+
+static void test_keyed_past_max_index_refused()
+{
+    fflush( stdout );
+    pid_t child = fork();
+    if ( child == 0 )
+    {
+        // the abort message is the point of the child, not of this log
+        FILE * quiet = freopen( "/dev/null", "w", stderr );
+        (void) quiet;
+        tabledemo::KeyedConfig cfg;
+        tabledemo::Team key = (tabledemo::Team) ( (int32_t) tabledemo::Team::Max + 1 );
+        tabledemo::TeamConfig & past = cfg.teams[key];
+        past.spawn_count = 1; // never reached: the accessor refused
+        _exit( 0 );
+    }
+    CHECK( child > 0 );
+    int status = 0;
+    CHECK( waitpid( child, &status, 0 ) == child );
+    CHECK( WIFSIGNALED( status ) ); // the refusal ended the child
+    if ( WIFEXITED( status ) )
+    {
+        printf( "FAIL keyed past-Max index: the child returned %d — the refusal is gone\n",
+                WEXITSTATUS( status ) );
+        failures++;
+    }
+}
+
 // ---- the edit that breaks a positional slot array: V2 REMOVES Gamma and
 // ---- INSERTS Omega in the middle, so Beta slides from ordinal 2 to 3. Every
 // ---- surviving slot lands by NAME, in both directions.
@@ -5245,6 +5280,7 @@ int main()
     test_keyed_round_trip();
     test_keyed_iteration();
     test_keyed_none_index_refused();
+    test_keyed_past_max_index_refused();
     test_keyed_evolution_old_data();
     test_keyed_evolution_new_data();
     test_keyed_versus_positional_is_a_kind_mismatch();
