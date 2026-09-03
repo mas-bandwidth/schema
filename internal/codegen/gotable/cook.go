@@ -232,6 +232,7 @@ type cookGen struct {
 
 	needsFmt    bool
 	needsUnsafe bool
+	needsBinary bool
 }
 
 func (g *cookGen) rf(format string, args ...any) { fmt.Fprintf(&g.runtime, format, args...) }
@@ -307,6 +308,9 @@ func (g *cookGen) assemble() ([]byte, error) {
 	h.WriteString("// or neither — one without the other leaves those records undefined.\n\n")
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	var imports []string
+	if g.needsBinary {
+		imports = append(imports, `"encoding/binary"`)
+	}
 	if g.needsFmt {
 		imports = append(imports, `"fmt"`)
 	}
@@ -485,6 +489,7 @@ func (g *cookGen) emitRecordCheck(name string) {
 
 func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.needsUnsafe = true
+	g.needsBinary = true
 	name := st.Name
 	ml := g.cook.members[name]
 	align := g.cook.align
@@ -551,24 +556,31 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout) {
 	g.hf("\t// order every other header word is written in. A cook of the other order\n")
 	g.hf("\t// reads back this constant byte-reversed and refuses HERE, rather than\n")
 	g.hf("\t// reaching a fix-up pass this design does not have.\n")
-	g.hf("\tif *(*uint64)(base) != TableCookMagic {\n\t\treturn false\n\t}\n")
+	g.hf("\t//\n")
+	g.hf("\t// The header is read through encoding/binary's NATIVE order — the memcpy\n")
+	g.hf("\t// the C++ side reads it with — and not through a typed load, because the\n")
+	g.hf("\t// BASE's own alignment is not checked until further down: a typed load\n")
+	g.hf("\t// before that check is an unaligned load on a target that does not allow\n")
+	g.hf("\t// one, and the caller's buffer is the thing under test.\n")
+	g.hf("\theader := unsafe.Slice((*byte)(base), %d)\n", cookHeaderBytes)
+	g.hf("\tif binary.NativeEndian.Uint64(header) != TableCookMagic {\n\t\treturn false\n\t}\n")
 	g.hf("\t// and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
 	g.hf("\t// file, so a refusal names the order rather than inferring it.\n")
-	g.hf("\tif *(*uint64)(unsafe.Add(base, 16)) != TableCookByteOrder {\n\t\treturn false\n\t}\n")
+	g.hf("\tif binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {\n\t\treturn false\n\t}\n")
 	g.hf("\t// THE BUILD VERSION: under the match-and-point rule a matching id means Open\n")
 	g.hf("\t// checks nothing further, so it is the sole guard between this runtime and a\n")
 	g.hf("\t// foreign region (§20).\n")
-	g.hf("\tif *(*uint64)(unsafe.Add(base, 8)) != BuildVersion {\n\t\treturn false\n\t}\n")
+	g.hf("\tif binary.NativeEndian.Uint64(header[8:]) != BuildVersion {\n\t\treturn false\n\t}\n")
 	g.hf("\t// THE RESERVED WORDS: a non-zero one means a writer used a form this build\n")
 	g.hf("\t// does not understand, and Open refuses rather than ignoring it.\n")
-	g.hf("\tif *(*uint64)(unsafe.Add(base, 48)) != 0 {\n\t\treturn false\n\t}\n")
-	g.hf("\tif *(*uint64)(unsafe.Add(base, 56)) != 0 {\n\t\treturn false\n\t}\n\n")
+	g.hf("\tif binary.NativeEndian.Uint64(header[48:]) != 0 {\n\t\treturn false\n\t}\n")
+	g.hf("\tif binary.NativeEndian.Uint64(header[56:]) != 0 {\n\t\treturn false\n\t}\n\n")
 	g.hf("\t// THE ALIGNMENT WORD is the one field the check COMPUTES WITH rather than\n")
 	g.hf("\t// only compares against — the data part begins at align_up(64, alignment)\n")
 	g.hf("\t// and the base is measured against it — so a word that is not an alignment\n")
 	g.hf("\t// rounds nothing and aligns nothing. A zero there is a division by zero\n")
 	g.hf("\t// inside the check, which is the defect the check prevents.\n")
-	g.hf("\talignment := *(*uint64)(unsafe.Add(base, 40))\n")
+	g.hf("\talignment := binary.NativeEndian.Uint64(header[40:])\n")
 	g.hf("\tif alignment < %d || alignment > %d {\n\t\treturn false\n\t}\n", ir.RegionAlignFloor, cookMaxAlign)
 	g.hf("\tif alignment&(alignment-1) != 0 {\n\t\treturn false // a power of two\n\t}\n")
 	g.hf("\tif alignment%%%d != 0 {\n\t\treturn false // and a multiple of the ROOT's own alignof\n\t}\n\n", ml.Align)
@@ -581,8 +593,8 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout) {
 	g.hf("\t// refuses: a truncated file and a file with trailing bytes are the same\n")
 	g.hf("\t// refusal. Each term is bounded before it is added, so nothing here can wrap\n")
 	g.hf("\t// past the top of the type and land back inside the buffer.\n")
-	g.hf("\tdataLength := *(*uint64)(unsafe.Add(base, 24))\n")
-	g.hf("\tattribution := *(*uint64)(unsafe.Add(base, 32))\n")
+	g.hf("\tdataLength := binary.NativeEndian.Uint64(header[24:])\n")
+	g.hf("\tattribution := binary.NativeEndian.Uint64(header[32:])\n")
 	g.hf("\tif dataLength > bytes || attribution > bytes-dataLength {\n\t\treturn false\n\t}\n")
 	g.hf("\tif dataOffset > bytes-dataLength-attribution {\n\t\treturn false\n\t}\n")
 	g.hf("\tif dataOffset+dataLength+attribution != bytes {\n\t\treturn false\n\t}\n\n")
