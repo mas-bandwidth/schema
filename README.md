@@ -33,7 +33,9 @@ If this work helps you, please support it: **[Become a supporter](https://www.pa
 
 Supported languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.
 
-## Bit-packed serialization for types
+## Examples
+
+### 1. Bit-packed serialization for types
 
 ```
 package example
@@ -79,7 +81,9 @@ Write your data types once and generate bit-packed serialization code to read an
 
 Very fast and efficient serialization code is generated in all languages, and no schema definitions or version information is emitted on the wire.
 
-## Versioned messages passed between tools, backends and websites
+_This feature is production ready in this release_.
+
+### 2. Versioned messages passed between tools, backends and websites
 
 ```
 package tools
@@ -104,7 +108,9 @@ takes its declared default, a field that was renamed is found under its old
 name, and a value out of range is clamped. Every one of those events is
 counted in a read report. Nothing is fatal in either direction.
 
-## Save games
+_The tables feature is new in this release_.
+
+### 3. Save games
 
 ```
 package savegame
@@ -129,7 +135,9 @@ a byte of it. Changing a field's default is one. Reordering a `flags` variant
 is the other. When you mean the change, you record it with a reason, and the
 reason stays in the file.
 
-## Assets cooked for a build
+_The version baseline feature is in preview in this release_.
+
+### 4. Assets cooked for a build
 
 ```
 package assets
@@ -150,7 +158,7 @@ table MeshCatalogue
 ```sh
 schema pack --root MeshCatalogue --out Assets.bin assets/ .
 schema cook --root MeshCatalogue --in Assets.bin --out Assets.cook .
-schema build-version .                          # 0x6d7787f793cf0d6a — the store key
+schema build-version .
 ```
 
 Tools build the assets. The game should not parse them at load. It should map the file and point at it.
@@ -162,9 +170,9 @@ gigabyte opens as fast as a kilobyte. A cook only opens in the build it was
 cooked for. Any other build gets NULL and loads the wire instead, which every
 build can read.
 
-The cook is a preview in this release.
+_The cook feature is in preview in this release_.
 
-## Render data from C++ to C#
+### 5. Render data from C++ to C#
 
 ```
 package render
@@ -194,7 +202,9 @@ the same memory. Both sides are generated from the one declaration, and the
 row sizes and field offsets are asserted at compile time in both languages.
 A field that moves is a build error, not a garbled frame.
 
-## JSON packed into binary tables
+_This feature is new in this release_.
+
+### 6. JSON packed into binary tables
 
 ```
 package config
@@ -225,7 +235,9 @@ writes the table's wire bytes, nothing else around them. `schema unpack`
 writes the JSON back out. Both fail the build when the read report is not
 silent, so drift between the JSON and the schema does not slip through.
 
-## Editors and debug views
+_This feature is new in this release_.
+
+### 7. Editors and debug views
 
 ```
 package editor
@@ -247,6 +259,8 @@ Every table comes with reflection descriptors beside its code: each field's
 name, type, offset, range, and the names of every enum and union variant. A
 tool walks a table it has never seen. A debug view walks the live instance in
 memory. There is no RTTI and no schema file at run time.
+
+_This feature is new in this release_.
 
 ## Performance
 
