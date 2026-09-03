@@ -2984,6 +2984,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-c-zero-cost
 	$(MAKE) tables-c-json-walk
 	$(MAKE) tables-c-fuzz
+	$(MAKE) tables-c-variable
 	$(MAKE) tables-c-keyed-none-refusal-ndebug
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
 	$(MAKE) tables-c-soak SOAK_SECONDS=20
@@ -3898,7 +3899,7 @@ tables-c-fuzz: build/schema_test_c_fuzz
 # THE C TABLES LEG, whole. Everything above, plus the conformance driver under
 # the sanitizers over every surface it answers.
 .PHONY: tables-c
-tables-c: build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz
+tables-c: build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz tables-c-variable
 	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
 	$(MAKE) tables-c-keyed-none-refusal-ndebug
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
@@ -4043,3 +4044,32 @@ tables-c-keyed-none-refusal-negative-control: bin/schema test/c-tables/keyed_non
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat build/c-keyed-sabotage/log; exit 1; }
 	@echo "negative control: deleting the C accessor's abort turns the None-refusal gate RED"
+
+# THE VARIABLE-LENGTH CLASS, end to end (docs/SPEC-TABLES.md §2, §6, §9). The
+# conformance corpus reaches every FIXED surface and none of this one: its
+# instances are all fixed, because the harness's wire goldens are. So the
+# pointer class gets its own gate — build a graph through the arena, Lock it,
+# save the mutable form and the locked region and prove they write the SAME
+# BYTES, size a region from the wire's framing alone, load into it, and walk
+# the graph back out through the region's own self-relative derefs.
+#
+# It runs twice, plain and under ASan + UBSan: the arena, the pack walk and the
+# region sink are the three places in this backend that do pointer arithmetic
+# on caller-owned memory, and a sanitizer is what says they stayed inside it.
+build/schema_test_c_variable: build/tables-generated-c/.stamp test/c-tables/variable_main.c
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/pointers \
+		test/c-tables/variable_main.c build/tables-generated-c/pointers/GraphTable.c \
+		build/tables-generated-c/pointers/MarksTable.c build/tables-generated-c/pointers/PartsTable.c -o $@ -lm
+
+build/schema_test_c_variable_asan: build/tables-generated-c/.stamp test/c-tables/variable_main.c
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O1 -ffp-contract=off $(C_SANITIZE) -Ibuild/tables-generated-c/pointers \
+		test/c-tables/variable_main.c build/tables-generated-c/pointers/GraphTable.c \
+		build/tables-generated-c/pointers/MarksTable.c build/tables-generated-c/pointers/PartsTable.c -o $@ -lm
+
+.PHONY: tables-c-variable
+tables-c-variable: build/schema_test_c_variable build/schema_test_c_variable_asan
+	./build/schema_test_c_variable
+	./build/schema_test_c_variable_asan
