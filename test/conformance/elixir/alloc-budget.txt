@@ -27,21 +27,19 @@
 # What is NOT counted, named rather than implied: a refc binary's payload,
 # which lives off the process heap and has no cumulative counter of its own.
 # The soak (make tables-elixir-soak) is that half's instrument.
-root_full 21738 23932
-root_default 733 786
-profile_elide 11230 12434
-loadout_full 9941 10458
-wide_blob 7914941 11512663
-archive 22396 25801
-keyed_config 19185 20442
-keyed_default 15520 17599
-v1_cfg 11515 13000
-v1_seams 11076 12231
-v2_cfg 13192 14732
-v2_seams 12950 14262
+root_full 21738 24254
+root_default 746 810
+profile_elide 11230 12471
+loadout_full 9941 10514
+wide_blob 7914938 11550708
+archive 22396 25896
+keyed_config 19185 20405
+keyed_default 15520 17465
+v1_cfg 11515 12836
+v1_seams 11076 12129
+v2_cfg 13192 14934
+v2_seams 12950 14277
 chain_value 1075 1031
-chain_value_empty 721 904
-chain_pointer 1075 1032
-chain_optional 1075 1034
-chain_optional_empty 784 942
-chain_pointer_empty 787 932
+chain_value_empty 716 904
+chain_optional 1069 1032
+chain_optional_empty 787 941
