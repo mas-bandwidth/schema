@@ -248,6 +248,64 @@ func tableBlockLayoutOffset(what string, got, want uintptr) {
 	}
 }
 
+// tableBlockRecords is the unit's whole block descriptor graph: constant
+// data, so a reflective read costs a lookup and not a parse. Every record
+// hangs off the element column rather than taking a name of its own, so a
+// walker reaches the whole graph from any block's Type (§8, §19.2).
+var tableBlockRecords = make([]TableBlockInfo, 2)
+
+// The graph is FILLED HERE rather than in the slice's own initializer, and
+// the reason is a language fact: a field's element column names another
+// record — a slot of this very slice — and Go refuses an initialization
+// cycle among package-level variables, a closure in an initializer
+// included. An init body is not part of that analysis. Nothing mutates it
+// afterwards: the surface is immutable from here on, readable from any
+// goroutine with no synchronisation.
+func init() {
+	tableBlockRecords[0] = TableBlockInfo{
+		Name: "TableEntity", BuildVersion: BuildVersion, Size: 88, Align: 8, NumFields: 14,
+		Fields: []TableBlockFieldInfo{
+			{Name: "entity_id", Offset: 24, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "pos_x", Offset: 28, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "pos_y", Offset: 32, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "pos_z", Offset: 36, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "yaw", Offset: 40, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "pitch", Offset: 44, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "vel_x", Offset: 48, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "vel_y", Offset: 52, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "vel_z", Offset: 56, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "health", Offset: 60, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "weapon", Offset: 64, Size: 1, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "damage", Offset: 72, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "moving", Offset: 80, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "firing", Offset: 81, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
+		},
+	}
+	tableBlockRecords[1] = TableBlockInfo{
+		Name: "TableStat", BuildVersion: BuildVersion, Size: 32, Align: 8, NumFields: 2,
+		Fields: []TableBlockFieldInfo{
+			{Name: "stat_id", Offset: 24, Size: 4, Kind: 6, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "delta", Offset: 28, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		},
+	}
+}
+
 // TableEntityBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
 // from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
 // not allocate a block — the bytes are handed to it — but it caps by this: a
@@ -319,45 +377,11 @@ func TableEntityBlockOpen(block *TableEntityBlock, base unsafe.Pointer, bytes in
 	return true
 }
 
-var blockInfoTableEntity = TableBlockInfo{
-	Name: "TableEntity", BuildVersion: BuildVersion, Size: 88, Align: 8, NumFields: 14,
-	Fields: []TableBlockFieldInfo{
-		{Name: "entity_id", Offset: 24, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "pos_x", Offset: 28, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "pos_y", Offset: 32, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "pos_z", Offset: 36, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "yaw", Offset: 40, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "pitch", Offset: 44, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "vel_x", Offset: 48, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "vel_y", Offset: 52, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "vel_z", Offset: 56, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "health", Offset: 60, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "weapon", Offset: 64, Size: 1, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "damage", Offset: 72, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "moving", Offset: 80, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "firing", Offset: 81, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-	},
-}
-
 // Type is this block's descriptors: constant data, so a reflective read costs
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *TableEntityBlock) Type() *TableBlockInfo { return &blockInfoTableEntity }
+func (b *TableEntityBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
 
 // TableStatBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
 // from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
@@ -430,21 +454,11 @@ func TableStatBlockOpen(block *TableStatBlock, base unsafe.Pointer, bytes int64)
 	return true
 }
 
-var blockInfoTableStat = TableBlockInfo{
-	Name: "TableStat", BuildVersion: BuildVersion, Size: 32, Align: 8, NumFields: 2,
-	Fields: []TableBlockFieldInfo{
-		{Name: "stat_id", Offset: 24, Size: 4, Kind: 6, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-		{Name: "delta", Offset: 28, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
-	},
-}
-
 // Type is this block's descriptors: constant data, so a reflective read costs
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *TableStatBlock) Type() *TableBlockInfo { return &blockInfoTableStat }
+func (b *TableStatBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
 
 // table TableMixed has NO block form: TableMixed.game_event is a union, and a block's blittable C# form is Sequential with generated padding, which cannot overlay arms (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is

@@ -191,9 +191,15 @@ func TestSoak(t *testing.T) {
 	// the profile is diffed either side of the steady phase — which is what
 	// turns "two objects an hour, a forced collection or a stack move" from a
 	// plausible story into a fact the test prints.
+	// THE PROFILE IS FLUSHED ON BOTH SIDES, and that ordering is the whole
+	// difference between a reading and a fiction: an allocation's record only
+	// becomes visible in the profile after a GC cycle processes it, so a
+	// snapshot taken before one attributes the SETUP's allocations — the
+	// scratch buffer, the corpus — to the steady phase that follows it.
 	oldRate := runtime.MemProfileRate
 	runtime.MemProfileRate = 1
 	defer func() { runtime.MemProfileRate = oldRate }()
+	runtime.GC()
 	beforeSites := memProfileByStack()
 	runtime.ReadMemStats(&before)
 
@@ -207,17 +213,32 @@ func TestSoak(t *testing.T) {
 		}
 	}
 
+	// THE COUNT FIRST, before a collection of our own moves it.
 	runtime.ReadMemStats(&after)
 	grew := after.Mallocs - before.Mallocs
-	sites := grownSites(beforeSites, memProfileByStack())
 
-	// WHAT ALLOCATED, NAMED. Every site is classified by whose code it is, and
-	// the two answers are not the same finding: an allocation whose stack is
-	// entirely the RUNTIME's — a background mark worker starting, an m being
-	// allocated for a thread, a forced collection's own bookkeeping — is the
-	// Go runtime running, and this loop cannot avoid it. An allocation with a
-	// frame in the generated packages or in this file is the CODEC's, and one
-	// of those is a leak whatever the count says.
+	// AND THE PROFILE ONLY WHEN THERE IS SOMETHING TO EXPLAIN. Mallocs is the
+	// ground truth and the profile is the witness: a record's AllocObjects
+	// becomes visible only after a GC cycle processes it, so a snapshot taken
+	// when nothing was allocated reports the SETUP's own objects — the scratch
+	// buffer, the corpus — as if the loop had made them. Asking who allocated
+	// when the answer is "nobody" is how a gate invents a finding.
+	var sites []site
+	if grew > 0 {
+		// three cycles, because the profile lags the allocator by more than one
+		for i := 0; i < 3; i++ {
+			runtime.GC()
+		}
+		sites = grownSites(beforeSites, memProfileByStack())
+	}
+
+	// WHAT ALLOCATED, NAMED — when anything did. Every site is classified by
+	// whose code it is, and the two answers are not the same finding: an
+	// allocation whose stack is entirely the RUNTIME's — a background mark
+	// worker starting, an m being allocated for a thread, a forced collection's
+	// own bookkeeping — is the Go runtime running, and this loop cannot avoid
+	// it. An allocation with a frame in the generated packages or in this file
+	// is the CODEC's, and one of those is a leak whatever the count says.
 	mine := 0
 	for _, site := range sites {
 		if site.mine {
@@ -338,3 +359,46 @@ func symbolise(key string, objects int64) site {
 	}
 	return result
 }
+
+// TestSoakIdentifierCanGoRed is the negative control for the identification
+// above, and it is not optional: the first version of that code took its
+// "before" snapshot ahead of the flush the profile needs, so it attributed the
+// SETUP's own objects to the loop and reported a finding that was not there. A
+// classifier that has never been shown a real allocation is a classifier nobody
+// has checked.
+//
+// It allocates deliberately, from THIS package, and requires the walk to see it
+// and to call it the port's.
+func TestSoakIdentifierCanGoRed(t *testing.T) {
+	oldRate := runtime.MemProfileRate
+	runtime.MemProfileRate = 1
+	defer func() { runtime.MemProfileRate = oldRate }()
+
+	runtime.GC()
+	before := memProfileByStack()
+	for i := 0; i < 100; i++ {
+		soakSink = make([]byte, 48)
+	}
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+	}
+	sites := grownSites(before, memProfileByStack())
+
+	mine := 0
+	total := int64(0)
+	for _, s := range sites {
+		if s.mine {
+			mine++
+			total += s.objects
+		}
+	}
+	if mine == 0 {
+		t.Fatalf("100 deliberate allocations from this package were not attributed to it; saw %d site(s)", len(sites))
+	}
+	if total < 50 {
+		t.Errorf("the walk counted %d of 100 deliberate allocations — it is seeing them, but not all of them", total)
+	}
+}
+
+// soakSink is where TestSoakIdentifierCanGoRed's allocations escape to.
+var soakSink []byte

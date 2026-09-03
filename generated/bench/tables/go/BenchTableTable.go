@@ -378,6 +378,13 @@ func (r *TableReader) Skip(kind uint8) bool {
 	return false
 }
 
+// tableUnionArms is the unit's ONE arms table: one slot per union
+// FIELD, filled by the init() beside the descriptors that point into
+// it. One fixed name for the whole unit rather than one derived from
+// each declaration's own spelling, because a derived name is a name a
+// declaration can collide with (docs/SPEC-TABLES.md §11).
+var tableUnionArms = make([]TableUnionInfo, 1)
+
 // TableEnumId: TableWeapon on the TABLE wire rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
@@ -3064,7 +3071,7 @@ var TableMixedTableFields = []TableFieldInfo{
 			return 0
 		},
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
-		Arms:  func() *TableUnionInfo { return &unionArmsTableMixedGameEvent },
+		Arms:  func() *TableUnionInfo { return &tableUnionArms[0] },
 		Guard: "", Table: nil},
 	{Name: "loadout", Json: "loadout", TypeName: "uint8", Id: 0x9f78, Kind: 6, IsArray: true, Counted: false, Optional: false,
 		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(TableMixed{}.Loadout)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Loadout[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
@@ -3289,18 +3296,15 @@ var TablePickupEventTableInfo = TableTypeInfo{Name: "TablePickupEvent", Size: ui
 func TablePickupEventTableType() *TableTypeInfo { return &TablePickupEventTableInfo }
 
 // The UNION FIELD SHAPES the descriptors above point at: the tag, and the
-// arms indexed by it (docs/SPEC-TABLES.md §8.1). One value per field, so a
-// walk that asks a union for its shape pays a load and not an allocation.
-var unionArmsTableMixedGameEvent TableUnionInfo
-
-// They are FILLED HERE rather than in their own initializers: an arm's Table
-// column names a descriptor, a descriptor may name the union back, and Go
-// refuses an initialization cycle among package-level variables. An init body
-// is not part of that analysis, so the graph is expressible whatever a schema
+// arms indexed by it (docs/SPEC-TABLES.md §8.1). They are FILLED HERE rather
+// than in the table's own initializer: an arm's Table column names a
+// descriptor, a descriptor may name the union back, and Go refuses an
+// initialization cycle among package-level variables. An init body is not
+// part of that analysis, so the graph is expressible whatever a schema
 // declares. Nothing mutates them afterwards: the surface is immutable from
 // here on, readable from any goroutine with no synchronisation.
 func init() {
-	unionArmsTableMixedGameEvent = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(TableEvent{}.Type)), TagSize: uint32(unsafe.Sizeof(TableEvent{}.Type)), Arms: []TableUnionArmInfo{
+	tableUnionArms[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(TableEvent{}.Type)), TagSize: uint32(unsafe.Sizeof(TableEvent{}.Type)), Arms: []TableUnionArmInfo{
 		{Offset: 0, Table: nil},
 		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Hit)), Table: TableHitEventTableType},
 		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Chat)), Table: TableChatEventTableType},

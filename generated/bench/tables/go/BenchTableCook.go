@@ -205,32 +205,47 @@ func tableCookLayoutOffset(what string, got, want uintptr) {
 	}
 }
 
-var cookRecordTableEntity = TableCookInfo{
-	Name: "TableEntity", Size: 64, Align: 8, NumFields: 14,
-	Fields: []TableCookFieldInfo{
-		{Name: "entity_id", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-		{Name: "pos_x", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-		{Name: "pos_y", Offset: 8, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-		{Name: "pos_z", Offset: 12, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-		{Name: "yaw", Offset: 16, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-		{Name: "pitch", Offset: 20, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-		{Name: "vel_x", Offset: 24, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-		{Name: "vel_y", Offset: 28, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-		{Name: "vel_z", Offset: 32, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-		{Name: "health", Offset: 36, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-		{Name: "weapon", Offset: 40, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-		{Name: "damage", Offset: 48, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-		{Name: "moving", Offset: 56, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
-		{Name: "firing", Offset: 57, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
-	},
-}
+// tableCookRecords is the unit's whole cooked-record descriptor graph. It is
+// ONE package-level slice rather than one variable per record, and that is a
+// §11 fact rather than a taste: a name derived from a DECLARATION's own
+// spelling is a name a declaration can collide with, and the checker has no
+// machinery for a prefix-and-name product. One fixed name is one claim.
+var tableCookRecords = make([]TableCookInfo, 2)
 
-var cookRecordTableStat = TableCookInfo{
-	Name: "TableStat", Size: 8, Align: 4, NumFields: 2,
-	Fields: []TableCookFieldInfo{
-		{Name: "stat_id", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-		{Name: "delta", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-	},
+// THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and
+// the reason is a language fact rather than a taste: a cooked graph is CYCLIC
+// by design — ListNode names ListNode — and Go refuses an initialization
+// cycle among package-level variables, a closure in an initializer included.
+// The links are written once, before any consumer runs, and nothing mutates
+// them after: the descriptor surface is immutable from then on, readable from
+// any goroutine at any time with no synchronisation.
+func init() {
+	tableCookRecords[0] = TableCookInfo{
+		Name: "TableEntity", Size: 64, Align: 8, NumFields: 14,
+		Fields: []TableCookFieldInfo{
+			{Name: "entity_id", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "pos_x", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "pos_y", Offset: 8, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "pos_z", Offset: 12, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "yaw", Offset: 16, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "pitch", Offset: 20, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "vel_x", Offset: 24, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "vel_y", Offset: 28, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "vel_z", Offset: 32, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "health", Offset: 36, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "weapon", Offset: 40, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "damage", Offset: 48, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "moving", Offset: 56, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+			{Name: "firing", Offset: 57, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+		},
+	}
+	tableCookRecords[1] = TableCookInfo{
+		Name: "TableStat", Size: 8, Align: 4, NumFields: 2,
+		Fields: []TableCookFieldInfo{
+			{Name: "stat_id", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "delta", Offset: 4, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+		},
+	}
 }
 
 // TableEntityCook is TableEntity's cook: a pointer and a length, and then the root where it
@@ -400,7 +415,7 @@ func TableEntityAt(slot *int64) *TableEntityRow {
 
 // Type is TableEntity's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TableEntityCook) Type() *TableCookInfo { return &cookRecordTableEntity }
+func (c TableEntityCook) Type() *TableCookInfo { return &tableCookRecords[0] }
 
 // TableStatCook is TableStat's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -569,7 +584,7 @@ func TableStatAt(slot *int64) *TableStatRow {
 
 // Type is TableStat's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TableStatCook) Type() *TableCookInfo { return &cookRecordTableStat }
+func (c TableStatCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
 // table TableMixed has NO Go cook Open: TableMixed.game_event is a union, and a cooked record's blittable form is a C ABI record with generated padding, which cannot overlay arms (docs/SPEC-TABLES.md §7, §19.3).
 // Its wire (§3) and its cook are unaffected — only this backend's reader is
