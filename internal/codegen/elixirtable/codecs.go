@@ -44,6 +44,10 @@ func (g *gen) tableModule() []byte {
 	}
 	for _, st := range members {
 		g.owner = st
+		g.emitKeyedAccessors(st)
+	}
+	for _, st := range members {
+		g.owner = st
 		g.emitMeasure(st)
 		g.emitSave(st)
 		g.emitLoad(st)
@@ -223,6 +227,75 @@ func (g *gen) emitDefaults(st *ir.Struct) {
 	g.pf("# %s is %s at its declared defaults — what a read overlays\n", fn("defaults", st.Name), st.Name)
 	g.pf("# and what the write side elides against (docs/SPEC-TABLES.md §4).\n")
 	g.pf("def %s, do: %%%s{}\n\n", fn("defaults", st.Name), g.mod(st.Name))
+}
+
+// ---- the enum-keyed array's surface (docs/SPEC-TABLES.md §2.4) ----
+//
+// THE SHIFT IS NEVER WRITTEN AT A CALL SITE. The accessor takes the KEY — the
+// enum value, which is this target's integer — refuses None and a key past
+// E.Max in EVERY configuration, and subtracts the one itself. The BEAM has no
+// compile-out assert, so "the refusal stands in every build" costs nothing to
+// hold here: an ArgumentError is the packet emitter's own misuse convention.
+//
+// ITERATION IS THE SAFETY, and it yields the KEY beside the element — never a
+// storage index, in this port as in every other.
+func (g *gen) emitKeyedAccessors(st *ir.Struct) {
+	lo := elixirName(st.Name)
+	for _, f := range st.Fields {
+		if f.KeyEnum == "" {
+			continue
+		}
+		max := arrayLen(f)
+		read, write := g.keyedRead(f), g.keyedWrite(f)
+		g.pf("# %s.%s is keyed by %s: one slot per named variant, and NOTHING is\n", st.Name, f.Name, f.KeyEnum)
+		g.pf("# stored for None (docs/SPEC-TABLES.md §2.4). The key k lives at storage\n")
+		g.pf("# index k - 1, and these three functions are the only place that\n")
+		g.pf("# subtraction appears.\n")
+		g.pf("def %s_%s_at(value, key) when key >= 1 and key <= %d, do: %s\n\n", lo, f.Name, max, read)
+		g.emitKeyedRefusal(fmt.Sprintf("%s_%s_at(_value, key)", lo, f.Name), st, f, max)
+
+		g.pf("# the WRITE half, because a BEAM value is immutable: iteration reads and\n")
+		g.pf("# this places. It refuses the same two keys, at the same one place.\n")
+		g.pf("def %s_%s_put(value, key, element) when key >= 1 and key <= %d, do: %s\n\n", lo, f.Name, max, write)
+		g.emitKeyedRefusal(fmt.Sprintf("%s_%s_put(_value, key, _element)", lo, f.Name), st, f, max)
+
+		g.pf("# ITERATION yields the KEY beside the element, keys 1..%d — a storage\n", max)
+		g.pf("# index reaches no call site (docs/SPEC-TABLES.md §2.4).\n")
+		g.pf("def %s_%s_each(value) do\n", lo, f.Name)
+		g.pf("  %s\n", g.keyedList(f))
+		g.pf("  |> Enum.with_index(1)\n")
+		g.pf("  |> Enum.map(fn {element, key} -> {key, element} end)\n")
+		g.pf("end\n\n")
+	}
+}
+
+func (g *gen) emitKeyedRefusal(head string, st *ir.Struct, f *ir.Field, max int64) {
+	g.pf("def %s do\n", head)
+	g.pf("  raise ArgumentError,\n")
+	g.pf("        \"#{inspect(key)} keys no slot of %s.%s: None keys nothing, and \" <>\n", st.Name, f.Name)
+	g.pf("          \"%s.Max is %d (docs/SPEC-TABLES.md §2.4)\"\n", f.KeyEnum, max)
+	g.pf("end\n\n")
+}
+
+func (g *gen) keyedRead(f *ir.Field) string {
+	if g.keyedIsTuple() {
+		return fmt.Sprintf("elem(value.%s, key - 1)", f.Name)
+	}
+	return fmt.Sprintf("Enum.at(value.%s, key - 1)", f.Name)
+}
+
+func (g *gen) keyedWrite(f *ir.Field) string {
+	if g.keyedIsTuple() {
+		return fmt.Sprintf("%%{value | %s: put_elem(value.%s, key - 1, element)}", f.Name, f.Name)
+	}
+	return fmt.Sprintf("%%{value | %s: List.replace_at(value.%s, key - 1, element)}", f.Name, f.Name)
+}
+
+func (g *gen) keyedList(f *ir.Field) string {
+	if g.keyedIsTuple() {
+		return fmt.Sprintf("Tuple.to_list(value.%s)", f.Name)
+	}
+	return "value." + f.Name
 }
 
 // ---- the per-enum wire identity (docs/SPEC-TABLES.md §5) ----

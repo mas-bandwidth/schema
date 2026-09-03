@@ -1142,11 +1142,23 @@ keep one in step with — the value cannot disagree with itself.
 
 **An enum-keyed array's slots are a TUPLE**, one per named variant, so a slot is
 reached in constant time; `None` keys no slot and the storage shifts left, which
-is the same rule every backend follows:
+is the same rule every backend follows. **The shift is never written at a call
+site** — three generated functions are the only place it appears, and they take
+the KEY:
 
 ```elixir
-ships = put_elem(fleet.ships, Example.ShipType.bomber() - 1, ship)
+ship  = FleetTable.fleet_ships_at(fleet, Example.ShipType.bomber())
+fleet = FleetTable.fleet_ships_put(fleet, Example.ShipType.bomber(), ship)
+
+for {ship_type, ship} <- FleetTable.fleet_ships_each(fleet) do
+  # ship_type is the KEY, never an index
+end
 ```
+
+`_at` and `_put` refuse `None` and a key past `E.Max` with an `ArgumentError`,
+**in every build** — the BEAM has no compile-out assert, so the guard the other
+ports have to argue for costs nothing to keep here. Iteration reads and `_put`
+places, because a BEAM value is immutable.
 
 **What Elixir does NOT do, and it is the language rather than the port:** it
 never PRODUCES a block or a cook. A BEAM term has no layout a producer could
