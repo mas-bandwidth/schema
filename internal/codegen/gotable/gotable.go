@@ -295,13 +295,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	if g.unsafeUsed {
 		std = append(std, `"unsafe"`)
 	}
-	if len(std) > 0 {
-		h.WriteString("import (\n")
-		for _, imp := range std {
-			fmt.Fprintf(&h, "\t%s\n", imp)
-		}
-		h.WriteString(")\n\n")
-	}
+	h.WriteString(goImports(std))
 	h.WriteString(g.types.String())
 	h.WriteString(g.body.String())
 	src, err := format.Source([]byte(h.String()))
@@ -309,6 +303,26 @@ func (g *tableGen) assemble() ([]byte, error) {
 		return nil, fmt.Errorf("generated Go for %sTable.go does not parse — a compiler bug, not a schema error: %w", g.file.Base, err)
 	}
 	return src, nil
+}
+
+// goImports renders an import block the way gofmt would have written it: a
+// lone import takes the one-line form, which is what a hand-written file of
+// this shape looks like. go/format does not rewrite the grouping, so the
+// emitter picks it.
+func goImports(paths []string) string {
+	switch len(paths) {
+	case 0:
+		return ""
+	case 1:
+		return "import " + paths[0] + "\n\n"
+	}
+	var b strings.Builder
+	b.WriteString("import (\n")
+	for _, p := range paths {
+		fmt.Fprintf(&b, "\t%s\n", p)
+	}
+	b.WriteString(")\n\n")
+	return b.String()
 }
 
 // withBanner puts the variable-class refusal above a generated file's own

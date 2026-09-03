@@ -158,16 +158,14 @@ func (g *blockGen) assemble() ([]byte, error) {
 	h.WriteString("// model disagrees with the one the compiler derived stops the program where it\n")
 	h.WriteString("// starts, naming the record, the field and both numbers.\n\n")
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
-	if g.needsFmt || g.needsUnsafe {
-		h.WriteString("import (\n")
-		if g.needsFmt {
-			h.WriteString("\t\"fmt\"\n")
-		}
-		if g.needsUnsafe {
-			h.WriteString("\t\"unsafe\"\n")
-		}
-		h.WriteString(")\n\n")
+	var imports []string
+	if g.needsFmt {
+		imports = append(imports, `"fmt"`)
 	}
+	if g.needsUnsafe {
+		imports = append(imports, `"unsafe"`)
+	}
+	h.WriteString(goImports(imports))
 	h.WriteString(g.runtime.String())
 	if g.structs.Len() > 0 {
 		h.WriteString("// The BLITTABLE records: one per record the block form touches, laid out to\n")

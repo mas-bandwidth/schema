@@ -306,16 +306,14 @@ func (g *cookGen) assemble() ([]byte, error) {
 	h.WriteString("// <Name>Row records, because a cooked record IS the blittable row. Compile both\n")
 	h.WriteString("// or neither — one without the other leaves those records undefined.\n\n")
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
-	if g.needsFmt || g.needsUnsafe {
-		h.WriteString("import (\n")
-		if g.needsFmt {
-			h.WriteString("\t\"fmt\"\n")
-		}
-		if g.needsUnsafe {
-			h.WriteString("\t\"unsafe\"\n")
-		}
-		h.WriteString(")\n\n")
+	var imports []string
+	if g.needsFmt {
+		imports = append(imports, `"fmt"`)
 	}
+	if g.needsUnsafe {
+		imports = append(imports, `"unsafe"`)
+	}
+	h.WriteString(goImports(imports))
 	h.WriteString(g.runtime.String())
 	if g.structs.Len() > 0 {
 		h.WriteString("// The BLITTABLE records a cooked region is laid out from: the C ABI layout\n")

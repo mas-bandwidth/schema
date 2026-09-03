@@ -346,6 +346,38 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 # build/ — test-only, never part of the committed generated/ tree. The full
 # unit is generated (packet .cs + <Base>Table.cs), because a table's closure
 # decodes into the packet emitter's own classes.
+# THE GO GENERIC-WALK GATE (docs/SPEC-TABLES.md §16), the C++ and C# gates'
+# twin. The extracted walkers take a .txt suffix, for the reason the block
+# fuzz's sabotage files do: `go build ./...` and `go test ./...` walk build/,
+# and would otherwise find seven packages sitting in one directory.
+# what makes the text form SCHEMA's rather than a packer's is that there
+# is ONE walk, and the way to hold that is to compare the emitted bytes. One
+# walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
+# every unit of the corpus.
+.PHONY: tables-go-json-walk
+tables-go-json-walk: build/tables-generated-go/.stamp
+	@rm -rf build/json-walk-go && mkdir -p build/json-walk-go
+	@for d in build/tables-generated-go/*/; do \
+		unit=$$(basename $$d); n=0; \
+		for f in $$d*TableJson.go; do \
+			[ -e "$$f" ] || continue; \
+			out=build/json-walk-go/$$unit.$$(basename $$f).txt; \
+			awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+			if [ -s $$out ]; then n=$$((n+1)); else rm -f $$out; fi; \
+		done; \
+		if [ -n "$$(ls $$d*TableJson.go 2>/dev/null)" ] && [ $$n -ne 1 ]; then \
+			echo "GENERIC-WALK GATE FAILED: unit $$unit carries $$n walkers, not one"; exit 1; \
+		fi; \
+	done
+	@if [ -z "$$(ls build/json-walk-go 2>/dev/null)" ]; then \
+		echo "GENERIC-WALK GATE FAILED: no walker in any generated .go"; exit 1; fi
+	@first=""; for f in build/json-walk-go/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "tables Go generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-go | wc -l | tr -d ' ') units"
+
 # THE GO TABLE LEG's generated packages. Each unit is its own MODULE, because
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
@@ -2519,6 +2551,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# THE GO PORT's own instruments (docs/SPEC-TABLES.md): the allocation gate
 	# and its negative control, the forgery fuzzer plain and under -race, and
 	# two seconds of the soak. The hour is `make tables-go-soak`.
+	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-fuzz
 	cd test/go-tables && go test -count 1 .
 	$(MAKE) tables-go-fuzz-extent-negative-control
