@@ -512,6 +512,41 @@ func TestTablesMoveNoGeneratedPacketByte(t *testing.T) {
 	}
 }
 
+// TestTablesMoveNoGeneratedGoByte is the Go half of the same proof: adding a
+// table changes not one byte of the non-table generated Go, and grows only the
+// four Go table sources — the codecs, the two accelerators, and the unit's one
+// text walk.
+func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
+	c := New()
+	with, err := c.Generate(unitFromSource(t, tableSrc), "go", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	without, err := c.Generate(unitFromSource(t, packetSrc), "go", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range without {
+		got, ok := with[name]
+		if !ok {
+			t.Errorf("file %s disappeared when a table was added", name)
+			continue
+		}
+		if string(got) != string(data) {
+			t.Errorf("file %s changed when a table was added — tables must move no packet byte", name)
+		}
+	}
+	for name := range with {
+		if _, ok := without[name]; ok {
+			continue
+		}
+		if !strings.HasSuffix(name, "Table.go") && !strings.HasSuffix(name, "Block.go") &&
+			!strings.HasSuffix(name, "Cook.go") && !strings.HasSuffix(name, "TableJson.go") {
+			t.Errorf("adding a table grew unexpected non-table file %s", name)
+		}
+	}
+}
+
 // TestGeneratedTableCodeAllocatesNothing: the generated Table header must
 // hold zero allocation and zero standard-container usage — the caller owns
 // every buffer. The one `new` is the placement-new prefill.
