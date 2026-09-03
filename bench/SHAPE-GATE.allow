@@ -141,6 +141,7 @@ timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame rea
 
 timing test/tables/cook_main.cpp 2 the cook's open-cost gate (§7, §7.5): open time flat across 1 MB and 100 MB, paired medians — a constant-time header match, no shape named
 timing test/cs-cook/src/Program.cs 3 the cook's open-cost gate on the C# leg (§7, §7.5): the same two fixtures, the same paired medians, one warm-up pass because a tiered runtime measured cold measures tier-up — a constant-time header match, no shape named
+timing test/conformance/elixir/driver_impl.ex 3 the Elixir SOAK's deadline and its interval reports (docs/SPEC-TABLES.md, the reading tier's allocation budget): a clock that decides when to stop and when to print, never a rate — the soak's instrument is the live heap and the binary memory against a warm baseline, and the COUNT half beside it (make tables-elixir-alloc-audit) uses no clock at all
 timing test/conformance/rust/src/main.rs 3 the Rust SOAK's deadline and its interval reports (docs/SPEC-TABLES.md, "every read path allocates nothing"): a clock that decides when to stop and when to print, never a rate — the soak's instrument is LIVE ALLOCATED BYTES and it emits no timing number at all
 
 # ---------------------------------------------------------------------------
