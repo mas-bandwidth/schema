@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -164,7 +165,7 @@ func main() {
 		}
 	case "generate":
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
-		lang := fs.String("lang", "cpp", "target language (c, cpp, cs, dart, elixir, go, java, js, rust)")
+		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
@@ -504,7 +505,7 @@ func reportLine(r compiler.TableReport, verbose, tolerate bool) {
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [dir|files...]
-  schema generate   [--lang c|cpp|cs|dart|elixir|go|java|js|rust] [--out generated] [--verbose] [dir|files...]
+  schema generate   [--lang <target>] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
