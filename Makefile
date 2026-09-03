@@ -600,6 +600,24 @@ build/cook-fuzz/.stamp: $(wildcard test/cookgen/*.go) $(SCHEMAS_TABLES_POINTERS)
 MIRI_N ?= 8
 MIRI_MAX_SEED_BYTES ?= 4224
 
+# THE GENERATED RUST BUILDS UNDER A CONSUMER'S CLIPPY. A consumer who runs
+# clippy over their own crate runs it over the generated modules too, and a
+# DEFAULT-DENY lint there would fail their build for something they did not
+# write. This runs plain `cargo clippy` over every generated unit of the
+# corpus, which is exactly that question: it exits non-zero on a denied lint
+# and zero on a warning.
+#
+# It is deliberately NOT `-D warnings`. A clippy release that adds a new
+# warning must not turn this red — that is version drift breaking a gate, the
+# thing the estate's pins exist to prevent — and a warning breaks no
+# consumer's build. What a denied lint does is exactly what this catches.
+.PHONY: tables-rust-clippy
+tables-rust-clippy: build/tables-generated-rust/.stamp
+	@for unit in build/tables-generated-rust/*/; do \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet ) || exit 1; \
+	done
+	@echo "rust clippy gate: every generated unit builds under a consumer's clippy"
+
 # THE RUST TABLE SURFACE ON A BIG-ENDIAN TARGET (docs/SPEC-TABLES.md §7.1,
 # §19.1, §20.3). The pinned toolchain cross-compiles to s390x — the same
 # big-endian target the C++ leg uses — so this is a CHECK of the whole
@@ -2240,6 +2258,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-rust-walk
+	$(MAKE) tables-rust-clippy
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.
