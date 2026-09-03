@@ -122,8 +122,8 @@ type tableGen struct {
 	body   strings.Builder // everything else
 	indent string          // extra per-line indent while emitting inside a branch guard
 
-	needsMath   bool
-	unsafeUsed  bool
+	needsMath  bool
+	unsafeUsed bool
 }
 
 // needsUnsafe marks this file as reaching for the layout model — every

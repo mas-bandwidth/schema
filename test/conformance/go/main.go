@@ -350,6 +350,8 @@ func main() {
 		run = surfaceJsonRead
 	case "json-write":
 		run = surfaceJsonWrite
+	case "cook":
+		run = surfaceCook
 	case "block":
 		run = surfaceBlock
 	case "forgery":

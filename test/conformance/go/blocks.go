@@ -20,6 +20,9 @@ import (
 	"blockdemo"
 )
 
+// keepAlive holds a backing allocation live across a call that points into it.
+func keepAlive(b []byte) { runtime.KeepAlive(b) }
+
 // aligned copies the image into storage whose base is 64-byte aligned, and
 // hands back that base, the extent the caller claims, and the backing
 // allocation the caller must keep live for as long as it holds the base.
@@ -53,6 +56,6 @@ func openBlock(name string, data []byte, extent int64) (bool, error) {
 	}
 	// the block handle points into `keep`, and nothing else references it by
 	// now: hold it live across the Open above
-	runtime.KeepAlive(keep)
+	keepAlive(keep)
 	return opened, nil
 }
