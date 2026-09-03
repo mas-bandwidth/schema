@@ -94,6 +94,19 @@ remainder is something else. **The next instrument is a profile, not another
 prediction** — this board has already spent one guess badly, and the doctrine's
 order is unit test, soak, profile, then optimize on a conviction.
 
+## What moved after this window
+
+Three changes landed after the board and before the port did, and **none is on
+the wire path it measures**: §11's claim in the Rust constant space (a
+front-end refusal), the cook runtime's move to its own per-unit module
+(#351's rule — a file's home, not a byte of a codec), and the registry
+bookkeeping that went with both. The generated `<name>_measure`,
+`<name>_save_body` and `<name>_load_body` are byte-identical across all three.
+
+It was not re-taken because the machine had two workers at 100% by then, and
+the board's own first paragraph is why that matters. The re-take is one
+command.
+
 ## What the numbers do not cover
 
 The tolerant wire and nothing else, by the corpus's own design. The block
