@@ -663,7 +663,7 @@ func (in *reader) scanLabel() (uint64, bool) {
 }
 
 // readPointer places a pointer's object (docs/SPEC-TABLES.md §16.7). Its FIRST
-// key decides what it is: `&node` naming an id not yet defined, with fields
+// key decides what it is: `&node` naming a label not yet defined, with fields
 // after it, is a DEFINITION; `&node` naming one already defined, alone, is a
 // REFERENCE; any other key is a node named once, its object in place. The same walk in the generated C++ allocates the node in
 // the builder's arena; here it is an instance.

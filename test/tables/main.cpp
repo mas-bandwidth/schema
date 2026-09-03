@@ -5344,6 +5344,20 @@ static void test_json_variable_class()
     {
         graphdemo::SceneBuilder builder;
         build_graph_shared( builder );
+        // the SEVEN slots the literal spells — two nodes named once, two
+        // definitions, three references — counted in the graph before it packs
+        int slots = 0;
+        {
+            graphdemo::Scene * root = builder.GetRoot();
+            graphdemo::ListNode * head = graphdemo::ListNodeAt( builder.arena, root->head );
+            graphdemo::TreeNode * top = graphdemo::TreeNodeAt( builder.arena, root->tree );
+            graphdemo::TreeNode * left = graphdemo::TreeNodeAt( builder.arena, top->left );
+            graphdemo::TreeNode * leaf = graphdemo::TreeNodeAt( builder.arena, top->right );
+            const graphdemo::TableRef * refs[] = { &root->head, &root->tree, &root->settings, &root->alias, &root->ground.head,
+                                                   &head->next, &top->left, &top->right, &left->left, &left->right, &leaf->left, &leaf->right };
+            for ( size_t i = 0; i < sizeof( refs ) / sizeof( refs[0] ); i++ ) { if ( !refs[i]->null() ) { slots++; } }
+            for ( int i = 0; i < root->layers_count; i++ ) { if ( !root->layers[i].head.null() ) { slots++; } }
+        }
         CHECK( builder.Lock() );
         static const char * expected =
             "{\n"
@@ -5395,6 +5409,8 @@ static void test_json_variable_class()
             int labels = 0;
             for ( const char * at = strstr( expected, "\"&node\"" ); at != NULL; at = strstr( at + 1, "\"&node\"" ) ) { labels++; }
             CHECK( labels == 5 );
+            CHECK( slots == 7 );
+            CHECK( labels + 2 == slots ); // every slot but the two named-once nodes carries the label
             int64_t attribution = 0;
             std::vector<uint8_t> wire( (size_t) graphdemo::SceneMeasure( builder.AsConst() ) );
             CHECK( graphdemo::SceneSave( builder.AsConst(), wire.data(), (int64_t) wire.size() ) == (int64_t) wire.size() );
@@ -5454,8 +5470,8 @@ static void test_json_variable_class()
             "{ \"head\": { \"&node\": 18446744073709551616, \"value\": 1 } }",   // a label past a u64
             "{ \"head\": { \"&node\": -1, \"value\": 1 } }",                       // a signed label
             "{ \"head\": { \"&node\": 1, \"value\": 1 }, \"alias\": { \"&node\": 1, \"value\": 2 } }", // a label defined twice
-            "{ \"head\": { \"value\": 1, \"&node\": 1 } }",                          // the id after a field
-            "{ \"&node\": 1 }",                                                       // the root takes no id
+            "{ \"head\": { \"value\": 1, \"&node\": 1 } }",                          // the label after a field
+            "{ \"&node\": 1 }",                                                       // the root takes no label
             "{ \"ground\": { \"&node\": 1 } }",                                       // a by-value nesting is not a node
             "{ \"head\": { \"&node\": 1.0 } }",                                       // not an integer spelled as one
             "{ \"head\": { \"&node\": 0 } }",                                         // not positive
@@ -5492,7 +5508,7 @@ static void test_json_variable_class()
 
     // RESOLUTION mirrors the wire's node rules (§3.1): a reference to a node of
     // another table is a kind mismatch with the pointer null, and a definition
-    // the walk dropped keeps its id — its reference reads null, the drop
+    // the walk dropped keeps its label — its reference reads null, the drop
     // counted once where it happened
     {
         graphdemo::SceneBuilder builder;

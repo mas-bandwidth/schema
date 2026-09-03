@@ -773,7 +773,7 @@ func TestSharedNodeIsOneNode(t *testing.T) {
 	alias := field(t, inst, "alias").Cell.Node
 	ground := field(t, field(t, inst, "ground").Cell.Tab, "head").Cell.Node
 	if head == nil || head != alias || head != ground {
-		t.Fatal("three references to one id did not resolve to one node")
+		t.Fatal("three references to one label did not resolve to one node")
 	}
 	if field(t, head, "value").Cell.I != 7 {
 		t.Fatal("the definition's fields were not placed")
@@ -792,7 +792,7 @@ func TestSharedNodeIsOneNode(t *testing.T) {
 	if n := strings.Count(string(text), `"&node"`); n != 3 {
 		t.Fatalf("the label appears %d times; the page says three", n)
 	}
-	// and a node named once carries no id: the tree reads and writes as
+	// and a node named once carries no label: the tree reads and writes as
 	// nested tables, and its text is byte-identical to a by-value spelling
 	tree, r := readScene(t, m, `{ "head": { "value": 1, "next": { "value": 2 } } }`)
 	if !r.Silent() {
@@ -816,8 +816,8 @@ func TestSharingConstructRefusals(t *testing.T) {
 		`{ "head": { "&node": 1 } }`,                                                  // a label alone the text never defined
 		`{ "head": { "&node": 1 }, "alias": { "&node": 1, "value": 1 } }`,             // a reference before its definition
 		`{ "head": { "&node": 1, "value": 1 }, "alias": { "&node": 1, "value": 2 } }`, // a label defined twice
-		`{ "head": { "value": 1, "&node": 1 } }`,                                      // the id after a field
-		`{ "&node": 1 }`,                                                              // the root takes no id
+		`{ "head": { "value": 1, "&node": 1 } }`,                                      // the label after a field
+		`{ "&node": 1 }`,                                                              // the root takes no label
 		`{ "ground": { "&node": 1 } }`,                                                // a by-value nesting is not a node
 		`{ "head": { "&node": 1.0 } }`,                                                // not an integer spelled as one
 		`{ "head": { "&node": 0 } }`,                                                  // not positive
@@ -843,7 +843,7 @@ func TestSharingConstructRefusals(t *testing.T) {
 }
 
 // A reference resolves against the definition's TABLE, and a definition the
-// walk dropped keeps its id: both mirror the wire's node rules (§3.1), where a
+// walk dropped keeps its label: both mirror the wire's node rules (§3.1), where a
 // node of another type is a kind mismatch and an unnameable node reads null.
 func TestReferenceResolution(t *testing.T) {
 	m := pointered(t)
@@ -899,7 +899,7 @@ func TestChainNestsAsDeepAsItIsLong(t *testing.T) {
 	}
 }
 
-// A definition carries at least one field, because an id alone is a reference:
+// A definition carries at least one field, because a label alone is a reference:
 // a shared node with nothing to write has no definition the form can spell,
 // and the writer refuses it rather than writing a text its reader refuses.
 func TestSharedNodeWithNothingToWriteIsRefused(t *testing.T) {
