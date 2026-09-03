@@ -15,9 +15,11 @@
 #            testdata/conformance/tables/json/<name>.json (§16). The same
 #            instance both ways.
 #
-#   report   <case> <unit> <root> <wire file>  <unknown>,<kind_mismatch>,<clamped>,<duplicate>,<malformed>
-#            bytes read by a type that did not write them — the evolution and
-#            hostile class (§4). The counters are the whole expectation.
+#   report   <case> <unit> <root> <wire file>
+#            bytes read by a type that did not write them — the evolution class
+#            (§4). The counters are the whole expectation, and they live in
+#            reports.txt keyed by <case>, because they are GENERATED and this
+#            file is hand-authored.
 #
 #   cook     <root> <unit> <dump file>
 #            a cooked file (§7) — materialised by test/cookgen, which is
