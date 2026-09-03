@@ -1,0 +1,16 @@
+#!/bin/sh
+# THE GO LEG's driver (test/conformance/README.md).
+#
+# A driver is a COMMAND, not a binary, exactly so a leg can be assembled from
+# what a backend already has. This one answers the table surfaces out of
+# build/conformance-go, which is built from test/conformance/go against the
+# generated packages under build/tables-generated-go.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+set -e
+
+exec build/conformance-go "$@"

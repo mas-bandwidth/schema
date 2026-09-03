@@ -1,0 +1,56 @@
+# schema TABLES bench results (bench/tables/README.md)
+# date: 2026-09-03T05:10:01Z
+# host: macbook  arch: arm64  os: Darwin 25.6.0
+# cpu: Apple M2
+# build: Release
+# corpus: bench/corpus/BenchTable.schema (one fixed table on the tolerant wire, docs/SPEC-TABLES.md §3)
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# dotnet: 10.0.400
+# rounds: 7
+# pinning: none (macOS has no taskset)
+# noise: unlabelled
+# schema commit: 99a442b-dirty (port-go-tables)
+# serialize.cs commit: 1439c6f (main)  (the closure's type codecs only — no line of the measured table path enters it)
+lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
+cpp,bench_table,write,400000,2391,1,324632,324632,324632,740.24,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,207684,207684,207684,473.57,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,287129,287129,287129,654.72,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,182567,182567,182567,416.29,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,307397,307397,307397,700.94,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,222574,222574,222574,507.52,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,322069,322069,322069,734.39,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,273211,273211,273211,622.98,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,390135,390135,390135,889.60,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,261174,261174,261174,595.54,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,297591,297591,297591,678.58,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,207464,207464,207464,473.07,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,332923,332923,332923,759.14,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,232558,232558,232558,530.29,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cs,bench_table,write,400000,2391,1,228747,228747,228747,521.60,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,119181,119181,119181,271.76,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,270244,270244,270244,616.22,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,166369,166369,166369,379.36,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,257311,257311,257311,586.73,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,136185,136185,136185,310.53,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,243573,243573,243573,555.40,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,172039,172039,172039,392.29,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,237039,237039,237039,540.50,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,139078,139078,139078,317.13,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,239969,239969,239969,547.19,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,135608,135608,135608,309.22,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,write,400000,2391,1,281554,281554,281554,642.01,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+cs,bench_table,round_trip,400000,2391,1,162400,162400,162400,370.31,0.00,2f7567e1e25ba918,table,asm,contract,default,unknown
+go,bench_table,write,400000,2391,1,296440,296440,296440,675.95,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,186059,186059,186059,424.26,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,272236,272236,272236,620.76,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,180621,180621,180621,411.86,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,261249,261249,261249,595.71,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,189857,189857,189857,432.92,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,279219,279219,279219,636.69,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,172955,172955,172955,394.38,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,263799,263799,263799,601.52,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,172953,172953,172953,394.37,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,253567,253567,253567,578.19,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,146929,146929,146929,335.03,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,write,400000,2391,1,260393,260393,260393,593.76,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown
+go,bench_table,round_trip,400000,2391,1,166641,166641,166641,379.98,0.00,2f7567e1e25ba918,table,pkg,contract,default,unknown

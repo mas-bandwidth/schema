@@ -1394,6 +1394,73 @@ static int mode_conformance( const char * manifest_path, const char * outdir )
 }
 
 // ---------------------------------------------------------------------------
+// mode: foreign — the harness's `cook-foreign` surface
+// ---------------------------------------------------------------------------
+//
+// THE CROSS-ENDIAN REFUSAL, and it is one word rather than a producer. A cook
+// is written in the byte order of the build it is cooked for (§7), so a reader
+// of the other order must refuse — and the check that does it is the MAGIC,
+// read first in the machine's own order for exactly this reason (§7.1).
+//
+// The file is made foreign to WHOEVER READS IT rather than to a particular
+// host: the eight bytes at offset 0 are reversed, so whatever this build's
+// order is, the magic it now reads is not this build's. That is the only shape
+// a cross-endian expectation can take without depending on the host it runs
+// on, and it is what lets a big-endian leg report this surface GREEN as a
+// refusal instead of ABSENT as a missing feature.
+static int mode_cook_foreign( const char * manifest_path, const char * outdir )
+{
+    FILE * manifest = fopen( manifest_path, "r" );
+    if ( manifest == NULL )
+    {
+        fprintf( stderr, "cook: cannot open %s\n", manifest_path );
+        return 1;
+    }
+    char line[2048];
+    while ( fgets( line, sizeof( line ), manifest ) != NULL )
+    {
+        if ( line[0] == '#' || line[0] == '\n' ) continue;
+        char tag[32], cook_case[256], unit[128], cook_root[128], cook_file[1024];
+        if ( sscanf( line, "%31s %255s %127s %127s %1023s", tag, cook_case, unit, cook_root, cook_file ) != 5 )
+            continue;
+        if ( strcmp( tag, "cook" ) != 0 ) continue;
+
+        const Root * root = root_named( cook_root );
+        uint64_t length = 0;
+        uint8_t * source = whole_file( cook_file, &length );
+        if ( length >= 8 )
+        {
+            for ( int i = 0; i < 4; i++ )
+            {
+                const uint8_t t = source[i];
+                source[i] = source[7 - i];
+                source[7 - i] = t;
+            }
+        }
+        File placed = place( source, length, length, 0 );
+        const void * opened = root->open( placed.base, placed.length );
+        const char * verdict = opened != NULL ? "open\n" : "refuse\n";
+        char path[2048];
+        snprintf( path, sizeof( path ), "%s/%s", outdir, cook_case );
+        FILE * out = fopen( path, "wb" );
+        if ( out == NULL )
+        {
+            fprintf( stderr, "cook: cannot write %s\n", path );
+            placed.destroy();
+            free( source );
+            fclose( manifest );
+            return 1;
+        }
+        fwrite( verdict, 1, strlen( verdict ), out );
+        fclose( out );
+        placed.destroy();
+        free( source );
+    }
+    fclose( manifest );
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
 // mode: fuzz — the seeded forgery fuzzer
 // ---------------------------------------------------------------------------
 
@@ -1657,6 +1724,7 @@ int main( int argc, char ** argv )
         printf( "usage: %s golden|dump|write|fixedvalues|usage|forge|fuzz|time|accept|refuse <root> <file> [file]\n", argv[0] );
         printf( "       %s emit-forgeries <root> <cook>\n", argv[0] );
         printf( "       %s conformance <manifest> <outdir>\n", argv[0] );
+        printf( "       %s foreign <manifest> <outdir>\n", argv[0] );
         return 1;
     }
     const char * mode = argv[1];
@@ -1664,6 +1732,8 @@ int main( int argc, char ** argv )
     // and not a root, so it is dispatched before the root lookup
     if ( strcmp( mode, "conformance" ) == 0 )
         return mode_conformance( argv[2], argv[3] );
+    if ( strcmp( mode, "foreign" ) == 0 )
+        return mode_cook_foreign( argv[2], argv[3] );
     const Root * root = root_named( argv[2] );
 
     if ( strcmp( mode, "golden" ) == 0 )

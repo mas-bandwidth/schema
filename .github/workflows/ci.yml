@@ -239,6 +239,23 @@ jobs:
       - name: the big-endian leg, and its negative control
         run: make tables-big-endian-negative BE_CXX=s390x-linux-gnu-g++-13
 
+      # And the GO table leg on the same target. Go cross-compiles, so the
+      # conformance driver is one env var away from a big-endian binary, and
+      # the harness's own goldens become the gate: a big-endian reader loads
+      # what a little-endian host wrote, writes it back, and is byte-compared
+      # over the wire, the read report and the text form.
+      #
+      # It needs the Go RUNTIME checkout, even though the table codec names no
+      # runtime at all: a generated unit's PACKET sources sit in the same
+      # package as its table sources, and those import it.
+      - name: Check out the Go serialize runtime (pinned release)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
+      - name: the Go table leg, big-endian
+        run: make conformance-big-endian
+
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job so the legs run concurrently instead of
   # serially (they were ~9 minutes end to end in one job; the longest single

@@ -21,7 +21,8 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "report", "json-read", "json-write", "json-hostile", "cook", "block", "block-dump", "forgery", "cook-forgery"}
+var surfaces = []string{"wire", "report", "json-read", "json-write", "json-hostile",
+	"cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
 
 type driver struct {
 	lang string
@@ -231,6 +232,22 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	case "block":
 		for _, b := range m.Blocks {
 			out = append(out, expectation{b.Name, []byte("open\n")})
+		}
+	case "block-foreign", "cook-foreign":
+		// THE FOREIGN-ORDER REFUSAL, and the expectation is a constant because
+		// the driver makes the file foreign to ITSELF: it byte-swaps the magic
+		// word in its own order, so every leg on every host meets a magic that
+		// is not this build's and refuses BY MAGIC — which is the check §19.1
+		// and §7.1 put first for exactly this. A cross-endian gate that
+		// depended on the host's own order could only ever be green on one.
+		if surface == "block-foreign" {
+			for _, b := range m.Blocks {
+				out = append(out, expectation{b.Name, []byte("refuse\n")})
+			}
+			break
+		}
+		for _, c := range m.Cooks {
+			out = append(out, expectation{c.Case, []byte("refuse\n")})
 		}
 	case "block-dump":
 		for _, b := range m.Blocks {

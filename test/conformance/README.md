@@ -74,7 +74,9 @@ One process per surface, so a runtime starts once rather than once per case.
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
 | `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,c,d,m\n`, or `refused\n` | the verdict in the manifest |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
+| `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
 | `block` | `block` | Open the image, `open\n` or `refuse\n` | `open\n` |
+| `block-foreign` | `block` | byte-swap the image's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
 | `block-dump` | `block` | Open the image, the canonical ROW dump | `block/<name>.dump` |
 | `forgery` | `forgery` (`block`) | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
@@ -86,6 +88,22 @@ One process per surface, so a runtime starts once rather than once per case.
 can say which reader a backend has: a leg with a block reader and no cook reader
 prints `absent` on one and a verdict on the other, rather than one blaming the
 other.
+
+**THE TWO FOREIGN SURFACES ARE THE CROSS-ENDIAN REFUSAL, and they are the one
+answer a leg can give on ANY host.** A block and a cook are produced in the byte
+order of the build that wrote them (§19.1, §7), so a reader of the other order
+must REFUSE — and the check that does it is the magic, read first in the
+machine's own order precisely so a foreign file stops there. Every other
+accelerator surface has a host-dependent expectation and a big-endian leg can
+only mark them absent; these two do not, because THE DRIVER MAKES THE FILE
+FOREIGN TO ITSELF: it reverses the eight bytes at offset 0 — the magic — and
+opens the result. Whatever this build's order is, the magic it now reads is not
+this build's, and the verdict is `refuse` for every leg on every host.
+
+It is one word and no builder: the driver reads eight bytes, reverses them,
+writes them back, and opens. A leg that has the reader can answer it, which is
+what makes it a REFUSAL a big-endian leg reports green rather than an ABSENCE
+it reports as a missing feature.
 
 **A forgery line carries an EXTENT and a POINTER**, and neither is a fact a file
 can hold. The extent is the length the caller CLAIMS: larger than the file — two
@@ -117,39 +135,54 @@ pins, every other leg compares. The two batteries print their manifest rows on
 stdout rather than editing the manifest: a manifest that rewrites itself is a
 manifest nobody reviews.
 
+**A leg may be assembled from more than one binary, and it may be one.** The
+C++ and C# drivers dispatch the cook's dump to a binary each backend already
+had; the Go driver is a single binary that answers every surface in process,
+which is why its `cook` surface costs one exec rather than five. Both shapes
+satisfy the contract, because the contract is a COMMAND.
+
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64
-macOS, everything already built, median of three:
+macOS, everything already built, median of five (the whole) and of three (each
+leg), with other work running on the same laptop — so these are an upper bound,
+and repeats of one unchanged leg spread about a fifth:
 
 | leg | wall |
 |---|---|
-| all three, 260 cases per leg | 10.65 s |
-| `cpp` alone | 0.48 s |
-| `rust` alone | 0.60 s |
-| `cs` alone | 7.36 s |
+| all four, 268 cases per leg | 21.1 s |
+| `go` alone | 0.79 s |
+| `rust` alone | 0.81 s |
+| `cpp` alone | 0.92 s |
+| `cs` alone | 16.5 s |
 
-The cost is per-PROCESS, not per-case, and the numbers say so plainly. The
-battery grew from 80 cases per leg to 260 — the cook's 111 forgeries, the 66
-hostile trees, a sixth cook, two block row dumps — and the wall went from about
-5 s to about 7 s for two legs. The C++ leg is a handful of native execs and
-answers all 260 in under half a second; the Rust leg is ten native execs and
-answers them in six tenths, its cook node dump and block row dump in the same
-binary; the C# leg starts a runtime once per surface plus once per cook,
-because `test/cs-cook`'s dump takes one root per invocation, and that is where
-nearly the whole wall is. Everything this round added rides inside a process
-that was already starting.
+**The cost is per-PROCESS, not per-case, and the numbers say so plainly.** The
+battery grew from 80 cases per leg to 268 — the cook's 111 forgeries, the 66
+hostile trees, a sixth cook, two block row dumps and the two FOREIGN surfaces —
+and the three NATIVE legs still answer all 268 each in under a second. The C#
+leg starts a runtime once per surface plus once per cook, because
+`test/cs-cook`'s dump takes one root per invocation, and that is where nearly
+the whole wall is: 804 of the 1,072 cases in this table cost about two and a
+half seconds between them, and the remaining 268 cost sixteen.
 
-**A third leg cost three seconds, and none of it was the cases.** The two
-NATIVE legs together answer 520 cases in about a second; the rest of the wall
-is one runtime's start-ups. That is the shape the budget projection assumed and
-it is now measured rather than assumed.
+**Three native legs cost two and a half seconds together.** Adding the two
+foreign surfaces cost each native leg two more execs of a binary that starts in
+milliseconds, and cost the C# leg two more runtime starts — which is the whole
+shape of this table in one edit. A leg that answers every surface in ONE binary
+is the cheapest shape the contract allows, and `cook` and `cook-forgery`
+answered in the same binary as everything else rather than delegated is what
+makes it so; the C++ and C# legs cost what they do because each was assembled
+from a binary that already existed, which the contract exists to allow.
 
-So the data can grow a great deal before it matters, and the budget left for
-six more languages is most of the two minutes. Nine languages each starting a
-runtime per surface lands near 20 s. Sharding per language leg — the way the
-type wire's nine legs already are — is what the numbers say to do if that stops
-holding; it is not needed at this size.
+**So what the remaining languages cost depends on the SHAPE each leg takes
+rather than on the corpus**, and the two shapes measured here differ by twenty
+times. A managed leg costs roughly 0.9 s per process start, times the twelve
+surfaces plus one per cook. Nine legs of the native shape is about 8 s; nine of
+the managed shape is about 150 s, which is past the two-minute rule on its own.
+So the rule holds comfortably while ports take the cheap shape, and the leg
+that does not is the one to shard — per language leg, the way the type wire's
+nine legs already are. Not needed at this size, and the number to watch is the
+per-start cost of the managed legs, not the case count.
 
 ## What is not here yet
 

@@ -397,6 +397,38 @@ static class Program
         return 0;
     }
 
+    // Foreign reverses the MAGIC word — the eight bytes at offset 0 — which is
+    // what that word looks like to a reader of the OTHER byte order (§19.1,
+    // §7.1). It makes the file foreign to WHOEVER READS IT rather than to a
+    // particular host, so the refusal lands on the magic check every Open puts
+    // first and the expectation is `refuse` for every leg on every machine.
+    static byte[] Foreign(byte[] data)
+    {
+        byte[] out_ = (byte[])data.Clone();
+        if (out_.Length >= 8)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                byte t = out_[i];
+                out_[i] = out_[7 - i];
+                out_[7 - i] = t;
+            }
+        }
+        return out_;
+    }
+
+    // the cross-endian refusal over the block form: the same images with their
+    // magic reversed, which every leg must refuse
+    static int SurfaceBlockForeign(string outDir)
+    {
+        foreach (string[] f in Kind("block"))
+        {
+            File.WriteAllText(Path.Combine(outDir, f[1]),
+                OpenBlock(f[1], Foreign(File.ReadAllBytes(f[3])), -1));
+        }
+        return 0;
+    }
+
     // ---- the BLOCK ROW DUMP (testdata/conformance/tables/FORMAT.md)
     //
     // The twin of the C++ leg's walk, and like it, written against §8's
@@ -628,7 +660,7 @@ static class Program
         string surface = args[1];
         if (surface == "list")
         {
-            Console.Out.Write("wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-dump\nforgery\n");
+            Console.Out.Write("wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\n");
             return 0;
         }
         if (args.Length < 3)
@@ -645,6 +677,7 @@ static class Program
             case "json-write": return SurfaceJsonWrite(outDir);
             case "json-hostile": return SurfaceJsonHostile(outDir);
             case "block": return SurfaceBlock(outDir);
+            case "block-foreign": return SurfaceBlockForeign(outDir);
             case "block-dump": return SurfaceBlockDump(outDir);
             case "forgery": return SurfaceForgery(outDir);
             default: return 2;

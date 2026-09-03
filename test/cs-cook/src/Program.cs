@@ -952,6 +952,58 @@ static unsafe class Program
     // <pointer> is the BUFFER the caller holds — 0 an aligned base, 1..63 that
     // many bytes past one, `null` no buffer at all. An unaligned base is a
     // pointer fact rather than a file fact, which is why it is a column.
+    // ---- the harness's `cook-foreign` surface (test/conformance/README.md)
+    //
+    // THE CROSS-ENDIAN REFUSAL, and it is one word rather than a producer. A
+    // cook is written in the byte order of the build it is cooked for (§7), so
+    // a reader of the other order must refuse — and the check that does it is
+    // the MAGIC, read first in the machine's own order for exactly this reason
+    // (§7.1).
+    //
+    // The file is made foreign to WHOEVER READS IT rather than to a particular
+    // host: the eight bytes at offset 0 are reversed, so whatever this build's
+    // order is, the magic it now reads is not this build's. That is what lets a
+    // big-endian leg report this surface GREEN as a refusal instead of ABSENT
+    // as a missing feature.
+    static unsafe int ModeCookForeign(string manifestPath, string outDir)
+    {
+        foreach (string raw in File.ReadAllLines(manifestPath))
+        {
+            string text = raw.Trim();
+            if (text.Length == 0 || text[0] == '#')
+            {
+                continue;
+            }
+            string[] f = text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (f.Length < 5 || f[0] != "cook")
+            {
+                continue;
+            }
+            Root root = RootNamed(f[3]);
+            byte[] source = WholeFile(f[4]);
+            if (source.Length >= 8)
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    byte t = source[i];
+                    source[i] = source[7 - i];
+                    source[7 - i] = t;
+                }
+            }
+            Native.File file = Native.Place(source, source.Length, 0, AlignmentOf(source));
+            try
+            {
+                IntPtr opened = root.Open((IntPtr)file.Base, file.Length);
+                File.WriteAllText(Path.Combine(outDir, f[1]), opened != IntPtr.Zero ? "open\n" : "refuse\n");
+            }
+            finally
+            {
+                file.Destroy();
+            }
+        }
+        return 0;
+    }
+
     static unsafe int ModeConformance(string manifestPath, string outDir)
     {
         foreach (string raw in File.ReadAllLines(manifestPath))
@@ -1013,6 +1065,15 @@ static unsafe class Program
                 return 1;
             }
             return ModeConformance(args[1], args[2]);
+        }
+        if (mode == "foreign")
+        {
+            if (args.Length < 3)
+            {
+                Console.WriteLine("usage: schemacooktest foreign <manifest> <outdir>");
+                return 1;
+            }
+            return ModeCookForeign(args[1], args[2]);
         }
         if (args.Length < 3)
         {

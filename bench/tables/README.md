@@ -171,6 +171,11 @@ it under the same nine rules as the type board's:
 
 Stated so a reader knows what is not here, and why:
 
+- **A Go leg's `opt` column is `default`.** Go has one optimisation
+  configuration and no flag to name, so the column says what is true rather
+  than borrowing C++'s spelling. `linkage` is `pkg`: the generated table codec
+  is ordinary package code in the leg's binary and names no runtime at all.
+
 - **`relative rel` is C-referenced** (Glenn, 2026-08-17: *"make C the
   reference"*), and C has no tables backend, so `rel` renders no tables row.
   The tables board's reference is C++ — the ratio a port is held to — and this

@@ -19,4 +19,5 @@
 
 cpp  bench/tables/cpp/leg
 cs   bench/tables/cs/leg
+go   bench/tables/go/leg
 rust bench/tables/rust/leg

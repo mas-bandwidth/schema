@@ -346,6 +346,71 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 # build/ — test-only, never part of the committed generated/ tree. The full
 # unit is generated (packet .cs + <Base>Table.cs), because a table's closure
 # decodes into the packet emitter's own classes.
+# THE GO GENERIC-WALK GATE (docs/SPEC-TABLES.md §16), the C++ and C# gates'
+# twin. The extracted walkers take a .txt suffix, for the reason the block
+# fuzz's sabotage files do: `go build ./...` and `go test ./...` walk build/,
+# and would otherwise find seven packages sitting in one directory.
+# what makes the text form SCHEMA's rather than a packer's is that there
+# is ONE walk, and the way to hold that is to compare the emitted bytes. One
+# walker per unit — Go emits it into <Home>TableJson.go — and the same bytes in
+# every unit of the corpus.
+.PHONY: tables-go-json-walk
+tables-go-json-walk: build/tables-generated-go/.stamp
+	@rm -rf build/json-walk-go && mkdir -p build/json-walk-go
+	@for d in build/tables-generated-go/*/; do \
+		unit=$$(basename $$d); n=0; \
+		for f in $$d*TableJson.go; do \
+			[ -e "$$f" ] || continue; \
+			out=build/json-walk-go/$$unit.$$(basename $$f).txt; \
+			awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+			if [ -s $$out ]; then n=$$((n+1)); else rm -f $$out; fi; \
+		done; \
+		if [ -n "$$(ls $$d*TableJson.go 2>/dev/null)" ] && [ $$n -ne 1 ]; then \
+			echo "GENERIC-WALK GATE FAILED: unit $$unit carries $$n walkers, not one"; exit 1; \
+		fi; \
+	done
+	@if [ -z "$$(ls build/json-walk-go 2>/dev/null)" ]; then \
+		echo "GENERIC-WALK GATE FAILED: no walker in any generated .go"; exit 1; fi
+	@first=""; for f in build/json-walk-go/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "tables Go generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-go | wc -l | tr -d ' ') units"
+
+# THE GO TABLE LEG's generated packages. Each unit is its own MODULE, because
+# a generated package names its schema's `package` and Go resolves an import by
+# module path — so the conformance leg's go.mod replaces one path per unit,
+# exactly as test/go/go.mod already does for the packet corpus.
+build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+	@mkdir -p build/tables-generated-go
+	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
+	# the POINTERED unit: its Go WIRE surface is refused by name (§11) and its
+	# two ACCELERATORS are emitted all the same, because neither needs a codec
+	# (§7, §19). This is where the cook's Go read side comes from.
+	./bin/schema generate --lang go --out build/tables-generated-go/pointers tables/pointers
+	./bin/schema generate --lang go --out build/tables-generated-go/block tables/block
+	./bin/schema generate --lang go --out build/tables-generated-go/blockhome tables/blockhome
+	./bin/schema generate --lang go --out build/tables-generated-go/v1 test/tables/V1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
+	$(call go_table_module,examples,tabledemo)
+	$(call go_table_module,pointers,graphdemo)
+	$(call go_table_module,block,blockdemo)
+	$(call go_table_module,blockhome,blockhomedemo)
+	$(call go_table_module,v1,tblv1)
+	$(call go_table_module,v2,tblv2)
+	$(call go_table_module,p1,tblp1)
+	$(call go_table_module,p3,tblp3)
+	@touch $@
+
+# one generated unit's module wiring (build wiring, not schema output — the
+# emitter writes only .go files)
+define go_table_module
+@printf 'module %s\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' $(2) > build/tables-generated-go/$(1)/go.mod
+endef
+
 build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
@@ -829,6 +894,94 @@ endef
 .PHONY: tables-block-fuzz-extent-negative-control
 tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
 	$(call block_fuzz_sabotage,extent)
+
+# THE GO FUZZER, and its two negative controls on the same rule as the C++
+# ones: it is the standing gate over the Go accelerators' Open, and a fuzzer
+# that has never gone red proves nothing about the checks it is watching.
+#
+# It runs UNDER -race as well as plain, because a block and a cook are memory
+# another language wrote and the Go readers point into it with `unsafe`: the
+# race detector is what says the pointing itself is sound, and Go's bounds
+# checks — which are on in every configuration — are what the oracle's own walk
+# reads through.
+# THE GO SOAK (docs/SPEC-TABLES.md, "What allocates, and what never does").
+# Correctness tests are necessary and not sufficient: a read path that leaks one
+# object per call passes every byte comparison in this repo and takes a server
+# down in an afternoon. This reads and writes the WHOLE corpus in a loop and
+# watches the ALLOCATION COUNTER, which must not move at all.
+#
+# Two seconds of it ride `go test ./...` so a regression is caught on the way
+# past; SOAK names the real one. It found a real defect on its first run: the
+# text walk rebuilt a union field's arms table on every call, ten objects per
+# ToJson of an instance carrying five unions, which no byte comparison could
+# ever have seen.
+SOAK ?= 1h
+
+.PHONY: tables-go-soak
+tables-go-soak: build/tables-generated-go/.stamp
+	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
+
+.PHONY: tables-go-fuzz
+tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
+	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
+	cd test/go-tables && SEED=$(SEED) N=$(N) go test -run Fuzz -count 1 .
+	cd test/go-tables && SEED=$(SEED) N=$(N) go test -race -run Fuzz -count 1 .
+
+# The sed programs that remove one check from the GO emitter, and the sabotage
+# that proves the fuzzer finds it. Same shape as the C++/C# pair above, through
+# `go build -overlay`, so no tracked file is edited.
+# The sabotage is a SUBSTITUTION and not a deletion, and the reason is that a
+# deleted check takes its variables with it: removing the rows test leaves
+# `rows` declared and unused, and the generated Go then does not compile, which
+# proves nothing. Turning the condition into `false` removes exactly the check
+# and nothing else.
+GO_FUZZ_SED_extent := s|if rows > uint64(bytes)-offsetOf {|if false {|; s|if padding > bytes-used {|if false {|
+GO_FUZZ_SED_maximum := s|if count > %d {|if false \&\& count > %d {|
+
+# what the fuzzer must say when it goes red, so a control that turned some
+# OTHER leg red is not mistaken for a pass
+GO_FUZZ_EXPECT_extent := leave an extent|used bytes inside an extent
+GO_FUZZ_EXPECT_maximum := past the declared maximum
+
+define go_fuzz_sabotage
+	@rm -rf build/go-fuzz-$(1) && mkdir -p build/go-fuzz-$(1)
+	@sed '$(GO_FUZZ_SED_$(1))' internal/codegen/gotable/block.go > build/go-fuzz-$(1)/gotable-block.go.txt
+	@cmp -s internal/codegen/gotable/block.go build/go-fuzz-$(1)/gotable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/block.go":"%s/build/go-fuzz-$(1)/gotable-block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/go-fuzz-$(1)/overlay.json
+	go build -overlay build/go-fuzz-$(1)/overlay.json -o build/go-fuzz-$(1)/schema ./cmd/schema
+	@rm -rf build/go-fuzz-$(1)/generated
+	./build/go-fuzz-$(1)/schema generate --lang go --out build/go-fuzz-$(1)/generated/block tables/block
+	./build/go-fuzz-$(1)/schema generate --lang go --out build/go-fuzz-$(1)/generated/pointers tables/pointers
+	@printf 'module blockdemo\n\ngo 1.23\n' > build/go-fuzz-$(1)/generated/block/go.mod
+	@printf 'module graphdemo\n\ngo 1.23\n' > build/go-fuzz-$(1)/generated/pointers/go.mod
+	@sed -e 's|=> ../../build/tables-generated-go/block|=> $(CURDIR)/build/go-fuzz-$(1)/generated/block|' \
+	     -e 's|=> ../../build/tables-generated-go/pointers|=> $(CURDIR)/build/go-fuzz-$(1)/generated/pointers|' \
+	     test/go-tables/go.mod > build/go-fuzz-$(1)/go.mod.txt
+	@printf '{"Replace":{"%s/test/go-tables/go.mod":"%s/build/go-fuzz-$(1)/go.mod.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/go-fuzz-$(1)/modoverlay.json
+	@if ( cd test/go-tables && SEED=$(SEED) N=$(N) go test -overlay ../../build/go-fuzz-$(1)/modoverlay.json \
+			-run BlockForgeryFuzz -count 1 . ) > build/go-fuzz-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Go fuzzer stayed green with the $(1) check removed from the emitter"; \
+		cat build/go-fuzz-$(1)/log; exit 1; \
+	fi
+	@grep -q "fuzz_test.go" build/go-fuzz-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the Go leg went red, but not on the oracle"; cat build/go-fuzz-$(1)/log; exit 1; }
+	@grep -qE "$(GO_FUZZ_EXPECT_$(1))" build/go-fuzz-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the oracle went red on some other check, not the $(1) one"; \
+		  cat build/go-fuzz-$(1)/log; exit 1; }
+	@grep -m1 "fuzz_test.go" build/go-fuzz-$(1)/log
+	@echo "go fuzz $(1) negative control: removing that check from the Go emitter turns the fuzzer red"
+endef
+
+.PHONY: tables-go-fuzz-extent-negative-control
+tables-go-fuzz-extent-negative-control: build/tables-generated-go/.stamp
+	$(call go_fuzz_sabotage,extent)
+
+.PHONY: tables-go-fuzz-maximum-negative-control
+tables-go-fuzz-maximum-negative-control: build/tables-generated-go/.stamp
+	$(call go_fuzz_sabotage,maximum)
 
 # The DECLARED MAXIMUM check: a count past the maximum Begin refuses on the
 # producer side. This is §19.2's tenth forgery, the one a reader found OPEN,
@@ -2270,6 +2423,11 @@ generated/bench/tables/rust/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/rust/src
 	./bin/schema generate --lang rust --out generated/bench/tables/rust/src bench/corpus/BenchTable.schema
 	@printf '[package]\nname = "benchtable"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' > generated/bench/tables/rust/Cargo.toml
+
+generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/go
+	./bin/schema generate --lang go --out generated/bench/tables/go bench/corpus/BenchTable.schema
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
@@ -2363,7 +2521,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 		-O2 -ffp-contract=off -Igenerated/c-ludicrous -I$(SERIALIZE_C) \
 		test/c-ludicrous/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c build/schema_test_bench_table generated/bench/tables/cs/.stamp generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c build/schema_test_bench_table generated/bench/tables/cs/.stamp generated/bench/tables/go/.stamp generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
 	$(MAKE) check-zero-range-negative-control
@@ -2394,6 +2552,16 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) conformance-negative-control
 	$(MAKE) conformance-negative-control-block-dump
 	$(MAKE) conformance-negative-control-cs
+	$(MAKE) conformance-negative-control-go
+	$(MAKE) conformance-negative-control-go-walk
+	# THE GO PORT's own instruments (docs/SPEC-TABLES.md): the allocation gate
+	# and its negative control, the forgery fuzzer plain and under -race, and
+	# two seconds of the soak. The hour is `make tables-go-soak`.
+	$(MAKE) tables-go-json-walk
+	$(MAKE) tables-go-fuzz
+	cd test/go-tables && go test -count 1 .
+	$(MAKE) tables-go-fuzz-extent-negative-control
+	$(MAKE) tables-go-fuzz-maximum-negative-control
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-keyed-none-refusal-ndebug
@@ -2437,11 +2605,12 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 	./build/schema_test_bench
 	./build/schema_test_bench_c
-	# the tables bench corpus's oracle, and the C# leg's compile gate — the
-	# generated table unit has no other consumer under `make test`, and a
+	# the tables bench corpus's oracle, and the C# and Go legs' compile gates —
+	# the generated table unit has no other consumer under `make test`, and a
 	# unit that generates but does not compile is issue #80's lesson
 	./build/schema_test_bench_table
 	dotnet build bench/tables/cs -c Release --nologo -v quiet
+	bench/tables/go/leg build
 	cd generated/bench/go && go build ./...
 	cd generated/bench/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
 	cd generated/bench/rust-realworld && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
@@ -2533,7 +2702,7 @@ bench-table-check: build/schema_test_bench_table
 # estate's bench rules — core 15, server stopped, not live, blessed per run;
 # a run on a shared interactive machine is a pairing check and the board says
 # which one it is.
-bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/rust/.stamp bench-table-check
+bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp bench-table-check
 	bench/tables/run.sh
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
@@ -2617,17 +2786,20 @@ clean:
 # The rule this target lives under is the two-minute one (#320). Measured on
 # arm64 macOS at the landing, everything already built, median of three:
 #
-#   both legs, 116 cases       5.07 s
-#   the cpp leg alone          0.41 s   (10 native execs, plus materialising)
-#   the cs leg alone           4.92 s   (12 `dotnet run` start-ups)
+#   all three legs, 260 cases each   10.5 s
+#   the cpp leg alone                 0.79 s   (native execs, plus materialising)
+#   the cs leg alone                 10.0 s   (`dotnet run` start-ups)
+#   the go leg alone                  1.07 s   (one native exec per surface)
 #
-# The cost is per-PROCESS, not per-case: the C# leg starts a runtime thirteen
-# times — `list`, six surfaces, and one per cook, because test/cs-cook's dump
-# takes one root per invocation. So the budget left for seven more languages is
-# nearly the whole of it, and nine languages each starting a runtime per surface
-# lands near 20 s. Sharding per language leg, the way the type wire's nine legs
-# already are, is what the numbers say to do if that stops holding; it is not
-# needed at this size.
+# The cost is per-PROCESS, not per-case: the C# leg starts a runtime once per
+# surface plus once per cook, because test/cs-cook's dump takes one root per
+# invocation, and that is where nearly the whole wall is. The Go leg is one
+# native exec per surface and no more — its cook and cook-forgery are answered
+# in the same binary as everything else — which is the cheapest shape a leg can
+# have under this contract. So the budget left for six more languages is most
+# of the two minutes, and sharding per language leg, the way the type wire's
+# nine legs already are, is what the numbers say to do if that stops holding;
+# it is not needed at this size.
 CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block
@@ -2680,9 +2852,34 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
+build/conformance-go: build/tables-generated-go/.stamp $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
+	@mkdir -p build
+	cd test/conformance/go && go build -o ../../../$@ .
+
+# THE GO LEG, CROSS-BUILT BIG-ENDIAN (docs/SPEC-TABLES.md §3, §19.1, §7). Go
+# cross-compiles, and the pinned emulator is already installed for the C++
+# big-endian legs above, so the table WIRE's own claim — every field id, every
+# length and every scalar rides little-endian whatever the host is — becomes a
+# gate rather than a sentence: a big-endian reader loads the goldens a
+# little-endian host wrote, writes them back and is byte-compared.
+#
+# The driver lists the byte-order-NEUTRAL surfaces and no others, and the reason
+# is in test/conformance/go/driver-be: a block and a cook are produced in the
+# order of the build that wrote them, so a big-endian reader is CORRECT to
+# refuse this corpus's fixtures and has no neutral verdict to give.
+build/conformance-go-be: build/tables-generated-go/.stamp $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
+	@mkdir -p build
+	cd test/conformance/go && GOOS=linux GOARCH=s390x go build -o ../../../$@ .
+
+.PHONY: conformance-big-endian
+conformance-big-endian: build/conformance-harness build/conformance-go-be
+	@printf 'go-be test/conformance/go/driver-be\n' > build/conformance-be-drivers.txt
+	./build/conformance-harness run --drivers build/conformance-be-drivers.txt --work build/conformance-be-work
+	@echo "big-endian leg: the Go table wire, the read report and the text form cross the byte order"
+
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook \
-		build-conformance-cs build-cs-cook build/conformance-rust
+		build-conformance-cs build-cs-cook build/conformance-go build/conformance-rust
 	./build/conformance-harness run
 
 # The GENERATED half of the data: the JSON text of every instance and the read
@@ -2840,4 +3037,114 @@ conformance-negative-control-cs: build/conformance-harness
 	@grep -m1 "cs / json-read" $(CONFORMANCE_NEGATIVE_CS)/log
 	@echo "negative control: one field index off in the C# walk turns the harness RED on json-read alone"
 
-.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs build-conformance-cs
+# THE GO LEG's NEGATIVE CONTROL, on the same rule as the C++ one: a harness
+# that has never gone red on a leg is watching that leg. One byte of ONE wire
+# answer is flipped in a COPY of the Go driver — no tracked file is written to,
+# so an interrupt cannot leave a sabotaged working tree — and the matrix must go
+# red, on that surface and on no other.
+.PHONY: conformance-negative-control-go
+conformance-negative-control-go: build/conformance-harness build/tables-generated-go/.stamp
+	@rm -rf build/conformance-negative-go && mkdir -p build/conformance-negative-go
+	@cp test/conformance/go/*.go build/conformance-negative-go/
+	@printf 'module schemaconformance\n\ngo 1.23\n' > build/conformance-negative-go/go.mod
+	@for m in tabledemo:examples tblv1:v1 tblv2:v2 tblp1:p1 tblp3:p3 blockdemo:block graphdemo:pointers; do \
+		printf 'require %s v0.0.0\nreplace %s => $(CURDIR)/build/tables-generated-go/%s\n' \
+			"$${m%%:*}" "$${m%%:*}" "$${m##*:}" >> build/conformance-negative-go/go.mod; \
+	done
+	@printf 'require github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' >> build/conformance-negative-go/go.mod
+	@sed -i.bak 's|if err := spill(out, f\[1\], scratch); err != nil {|scratch[0] ^= 1 // SABOTAGED\n\t\tif err := spill(out, f[1], scratch); err != nil {|' build/conformance-negative-go/main.go
+	@grep -q SABOTAGED build/conformance-negative-go/main.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	cd build/conformance-negative-go && go build -o ../conformance-negative-go-bin .
+	@printf '#!/bin/sh\nexec build/conformance-negative-go-bin "$$@"\n' > build/conformance-negative-go/driver
+	@chmod +x build/conformance-negative-go/driver
+	@printf 'go build/conformance-negative-go/driver\n' > build/conformance-negative-go/drivers.txt
+	@if ./build/conformance-harness run --drivers build/conformance-negative-go/drivers.txt \
+			--work build/conformance-negative-go/work > build/conformance-negative-go/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: one byte off in a wire answer left the harness green"; \
+		cat build/conformance-negative-go/log; exit 1; \
+	fi
+	@grep -q "go / wire" build/conformance-negative-go/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
+		  cat build/conformance-negative-go/log; exit 1; }
+	@grep -q "report        pass" build/conformance-negative-go/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat build/conformance-negative-go/log; exit 1; }
+	@grep -m1 "go / wire" build/conformance-negative-go/log
+	@echo "negative control (go): one byte off in one wire answer turns the harness RED on that surface alone"
+
+# THE GO WALKER's NEGATIVE CONTROL (docs/SPEC-TABLES.md §16.5), and it is a
+# DIFFERENT sabotage from conformance-negative-control-go above, on purpose.
+# That one flips a byte of an ANSWER and proves the harness can see a wrong
+# answer; this one breaks the WALK's own offset arithmetic and proves it can see
+# a wrong walk — the shape §16.5 asks every backend for, and the shape the C#
+# control already has.
+#
+# It is sabotaged IN THE EMITTER and generated afresh, because the walker IS
+# emitter source — one constant in internal/codegen/gotable/json.go — so
+# patching the emitter is patching the walk itself rather than an artifact of
+# it. No tracked file is written to: the sed lands in build/ and a Go build
+# overlay points the compiler at it.
+#
+# THE SABOTAGE is the C++ control's, in Go's spelling: a field's STORAGE OFFSET
+# xor 4 on the READ path only. Go has real offsets — the descriptors carry
+# unsafe.Offsetof — so unlike C#, whose twin had to perturb a field INDEX
+# instead, that arithmetic ports directly. The sed is bounded to
+# tableJsonReadField's own body, because the writer's line is the same text and
+# a control that broke both would not localise the READER.
+#
+# The second half is the point, as it is for every control here: json-read must
+# go RED and every other surface must stay GREEN.
+CONFORMANCE_NEGATIVE_GOWALK := build/conformance-negative-gowalk
+CONFORMANCE_NEGATIVE_GOWALK_SED := /^func tableJsonReadField/,/^}/ s|storage := unsafe.Add(base, uintptr(f.Offset))|storage := unsafe.Add(base, uintptr(f.Offset^4)) // SABOTAGED|
+.PHONY: conformance-negative-control-go-walk
+conformance-negative-control-go-walk: build/conformance-harness
+	@rm -rf $(CONFORMANCE_NEGATIVE_GOWALK) && mkdir -p $(CONFORMANCE_NEGATIVE_GOWALK)
+	@sed '$(CONFORMANCE_NEGATIVE_GOWALK_SED)' internal/codegen/gotable/json.go > $(CONFORMANCE_NEGATIVE_GOWALK)/gotable-json.go.txt
+	@cmp -s internal/codegen/gotable/json.go $(CONFORMANCE_NEGATIVE_GOWALK)/gotable-json.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/json.go":"%s/$(CONFORMANCE_NEGATIVE_GOWALK)/gotable-json.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_GOWALK)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_GOWALK)/overlay.json -o $(CONFORMANCE_NEGATIVE_GOWALK)/schema ./cmd/schema
+	@rm -rf $(CONFORMANCE_NEGATIVE_GOWALK)/generated
+	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/examples tables/examples
+	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/pointers tables/pointers
+	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/block tables/block
+	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/v1 test/tables/V1.schema
+	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/v2 test/tables/V2.schema
+	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/p1 test/tables/P1.schema
+	$(CONFORMANCE_NEGATIVE_GOWALK)/schema generate --lang go --out $(CONFORMANCE_NEGATIVE_GOWALK)/generated/p3 test/tables/P3.schema
+	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_GOWALK)/generated/*/*TableJson.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
+	@cp test/conformance/go/*.go $(CONFORMANCE_NEGATIVE_GOWALK)/
+	@printf 'module schemaconformance\n\ngo 1.23\n' > $(CONFORMANCE_NEGATIVE_GOWALK)/go.mod
+	@for m in tabledemo:examples tblv1:v1 tblv2:v2 tblp1:p1 tblp3:p3 blockdemo:block graphdemo:pointers; do \
+		mod=$${m%%:*}; dir=$${m##*:}; \
+		printf 'module %s\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' \
+			"$$mod" > $(CONFORMANCE_NEGATIVE_GOWALK)/generated/$$dir/go.mod; \
+		printf 'require %s v0.0.0\nreplace %s => $(CURDIR)/$(CONFORMANCE_NEGATIVE_GOWALK)/generated/%s\n' \
+			"$$mod" "$$mod" "$$dir" >> $(CONFORMANCE_NEGATIVE_GOWALK)/go.mod; \
+	done
+	@printf 'require github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' >> $(CONFORMANCE_NEGATIVE_GOWALK)/go.mod
+	cd $(CONFORMANCE_NEGATIVE_GOWALK) && go build -o driver-bin .
+	@printf '#!/bin/sh\nexec %s/driver-bin "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_GOWALK)" > $(CONFORMANCE_NEGATIVE_GOWALK)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_GOWALK)/driver
+	@printf 'go %s/driver\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_GOWALK)" > $(CONFORMANCE_NEGATIVE_GOWALK)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_GOWALK)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_GOWALK)/work > $(CONFORMANCE_NEGATIVE_GOWALK)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a sabotaged Go walker left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; \
+	fi
+	@grep -q "go / json-read" $(CONFORMANCE_NEGATIVE_GOWALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
+		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
+	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_GOWALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
+	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_GOWALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_GOWALK)/log; exit 1; }
+	@grep -m1 "go / json-read" $(CONFORMANCE_NEGATIVE_GOWALK)/log
+	@echo "negative control: one field offset off in the Go walk turns the harness RED on json-read alone"
+
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-go conformance-negative-control-go-walk build-conformance-cs

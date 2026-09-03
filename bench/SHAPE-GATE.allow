@@ -159,6 +159,7 @@ timing test/conformance/rust/src/main.rs 3 the Rust SOAK's deadline and its inte
 
 names bench/tables/cpp/table_main.cpp 4 shape-blind leg: 1 comment + `benchtable::TableMixed` as the bench_table template argument and its Reset/Save/Load call sites (callsite)
 names bench/tables/cs/src/Program.cs 2 shape-blind leg: `Benchtable.TableMixed` as the BenchTable type argument and its constructor (callsite)
+names bench/tables/go/table_main.go 2 shape-blind leg: `benchtable.TableMixed` as the benchTable type argument and in the one load closure's signature (callsite)
 names bench/tables/rust/src/main.rs 1 shape-blind leg: `TableMixed` as the bench_table type argument, once — its reset/save/load are snake_case free functions the corpus vocabulary does not spell, so the Rust leg names the shape in exactly one place (callsite)
 
 # The tables corpus's golden pinner and oracle: correctness code, no clock.
@@ -167,3 +168,12 @@ names bench/tables/rust/src/main.rs 1 shape-blind leg: `TableMixed` as the bench
 # PATH trips a check, exactly as its type twin's does.
 
 paths test/bench/table_main.cpp 1 the tables corpus's producer and §1.5 oracle: correctness code, no timing
+
+# THE GO PORT's SOAK (docs/SPEC-TABLES.md, "What allocates, and what never
+# does") reads a clock for the same reason the cook's open-cost gate does: to
+# BOUND A DURATION, not to measure one. What it watches is
+# runtime.MemStats.Mallocs across the loop, which must not move at all; the two
+# clock reads decide when to stop. It names no shape it did not get from the
+# conformance corpus's own manifest, and it reports no time.
+
+timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BOUNDS the loop, the allocation counter is what is watched — no time is reported and no shape is measured
