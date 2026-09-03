@@ -132,6 +132,15 @@ report p2_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_pointer_empty.bin
 report p1_as_p2       tblp2 Chain testdata/wire/tables/chain_value.bin
 report p3_as_p2       tblp2 Chain testdata/wire/tables/chain_optional.bin
 report p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
+# AN ARRAY OF POINTERS read under §3.1's rules, as shared rows: three hand-built
+# Feed bodies with one `parts` field each and no node table. The element kind
+# 8 where the reader declares 17 is a kind mismatch and the field stays empty;
+# five slots against a bound of four keep the prefix and count clamped; a slot
+# naming index 7 where no node exists is malformed and THAT slot reads null,
+# the array kept at its count. The bytes are fixed by this file, not generated.
+report parts_elem_kind          streamdemo Feed testdata/wire/tables/parts_elem_kind.bin
+report parts_count_past_bound   streamdemo Feed testdata/wire/tables/parts_count_past_bound.bin
+report parts_index_out_of_range streamdemo Feed testdata/wire/tables/parts_index_out_of_range.bin
 # the message pair (§2.6, §4): M2 inserted `close` first, removed `save` and
 # grew Open, so open's tag moved and both sides meet an arm they cannot name
 report m1_open_as_m2  tblm2 Msg testdata/wire/tables/m1_open.bin

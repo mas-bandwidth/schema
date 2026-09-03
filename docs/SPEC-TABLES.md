@@ -2166,6 +2166,10 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
     into a `[N]*T` field — or the reverse, or `[N]*T` against a by-value
     `[N]T` (element kind `13`) — is a kind mismatch, counted, and the field
     stays empty. Nothing reads a number as an index.
+  - **A slot's index is read by the same rules as a field's** (below): an
+    index out of range is `malformed` and THAT SLOT reads null, the rest of
+    the array unaffected; a count past the reader's bound keeps the bounded
+    prefix and counts `clamped` (§4).
   The numbering visits the slots in index order, the live slots of a
   counted array only (above), and a slot is an edge like any pointer field.
 
@@ -3629,6 +3633,8 @@ fields would get wrong:
 | `[..N]T` | `N` elements, then `int32` used count |
 | `[E]T` | `E.Max` elements, one per named variant, nothing for `None` |
 | `*T` | `int64` self-relative delta, eight bytes at eight |
+| `[N]*T` | `N` `int64` self-relative deltas, each eight bytes at eight, null zero |
+| `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes all `N` slots, below) |
 | `?T` | the value's own pieces, then `bool` present |
 | `map[K]V` | `int64` self-relative delta to the entry array, then `uint32` count; the entries follow the record inside the node's extent (§2.8) |
 
@@ -6918,8 +6924,10 @@ an older reader is exactly the unknown key §4 exists to survive.
 - **Anywhere else, the prefix is `malformed`**: at the ROOT, which takes no
   label because nothing may name it (a reference to the root is a reference to a node
   whose descent is open, which is the cycle §3.1 refuses); in a by-value
-  nesting, a union arm, an array element, which are values and not nodes; under
-  any spelling but `&node`.
+  nesting, a union arm, an element of a BY-VALUE array, which are values and
+  not nodes — an element of an array of pointers (§2.1) is a pointer slot and
+  takes the pointer row, definition or reference alike; under any spelling but
+  `&node`.
 - **`null` is unchanged**: it is a null pointer, as §16.2 says, and it never
   carries a label.
 - **A writer emits the construct only where it must** — for a node it will name

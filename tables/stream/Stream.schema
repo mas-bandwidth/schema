@@ -13,8 +13,9 @@ table Header
 
 table Chunk
 {
-    data bytes(8)
-    next *Chunk
+    data  bytes(8)
+    next  *Chunk
+    links [..2] * Chunk // an array of pointers inside a NODE, and inside the union arm that holds a Chunk by value
 }
 
 union Frame

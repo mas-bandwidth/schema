@@ -1,16 +1,17 @@
-0x31296384cfd5612f
+0xace5a1257f2e4831
 schema-build-version 1
 protocol bf90766c51a5100c
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
-record Chunk sizeof=24 alignof=8
+record Chunk sizeof=48 alignof=8
     field 3ad7 kind=14 offset=0 size=12 bound=8
     field d15e kind=17 offset=16 size=8 type=Chunk
-record Feed sizeof=96 alignof=8
+    field 7324 kind=17 offset=24 size=20 type=Chunk elem=8 array=bounded bound=2
+record Feed sizeof=120 alignof=8
     field 5dd8 kind=8 offset=0 size=4
-    field a3ac kind=15 offset=8 size=32 union=Frame
-    field fc18 kind=17 offset=40 size=36 type=Chunk elem=8 array=bounded bound=4
-    field 26f5 kind=17 offset=80 size=16 type=Chunk elem=8 array=fixed bound=2
+    field a3ac kind=15 offset=8 size=56 union=Frame
+    field fc18 kind=17 offset=64 size=36 type=Chunk elem=8 array=bounded bound=4
+    field 26f5 kind=17 offset=104 size=16 type=Chunk elem=8 array=fixed bound=2
 record Header sizeof=24 alignof=4
     field 30df kind=12 offset=0 size=24 bound=16
 union Frame

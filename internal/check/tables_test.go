@@ -929,6 +929,9 @@ func TestEveryScalarRidesInATable(t *testing.T) {
 	}
 	if u.Structs["Inner"].Fields[0].DefInt.String() != "1073741824" {
 		t.Errorf("the fixed default is held RAW: %v", u.Structs["Inner"].Fields[0].DefInt)
+	}
+}
+
 // TestPointerArraysAreLegal is §2.1's bounded spellings: `[N]*T` and `[..N]*T`
 // are pointer slots per element, they make their holder variable-length, and
 // their element rides under kind 17.

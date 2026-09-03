@@ -7,10 +7,26 @@
         "&node": 1,
         "data": "Ag==",
         "next": {
+          "&node": 2,
           "data": "Aw==",
-          "next": null
+          "next": null,
+          "links": []
+        },
+        "links": [
+          {
+            "&node": 2
+          },
+          null
+        ]
+      },
+      "links": [
+        {
+          "&node": 3,
+          "data": "CQ==",
+          "next": null,
+          "links": []
         }
-      }
+      ]
     }
   },
   "parts": [
@@ -19,15 +35,13 @@
     },
     null,
     {
-      "&node": 2,
-      "data": "CQ==",
-      "next": null
+      "&node": 3
     }
   ],
   "pair": [
     null,
     {
-      "&node": 2
+      "&node": 3
     }
   ]
 }

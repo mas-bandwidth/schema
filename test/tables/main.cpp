@@ -6211,8 +6211,11 @@ static void test_message_variable_arm()
 // non-null slot makes it ride whole. Slots share nodes with each other and
 // with every other pointer, on the wire, in a region and in a cook.
 
-// the chain, plus parts = [a, null, c] and pair = [null, c]: a is the chain's
-// first node and c is named twice, so both sharing shapes cross every form
+// the chain, plus parts = [a, null, c] and pair = [null, c] in the root: a is
+// the chain's first node and c is named twice, so both sharing shapes cross
+// every form. The construct at the two deeper depths: inside the union ARM,
+// frame.chunk.links = [c], and inside a NODE, a.links = [b, null] — b is a's
+// own next, and the null is a live slot.
 static void build_stream_parts( streamdemo::FeedBuilder & builder )
 {
     build_stream_chain( builder );
@@ -6224,6 +6227,11 @@ static void build_stream_parts( streamdemo::FeedBuilder & builder )
     root->parts[0] = root->frame.chunk.next; // shared with the chain
     root->parts[2] = c;
     root->pair[1] = c;                       // shared with parts[2]
+    root->frame.chunk.links_count = 1;       // depth two: inside the union arm
+    root->frame.chunk.links[0] = c;
+    streamdemo::Chunk * a = streamdemo::ChunkAt( builder.arena, root->frame.chunk.next );
+    a->links_count = 2;                      // depth three: inside a node
+    a->links[0] = a->next;
 }
 
 static void check_stream_parts( const streamdemo::Feed * feed )
@@ -6240,6 +6248,17 @@ static void check_stream_parts( const streamdemo::Feed * feed )
     CHECK( p2 != NULL && p2->data[0] == 9 );
     CHECK( q0 == NULL );
     CHECK( q1 == p2 );                                            // shared between the two arrays
+    // depth two: the array inside the union arm names c a third time
+    CHECK( feed->frame.chunk.links_count == 1 );
+    CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, feed->frame.chunk.links[0] ) == p2 );
+    // depth three: the array inside node a names a's own next, then a live null
+    if ( p0 != NULL )
+    {
+        const streamdemo::Chunk * b = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, p0->next );
+        CHECK( p0->links_count == 2 );
+        CHECK( b != NULL && streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, p0->links[0] ) == b );
+        CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, p0->links[1] ) == NULL );
+    }
 }
 
 static void test_pointer_arrays()
