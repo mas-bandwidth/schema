@@ -863,6 +863,77 @@ endef
 tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
 	$(call block_fuzz_sabotage,extent)
 
+# THE GO FUZZER, and its two negative controls on the same rule as the C++
+# ones: it is the standing gate over the Go accelerators' Open, and a fuzzer
+# that has never gone red proves nothing about the checks it is watching.
+#
+# It runs UNDER -race as well as plain, because a block and a cook are memory
+# another language wrote and the Go readers point into it with `unsafe`: the
+# race detector is what says the pointing itself is sound, and Go's bounds
+# checks — which are on in every configuration — are what the oracle's own walk
+# reads through.
+.PHONY: tables-go-fuzz
+tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
+	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
+	cd test/go-tables && SEED=$(SEED) N=$(N) go test -run Fuzz -count 1 .
+	cd test/go-tables && SEED=$(SEED) N=$(N) go test -race -run Fuzz -count 1 .
+
+# The sed programs that remove one check from the GO emitter, and the sabotage
+# that proves the fuzzer finds it. Same shape as the C++/C# pair above, through
+# `go build -overlay`, so no tracked file is edited.
+# The sabotage is a SUBSTITUTION and not a deletion, and the reason is that a
+# deleted check takes its variables with it: removing the rows test leaves
+# `rows` declared and unused, and the generated Go then does not compile, which
+# proves nothing. Turning the condition into `false` removes exactly the check
+# and nothing else.
+GO_FUZZ_SED_extent := s|if rows > uint64(bytes)-offsetOf {|if false {|; s|if padding > bytes-used {|if false {|
+GO_FUZZ_SED_maximum := s|if count > %d {|if false \&\& count > %d {|
+
+# what the fuzzer must say when it goes red, so a control that turned some
+# OTHER leg red is not mistaken for a pass
+GO_FUZZ_EXPECT_extent := leave an extent|used bytes inside an extent
+GO_FUZZ_EXPECT_maximum := past the declared maximum
+
+define go_fuzz_sabotage
+	@rm -rf build/go-fuzz-$(1) && mkdir -p build/go-fuzz-$(1)
+	@sed '$(GO_FUZZ_SED_$(1))' internal/codegen/gotable/block.go > build/go-fuzz-$(1)/gotable-block.go.txt
+	@cmp -s internal/codegen/gotable/block.go build/go-fuzz-$(1)/gotable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/block.go":"%s/build/go-fuzz-$(1)/gotable-block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/go-fuzz-$(1)/overlay.json
+	go build -overlay build/go-fuzz-$(1)/overlay.json -o build/go-fuzz-$(1)/schema ./cmd/schema
+	@rm -rf build/go-fuzz-$(1)/generated
+	./build/go-fuzz-$(1)/schema generate --lang go --out build/go-fuzz-$(1)/generated/block tables/block
+	./build/go-fuzz-$(1)/schema generate --lang go --out build/go-fuzz-$(1)/generated/pointers tables/pointers
+	@printf 'module blockdemo\n\ngo 1.23\n' > build/go-fuzz-$(1)/generated/block/go.mod
+	@printf 'module graphdemo\n\ngo 1.23\n' > build/go-fuzz-$(1)/generated/pointers/go.mod
+	@sed -e 's|=> ../../build/tables-generated-go/block|=> $(CURDIR)/build/go-fuzz-$(1)/generated/block|' \
+	     -e 's|=> ../../build/tables-generated-go/pointers|=> $(CURDIR)/build/go-fuzz-$(1)/generated/pointers|' \
+	     test/go-tables/go.mod > build/go-fuzz-$(1)/go.mod.txt
+	@printf '{"Replace":{"%s/test/go-tables/go.mod":"%s/build/go-fuzz-$(1)/go.mod.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/go-fuzz-$(1)/modoverlay.json
+	@if ( cd test/go-tables && SEED=$(SEED) N=$(N) go test -overlay ../../build/go-fuzz-$(1)/modoverlay.json \
+			-run BlockForgeryFuzz -count 1 . ) > build/go-fuzz-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Go fuzzer stayed green with the $(1) check removed from the emitter"; \
+		cat build/go-fuzz-$(1)/log; exit 1; \
+	fi
+	@grep -q "fuzz_test.go" build/go-fuzz-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the Go leg went red, but not on the oracle"; cat build/go-fuzz-$(1)/log; exit 1; }
+	@grep -qE "$(GO_FUZZ_EXPECT_$(1))" build/go-fuzz-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the oracle went red on some other check, not the $(1) one"; \
+		  cat build/go-fuzz-$(1)/log; exit 1; }
+	@grep -m1 "fuzz_test.go" build/go-fuzz-$(1)/log
+	@echo "go fuzz $(1) negative control: removing that check from the Go emitter turns the fuzzer red"
+endef
+
+.PHONY: tables-go-fuzz-extent-negative-control
+tables-go-fuzz-extent-negative-control: build/tables-generated-go/.stamp
+	$(call go_fuzz_sabotage,extent)
+
+.PHONY: tables-go-fuzz-maximum-negative-control
+tables-go-fuzz-maximum-negative-control: build/tables-generated-go/.stamp
+	$(call go_fuzz_sabotage,maximum)
+
 # The DECLARED MAXIMUM check: a count past the maximum Begin refuses on the
 # producer side. This is §19.2's tenth forgery, the one a reader found OPEN,
 # and the control is what keeps it closed.
@@ -2732,6 +2803,27 @@ build/conformance-go: build/tables-generated-go/.stamp $(wildcard test/conforman
 build/conformance-go-be: build/tables-generated-go/.stamp $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
 	@mkdir -p build
 	cd test/conformance/go && GOOS=linux GOARCH=s390x go build -o ../../../$@ .
+
+# THE TABLE-WIRE BENCH PAIR (docs/SPEC-TABLES.md, the performance ladder): the
+# C++ reference and the Go port over the SAME golden, the same three operations
+# and the same warm buffer, so the ratio between them says whether a Go consumer
+# of this format pays for the language or for the format.
+#
+# ITERATION instruments, not certification ones (BENCH-STANDARD.md): they run on
+# a workstation to compare two ports on one machine at one moment, they are not
+# a gate, and nothing in `make test` reads them. -O3 -DNDEBUG on the C++ side is
+# the configuration a game ships, which is what makes the comparison fair.
+build/schema_test_tables_bench: build/tables-generated/.stamp test/tables/bench_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -O3 -DNDEBUG $(TABLES_INCLUDES) test/tables/bench_main.cpp -o $@
+
+.PHONY: tables-bench
+tables-bench: build/schema_test_tables_bench build/tables-generated-go/.stamp
+	@echo "--- C++ (the reference) ---"
+	./build/schema_test_tables_bench
+	@echo
+	@echo "--- Go (this port) ---"
+	cd test/go-tables && go test -run XXX -bench . -benchtime 2s .
 
 .PHONY: conformance-big-endian
 conformance-big-endian: build/conformance-harness build/conformance-go-be
