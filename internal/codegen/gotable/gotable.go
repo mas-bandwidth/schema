@@ -124,6 +124,17 @@ type tableGen struct {
 
 	needsMath  bool
 	unsafeUsed bool
+
+	// the union-field shapes this file declares, filled in an init() below the
+	// descriptors so a cyclic descriptor graph stays expressible
+	unionArms []unionArms
+}
+
+// unionArms is one union field's shape: the package-level value a descriptor's
+// Arms column points at, and the assignment that fills it.
+type unionArms struct {
+	symbol string
+	fill   string
 }
 
 // needsUnsafe marks this file as reaching for the layout model — every
@@ -225,6 +236,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.owner = st
 				g.emitTableDescriptor(st)
 			}
+			g.emitUnionArms()
 		}
 		src, err := g.assemble()
 		if err != nil {

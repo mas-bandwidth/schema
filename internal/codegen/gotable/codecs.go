@@ -1235,7 +1235,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 			variantId = unionArmFunc(ref, "uint16", func(v ir.UnionVariant) string {
 				return fmt.Sprintf("0x%04x", ir.VariantId(v.Name))
 			}, "0", "0")
-			arms = g.unionArmsFunc(ref)
+			arms = g.unionArmsFunc(ref, st, f)
 		}
 	}
 
@@ -1257,15 +1257,64 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	g.pf("\t\tGuard: %q, Table: %s},\n", guard, table)
 }
 
-// unionArmsFunc renders a union field's Arms column: a closure whose arms
-// table is a package-level var of its own, so the descriptor stays plain data.
-func (g *tableGen) unionArmsFunc(un *ir.Union) string {
+// unionArmsFunc renders a union field's Arms column: a closure over ONE
+// package-level value, so a walk that asks a union for its shape pays a load
+// rather than an allocation. Rebuilding the table per call is what a naive
+// spelling does, and the soak sees it immediately: ten objects per ToJson of an
+// instance carrying five unions.
+//
+// The value is FILLED IN AN init() rather than in its own initializer, and the
+// reason is the one the cook's descriptors already carry: Go refuses an
+// initialization cycle among package-level variables, an arm's Table column
+// names a descriptor, and a descriptor can name the union back. An init body is
+// not part of that analysis, so the graph is expressible whatever a schema
+// declares. Nothing mutates it afterwards.
+func (g *tableGen) unionArmsFunc(un *ir.Union, owner *ir.Struct, f *ir.Field) string {
+	symbol := unionArmsSymbol(owner, f)
 	var b strings.Builder
-	fmt.Fprintf(&b, "func() *TableUnionInfo {\nreturn &TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(%s{}.Type)), TagSize: uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{\n{Offset: 0, Table: nil},\n", un.Name, un.Name)
+	fmt.Fprintf(&b, "%s = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(%s{}.Type)), TagSize: uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{\n{Offset: 0, Table: nil},\n",
+		symbol, un.Name, un.Name)
 	for _, v := range un.Variants {
 		fmt.Fprintf(&b, "{Offset: uint32(unsafe.Offsetof(%s{}.%s)), Table: %sTableType},\n",
 			un.Name, ir.GoExportName(v.Name), v.Type)
 	}
-	b.WriteString("}}\n}")
-	return b.String()
+	b.WriteString("}}")
+	g.unionArms = append(g.unionArms, unionArms{symbol: symbol, fill: b.String()})
+	return fmt.Sprintf("func() *TableUnionInfo { return &%s }", symbol)
+}
+
+// unionArmsSymbol names one union FIELD's shape. It is unexported, so nothing a
+// schema declares can collide with it, and it is keyed by the owner and the
+// field because a union's arm offsets are the union's but a descriptor column
+// belongs to the field that carries it.
+func unionArmsSymbol(owner *ir.Struct, f *ir.Field) string {
+	return "unionArms" + owner.Name + ir.GoExportName(f.Name)
+}
+
+// emitUnionArms declares this file's union-field shapes and fills them in an
+// init(). One value per union FIELD, so a walk that asks a union for its shape
+// pays a load; and filled in an init() rather than in its own initializer,
+// because Go refuses an initialization cycle among package-level variables and
+// a descriptor graph is allowed to be cyclic (docs/SPEC-TABLES.md §8).
+func (g *tableGen) emitUnionArms() {
+	if len(g.unionArms) == 0 {
+		return
+	}
+	g.pf("// The UNION FIELD SHAPES the descriptors above point at: the tag, and the\n")
+	g.pf("// arms indexed by it (docs/SPEC-TABLES.md §8.1). One value per field, so a\n")
+	g.pf("// walk that asks a union for its shape pays a load and not an allocation.\n")
+	for _, a := range g.unionArms {
+		g.pf("var %s TableUnionInfo\n", a.symbol)
+	}
+	g.pf("\n// They are FILLED HERE rather than in their own initializers: an arm's Table\n")
+	g.pf("// column names a descriptor, a descriptor may name the union back, and Go\n")
+	g.pf("// refuses an initialization cycle among package-level variables. An init body\n")
+	g.pf("// is not part of that analysis, so the graph is expressible whatever a schema\n")
+	g.pf("// declares. Nothing mutates them afterwards: the surface is immutable from\n")
+	g.pf("// here on, readable from any goroutine with no synchronisation.\n")
+	g.pf("func init() {\n")
+	for _, a := range g.unionArms {
+		g.pf("\t%s\n", a.fill)
+	}
+	g.pf("}\n\n")
 }

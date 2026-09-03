@@ -872,6 +872,23 @@ tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-
 # race detector is what says the pointing itself is sound, and Go's bounds
 # checks — which are on in every configuration — are what the oracle's own walk
 # reads through.
+# THE GO SOAK (docs/SPEC-TABLES.md, "What allocates, and what never does").
+# Correctness tests are necessary and not sufficient: a read path that leaks one
+# object per call passes every byte comparison in this repo and takes a server
+# down in an afternoon. This reads and writes the WHOLE corpus in a loop and
+# watches the ALLOCATION COUNTER, which must not move at all.
+#
+# Two seconds of it ride `go test ./...` so a regression is caught on the way
+# past; SOAK names the real one. It found a real defect on its first run: the
+# text walk rebuilt a union field's arms table on every call, ten objects per
+# ToJson of an instance carrying five unions, which no byte comparison could
+# ever have seen.
+SOAK ?= 1h
+
+.PHONY: tables-go-soak
+tables-go-soak: build/tables-generated-go/.stamp
+	cd test/go-tables && go test -run Soak -timeout 0 -soak $(SOAK) -v .
+
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
 	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
