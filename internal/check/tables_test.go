@@ -735,7 +735,7 @@ func TestSpecSection11EqualsTheChecker(t *testing.T) {
 	lines := strings.Split(string(page), "\n")
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if trimmed != "Measure  MeasureBody  Save  SaveBody  Load  LoadBody  Reset" &&
+		if trimmed != "Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody" &&
 			trimmed != "Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen" &&
 			trimmed != "BuilderInit  BuilderShutdown  BuilderLock  BuilderRoot" {
 			continue

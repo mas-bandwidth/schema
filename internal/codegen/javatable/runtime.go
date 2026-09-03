@@ -220,7 +220,9 @@ public final class TableReader {
                 if (!has(2)) { return false; }
                 offset += 2;
                 return true;
-            case 4: case 8: case 10:
+            // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1): four bytes, so it costs
+            // one row here and a reader without the kind still skips a pointer field
+            case 4: case 8: case 10: case 17:
                 if (!has(4)) { return false; }
                 offset += 4;
                 return true;
