@@ -366,11 +366,15 @@ static const uint32_t kTableAlign       = 8;                           // every 
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
 // The pointer-chain depth cap. It bounds recursion on every walk — measure,
-// save, load and pack — so a data cycle is an ERROR and never a hang, and a
-// hostile wire cannot drive the C stack into the ground. A pointer chain's
-// WIRE nesting equals its length (§3), so this also caps chain length: wide
-// structures are unbounded, deep ones are not. Lifting it wants a flat,
-// indexed node encoding — a named follow-on (§15).
+// save, load and pack — so a hostile wire cannot drive the C stack into the
+// ground. A pointer chain's WIRE nesting equals its length (§3), so this also
+// caps chain length: wide structures are unbounded, deep ones are not. Lifting
+// it wants a flat, indexed node encoding — a named follow-on (§15).
+//
+// It is not what refuses a DATA CYCLE on the pack walk: TablePackMap's open
+// colouring names that cycle at the reference that closes it (§3.1). The cap
+// is still the whole of the cycle answer on the wire walks, which carry no
+// map today (§3.1's backend status).
 static const int32_t kTableMaxDepth = 128;
 
 // ---- TableRef: a relocatable reference (never a machine pointer) ----
@@ -571,6 +575,148 @@ struct TableWorker
         return slot;
     }
 };
+
+// ---- TablePackMap: the pack walk's identity map (docs/SPEC-TABLES.md §3.1, §6.2) ----
+//
+// ONE ENTRY PER REACHABLE NODE, and that map IS identity: a node must know
+// where it landed to be named a second time, so Lock packs a shared node ONCE
+// and every later reference resolves to the one body it already has. That is
+// the same first-visit numbering the wire uses, so the pack order and the node
+// order are one order.
+//
+// COLOURING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
+// makes a data cycle free to refuse: a reference to an entry still open is a
+// cycle, and Lock returns failure rather than recursing away. The ROOT's entry
+// is open for the whole walk.
+//
+// The map is proportional to NODES, never to bytes, and it lives on the
+// AUTHORING side, where §6.5 licenses allocation. Nothing on the reading path
+// ever builds one.
+struct TablePackEntry
+{
+    const void * key;   // the node's address in the graph being packed
+    int64_t offset;     // where that node landed in the region
+    uint8_t open;       // its descent is still open: a reference here is a cycle
+};
+
+struct TablePackMap
+{
+    TablePackEntry * entries = NULL;
+    int64_t capacity = 0; // a power of two, or zero while empty
+    int64_t count = 0;
+};
+
+inline void TablePackMapInit( TablePackMap & map )
+{
+    map.entries = NULL;
+    map.capacity = 0;
+    map.count = 0;
+}
+
+inline void TablePackMapShutdown( TablePackMap & map )
+{
+    free( map.entries );
+    TablePackMapInit( map );
+}
+
+// The two walks behind Lock re-derive the SAME map from the same graph — the
+// numbering is never carried between them (§3.1) — so the second starts from
+// an empty map and keeps the capacity the first paid for.
+inline void TablePackMapReset( TablePackMap & map )
+{
+    if ( map.entries != NULL ) { memset( map.entries, 0, (size_t) map.capacity * sizeof( TablePackEntry ) ); }
+    map.count = 0;
+}
+
+// open addressing, linear probing, a multiply-shift hash over the address: a
+// node key is a pointer and its low bits are alignment, so the low bits alone
+// would collide on every node of one type
+inline int64_t TablePackMapSlot( const TablePackMap & map, const void * key )
+{
+    uint64_t hash = (uint64_t) (uintptr_t) key;
+    hash *= 0x9E3779B97F4A7C15ull;
+    hash ^= hash >> 29;
+    int64_t mask = map.capacity - 1;
+    int64_t at = (int64_t) ( hash & (uint64_t) mask );
+    while ( map.entries[at].key != NULL && map.entries[at].key != key )
+    {
+        at = ( at + 1 ) & mask;
+    }
+    return at;
+}
+
+inline TablePackEntry * TablePackMapFind( TablePackMap & map, const void * key )
+{
+    if ( map.capacity == 0 ) { return NULL; }
+    TablePackEntry * entry = &map.entries[ TablePackMapSlot( map, key ) ];
+    return entry->key == key ? entry : NULL;
+}
+
+// QUADRUPLING, not doubling, and the reason is measured: growth rehashes every
+// entry, and on a graph of 131,071 nodes the doubling schedule spent 45% of
+// Lock in rehashing alone. Quadrupling from 1024 buys 1.35x on that graph and
+// keeps the map NODE-proportional (§6.2) — under 128 bytes a node at its
+// worst, right after a grow, and about 64 on average.
+inline bool TablePackMapGrow( TablePackMap & map )
+{
+    TablePackMap grown;
+    grown.capacity = map.capacity != 0 ? map.capacity * 4 : 1024;
+    grown.entries = (TablePackEntry *) calloc( (size_t) grown.capacity, sizeof( TablePackEntry ) );
+    if ( grown.entries == NULL ) { return false; }
+    for ( int64_t i = 0; i < map.capacity; i++ )
+    {
+        if ( map.entries[i].key == NULL ) { continue; }
+        grown.entries[ TablePackMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
+        grown.count++;
+    }
+    free( map.entries );
+    map = grown;
+    return true;
+}
+
+// REACH a node: one probe answers both questions the walk has. A true "taken"
+// says this is a FIRST visit, and the entry is now the node's, coloured open
+// at "offset"; otherwise the entry is the one the node already has, and its
+// open bit says cycle or sharing. NULL is an allocation failure, and it is a
+// refusal like any other: Lock fails rather than packing a graph it cannot
+// track.
+//
+// It is one call and not a find followed by an insert because the walk asks
+// this question twice per node — once to measure, once to pack — and every
+// probe is a miss into a table larger than L2.
+inline TablePackEntry * TablePackMapReach( TablePackMap & map, const void * key, int64_t offset, bool & taken, int64_t & slot )
+{
+    if ( ( map.count + 1 ) * 4 >= map.capacity * 3 ) // keep the load factor under three quarters
+    {
+        if ( !TablePackMapGrow( map ) ) { return NULL; }
+    }
+    slot = TablePackMapSlot( map, key );
+    TablePackEntry * entry = &map.entries[slot];
+    taken = entry->key != key; // an empty slot is a first visit; the key is never NULL
+    if ( taken )
+    {
+        entry->key = key;
+        entry->offset = offset;
+        entry->open = 1;
+        map.count++;
+    }
+    return entry;
+}
+
+// The descent finished: the node keeps its entry — identity outlives the
+// descent — and stops being a cycle. The "hint" is the slot Reach returned, and it
+// is checked against the key rather than trusted, so a rehash between the two
+// costs a second probe instead of correctness.
+inline void TablePackMapClose( TablePackMap & map, const void * key, int64_t hint )
+{
+    if ( hint >= 0 && hint < map.capacity && map.entries[hint].key == key )
+    {
+        map.entries[hint].open = 0;
+        return;
+    }
+    TablePackEntry * entry = TablePackMapFind( map, key );
+    if ( entry != NULL ) { entry->open = 0; }
+}
 
 // ---- resolution contexts: which encoding a walk is reading ----
 
@@ -1143,26 +1289,26 @@ template <typename Sink> inline bool AlbumLoadBody( TableReader & r, Sink & sink
 
 // ---- pointer-graph walkers: pack (Lock), size (Load) ----
 
-template <typename Ctx> inline int64_t SettingsPackMeasure( const Ctx & ctx, const Settings & value, int32_t depth );
-template <typename Ctx> inline bool SettingsPack( const Ctx & ctx, const Settings & src, Settings & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
+template <typename Ctx> inline int64_t SettingsPackMeasure( const Ctx & ctx, TablePackMap & seen, const Settings & value, int32_t depth );
+template <typename Ctx> inline bool SettingsPack( const Ctx & ctx, TablePackMap & seen, const Settings & src, Settings & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t SettingsLoadMeasureBody( TableReader & r, int32_t depth );
-template <typename Ctx> inline int64_t ListNodePackMeasure( const Ctx & ctx, const ListNode & value, int32_t depth );
-template <typename Ctx> inline bool ListNodePack( const Ctx & ctx, const ListNode & src, ListNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
+template <typename Ctx> inline int64_t ListNodePackMeasure( const Ctx & ctx, TablePackMap & seen, const ListNode & value, int32_t depth );
+template <typename Ctx> inline bool ListNodePack( const Ctx & ctx, TablePackMap & seen, const ListNode & src, ListNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t ListNodeLoadMeasureBody( TableReader & r, int32_t depth );
-template <typename Ctx> inline int64_t TreeNodePackMeasure( const Ctx & ctx, const TreeNode & value, int32_t depth );
-template <typename Ctx> inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
+template <typename Ctx> inline int64_t TreeNodePackMeasure( const Ctx & ctx, TablePackMap & seen, const TreeNode & value, int32_t depth );
+template <typename Ctx> inline bool TreeNodePack( const Ctx & ctx, TablePackMap & seen, const TreeNode & src, TreeNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t TreeNodeLoadMeasureBody( TableReader & r, int32_t depth );
-template <typename Ctx> inline int64_t LayerPackMeasure( const Ctx & ctx, const Layer & value, int32_t depth );
-template <typename Ctx> inline bool LayerPack( const Ctx & ctx, const Layer & src, Layer & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
+template <typename Ctx> inline int64_t LayerPackMeasure( const Ctx & ctx, TablePackMap & seen, const Layer & value, int32_t depth );
+template <typename Ctx> inline bool LayerPack( const Ctx & ctx, TablePackMap & seen, const Layer & src, Layer & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t LayerLoadMeasureBody( TableReader & r, int32_t depth );
-template <typename Ctx> inline int64_t ScenePackMeasure( const Ctx & ctx, const Scene & value, int32_t depth );
-template <typename Ctx> inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
+template <typename Ctx> inline int64_t ScenePackMeasure( const Ctx & ctx, TablePackMap & seen, const Scene & value, int32_t depth );
+template <typename Ctx> inline bool ScenePack( const Ctx & ctx, TablePackMap & seen, const Scene & src, Scene & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t SceneLoadMeasureBody( TableReader & r, int32_t depth );
-template <typename Ctx> inline int64_t DepotPackMeasure( const Ctx & ctx, const Depot & value, int32_t depth );
-template <typename Ctx> inline bool DepotPack( const Ctx & ctx, const Depot & src, Depot & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
+template <typename Ctx> inline int64_t DepotPackMeasure( const Ctx & ctx, TablePackMap & seen, const Depot & value, int32_t depth );
+template <typename Ctx> inline bool DepotPack( const Ctx & ctx, TablePackMap & seen, const Depot & src, Depot & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t DepotLoadMeasureBody( TableReader & r, int32_t depth );
-template <typename Ctx> inline int64_t AlbumPackMeasure( const Ctx & ctx, const Album & value, int32_t depth );
-template <typename Ctx> inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
+template <typename Ctx> inline int64_t AlbumPackMeasure( const Ctx & ctx, TablePackMap & seen, const Album & value, int32_t depth );
+template <typename Ctx> inline bool AlbumPack( const Ctx & ctx, TablePackMap & seen, const Album & src, Album & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
 inline int64_t AlbumLoadMeasureBody( TableReader & r, int32_t depth );
 
 inline int64_t MetaMeasure( const Meta & value )
@@ -2769,29 +2915,33 @@ inline bool AlbumLoadBody( TableReader & r, Sink & sink, Album & value, int32_t 
 }
 
 // SettingsPackMeasure: the packed region bytes of everything Settings POINTS AT.
-// Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
+// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
+// node two references name is measured ONCE and packed once, and a
+// reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t SettingsPackMeasure( const Ctx & ctx, const Settings & value, int32_t depth )
+inline int64_t SettingsPackMeasure( const Ctx & ctx, TablePackMap & seen, const Settings & value, int32_t depth )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap
+    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
-    (void) ctx; (void) value; // no pointers below this node
+    (void) ctx; (void) seen; (void) value; // no pointers below this node
     return bytes;
 }
 
 // SettingsPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// The pre-order is what makes a region simple to reason about: a child
-// always lands after the slot naming it, so region deltas are strictly
-// positive and a packed region cannot contain a cycle.
+// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
+// where it landed, so a node's FIRST reference lays it out and every later
+// reference points BACK at that one body. A region delta therefore has no
+// required sign (§6.3), and sharing and a back-reference are one fact. A
+// reference to a node whose descent is still OPEN is a cycle, and this
+// refuses it rather than packing one.
 template <typename Ctx>
-inline bool SettingsPack( const Ctx & ctx, const Settings & src, Settings & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool SettingsPack( const Ctx & ctx, TablePackMap & seen, const Settings & src, Settings & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( Settings ) ); // trivially copyable, by construction
-    (void) ctx; (void) base; (void) capacity; (void) used;
+    (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;
     return true;
 }
 
@@ -2806,20 +2956,33 @@ inline int64_t SettingsLoadMeasureBody( TableReader & r, int32_t depth )
 }
 
 // ListNodePackMeasure: the packed region bytes of everything ListNode POINTS AT.
-// Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
+// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
+// node two references name is measured ONCE and packed once, and a
+// reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t ListNodePackMeasure( const Ctx & ctx, const ListNode & value, int32_t depth )
+inline int64_t ListNodePackMeasure( const Ctx & ctx, TablePackMap & seen, const ListNode & value, int32_t depth )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap
+    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
     {
         const ListNode * pointee = ListNodeAt( ctx, value.next ); // next
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = ListNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            }
         }
     }
     return bytes;
@@ -2828,11 +2991,14 @@ inline int64_t ListNodePackMeasure( const Ctx & ctx, const ListNode & value, int
 // ListNodePack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// The pre-order is what makes a region simple to reason about: a child
-// always lands after the slot naming it, so region deltas are strictly
-// positive and a packed region cannot contain a cycle.
+// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
+// where it landed, so a node's FIRST reference lays it out and every later
+// reference points BACK at that one body. A region delta therefore has no
+// required sign (§6.3), and sharing and a back-reference are one fact. A
+// reference to a node whose descent is still OPEN is a cycle, and this
+// refuses it rather than packing one.
 template <typename Ctx>
-inline bool ListNodePack( const Ctx & ctx, const ListNode & src, ListNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool ListNodePack( const Ctx & ctx, TablePackMap & seen, const ListNode & src, ListNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( ListNode ) ); // trivially copyable, by construction
@@ -2841,12 +3007,25 @@ inline bool ListNodePack( const Ctx & ctx, const ListNode & src, ListNode & dst,
         const ListNode * pointee = ListNodeAt( ctx, src.next );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.next.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.next );
-            if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.next.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.next ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+                ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.next.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.next );
+                if ( !ListNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     return true;
@@ -2892,29 +3071,54 @@ inline int64_t ListNodeLoadMeasureBody( TableReader & r, int32_t depth )
 }
 
 // TreeNodePackMeasure: the packed region bytes of everything TreeNode POINTS AT.
-// Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
+// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
+// node two references name is measured ONCE and packed once, and a
+// reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t TreeNodePackMeasure( const Ctx & ctx, const TreeNode & value, int32_t depth )
+inline int64_t TreeNodePackMeasure( const Ctx & ctx, TablePackMap & seen, const TreeNode & value, int32_t depth )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap
+    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
     {
         const TreeNode * pointee = TreeNodeAt( ctx, value.left ); // left
         if ( pointee != NULL )
         {
-            int64_t inner = TreeNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = TreeNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            }
         }
     }
     {
         const TreeNode * pointee = TreeNodeAt( ctx, value.right ); // right
         if ( pointee != NULL )
         {
-            int64_t inner = TreeNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = TreeNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            }
         }
     }
     return bytes;
@@ -2923,11 +3127,14 @@ inline int64_t TreeNodePackMeasure( const Ctx & ctx, const TreeNode & value, int
 // TreeNodePack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// The pre-order is what makes a region simple to reason about: a child
-// always lands after the slot naming it, so region deltas are strictly
-// positive and a packed region cannot contain a cycle.
+// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
+// where it landed, so a node's FIRST reference lays it out and every later
+// reference points BACK at that one body. A region delta therefore has no
+// required sign (§6.3), and sharing and a back-reference are one fact. A
+// reference to a node whose descent is still OPEN is a cycle, and this
+// refuses it rather than packing one.
 template <typename Ctx>
-inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool TreeNodePack( const Ctx & ctx, TablePackMap & seen, const TreeNode & src, TreeNode & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( TreeNode ) ); // trivially copyable, by construction
@@ -2936,12 +3143,25 @@ inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst,
         const TreeNode * pointee = TreeNodeAt( ctx, src.left );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.left.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.left );
-            if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.left.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.left ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
+                TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.left.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.left );
+                if ( !TreeNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     {
@@ -2949,12 +3169,25 @@ inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst,
         const TreeNode * pointee = TreeNodeAt( ctx, src.right );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.right.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.right );
-            if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.right.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.right ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
+                TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.right.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.right );
+                if ( !TreeNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     return true;
@@ -3015,20 +3248,33 @@ inline int64_t TreeNodeLoadMeasureBody( TableReader & r, int32_t depth )
 }
 
 // LayerPackMeasure: the packed region bytes of everything Layer POINTS AT.
-// Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
+// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
+// node two references name is measured ONCE and packed once, and a
+// reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t LayerPackMeasure( const Ctx & ctx, const Layer & value, int32_t depth )
+inline int64_t LayerPackMeasure( const Ctx & ctx, TablePackMap & seen, const Layer & value, int32_t depth )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap
+    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
     {
         const ListNode * pointee = ListNodeAt( ctx, value.head ); // head
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = ListNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            }
         }
     }
     return bytes;
@@ -3037,11 +3283,14 @@ inline int64_t LayerPackMeasure( const Ctx & ctx, const Layer & value, int32_t d
 // LayerPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// The pre-order is what makes a region simple to reason about: a child
-// always lands after the slot naming it, so region deltas are strictly
-// positive and a packed region cannot contain a cycle.
+// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
+// where it landed, so a node's FIRST reference lays it out and every later
+// reference points BACK at that one body. A region delta therefore has no
+// required sign (§6.3), and sharing and a back-reference are one fact. A
+// reference to a node whose descent is still OPEN is a cycle, and this
+// refuses it rather than packing one.
 template <typename Ctx>
-inline bool LayerPack( const Ctx & ctx, const Layer & src, Layer & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool LayerPack( const Ctx & ctx, TablePackMap & seen, const Layer & src, Layer & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( Layer ) ); // trivially copyable, by construction
@@ -3050,12 +3299,25 @@ inline bool LayerPack( const Ctx & ctx, const Layer & src, Layer & dst, uint8_t 
         const ListNode * pointee = ListNodeAt( ctx, src.head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
-            if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.head.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.head ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+                ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
+                if ( !ListNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     return true;
@@ -3101,57 +3363,106 @@ inline int64_t LayerLoadMeasureBody( TableReader & r, int32_t depth )
 }
 
 // ScenePackMeasure: the packed region bytes of everything Scene POINTS AT.
-// Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
+// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
+// node two references name is measured ONCE and packed once, and a
+// reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t ScenePackMeasure( const Ctx & ctx, const Scene & value, int32_t depth )
+inline int64_t ScenePackMeasure( const Ctx & ctx, TablePackMap & seen, const Scene & value, int32_t depth )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap
+    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
     {
         const ListNode * pointee = ListNodeAt( ctx, value.head ); // head
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = ListNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            }
         }
     }
     {
         const TreeNode * pointee = TreeNodeAt( ctx, value.tree ); // tree
         if ( pointee != NULL )
         {
-            int64_t inner = TreeNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = TreeNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + inner;
+            }
         }
     }
     {
         const Settings * pointee = SettingsAt( ctx, value.settings ); // settings
         if ( pointee != NULL )
         {
-            int64_t inner = SettingsPackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( Settings ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = SettingsPackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( Settings ) ) + inner;
+            }
         }
     }
     {
         const ListNode * pointee = ListNodeAt( ctx, value.alias ); // alias
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = ListNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            }
         }
     }
     { // ground (nested by value)
-        int64_t inner = LayerPackMeasure( ctx, value.ground, depth );
+        int64_t inner = LayerPackMeasure( ctx, seen, value.ground, depth );
         if ( inner < 0 ) { return -1; }
         bytes += inner;
     }
     for ( int32_t i = 0; i < value.layers_count && i < 4; i++ ) // layers
     {
-        int64_t inner = LayerPackMeasure( ctx, value.layers[i], depth );
+        int64_t inner = LayerPackMeasure( ctx, seen, value.layers[i], depth );
         if ( inner < 0 ) { return -1; }
         bytes += inner;
     }
@@ -3161,11 +3472,14 @@ inline int64_t ScenePackMeasure( const Ctx & ctx, const Scene & value, int32_t d
 // ScenePack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// The pre-order is what makes a region simple to reason about: a child
-// always lands after the slot naming it, so region deltas are strictly
-// positive and a packed region cannot contain a cycle.
+// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
+// where it landed, so a node's FIRST reference lays it out and every later
+// reference points BACK at that one body. A region delta therefore has no
+// required sign (§6.3), and sharing and a back-reference are one fact. A
+// reference to a node whose descent is still OPEN is a cycle, and this
+// refuses it rather than packing one.
 template <typename Ctx>
-inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool ScenePack( const Ctx & ctx, TablePackMap & seen, const Scene & src, Scene & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( Scene ) ); // trivially copyable, by construction
@@ -3174,12 +3488,25 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
         const ListNode * pointee = ListNodeAt( ctx, src.head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
-            if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.head.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.head ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+                ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
+                if ( !ListNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     {
@@ -3187,12 +3514,25 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
         const TreeNode * pointee = TreeNodeAt( ctx, src.tree );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.tree.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.tree );
-            if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.tree.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.tree ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
+                TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.tree.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.tree );
+                if ( !TreeNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     {
@@ -3200,12 +3540,25 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
         const Settings * pointee = SettingsAt( ctx, src.settings );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( Settings ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
-            Settings * child = new ( base + at ) Settings; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.settings.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.settings );
-            if ( !SettingsPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.settings.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.settings ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( Settings ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
+                Settings * child = new ( base + at ) Settings; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.settings.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.settings );
+                if ( !SettingsPack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     {
@@ -3213,20 +3566,33 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
         const ListNode * pointee = ListNodeAt( ctx, src.alias );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.alias.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.alias );
-            if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.alias.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.alias ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+                ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.alias.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.alias );
+                if ( !ListNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     { // ground (nested by value)
-        if ( !LayerPack( ctx, src.ground, dst.ground, base, capacity, used, depth ) ) { return false; }
+        if ( !LayerPack( ctx, seen, src.ground, dst.ground, base, capacity, used, depth ) ) { return false; }
     }
     for ( int32_t i = 0; i < src.layers_count && i < 4; i++ ) // layers
     {
-        if ( !LayerPack( ctx, src.layers[i], dst.layers[i], base, capacity, used, depth ) ) { return false; }
+        if ( !LayerPack( ctx, seen, src.layers[i], dst.layers[i], base, capacity, used, depth ) ) { return false; }
     }
     return true;
 }
@@ -3355,25 +3721,38 @@ inline int64_t SceneLoadMeasureBody( TableReader & r, int32_t depth )
 }
 
 // DepotPackMeasure: the packed region bytes of everything Depot POINTS AT.
-// Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
+// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
+// node two references name is measured ONCE and packed once, and a
+// reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t DepotPackMeasure( const Ctx & ctx, const Depot & value, int32_t depth )
+inline int64_t DepotPackMeasure( const Ctx & ctx, TablePackMap & seen, const Depot & value, int32_t depth )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap
+    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
     {
         const ListNode * pointee = ListNodeAt( ctx, value.head ); // head
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = ListNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            }
         }
     }
     for ( int32_t i = 0; i < 2; i++ ) // banks
     {
-        int64_t inner = LayerPackMeasure( ctx, value.banks.slots[i], depth );
+        int64_t inner = LayerPackMeasure( ctx, seen, value.banks.slots[i], depth );
         if ( inner < 0 ) { return -1; }
         bytes += inner;
     }
@@ -3383,11 +3762,14 @@ inline int64_t DepotPackMeasure( const Ctx & ctx, const Depot & value, int32_t d
 // DepotPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// The pre-order is what makes a region simple to reason about: a child
-// always lands after the slot naming it, so region deltas are strictly
-// positive and a packed region cannot contain a cycle.
+// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
+// where it landed, so a node's FIRST reference lays it out and every later
+// reference points BACK at that one body. A region delta therefore has no
+// required sign (§6.3), and sharing and a back-reference are one fact. A
+// reference to a node whose descent is still OPEN is a cycle, and this
+// refuses it rather than packing one.
 template <typename Ctx>
-inline bool DepotPack( const Ctx & ctx, const Depot & src, Depot & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool DepotPack( const Ctx & ctx, TablePackMap & seen, const Depot & src, Depot & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( Depot ) ); // trivially copyable, by construction
@@ -3396,17 +3778,30 @@ inline bool DepotPack( const Ctx & ctx, const Depot & src, Depot & dst, uint8_t 
         const ListNode * pointee = ListNodeAt( ctx, src.head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
-            if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.head.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.head ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+                ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
+                if ( !ListNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     for ( int32_t i = 0; i < 2; i++ ) // banks
     {
-        if ( !LayerPack( ctx, src.banks.slots[i], dst.banks.slots[i], base, capacity, used, depth ) ) { return false; }
+        if ( !LayerPack( ctx, seen, src.banks.slots[i], dst.banks.slots[i], base, capacity, used, depth ) ) { return false; }
     }
     return true;
 }
@@ -3478,33 +3873,58 @@ inline int64_t DepotLoadMeasureBody( TableReader & r, int32_t depth )
 }
 
 // AlbumPackMeasure: the packed region bytes of everything Album POINTS AT.
-// Aliasing is not preserved: two pointers to one node pack as two nodes,
-// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).
+// ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
+// node two references name is measured ONCE and packed once, and a
+// reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t AlbumPackMeasure( const Ctx & ctx, const Album & value, int32_t depth )
+inline int64_t AlbumPackMeasure( const Ctx & ctx, TablePackMap & seen, const Album & value, int32_t depth )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap
+    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
     {
         const Marker * pointee = MarkerAt( ctx, value.pin ); // pin
         if ( pointee != NULL )
         {
-            int64_t inner = MarkerPackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( Marker ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = MarkerPackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( Marker ) ) + inner;
+            }
         }
     }
     {
         const ListNode * pointee = ListNodeAt( ctx, value.head ); // head
         if ( pointee != NULL )
         {
-            int64_t inner = ListNodePackMeasure( ctx, *pointee, depth + 1 );
-            if ( inner < 0 ) { return -1; }
-            bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );
+            if ( entry == NULL ) { return -1; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return -1; } // a data cycle
+            }
+            else
+            {
+                int64_t inner = ListNodePackMeasure( ctx, seen, *pointee, depth + 1 );
+                if ( inner < 0 ) { return -1; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+                bytes += TableAlignUp64( (int64_t) sizeof( ListNode ) ) + inner;
+            }
         }
     }
     { // marker (nested by value)
-        int64_t inner = MarkerPackMeasure( ctx, value.marker, depth );
+        int64_t inner = MarkerPackMeasure( ctx, seen, value.marker, depth );
         if ( inner < 0 ) { return -1; }
         bytes += inner;
     }
@@ -3514,11 +3934,14 @@ inline int64_t AlbumPackMeasure( const Ctx & ctx, const Album & value, int32_t d
 // AlbumPack: copy src into dst (already placed), then lay every pointee out
 // depth-first behind it, in FIELD ORDER, by bump allocation.
 //
-// The pre-order is what makes a region simple to reason about: a child
-// always lands after the slot naming it, so region deltas are strictly
-// positive and a packed region cannot contain a cycle.
+// ONE NODE, ONE BODY (§6.2): `seen` holds every node already placed and
+// where it landed, so a node's FIRST reference lays it out and every later
+// reference points BACK at that one body. A region delta therefore has no
+// required sign (§6.3), and sharing and a back-reference are one fact. A
+// reference to a node whose descent is still OPEN is a cycle, and this
+// refuses it rather than packing one.
 template <typename Ctx>
-inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool AlbumPack( const Ctx & ctx, TablePackMap & seen, const Album & src, Album & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
 {
     if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( Album ) ); // trivially copyable, by construction
@@ -3527,12 +3950,25 @@ inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t 
         const Marker * pointee = MarkerAt( ctx, src.pin );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( Marker ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
-            Marker * child = new ( base + at ) Marker; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.pin.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.pin );
-            if ( !MarkerPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.pin.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.pin ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( Marker ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
+                Marker * child = new ( base + at ) Marker; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.pin.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.pin );
+                if ( !MarkerPack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     {
@@ -3540,16 +3976,29 @@ inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t 
         const ListNode * pointee = ListNodeAt( ctx, src.head );
         if ( pointee != NULL )
         {
-            int64_t at = TableAlignUp64( used );
-            if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
-            used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
-            dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
-            if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+                dst.head.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.head ); // the one body it already has
+            }
+            else
+            {
+                if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
+                used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
+                ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
+                dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
+                if ( !ListNodePack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                TablePackMapClose( seen, (const void *) pointee, slot );
+            }
         }
     }
     { // marker (nested by value)
-        if ( !MarkerPack( ctx, src.marker, dst.marker, base, capacity, used, depth ) ) { return false; }
+        if ( !MarkerPack( ctx, seen, src.marker, dst.marker, base, capacity, used, depth ) ) { return false; }
     }
     return true;
 }
@@ -3682,19 +4131,38 @@ inline bool ListNodeBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const ListNode & root = *(const ListNode *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    int64_t below = ListNodePackMeasure( ctx, root, 1 );
-    if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
+    // The ROOT takes the map's first entry: it is packed at offset 0, and its
+    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
+    TablePackMap seen;
+    TablePackMapInit( seen );
+    bool root_taken = false;
+    int64_t root_slot = 0;
+    int64_t below = -1;
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    {
+        below = ListNodePackMeasure( ctx, seen, root, 1 );
+    }
+    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( ListNode ) ) + below;
     uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate
-    if ( packed == NULL ) { return false; }
+    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( ListNode ) );
     ListNode * destination = new ( packed ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
-    if ( !ListNodePack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
+    // The pack walk RE-DERIVES the same numbering rather than carrying the
+    // measure's — nothing passes between them, which is what makes
+    // `used == total` below a real check and not a tautology (§3.1). The
+    // map keeps the capacity the measure paid for, so the second walk
+    // rehashes nothing.
+    TablePackMapReset( seen );
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
+         !ListNodePack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )
     {
+        TablePackMapShutdown( seen );
         free( packed );
         return false;
     }
+    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -3840,19 +4308,38 @@ inline bool TreeNodeBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const TreeNode & root = *(const TreeNode *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    int64_t below = TreeNodePackMeasure( ctx, root, 1 );
-    if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
+    // The ROOT takes the map's first entry: it is packed at offset 0, and its
+    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
+    TablePackMap seen;
+    TablePackMapInit( seen );
+    bool root_taken = false;
+    int64_t root_slot = 0;
+    int64_t below = -1;
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    {
+        below = TreeNodePackMeasure( ctx, seen, root, 1 );
+    }
+    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( TreeNode ) ) + below;
     uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate
-    if ( packed == NULL ) { return false; }
+    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
     TreeNode * destination = new ( packed ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
-    if ( !TreeNodePack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
+    // The pack walk RE-DERIVES the same numbering rather than carrying the
+    // measure's — nothing passes between them, which is what makes
+    // `used == total` below a real check and not a tautology (§3.1). The
+    // map keeps the capacity the measure paid for, so the second walk
+    // rehashes nothing.
+    TablePackMapReset( seen );
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
+         !TreeNodePack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )
     {
+        TablePackMapShutdown( seen );
         free( packed );
         return false;
     }
+    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -3998,19 +4485,38 @@ inline bool LayerBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Layer & root = *(const Layer *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    int64_t below = LayerPackMeasure( ctx, root, 1 );
-    if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
+    // The ROOT takes the map's first entry: it is packed at offset 0, and its
+    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
+    TablePackMap seen;
+    TablePackMapInit( seen );
+    bool root_taken = false;
+    int64_t root_slot = 0;
+    int64_t below = -1;
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    {
+        below = LayerPackMeasure( ctx, seen, root, 1 );
+    }
+    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Layer ) ) + below;
     uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate
-    if ( packed == NULL ) { return false; }
+    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Layer ) );
     Layer * destination = new ( packed ) Layer; // lifetime only: the Pack below memcpy's the whole node over it
-    if ( !LayerPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
+    // The pack walk RE-DERIVES the same numbering rather than carrying the
+    // measure's — nothing passes between them, which is what makes
+    // `used == total` below a real check and not a tautology (§3.1). The
+    // map keeps the capacity the measure paid for, so the second walk
+    // rehashes nothing.
+    TablePackMapReset( seen );
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
+         !LayerPack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )
     {
+        TablePackMapShutdown( seen );
         free( packed );
         return false;
     }
+    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -4156,19 +4662,38 @@ inline bool SceneBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Scene & root = *(const Scene *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    int64_t below = ScenePackMeasure( ctx, root, 1 );
-    if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
+    // The ROOT takes the map's first entry: it is packed at offset 0, and its
+    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
+    TablePackMap seen;
+    TablePackMapInit( seen );
+    bool root_taken = false;
+    int64_t root_slot = 0;
+    int64_t below = -1;
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    {
+        below = ScenePackMeasure( ctx, seen, root, 1 );
+    }
+    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Scene ) ) + below;
     uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate
-    if ( packed == NULL ) { return false; }
+    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Scene ) );
     Scene * destination = new ( packed ) Scene; // lifetime only: the Pack below memcpy's the whole node over it
-    if ( !ScenePack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
+    // The pack walk RE-DERIVES the same numbering rather than carrying the
+    // measure's — nothing passes between them, which is what makes
+    // `used == total` below a real check and not a tautology (§3.1). The
+    // map keeps the capacity the measure paid for, so the second walk
+    // rehashes nothing.
+    TablePackMapReset( seen );
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
+         !ScenePack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )
     {
+        TablePackMapShutdown( seen );
         free( packed );
         return false;
     }
+    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -4314,19 +4839,38 @@ inline bool DepotBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Depot & root = *(const Depot *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    int64_t below = DepotPackMeasure( ctx, root, 1 );
-    if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
+    // The ROOT takes the map's first entry: it is packed at offset 0, and its
+    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
+    TablePackMap seen;
+    TablePackMapInit( seen );
+    bool root_taken = false;
+    int64_t root_slot = 0;
+    int64_t below = -1;
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    {
+        below = DepotPackMeasure( ctx, seen, root, 1 );
+    }
+    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Depot ) ) + below;
     uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate
-    if ( packed == NULL ) { return false; }
+    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Depot ) );
     Depot * destination = new ( packed ) Depot; // lifetime only: the Pack below memcpy's the whole node over it
-    if ( !DepotPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
+    // The pack walk RE-DERIVES the same numbering rather than carrying the
+    // measure's — nothing passes between them, which is what makes
+    // `used == total` below a real check and not a tautology (§3.1). The
+    // map keeps the capacity the measure paid for, so the second walk
+    // rehashes nothing.
+    TablePackMapReset( seen );
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
+         !DepotPack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )
     {
+        TablePackMapShutdown( seen );
         free( packed );
         return false;
     }
+    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock
@@ -4472,19 +5016,38 @@ inline bool AlbumBuilder::Lock()
     if ( root_ref.null() ) { return false; }
     TableArenaCtx ctx = { &arena };
     const Album & root = *(const Album *) TableArenaAt( arena, (uint32_t) root_ref.value );
-    int64_t below = AlbumPackMeasure( ctx, root, 1 );
-    if ( below < 0 ) { return false; } // a data cycle, or a chain past kTableMaxDepth
+    // The ROOT takes the map's first entry: it is packed at offset 0, and its
+    // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
+    TablePackMap seen;
+    TablePackMapInit( seen );
+    bool root_taken = false;
+    int64_t root_slot = 0;
+    int64_t below = -1;
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
+    {
+        below = AlbumPackMeasure( ctx, seen, root, 1 );
+    }
+    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth
     int64_t total = TableAlignUp64( (int64_t) sizeof( Album ) ) + below;
     uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate
-    if ( packed == NULL ) { return false; }
+    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Album ) );
     Album * destination = new ( packed ) Album; // lifetime only: the Pack below memcpy's the whole node over it
-    if ( !AlbumPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
+    // The pack walk RE-DERIVES the same numbering rather than carrying the
+    // measure's — nothing passes between them, which is what makes
+    // `used == total` below a real check and not a tautology (§3.1). The
+    // map keeps the capacity the measure paid for, so the second walk
+    // rehashes nothing.
+    TablePackMapReset( seen );
+    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
+         !AlbumPack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )
     {
+        TablePackMapShutdown( seen );
         free( packed );
         return false;
     }
+    TablePackMapShutdown( seen );
     region = packed;
     region_bytes = total;
     arena.locked = true; // MONOTONIC: there is no unlock

@@ -1326,56 +1326,175 @@ static void test_lock_layout_stable()
     CHECK( memcmp( first.Region(), second.Region(), (size_t) first.RegionBytes() ) == 0 );
 }
 
-// ---- aliasing: two pointers to one node are TWO nodes, everywhere ----
+// ---- a SHARED node is packed ONCE, and identity survives Lock ----
+//
+// docs/SPEC-TABLES.md §6.2: Lock's walk carries one entry per node, so it
+// terminates in one visit per node and a shared node is packed ONCE. §6.3: a
+// node's FIRST reference points forward and every later reference points BACK
+// at the one body it already has, so a region delta has no required sign.
+//
+// THE REGION BYTE COUNT IS THE MEASUREMENT. Two pointers reading equal could
+// be an accident of layout; a region exactly the size of a once-packed graph
+// could not be produced by a pack that duplicates.
 
-static void test_pointer_alias()
+static int64_t scene_bytes() { return graphdemo::TableAlignUp64( (int64_t) sizeof( graphdemo::Scene ) ); }
+static int64_t list_node_bytes() { return graphdemo::TableAlignUp64( (int64_t) sizeof( graphdemo::ListNode ) ); }
+static int64_t tree_node_bytes() { return graphdemo::TableAlignUp64( (int64_t) sizeof( graphdemo::TreeNode ) ); }
+
+static void test_pointer_shared_node()
 {
-    graphdemo::SceneBuilder builder;
-    graphdemo::Scene * root = builder.GetRoot();
-    graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
-    shared->value = 1234;
-    root->head = shared;
-    root->alias = shared; // the SAME node named twice
+    // TWO REFERENCES, ONE NODE — the second reference is read from the root
+    // itself, so it points FORWARD at a node already placed
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
+        shared->value = 1234;
+        root->head = shared;
+        root->alias = shared; // the SAME node named twice
 
-    CHECK( builder.Lock() );
-    const graphdemo::Scene * locked = builder.AsConst();
-    const graphdemo::ListNode * viaHead = graphdemo::ListNodeAt( locked->head );
-    const graphdemo::ListNode * viaAlias = graphdemo::ListNodeAt( locked->alias );
-    CHECK( viaHead != NULL && viaAlias != NULL );
-    CHECK( viaHead->value == 1234 && viaAlias->value == 1234 );
-    // wire v1 is a TREE: identity is NOT preserved, and the packed form says so
-    // in the same voice — two references, two nodes (docs/SPEC-TABLES.md §3)
-    CHECK( viaHead != viaAlias );
+        CHECK( builder.Lock() );
+        const graphdemo::Scene * locked = builder.AsConst();
+        const graphdemo::ListNode * viaHead = graphdemo::ListNodeAt( locked->head );
+        const graphdemo::ListNode * viaAlias = graphdemo::ListNodeAt( locked->alias );
+        CHECK( viaHead != NULL && viaAlias != NULL );
+        CHECK( viaHead == viaAlias ); // ONE node, named twice
+        CHECK( viaHead->value == 1234 );
+        CHECK( builder.RegionBytes() == scene_bytes() + list_node_bytes() ); // one body, not two
+    }
 
-    static uint8_t wire[1024];
-    int64_t wrote = graphdemo::SceneSave( locked, wire, sizeof( wire ) );
-    CHECK( wrote > 0 );
-    int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
-    uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
-    graphdemo::TableReport report;
-    const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed );
-    CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
-    CHECK( graphdemo::ListNodeAt( loaded->alias )->value == 1234 );
-    CHECK( graphdemo::ListNodeAt( loaded->head ) != graphdemo::ListNodeAt( loaded->alias ) );
-    free( region );
+    // A SHARED NODE REACHED THROUGH A CHAIN: the root names it a second time
+    // after the chain has already placed it
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        graphdemo::TableSlot<graphdemo::ListNode> first = builder.Alloc<graphdemo::ListNode>();
+        graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
+        first->value = 1;
+        shared->value = 2;
+        first->next = shared;
+        root->head = first;
+        root->alias = shared;
+
+        CHECK( builder.Lock() );
+        const graphdemo::Scene * locked = builder.AsConst();
+        const graphdemo::ListNode * head = graphdemo::ListNodeAt( locked->head );
+        CHECK( head != NULL && head->value == 1 );
+        CHECK( graphdemo::ListNodeAt( head->next ) == graphdemo::ListNodeAt( locked->alias ) );
+        CHECK( graphdemo::ListNodeAt( locked->alias )->value == 2 );
+        CHECK( builder.RegionBytes() == scene_bytes() + 2 * list_node_bytes() );
+    }
+
+    // A DIAMOND: the closing reference lives in a node packed AFTER the shared
+    // one, so its delta is NEGATIVE — sharing and a back-reference are one
+    // fact, and nothing validates a reference by its sign (§6.3)
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        graphdemo::TableSlot<graphdemo::TreeNode> top = builder.Alloc<graphdemo::TreeNode>();
+        graphdemo::TableSlot<graphdemo::TreeNode> left = builder.Alloc<graphdemo::TreeNode>();
+        graphdemo::TableSlot<graphdemo::TreeNode> right = builder.Alloc<graphdemo::TreeNode>();
+        graphdemo::TableSlot<graphdemo::TreeNode> shared = builder.Alloc<graphdemo::TreeNode>();
+        set_string( shared->label, shared->label_length, "shared" );
+        top->left = left;
+        top->right = right;
+        left->left = shared;
+        right->left = shared; // the diamond closes
+        root->tree = top;
+
+        CHECK( builder.Lock() );
+        const graphdemo::Scene * locked = builder.AsConst();
+        const graphdemo::TreeNode * t = graphdemo::TreeNodeAt( locked->tree );
+        CHECK( t != NULL );
+        const graphdemo::TreeNode * l = graphdemo::TreeNodeAt( t->left );
+        const graphdemo::TreeNode * r = graphdemo::TreeNodeAt( t->right );
+        CHECK( l != NULL && r != NULL );
+        CHECK( graphdemo::TreeNodeAt( l->left ) == graphdemo::TreeNodeAt( r->left ) );
+        CHECK( strcmp( graphdemo::TreeNodeAt( r->left )->label, "shared" ) == 0 );
+        CHECK( r->left.value < 0 ); // the later reference points BACK
+        CHECK( builder.RegionBytes() == scene_bytes() + 4 * tree_node_bytes() ); // four nodes, not five
+
+        // a region holding a back-reference still relocates by pure memcpy
+        uint8_t * moved = (uint8_t *) malloc( (size_t) builder.RegionBytes() );
+        memcpy( moved, builder.Region(), (size_t) builder.RegionBytes() );
+        const graphdemo::Scene * copy = (const graphdemo::Scene *) moved;
+        const graphdemo::TreeNode * mt = graphdemo::TreeNodeAt( copy->tree );
+        CHECK( graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( mt->left )->left ) ==
+               graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( mt->right )->left ) );
+        free( moved );
+    }
+
+    // THE WIRE IS STILL THE NESTED FORM, and this says so in its own voice:
+    // the C++ backend writes a pointee inline under kind 13, not as a u32
+    // index into a flat node table, so a save duplicates a shared node and a
+    // load reconstructs two. §3.1's backend status states the limitation and
+    // schema#251 carries the emitter to the flat form; Lock, above, is done.
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
+        shared->value = 1234;
+        root->head = shared;
+        root->alias = shared;
+        CHECK( builder.Lock() );
+
+        static uint8_t wire[1024];
+        int64_t wrote = graphdemo::SceneSave( builder.AsConst(), wire, sizeof( wire ) );
+        CHECK( wrote > 0 );
+        int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
+        uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+        graphdemo::TableReport report;
+        const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+        CHECK( loaded != NULL && !report.malformed );
+        CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
+        CHECK( graphdemo::ListNodeAt( loaded->alias )->value == 1234 );
+        CHECK( graphdemo::ListNodeAt( loaded->head ) != graphdemo::ListNodeAt( loaded->alias ) );
+        free( region );
+    }
 }
 
 // ---- a data cycle is an ERROR, never a hang ----
+//
+// Lock now carries the identity map (§3.1), so its refusal is the map's and
+// not the depth cap's: a reference to a node whose descent is still OPEN is a
+// cycle. The map is what makes a shared node one node, and the same one bit
+// is what tells a shared node apart from a cycle.
 
 static void test_pointer_cycle_refused()
 {
-    graphdemo::SceneBuilder builder;
-    graphdemo::Scene * root = builder.GetRoot();
-    graphdemo::TableSlot<graphdemo::ListNode> loop = builder.Alloc<graphdemo::ListNode>();
-    loop->value = 1;
-    loop->next = loop;   // a node pointing at itself
-    root->head = loop;
+    // a node pointing at itself
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        graphdemo::TableSlot<graphdemo::ListNode> loop = builder.Alloc<graphdemo::ListNode>();
+        loop->value = 1;
+        loop->next = loop;
+        root->head = loop;
 
-    static uint8_t buffer[4096];
-    CHECK( graphdemo::SceneMeasure( builder ) == -1 );
-    CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
-    CHECK( !builder.Lock() ); // the compaction refuses too
+        static uint8_t buffer[4096];
+        CHECK( graphdemo::SceneMeasure( builder ) == -1 );
+        CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
+        CHECK( !builder.Lock() ); // the compaction refuses too
+    }
+    // a two-node cycle: the closing reference names a node the walk is still
+    // inside, which a shared-node map must not mistake for sharing
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        graphdemo::TableSlot<graphdemo::ListNode> a = builder.Alloc<graphdemo::ListNode>();
+        graphdemo::TableSlot<graphdemo::ListNode> b = builder.Alloc<graphdemo::ListNode>();
+        a->value = 1;
+        b->value = 2;
+        a->next = b;
+        b->next = a;
+        root->head = a;
+
+        static uint8_t buffer[4096];
+        CHECK( graphdemo::SceneMeasure( builder ) == -1 );
+        CHECK( graphdemo::SceneSave( builder, buffer, sizeof( buffer ) ) == -1 );
+        CHECK( !builder.Lock() );
+        CHECK( builder.AsConst() == NULL ); // nothing partial is published
+    }
 }
 
 // ---- the depth cap: a chain past it refuses, and the wire stops at it ----
@@ -5041,7 +5160,7 @@ int main()
 
     test_pointer_lifecycle();
     test_lock_layout_stable();
-    test_pointer_alias();
+    test_pointer_shared_node();
     test_pointer_cycle_refused();
     test_pointer_depth_cap();
     test_builder_grow();

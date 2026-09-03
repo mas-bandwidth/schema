@@ -971,6 +971,14 @@ nesting depth; and that depth is therefore bounded, by a generated
 refused by measure and save rather than written. Moving the emitter to the
 flat node table is tracked as schema#251.
 
+**The REGION is not in that gap.** `Lock` carries the one-entry-per-node map
+this section describes, in C++ today: a shared node is packed once, a later
+reference resolves to the one body it has, and a data cycle is named at the
+reference that closes it rather than found by running out of depth (§6.2). So
+the two forms disagree on exactly one thing and it is named — a save from a
+region writes a shared node once per reference because the WIRE it writes is
+still the nested one, and that is the whole of what #251 moves.
+
 **Kind `17` costs nothing and closes an edit that would otherwise be
 silent.** A node index is four bytes and so is a `uint32`, so under a
 shared kind an edit between the two would report nothing in either
@@ -1756,6 +1764,35 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
 
 Reading a pointer is `NodeAt( node->next )` — one add (§6.3), NULL when
 the reference is null.
+
+**The map is what makes both claims one claim.** Sharing and a cycle are the
+same event seen at different times — a reference arriving at a node the walk
+has already reached — and the entry's open bit is what separates them: a
+reference to an entry whose descent is still OPEN is a cycle, and a reference
+to one already CLOSED is sharing, resolved to the body that node already has.
+A pack without the map has neither answer and gets both wrong in the same
+direction: it packs a shared node again, and it discovers a cycle only by
+running out of depth. The ROOT's entry is open for the whole walk, so it is
+one rule and not a case (§3.1).
+
+**Its cost, stated.** One entry per reachable node — an address, an offset and
+the bit — held for the length of `Lock` and released before it returns, on the
+AUTHORING side where §6.5 licenses allocation. It is proportional to NODES,
+never to bytes, and nothing on the reading path ever builds one: `Load`
+resolves indices through the wire's own numbering and a deref is still one add.
+**Measure and pack each derive the map from the graph, and neither carries the
+other's** — that is what leaves `used == total` a real check on the two walks
+agreeing rather than a tautology (§3.1).
+
+**Held by test.** The pointered corpus carries a shared leaf named twice from
+one node, a shared node reached through a chain and named again from the root,
+and a diamond whose closing reference is a BACK-reference; each is checked by
+identity — the two references resolve to one address — and by the region's
+exact BYTE COUNT, which is the half a duplicating pack cannot fake. A
+self-cycle and a two-node cycle are refused by `Lock`, `Measure` and `Save`
+alike, and the region relocates by `memcpy` with a back-reference in it. **The
+negative control** turns the identity map into a permanent miss and requires
+the tables suite to go red.
 
 ### 6.3 Two reference encodings, one slot
 
@@ -4577,6 +4614,31 @@ inspects everything in the schema built:
   it has no wire codec.
 - **The variable class in a ported backend** — the arena, the region, the
   cooked form and the pointer surface — after that port's fixed class.
+- **`Lock`'S IDENTITY MAP, PRESIZED.** The map (§6.2) grows by rehashing, and
+  rehashing is what it spends: on a 131,071-node tree with NO sharing at all —
+  where the map is pure overhead and buys nothing — `Lock` costs 5.8 ms against
+  0.98 ms before the map existed. Quadrupling the capacity instead of doubling
+  it took 1.35x of that, and a map presized to the graph measured 6.6 ms against
+  12.0 ms on the doubling schedule, so the headroom left is real. What it needs
+  is a NODE COUNT the arena does not keep, because counting allocations costs
+  an atomic per node and §6.4 refuses one; the shapes are a per-worker
+  non-atomic counter summed at `Lock`, or a bound derived from the arena's
+  high-water mark and the closure's smallest node, and neither is decided here.
+  **What the map buys where it buys anything is not close**: a 24-node graph
+  whose every node is named twice packed 671 MB in 189 ms without it and 1,136
+  bytes in 0.009 ms with it.
+- **§3.1'S ROOT BACK-REFERENCE: two rules in one section, and only one can
+  hold.** The numbering says index `1` is the root and that "a pointer may name
+  it, so a child pointing back at its root is expressible", and the worked
+  example writes `owner = 1` from two nodes. The cycle rule in the same section
+  says a reference to an entry still open is a cycle — and the root's entry is
+  open for the whole walk, so that graph is refused, by the tool's numbering
+  and by the C++ `Lock` alike, and §11 lists the refusal by name. Either the
+  root is exempt from the open colouring, which needs saying and needs a reason
+  the exemption stops there, or the bullet and the example go. Nothing here
+  decides it. WHAT IS IMPLEMENTED IS THE REFUSAL, because it is what the tool
+  does and an implementation mirrors the reference rather than inventing a
+  third answer.
 - **THE CURSOR HOISTED OUT OF THE WRITER, in the GO backend** — the port's
   generated `…SaveBody` calls the writer's puts, and each put loads
   `Buffer`, `Capacity` and `Offset` from the writer and stores `Offset` back.

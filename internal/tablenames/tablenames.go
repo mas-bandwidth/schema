@@ -154,6 +154,13 @@ var registry = []Name{
 	{Name: "TableWorker", By: Cpp, What: "a builder worker's allocation front"},
 	{Name: "TableBuilder", By: Cpp, What: "the mutable life's base"},
 	{Name: "TableRegion", By: Cpp, What: "the locked, packed region"},
+	// Lock's identity map (docs/SPEC-TABLES.md §6.2): one entry per reachable
+	// node, so a shared node is packed once and a reference to a node whose
+	// descent is still open is a cycle. Emitted into a pointered unit's header
+	// only, and claimed on the same terms as everything above — a name free
+	// today must not become a collision the day a table gains a pointer.
+	{Name: "TablePackMap", By: Cpp, What: "the pack walk's identity map"},
+	{Name: "TablePackEntry", By: Cpp, What: "one node's entry in it: where it landed, and whether its descent is open"},
 
 	// the BLOCK FORM's runtime (docs/SPEC-TABLES.md §19), emitted into
 	// <Base>Block.h / <Base>Block.cs and into no Table source at all. Claimed

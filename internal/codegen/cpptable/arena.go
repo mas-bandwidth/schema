@@ -43,11 +43,15 @@ static const uint32_t kTableAlign       = 8;                           // every 
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
 // The pointer-chain depth cap. It bounds recursion on every walk — measure,
-// save, load and pack — so a data cycle is an ERROR and never a hang, and a
-// hostile wire cannot drive the C stack into the ground. A pointer chain's
-// WIRE nesting equals its length (§3), so this also caps chain length: wide
-// structures are unbounded, deep ones are not. Lifting it wants a flat,
-// indexed node encoding — a named follow-on (§15).
+// save, load and pack — so a hostile wire cannot drive the C stack into the
+// ground. A pointer chain's WIRE nesting equals its length (§3), so this also
+// caps chain length: wide structures are unbounded, deep ones are not. Lifting
+// it wants a flat, indexed node encoding — a named follow-on (§15).
+//
+// It is not what refuses a DATA CYCLE on the pack walk: TablePackMap's open
+// colouring names that cycle at the reference that closes it (§3.1). The cap
+// is still the whole of the cycle answer on the wire walks, which carry no
+// map today (§3.1's backend status).
 static const int32_t kTableMaxDepth = 128;
 
 // ---- TableRef: a relocatable reference (never a machine pointer) ----
@@ -248,6 +252,148 @@ struct TableWorker
         return slot;
     }
 };
+
+// ---- TablePackMap: the pack walk's identity map (docs/SPEC-TABLES.md §3.1, §6.2) ----
+//
+// ONE ENTRY PER REACHABLE NODE, and that map IS identity: a node must know
+// where it landed to be named a second time, so Lock packs a shared node ONCE
+// and every later reference resolves to the one body it already has. That is
+// the same first-visit numbering the wire uses, so the pack order and the node
+// order are one order.
+//
+// COLOURING AN ENTRY WHILE ITS DESCENT IS OPEN COSTS ONE BIT, and it is what
+// makes a data cycle free to refuse: a reference to an entry still open is a
+// cycle, and Lock returns failure rather than recursing away. The ROOT's entry
+// is open for the whole walk.
+//
+// The map is proportional to NODES, never to bytes, and it lives on the
+// AUTHORING side, where §6.5 licenses allocation. Nothing on the reading path
+// ever builds one.
+struct TablePackEntry
+{
+    const void * key;   // the node's address in the graph being packed
+    int64_t offset;     // where that node landed in the region
+    uint8_t open;       // its descent is still open: a reference here is a cycle
+};
+
+struct TablePackMap
+{
+    TablePackEntry * entries = NULL;
+    int64_t capacity = 0; // a power of two, or zero while empty
+    int64_t count = 0;
+};
+
+inline void TablePackMapInit( TablePackMap & map )
+{
+    map.entries = NULL;
+    map.capacity = 0;
+    map.count = 0;
+}
+
+inline void TablePackMapShutdown( TablePackMap & map )
+{
+    free( map.entries );
+    TablePackMapInit( map );
+}
+
+// The two walks behind Lock re-derive the SAME map from the same graph — the
+// numbering is never carried between them (§3.1) — so the second starts from
+// an empty map and keeps the capacity the first paid for.
+inline void TablePackMapReset( TablePackMap & map )
+{
+    if ( map.entries != NULL ) { memset( map.entries, 0, (size_t) map.capacity * sizeof( TablePackEntry ) ); }
+    map.count = 0;
+}
+
+// open addressing, linear probing, a multiply-shift hash over the address: a
+// node key is a pointer and its low bits are alignment, so the low bits alone
+// would collide on every node of one type
+inline int64_t TablePackMapSlot( const TablePackMap & map, const void * key )
+{
+    uint64_t hash = (uint64_t) (uintptr_t) key;
+    hash *= 0x9E3779B97F4A7C15ull;
+    hash ^= hash >> 29;
+    int64_t mask = map.capacity - 1;
+    int64_t at = (int64_t) ( hash & (uint64_t) mask );
+    while ( map.entries[at].key != NULL && map.entries[at].key != key )
+    {
+        at = ( at + 1 ) & mask;
+    }
+    return at;
+}
+
+inline TablePackEntry * TablePackMapFind( TablePackMap & map, const void * key )
+{
+    if ( map.capacity == 0 ) { return NULL; }
+    TablePackEntry * entry = &map.entries[ TablePackMapSlot( map, key ) ];
+    return entry->key == key ? entry : NULL;
+}
+
+// QUADRUPLING, not doubling, and the reason is measured: growth rehashes every
+// entry, and on a graph of 131,071 nodes the doubling schedule spent 45% of
+// Lock in rehashing alone. Quadrupling from 1024 buys 1.35x on that graph and
+// keeps the map NODE-proportional (§6.2) — under 128 bytes a node at its
+// worst, right after a grow, and about 64 on average.
+inline bool TablePackMapGrow( TablePackMap & map )
+{
+    TablePackMap grown;
+    grown.capacity = map.capacity != 0 ? map.capacity * 4 : 1024;
+    grown.entries = (TablePackEntry *) calloc( (size_t) grown.capacity, sizeof( TablePackEntry ) );
+    if ( grown.entries == NULL ) { return false; }
+    for ( int64_t i = 0; i < map.capacity; i++ )
+    {
+        if ( map.entries[i].key == NULL ) { continue; }
+        grown.entries[ TablePackMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
+        grown.count++;
+    }
+    free( map.entries );
+    map = grown;
+    return true;
+}
+
+// REACH a node: one probe answers both questions the walk has. A true "taken"
+// says this is a FIRST visit, and the entry is now the node's, coloured open
+// at "offset"; otherwise the entry is the one the node already has, and its
+// open bit says cycle or sharing. NULL is an allocation failure, and it is a
+// refusal like any other: Lock fails rather than packing a graph it cannot
+// track.
+//
+// It is one call and not a find followed by an insert because the walk asks
+// this question twice per node — once to measure, once to pack — and every
+// probe is a miss into a table larger than L2.
+inline TablePackEntry * TablePackMapReach( TablePackMap & map, const void * key, int64_t offset, bool & taken, int64_t & slot )
+{
+    if ( ( map.count + 1 ) * 4 >= map.capacity * 3 ) // keep the load factor under three quarters
+    {
+        if ( !TablePackMapGrow( map ) ) { return NULL; }
+    }
+    slot = TablePackMapSlot( map, key );
+    TablePackEntry * entry = &map.entries[slot];
+    taken = entry->key != key; // an empty slot is a first visit; the key is never NULL
+    if ( taken )
+    {
+        entry->key = key;
+        entry->offset = offset;
+        entry->open = 1;
+        map.count++;
+    }
+    return entry;
+}
+
+// The descent finished: the node keeps its entry — identity outlives the
+// descent — and stops being a cycle. The "hint" is the slot Reach returned, and it
+// is checked against the key rather than trusted, so a rehash between the two
+// costs a second probe instead of correctness.
+inline void TablePackMapClose( TablePackMap & map, const void * key, int64_t hint )
+{
+    if ( hint >= 0 && hint < map.capacity && map.entries[hint].key == key )
+    {
+        map.entries[hint].open = 0;
+        return;
+    }
+    TablePackEntry * entry = TablePackMapFind( map, key );
+    if ( entry != NULL ) { entry->open = 0; }
+}
 
 // ---- resolution contexts: which encoding a walk is reading ----
 
