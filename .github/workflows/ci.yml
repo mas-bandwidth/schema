@@ -292,8 +292,14 @@ jobs:
       # BE_CXX names the pinned compiler: the exact-version package installs
       # the SUFFIXED driver, and the Makefile's unsuffixed default is for a
       # workstation that installed the metapackage.
+      #
+      # -j BECAUSE THIS IS THE JOB AT THE BOUND. Six independent binaries hang
+      # off `tables-big-endian` — the tables corpus, the block driver both
+      # ways, the cook reader both ways, and the cook fixtures — sharing only
+      # bin/schema and the generated tree, which make builds once. The runner
+      # has four cores and the leg was spending them one at a time.
       - name: the big-endian leg, and its negative control
-        run: make tables-big-endian-negative BE_CXX=s390x-linux-gnu-g++-13
+        run: make -j"$(nproc)" tables-big-endian-negative BE_CXX=s390x-linux-gnu-g++-13
 
       # And the GO table leg on the same target. Go cross-compiles, so the
       # conformance driver is one env var away from a big-endian binary, and
