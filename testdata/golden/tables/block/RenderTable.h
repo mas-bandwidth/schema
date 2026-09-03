@@ -21,6 +21,22 @@
 #ifndef BLOCKDEMO_SCHEMA_TABLE_PRIMITIVES
 #define BLOCKDEMO_SCHEMA_TABLE_PRIMITIVES
 
+// THE CODEC DOES NOT DEPEND ON THE COMPILER'S INLINING BUDGET. A table of a
+// realistic field count emits one large body per type, and the cursor a body
+// writes through lives in the caller's `TableWriter`: across a call boundary
+// that cursor round-trips through memory, and a `uint8_t *` store may alias the
+// writer itself, so every put reloads it. When a budget runs out mid-body the
+// codec silently degrades to that shape. Forcing the primitives and the
+// fixed-class bodies inline is what keeps the cursor in registers and lets
+// adjacent constant framing bytes merge into one store.
+#if defined( _MSC_VER )
+#define BLOCKDEMO_TABLE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define BLOCKDEMO_TABLE_INLINE inline __attribute__(( always_inline ))
+#else
+#define BLOCKDEMO_TABLE_INLINE inline
+#endif
+
 namespace blockdemo {
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -141,17 +157,17 @@ struct TableWriter
     // is a header a consumer compiles under its OWN flags
     TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
-    void raw( const void * data, int64_t bytes )
+    BLOCKDEMO_TABLE_INLINE void raw( const void * data, int64_t bytes )
     {
         if ( offset + bytes > capacity ) { overflow = true; return; }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    void put8( uint8_t v )   { raw( &v, 1 ); }
-    void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
-    void patch32( int64_t at, uint32_t v )
+    BLOCKDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
+    BLOCKDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
+    BLOCKDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    BLOCKDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    BLOCKDEMO_TABLE_INLINE void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
         buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
@@ -169,11 +185,11 @@ struct TableReader
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
-    bool has( int64_t bytes ) const { return offset + bytes <= size; }
-    uint8_t get8()   { return buffer[offset++]; }
-    uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    BLOCKDEMO_TABLE_INLINE bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    BLOCKDEMO_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
+    BLOCKDEMO_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
+    BLOCKDEMO_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
+    BLOCKDEMO_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
@@ -963,41 +979,41 @@ inline void RenderQuaternionReset( RenderQuaternion & value ) { value = RenderQu
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t RenderCameraMeasure( const RenderCamera & value );
-inline bool RenderCameraSaveBody( TableWriter & w, const RenderCamera & value );
-inline bool RenderCameraLoadBody( TableReader & r, RenderCamera & value );
+BLOCKDEMO_TABLE_INLINE bool RenderCameraSaveBody( TableWriter & w, const RenderCamera & value );
+BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera & value );
 inline int64_t RenderShipMeasure( const RenderShip & value );
-inline bool RenderShipSaveBody( TableWriter & w, const RenderShip & value );
-inline bool RenderShipLoadBody( TableReader & r, RenderShip & value );
+BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, const RenderShip & value );
+BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & value );
 inline int64_t RenderTurretMeasure( const RenderTurret & value );
-inline bool RenderTurretSaveBody( TableWriter & w, const RenderTurret & value );
-inline bool RenderTurretLoadBody( TableReader & r, RenderTurret & value );
+BLOCKDEMO_TABLE_INLINE bool RenderTurretSaveBody( TableWriter & w, const RenderTurret & value );
+BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret & value );
 inline int64_t RenderMissileMeasure( const RenderMissile & value );
-inline bool RenderMissileSaveBody( TableWriter & w, const RenderMissile & value );
-inline bool RenderMissileLoadBody( TableReader & r, RenderMissile & value );
+BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, const RenderMissile & value );
+BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissile & value );
 inline int64_t RenderDynamicPropMeasure( const RenderDynamicProp & value );
-inline bool RenderDynamicPropSaveBody( TableWriter & w, const RenderDynamicProp & value );
-inline bool RenderDynamicPropLoadBody( TableReader & r, RenderDynamicProp & value );
+BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, const RenderDynamicProp & value );
+BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDynamicProp & value );
 inline int64_t RenderStaticPropMeasure( const RenderStaticProp & value );
-inline bool RenderStaticPropSaveBody( TableWriter & w, const RenderStaticProp & value );
-inline bool RenderStaticPropLoadBody( TableReader & r, RenderStaticProp & value );
+BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, const RenderStaticProp & value );
+BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderStaticProp & value );
 inline int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp & value );
-inline bool RenderCosmeticPropSaveBody( TableWriter & w, const RenderCosmeticProp & value );
-inline bool RenderCosmeticPropLoadBody( TableReader & r, RenderCosmeticProp & value );
+BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, const RenderCosmeticProp & value );
+BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderCosmeticProp & value );
 inline int64_t RenderLaserMeasure( const RenderLaser & value );
-inline bool RenderLaserSaveBody( TableWriter & w, const RenderLaser & value );
-inline bool RenderLaserLoadBody( TableReader & r, RenderLaser & value );
+BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, const RenderLaser & value );
+BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & value );
 inline int64_t RenderExplosionMeasure( const RenderExplosion & value );
-inline bool RenderExplosionSaveBody( TableWriter & w, const RenderExplosion & value );
-inline bool RenderExplosionLoadBody( TableReader & r, RenderExplosion & value );
+BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, const RenderExplosion & value );
+BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExplosion & value );
 inline int64_t RenderFrameMeasure( const RenderFrame & value );
-inline bool RenderFrameSaveBody( TableWriter & w, const RenderFrame & value );
-inline bool RenderFrameLoadBody( TableReader & r, RenderFrame & value );
+BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, const RenderFrame & value );
+BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & value );
 inline int64_t RenderVector3Measure( const RenderVector3 & value );
-inline bool RenderVector3SaveBody( TableWriter & w, const RenderVector3 & value );
-inline bool RenderVector3LoadBody( TableReader & r, RenderVector3 & value );
+BLOCKDEMO_TABLE_INLINE bool RenderVector3SaveBody( TableWriter & w, const RenderVector3 & value );
+BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector3 & value );
 inline int64_t RenderQuaternionMeasure( const RenderQuaternion & value );
-inline bool RenderQuaternionSaveBody( TableWriter & w, const RenderQuaternion & value );
-inline bool RenderQuaternionLoadBody( TableReader & r, RenderQuaternion & value );
+BLOCKDEMO_TABLE_INLINE bool RenderQuaternionSaveBody( TableWriter & w, const RenderQuaternion & value );
+BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQuaternion & value );
 
 inline int64_t RenderCameraMeasure( const RenderCamera & value )
 {
@@ -1019,7 +1035,7 @@ inline int64_t RenderCameraMeasure( const RenderCamera & value )
     return bytes;
 }
 
-inline bool RenderCameraSaveBody( TableWriter & w, const RenderCamera & value )
+BLOCKDEMO_TABLE_INLINE bool RenderCameraSaveBody( TableWriter & w, const RenderCamera & value )
 {
     {
         int64_t body_position = RenderVector3Measure( value.position );
@@ -1072,7 +1088,7 @@ inline int64_t RenderCameraSave( const RenderCamera & value, uint8_t * buffer, i
     return w.offset; // == RenderCameraMeasure( value )
 }
 
-inline bool RenderCameraLoadBody( TableReader & r, RenderCamera & value )
+BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera & value )
 {
     RenderCameraReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1223,7 +1239,7 @@ inline int64_t RenderShipMeasure( const RenderShip & value )
     return bytes;
 }
 
-inline bool RenderShipSaveBody( TableWriter & w, const RenderShip & value )
+BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, const RenderShip & value )
 {
     {
         int64_t body_position = RenderVector3Measure( value.position );
@@ -1305,7 +1321,7 @@ inline int64_t RenderShipSave( const RenderShip & value, uint8_t * buffer, int64
     return w.offset; // == RenderShipMeasure( value )
 }
 
-inline bool RenderShipLoadBody( TableReader & r, RenderShip & value )
+BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & value )
 {
     RenderShipReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1520,7 +1536,7 @@ inline int64_t RenderTurretMeasure( const RenderTurret & value )
     return bytes;
 }
 
-inline bool RenderTurretSaveBody( TableWriter & w, const RenderTurret & value )
+BLOCKDEMO_TABLE_INLINE bool RenderTurretSaveBody( TableWriter & w, const RenderTurret & value )
 {
     {
         int64_t body_rotation = RenderQuaternionMeasure( value.rotation );
@@ -1585,7 +1601,7 @@ inline int64_t RenderTurretSave( const RenderTurret & value, uint8_t * buffer, i
     return w.offset; // == RenderTurretMeasure( value )
 }
 
-inline bool RenderTurretLoadBody( TableReader & r, RenderTurret & value )
+BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret & value )
 {
     RenderTurretReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1772,7 +1788,7 @@ inline int64_t RenderMissileMeasure( const RenderMissile & value )
     return bytes;
 }
 
-inline bool RenderMissileSaveBody( TableWriter & w, const RenderMissile & value )
+BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, const RenderMissile & value )
 {
     {
         int64_t body_position = RenderVector3Measure( value.position );
@@ -1834,7 +1850,7 @@ inline int64_t RenderMissileSave( const RenderMissile & value, uint8_t * buffer,
     return w.offset; // == RenderMissileMeasure( value )
 }
 
-inline bool RenderMissileLoadBody( TableReader & r, RenderMissile & value )
+BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissile & value )
 {
     RenderMissileReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2007,7 +2023,7 @@ inline int64_t RenderDynamicPropMeasure( const RenderDynamicProp & value )
     return bytes;
 }
 
-inline bool RenderDynamicPropSaveBody( TableWriter & w, const RenderDynamicProp & value )
+BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, const RenderDynamicProp & value )
 {
     {
         int64_t body_position = RenderVector3Measure( value.position );
@@ -2069,7 +2085,7 @@ inline int64_t RenderDynamicPropSave( const RenderDynamicProp & value, uint8_t *
     return w.offset; // == RenderDynamicPropMeasure( value )
 }
 
-inline bool RenderDynamicPropLoadBody( TableReader & r, RenderDynamicProp & value )
+BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDynamicProp & value )
 {
     RenderDynamicPropReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2242,7 +2258,7 @@ inline int64_t RenderStaticPropMeasure( const RenderStaticProp & value )
     return bytes;
 }
 
-inline bool RenderStaticPropSaveBody( TableWriter & w, const RenderStaticProp & value )
+BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, const RenderStaticProp & value )
 {
     {
         int64_t body_position = RenderVector3Measure( value.position );
@@ -2304,7 +2320,7 @@ inline int64_t RenderStaticPropSave( const RenderStaticProp & value, uint8_t * b
     return w.offset; // == RenderStaticPropMeasure( value )
 }
 
-inline bool RenderStaticPropLoadBody( TableReader & r, RenderStaticProp & value )
+BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderStaticProp & value )
 {
     RenderStaticPropReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2477,7 +2493,7 @@ inline int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp & value )
     return bytes;
 }
 
-inline bool RenderCosmeticPropSaveBody( TableWriter & w, const RenderCosmeticProp & value )
+BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, const RenderCosmeticProp & value )
 {
     {
         int64_t body_position = RenderVector3Measure( value.position );
@@ -2544,7 +2560,7 @@ inline int64_t RenderCosmeticPropSave( const RenderCosmeticProp & value, uint8_t
     return w.offset; // == RenderCosmeticPropMeasure( value )
 }
 
-inline bool RenderCosmeticPropLoadBody( TableReader & r, RenderCosmeticProp & value )
+BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderCosmeticProp & value )
 {
     RenderCosmeticPropReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2728,7 +2744,7 @@ inline int64_t RenderLaserMeasure( const RenderLaser & value )
     return bytes;
 }
 
-inline bool RenderLaserSaveBody( TableWriter & w, const RenderLaser & value )
+BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, const RenderLaser & value )
 {
     {
         int64_t body_start = RenderVector3Measure( value.start );
@@ -2785,7 +2801,7 @@ inline int64_t RenderLaserSave( const RenderLaser & value, uint8_t * buffer, int
     return w.offset; // == RenderLaserMeasure( value )
 }
 
-inline bool RenderLaserLoadBody( TableReader & r, RenderLaser & value )
+BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & value )
 {
     RenderLaserReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2944,7 +2960,7 @@ inline int64_t RenderExplosionMeasure( const RenderExplosion & value )
     return bytes;
 }
 
-inline bool RenderExplosionSaveBody( TableWriter & w, const RenderExplosion & value )
+BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, const RenderExplosion & value )
 {
     {
         int64_t body_position = RenderVector3Measure( value.position );
@@ -3006,7 +3022,7 @@ inline int64_t RenderExplosionSave( const RenderExplosion & value, uint8_t * buf
     return w.offset; // == RenderExplosionMeasure( value )
 }
 
-inline bool RenderExplosionLoadBody( TableReader & r, RenderExplosion & value )
+BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExplosion & value )
 {
     RenderExplosionReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -3253,7 +3269,7 @@ inline int64_t RenderFrameMeasure( const RenderFrame & value )
     return bytes;
 }
 
-inline bool RenderFrameSaveBody( TableWriter & w, const RenderFrame & value )
+BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, const RenderFrame & value )
 {
     if ( value.version != 0 )
     {
@@ -3415,7 +3431,7 @@ inline int64_t RenderFrameSave( const RenderFrame & value, uint8_t * buffer, int
     return w.offset; // == RenderFrameMeasure( value )
 }
 
-inline bool RenderFrameLoadBody( TableReader & r, RenderFrame & value )
+BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & value )
 {
     RenderFrameReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -3844,7 +3860,7 @@ inline int64_t RenderVector3Measure( const RenderVector3 & value )
     return bytes;
 }
 
-inline bool RenderVector3SaveBody( TableWriter & w, const RenderVector3 & value )
+BLOCKDEMO_TABLE_INLINE bool RenderVector3SaveBody( TableWriter & w, const RenderVector3 & value )
 {
     if ( value.x != 0.0 )
     {
@@ -3872,7 +3888,7 @@ inline int64_t RenderVector3Save( const RenderVector3 & value, uint8_t * buffer,
     return w.offset; // == RenderVector3Measure( value )
 }
 
-inline bool RenderVector3LoadBody( TableReader & r, RenderVector3 & value )
+BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector3 & value )
 {
     RenderVector3Reset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -3947,7 +3963,7 @@ inline int64_t RenderQuaternionMeasure( const RenderQuaternion & value )
     return bytes;
 }
 
-inline bool RenderQuaternionSaveBody( TableWriter & w, const RenderQuaternion & value )
+BLOCKDEMO_TABLE_INLINE bool RenderQuaternionSaveBody( TableWriter & w, const RenderQuaternion & value )
 {
     if ( value.x != 0.0 )
     {
@@ -3980,7 +3996,7 @@ inline int64_t RenderQuaternionSave( const RenderQuaternion & value, uint8_t * b
     return w.offset; // == RenderQuaternionMeasure( value )
 }
 
-inline bool RenderQuaternionLoadBody( TableReader & r, RenderQuaternion & value )
+BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQuaternion & value )
 {
     RenderQuaternionReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )

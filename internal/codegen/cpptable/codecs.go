@@ -669,6 +669,15 @@ func (g *tableGen) emitEnumElementCheck(f *ir.Field, expr, count, ind, onBad str
 
 // ---- write / save ----
 
+// The FIXED class's bodies are force-inlined and the VARIABLE-LENGTH class's
+// are not, and the line between them is the one place a table's save/load call
+// graph can hold a cycle. A fixed table has no pointer in its by-value closure,
+// so its bodies nest by value and a cycle would make `sizeof` infinite — the
+// graph is a DAG by construction and forcing it flat always terminates. A
+// pointered body reaches its pointee through the depth-carrying template form
+// (docs/SPEC-TABLES.md §3.1), which a self-referential declaration makes
+// directly recursive, and a recursive always_inline is a compile error under
+// gcc. So the switch that already separates the two classes is the guard.
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("template <typename Ctx>\ninline bool %sSaveBody( const Ctx & ctx, TableWriter & w, const %s & value, int32_t depth )\n{\n", st.Name, st.Name)
@@ -677,7 +686,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 			g.pf("    (void) ctx;\n")
 		}
 	} else {
-		g.pf("inline bool %sSaveBody( TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
+		g.pf("%s bool %sSaveBody( TableWriter & w, const %s & value )\n{\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; // empty type: presence is the payload\n")
@@ -925,7 +934,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.pf("    (void) sink; (void) depth;\n")
 		}
 	} else {
-		g.pf("inline bool %sLoadBody( TableReader & r, %s & value )\n{\n", st.Name, st.Name)
+		g.pf("%s bool %sLoadBody( TableReader & r, %s & value )\n{\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 	}
 	// `<T>Reset`, NOT `value = T{}` and not `new ( &value ) T{}`: assignment
 	// materializes a temporary, and generated types can be large — a stack

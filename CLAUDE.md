@@ -196,6 +196,18 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   SPEC §5 semantics, guarded by the stale-leak pinned test). C# batch emission: cores are
   INLINE-ONLY (an address-exposed ref-struct measured WORSE than no batch) and OPT-IN by
   scalar density (bulk-dominated types lose; rule in `internal/codegen/csharp/batch.go`).
+- **A generated codec must not depend on the compiler's INLINING BUDGET.** A
+  table of a realistic field count emits one large body per type; clang's
+  inliner ran out partway through `TableMixedSaveBody` and left the writer
+  primitives and the nested bodies out of line, and from there the cursor
+  round-tripped through memory at every put — a `uint8_t *` store may alias the
+  writer, so `offset` and `capacity` were re-read after each one. Force-inlining
+  the primitives ALONE bought 24% and the bodies alone 19%; both together bought
+  5.4x, because only a call-free body lets the cursor stay in registers and
+  adjacent constant framing bytes merge. The qualifier is portable through a
+  per-package macro (`__forceinline` / `always_inline` / `inline`) and stops at
+  the class whose call graph cannot cycle. Read the emitted assembly for `bl` to
+  a primitive before believing a header-only codec is inlined.
 - **Instrument honesty**: harness defects crowned the wrong winner once (v1's "C# beats
   C++ batch read" was a per-iteration alloc in every OTHER runner) — the harness is code
   and rots too. Relative tables move when the DENOMINATOR moves (v4's widening was C++
