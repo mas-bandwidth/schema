@@ -1352,8 +1352,8 @@ namespace Benchtable
                         if (!r.Has(8)) { r.Report.Malformed = true; return false; }
                         {
                             ulong decodedV = unchecked((ulong)r.Get64());
-                            if (decodedV < 0ul) { decodedV = 0ul; r.Report.Clamped++; }
-                            else if (decodedV > 18446744073709551615ul) { decodedV = 18446744073709551615ul; r.Report.Clamped++; }
+                            if (decodedV < 1ul) { decodedV = 1ul; r.Report.Clamped++; }
+                            else if (decodedV > 9223372036854775807ul) { decodedV = 9223372036854775807ul; r.Report.Clamped++; }
                             value.Nonce = decodedV;
                         }
                         break;
@@ -2238,7 +2238,7 @@ namespace Benchtable
                 new TableFieldInfo { Name = "ack_bits", TypeName = "bits(32)", Id = 0xebb9, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "session_id", TypeName = "uint64", Id = 0x8790, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "client_id", TypeName = "uint32", Id = 0xd443, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "nonce", TypeName = "uint64", Id = 0x80f0, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 1.8446744073709552e+19, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "nonce", TypeName = "uint64", Id = 0x80f0, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 1.0, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "world_time", TypeName = "int64", Id = 0x77f2, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -1e+12, RangeMax = 1e+12, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "frame_tick", TypeName = "bits(48)", Id = 0xcbc2, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
                 new TableFieldInfo { Name = "server_time", TypeName = "float32", Id = 0x27f9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },

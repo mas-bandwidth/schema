@@ -113,7 +113,7 @@ static void fill( TableMixed & v )
     v.ack_bits = (uint32_t) in_span( 0xFFFFFFFEull );
     v.session_id = next_rng() | 1;
     v.client_id = (uint32_t) next_rng() | 1u;
-    v.nonce = next_rng() | 1;
+    v.nonce = ( next_rng() >> 1 ) | 1;    // inside the declared bound, never 0
     v.world_time = signed_off_zero( -1000000000000LL, 1000000000000LL );
     v.frame_tick = ( next_rng() & 0xFFFFFFFFFFFFull ) | 1;
     // in [0, 65535] and exactly representable in f32, so nothing clamps on

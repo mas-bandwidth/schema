@@ -226,7 +226,7 @@ namespace benchtable {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0xf8351c20ee5a30ecull;
+inline constexpr uint64_t BuildVersion = 0xcbff64e49f311d0aull;
 
 } // namespace benchtable
 
@@ -1450,8 +1450,8 @@ inline bool TableMixedLoadBody( TableReader & r, TableMixed & value )
                 }
                 if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
                 uint64_t decoded_v = uint64_t( r.get64( ) );
-                if ( decoded_v < 0ull ) { decoded_v = 0ull; r.report->clamped++; }
-                else if ( decoded_v > 18446744073709551615ull ) { decoded_v = 18446744073709551615ull; r.report->clamped++; }
+                if ( decoded_v < 1ull ) { decoded_v = 1ull; r.report->clamped++; }
+                else if ( decoded_v > 9223372036854775807ull ) { decoded_v = 9223372036854775807ull; r.report->clamped++; }
                 value.nonce = decoded_v;
                 break;
             }
@@ -2426,7 +2426,7 @@ inline const TableTypeInfo * TableMixedTableType()
         { "ack_bits", "ack_bits", "bits(32)", 0xebb9, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, ack_bits ), (uint32_t) sizeof( TableMixed::ack_bits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "session_id", "session_id", "uint64", 0x8790, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, session_id ), (uint32_t) sizeof( TableMixed::session_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "client_id", "client_id", "uint32", 0xd443, 8, false, false, false, 0, (uint32_t) offsetof( TableMixed, client_id ), (uint32_t) sizeof( TableMixed::client_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-        { "nonce", "nonce", "uint64", 0x80f0, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, nonce ), (uint32_t) sizeof( TableMixed::nonce ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+        { "nonce", "nonce", "uint64", 0x80f0, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, nonce ), (uint32_t) sizeof( TableMixed::nonce ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 9.223372036854776e+18, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "world_time", "world_time", "int64", 0x77f2, 5, false, false, false, 0, (uint32_t) offsetof( TableMixed, world_time ), (uint32_t) sizeof( TableMixed::world_time ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+12, 1e+12, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "frame_tick", "frame_tick", "bits(48)", 0xcbc2, 9, false, false, false, 0, (uint32_t) offsetof( TableMixed, frame_tick ), (uint32_t) sizeof( TableMixed::frame_tick ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
         { "server_time", "server_time", "float32", 0x27f9, 10, false, false, false, 0, (uint32_t) offsetof( TableMixed, server_time ), (uint32_t) sizeof( TableMixed::server_time ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },

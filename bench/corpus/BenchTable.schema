@@ -145,10 +145,23 @@ table TableMixed
     ack_bits       bits(32)
     session_id     uint64
     client_id      uint32
-    nonce          uint64   | min = 0, max = 18446744073709551615
-    world_time     int64    | min = -1000000000000, max = 1000000000000
-    frame_tick     bits(48)
-    server_time    float32  | min = 0, max = 65535, resolution = 0.01
+    // BenchMixed's `nonce` is the FULL-UNSIGNED ranged path: on the type wire
+    // a bound spanning the whole storage width still selects an encoding, so
+    // it is real work. On the table wire it selects nothing — a ranged u64
+    // rides as kind 9 whatever its bounds, and the bounds only clamp on load
+    // (§3) — so a bound at the storage limits clamps nothing. The mirror
+    // therefore keeps the ranged-u64 field with a bound that is LIVE at both
+    // ends, which is the same per-field work with a check that can fire.
+    // (A `min = 0, max = 18446744073709551615` spelling additionally makes
+    // the C++ table emitter write `decoded_v < 0ull` and
+    // `decoded_v > 18446744073709551615ull`, which g++ rejects under
+    // -Wtype-limits. The emitter already elides a `bits(N)` width clamp when
+    // N is the storage width and should elide a declared bound the same way;
+    // that is a defect of its own, not something this corpus should carry.)
+    nonce       uint64   | min = 1, max = 9223372036854775807
+    world_time  int64    | min = -1000000000000, max = 1000000000000
+    frame_tick  bits(48)
+    server_time float32  | min = 0, max = 65535, resolution = 0.01
 
     // ---- entity block: the counted array of nested tables ----
     entities [1..8]TableEntity
