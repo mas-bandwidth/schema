@@ -2976,6 +2976,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-c-zero-cost
 	$(MAKE) tables-c-json-walk
 	$(MAKE) tables-c-fuzz
+	$(MAKE) tables-c-keyed-none-refusal-ndebug
+	$(MAKE) tables-c-keyed-none-refusal-negative-control
 	$(MAKE) tables-c-soak SOAK_SECONDS=20
 	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as
 	# data, one driver per language, and the matrix that says which surfaces a
@@ -3897,6 +3899,8 @@ tables-c-fuzz: build/schema_test_c_fuzz
 .PHONY: tables-c
 tables-c: build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz
 	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
+	$(MAKE) tables-c-keyed-none-refusal-ndebug
+	$(MAKE) tables-c-keyed-none-refusal-negative-control
 	$(MAKE) tables-c-soak SOAK_SECONDS=20
 
 # THE NEGATIVE CONTROL FOR THE C LEG, and it is the C# control's twin over the
@@ -3998,3 +4002,43 @@ build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_
 tables-c-big-endian: build/schema_test_c_soak_be
 	$(BE_RUN) ./build/schema_test_c_soak_be 0
 	@echo "big-endian C leg: the tolerant wire crosses the byte order — same goldens, byte for byte"
+
+# THE KEYED None REFUSAL, C side (docs/SPEC-TABLES.md §2.4). C's accessor is a
+# macro over TableKeyedSlot rather than an operator[] — the one spelling that
+# differs from the reference — and the refusal inside it is the same assert plus
+# the same abort. -DNDEBUG is the configuration that removes the assert and the
+# configuration a game ships; the child must still die.
+.PHONY: tables-c-keyed-none-refusal-ndebug
+tables-c-keyed-none-refusal-ndebug: build/tables-generated-c/.stamp test/c-tables/keyed_none_ndebug_main.c
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) -DNDEBUG -Ibuild/tables-generated-c/examples \
+		test/c-tables/keyed_none_ndebug_main.c -o build/schema_test_c_keyed_none_ndebug -lm
+	./build/schema_test_c_keyed_none_ndebug
+
+# THE NEGATIVE CONTROL for it: a gate that has never seen the refusal go
+# MISSING is watching nothing. The accessor's refusal is deleted from a COPY of
+# the emitter, the corpus is regenerated from it, and the same child must then
+# survive — which is the defect this gate exists to catch, demonstrated.
+.PHONY: tables-c-keyed-none-refusal-negative-control
+tables-c-keyed-none-refusal-negative-control: bin/schema test/c-tables/keyed_none_ndebug_main.c
+	@rm -rf build/c-keyed-sabotage && mkdir -p build/c-keyed-sabotage
+	@sed 's|        abort();|        /* SABOTAGED: the abort is gone */ (void) 0;|' \
+		internal/codegen/ctable/ctable.go > build/c-keyed-sabotage/ctable.go.txt
+	@cmp -s internal/codegen/ctable/ctable.go build/c-keyed-sabotage/ctable.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/ctable.go":"%s/build/c-keyed-sabotage/ctable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-keyed-sabotage/overlay.json
+	go build -overlay build/c-keyed-sabotage/overlay.json -o build/c-keyed-sabotage/schema ./cmd/schema
+	build/c-keyed-sabotage/schema generate --lang c --out build/c-keyed-sabotage/generated tables/examples
+	@grep -q "SABOTAGED" build/c-keyed-sabotage/generated/KeyedTable.h || \
+		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -Wno-error -DNDEBUG -Ibuild/c-keyed-sabotage/generated \
+		test/c-tables/keyed_none_ndebug_main.c -o build/c-keyed-sabotage/probe -lm
+	@if ./build/c-keyed-sabotage/probe > build/c-keyed-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the gate stayed green with the refusal deleted"; \
+		cat build/c-keyed-sabotage/log; exit 1; \
+	fi
+	@grep -q "did NOT end the program" build/c-keyed-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat build/c-keyed-sabotage/log; exit 1; }
+	@echo "negative control: deleting the C accessor's abort turns the None-refusal gate RED"
