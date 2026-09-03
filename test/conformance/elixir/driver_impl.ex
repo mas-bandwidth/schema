@@ -797,7 +797,7 @@ defmodule Audit do
     cond do
       now >= deadline ->
         report(base, iterations)
-        IO.puts("soak: #{iterations} iterations, heap and binary memory flat")
+        verdict(base, iterations)
 
       now >= next_print ->
         report(base, iterations)
@@ -806,6 +806,43 @@ defmodule Audit do
       true ->
         Enum.each(cases, &once/1)
         loop(cases, deadline, base, iterations + 1, next_print)
+    end
+  end
+
+  # THE VERDICT, and it is a CHECK rather than a sentence. The live heap must
+  # not have moved at all; the system's binary memory is allowed the slack a
+  # LARGE REFC BINARY IN FLIGHT takes, which is what a sample caught mid-corpus
+  # sees — the corpus carries a 70 KB payload — so the reading is the MINIMUM of
+  # three, which no in-flight allocation survives.
+  @binary_slack 65_536
+
+  defp verdict({base_live, base_bin}, iterations) do
+    :erlang.garbage_collect()
+    live_drift = live() - base_live
+
+    bin_drift =
+      Enum.min(
+        Enum.map(1..3, fn _ ->
+          Process.sleep(100)
+          :erlang.garbage_collect()
+          :erlang.memory(:binary) - base_bin
+        end)
+      )
+
+    cond do
+      live_drift > 0 ->
+        IO.puts(:stderr, "SOAK FAILED: the live heap grew #{live_drift} words over #{iterations} iterations")
+        System.halt(1)
+
+      bin_drift > @binary_slack ->
+        IO.puts(:stderr, "SOAK FAILED: binary memory grew #{bin_drift} bytes over #{iterations} iterations")
+        System.halt(1)
+
+      true ->
+        IO.puts(
+          "soak: #{iterations} iterations, heap flat (#{live_drift} words) and binary memory " <>
+            "flat (#{bin_drift} bytes against the warm baseline)"
+        )
     end
   end
 
