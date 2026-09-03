@@ -32,12 +32,60 @@
 #
 # The #189 one-shot carve (owner ruling 2026-08-31) is SPENT: its single
 # licensed change — the string-helper guard scoping fix, PR B of the #189
-# protocol — merged under the reproduction control, and this edit is the
-# protocol's PR C restoring the prefixes.
+# protocol — merged under the reproduction control, and PR C restored the
+# prefixes.
 #
-# Locked prefixes, one per line (matched against changed paths):
-internal/codegen/c/
-internal/codegen/cpp/
-generated/c/
-generated/cpp/
-generated/c-ludicrous/
+# ONE-SHOT CARVE, 2026-09-03, on the owner's word (issue #346, PR #348):
+#
+#   "Carve. We want this back, the idea was to focus on not changing this
+#    stuff while we optimized other languages."
+#
+# THE PREFIXES ARE SUSPENDED BELOW, which is how a carve is spelled here: the
+# cpp-lock job reads every non-comment, non-blank line of this file as a PATH
+# PREFIX and matches it against `git diff --name-only origin/<base>...HEAD`.
+# Nothing in this file pins a hash or a commit, so a carve has nothing to
+# re-pin: an empty prefix list IS the open window, and the job names it one.
+#
+# WHAT THE CARVE ADMITS, exactly and nothing else: PR #348's regeneration of
+# the corpus under the zero-range gate. Eight corpus fields whose declared
+# range excludes zero gained a declared default in range, and the generated
+# trees follow: 36 files under the locked generated prefixes, +84/-47 lines,
+# in three classes and no fourth:
+#
+#   1. THE PROTOCOL ID. A specified default is part of the §3.1 projection, so
+#      two units take new ids: example 0xdd71ce8b50d78939 -> 0x91a8e85156dfe2b1
+#      and ludicrous 0xa388f75ddc741965 -> 0x42050541a90eea8a. That is 36
+#      banner lines plus four constants: ProtocolId in each C++ unit,
+#      *_PROTOCOL_ID in each C unit.
+#   2. SEVEN C++ MEMBER INITIALIZERS, each a field taking the default its
+#      schema now declares instead of the zero that was outside its own range.
+#   3. THREE C CONSTRUCTORS ADDED: new_expression_probe, new_degenerate_probe,
+#      new_unsigned_probe. The C backend emits a new_<type> only for a type
+#      carrying a specified default, and three types gained one. Each is
+#      `static SCHEMA_UNUSED`, with no call site anywhere.
+#
+# THE EMITTERS ARE BYTE-IDENTICAL, which is control 1 and the protection this
+# lock is for: `git diff main...check-zero-range-346 -- internal/codegen/c
+# internal/codegen/cpp ':!**/*_test.go'` is EMPTY. The two locked
+# internal/codegen paths PR #348 touches are expr_test.go fixtures, whose
+# inline schemas carry the shape the new gate refuses and now declare the same
+# in-range defaults the corpus does.
+#
+# CONTROL 2 IS NOT REACHED. The c/cpp harness legs and generated/bench/{c,cpp}
+# are untouched by PR #348, so the reproduction rows (bench_mixed: write and
+# round_trip; bitpacker: bits) have nothing to reproduce against. The only
+# bench path it moves is generated/bench/tables/, the tables corpus, under no
+# prefix here.
+#
+# THE LOCK RE-FREEZES AT THE NEW REFERENCE IMMEDIATELY AFTER. Restoration is
+# the protocol's PR C, whose diff is this file alone and which restores the
+# prefixes verbatim the moment PR #348 lands. The full lift condition is
+# unchanged: the round closing, on the owner's word (issue #170).
+#
+# Locked prefixes, one per line (matched against changed paths), SUSPENDED
+# for the #346 carve and restored by PR C:
+# internal/codegen/c/
+# internal/codegen/cpp/
+# generated/c/
+# generated/cpp/
+# generated/c-ludicrous/
