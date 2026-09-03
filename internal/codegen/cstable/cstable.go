@@ -39,6 +39,7 @@ package cstable
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -231,9 +232,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range cooks {
-		out[name] = data
-	}
+	maps.Copy(out, cooks)
 	// The VARIABLE-CLASS refusal (SPEC-TABLES.md §2.2, §11) is a refusal of the
 	// WIRE SURFACE, which is the half the variable class is missing: no arena,
 	// no builder, no region and no node-table codec. It is named rather than

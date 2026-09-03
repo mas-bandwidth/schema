@@ -140,3 +140,4 @@ timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame rea
 # and what a red arm would mean is that somebody put a walk back.
 
 timing test/tables/cook_main.cpp 2 the cook's open-cost gate (§7, §7.5): open time flat across 1 MB and 100 MB, paired medians — a constant-time header match, no shape named
+timing test/cs-cook/src/Program.cs 3 the cook's open-cost gate on the C# leg (§7, §7.5): the same two fixtures, the same paired medians, one warm-up pass because a tiered runtime measured cold measures tier-up — a constant-time header match, no shape named
