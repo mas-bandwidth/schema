@@ -1,54 +1,61 @@
 name: CI
 
-# The gate split (issue #133): pull requests run a FAST iteration gate;
-# certification runs on every push to main, nightly, and on demand.
+# THE PULL-REQUEST GATE (issue #368). Every job in this file answers a question
+# about the CODE IN THE DIFF, and every one of them fits the owner's rule for
+# CI that runs on each pull request: one to two minutes.
 #
-# What the split moves is WHEN the inline-budget gates run, not whether —
-# nothing checks less. Measured basis (2026-08-25, runs 32826150095 /
-# 32827197339): the full conformance run (`make test`) cost 31-45s — six
-# languages when that was measured, nine today; the inline-budget gates
-# cost ~9 of the ~10:30 wall minutes (go 2:44,
-# cs 3:47, rust 1:16, cpp 0:36, c 0:32 on macOS; go 2:23 on ubuntu). So the
-# PR leg KEEPS the entire conformance corpus — every construct class, every
-# target, both OSes, the goldens, the fuzz seeds, the staleness check — and
-# moves only the inline gates, which are certification instruments (they
-# fire on compiler-version changes by design) rather than iteration ones.
-# A cross-compiler inline regression a PR cannot see still fails loudly on
-# main minutes after merge, and nightly re-certifies a quiet main.
+# MEASURED, on this file's own first run: the slowest job was MEASURED_SLOWEST
+# and the gate answered in MEASURED_WALL end to end.
 #
-# The `msvc` leg RIDES EVERY PULL REQUEST, and that is a measurement too: the
-# job costs about a minute and a quarter, well inside the one-to-two minute
-# rule (#320). Its job comment carries the per-translation-unit numbers.
+# CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
+# both OSes, every `tables-<lang>-release` target. It runs on every push to
+# main, nightly, and on demand. Nothing is checked less than before — the split
+# moves WHEN a certification instrument runs, not whether. A regression only
+# certification can see fails loudly on main minutes after the merge.
 #
-# For a full run on a branch before merging (e.g. a change near the hot
-# paths, or anything that moves the C++ emitters): gh workflow run ci.yml
-# --ref <branch>.
+# The line between the two files is the question a job answers. An ITERATION
+# gate answers "is this diff right" — it can go red on a commit, so a PR is
+# where it belongs. A CERTIFICATION gate answers "does this tree still hold on
+# every toolchain, at length, under load" — it fires on compiler-version
+# changes and on time, by design, so it belongs where those live.
+#
+# To run certification on a branch before merging (a change near the hot paths,
+# or anything that moves the C++ emitters):
+#   gh workflow run certify.yml --ref <branch>
+#
+# WHEN A PULL REQUEST GETS NO RUN AT ALL. GitHub does not create a
+# `pull_request` run while the pull request has a merge conflict with its base:
+# the run needs the merge commit refs/pull/<n>/merge, and a conflicted pull
+# request has none. The cla.yml workflow keeps firing on those same pushes
+# because `pull_request_target` runs against the base branch and needs no merge
+# ref, which is exactly the asymmetry #368's second symptom describes. It is
+# documented behavior, not a limit this file can lift:
+# https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request
+# The fix is to rebase the branch; the mitigation is below on `cpp-lock`, which
+# no longer skips itself on the workflow_dispatch runs a worker falls back to.
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  # a quiet main still gets certified daily (and govulncheck sees new CVEs)
-  schedule:
-    - cron: '17 9 * * *'
   workflow_dispatch:
 
-# Superseded pushes to the same PR cancel each other; certification runs
-# (main / nightly / dispatch) are NEVER cancelled — every main commit's
-# full-matrix proof must run to completion. The event name is part of the
-# group so a queued nightly and a queued push run can never displace each
-# other (a group holds only one pending run).
+# Superseded pushes to the same pull request cancel each other; a push to main
+# is never cancelled. The event name is part of the group so a queued main run
+# and a queued dispatch run can never displace each other (a group holds only
+# one pending run).
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The six runtimes the generated code targets, PINNED to each sibling's
-# latest RELEASED tag, never main: a sibling merging to main mid-day must
-# not change what a schema commit's CI proves — the sibling-HEAD race broke
-# this gate three separate times (2026-08-16/17) with green schema commits
-# going red on foreign pushes. One pin per sibling, exactly one place each
-# (these lines), shared by every job that clones the siblings.
+# The runtimes the generated code targets, PINNED to each sibling's latest
+# RELEASED tag, never main: a sibling merging to main mid-day must not change
+# what a schema commit's CI proves — the sibling-HEAD race broke this gate
+# three separate times (2026-08-16/17) with green schema commits going red on
+# foreign pushes. One pin per sibling, exactly one place each (these lines),
+# shared by every job that clones the siblings. certify.yml carries the same
+# block; the two must move together.
 # To bump a pin: edit the *_TAG line to the new release tag — nothing else
 # changes. Find the newest tag with:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
@@ -61,108 +68,76 @@ env:
   SERIALIZE_JS_TAG: v1.3.0
 
 jobs:
-  # The fast gate, and the conformance half of certification. `make test`
-  # builds the corpus in all nine languages and compares their wire against
-  # the C++-pinned goldens — that cross-language bit identity is the property
-  # this project exists to provide, and CI is where it gets proven on
-  # hardware we do not own. It runs on every trigger, PRs included, because
-  # it is cheap (31-45s measured): the fast leg trims nothing from the
-  # corpus.
+  # The compiler's own test suite, and the only job in this file that reads a
+  # Go source file. `go test ./...` covers internal/fuzz, whose seeded corpus
+  # re-executes every crasher ever found — a short, bounded run, not a
+  # campaign. `go vet` rides here because an emitter codebase built almost
+  # entirely out of format strings is exactly where printf-verb mismatches
+  # live (issue #31).
   #
-  # PRs run it on ubuntu ONLY (the one platform #133 budgeted): the shared
-  # macOS pool is 5 runners wide and a certification run's gate fan-out
-  # saturates it, so a PR macOS job pushed during those minutes queues behind
-  # it and blows the 2-minute law (measured: 1:34 of queueing, 3:00 wall,
-  # run 32830268855). The ubuntu pool is 20 wide. macOS conformance still
-  # proves every main commit, minutes later, in this same job.
-  test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest","macos-latest"]') }}
-
+  # The two C sibling checkouts are not optional decoration: internal/fuzz's
+  # compile check SKIPS ITSELF when ../serialize and ../serialize.c are absent,
+  # so a job without them would report green over a check that never ran.
+  go-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
-      # Siblings cloned exactly where README.md tells a newcomer to put them —
-      # CI exercises the documented path rather than a special one. The
-      # Makefile's SERIALIZE* defaults already point here, and the generated
-      # go.mod / Cargo.toml and the test/js* module-relative imports embed
-      # relative paths that only resolve under this layout.
-      - name: Check out the serialize runtimes (pinned releases)
+      - name: Check out the C/C++ serialize runtimes (pinned releases)
         run: |
           cd ..
-          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
-          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
 
       - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache: false
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '8.0'
-
-      # One node version, the runtime's floor (serialize.js engines >= 20):
-      # the runtime's own CI carries the version matrix; this repo proves
-      # wire identity, which does not vary by node version.
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '20'
-
-      # The Dart SDK, pinned to the same version the Makefile documents for
-      # the repo-local dist/ (generated Dart is self-contained — the SDK is
-      # the only Dart dependency, so there is no serialize.dart clone above).
-      - uses: dart-lang/setup-dart@v1
-        with:
-          sdk: '3.13.2'
-
-      # The JDK, same major as the Makefile's dist/ pin (generated Java is
-      # self-contained — the JDK is the only Java dependency, so there is no
-      # serialize.java clone above).
-      - uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-      # The BEAM toolchain, same versions as the Makefile's dist/ pins
-      # (generated Elixir is self-contained — Erlang/OTP + Elixir are the
-      # only dependencies, so there is no serialize.elixir clone above).
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: '29.0.5'
-          elixir-version: '1.20.4'
-
-      # vet rides in the test job on both OSes: an emitter codebase built
-      # almost entirely out of format strings is exactly where printf-verb
-      # mismatches live (issue #31).
       - name: go vet
         run: go vet ./...
 
-      # No SERIALIZE* overrides: the Makefile defaults already point at the
-      # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
-      # the author's machine; on CI cargo is on PATH, so point it somewhere
-      # harmless. DART, JAVA/JAVAC and ELIXIR/MIX likewise default to the
-      # repo-local dist/ toolchains; on CI setup-dart, setup-java and
-      # setup-beam put the pinned versions on PATH.
-      - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix
+      - name: go test
+        run: go test ./...
 
-      # The committed generated/ tree is what this repo treats as ground
-      # truth — findings are receipted against its line numbers. `make test`
-      # above regenerated every tracked file IN PLACE, so staleness is
-      # precisely a dirty tree here: a tracked file that changed, or a newly
-      # emitted file nobody committed (which a diff-only check would miss).
-      # Locally: `make generated-current`.
+  # THE GENERATED TREE IS CURRENT (issue #30). The committed generated/ tree is
+  # what this repo treats as ground truth — findings are receipted against its
+  # line numbers — so a compiler change that moves the emitted text and leaves
+  # the tree behind is a defect the next reader pays for.
+  #
+  # Every generation rule takes exactly one input, bin/schema, and no toolchain
+  # and no sibling checkout: the emitted text of a Go, Rust, C#, Dart, Java or
+  # Elixir unit is a function of the compiler alone. So this job regenerates
+  # the whole tree IN PLACE with Go and nothing else, and staleness is
+  # precisely a dirty tree afterwards — a tracked file that changed, or a newly
+  # emitted file nobody committed, which a diff-only check would miss.
+  #
+  # The stamp list is DERIVED from the Makefile rather than typed here, so a
+  # port that adds generated/<lang>/.stamp is covered the moment it rebases,
+  # with no edit to this file. Locally the same check is `make
+  # generated-current`, which gets there through the whole `make test` chain.
+  generated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: regenerate every committed generated/ tree
+        run: |
+          stamps=$(grep -oE '^generated/[A-Za-z0-9/_.-]*/\.stamp:' Makefile | sed 's/:$//' | sort -u)
+          if [ -z "$stamps" ]; then
+            echo "::error::no generated/*/.stamp rules found in the Makefile — this check would pass over an empty set"
+            exit 1
+          fi
+          echo "$stamps"
+          # shellcheck disable=SC2086
+          make $stamps
+
       - name: generated tree is current
         run: |
           git diff --exit-code generated/ || {
@@ -176,11 +151,81 @@ jobs:
             exit 1
           fi
 
-      # Seeded corpus only — a short, bounded run that re-executes every
-      # crasher ever found and checks the compiler still refuses bad input
-      # cleanly. The long fuzzing campaigns run by hand, not on every push.
-      - name: fuzz seeds
-        run: go test ./internal/fuzz/
+  # THE CONFORMANCE MATRIX (test/conformance/README.md), one job per registered
+  # driver. The same corpus as data, one driver per language, and the matrix
+  # that says which surfaces a backend has: cross-language bit identity is the
+  # property this project exists to provide, and it is an ITERATION gate — a
+  # diff that moves a codec breaks it on the commit that does so.
+  #
+  # SHARDED PER LEG, which is what the numbers in the Makefile's `conformance`
+  # comment said to do once the registry grew: a leg's wall is dominated by its
+  # own toolchain and its own build, so one job per language keeps the SLOWEST
+  # leg inside the two-minute rule instead of the SUM of them. It is also how
+  # each leg's cost stays visible — a leg that stops fitting is named by the
+  # job that missed, not buried in a total.
+  #
+  # Each leg installs only the toolchain and clones only the sibling runtime it
+  # needs; the C++ leg needs neither, because a generated table header includes
+  # no runtime at all. Registering a port is one line in
+  # test/conformance/drivers.txt, one driver, and one entry here naming the
+  # make targets that build it.
+  conformance:
+    name: conformance (${{ matrix.lang }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lang: cpp
+            targets: build/conformance-harness build/conformance-cpp build/schema_test_cook
+          - lang: cs
+            targets: build/conformance-harness build-conformance-cs build-cs-cook
+          - lang: go
+            targets: build/conformance-harness build/conformance-go
+          - lang: rust
+            targets: build/conformance-harness build/conformance-rust
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Siblings cloned exactly where README.md tells a newcomer to put them —
+      # CI exercises the documented path rather than a special one. The
+      # Makefile's SERIALIZE* defaults already point here, and the generated
+      # go.mod / Cargo.toml and the C# driver's project embed relative paths
+      # that only resolve under this layout.
+      - name: Check out the sibling runtime this leg needs (pinned release)
+        run: |
+          cd ..
+          case "${{ matrix.lang }}" in
+          cs)   git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
+          go)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
+          rust) git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
+          cpp)  echo "the C++ leg names no runtime: a generated table header includes none" ;;
+          esac
+
+      # bin/schema and the generated table units come out of Go in every leg.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - uses: actions/setup-dotnet@v6
+        if: matrix.lang == 'cs'
+        with:
+          dotnet-version: '8.0'
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: matrix.lang == 'rust'
+
+      # Its own step so the run log carries the build cost and the run cost
+      # separately — the two halves answer different questions when a leg
+      # stops fitting.
+      - name: build the harness and the ${{ matrix.lang }} driver
+        run: make ${{ matrix.targets }} RUSTUP_BIN=/usr/bin
+
+      - name: the ${{ matrix.lang }} leg over every surface
+        run: ./build/conformance-harness run --only ${{ matrix.lang }}
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
@@ -197,9 +242,9 @@ jobs:
   # to a host-order copy and proves the leg goes red on the target while
   # staying green here, which is the whole argument for having it.
   #
-  # It runs on PRs: it is an iteration gate, not a certification one — it
-  # answers a question about the code in the diff, not about the compiler that
-  # built it — and it fits the budget.
+  # It is an iteration gate, not a certification one — it answers a question
+  # about the code in the diff, not about the compiler that built it — and it
+  # fits the budget.
   #
   # THE PINS. The runner image is named rather than `-latest`, because package
   # versions are only meaningful against one archive; the cross compiler and
@@ -256,126 +301,6 @@ jobs:
       - name: the Go table leg, big-endian
         run: make conformance-big-endian
 
-  # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
-  # fanned out one leg per job so the legs run concurrently instead of
-  # serially (they were ~9 minutes end to end in one job; the longest single
-  # leg is ~4). Certification triggers only — these are certification
-  # instruments, not iteration ones (the gate fires on compiler-version
-  # changes by design, issue #25), so PRs skip them and main / nightly /
-  # dispatch prove them minutes later.
-  #
-  # Every runtime's throughput depends on the serialize chain inlining end
-  # to end, and until this gate nothing warned when it stopped. The
-  # adversarial selftest runs FIRST and in EVERY leg job: the verdict
-  # machinery must prove it CAN fail (out-of-line -> partial, cold never
-  # counted hot, the 4dc9b62 namespace-join false-full caught) before that
-  # leg's green is trusted. Each leg builds its own artifacts (one untimed
-  # bench round), re-derives the §4.2 verdict from the current tree, and
-  # fails the job if any hot-path partial:N exceeds bench/inline-budget.txt.
-  # The go leg's remark scan runs under `go build -a` and REFUSES if it
-  # prints nothing — without -a the build cache reads as a false clean bill
-  # of health (§4.1).
-  #
-  # The go leg gates on BOTH OSes; the c/cpp/rust verdict passes are
-  # otool/arm64-shaped (§4.1), so on linux inline-verdict.sh refuses
-  # honestly rather than faking a full — those legs, and the JitDisasm-shaped
-  # cs leg, gate on the macOS runner only. There is no js leg on purpose:
-  # every verdict pass is ahead-of-time disassembly, and a JIT has no
-  # build-time artifact to gate — faking one would be a green light that
-  # proves nothing.
-  # No explicit name: the default gives "inline-gate (os, leg)" per matrix
-  # combination when it runs, and a clean single "inline-gate" placeholder on
-  # PR runs — an expression name would show up raw there, because a skipped
-  # job's matrix is never expanded.
-  inline-gate:
-    if: github.event_name != 'pull_request'
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, leg: go }
-          - { os: macos-latest,  leg: go }
-          - { os: macos-latest,  leg: cpp }
-          - { os: macos-latest,  leg: c }
-          - { os: macos-latest,  leg: rust }
-          - { os: macos-latest,  leg: cs }
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Check out the serialize runtimes (pinned releases)
-        run: |
-          cd ..
-          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
-          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
-
-      # All the toolchains regardless of leg: the `make test` precondition
-      # step below builds the whole tree (nine languages), exactly as the
-      # single-job flow did before the fan-out — the gate legs verdict the
-      # same artifacts they always have.
-      - uses: actions/setup-go@v7
-        with:
-          go-version: '1.26'
-          cache: false
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '8.0'
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '20'
-
-      - uses: dart-lang/setup-dart@v1
-        with:
-          sdk: '3.13.2'
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: '29.0.5'
-          elixir-version: '1.20.4'
-
-      # The same preconditions the gates had when they ran after `make test`
-      # in one job: bin/schema, the generated trees, and the bench units all
-      # built (31-45s measured — cheap enough to repeat per leg rather than
-      # invent a narrower target with different semantics).
-      - name: make test
-        run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix
-
-      - name: inline gate — adversarial selftest
-        run: bench/tools/inline-gate.sh selftest
-
-      - name: inline gate — ${{ matrix.leg }} leg
-        run: bench/tools/inline-gate.sh leg ${{ matrix.leg }}
-
-      # GATE 2's SMOKE (docs/SPEC-TABLES.md §12.1). The gate itself is a paired
-      # measurement and its verdict belongs on a quiet box, so it is not on the
-      # PR path and its 5% band is not enforced here. What runs is the
-      # CORRECTNESS half at a small N — the generated block form and the
-      # hand-written mirror agreeing byte for byte across all nine sections,
-      # and the C# side reading the frame the C++ side wrote. Before this the
-      # gate ran nowhere at all, which is how a gate rots.
-      #
-      # ONE matrix combination, not six: this job's `make test` has already
-      # built the tree on every leg, and the smoke needs one extra C++ compile
-      # and one dotnet run. The go/ubuntu leg carries it because it is the one
-      # combination that always runs.
-      - name: gate 2 smoke — the block form still writes what the hand mirror does
-        if: matrix.os == 'ubuntu-latest' && matrix.leg == 'go'
-        run: make tables-block-gate2-smoke
-
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
     runs-on: ubuntu-latest
@@ -426,6 +351,10 @@ jobs:
           rows=$(echo "$out" | grep -cE "^  (c|cpp|go|rust|cs|js|java|dart|elixir) ")
           [ "$rows" -ge 1 ] || { echo "::error::render printed zero language rows"; exit 1; }
 
+  # A new CVE lands with no commit, so govulncheck is the one gate whose
+  # verdict changes on its own. It rides the pull request here AND the nightly
+  # in certify.yml — the same job in both files, deliberately, because neither
+  # trigger substitutes for the other.
   vuln:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -440,8 +369,7 @@ jobs:
 
   # The compiler that generates C++ for a Windows-targeting game engine, run on
   # Windows: vet + build, cheap enough to ride every pull request. What it
-  # EMITS is compiled with cl by the `msvc` job below, which runs on the
-  # certification side.
+  # EMITS is compiled with cl by the `msvc` job below.
   windows:
     runs-on: windows-latest
     timeout-minutes: 15
@@ -628,8 +556,7 @@ jobs:
   # belongs in bench/corpus and the generated code. This job refuses a commit
   # that hand-codes measurement of a schema shape anywhere else. Every current
   # exception is named in bench/SHAPE-GATE.allow with an exact count that can
-  # only shrink. Runs on push AND pull_request: unlike the cpp-lock this is a
-  # standing property of the tree, not a review-window freeze.
+  # only shrink.
   shape-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -643,10 +570,18 @@ jobs:
         run: go run ./bench/tools/shapegate
 
   # The C/C++ reference lock (owner ruling 2026-08-31, issue #170): while
-  # bench/LOCK exists, a PR touching any locked prefix refuses. The lift is
-  # a PR whose whole diff is bench/LOCK itself — visible by construction.
+  # bench/LOCK exists, a change touching any locked prefix refuses. The lift is
+  # a pull request whose whole diff is bench/LOCK itself — visible by
+  # construction.
+  #
+  # IT NO LONGER SKIPS ITSELF OUTSIDE `pull_request` (issue #368). A worker
+  # whose pull request gets no run — the conflicted-merge-ref case in this
+  # file's header — falls back to `gh workflow run`, and a fallback that
+  # quietly drops the lock is a fallback that lets a locked path through. The
+  # base is the pull request's own when there is one and `main` otherwise,
+  # which is the same comparison a dispatch on a branch wants. On a push to
+  # main the diff against main is empty and the job is a no-op that says so.
   cpp-lock:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -656,7 +591,7 @@ jobs:
       - name: refuse locked-path changes
         run: |
           [ -f bench/LOCK ] || { echo "no bench/LOCK — guard inactive"; exit 0; }
-          base="origin/${{ github.base_ref }}"
+          base="origin/${{ github.base_ref || 'main' }}"
           changed="$(git diff --name-only "$base"...HEAD)"
           echo "changed files vs $base:"; echo "$changed"
           if [ "$changed" = "bench/LOCK" ]; then
