@@ -1800,7 +1800,7 @@ tables-cook-cli: bin/schema
 # The first asks "did any block symbol leak into a Table source?" — a grep.
 # The second is the property §19 actually states: **the Table sources are
 # BYTE-IDENTICAL with or without the Block files existing**, held by comparing
-# 38 of them against frozen pins under testdata/golden/tables/.
+# 68 of them against frozen pins under testdata/golden/tables/.
 #
 # They are ordinary goldens: `make update-goldens` re-pins them when a TABLE
 # emitter legitimately changes, and a move under an unchanged emitter is
@@ -1810,7 +1810,7 @@ tables-cook-cli: bin/schema
 # mechanical comparison against a block-less emitter, the way the negative
 # controls below already build sabotaged ones.
 .PHONY: tables-block-zero-cost
-tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp
+tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
 	          build/tables-generated-cs/*/*Table.cs; do \
 		if grep -nE "TableBlock|[A-Za-z0-9_]Block" $$f; then \
@@ -1852,8 +1852,16 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 		cmp -s $$f build/tables-generated-cs/blockhome/$$(basename $$f) || \
 			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
 	done; \
+	for f in testdata/golden/tables/examples-c/*Table.* testdata/golden/tables/block-c/*Table.* \
+	         testdata/golden/tables/pointers-c/*Table.*; do \
+		dir=$$(basename $$(dirname $$f)); \
+		dir=$${dir%-c}; \
+		n=$$(( n + 1 )); \
+		cmp -s $$f build/tables-generated-c/$$dir/$$(basename $$f) || \
+			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
+	done; \
 	if [ "$$d" != "0" ]; then exit 1; fi; \
-	if [ "$$n" -lt 38 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 38 — the glob, not the property, is what broke"; exit 1; fi; \
+	if [ "$$n" -lt 68 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 68 — the glob, not the property, is what broke"; exit 1; fi; \
 	echo "block zero-cost gate: $$n Table sources byte-identical to their pins"
 
 # THE BUILD VERSION IS ONE NUMBER (docs/SPEC-TABLES.md §20.7): the constant each
@@ -3107,6 +3115,10 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	@cp build/tables-generated-cs/examples/*Table.cs testdata/golden/tables/examples-cs/
 	@cp build/tables-generated-cs/block/*Table.cs testdata/golden/tables/block-cs/
 	@cp build/tables-generated-cs/blockhome/*Table.cs testdata/golden/tables/blockhome-cs/
+	@for d in examples block pointers; do \
+		mkdir -p testdata/golden/tables/$$d-c; \
+		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c testdata/golden/tables/$$d-c/ 2>/dev/null || true; \
+	done
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	./build/schema_test_bench_table pin
