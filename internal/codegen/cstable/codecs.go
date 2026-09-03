@@ -1155,8 +1155,158 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		}
 		g.pf("    };\n")
 	}
+	// the RESET hook (docs/SPEC-TABLES.md §8.1): the one column the descriptors
+	// cannot express without a function — a generic walker that FILLS a value
+	// establishes an absent field's defaults through it, holding no type to
+	// spell. It is TableReset, the prefill the wire's read path already calls.
+	g.pf("    info.Reset = delegate(object o) { TableReset((%s)o); };\n", st.Name)
 	g.pf("    %sTableInfo = info;\n", st.Name)
 	g.pf("    return info;\n}\n\n")
+}
+
+// ---- the storage columns: C#'s spelling of C++'s offset and elem_size ----
+
+// storageExpr is the C# expression for a field's storage member on an instance
+// reached as `o`, cast back to its own class. A keyed array's slots live behind
+// .Slots on a table and are a plain array on a closure `type` (§2.4), and
+// keyedSlots already knows which.
+func (g *tableGen) storageExpr(f *ir.Field) string {
+	return g.keyedSlots(fmt.Sprintf("((%s)o).", g.owner.Name), f)
+}
+
+// elementExpr is storageExpr indexed where the field is an array, and
+// storageExpr itself where it is not — the walker passes 0 for a scalar.
+func (g *tableGen) elementExpr(f *ir.Field) string {
+	if f.Array != ir.ArrayNone {
+		return g.storageExpr(f) + "[i]"
+	}
+	return g.storageExpr(f)
+}
+
+// csRawGet renders one element as the ulong the descriptor's GetRaw hands back:
+// an integer sign-extended, a bool as 0 or 1, an enum or flags mask as its
+// value, a float as its IEEE-754 bit pattern. Sign extension happens HERE
+// rather than in the walker, because the C# storage type already knows its own
+// signedness and C++'s width switch has nothing to switch on.
+func csRawGet(expr string, t ir.FieldType) string {
+	switch t.Kind {
+	case ir.TBool:
+		return expr + " ? 1ul : 0ul"
+	case ir.TFloat32:
+		return "(ulong)TableFloatToBits(" + expr + ")"
+	case ir.TFloat64:
+		return "TableDoubleToBits(" + expr + ")"
+	case ir.TInt:
+		if t.Signed {
+			return "(ulong)(long)" + expr
+		}
+		return "(ulong)" + expr
+	case ir.TBits:
+		return "(ulong)" + expr
+	case ir.TNamed:
+		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
+			return expr
+		}
+		return "(ulong)" + expr
+	}
+	return "0ul"
+}
+
+// csRawSet is its inverse. The cast is unchecked because the walker has already
+// clamped to the field's declared range and to its storage width (§16.2), so a
+// value reaching here fits — and an unchecked build and a checked one must
+// generate the same source.
+func csRawSet(expr, src string, t ir.FieldType) string {
+	switch t.Kind {
+	case ir.TBool:
+		return expr + " = " + src + " != 0;"
+	case ir.TFloat32:
+		return expr + " = TableBitsToFloat(unchecked((uint)" + src + "));"
+	case ir.TFloat64:
+		return expr + " = TableBitsToDouble(" + src + ");"
+	case ir.TInt:
+		if t.Signed {
+			return expr + " = unchecked((" + csFieldType(t) + ")(long)" + src + ");"
+		}
+		return expr + " = unchecked((" + csFieldType(t) + ")" + src + ");"
+	case ir.TBits:
+		return expr + " = unchecked((" + csFieldType(t) + ")" + src + ");"
+	case ir.TNamed:
+		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
+			return expr + " = " + src + ";"
+		}
+		return expr + " = unchecked((" + t.Name + ")" + src + ");"
+	}
+	return ""
+}
+
+// csElemWidth is the STORAGE width of one element in bytes — C++'s elem_size
+// where it has a C# meaning, and the last bound a numeric read clamps to
+// (§16.2). 0 on every kind whose storage is not a fixed-width number.
+func csElemWidth(t ir.FieldType) int {
+	switch t.Kind {
+	case ir.TBool:
+		return 1
+	case ir.TFloat32:
+		return 4
+	case ir.TFloat64:
+		return 8
+	case ir.TInt:
+		return t.Width / 8
+	case ir.TBits:
+		if t.Width <= 32 {
+			return 4
+		}
+		return 8
+	}
+	return 0
+}
+
+// tableStorageColumns renders a field's storage columns: the accessor pairs a
+// generic walker reaches the value through. Exactly one of GetRaw/GetChild/
+// GetBuffer is non-null, and the companions follow the counted and optional
+// columns beside them.
+func (g *tableGen) tableStorageColumns(f *ir.Field) string {
+	var b strings.Builder
+	name := member(f)
+	cast := fmt.Sprintf("((%s)o).", g.owner.Name)
+	switch {
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(&b, ", GetBuffer = delegate(object o) { return %s; }", g.storageExpr(f))
+		fmt.Fprintf(&b, ", GetCount = delegate(object o) { return %s%sLength; }", cast, name)
+		fmt.Fprintf(&b, ", SetCount = delegate(object o, int n) { %s%sLength = n; }", cast, name)
+	case isClassRef(f.Type):
+		fmt.Fprintf(&b, ", GetChild = delegate(object o, int i) { return %s; }", g.elementExpr(f))
+	default:
+		fmt.Fprintf(&b, ", GetRaw = delegate(object o, int i) { return %s; }", csRawGet(g.elementExpr(f), f.Type))
+		fmt.Fprintf(&b, ", SetRaw = delegate(object o, int i, ulong r) { %s }", csRawSet(g.elementExpr(f), "r", f.Type))
+	}
+	if f.Array == ir.ArrayCounted {
+		fmt.Fprintf(&b, ", GetCount = delegate(object o) { return %s%sCount; }", cast, name)
+		fmt.Fprintf(&b, ", SetCount = delegate(object o, int n) { %s%sCount = n; }", cast, name)
+	}
+	if f.Type.Optional {
+		fmt.Fprintf(&b, ", GetPresent = delegate(object o) { return %s%sPresent; }", cast, name)
+		fmt.Fprintf(&b, ", SetPresent = delegate(object o, bool p) { %s%sPresent = p; }", cast, name)
+	}
+	return b.String()
+}
+
+// unionArmsValue renders a union field's Arms column: the tag's accessor pair
+// and one entry per arm, index 0 being the EMPTY arm, which carries neither
+// payload nor descriptor. Built with the descriptor and cached with it, so a
+// walk over a union allocates nothing.
+func unionArmsValue(un *ir.Union) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((%s)o).Type; }", un.Name)
+	fmt.Fprintf(&b, ", SetTag = delegate(object o, ulong t) { ((%s)o).Type = unchecked((%sType)t); }", un.Name, un.Name)
+	b.WriteString(", Arms = new TableUnionArmInfo[] { new TableUnionArmInfo()")
+	for _, v := range un.Variants {
+		fmt.Fprintf(&b, ", new TableUnionArmInfo { TableRef = delegate { return %sTableType(); }, Payload = delegate(object o) { return ((%s)o).%s; } }",
+			v.Type, un.Name, ir.GoExportName(v.Name))
+	}
+	b.WriteString(" } }")
+	return b.String()
 }
 
 func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
@@ -1200,6 +1350,15 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 
 	hasRange := "false"
 	rangeMin, rangeMax := "0.0", "0.0"
+	if f.Type.Kind == ir.TBits && !f.HasIntRange {
+		// bits(N) declares its range by its WIDTH: [0, 2^N - 1]. The codec has
+		// always clamped a read to it (docs/SPEC-TABLES.md §4); carrying it here is
+		// what lets a generic walker apply the same bound without re-deriving
+		// it from the type name (§8.1).
+		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		hasRange = "true"
+		rangeMin, rangeMax = "0.0", bigToDouble(max)
+	}
 	if f.HasIntRange {
 		hasRange = "true"
 		rangeMin, rangeMax = bigToDouble(f.IntMin), bigToDouble(f.IntMax)
@@ -1208,18 +1367,29 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		rangeMin, rangeMax = formatFloat64(f.FMin), formatFloat64(f.FMax)
 	}
 
-	// the VOCABULARY columns: an enum's values and a union's arms are both a
-	// named set indexed by [0, EnumMax], and each name carries the table-wire
-	// id it rides under (docs/SPEC-TABLES.md §5, §8)
+	// the VOCABULARY columns: an enum's values, a union's arms and a flags
+	// field's BITS are each a named set indexed by [0, EnumMax]. An enum's and
+	// a union's names carry the table-wire id they ride under; a flags variant
+	// has none, and that missing id is what tells the two apart at runtime
+	// (docs/SPEC-TABLES.md §4, §5, §8).
 	enumMax := "-1"
 	enumName := "null"
 	variantId := "null"
+	arms := "null"
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			enumName = fmt.Sprintf("delegate(ulong v) { return EnumName%s(v); }", f.Type.Name)
 			variantId = fmt.Sprintf("delegate(ulong v) { ushort id; TableEnumId((%s)v, out id); return id; }", f.Type.Name)
+		}
+	case *ir.Flags:
+		if f.Type.Kind == ir.TNamed {
+			// a flags mask is the wire's one POSITIONAL vocabulary
+			// (docs/SPEC-TABLES.md §4): its variants are BIT POSITIONS, so the
+			// descriptor names bits, and there is no variant id.
+			enumMax = fmt.Sprintf("%d", len(ref.Variants)-1)
+			enumName = fmt.Sprintf("delegate(ulong v) { return FlagName%s((int)v); }", f.Type.Name)
 		}
 	case *ir.Union:
 		if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
@@ -1230,11 +1400,12 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 			variantId = unionArmLambda(ref, func(v ir.UnionVariant) string {
 				return fmt.Sprintf("(ushort)0x%04x", ir.VariantId(v.Name))
 			}, "(ushort)0", "(ushort)0")
+			arms = unionArmsValue(ref)
 		}
 	}
 
-	g.pf("        new TableFieldInfo { Name = \"%s\", TypeName = \"%s\", Id = 0x%04x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s },\n",
-		f.Name, tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
-		hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, guard, tableRef)
+	g.pf("        new TableFieldInfo { Name = \"%s\", Json = \"%s\", TypeName = \"%s\", Id = 0x%04x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s%s },\n",
+		f.Name, ir.TableFieldJsonKey(f), tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
+		csElemWidth(f.Type), hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
+		keyTypeName, keyName, keyId, guard, tableRef, arms, g.tableStorageColumns(f))
 }

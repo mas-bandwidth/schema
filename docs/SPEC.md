@@ -1386,8 +1386,14 @@ tree mirrors the schema tree a person navigates.
   `lib.rs` declaring and glob re-exporting them.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
-  `namespace <Package>`. Every unit emits one further file per unit,
-  `<Package>View.cs`, on the same terms as the C++ pair above.
+  `namespace <Package>`. A unit that declares TABLES emits one further file
+  per schema file, `<Base>Table.cs`, carrying the table wire's codecs, its
+  reflection descriptors and its TEXT FORM (SPEC-TABLES.md §16) — the C++
+  pair's single-file twin, and single because a unit's C# files compile into
+  one assembly, so the shared runtime and the text form's generic walk are
+  emitted once per unit rather than once per translation unit behind a
+  guard. Every unit emits one further file per unit, `<Package>View.cs`, on
+  the same terms as the C++ pair above.
 - **JavaScript:** one ES module per schema file, cross-file `import`s derived
   from actual references; classes whose constructors initialize every member
   in declaration order (specified defaults live in construction; `ZeroX` is

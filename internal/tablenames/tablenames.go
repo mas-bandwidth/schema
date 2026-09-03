@@ -65,6 +65,13 @@ var registry = []Name{
 	{Name: "TableReader", By: Cpp | Cs, What: "the wire reader over the caller's buffer"},
 	{Name: "TableTypeInfo", By: Cpp | Cs, What: "a table's reflection descriptor"},
 	{Name: "TableFieldInfo", By: Cpp | Cs, What: "a field's reflection descriptor"},
+	// a UNION field's shape (docs/SPEC-TABLES.md §8.1): the tag, and each arm's
+	// payload by its own descriptor. Both backends define both, and both put
+	// them at unit level beside the two descriptors above — a union field's
+	// column has to name a type, and a nested one would be reached through a
+	// descriptor a walk holds by value.
+	{Name: "TableUnionInfo", By: Cpp | Cs, What: "a union field's tag and its arms"},
+	{Name: "TableUnionArmInfo", By: Cpp | Cs, What: "one union arm's payload and descriptor"},
 	{Name: "TableEnumId", By: Cpp | Cs, What: "an enum value -> its table-wire variant id"},
 	{Name: "TableEnumValue", By: Cpp | Cs, What: "a table-wire variant id -> its enum value"},
 
@@ -101,6 +108,13 @@ var registry = []Name{
 	// has an arena; the CLAIM does not vary with that, because a name free
 	// today must not become a collision the day a table gains a pointer.
 	{Name: "TableReset", By: Cpp | Cs, What: "restore a value's declared defaults in place — C#'s reset itself, and C++'s ADL hook onto <Name>Reset for the arena"},
+	// SCOPED: the TEXT FORM's generic walk (docs/SPEC-TABLES.md §16), a nested
+	// static class of Schema. Everything the walk spells — its reader, its
+	// writer sink, its scanners — is a member of it, so one registration
+	// covers the whole surface and the walk claims not one name at unit
+	// scope. C++ spells the same functions as a TableJson* family at
+	// namespace scope inside its own package guard.
+	{Name: "TableJson", By: Cs, What: "the text form's generic walk, a nested class of Schema", Scoped: true},
 	{Name: "TableBitsToFloat", By: Cs, What: "u32 bits -> float"},
 	{Name: "TableFloatToBits", By: Cs, What: "float -> u32 bits"},
 	{Name: "TableBitsToDouble", By: Cs, What: "u64 bits -> double"},

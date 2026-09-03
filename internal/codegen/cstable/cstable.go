@@ -266,6 +266,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if g.home {
 			g.tf("%s", tableRuntime(anyKeyed))
 			g.pf("%s", tableBitHelpers())
+			// THE TEXT FORM's generic walk (docs/SPEC-TABLES.md §16), emitted ONCE
+			// per unit beside the rest of the shared runtime: a unit's C# files
+			// compile into one assembly, so a second copy is a duplicate
+			// definition rather than C++'s harmless re-inclusion behind a
+			// guard. Its source never varies with the unit, which is the
+			// generic-walk gate (`make tables-cs-json-walk`).
+			g.pf("%s", tableJsonWalkSource)
 		}
 		for _, st := range members {
 			if st.IsTable {
@@ -289,6 +296,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			for _, st := range members {
 				g.owner = st
 				g.emitTableDescriptor(st)
+			}
+			// and the TEXT FORM's per-member surface: three thin wrappers over
+			// the generic walk, each naming a descriptor and nothing else
+			// (docs/SPEC-TABLES.md §16.1)
+			g.pf("// ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----\n\n")
+			for _, st := range members {
+				g.owner = st
+				g.emitJsonSurface(st)
 			}
 		}
 		out[f.Base+"Table.cs"] = g.assemble()
@@ -666,7 +681,7 @@ public sealed class TableReport
     // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
     // whose last occurrence wins, silently. It rides on this struct because a
     // caller has one report type, not two — so a wire read always leaves it
-    // zero, and it is here for the JSON walk that has not been ported yet.
+    // zero, and <Name>FromJson is what raises it.
     public int Duplicate;
     public bool Malformed;     // framing damage; decode stopped, partial result kept
 }
@@ -679,16 +694,25 @@ public sealed class TableReport
 // runtime with no schema files on hand. <Name>TableType() returns the
 // descriptor.
 //
-// FOUR of the C++ surface's columns are absent, and all four are MEMORY facts
-// with no C# twin: TableFieldInfo's offset, elem_size and count_offset, and
-// TableTypeInfo's size (the storage struct's sizeof). A C# field has no
-// offsetof and a C# class has no meaningful sizeof; a walker reaches storage
-// through the language's own reflection, not through bytes. Every other
-// column is here, name for name.
+// THE MEMORY COLUMNS ARE SPELLED AS ACCESSORS, and that is the whole of this
+// surface's divergence from C++'s. C++ locates a field with an offset and a
+// width, because its storage is one flat struct; a C# field has no offsetof
+// and a C# class has no meaningful sizeof, so the descriptor carries the
+// reader and the writer the emitter wrote instead. Same ROLE, one place, in
+// the language's own currency: a generic walker — the text form (§16) — reaches
+// storage through these and through nothing else. TableTypeInfo's size column
+// stays absent, having no role a C# walker can use.
+//
+// The delegates are built once, with the descriptor, and cached with it. They
+// take the owning instance as an object, which is a REFERENCE for every storage
+// class this backend emits, so calling one boxes nothing; the raw value
+// crosses as a ulong, which a Func<,,ulong> carries unboxed. Nothing on a walk
+// allocates.
 
 public sealed class TableFieldInfo
 {
     public string Name;         // schema field name, e.g. "health"
+    public string Json;         // the TEXT form's key: the json = "key" attribute, else Name (§16.4)
     public string TypeName;     // schema type name, e.g. "float32", "Grade"
     public ushort Id;           // table-wire field id (name hash; the was alias's hash after a rename)
     public byte Kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
@@ -696,6 +720,10 @@ public sealed class TableFieldInfo
     public bool Counted;        // a <name>Count/<name>Length companion exists
     public bool Optional;       // a ?T field: a <name>Present bool decides whether it rides
     public int ArrayBound;      // array capacity / string max length; 0 for plain scalars
+    // the STORAGE width of one element in bytes, C++'s elem_size where it has
+    // a C# meaning: the last bound a numeric read clamps to (§16.2). 0 on
+    // every kind whose storage is not a fixed-width number.
+    public int ElemWidth;
     public bool HasRange;       // a declared [min, max] (int or float)
     public double RangeMin;     // NOTE: int64 ranges beyond 2^53 lose precision here
     public double RangeMax;
@@ -731,6 +759,57 @@ public sealed class TableFieldInfo
     {
         get { return TableRef == null ? null : TableRef(); }
     }
+
+    // a UNION field's shape (docs/SPEC-TABLES.md §8.1): the tag, and each arm's
+    // payload by its own descriptor. A VALUE rather than C++'s factory — the
+    // laziness a descriptor graph needs lives in each arm's TableRef, so
+    // nothing here has to be deferred and a walk never builds one. null on
+    // every other kind, and that is what tells an enum field from a union
+    // one — both carry a value -> name function and a variant id.
+    public TableUnionInfo Arms;
+
+    // ---- the storage location, in C#'s own currency ----
+    //
+    // GetRaw/SetRaw carry one NUMERIC element: an integer sign-extended into
+    // the ulong, a bool as 0 or 1, an enum or a flags mask as its value, a
+    // float as its IEEE-754 bit pattern. GetChild hands back the OBJECT a
+    // nested table, a union or a class-typed element is stored as. GetBuffer
+    // hands back a string(N)'s or bytes(N)'s byte[]. The int is the element
+    // index — the array slot, or a keyed array's STORAGE index — and 0 for a
+    // field that is not an array.
+    public Func<object, int, ulong> GetRaw;
+    public Action<object, int, ulong> SetRaw;
+    public Func<object, int, object> GetChild;
+    public Func<object, byte[]> GetBuffer;
+    // the counted companion (a string's length, a bytes' length, a counted
+    // array's count), and the optional's presence bool. null where the field
+    // has none.
+    public Func<object, int> GetCount;
+    public Action<object, int> SetCount;
+    public Func<object, bool> GetPresent;
+    public Action<object, bool> SetPresent;
+}
+
+// one union arm's payload (docs/SPEC-TABLES.md §8.1). Arms run [0, EnumMax]; index
+// 0 is the EMPTY arm and carries neither payload nor descriptor.
+public sealed class TableUnionArmInfo
+{
+    public Func<TableTypeInfo> TableRef;
+    public TableTypeInfo Table
+    {
+        get { return TableRef == null ? null : TableRef(); }
+    }
+    public Func<object, object> Payload; // the arm's storage, given the union's
+}
+
+// A union field's shape: the tag, and the arms indexed by it. C++ carries the
+// tag's offset and width; C# carries the pair that reads and writes it, for the
+// reason the field accessors above exist.
+public sealed class TableUnionInfo
+{
+    public Func<object, ulong> GetTag;
+    public Action<object, ulong> SetTag;
+    public TableUnionArmInfo[] Arms;
 }
 
 public sealed class TableTypeInfo
@@ -738,6 +817,12 @@ public sealed class TableTypeInfo
     public string Name;         // schema type name
     public int NumFields;
     public TableFieldInfo[] Fields;
+    // put one instance back at its declared defaults, in place. A generic
+    // walker that FILLS a value has to establish the defaults an absent field
+    // takes, and it holds no type to spell — this is the one thing the columns
+    // could not express without a function (docs/SPEC-TABLES.md §8.1). It calls
+    // TableReset, the same prefill the wire's read path calls.
+    public Action<object> Reset;
 }
 
 // TableWriter is a ref struct over the caller's span: the wire is written in

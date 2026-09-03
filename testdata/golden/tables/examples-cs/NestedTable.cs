@@ -147,11 +147,31 @@ namespace Tabledemo
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "root", TypeName = "RootConfig", Id = 0x2eb8, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); } },
-                new TableFieldInfo { Name = "count", TypeName = "int32", Id = 0xe445, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "root", Json = "root", TypeName = "RootConfig", Id = 0x2eb8, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return RootConfigTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((ArchiveConfig)o).Root; } },
+                new TableFieldInfo { Name = "count", Json = "count", TypeName = "int32", Id = 0xe445, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ArchiveConfig)o).Count; }, SetRaw = delegate(object o, int i, ulong r) { ((ArchiveConfig)o).Count = unchecked((int)(long)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((ArchiveConfig)o); };
             ArchiveConfigTableInfo = info;
             return info;
+        }
+
+        // ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
+
+        // ArchiveConfig in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool ArchiveConfigFromJson(ArchiveConfig value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, ArchiveConfigTableType(), text, report);
+        }
+
+        public static long ArchiveConfigToJsonMeasure(ArchiveConfig value)
+        {
+            return TableJson.Write(value, ArchiveConfigTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long ArchiveConfigToJson(ArchiveConfig value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, ArchiveConfigTableType(), buffer, false);
         }
     }
 

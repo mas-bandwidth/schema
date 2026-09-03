@@ -642,10 +642,11 @@ namespace Blockhome
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "thickness", TypeName = "float64", Id = 0xc81a, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "material", TypeName = "uint32", Id = 0x0284, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "layer", TypeName = "uint8", Id = 0x4750, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "thickness", Json = "thickness", TypeName = "float64", Id = 0xc81a, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return TableDoubleToBits(((ArmorPlate)o).Thickness); }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Thickness = TableBitsToDouble(r); } },
+                new TableFieldInfo { Name = "material", Json = "material", TypeName = "uint32", Id = 0x0284, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorPlate)o).Material; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Material = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "layer", Json = "layer", TypeName = "uint8", Id = 0x4750, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorPlate)o).Layer; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorPlate)o).Layer = unchecked((byte)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((ArmorPlate)o); };
             ArmorPlateTableInfo = info;
             return info;
         }
@@ -660,11 +661,12 @@ namespace Blockhome
             info.NumFields = 4;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "front", TypeName = "ArmorPlate", Id = 0x3aa1, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); } },
-                new TableFieldInfo { Name = "rear", TypeName = "ArmorPlate", Id = 0x6b5c, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); } },
-                new TableFieldInfo { Name = "rating", TypeName = "float32", Id = 0xe2d9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "tier", TypeName = "uint8", Id = 0xe958, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "front", Json = "front", TypeName = "ArmorPlate", Id = 0x3aa1, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((ArmorConfig)o).Front; } },
+                new TableFieldInfo { Name = "rear", Json = "rear", TypeName = "ArmorPlate", Id = 0x6b5c, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorPlateTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((ArmorConfig)o).Rear; } },
+                new TableFieldInfo { Name = "rating", Json = "rating", TypeName = "float32", Id = 0xe2d9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((ArmorConfig)o).Rating); }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorConfig)o).Rating = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "tier", Json = "tier", TypeName = "uint8", Id = 0xe958, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((ArmorConfig)o).Tier; }, SetRaw = delegate(object o, int i, ulong r) { ((ArmorConfig)o).Tier = unchecked((byte)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((ArmorConfig)o); };
             ArmorConfigTableInfo = info;
             return info;
         }
@@ -679,9 +681,10 @@ namespace Blockhome
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "barrel", TypeName = "uint32", Id = 0x87ed, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "cooldown", TypeName = "float32", Id = 0x2230, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "barrel", Json = "barrel", TypeName = "uint32", Id = 0x87ed, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((FiringGroup)o).Barrel; }, SetRaw = delegate(object o, int i, ulong r) { ((FiringGroup)o).Barrel = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "cooldown", Json = "cooldown", TypeName = "float32", Id = 0x2230, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((FiringGroup)o).Cooldown); }, SetRaw = delegate(object o, int i, ulong r) { ((FiringGroup)o).Cooldown = TableBitsToFloat(unchecked((uint)r)); } },
             };
+            info.Reset = delegate(object o) { TableReset((FiringGroup)o); };
             FiringGroupTableInfo = info;
             return info;
         }
@@ -696,13 +699,84 @@ namespace Blockhome
             info.NumFields = 4;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "firing_groups", TypeName = "FiringGroup", Id = 0xc79d, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); } },
-                new TableFieldInfo { Name = "missile_groups", TypeName = "FiringGroup", Id = 0x6a31, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); } },
-                new TableFieldInfo { Name = "reload_seconds", TypeName = "float32", Id = 0xd08f, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "gunner_id", TypeName = "uint32", Id = 0xe0d2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "firing_groups", Json = "firing_groups", TypeName = "FiringGroup", Id = 0xc79d, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((GunnerSettings)o).FiringGroups[i]; }, GetCount = delegate(object o) { return ((GunnerSettings)o).FiringGroupsCount; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).FiringGroupsCount = n; } },
+                new TableFieldInfo { Name = "missile_groups", Json = "missile_groups", TypeName = "FiringGroup", Id = 0x6a31, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return FiringGroupTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((GunnerSettings)o).MissileGroups[i]; }, GetCount = delegate(object o) { return ((GunnerSettings)o).MissileGroupsCount; }, SetCount = delegate(object o, int n) { ((GunnerSettings)o).MissileGroupsCount = n; } },
+                new TableFieldInfo { Name = "reload_seconds", Json = "reload_seconds", TypeName = "float32", Id = 0xd08f, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((GunnerSettings)o).ReloadSeconds); }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).ReloadSeconds = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "gunner_id", Json = "gunner_id", TypeName = "uint32", Id = 0xe0d2, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((GunnerSettings)o).GunnerId; }, SetRaw = delegate(object o, int i, ulong r) { ((GunnerSettings)o).GunnerId = unchecked((uint)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((GunnerSettings)o); };
             GunnerSettingsTableInfo = info;
             return info;
+        }
+
+        // ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
+
+        // ArmorPlate in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool ArmorPlateFromJson(ArmorPlate value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, ArmorPlateTableType(), text, report);
+        }
+
+        public static long ArmorPlateToJsonMeasure(ArmorPlate value)
+        {
+            return TableJson.Write(value, ArmorPlateTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long ArmorPlateToJson(ArmorPlate value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, ArmorPlateTableType(), buffer, false);
+        }
+
+        // ArmorConfig in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool ArmorConfigFromJson(ArmorConfig value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, ArmorConfigTableType(), text, report);
+        }
+
+        public static long ArmorConfigToJsonMeasure(ArmorConfig value)
+        {
+            return TableJson.Write(value, ArmorConfigTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long ArmorConfigToJson(ArmorConfig value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, ArmorConfigTableType(), buffer, false);
+        }
+
+        // FiringGroup in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool FiringGroupFromJson(FiringGroup value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, FiringGroupTableType(), text, report);
+        }
+
+        public static long FiringGroupToJsonMeasure(FiringGroup value)
+        {
+            return TableJson.Write(value, FiringGroupTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long FiringGroupToJson(FiringGroup value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, FiringGroupTableType(), buffer, false);
+        }
+
+        // GunnerSettings in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool GunnerSettingsFromJson(GunnerSettings value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, GunnerSettingsTableType(), text, report);
+        }
+
+        public static long GunnerSettingsToJsonMeasure(GunnerSettings value)
+        {
+            return TableJson.Write(value, GunnerSettingsTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long GunnerSettingsToJson(GunnerSettings value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, GunnerSettingsTableType(), buffer, false);
         }
     }
 

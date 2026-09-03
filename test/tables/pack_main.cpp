@@ -271,8 +271,19 @@ static void compare_text( const char * what, const T & value, const char * path,
         failures++;
         return;
     }
-    // schema unpack ends the file with a newline; ToJson writes the text alone
-    while ( size > 0 && expected[size - 1] == '\n' ) { size--; }
+    // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
+    // §16.1), so the file and the buffer are the same bytes and this
+    // comparison strips nothing. It used to strip the file's trailing
+    // newlines, and that concession is what the ruling removed: a text with
+    // the byte and a text without it were the same text to a reader and two
+    // different texts to a diff.
+    if ( size < 1 || expected[size - 1] != '\n' || ( size > 1 && expected[size - 2] == '\n' ) )
+    {
+        printf( "FAIL %s: %s does not end with exactly one newline (§16.1)\n", what, path );
+        failures++;
+        free( expected );
+        return;
+    }
 
     int64_t measured = to_json_measure( value );
     if ( measured < 0 )

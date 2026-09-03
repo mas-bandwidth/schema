@@ -137,10 +137,10 @@ reach.
   building is TOOLING's path — the game points at the cook (§7).
 
 **Backend status: C++, and C# for the FIXED class.** C++ carries both classes;
-C# carries the fixed class (§6.1) — optionals, enum-keyed arrays and all — and
-refuses a unit whose closure declares a pointer, naming its variable class as a
-follow-on. Every other backend refuses a unit that declares tables at all, by
-name, with this document cited. The remaining per-language backends are named
+C# carries the fixed class (§6.1) — optionals, enum-keyed arrays, the text form
+(§16) and all — and refuses a unit whose closure declares a pointer, naming its
+variable class as a follow-on. Every other backend refuses a unit that declares
+tables at all, by name, with this document cited. The remaining per-language backends are named
 follow-ons (§15).
 
 **The BLOCK FORM (§2.7, §19) is live in C++ and C#, together**, because the
@@ -2808,6 +2808,19 @@ what an element starts as.
 attribute's value, else the field's own name (§16.4) — so a walker over the
 text form spells keys without a second table.
 
+**A field carries WHERE IT LIVES, and the spelling is the language's.** C++
+carries an offset and a width, because its storage is one flat struct; a
+language whose fields have no address carries the pair that reads and writes
+the field instead — a getter and a setter over one element, the object a
+nested value is stored as, the byte buffer a `string(N)` is, and the counted
+and presence companions. It is the SAME column doing the same job, and a
+generic walker reaches storage through it and through nothing else. Two
+consequences follow and both are law: a backend that spells the column as
+accessors carries no storage-struct size, because the number describes
+nothing it can use; and a walk in such a backend allocates no more than a
+walk in C++, because the accessors are built once with the descriptor and
+cached with it.
+
 **A `bits(N)` field carries its IMPLIED RANGE.** `bits(N)` declares
 `[0, 2^N − 1]` by its width rather than by an attribute, and the codec has
 always clamped to it (§4); carrying it in the descriptor is what lets a
@@ -3546,8 +3559,11 @@ in build version (§20.5).
     two open.
   - **The unit-level TABLE-RUNTIME names**, claimed in every unit rather
     than only in a unit that declares a table: the descriptor primitives
-    `TableTypeInfo` and `TableFieldInfo` at their head, and beside them the
-    rest of the one registry the checker and the emitters share —
+    `TableTypeInfo` and `TableFieldInfo` at their head, with
+    `TableUnionInfo` and `TableUnionArmInfo` beside them — a union field's
+    column has to NAME a type, in both backends, and a walk holds a
+    descriptor by value so neither can hide inside another — and beside them
+    the rest of the one registry the checker and the emitters share —
     `TableKeyed` (an enum-keyed array's storage, and a keyed array occurs in
     a `type` body: this document's own `ScoreBoard` declares one),
     `TableRef`, `TableReport`, `TableWriter`, `TableReader`, `TableEnumId`,
@@ -3557,7 +3573,11 @@ in build version (§20.5).
     `TableCookInfo`, `TableCookFieldInfo` and `TableCookStorage`, with
     `TableCookHeaderBytes` and `TableCookRead64` riding as members of `Schema`
     and so claiming nothing at file scope), `BuildVersion` (§20, which both
-    accelerators carry) and the rest of that list. §8.2 has a table-free unit's
+    accelerators carry) and the rest of that list. **The TEXT form's walk
+    claims nothing in C#**: it is `TableJson`, one nested class of `Schema`,
+    and every function, sink and scanner it spells is a member of that —
+    reached through its owner, so a schema is free to declare any of those
+    names. §8.2 has a table-free unit's
     view file DEFINING those primitives, so a unit that declares no table
     can no longer be allowed to declare their names.
 
@@ -4355,8 +4375,8 @@ inspects everything in the schema built:
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12), and the FIXED class is what that
   needs: storage structs, measure/save/load over caller-owned buffers, the
-  report, the reflection descriptors, `?T`, `[E]T` and name-hashed
-  vocabularies — the text form and the variable class are still ahead of it.
+  report, the reflection descriptors, `?T`, `[E]T`, name-hashed vocabularies
+  and the text form (§16) — the variable class is still ahead of it.
   A port mirrors this document and invents no contract of
   its own; where a language forces a shape — a pseudo-union for a language
   with no native union — the ladder above already says what is licensed.
@@ -4364,7 +4384,9 @@ inspects everything in the schema built:
   and the node-table codec, on top of the fixed class C# carries today (§11).
   The cooked form is NOT in it: a cook is pointed at, not parsed, so
   `<Base>Cook.cs` and `<Root>Cook.Open` are emitted for a pointered unit
-  already (§7, §11). And the C# text form (§16), whose walk C++ carries alone.
+  already (§7, §11). The text form is not in it either — §16 lands in C# with
+  the fixed class, and a pointered unit has no text form for the same reason
+  it has no wire codec.
 - **The variable class in a ported backend** — the arena, the region, the
   cooked form and the pointer surface — after that port's fixed class.
 - **The TEXT FORM for the variable class** (§16.1) — a second walker that
@@ -4506,11 +4528,24 @@ packer (§17) calls this section once per text and does the rest itself.
 the descriptors is what makes the form cheap enough to exist at all, and
 the C++ backend holds it as one walker whose source is byte-identical in
 every generated `.cpp` — but that is C++'s way of meeting the rules, not
-the definition of them. Another backend, and the compiler's own packer
-(§17), implement the same rules over the same IR, and goldens are what make
-the implementations one form: for every instance in the corpus, every
-implementation's text is byte-identical and every implementation's read of
-that text produces the same wire bytes.
+the definition of them. The C# backend holds the same walk under the shape
+its language forces, the compiler's own packer (§17) implements the same
+rules over the same IR, and goldens are what make the implementations one
+form: for every instance in the corpus, every implementation's text is
+byte-identical and every implementation's read of that text produces the
+same wire bytes.
+
+**Where a backend's spelling is FORCED, the rule does not move — the
+spelling does, and the site says so.** C# is the worked example, and it
+forces exactly four: storage is reached through the descriptor's accessors
+rather than an offset and a width, because a C# field has no address (§8.1);
+number conversion goes through the invariant culture, so the walk consults
+no locale where C++ must; a string is written from two sources, a
+descriptor's key and a `string(N)`'s bytes, where C++ has one pointer type
+for both; and the reader is a plain cursor beside the span rather than one
+`ref struct` over it, because C# refuses to hand a stack buffer to a method
+that also takes a `ref struct` by reference and the walk needs a buffer for
+every key it compares. None of the four changes a byte of any text.
 
 **The walk is a generated TRANSLATION UNIT, not header content.** A table
 unit file emits `<Base>Table.cpp` beside `<Base>Table.h`: the header declares
@@ -4551,6 +4586,34 @@ A project that never reads or writes a text simply does not compile that
 file, and its headers carry neither the walk nor the number-conversion
 includes the walk needs.
 
+The same three, in C#:
+
+```csharp
+TableReport report = new TableReport();
+ShipConfig ship = new ShipConfig();
+if (!Schema.ShipConfigFromJson(ship, text, report))
+{
+    // the text is not JSON (report.Malformed) — the instance holds what
+    // was placed before the stop
+}
+
+long size = Schema.ShipConfigToJsonMeasure(ship);   // exact bytes, writes nothing
+byte[] buffer = new byte[size];
+Schema.ShipConfigToJson(ship, buffer);              // returns size; -1 = refused
+```
+
+**`text` is a `ReadOnlySpan<byte>` and `buffer` a `Span<byte>`**, so the
+caller owns both and the read path allocates nothing beyond the instance —
+a string lands in the field's own `byte[N]` storage, and every key, name and
+number token is compared and converted in a stack buffer. C# has no free
+functions, so all three are members of the unit's `Schema` class (§6.1's
+naming), and the capacity C++ passes as an argument is the span's own
+length. **A unit's C# files compile into ONE assembly**, so the walk is
+emitted once per UNIT — into the file that already carries the unit's shared
+table runtime — rather than once per translation unit behind a guard; there
+is no second file to compile and no build decision to make, and a consumer
+that never calls the form pays the assembly's share of one walker.
+
 A VARIABLE-LENGTH table reads through its builder, because that is where
 its storage comes from (§6.5):
 
@@ -4558,11 +4621,13 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class.** No backend implements
-the variable class's text form yet — a pointered unit gets no `FromJson`,
-refused by name with this section cited, never emitted with the function
-missing — and the second walker it needs, emitted only in units that
-declare a pointer, is tracked as schema#275.
+**Backend status for this section: the FIXED class, in C++ and C#.** No
+backend implements the variable class's text form yet — a pointered unit
+gets no `FromJson`, refused by name with this section cited, never emitted
+with the function missing — and the second walker it needs, emitted only in
+units that declare a pointer, is tracked as schema#275. In C# that refusal
+is already made one level up: a pointered unit gets no `<Base>Table.cs` at
+all (§11), so it has no text form for the same reason it has no wire codec.
 
 - **`FromJson` fills ONE instance from ONE text.** The instance is the
   caller's; the read path allocates nothing beyond it. Fields the text does
@@ -4579,6 +4644,18 @@ declare a pointer, is tracked as schema#275.
   (§17.2), and neither is checkable while the shape is unstated. It is the
   form's one formatting opinion, and it is held because a text these files
   exist for is read and diffed by people.
+- **THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE.** Every writer emits
+  it — `ToJson` in every backend, and `schema unpack` — and every reader
+  ACCEPTS a text with or without one, because the trailing whitespace a read
+  already skips is what makes the two the same text. The byte belongs to the
+  FORM rather than to a file convention: a text is written to a file, pasted
+  into a diff, piped between tools and handed back, and it has to be one text
+  in all four places. A buffer whose last byte is `}` is the one shape that is
+  not — it is the shape that makes `unpack` and `ToJson` disagree by a byte,
+  and it forced every comparison between them to strip before comparing,
+  which is a concession each new port would have had to rediscover. The
+  goldens carry the byte; a text carrying two newlines, or none, is a text a
+  reader still accepts and a writer never produces.
 
 ### 16.2 The mapping, field kind by field kind
 
@@ -4729,11 +4806,26 @@ touching a stored file.
   enum-keyed object keyed `"None"`, a lone surrogate.
 - Guards in every configuration, including nested and negated ones, and a
   text whose keys precede their guards.
-- **Negative control:** with the walker's offset arithmetic sabotaged by
-  one field, the round-trip goes red on the first table that has two
-  fields.
+- **Negative control, per backend, on the same arithmetic.** With the
+  walker's offset arithmetic sabotaged by one field, the round trip goes red
+  on the first table that has two fields. A backend whose fields have no
+  offset sabotages what stands in for one — in C#, the FIELD INDEX the read
+  path looks a descriptor up by, so one key's value lands in its
+  neighbour's — and the control's second half is what makes it a control:
+  the conformance matrix must go red on `json-read` and stay green
+  everywhere else, `json-write` included, which is what says the break is
+  the READER's.
 - The one-walk gate: within a backend that holds the form as a single
-  walker, that walker's source is identical in every generated `.cpp`.
+  walker, that walker's source is identical in every unit of the corpus —
+  in every generated `.cpp` where the walk is a translation unit, and in the
+  one file per unit that carries it where an assembly makes a second copy a
+  duplicate definition.
+- **The conformance matrix.** Every registered backend answers `json-read`
+  and `json-write` over the same data: the text a backend writes is compared
+  against the text the harness holds, and the wire it reads back out of that
+  text against the pinned wire. A backend without the form prints ABSENT
+  rather than passing vacuously, which is the distinction that keeps a
+  missing feature and a failing test apart.
 
 ### 16.6 What this is not
 

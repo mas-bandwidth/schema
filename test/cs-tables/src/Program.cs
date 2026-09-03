@@ -942,7 +942,17 @@ static class Program
         Check(perks != null, "flags: descriptor found");
         Check(perks.Kind == 9, "flags: kU64 — the mask's raw storage");
         Check(perks.VariantId == null, "flags: no per-variant wire id exists to carry");
-        Check(perks.EnumMax == -1, "flags: no vocabulary");
+        // the bits DO have names, and the descriptor carries them: EnumMax is
+        // the highest declared BIT INDEX and EnumName spells one bit
+        // (docs/SPEC-TABLES.md §8). The missing VariantId beside a present
+        // EnumName is what says "positional vocabulary" — a bit has a name,
+        // never a wire id, and that is how a generic walk tells a flags field
+        // from an enum one.
+        Check(perks.EnumMax == 2, "flags: the highest declared bit index");
+        Check(perks.EnumName != null, "flags: a bit-index -> name function");
+        Check(perks.EnumName(0) == "Shielded", "flags: bit 0");
+        Check(perks.EnumName(1) == "Cloaked", "flags: bit 1");
+        Check(perks.EnumName(2) == "Turbo", "flags: bit 2");
 
         Demo.LoadoutConfig loadout = new Demo.LoadoutConfig();
         loadout.Perks = Demo.Schema.PerksCloaked; // bit 1

@@ -588,8 +588,9 @@ that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
 A table lives on its own wire — evolution-tolerant TLV, carried by C++ and by
-C# (the fixed class; C#'s pointer surface ON THE WIRE and its text form are
-follow-ons — its cook and block accelerators read a pointered unit today). Field
+C# (the fixed class, wire and text form both; C#'s pointer surface ON THE WIRE
+is a follow-on — its cook and block accelerators read a pointered unit today).
+Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
@@ -1691,6 +1692,29 @@ c++ -c ShipTable.cpp
 That is the whole cost of the text form, and it is opt-in: a project that
 never reads or writes a text does not compile that file, and including
 `ShipTable.h` for the wire codecs or the descriptors carries none of it.
+
+The same three in C#, where they are members of the unit's `Schema` class and
+the buffers are spans you own:
+
+```csharp
+TableReport report = new TableReport();
+ShipConfig ship = new ShipConfig();
+Schema.ShipConfigFromJson(ship, text, report);       // text is ReadOnlySpan<byte>
+
+long size = Schema.ShipConfigToJsonMeasure(ship);    // exact, writes nothing
+byte[] buffer = new byte[size];
+Schema.ShipConfigToJson(ship, buffer);
+```
+
+There is nothing extra to add to a C# build: a unit's files compile together,
+so the walk is already in the `<Base>Table.cs` you compile for the wire
+codecs. The read path allocates nothing beyond the instance you passed in —
+strings land in the field's own `byte[]` storage, and keys, names and number
+tokens are handled in stack buffers.
+
+Both writers end the text with exactly one newline, and both readers accept a
+text with or without one — so a text is the same text in a file, in a diff and
+in a pipe.
 
 `FromJson` places what the text mentions and leaves the rest at its declared
 defaults, exactly as an absent field on the wire does; unknown keys, wrong

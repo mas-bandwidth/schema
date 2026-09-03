@@ -2,10 +2,9 @@
 //
 // The twin of test/conformance/cpp/main.cpp, and it is deliberately the same
 // shape: one process per surface, every expectation in the data, nothing
-// literal here. What it does NOT list is as load-bearing as what it does — this
-// backend has no text form (docs/SPEC-TABLES.md §16's backend status), so it lists
-// neither json-read nor json-write and the matrix prints them ABSENT. A missing
-// feature and a failing test are different facts and the matrix keeps them apart.
+// literal here. It answers every surface this backend has, the text form
+// (docs/SPEC-TABLES.md §16) included — json-read and json-write moved from
+// ABSENT to a registered leg when the C# walk landed.
 //
 //   driver <manifest> list
 //   driver <manifest> <surface> <outdir>
@@ -60,6 +59,10 @@ static class Program
         public Func<byte[], Report, object> Load;   // null on refusal
         public Func<object, long> Measure;
         public Func<object, byte[], long> Save;
+        // the TEXT form (docs/SPEC-TABLES.md §16), the same three per row
+        public Func<byte[], Report, object> FromJson; // null on refusal
+        public Func<object, long> ToJsonMeasure;
+        public Func<object, byte[], long> ToJson;
     }
 
     // Each unit declares its own TableReport, so the driver carries one report
@@ -87,112 +90,83 @@ static class Program
 
     static readonly List<Codec> codecs = new List<Codec>
     {
-        Demo<Tabledemo.RootConfig>("RootConfig", Tabledemo.Schema.RootConfigLoad, Tabledemo.Schema.RootConfigMeasure, Tabledemo.Schema.RootConfigSave),
-        Demo<Tabledemo.ProfileConfig>("ProfileConfig", Tabledemo.Schema.ProfileConfigLoad, Tabledemo.Schema.ProfileConfigMeasure, Tabledemo.Schema.ProfileConfigSave),
-        Demo<Tabledemo.LoadoutConfig>("LoadoutConfig", Tabledemo.Schema.LoadoutConfigLoad, Tabledemo.Schema.LoadoutConfigMeasure, Tabledemo.Schema.LoadoutConfigSave),
-        Demo<Tabledemo.WideBlob>("WideBlob", Tabledemo.Schema.WideBlobLoad, Tabledemo.Schema.WideBlobMeasure, Tabledemo.Schema.WideBlobSave),
-        Demo<Tabledemo.ArchiveConfig>("ArchiveConfig", Tabledemo.Schema.ArchiveConfigLoad, Tabledemo.Schema.ArchiveConfigMeasure, Tabledemo.Schema.ArchiveConfigSave),
-        Demo<Tabledemo.KeyedConfig>("KeyedConfig", Tabledemo.Schema.KeyedConfigLoad, Tabledemo.Schema.KeyedConfigMeasure, Tabledemo.Schema.KeyedConfigSave),
-        V1(), V2(), P1(), P3(),
+        Demo<Tabledemo.RootConfig>("RootConfig", Tabledemo.Schema.RootConfigLoad, Tabledemo.Schema.RootConfigMeasure, Tabledemo.Schema.RootConfigSave,
+            Tabledemo.Schema.RootConfigFromJson, Tabledemo.Schema.RootConfigToJsonMeasure, Tabledemo.Schema.RootConfigToJson),
+        Demo<Tabledemo.ProfileConfig>("ProfileConfig", Tabledemo.Schema.ProfileConfigLoad, Tabledemo.Schema.ProfileConfigMeasure, Tabledemo.Schema.ProfileConfigSave,
+            Tabledemo.Schema.ProfileConfigFromJson, Tabledemo.Schema.ProfileConfigToJsonMeasure, Tabledemo.Schema.ProfileConfigToJson),
+        Demo<Tabledemo.LoadoutConfig>("LoadoutConfig", Tabledemo.Schema.LoadoutConfigLoad, Tabledemo.Schema.LoadoutConfigMeasure, Tabledemo.Schema.LoadoutConfigSave,
+            Tabledemo.Schema.LoadoutConfigFromJson, Tabledemo.Schema.LoadoutConfigToJsonMeasure, Tabledemo.Schema.LoadoutConfigToJson),
+        Demo<Tabledemo.WideBlob>("WideBlob", Tabledemo.Schema.WideBlobLoad, Tabledemo.Schema.WideBlobMeasure, Tabledemo.Schema.WideBlobSave,
+            Tabledemo.Schema.WideBlobFromJson, Tabledemo.Schema.WideBlobToJsonMeasure, Tabledemo.Schema.WideBlobToJson),
+        Demo<Tabledemo.ArchiveConfig>("ArchiveConfig", Tabledemo.Schema.ArchiveConfigLoad, Tabledemo.Schema.ArchiveConfigMeasure, Tabledemo.Schema.ArchiveConfigSave,
+            Tabledemo.Schema.ArchiveConfigFromJson, Tabledemo.Schema.ArchiveConfigToJsonMeasure, Tabledemo.Schema.ArchiveConfigToJson),
+        Demo<Tabledemo.KeyedConfig>("KeyedConfig", Tabledemo.Schema.KeyedConfigLoad, Tabledemo.Schema.KeyedConfigMeasure, Tabledemo.Schema.KeyedConfigSave,
+            Tabledemo.Schema.KeyedConfigFromJson, Tabledemo.Schema.KeyedConfigToJsonMeasure, Tabledemo.Schema.KeyedConfigToJson),
+        Row<Tblv1.Cfg, Tblv1.TableReport>("tblv1", "Cfg", () => new Tblv1.TableReport(), Copy,
+            Tblv1.Schema.CfgLoad, Tblv1.Schema.CfgMeasure, Tblv1.Schema.CfgSave,
+            Tblv1.Schema.CfgFromJson, Tblv1.Schema.CfgToJsonMeasure, Tblv1.Schema.CfgToJson),
+        Row<Tblv2.Cfg, Tblv2.TableReport>("tblv2", "Cfg", () => new Tblv2.TableReport(), Copy,
+            Tblv2.Schema.CfgLoad, Tblv2.Schema.CfgMeasure, Tblv2.Schema.CfgSave,
+            Tblv2.Schema.CfgFromJson, Tblv2.Schema.CfgToJsonMeasure, Tblv2.Schema.CfgToJson),
+        Row<Tblp1.Chain, Tblp1.TableReport>("tblp1", "Chain", () => new Tblp1.TableReport(), Copy,
+            Tblp1.Schema.ChainLoad, Tblp1.Schema.ChainMeasure, Tblp1.Schema.ChainSave,
+            Tblp1.Schema.ChainFromJson, Tblp1.Schema.ChainToJsonMeasure, Tblp1.Schema.ChainToJson),
+        Row<Tblp3.Chain, Tblp3.TableReport>("tblp3", "Chain", () => new Tblp3.TableReport(), Copy,
+            Tblp3.Schema.ChainLoad, Tblp3.Schema.ChainMeasure, Tblp3.Schema.ChainSave,
+            Tblp3.Schema.ChainFromJson, Tblp3.Schema.ChainToJsonMeasure, Tblp3.Schema.ChainToJson),
     };
 
     delegate bool LoadOf<TValue, TReport>(TValue value, ReadOnlySpan<byte> bytes, TReport report);
+    delegate bool FromJsonOf<TValue, TReport>(TValue value, ReadOnlySpan<byte> text, TReport report);
     delegate long SaveOf<TValue>(TValue value, Span<byte> buffer);
 
-    static Codec Demo<T>(string root, LoadOf<T, Tabledemo.TableReport> load, Func<T, long> measure, SaveOf<T> save)
-        where T : new()
+    // ONE row of the codec table, for any unit. The value type and the unit's
+    // own TableReport are the two type parameters; `make` and `copy` are the
+    // two things that cannot be generic, because each unit declares its own
+    // report class and C# has no structural typing to unify five identical
+    // shapes. Everything else — the wire pair and the text pair — is the same
+    // three lines whatever the unit, which is why they are written once.
+    static Codec Row<TValue, TReport>(
+        string unit, string root,
+        Func<TReport> make, Func<TReport, Report> copy,
+        LoadOf<TValue, TReport> load, Func<TValue, long> measure, SaveOf<TValue> save,
+        FromJsonOf<TValue, TReport> fromJson, Func<TValue, long> toJsonMeasure, SaveOf<TValue> toJson)
+        where TValue : new()
     {
         return new Codec
         {
-            Unit = "tabledemo",
+            Unit = unit,
             Root = root,
             Load = (bytes, report) =>
             {
-                T value = new T();
-                Tabledemo.TableReport inner = new Tabledemo.TableReport();
+                TValue value = new TValue();
+                TReport inner = make();
                 bool ok = load(value, bytes, inner);
-                Fill(report, Copy(inner));
+                Fill(report, copy(inner));
                 return ok ? (object)value : null;
             },
-            Measure = v => measure((T)v),
-            Save = (v, buffer) => save((T)v, buffer),
+            Measure = v => measure((TValue)v),
+            Save = (v, buffer) => save((TValue)v, buffer),
+            FromJson = (text, report) =>
+            {
+                TValue value = new TValue();
+                TReport inner = make();
+                bool ok = fromJson(value, text, inner);
+                Fill(report, copy(inner));
+                return ok ? (object)value : null;
+            },
+            ToJsonMeasure = v => toJsonMeasure((TValue)v),
+            ToJson = (v, buffer) => toJson((TValue)v, buffer),
         };
     }
 
-    static Codec V1()
+    static Codec Demo<T>(string root,
+        LoadOf<T, Tabledemo.TableReport> load, Func<T, long> measure, SaveOf<T> save,
+        FromJsonOf<T, Tabledemo.TableReport> fromJson, Func<T, long> toJsonMeasure, SaveOf<T> toJson)
+        where T : new()
     {
-        return new Codec
-        {
-            Unit = "tblv1",
-            Root = "Cfg",
-            Load = (bytes, report) =>
-            {
-                Tblv1.Cfg value = new Tblv1.Cfg();
-                Tblv1.TableReport inner = new Tblv1.TableReport();
-                bool ok = Tblv1.Schema.CfgLoad(value, bytes, inner);
-                Fill(report, Copy(inner));
-                return ok ? (object)value : null;
-            },
-            Measure = v => Tblv1.Schema.CfgMeasure((Tblv1.Cfg)v),
-            Save = (v, buffer) => Tblv1.Schema.CfgSave((Tblv1.Cfg)v, buffer),
-        };
-    }
-
-    static Codec V2()
-    {
-        return new Codec
-        {
-            Unit = "tblv2",
-            Root = "Cfg",
-            Load = (bytes, report) =>
-            {
-                Tblv2.Cfg value = new Tblv2.Cfg();
-                Tblv2.TableReport inner = new Tblv2.TableReport();
-                bool ok = Tblv2.Schema.CfgLoad(value, bytes, inner);
-                Fill(report, Copy(inner));
-                return ok ? (object)value : null;
-            },
-            Measure = v => Tblv2.Schema.CfgMeasure((Tblv2.Cfg)v),
-            Save = (v, buffer) => Tblv2.Schema.CfgSave((Tblv2.Cfg)v, buffer),
-        };
-    }
-
-    static Codec P1()
-    {
-        return new Codec
-        {
-            Unit = "tblp1",
-            Root = "Chain",
-            Load = (bytes, report) =>
-            {
-                Tblp1.Chain value = new Tblp1.Chain();
-                Tblp1.TableReport inner = new Tblp1.TableReport();
-                bool ok = Tblp1.Schema.ChainLoad(value, bytes, inner);
-                Fill(report, Copy(inner));
-                return ok ? (object)value : null;
-            },
-            Measure = v => Tblp1.Schema.ChainMeasure((Tblp1.Chain)v),
-            Save = (v, buffer) => Tblp1.Schema.ChainSave((Tblp1.Chain)v, buffer),
-        };
-    }
-
-    static Codec P3()
-    {
-        return new Codec
-        {
-            Unit = "tblp3",
-            Root = "Chain",
-            Load = (bytes, report) =>
-            {
-                Tblp3.Chain value = new Tblp3.Chain();
-                Tblp3.TableReport inner = new Tblp3.TableReport();
-                bool ok = Tblp3.Schema.ChainLoad(value, bytes, inner);
-                Fill(report, Copy(inner));
-                return ok ? (object)value : null;
-            },
-            Measure = v => Tblp3.Schema.ChainMeasure((Tblp3.Chain)v),
-            Save = (v, buffer) => Tblp3.Schema.ChainSave((Tblp3.Chain)v, buffer),
-        };
+        return Row<T, Tabledemo.TableReport>("tabledemo", root, () => new Tabledemo.TableReport(), Copy,
+            load, measure, save, fromJson, toJsonMeasure, toJson);
     }
 
     static void Fill(Report to, Report from)
@@ -244,6 +218,81 @@ static class Program
                 return 1;
             }
             File.WriteAllBytes(Path.Combine(outDir, f[1]), buffer);
+        }
+        return 0;
+    }
+
+    // json-read: the text is the input and the WIRE is the answer, so the pass
+    // proves the reader against bytes this driver did not write.
+    static int SurfaceJsonRead(string outDir)
+    {
+        foreach (string[] f in Kind("instance"))
+        {
+            Codec codec = Find(f[2], f[3]);
+            if (codec == null)
+            {
+                Console.Error.WriteLine("driver: no codec for " + f[2] + "." + f[3]);
+                return 1;
+            }
+            string path = Path.Combine("testdata", "conformance", "tables", "json", f[1] + ".json");
+            byte[] text = File.ReadAllBytes(path);
+            Report report = new Report();
+            object value = codec.FromJson(text, report);
+            if (value == null)
+            {
+                Console.Error.WriteLine("driver: " + f[1] + " does not read as JSON");
+                return 1;
+            }
+            long size = codec.Measure(value);
+            if (size < 0)
+            {
+                Console.Error.WriteLine("driver: " + f[1] + " measures as unsaveable after a clean read");
+                return 1;
+            }
+            byte[] buffer = new byte[size];
+            if (codec.Save(value, buffer) != size)
+            {
+                Console.Error.WriteLine("driver: " + f[1] + " saves a size its measure did not name");
+                return 1;
+            }
+            File.WriteAllBytes(Path.Combine(outDir, f[1]), buffer);
+        }
+        return 0;
+    }
+
+    // json-write: the wire is the input and the TEXT is the answer, compared
+    // against a text a third implementation wrote.
+    static int SurfaceJsonWrite(string outDir)
+    {
+        foreach (string[] f in Kind("instance"))
+        {
+            Codec codec = Find(f[2], f[3]);
+            if (codec == null)
+            {
+                Console.Error.WriteLine("driver: no codec for " + f[2] + "." + f[3]);
+                return 1;
+            }
+            byte[] wire = File.ReadAllBytes(f[4]);
+            Report report = new Report();
+            object value = codec.Load(wire, report);
+            if (value == null)
+            {
+                Console.Error.WriteLine("driver: " + f[1] + " does not load");
+                return 1;
+            }
+            long size = codec.ToJsonMeasure(value);
+            if (size < 0)
+            {
+                Console.Error.WriteLine("driver: " + f[1] + " holds a value ToJson refuses");
+                return 1;
+            }
+            byte[] text = new byte[size];
+            if (codec.ToJson(value, text) != size)
+            {
+                Console.Error.WriteLine("driver: " + f[1] + " writes a text its measure did not name");
+                return 1;
+            }
+            File.WriteAllBytes(Path.Combine(outDir, f[1] + ".json"), text);
         }
         return 0;
     }
@@ -342,9 +391,7 @@ static class Program
         string surface = args[1];
         if (surface == "list")
         {
-            // no text form in this backend (docs/SPEC-TABLES.md §16.1's status), so
-            // json-read and json-write are absent rather than failing
-            Console.Out.Write("wire\nreport\nblock\nforgery\n");
+            Console.Out.Write("wire\nreport\njson-read\njson-write\nblock\nforgery\n");
             return 0;
         }
         if (args.Length < 3)
@@ -357,6 +404,8 @@ static class Program
         {
             case "wire": return SurfaceWire(outDir);
             case "report": return SurfaceReport(outDir);
+            case "json-read": return SurfaceJsonRead(outDir);
+            case "json-write": return SurfaceJsonWrite(outDir);
             case "block": return SurfaceBlock(outDir);
             case "forgery": return SurfaceForgery(outDir);
             default: return 2;
