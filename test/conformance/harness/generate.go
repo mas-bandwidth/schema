@@ -163,6 +163,43 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		}
 	}
 
+	// THE COOKED FILES A RUNTIME'S WRITER IS HELD TO (docs/SPEC-TABLES.md §7.6),
+	// in both byte orders. They come from `schema cook` through the same public
+	// driver the command uses, because the TOOL IS THE REFERENCE: a runtime that
+	// writes a cook writes the tool's bytes or it has written a second format.
+	// The wire is the format of record, so the pair is (this instance's wire,
+	// this unit's build version) and nothing here is hand-authored.
+	for _, cw := range m.CookWrites {
+		inst, err := m.LookupInstance(cw.Instance)
+		if err != nil {
+			return err
+		}
+		unit, err := u.get(inst.Unit)
+		if err != nil {
+			return err
+		}
+		wire, err := os.ReadFile(inst.Wire)
+		if err != nil {
+			return fmt.Errorf("%s: %w", cw.Instance, err)
+		}
+		for _, arm := range []struct {
+			path string
+			big  bool
+		}{{cw.Little, false}, {cw.Big, true}} {
+			cooked, _, report, err := u.c.Cook(unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
+			if err != nil {
+				return fmt.Errorf("%s: cook: %w", cw.Instance, err)
+			}
+			if !report.Silent() {
+				return fmt.Errorf("%s: its own writer's bytes do not read clean: %+v", cw.Instance, report)
+			}
+			if err := writeFileAtomic(arm.path, cooked); err != nil {
+				return err
+			}
+		}
+		fmt.Printf("conformance: %-22s cooked both orders\n", cw.Instance)
+	}
+
 	// the evolution reports
 	var lines []string
 	for _, rc := range m.Reports {
@@ -205,7 +242,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	if err := writeFileAtomic(reportsPath, []byte(body)); err != nil {
 		return err
 	}
-	fmt.Printf("conformance: %d instances, %d report cases\n", len(m.Instances), len(m.Reports))
+	fmt.Printf("conformance: %d instances, %d report cases, %d cooked pairs\n", len(m.Instances), len(m.Reports), len(m.CookWrites))
 	return nil
 }
 

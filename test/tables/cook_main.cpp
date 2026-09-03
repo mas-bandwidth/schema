@@ -1,5 +1,6 @@
 /*
-    THE COOKED FORM's C++ READ SIDE, under test (docs/SPEC-TABLES.md §7).
+    THE COOKED FORM in C++, under test (docs/SPEC-TABLES.md §7): the READ side,
+    and the fixed class's WRITE side beside it (§7.6).
 
     `schema cook` writes the file and the generated <Root>Open points at it, and
     the two were written from the page independently: the tool in Go, this side
@@ -14,6 +15,11 @@
 
       write  <root> <wire>        a known instance of a FIXED root, to the wire,
                                   for `schema cook` to cook
+      cookwrite <root> <le> <be>  the same instance COOKED BY THIS RUNTIME and
+                                  byte-compared against the tool's two files, one
+                                  per byte order — with the allocation count, the
+                                  short-capacity refusal and an Open over what it
+                                  wrote (§7.6)
       fixedvalues <root> <cook>   that instance read back OUT of the cook, value
                                   for value: the VALUE crossing, which the fixed
                                   class can have because its wire has no pointers
@@ -77,6 +83,7 @@
 #include <cstdint>
 #include <cstdarg>
 #include <ctime>
+#include <vector>
 
 // ---------------------------------------------------------------------------
 // the verdict
@@ -867,6 +874,155 @@ static void mode_fixedvalues( const Root * root, const char * path )
 }
 
 // ---------------------------------------------------------------------------
+// mode: cookwrite — the WRITE side, against the tool's own bytes
+// ---------------------------------------------------------------------------
+//
+// THE TOOL IS THE REFERENCE (docs/SPEC-TABLES.md §7.6). `schema cook` wrote the
+// two files this mode is handed — one per byte order, from the wire the `write`
+// mode above produced — and the generated <Root>Cook must land on those bytes
+// exactly. A second cooker that produced its own bytes would be a second
+// format: a cooked artifact is content-addressed by (asset hash, build
+// version), so two writers of one instance have to be ONE artifact.
+//
+// Three more things ride on the same instance, because each is a promise the
+// page makes and none of them is visible in a byte comparison:
+//
+//   - ZERO ALLOCATION. A counting operator new is live across the measure and
+//     both writes, and the count must not move. COOK_WRITE_SABOTAGE=1 puts one
+//     allocation inside the measured region, which is what the Makefile's
+//     negative control uses to prove this gate can go red.
+//   - A SHORT CAPACITY WRITES NOTHING. One byte less than the measure must
+//     return false and leave the buffer as it was.
+//   - AND THE FILE OPENS. The runtime's own <Root>Open points at the bytes the
+//     runtime just wrote, which is the writer and the reader of one
+//     implementation meeting over the tool's format.
+
+static int64_t allocations = 0;
+static bool counting = false;
+
+void * operator new( size_t bytes )
+{
+    if ( counting ) allocations++;
+    void * p = malloc( bytes == 0 ? 1 : bytes );
+    if ( p == NULL ) abort();
+    return p;
+}
+
+void operator delete( void * p ) noexcept { free( p ); }
+void operator delete( void * p, size_t ) noexcept { free( p ); }
+
+static void mode_cookwrite( const Root * root, const char * little_path, const char * big_path )
+{
+    describe( "cookwrite %s against %s and %s", root->name, little_path, big_path );
+
+    // the same instance the `write` mode saved to the wire the tool cooked
+    graphdemo::Settings settings;
+    graphdemo::Stamp stamp;
+    const bool is_settings = strcmp( root->name, "Settings" ) == 0;
+    if ( is_settings )
+    {
+        settings.quality = SettingsQuality;
+        snprintf( settings.label, sizeof( settings.label ), "%s", SettingsLabel );
+        settings.label_length = (int32_t) strlen( SettingsLabel );
+    }
+    else if ( strcmp( root->name, "Stamp" ) == 0 )
+    {
+        stamp.seq = StampSeq;
+        snprintf( stamp.tag, sizeof( stamp.tag ), "%s", StampTag );
+        stamp.tag_length = (int32_t) strlen( StampTag );
+    }
+    else
+    {
+        fail( "the cookwrite mode covers the FIXED roots only, and was asked for %s", root->name );
+    }
+
+    const char * const paths[2] = { little_path, big_path };
+    const graphdemo::TableByteOrder orders[2] = { graphdemo::TableByteOrder::Little,
+                                                  graphdemo::TableByteOrder::Big };
+
+    // ONE buffer for both writes, sized by the measure and owned here: the
+    // writer is handed bytes and never asks for any
+    counting = true;
+    allocations = 0;
+    const int64_t need = is_settings ? graphdemo::SettingsCookMeasure( settings )
+                                     : graphdemo::StampCookMeasure( stamp );
+    counting = false;
+    if ( need <= 0 )
+        fail( "%sCookMeasure answered %lld", root->name, (long long) need );
+
+    uint8_t * mine = (uint8_t *) malloc( (size_t) need );
+    if ( mine == NULL ) fail( "out of memory" );
+
+    for ( int i = 0; i < 2; i++ )
+    {
+        uint64_t length = 0;
+        uint8_t * theirs = whole_file( paths[i], &length );
+        if ( (int64_t) length != need )
+            fail( "%sCookMeasure says %lld bytes and the tool's %s is %llu",
+                  root->name, (long long) need, paths[i], (unsigned long long) length );
+
+        memset( mine, 0xCD, (size_t) need ); // nothing the writer leaves is inherited
+        counting = true;
+        const bool ok = is_settings
+            ? graphdemo::SettingsCook( settings, mine, (uint64_t) need, orders[i] )
+            : graphdemo::StampCook( stamp, mine, (uint64_t) need, orders[i] );
+        if ( getenv( "COOK_WRITE_SABOTAGE" ) != NULL )
+        {
+            // the NEGATIVE CONTROL's own allocation, inside the measured region
+            uint8_t * leak = new uint8_t[16];
+            sink += leak[0];
+            delete[] leak;
+        }
+        counting = false;
+        if ( !ok )
+            fail( "%sCook refused a buffer of its own measure", root->name );
+
+        for ( int64_t at = 0; at < need; at++ )
+        {
+            if ( mine[at] != theirs[at] )
+                fail( "%s: byte %lld is 0x%02x and the tool wrote 0x%02x — the runtime's cook is not the tool's file (docs/SPEC-TABLES.md §7.6)",
+                      paths[i], (long long) at, mine[at], theirs[at] );
+        }
+        free( theirs );
+    }
+
+    if ( allocations != 0 )
+        fail( "the write side allocated %lld times: the caller owns the buffer and the writer allocates NOTHING (docs/SPEC-TABLES.md §7.6)",
+              (long long) allocations );
+
+    // A SHORT CAPACITY WRITES NOTHING
+    memset( mine, 0xCD, (size_t) need );
+    const bool refused = is_settings
+        ? graphdemo::SettingsCook( settings, mine, (uint64_t) need - 1, graphdemo::TableByteOrder::Little )
+        : graphdemo::StampCook( stamp, mine, (uint64_t) need - 1, graphdemo::TableByteOrder::Little );
+    if ( refused )
+        fail( "%sCook wrote into a buffer one byte short of its own measure", root->name );
+    for ( int64_t at = 0; at < need; at++ )
+    {
+        if ( mine[at] != 0xCD )
+            fail( "a refused %sCook wrote at byte %lld", root->name, (long long) at );
+    }
+
+    // AND THE FILE THE RUNTIME WROTE OPENS
+    if ( is_settings )
+    {
+        if ( !graphdemo::SettingsCook( settings, mine, (uint64_t) need, graphdemo::TableByteOrder::Little ) )
+            fail( "the second write refused" );
+        File file = place( mine, (uint64_t) need, (uint64_t) need, 0 );
+        const graphdemo::Settings * back = graphdemo::SettingsOpen( file.base, file.length );
+        if ( back == NULL )
+            fail( "the cook this runtime wrote did not open" );
+        if ( back->quality != SettingsQuality || strcmp( back->label, SettingsLabel ) != 0 )
+            fail( "the cook this runtime wrote opened onto other values" );
+        file.destroy();
+    }
+
+    free( mine );
+    printf( "cook write side: %s's cook is `schema cook`'s file, byte for byte, in both orders — "
+            "%lld bytes, zero allocations\n", root->name, (long long) need );
+}
+
+// ---------------------------------------------------------------------------
 // mode: usage — docs/USAGE.md's cook example, compiled and run
 // ---------------------------------------------------------------------------
 //
@@ -899,6 +1055,29 @@ static int usage_example( const uint8_t * bytes, uint64_t length )
     return nodes;
 }
 
+// and docs/USAGE.md's WRITE example (§7.6), which is the same text: measure,
+// then write into a buffer the caller owns, with a short capacity as the only
+// refusal. It runs here for the reason the read example does — the day the
+// surface moves, the documentation goes red with the code.
+static bool usage_write_example()
+{
+    graphdemo::Settings settings;
+    settings.quality = SettingsQuality;
+    snprintf( settings.label, sizeof( settings.label ), "%s", SettingsLabel );
+    settings.label_length = (int32_t) strlen( SettingsLabel );
+
+    // measure, then write: the buffer is yours and nothing here allocates
+    const int64_t bytes = graphdemo::SettingsCookMeasure( settings );
+    std::vector<uint8_t> file( (size_t) bytes );
+    if ( !graphdemo::SettingsCook( settings, file.data(), file.size(),
+                                   graphdemo::TableByteOrder::Little ) )
+    {
+        return false; // the only refusal: a capacity short of the measure
+    }
+    // and the file this build wrote is a file this build opens
+    return graphdemo::SettingsOpen( file.data(), file.size() ) != NULL;
+}
+
 static void mode_usage( const Root * root, const char * path )
 {
     if ( strcmp( root->name, "Scene" ) != 0 )
@@ -910,7 +1089,10 @@ static void mode_usage( const Root * root, const char * path )
     const int nodes = usage_example( file.base, file.length );
     if ( nodes <= 0 )
         fail( "USAGE's example did not open the cook, or found no chain in it" );
-    printf( "cook usage example: docs/USAGE.md's C++ compiles and runs — %d chain nodes off Scene.head\n", nodes );
+    if ( !usage_write_example() )
+        fail( "USAGE's WRITE example did not produce a cook this build opens" );
+    printf( "cook usage example: docs/USAGE.md's C++ compiles and runs — %d chain nodes off Scene.head, "
+            "and the write example's cook opens\n", nodes );
     file.destroy();
     free( source );
 }
@@ -1721,7 +1903,7 @@ int main( int argc, char ** argv )
 
     if ( argc < 4 )
     {
-        printf( "usage: %s golden|dump|write|fixedvalues|usage|forge|fuzz|time|accept|refuse <root> <file> [file]\n", argv[0] );
+        printf( "usage: %s golden|dump|write|cookwrite|fixedvalues|usage|forge|fuzz|time|accept|refuse <root> <file> [file]\n", argv[0] );
         printf( "       %s emit-forgeries <root> <cook>\n", argv[0] );
         printf( "       %s conformance <manifest> <outdir>\n", argv[0] );
         printf( "       %s foreign <manifest> <outdir>\n", argv[0] );
@@ -1747,6 +1929,12 @@ int main( int argc, char ** argv )
     else if ( strcmp( mode, "write" ) == 0 )
     {
         mode_write( root, argv[3] );
+    }
+    else if ( strcmp( mode, "cookwrite" ) == 0 )
+    {
+        if ( argc < 5 )
+            fail( "cookwrite takes the tool's little-endian and big-endian files" );
+        mode_cookwrite( root, argv[3], argv[4] );
     }
     else if ( strcmp( mode, "fixedvalues" ) == 0 )
     {

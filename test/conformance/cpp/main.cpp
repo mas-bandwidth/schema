@@ -13,11 +13,13 @@
 // that has no text form is missing a feature, not failing a test, and the
 // difference is the whole reason the matrix exists.
 //
-// The COOK surfaces are not here and that is deliberate: the node dump and the
-// 111-row forgery battery are already held by test/tables/cook_main.cpp, whose
-// unit this one does not compile, and the shell wrapper delegates both to that
-// binary rather than to a second copy of the same walk. The BLOCK surfaces are
-// here, because this driver already opens the block unit.
+// The cook's READ surfaces are not here and that is deliberate: the node dump
+// and the 111-row forgery battery are already held by test/tables/cook_main.cpp,
+// whose unit this one does not compile, and the shell wrapper delegates both to
+// that binary rather than to a second copy of the same walk. The BLOCK surfaces
+// are here, because this driver already opens the block unit — and so is
+// `cook-write` (§7.6), because it is the CORPUS's instances a runtime cooks,
+// and this driver is the one that already loads every one of them off the wire.
 
 #include <cstdio>
 #include <cstdlib>
@@ -152,6 +154,11 @@ struct Codec
     bool ( *from_json )( void *, const char *, int64_t, Report * );
     int64_t ( *to_json_measure )( const void * );
     int64_t ( *to_json )( const void *, char *, int64_t );
+    // the COOK's write side (§7.6). The byte order is an int here — 0 little,
+    // 1 big — because each unit spells the enum in its own namespace, and the
+    // order is a parameter of the WRITE rather than a fact of the host.
+    int64_t ( *cook_measure )( const void * );
+    bool ( *cook )( const void *, void *, uint64_t, int );
     void * ( *make )();
     void ( *reset )( void * );
 };
@@ -200,6 +207,12 @@ struct Erase
         []( const void * v ) { return ns::type##ToJsonMeasure( *(const ns::type *) v ); },     \
         []( const void * v, char * t, int64_t n ) {                                            \
             return ns::type##ToJson( *(const ns::type *) v, t, n );                            \
+        },                                                                                     \
+        []( const void * v ) { return ns::type##CookMeasure( *(const ns::type *) v ); },       \
+        []( const void * v, void * o, uint64_t c, int big ) {                                  \
+            return ns::type##Cook( *(const ns::type *) v, o, c,                                \
+                                   big ? ns::TableByteOrder::Big                               \
+                                       : ns::TableByteOrder::Little );                         \
         },                                                                                     \
         Erase<ns::type>::make, Erase<ns::type>::reset                                          \
     }
@@ -688,6 +701,51 @@ static int surface_json_write( const std::string & out )
     return 0;
 }
 
+// cook-write: the runtime WRITES a cooked file and the bytes are the tool's
+// (docs/SPEC-TABLES.md §7.6), in BOTH byte orders. The instance arrives as the
+// wire — the format of record — so what this proves is the pair a cooked
+// artifact is addressed by: one wire, one build version, ONE file.
+//
+// The two answers are written as <instance> and <instance>-be. The big-endian
+// half needs no big-endian host: the order is a parameter of the write, settled
+// at cook time for the target build, so every leg answers both on any machine.
+static int surface_cook_write( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "cook-write" ) continue;
+        // the line names an INSTANCE; that line carries the unit, the root and
+        // the wire, and none of them is repeated
+        const std::vector<std::string> * inst = NULL;
+        for ( size_t j = 0; j < manifest_lines.size(); j++ )
+        {
+            const std::vector<std::string> & g = manifest_lines[j].field;
+            if ( g[0] == "instance" && g[1] == f[1] ) { inst = &manifest_lines[j].field; break; }
+        }
+        if ( inst == NULL ) { fprintf( stderr, "driver: no instance %s\n", f[1].c_str() ); return 1; }
+        const Codec * codec = find_codec( ( *inst )[2], ( *inst )[3] );
+        if ( codec == NULL || codec->cook == NULL ) return 2; // this backend writes no cook
+        std::vector<uint8_t> wire;
+        if ( !slurp( ( *inst )[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", ( *inst )[4].c_str() ); return 1; }
+
+        void * value = codec->make();
+        codec->reset( value );
+        Report report;
+        if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) return 1;
+        const int64_t need = codec->cook_measure( value );
+        if ( need <= 0 ) return 1;
+        std::vector<uint8_t> file( (size_t) need );
+        for ( int big = 0; big < 2; big++ )
+        {
+            if ( !codec->cook( value, file.data(), (uint64_t) need, big ) ) return 1;
+            const std::string name = big ? f[1] + "-be" : f[1];
+            if ( !spill( out, name, file.data(), (size_t) need ) ) return 1;
+        }
+    }
+    return 0;
+}
+
 // foreign() reverses the MAGIC word — the eight bytes at offset 0 — which is
 // what that word looks like to a reader of the OTHER byte order (§19.1, §7.1).
 // It makes the file foreign to WHOEVER READS IT rather than to a particular
@@ -914,7 +972,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\n" );
+        printf( "wire\nreport\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -929,6 +987,7 @@ int main( int argc, char ** argv )
     if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out );
     if ( surface == "json-hostile" ) return surface_json_hostile( out );
+    if ( surface == "cook-write" ) return surface_cook_write( out );
     if ( surface == "block" ) return surface_block( out );
     if ( surface == "block-foreign" ) return surface_block_foreign( out );
     if ( surface == "block-dump" ) return surface_block_dump( out );

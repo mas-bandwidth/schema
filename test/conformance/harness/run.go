@@ -22,7 +22,7 @@ import (
 
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "report", "json-read", "json-write", "json-hostile",
-	"cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
+	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
 
 type driver struct {
 	lang string
@@ -182,6 +182,11 @@ func deriveManifest(m *Manifest, path string) error {
 	for _, c := range m.Cooks {
 		fmt.Fprintf(&b, "cook %s %s %s %s\n", c.Case, c.Unit, c.Root, repoRelative(c.File))
 	}
+	for _, cw := range m.CookWrites {
+		// the instance is the whole line a driver needs: the two cooked files
+		// the tool wrote are the ANSWER, and an answer never reaches a driver
+		fmt.Fprintf(&b, "cook-write %s\n", cw.Instance)
+	}
 	for _, bl := range m.Blocks {
 		fmt.Fprintf(&b, "block %s %s %s\n", bl.Name, bl.Unit, bl.File)
 	}
@@ -244,6 +249,24 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{c.Case, want})
+		}
+	case "cook-write":
+		// THE TOOL IS THE REFERENCE (§7.6): a runtime writes the cook and the
+		// bytes must be `schema cook`'s, in BOTH byte orders. The big-endian
+		// half is not host-dependent — the order is a parameter of the write,
+		// settled at cook time for the target build — so every leg answers both
+		// on any host.
+		for _, cw := range m.CookWrites {
+			little, err := os.ReadFile(cw.Little)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w — run: make conformance-generate", cw.Instance, err)
+			}
+			big, err := os.ReadFile(cw.Big)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w — run: make conformance-generate", cw.Instance, err)
+			}
+			out = append(out, expectation{cw.Instance, little})
+			out = append(out, expectation{cw.Instance + "-be", big})
 		}
 	case "json-hostile":
 		for _, h := range m.Hostiles {

@@ -18,6 +18,7 @@ reports.txt           the read report of every evolution case  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
 cook/<case>.dump      the canonical node dump of every cook    (pinned)
+cook-write/<name>     the cooked file the tool wrote, per order (generated)
 block/<name>.dump     the canonical row dump of every block    (pinned)
 FORMAT.md             this page
 ```
@@ -38,6 +39,7 @@ instance     <name> <unit> <root> <wire file> [no-text]
 report       <case> <unit> <root> <wire file>
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
+cook-write   <instance> <little-endian file> <big-endian file>
 block        <name> <unit> <block file> <dump file>
 forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 ```
@@ -68,6 +70,14 @@ forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <
   ways. The FILE is not committed: `test/cookgen` writes it, deterministically,
   and the harness runs it. What is pinned is the dump. It is also the fixture
   `cook-foreign` makes foreign, on the same terms as `block`'s.
+- **`cook-write`** names an INSTANCE the file already carries and the two files
+  `schema cook` produced from its wire, little-endian then big. The instance
+  line holds the unit, the root and the wire, so none of them is repeated here;
+  a line naming no instance is refused when the manifest is read. The two files
+  are GENERATED — `make conformance-generate` writes them through the same
+  public driver `schema cook` uses — because the TOOL IS THE REFERENCE (§7.6):
+  a runtime that writes a cook writes the tool's bytes or it has written a
+  second format.
 - **`block`** is a block image an Open must accept, and the ROW DUMP its reader
   must produce out of it. It is also the fixture the `block-foreign` surface
   makes foreign: that surface adds no line here, because a foreign image is not
@@ -174,6 +184,19 @@ and every other leg byte-compares them, exactly as the wire goldens work.
 there are almost none in it: `SceneValued` is the same chain with every
 non-pointer leaf filled (`test/cookgen --values`), so its dump locks what a
 reader READS out of a node as well as where the node is.
+
+## cook-write/&lt;name&gt;.cook and cook-write/&lt;name&gt;-be.cook
+
+The cooked file `schema cook` produces from an instance's wire, one per byte
+order (docs/SPEC-TABLES.md §7.6). They are not dumps and not text: they are the
+FILE, and a runtime's writer is byte-compared against them. Nothing is
+hand-authored — `make conformance-generate` writes both from the wire golden the
+instance line already names — and a byte that MOVES under an unchanged schema is
+stop-the-line, exactly as a wire golden is.
+
+The big-endian half needs no big-endian host on either side: the byte order is a
+PARAMETER of the write, settled at cook time for the target build, so the tool
+writes one on any machine and so must a runtime.
 
 ## block/&lt;name&gt;.dump
 

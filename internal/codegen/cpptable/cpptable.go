@@ -565,6 +565,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 			g.emitVariableSurface(members)
 			g.emitCookSurface(members)
+			g.emitCookWriteSurface(members)
 			g.emitRelocatabilityPreamble()
 			for _, st := range members {
 				g.pf("static_assert( std::is_trivially_copyable<%s>::value, \"%s must stay relocatable\" );\n", st.Name, st.Name)

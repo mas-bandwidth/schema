@@ -515,6 +515,48 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     return base;
 }
 
+// ---- the cooked form, the WRITE side (docs/SPEC-TABLES.md §7.6) ----
+//
+// THE BYTE ORDER IS THE TARGET'S, NOT THE HOST'S. A cook is produced in the
+// byte order of the build that will read it (§7), so the fixing happens here —
+// offline, once, on the writing side — and never at Open. Passing
+// TableByteOrder::Big on a little-endian machine produces a big-endian build's
+// file, and nothing about the writing host reaches the bytes.
+enum class TableByteOrder
+{
+    Little = 1, // the header's byte_order word, and the order every scalar is written in
+    Big = 2,
+};
+
+// One store, width as an argument. Every call site passes a literal width, so
+// the loop folds to a store (and a byte swap on the foreign order); a name per
+// width would claim four §11 names to save nothing.
+inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableByteOrder order )
+{
+    if ( order == TableByteOrder::Little )
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * i ) ); }
+    }
+    else
+    {
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
+    }
+}
+
+// A buffer piece: the USED bytes and nothing else. The tail is already zero —
+// the whole extent was zeroed before any field was written — so this copies the
+// used prefix and leaves the rest, which is what makes a string's unused tail a
+// consequence of one memset rather than a rule per buffer. A used length past
+// the buffer, or below zero, is a value no reader could have produced and it is
+// clamped rather than trusted: this writes inside the caller's buffer on every
+// input.
+inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, int64_t capacity )
+{
+    if ( used <= 0 ) { return; }
+    const int64_t n = used < capacity ? used : capacity;
+    memcpy( at, source, (size_t) n );
+}
+
 } // namespace blockdemo
 
 #endif // BLOCKDEMO_SCHEMA_TABLE_COOK
@@ -4329,6 +4371,724 @@ inline const RenderExplosion * RenderExplosionOpen( const void * bytes, uint64_t
 inline const RenderFrame * RenderFrameOpen( const void * bytes, uint64_t length )
 {
     return (const RenderFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderFrame ), (uint64_t) alignof( RenderFrame ) );
+}
+
+// ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
+//
+// The bytes are `schema cook`'s, and the tool stays the reference: the two
+// writers are held to one file, byte for byte, in both byte orders. A cook is
+// content-addressed by (asset hash, build version), so two writers of one
+// instance produce ONE artifact or the pair means nothing.
+
+inline void RenderCameraCookBody( uint8_t * at, const RenderCamera & value, TableByteOrder order );
+inline void RenderShipCookBody( uint8_t * at, const RenderShip & value, TableByteOrder order );
+inline void RenderTurretCookBody( uint8_t * at, const RenderTurret & value, TableByteOrder order );
+inline void RenderMissileCookBody( uint8_t * at, const RenderMissile & value, TableByteOrder order );
+inline void RenderDynamicPropCookBody( uint8_t * at, const RenderDynamicProp & value, TableByteOrder order );
+inline void RenderStaticPropCookBody( uint8_t * at, const RenderStaticProp & value, TableByteOrder order );
+inline void RenderCosmeticPropCookBody( uint8_t * at, const RenderCosmeticProp & value, TableByteOrder order );
+inline void RenderLaserCookBody( uint8_t * at, const RenderLaser & value, TableByteOrder order );
+inline void RenderExplosionCookBody( uint8_t * at, const RenderExplosion & value, TableByteOrder order );
+inline void RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableByteOrder order );
+inline void RenderVector3CookBody( uint8_t * at, const RenderVector3 & value, TableByteOrder order );
+inline void RenderQuaternionCookBody( uint8_t * at, const RenderQuaternion & value, TableByteOrder order );
+
+inline void RenderCameraCookBody( uint8_t * at, const RenderCamera & value, TableByteOrder order )
+{
+    RenderVector3CookBody( at + 0, value.position, order );
+    RenderQuaternionCookBody( at + 24, value.rotation, order );
+    table_cook_put( at + 56, (uint64_t) value.camera_id, 4, order );
+    table_cook_put( at + 60, (uint64_t) value.camera_type, 4, order );
+    table_cook_put( at + 64, (uint64_t) value.target_object_id, 4, order );
+    { uint32_t bits = 0; memcpy( &bits, &value.fov, 4 ); table_cook_put( at + 68, (uint64_t) bits, 4, order ); }
+}
+
+inline void RenderShipCookBody( uint8_t * at, const RenderShip & value, TableByteOrder order )
+{
+    RenderVector3CookBody( at + 0, value.position, order );
+    RenderQuaternionCookBody( at + 24, value.rotation, order );
+    table_cook_put( at + 56, (uint64_t) value.flags, 8, order ); // a mask rides raw, in every target
+    table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
+    table_cook_put( at + 68, (uint64_t) value.target_object_id, 4, order );
+    { uint32_t bits = 0; memcpy( &bits, &value.thrust, 4 ); table_cook_put( at + 72, (uint64_t) bits, 4, order ); }
+    table_cook_put( at + 76, (uint64_t) value.object_sequence, 1, order );
+    table_cook_put( at + 77, (uint64_t) value.ship_type, 1, order );
+    table_cook_put( at + 78, (uint64_t) value.team, 1, order );
+    table_cook_put( at + 79, (uint64_t) ( value.has_target_lock ? 1 : 0 ), 1, order );
+    table_cook_put( at + 80, (uint64_t) ( value.predicted_explode ? 1 : 0 ), 1, order );
+}
+
+inline void RenderTurretCookBody( uint8_t * at, const RenderTurret & value, TableByteOrder order )
+{
+    RenderQuaternionCookBody( at + 0, value.rotation, order );
+    table_cook_put( at + 32, (uint64_t) value.flags, 8, order );
+    table_cook_put( at + 40, (uint64_t) value.object_id, 4, order );
+    table_cook_put( at + 44, (uint64_t) value.parent_object_id, 4, order );
+    table_cook_put( at + 48, (uint64_t) value.turret_index, 4, order );
+    table_cook_put( at + 52, (uint64_t) value.target_object_id, 4, order );
+    table_cook_put( at + 56, (uint64_t) value.object_sequence, 1, order );
+    table_cook_put( at + 57, (uint64_t) value.team, 1, order );
+    table_cook_put( at + 58, (uint64_t) ( value.has_target_lock ? 1 : 0 ), 1, order );
+}
+
+inline void RenderMissileCookBody( uint8_t * at, const RenderMissile & value, TableByteOrder order )
+{
+    RenderVector3CookBody( at + 0, value.position, order );
+    RenderQuaternionCookBody( at + 24, value.rotation, order );
+    table_cook_put( at + 56, (uint64_t) value.flags, 8, order );
+    table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
+    table_cook_put( at + 68, (uint64_t) value.object_sequence, 1, order );
+    table_cook_put( at + 69, (uint64_t) value.missile_type, 1, order );
+    table_cook_put( at + 70, (uint64_t) value.team, 1, order );
+}
+
+inline void RenderDynamicPropCookBody( uint8_t * at, const RenderDynamicProp & value, TableByteOrder order )
+{
+    RenderVector3CookBody( at + 0, value.position, order );
+    RenderQuaternionCookBody( at + 24, value.rotation, order );
+    table_cook_put( at + 56, (uint64_t) value.flags, 8, order );
+    table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
+    table_cook_put( at + 68, (uint64_t) value.object_sequence, 1, order );
+    table_cook_put( at + 69, (uint64_t) value.prop_type, 1, order );
+    table_cook_put( at + 70, (uint64_t) value.team, 1, order );
+}
+
+inline void RenderStaticPropCookBody( uint8_t * at, const RenderStaticProp & value, TableByteOrder order )
+{
+    RenderVector3CookBody( at + 0, value.position, order );
+    RenderQuaternionCookBody( at + 24, value.rotation, order );
+    { uint64_t bits = 0; memcpy( &bits, &value.scale, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    table_cook_put( at + 64, (uint64_t) value.flags, 8, order );
+    table_cook_put( at + 72, (uint64_t) value.static_prop_id, 4, order );
+    table_cook_put( at + 76, (uint64_t) value.prop_type, 1, order );
+    table_cook_put( at + 77, (uint64_t) value.team, 1, order );
+}
+
+inline void RenderCosmeticPropCookBody( uint8_t * at, const RenderCosmeticProp & value, TableByteOrder order )
+{
+    RenderVector3CookBody( at + 0, value.position, order );
+    RenderQuaternionCookBody( at + 24, value.rotation, order );
+    { uint64_t bits = 0; memcpy( &bits, &value.scale, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    table_cook_put( at + 64, (uint64_t) value.flags, 8, order );
+    table_cook_put( at + 72, (uint64_t) value.cosmetic_prop_id, 4, order );
+    table_cook_put( at + 76, (uint64_t) value.prop_sequence, 1, order );
+    table_cook_put( at + 77, (uint64_t) value.prop_type, 1, order );
+    table_cook_put( at + 78, (uint64_t) value.team, 1, order );
+}
+
+inline void RenderLaserCookBody( uint8_t * at, const RenderLaser & value, TableByteOrder order )
+{
+    RenderVector3CookBody( at + 0, value.start, order );
+    RenderVector3CookBody( at + 24, value.finish, order );
+    { uint64_t bits = 0; memcpy( &bits, &value.t, 8 ); table_cook_put( at + 48, bits, 8, order ); }
+    table_cook_put( at + 56, (uint64_t) value.laser_id, 4, order );
+    table_cook_put( at + 60, (uint64_t) value.laser_type, 1, order );
+    table_cook_put( at + 61, (uint64_t) value.team, 1, order );
+}
+
+inline void RenderExplosionCookBody( uint8_t * at, const RenderExplosion & value, TableByteOrder order )
+{
+    RenderVector3CookBody( at + 0, value.position, order );
+    RenderQuaternionCookBody( at + 24, value.rotation, order );
+    { uint64_t bits = 0; memcpy( &bits, &value.t, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    table_cook_put( at + 64, (uint64_t) value.explosion_id, 4, order );
+    table_cook_put( at + 68, (uint64_t) value.parent_object_id, 4, order );
+    table_cook_put( at + 72, (uint64_t) value.explosion_type, 1, order );
+    table_cook_put( at + 73, (uint64_t) value.team, 1, order );
+}
+
+inline void RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableByteOrder order )
+{
+    table_cook_put( at + 0, (uint64_t) value.version, 8, order );
+    // all 1 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 1; i++ )
+    {
+        RenderCameraCookBody( at + 8 + i * 72, value.cameras[ i ], order );
+    }
+    table_cook_put( at + 80, (uint64_t) (uint32_t) value.cameras_count, 4, order );
+    // all 4096 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 4096; i++ )
+    {
+        RenderShipCookBody( at + 88 + i * 88, value.ships[ i ], order );
+    }
+    table_cook_put( at + 360536, (uint64_t) (uint32_t) value.ships_count, 4, order );
+    // all 1024 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 1024; i++ )
+    {
+        RenderTurretCookBody( at + 360544 + i * 64, value.turrets[ i ], order );
+    }
+    table_cook_put( at + 426080, (uint64_t) (uint32_t) value.turrets_count, 4, order );
+    // all 4096 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 4096; i++ )
+    {
+        RenderMissileCookBody( at + 426088 + i * 72, value.missiles[ i ], order );
+    }
+    table_cook_put( at + 721000, (uint64_t) (uint32_t) value.missiles_count, 4, order );
+    // all 4096 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 4096; i++ )
+    {
+        RenderDynamicPropCookBody( at + 721008 + i * 72, value.dynamic_props[ i ], order );
+    }
+    table_cook_put( at + 1015920, (uint64_t) (uint32_t) value.dynamic_props_count, 4, order );
+    // all 20000 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 20000; i++ )
+    {
+        RenderStaticPropCookBody( at + 1015928 + i * 80, value.static_props[ i ], order );
+    }
+    table_cook_put( at + 2615928, (uint64_t) (uint32_t) value.static_props_count, 4, order );
+    // all 8192 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 8192; i++ )
+    {
+        RenderCosmeticPropCookBody( at + 2615936 + i * 80, value.cosmetic_props[ i ], order );
+    }
+    table_cook_put( at + 3271296, (uint64_t) (uint32_t) value.cosmetic_props_count, 4, order );
+    // all 32000 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 32000; i++ )
+    {
+        RenderLaserCookBody( at + 3271304 + i * 64, value.lasers[ i ], order );
+    }
+    table_cook_put( at + 5319304, (uint64_t) (uint32_t) value.lasers_count, 4, order );
+    // all 32000 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
+    for ( int32_t i = 0; i < 32000; i++ )
+    {
+        RenderExplosionCookBody( at + 5319312 + i * 80, value.explosions[ i ], order );
+    }
+    table_cook_put( at + 7879312, (uint64_t) (uint32_t) value.explosions_count, 4, order );
+}
+
+inline void RenderVector3CookBody( uint8_t * at, const RenderVector3 & value, TableByteOrder order )
+{
+    { uint64_t bits = 0; memcpy( &bits, &value.x, 8 ); table_cook_put( at + 0, bits, 8, order ); }
+    { uint64_t bits = 0; memcpy( &bits, &value.y, 8 ); table_cook_put( at + 8, bits, 8, order ); }
+    { uint64_t bits = 0; memcpy( &bits, &value.z, 8 ); table_cook_put( at + 16, bits, 8, order ); }
+}
+
+inline void RenderQuaternionCookBody( uint8_t * at, const RenderQuaternion & value, TableByteOrder order )
+{
+    { uint64_t bits = 0; memcpy( &bits, &value.x, 8 ); table_cook_put( at + 0, bits, 8, order ); }
+    { uint64_t bits = 0; memcpy( &bits, &value.y, 8 ); table_cook_put( at + 8, bits, 8, order ); }
+    { uint64_t bits = 0; memcpy( &bits, &value.z, 8 ); table_cook_put( at + 16, bits, 8, order ); }
+    { uint64_t bits = 0; memcpy( &bits, &value.w, 8 ); table_cook_put( at + 24, bits, 8, order ); }
+}
+
+// RenderCameraCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderCamera IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderCameraCookMeasure( const RenderCamera & value )
+{
+    (void) value;
+    return 152; // 64 header + 72 data + 16 attribution
+}
+
+// RenderCameraCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderCameraMeasure/RenderCameraSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderCameraCook( const RenderCamera & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderCameraCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 72, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderCameraCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 136, 0, 8, order );
+    table_cook_put( raw + 144, 0x11c6b29d15f30306ull, 8, order );
+    return true;
+}
+
+// RenderShipCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderShip IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderShipCookMeasure( const RenderShip & value )
+{
+    (void) value;
+    return 168; // 64 header + 88 data + 16 attribution
+}
+
+// RenderShipCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderShipMeasure/RenderShipSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderShipCook( const RenderShip & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderShipCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 88, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderShipCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 152, 0, 8, order );
+    table_cook_put( raw + 160, 0x5b00edd93fad6007ull, 8, order );
+    return true;
+}
+
+// RenderTurretCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderTurret IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderTurretCookMeasure( const RenderTurret & value )
+{
+    (void) value;
+    return 144; // 64 header + 64 data + 16 attribution
+}
+
+// RenderTurretCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderTurretMeasure/RenderTurretSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderTurretCook( const RenderTurret & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderTurretCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 64, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderTurretCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 128, 0, 8, order );
+    table_cook_put( raw + 136, 0x4034181fa408c29full, 8, order );
+    return true;
+}
+
+// RenderMissileCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderMissile IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderMissileCookMeasure( const RenderMissile & value )
+{
+    (void) value;
+    return 152; // 64 header + 72 data + 16 attribution
+}
+
+// RenderMissileCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderMissileMeasure/RenderMissileSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderMissileCook( const RenderMissile & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderMissileCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 72, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderMissileCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 136, 0, 8, order );
+    table_cook_put( raw + 144, 0x93dab31114da135bull, 8, order );
+    return true;
+}
+
+// RenderDynamicPropCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderDynamicProp IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderDynamicPropCookMeasure( const RenderDynamicProp & value )
+{
+    (void) value;
+    return 152; // 64 header + 72 data + 16 attribution
+}
+
+// RenderDynamicPropCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderDynamicPropMeasure/RenderDynamicPropSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderDynamicPropCook( const RenderDynamicProp & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderDynamicPropCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 72, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderDynamicPropCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 136, 0, 8, order );
+    table_cook_put( raw + 144, 0xcca6d00e1bb40147ull, 8, order );
+    return true;
+}
+
+// RenderStaticPropCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderStaticProp IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderStaticPropCookMeasure( const RenderStaticProp & value )
+{
+    (void) value;
+    return 160; // 64 header + 80 data + 16 attribution
+}
+
+// RenderStaticPropCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderStaticPropMeasure/RenderStaticPropSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderStaticPropCook( const RenderStaticProp & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderStaticPropCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 80, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderStaticPropCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 144, 0, 8, order );
+    table_cook_put( raw + 152, 0xc19ad62b865276feull, 8, order );
+    return true;
+}
+
+// RenderCosmeticPropCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderCosmeticProp IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderCosmeticPropCookMeasure( const RenderCosmeticProp & value )
+{
+    (void) value;
+    return 160; // 64 header + 80 data + 16 attribution
+}
+
+// RenderCosmeticPropCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderCosmeticPropMeasure/RenderCosmeticPropSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderCosmeticPropCook( const RenderCosmeticProp & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderCosmeticPropCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 80, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderCosmeticPropCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 144, 0, 8, order );
+    table_cook_put( raw + 152, 0x5ff5bdbae776636full, 8, order );
+    return true;
+}
+
+// RenderLaserCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderLaser IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderLaserCookMeasure( const RenderLaser & value )
+{
+    (void) value;
+    return 144; // 64 header + 64 data + 16 attribution
+}
+
+// RenderLaserCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderLaserMeasure/RenderLaserSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderLaserCook( const RenderLaser & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderLaserCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 64, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderLaserCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 128, 0, 8, order );
+    table_cook_put( raw + 136, 0xb0947dbe6c23d994ull, 8, order );
+    return true;
+}
+
+// RenderExplosionCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderExplosion IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderExplosionCookMeasure( const RenderExplosion & value )
+{
+    (void) value;
+    return 160; // 64 header + 80 data + 16 attribution
+}
+
+// RenderExplosionCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderExplosionMeasure/RenderExplosionSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderExplosionCook( const RenderExplosion & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderExplosionCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 80, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderExplosionCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 144, 0, 8, order );
+    table_cook_put( raw + 152, 0x0cc738b585c9e5f8ull, 8, order );
+    return true;
+}
+
+// RenderFrameCookMeasure: the whole cooked file's bytes — the header, the data part
+// and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
+// because a cook's part lengths are 64 bits: the scale this form exists for is
+// a catalog, and a 32-bit answer would reimpose the ceiling §3.1 removed.
+//
+// RenderFrame IS FIXED-SIZE, so the answer does not depend on the value: its cook is
+// ONE REGION OF ONE NODE (§7) — the record at the region's base, its length
+// rounded to the region's alignment, and one directory entry.
+inline int64_t RenderFrameCookMeasure( const RenderFrame & value )
+{
+    (void) value;
+    return 7879400; // 64 header + 7879320 data + 16 attribution
+}
+
+// RenderFrameCook: write one cooked file for the build this code is compiled into,
+// in the byte order the caller names. The bytes are `schema cook`'s, byte for
+// byte, and the tool is the reference (§7.6).
+//
+// THE CALLER OWNS THE BUFFER AND NOTHING IS ALLOCATED: measure, then write.
+// A capacity short of the measure writes nothing and returns false, which is
+// the same contract RenderFrameMeasure/RenderFrameSave has on the wire (§6.1).
+//
+// EVERY BYTE NO FIELD COVERS IS ZERO (§7.2) — interior padding, the record's
+// trailing padding, a string's unused tail, the bytes of a union outside its
+// set arm, and the slack the rounded data length leaves. It comes from the one
+// memset below rather than from a rule per padding site, and it is what makes
+// two cooks of one value ONE artifact (§7).
+inline bool RenderFrameCook( const RenderFrame & value, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( out == NULL ) { return false; }
+    const uint64_t need = (uint64_t) RenderFrameCookMeasure( value );
+    if ( capacity < need ) { return false; }
+    uint8_t * raw = (uint8_t *) out;
+    memset( raw, 0, (size_t) need );
+    // the HEADER (§7.1), every word a u64 in the order the file is produced in
+    table_cook_put( raw + 0, TableCookMagic, 8, order );
+    table_cook_put( raw + 8, BuildVersion, 8, order );
+    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+    table_cook_put( raw + 24, 7879320, 8, order ); // data_length, rounded to the region's alignment
+    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node
+    table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
+    // the two RESERVED words are zero, and the memset already wrote them
+    // the DATA part: the region, which for a fixed root is the record at its base
+    RenderFrameCookBody( raw + 64, value, order );
+    // the ATTRIBUTION part: the node directory (§6.3), written beside the data
+    // for `schema cook-check` — one entry, the root at offset zero, and its type
+    // id is the fnv1a64 of the table's name (§3.1)
+    table_cook_put( raw + 7879384, 0, 8, order );
+    table_cook_put( raw + 7879392, 0x9b2749fb3fc30f4eull, 8, order );
+    return true;
 }
 
 // ---- relocatability, enforced: the wire is a pure length-prefixed

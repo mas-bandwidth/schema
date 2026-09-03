@@ -1538,6 +1538,8 @@ build/cook-open-fixed/.stamp: bin/schema build/schema_test_cook build/cook-open/
 		./bin/schema cook --root $$r --in build/cook-open-fixed/$$r.bin \
 			--out build/cook-open-fixed/$$r.cook --verbose tables/pointers || exit 1; \
 		./bin/schema cook-check --root $$r build/cook-open-fixed/$$r.cook tables/pointers || exit 1; \
+		./bin/schema cook --root $$r --in build/cook-open-fixed/$$r.bin --byte-order big \
+			--out build/cook-open-fixed/$$r-be.cook tables/pointers || exit 1; \
 	done
 	@touch $@
 
@@ -1563,6 +1565,38 @@ tables-cook-open: build/schema_test_cook build/schema_test_cook_asan build/cook-
 	./build/schema_test_cook accept Scene build/cook-open/Scene.cook
 	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
 	./build/schema_test_cook time Scene build/cook-open/1mb.cook build/cook-open/100mb.cook
+
+# THE WRITE SIDE, against the tool's own bytes (docs/SPEC-TABLES.md §7.6). The
+# tool cooked the wire this backend wrote, in BOTH byte orders, and the
+# generated <Root>Cook must land on those files exactly — a second cooker with
+# its own bytes would be a second format, and a cook is content-addressed by
+# (asset hash, build version). The same mode counts allocations across the
+# measure and both writes, requires a short capacity to write nothing, and
+# opens what it wrote. The SANITIZED twin runs it too: the writer is handed a
+# buffer of exactly its own measure, so a byte past it lands in a redzone.
+.PHONY: tables-cook-write
+tables-cook-write: build/schema_test_cook build/schema_test_cook_asan build/cook-open-fixed/.stamp
+	@for r in $(COOK_FIXED_ROOTS); do \
+		./build/schema_test_cook      cookwrite $$r build/cook-open-fixed/$$r.cook build/cook-open-fixed/$$r-be.cook || exit 1; \
+		./build/schema_test_cook_asan cookwrite $$r build/cook-open-fixed/$$r.cook build/cook-open-fixed/$$r-be.cook || exit 1; \
+	done
+
+# ITS NEGATIVE CONTROL, and it is the ALLOCATION half — the half a byte
+# comparison cannot fail on. One allocation inside the measured region, and the
+# gate must go red: a zero-allocation claim whose instrument has never fired is
+# a claim nobody has checked.
+.PHONY: tables-cook-write-negative-control
+tables-cook-write-negative-control: build/schema_test_cook build/cook-open-fixed/.stamp
+	@mkdir -p build
+	@if COOK_WRITE_SABOTAGE=1 ./build/schema_test_cook cookwrite Settings \
+			build/cook-open-fixed/Settings.cook build/cook-open-fixed/Settings-be.cook \
+			> build/cook-write-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: one allocation per write left the gate GREEN"; exit 1; \
+	fi
+	@grep -q "the write side allocated" build/cook-write-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the allocation"; \
+		  cat build/cook-write-control.log; exit 1; }
+	@echo "negative control: one allocation inside the write turns the cook-write gate red"
 
 # THE VALUED FIXTURE, cross-checked by the ENGINE's own uncook (§7.5, §7.4).
 #
@@ -3248,6 +3282,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cook-scale
 	$(MAKE) tables-cook-fuzz-negative-control
 	$(MAKE) tables-cook-open
+	$(MAKE) tables-cook-write
+	$(MAKE) tables-cook-write-negative-control
 	$(MAKE) tables-cook-valued
 	$(MAKE) tables-cook-open-lengths-negative-control
 	$(MAKE) tables-cook-open-root-negative-control
