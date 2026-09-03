@@ -306,7 +306,6 @@ the clone list.
 | Document | What's in it |
 |---|---|
 | **[USAGE.md](docs/USAGE.md)** | Every language feature, with the code it generates. Start here. |
-| **[USECASES.md](docs/USECASES.md)** | What people use schema for, in plain words. |
 | **[SPEC.md](docs/SPEC.md)** | The normative reference for the type wire: grammar, wire law, every edge case. |
 | **[SPEC-TABLES.md](docs/SPEC-TABLES.md)** | The normative reference for tables: the wire, the cook, the block form, reflection, the build version. |
 

@@ -3864,7 +3864,7 @@ the gate; a third language joins it as its backend lands (§15).
 measured against it**: *"We aim to build the best cross-language data type
 system for games."* — *"This includes save games, tooling, cooking to runtime
 efficient structures and so on."* It spans the whole use-case list
-(USECASES.md), not the wire alone: the tolerant wire, the cook and the block
+(the examples in README.md), not the wire alone: the tolerant wire, the cook and the block
 form are three answers under one aim rather than three products.
 
 Owner rulings, 2026-09-01, in the order given.
