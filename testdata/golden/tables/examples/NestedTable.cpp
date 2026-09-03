@@ -356,7 +356,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
     if ( f->is_array ) return 'a';
     if ( f->arms != NULL ) return 'o';         // union: an object with ONE key
     if ( f->kind == 13 ) return 'o';           // nested table or type
-    if ( f->kind == 17 ) return 'o';           // a pointer: the pointee's object in place, or null (§16.7)
+    if ( f->kind == 17 ) return f->table != NULL ? 'o' : 's'; // a pointer: the pointee's object in place, or null (§16.7); a byte buffer's string (§2.5)
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
     if ( f->kind == 1 ) return 'b';
@@ -1103,17 +1103,18 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
                 unit[unit_length++] = in.text[in.pos++];
             }
         }
-        if ( out != NULL )
+        if ( out == NULL )
         {
-            if ( placed + unit_length <= capacity )
-            {
-                memcpy( out + placed, unit, (size_t) unit_length );
-                placed += unit_length;
-            }
-            else
-            {
-                clamped = true;
-            }
+            placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
+        }
+        else if ( placed + unit_length <= capacity )
+        {
+            memcpy( out + placed, unit, (size_t) unit_length );
+            placed += unit_length;
+        }
+        else
+        {
+            clamped = true;
         }
     }
     if ( clamped ) { in.report->clamped++; }
@@ -2002,14 +2003,15 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             if ( f->kind == 17 && !f->is_array )
             {
                 // a pointer: null is a null pointer, an object is the pointee
-                // in place or an `&node` reference to one (§16.7), and anything
-                // else is the wrong shape for the kind
+                // in place or an `&node` reference to one (§16.7), a string is
+                // a BYTE BUFFER's bytes (§2.5), and anything else is the wrong
+                // shape for the kind
                 if ( got == 'z' )
                 {
                     if ( !TableJsonLiteral( in, "null" ) ) { return false; }
                     TableJsonSetRaw( (uint8_t *) base + f->offset, f->elem_size, 0 );
                 }
-                else if ( got != 'o' )
+                else if ( got != TableJsonShape( f ) )
                 {
                     in.report->kind_mismatch++;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }

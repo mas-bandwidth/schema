@@ -505,6 +505,66 @@ template <typename T> struct TableSlot
 inline uint32_t TableAlignUp( uint32_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( kTableAlign - 1 ); }
 inline int64_t TableAlignUp64( int64_t bytes ) { return ( bytes + kTableAlign - 1 ) & ~( int64_t( kTableAlign ) - 1 ); }
 
+// ---- a BYTE BUFFER's node (docs/SPEC-TABLES.md §2.5, §6.3) ----
+//
+// A *bytes or *string slot is a TableRef like every pointer slot, and it names
+// a BLOB NODE: this eight-byte header and then the bytes, at offset eight so
+// the data is eight-aligned. A *string blob carries one more zero byte after
+// its data, so a region hands back a C string with no copy. The node's extent
+// is the header plus its bytes, rounded to the arena's alignment like every
+// node's; on the wire it is a record whose body is the bytes (§3.1).
+struct TableBlob
+{
+    uint32_t length;
+    uint32_t zero;
+};
+
+static const int64_t kTableBlobHeader = 8;             // length (u32), then four zero bytes
+static const int64_t kTableBlobMaxLength = 0xFFFFFFFF; // a record's length is a u32 (§3.1)
+
+// the node's storage: the header, the bytes, a string's terminator, rounded
+// to the arena's alignment like every node
+inline int64_t TableBlobStorage( int64_t length, bool terminated )
+{
+    return TableAlignUp64( kTableBlobHeader + length + ( terminated ? 1 : 0 ) );
+}
+
+// What a read answers: a pointer INTO the region and the length, NULL and
+// zero for a null slot. Off a locked region, a loaded one or an opened cook
+// the pointer is one add from the slot, and nothing is copied.
+struct TableBytesView
+{
+    const uint8_t * data;
+    int64_t length;
+};
+
+struct TableStringView
+{
+    const char * data; // zero-terminated
+    int64_t length;
+};
+
+// What AllocBytes and AllocString hand back: the bytes to write through, the
+// length asked for, and the reference to store in the slot — the three
+// answers TableSlot gives for a table node.
+struct TableBytesSlot
+{
+    uint8_t * data = NULL;
+    int64_t length = 0;
+    TableRef ref;
+    bool null() const { return data == NULL; }
+    operator TableRef() const { return ref; }
+};
+
+struct TableStringSlot
+{
+    char * data = NULL; // room for length bytes and the terminator, already zero
+    int64_t length = 0;
+    TableRef ref;
+    bool null() const { return data == NULL; }
+    operator TableRef() const { return ref; }
+};
+
 // ---- the arena: segmented, slab-handed, lock-free by ownership ----
 //
 // Allocation is thread-local inside a worker's slab — no atomics on the node
@@ -606,6 +666,39 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
     }
 }
 
+// TableArenaGrabSpan reserves a SPAN of the arena's address space for one node
+// larger than a slab — a BYTE BUFFER of any size (docs/SPEC-TABLES.md §2.5) —
+// and allocates it as one contiguous block. It takes whole segment indices
+// from the cursor, starting at the index after the cursor's so nothing else
+// is ever handed out inside the span, and publishes the block under the first
+// of them; the indices the span covers past that one stay NULL, which is
+// enough, because only a node's START is ever resolved through the segment
+// table and a blob's bytes follow its header inside the one allocation. The
+// unused tail of the segment the cursor was in is slack, like a slab tail.
+// Returns kTableAllocFailed when the address space or the allocator is
+// exhausted — a loud refusal, never a smaller blob.
+inline uint32_t TableArenaGrabSpan( TableArena & arena, int64_t bytes )
+{
+    if ( bytes <= 0 || bytes > ( (int64_t) kTableMaxSegments - 2 ) * (int64_t) kTableSegmentSize ) { return kTableAllocFailed; }
+    const uint32_t spanned = (uint32_t) ( ( bytes + kTableSegmentSize - 1 ) >> kTableSegmentBits );
+    for ( ;; )
+    {
+        uint32_t cursor = arena.cursor.load( std::memory_order_acquire );
+        uint32_t start = ( cursor >> kTableSegmentBits ) + 1;
+        if ( start + spanned >= kTableMaxSegments ) { return kTableAllocFailed; } // 4 GiB: the u32 reference's ceiling
+        uint32_t next = ( start + spanned ) << kTableSegmentBits;
+        if ( !arena.cursor.compare_exchange_weak( cursor, next, std::memory_order_acq_rel ) ) { continue; }
+        // the span is this worker's now: nothing else can publish under its
+        // first index, so a plain store suffices, and the block comes back
+        // ZEROED like every segment — the blob's bytes and its tail are zeros
+        // until written
+        uint8_t * memory = (uint8_t *) arena.allocator.alloc( arena.allocator.context, bytes );
+        if ( memory == NULL ) { return kTableAllocFailed; }
+        arena.segments[start].store( memory, std::memory_order_release );
+        return start << kTableSegmentBits;
+    }
+}
+
 // ---- TableWorker: one thread's allocation front ----
 //
 // The threading contract, stated plainly:
@@ -663,6 +756,67 @@ struct TableWorker
         // The arena reads the definition.
         slot.ptr = new ( TableArenaAt( *arena, at ) ) T;
         TableReset( *slot.ptr );
+        slot.ref.value = at;
+        return slot;
+    }
+
+    // Alloc a BYTE BUFFER's node of exactly length bytes (docs/SPEC-TABLES.md
+    // §2.5): the blob header and its bytes, zeroed, in this thread's slab when
+    // it fits and in a span of the arena's own when it does not. NULL is the
+    // arena locked, a length below zero or past a record's u32, or the
+    // allocator refusing. The offset comes back for the reference.
+    TableBlob * AllocBlob( int64_t length, bool terminated, uint32_t & at )
+    {
+        at = 0;
+        if ( arena == NULL || arena->locked ) { return NULL; }
+        if ( length < 0 || length > kTableBlobMaxLength ) { return NULL; }
+        const int64_t bytes = TableBlobStorage( length, terminated );
+        if ( bytes > (int64_t) kTableSlabBytes )
+        {
+            at = TableArenaGrabSpan( *arena, bytes );
+            if ( at == kTableAllocFailed ) { at = 0; return NULL; }
+        }
+        else
+        {
+            if ( end == 0 || next + (uint32_t) bytes > end )
+            {
+                uint32_t offset = TableArenaGrabSlab( *arena );
+                if ( offset == kTableAllocFailed ) { return NULL; }
+                next = offset;
+                end = offset + kTableSlabBytes;
+                if ( next == 0 ) { next = kTableAlign; } // offset 0 is null: the arena's head stays reserved
+            }
+            at = next;
+            next += (uint32_t) bytes;
+        }
+        TableBlob * blob = (TableBlob *) TableArenaAt( *arena, at );
+        blob->length = (uint32_t) length; // the bytes after it are the segment's zeros
+        blob->zero = 0;
+        return blob;
+    }
+
+    // a *bytes node: the bytes to write through, and the reference to store
+    TableBytesSlot AllocBytes( int64_t length )
+    {
+        TableBytesSlot slot;
+        uint32_t at = 0;
+        TableBlob * blob = AllocBlob( length, false, at );
+        if ( blob == NULL ) { return slot; }
+        slot.data = (uint8_t *) ( blob + 1 );
+        slot.length = length;
+        slot.ref.value = at;
+        return slot;
+    }
+
+    // a *string node: room for length bytes and the zero byte after them
+    TableStringSlot AllocString( int64_t length )
+    {
+        TableStringSlot slot;
+        uint32_t at = 0;
+        TableBlob * blob = AllocBlob( length, true, at );
+        if ( blob == NULL ) { return slot; }
+        slot.data = (char *) ( blob + 1 );
+        slot.length = length;
         slot.ref.value = at;
         return slot;
     }
@@ -818,6 +972,67 @@ inline void TablePackMapClose( TablePackMap & map, const void * key, int64_t hin
 struct TableArenaCtx { const TableArena * arena; };
 struct TableRegionCtx {};
 
+// ---- a BYTE BUFFER's resolution (docs/SPEC-TABLES.md §2.5, §6.3) ----
+//
+// The same two encodings a table pointer has, resolved the same way: a
+// self-relative delta in a region — one add, no base — and an arena offset
+// while the builder is mutable. The blob is reached through its header, and a
+// view is the header plus eight and the header's first word. Nothing here
+// allocates and nothing copies: off a locked region, a loaded one or an
+// opened cook the view points INTO the region.
+inline const TableBlob * TableBlobAt( const TableRef & ref )
+{
+    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+}
+inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
+inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
+{
+    return ref.value != 0 ? (const TableBlob *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;
+}
+inline const TableBlob * TableBlobAt( const TableArena & arena, const TableRef & ref )
+{
+    return ref.value != 0 ? (const TableBlob *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
+}
+
+inline TableBytesView TableBytesViewOf( const TableBlob * blob )
+{
+    TableBytesView view = { NULL, 0 };
+    if ( blob != NULL ) { view.data = (const uint8_t *) ( blob + 1 ); view.length = (int64_t) blob->length; }
+    return view;
+}
+inline TableStringView TableStringViewOf( const TableBlob * blob )
+{
+    TableStringView view = { NULL, 0 };
+    if ( blob != NULL ) { view.data = (const char *) ( blob + 1 ); view.length = (int64_t) blob->length; }
+    return view;
+}
+
+// the const form's hot path: one add, no base
+inline TableBytesView TableBytesAt( const TableRef & ref ) { return TableBytesViewOf( TableBlobAt( ref ) ); }
+inline TableStringView TableStringAt( const TableRef & ref ) { return TableStringViewOf( TableBlobAt( ref ) ); }
+// and the context forms a walk uses: a region context, an arena context, or
+// the arena itself while the builder is mutable
+template <typename Ctx> inline TableBytesView TableBytesAt( const Ctx & ctx, const TableRef & ref ) { return TableBytesViewOf( TableBlobAt( ctx, ref ) ); }
+template <typename Ctx> inline TableStringView TableStringAt( const Ctx & ctx, const TableRef & ref ) { return TableStringViewOf( TableBlobAt( ctx, ref ) ); }
+
+// allocate a blob in the arena and point the slot at it; the slot holds the
+// arena offset, as every slot does while the builder is mutable
+inline uint8_t * TableBytesEmplace( TableWorker & worker, TableRef & slot, int64_t length )
+{
+    TableBytesSlot allocated = worker.AllocBytes( length );
+    slot = allocated.ref;
+    return allocated.data;
+}
+// the text is copied in when one is given; a NULL text leaves the zeros for
+// the caller to fill
+inline char * TableStringEmplace( TableWorker & worker, TableRef & slot, const char * text, int64_t length )
+{
+    TableStringSlot allocated = worker.AllocString( length );
+    slot = allocated.ref;
+    if ( allocated.data != NULL && text != NULL && length > 0 ) { memcpy( allocated.data, text, (size_t) length ); }
+    return allocated.data;
+}
+
 // ---- the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----
 //
 // A pointered save writes every reachable node ONCE, into a node table, and a
@@ -931,6 +1146,30 @@ template <typename Ctx, typename T>
 inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node )
 {
     return TableNodeSave( *(const Ctx *) ctx, numbering, w, *(const T *) node );
+}
+
+// ---- a BYTE BUFFER's record (docs/SPEC-TABLES.md §2.5, §3.1) ----
+//
+// A blob rides as a node record under one of two RESERVED type ids — the fold
+// a table's name takes, over the keywords "bytes" and "string", which no table
+// can be named — with the bytes as its body and nothing framed inside. These
+// two thunks are what the numbering stores for a blob, as it stores a
+// member's codec for a table: the length, and the bytes verbatim.
+static const uint64_t kTableBytesTypeId = 0x2f2ec0474f1c4fe4ull;  // fnv1a64( "bytes" )
+static const uint64_t kTableStringTypeId = 0x704be0d8faaffc58ull; // fnv1a64( "string" )
+
+template <typename Ctx>
+inline int64_t TableBlobMeasureThunk( const void *, const void * node )
+{
+    return (int64_t) ( (const TableBlob *) node )->length;
+}
+
+template <typename Ctx>
+inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, const void * node )
+{
+    const TableBlob * blob = (const TableBlob *) node;
+    w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
+    return true;
 }
 
 // TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
@@ -4411,6 +4650,11 @@ struct ListNodeBuilder
     // The result is usable both as the node pointer and as the reference
     // to store in a pointer field.
     template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }
+    // a BYTE BUFFER's node of exactly `length` bytes (docs/SPEC-TABLES.md §2.5):
+    // the bytes to write through, and the reference to store in a *bytes
+    // or *string slot; a blob past a slab takes a span of its own
+    TableBytesSlot AllocBytes( int64_t length ) { return main.AllocBytes( length ); }
+    TableStringSlot AllocString( int64_t length ) { return main.AllocString( length ); }
     // one worker per thread; allocate on your own, and synchronize your own
     // writes to nodes another worker allocated
     TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }
@@ -4487,9 +4731,12 @@ inline bool ListNodeBuilder::Lock()
 // not a depth and two references to one node are one node.
 
 // ListNodeNodeStorage: the region bytes one record commands, or -1 for a type id
-// this build cannot name — which keeps its index and reads null.
-inline int64_t ListNodeNodeStorage( uint64_t type_id )
+// this build cannot name — which keeps its index and reads null. A BYTE
+// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
+// which is the one answer the record's LENGTH decides.
+inline int64_t ListNodeNodeStorage( uint64_t type_id, int64_t length )
 {
+    (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: return TableAlignUp64( (int64_t) sizeof( ListNode ) ); // ListNode
@@ -4499,9 +4746,11 @@ inline int64_t ListNodeNodeStorage( uint64_t type_id )
 }
 
 // ListNodeNodePlace: start one record's node's lifetime in the storage pass one
-// reserved for it, holding exactly the declared defaults.
-inline void ListNodeNodePlace( uint64_t type_id, uint8_t * at )
+// reserved for it, holding exactly the declared defaults — a byte buffer's
+// header holds its length, and its bytes come in pass two.
+inline void ListNodeNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: { ListNode * node = new ( at ) ListNode; ListNodeReset( *node ); break; } // ListNode
@@ -4512,8 +4761,9 @@ inline void ListNodeNodePlace( uint64_t type_id, uint8_t * at )
 // ListNodeNodeAlloc: the TOOL's path — one record's node in the builder's arena.
 // Zero is the arena's null, and it is also what a type id this build cannot
 // name answers.
-inline uint32_t ListNodeNodeAlloc( uint64_t type_id, TableWorker & worker )
+inline uint32_t ListNodeNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: return (uint32_t) worker.Alloc<ListNode>().ref.value; // ListNode
@@ -4632,7 +4882,7 @@ inline int64_t ListNodeLoadMeasure( const uint8_t * wire, int64_t wire_bytes, in
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = ListNodeNodeStorage( type_id );
+        int64_t storage = ListNodeNodeStorage( type_id, length );
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -4666,7 +4916,7 @@ inline const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, co
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = ListNodeNodeStorage( type_id );
+            int64_t storage = ListNodeNodeStorage( type_id, length );
             if ( storage > 0 ) { data += storage; }
         }
     }
@@ -4691,7 +4941,7 @@ inline const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, co
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = ListNodeNodeStorage( type_id );
+            int64_t storage = ListNodeNodeStorage( type_id, length );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -4705,7 +4955,7 @@ inline const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, co
             {
                 directory[k + 1].offset = (uint64_t) used;
                 directory[k + 1].type_id = type_id;
-                ListNodeNodePlace( type_id, region + used );
+                ListNodeNodePlace( type_id, region + used, length );
                 used += storage;
             }
             k++;
@@ -4775,7 +5025,7 @@ inline bool ListNodeLoadBuilder( ListNodeBuilder & builder, const uint8_t * wire
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            uint32_t at = ListNodeNodeAlloc( type_id, builder.main );
+            uint32_t at = ListNodeNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
                 out->unknown++;
@@ -4848,6 +5098,11 @@ struct TreeNodeBuilder
     // The result is usable both as the node pointer and as the reference
     // to store in a pointer field.
     template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }
+    // a BYTE BUFFER's node of exactly `length` bytes (docs/SPEC-TABLES.md §2.5):
+    // the bytes to write through, and the reference to store in a *bytes
+    // or *string slot; a blob past a slab takes a span of its own
+    TableBytesSlot AllocBytes( int64_t length ) { return main.AllocBytes( length ); }
+    TableStringSlot AllocString( int64_t length ) { return main.AllocString( length ); }
     // one worker per thread; allocate on your own, and synchronize your own
     // writes to nodes another worker allocated
     TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }
@@ -4924,9 +5179,12 @@ inline bool TreeNodeBuilder::Lock()
 // not a depth and two references to one node are one node.
 
 // TreeNodeNodeStorage: the region bytes one record commands, or -1 for a type id
-// this build cannot name — which keeps its index and reads null.
-inline int64_t TreeNodeNodeStorage( uint64_t type_id )
+// this build cannot name — which keeps its index and reads null. A BYTE
+// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
+// which is the one answer the record's LENGTH decides.
+inline int64_t TreeNodeNodeStorage( uint64_t type_id, int64_t length )
 {
+    (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
     {
         case 0xb97e90a3784c431dull: return TableAlignUp64( (int64_t) sizeof( TreeNode ) ); // TreeNode
@@ -4936,9 +5194,11 @@ inline int64_t TreeNodeNodeStorage( uint64_t type_id )
 }
 
 // TreeNodeNodePlace: start one record's node's lifetime in the storage pass one
-// reserved for it, holding exactly the declared defaults.
-inline void TreeNodeNodePlace( uint64_t type_id, uint8_t * at )
+// reserved for it, holding exactly the declared defaults — a byte buffer's
+// header holds its length, and its bytes come in pass two.
+inline void TreeNodeNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xb97e90a3784c431dull: { TreeNode * node = new ( at ) TreeNode; TreeNodeReset( *node ); break; } // TreeNode
@@ -4949,8 +5209,9 @@ inline void TreeNodeNodePlace( uint64_t type_id, uint8_t * at )
 // TreeNodeNodeAlloc: the TOOL's path — one record's node in the builder's arena.
 // Zero is the arena's null, and it is also what a type id this build cannot
 // name answers.
-inline uint32_t TreeNodeNodeAlloc( uint64_t type_id, TableWorker & worker )
+inline uint32_t TreeNodeNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xb97e90a3784c431dull: return (uint32_t) worker.Alloc<TreeNode>().ref.value; // TreeNode
@@ -5069,7 +5330,7 @@ inline int64_t TreeNodeLoadMeasure( const uint8_t * wire, int64_t wire_bytes, in
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = TreeNodeNodeStorage( type_id );
+        int64_t storage = TreeNodeNodeStorage( type_id, length );
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -5103,7 +5364,7 @@ inline const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, co
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = TreeNodeNodeStorage( type_id );
+            int64_t storage = TreeNodeNodeStorage( type_id, length );
             if ( storage > 0 ) { data += storage; }
         }
     }
@@ -5128,7 +5389,7 @@ inline const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, co
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = TreeNodeNodeStorage( type_id );
+            int64_t storage = TreeNodeNodeStorage( type_id, length );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -5142,7 +5403,7 @@ inline const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, co
             {
                 directory[k + 1].offset = (uint64_t) used;
                 directory[k + 1].type_id = type_id;
-                TreeNodeNodePlace( type_id, region + used );
+                TreeNodeNodePlace( type_id, region + used, length );
                 used += storage;
             }
             k++;
@@ -5212,7 +5473,7 @@ inline bool TreeNodeLoadBuilder( TreeNodeBuilder & builder, const uint8_t * wire
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            uint32_t at = TreeNodeNodeAlloc( type_id, builder.main );
+            uint32_t at = TreeNodeNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
                 out->unknown++;
@@ -5285,6 +5546,11 @@ struct LayerBuilder
     // The result is usable both as the node pointer and as the reference
     // to store in a pointer field.
     template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }
+    // a BYTE BUFFER's node of exactly `length` bytes (docs/SPEC-TABLES.md §2.5):
+    // the bytes to write through, and the reference to store in a *bytes
+    // or *string slot; a blob past a slab takes a span of its own
+    TableBytesSlot AllocBytes( int64_t length ) { return main.AllocBytes( length ); }
+    TableStringSlot AllocString( int64_t length ) { return main.AllocString( length ); }
     // one worker per thread; allocate on your own, and synchronize your own
     // writes to nodes another worker allocated
     TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }
@@ -5361,9 +5627,12 @@ inline bool LayerBuilder::Lock()
 // not a depth and two references to one node are one node.
 
 // LayerNodeStorage: the region bytes one record commands, or -1 for a type id
-// this build cannot name — which keeps its index and reads null.
-inline int64_t LayerNodeStorage( uint64_t type_id )
+// this build cannot name — which keeps its index and reads null. A BYTE
+// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
+// which is the one answer the record's LENGTH decides.
+inline int64_t LayerNodeStorage( uint64_t type_id, int64_t length )
 {
+    (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: return TableAlignUp64( (int64_t) sizeof( ListNode ) ); // ListNode
@@ -5373,9 +5642,11 @@ inline int64_t LayerNodeStorage( uint64_t type_id )
 }
 
 // LayerNodePlace: start one record's node's lifetime in the storage pass one
-// reserved for it, holding exactly the declared defaults.
-inline void LayerNodePlace( uint64_t type_id, uint8_t * at )
+// reserved for it, holding exactly the declared defaults — a byte buffer's
+// header holds its length, and its bytes come in pass two.
+inline void LayerNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: { ListNode * node = new ( at ) ListNode; ListNodeReset( *node ); break; } // ListNode
@@ -5386,8 +5657,9 @@ inline void LayerNodePlace( uint64_t type_id, uint8_t * at )
 // LayerNodeAlloc: the TOOL's path — one record's node in the builder's arena.
 // Zero is the arena's null, and it is also what a type id this build cannot
 // name answers.
-inline uint32_t LayerNodeAlloc( uint64_t type_id, TableWorker & worker )
+inline uint32_t LayerNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: return (uint32_t) worker.Alloc<ListNode>().ref.value; // ListNode
@@ -5506,7 +5778,7 @@ inline int64_t LayerLoadMeasure( const uint8_t * wire, int64_t wire_bytes, int64
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = LayerNodeStorage( type_id );
+        int64_t storage = LayerNodeStorage( type_id, length );
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -5540,7 +5812,7 @@ inline const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const ui
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = LayerNodeStorage( type_id );
+            int64_t storage = LayerNodeStorage( type_id, length );
             if ( storage > 0 ) { data += storage; }
         }
     }
@@ -5565,7 +5837,7 @@ inline const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const ui
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = LayerNodeStorage( type_id );
+            int64_t storage = LayerNodeStorage( type_id, length );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -5579,7 +5851,7 @@ inline const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const ui
             {
                 directory[k + 1].offset = (uint64_t) used;
                 directory[k + 1].type_id = type_id;
-                LayerNodePlace( type_id, region + used );
+                LayerNodePlace( type_id, region + used, length );
                 used += storage;
             }
             k++;
@@ -5649,7 +5921,7 @@ inline bool LayerLoadBuilder( LayerBuilder & builder, const uint8_t * wire, int6
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            uint32_t at = LayerNodeAlloc( type_id, builder.main );
+            uint32_t at = LayerNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
                 out->unknown++;
@@ -5722,6 +5994,11 @@ struct SceneBuilder
     // The result is usable both as the node pointer and as the reference
     // to store in a pointer field.
     template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }
+    // a BYTE BUFFER's node of exactly `length` bytes (docs/SPEC-TABLES.md §2.5):
+    // the bytes to write through, and the reference to store in a *bytes
+    // or *string slot; a blob past a slab takes a span of its own
+    TableBytesSlot AllocBytes( int64_t length ) { return main.AllocBytes( length ); }
+    TableStringSlot AllocString( int64_t length ) { return main.AllocString( length ); }
     // one worker per thread; allocate on your own, and synchronize your own
     // writes to nodes another worker allocated
     TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }
@@ -5798,9 +6075,12 @@ inline bool SceneBuilder::Lock()
 // not a depth and two references to one node are one node.
 
 // SceneNodeStorage: the region bytes one record commands, or -1 for a type id
-// this build cannot name — which keeps its index and reads null.
-inline int64_t SceneNodeStorage( uint64_t type_id )
+// this build cannot name — which keeps its index and reads null. A BYTE
+// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
+// which is the one answer the record's LENGTH decides.
+inline int64_t SceneNodeStorage( uint64_t type_id, int64_t length )
 {
+    (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: return TableAlignUp64( (int64_t) sizeof( ListNode ) ); // ListNode
@@ -5812,9 +6092,11 @@ inline int64_t SceneNodeStorage( uint64_t type_id )
 }
 
 // SceneNodePlace: start one record's node's lifetime in the storage pass one
-// reserved for it, holding exactly the declared defaults.
-inline void SceneNodePlace( uint64_t type_id, uint8_t * at )
+// reserved for it, holding exactly the declared defaults — a byte buffer's
+// header holds its length, and its bytes come in pass two.
+inline void SceneNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: { ListNode * node = new ( at ) ListNode; ListNodeReset( *node ); break; } // ListNode
@@ -5827,8 +6109,9 @@ inline void SceneNodePlace( uint64_t type_id, uint8_t * at )
 // SceneNodeAlloc: the TOOL's path — one record's node in the builder's arena.
 // Zero is the arena's null, and it is also what a type id this build cannot
 // name answers.
-inline uint32_t SceneNodeAlloc( uint64_t type_id, TableWorker & worker )
+inline uint32_t SceneNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: return (uint32_t) worker.Alloc<ListNode>().ref.value; // ListNode
@@ -5951,7 +6234,7 @@ inline int64_t SceneLoadMeasure( const uint8_t * wire, int64_t wire_bytes, int64
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = SceneNodeStorage( type_id );
+        int64_t storage = SceneNodeStorage( type_id, length );
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -5985,7 +6268,7 @@ inline const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const ui
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = SceneNodeStorage( type_id );
+            int64_t storage = SceneNodeStorage( type_id, length );
             if ( storage > 0 ) { data += storage; }
         }
     }
@@ -6010,7 +6293,7 @@ inline const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const ui
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = SceneNodeStorage( type_id );
+            int64_t storage = SceneNodeStorage( type_id, length );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -6024,7 +6307,7 @@ inline const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const ui
             {
                 directory[k + 1].offset = (uint64_t) used;
                 directory[k + 1].type_id = type_id;
-                SceneNodePlace( type_id, region + used );
+                SceneNodePlace( type_id, region + used, length );
                 used += storage;
             }
             k++;
@@ -6094,7 +6377,7 @@ inline bool SceneLoadBuilder( SceneBuilder & builder, const uint8_t * wire, int6
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            uint32_t at = SceneNodeAlloc( type_id, builder.main );
+            uint32_t at = SceneNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
                 out->unknown++;
@@ -6167,6 +6450,11 @@ struct DepotBuilder
     // The result is usable both as the node pointer and as the reference
     // to store in a pointer field.
     template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }
+    // a BYTE BUFFER's node of exactly `length` bytes (docs/SPEC-TABLES.md §2.5):
+    // the bytes to write through, and the reference to store in a *bytes
+    // or *string slot; a blob past a slab takes a span of its own
+    TableBytesSlot AllocBytes( int64_t length ) { return main.AllocBytes( length ); }
+    TableStringSlot AllocString( int64_t length ) { return main.AllocString( length ); }
     // one worker per thread; allocate on your own, and synchronize your own
     // writes to nodes another worker allocated
     TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }
@@ -6243,9 +6531,12 @@ inline bool DepotBuilder::Lock()
 // not a depth and two references to one node are one node.
 
 // DepotNodeStorage: the region bytes one record commands, or -1 for a type id
-// this build cannot name — which keeps its index and reads null.
-inline int64_t DepotNodeStorage( uint64_t type_id )
+// this build cannot name — which keeps its index and reads null. A BYTE
+// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
+// which is the one answer the record's LENGTH decides.
+inline int64_t DepotNodeStorage( uint64_t type_id, int64_t length )
 {
+    (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: return TableAlignUp64( (int64_t) sizeof( ListNode ) ); // ListNode
@@ -6255,9 +6546,11 @@ inline int64_t DepotNodeStorage( uint64_t type_id )
 }
 
 // DepotNodePlace: start one record's node's lifetime in the storage pass one
-// reserved for it, holding exactly the declared defaults.
-inline void DepotNodePlace( uint64_t type_id, uint8_t * at )
+// reserved for it, holding exactly the declared defaults — a byte buffer's
+// header holds its length, and its bytes come in pass two.
+inline void DepotNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: { ListNode * node = new ( at ) ListNode; ListNodeReset( *node ); break; } // ListNode
@@ -6268,8 +6561,9 @@ inline void DepotNodePlace( uint64_t type_id, uint8_t * at )
 // DepotNodeAlloc: the TOOL's path — one record's node in the builder's arena.
 // Zero is the arena's null, and it is also what a type id this build cannot
 // name answers.
-inline uint32_t DepotNodeAlloc( uint64_t type_id, TableWorker & worker )
+inline uint32_t DepotNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0xf60ec899a5a69fa9ull: return (uint32_t) worker.Alloc<ListNode>().ref.value; // ListNode
@@ -6388,7 +6682,7 @@ inline int64_t DepotLoadMeasure( const uint8_t * wire, int64_t wire_bytes, int64
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = DepotNodeStorage( type_id );
+        int64_t storage = DepotNodeStorage( type_id, length );
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -6422,7 +6716,7 @@ inline const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const ui
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = DepotNodeStorage( type_id );
+            int64_t storage = DepotNodeStorage( type_id, length );
             if ( storage > 0 ) { data += storage; }
         }
     }
@@ -6447,7 +6741,7 @@ inline const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const ui
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = DepotNodeStorage( type_id );
+            int64_t storage = DepotNodeStorage( type_id, length );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -6461,7 +6755,7 @@ inline const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const ui
             {
                 directory[k + 1].offset = (uint64_t) used;
                 directory[k + 1].type_id = type_id;
-                DepotNodePlace( type_id, region + used );
+                DepotNodePlace( type_id, region + used, length );
                 used += storage;
             }
             k++;
@@ -6531,7 +6825,7 @@ inline bool DepotLoadBuilder( DepotBuilder & builder, const uint8_t * wire, int6
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            uint32_t at = DepotNodeAlloc( type_id, builder.main );
+            uint32_t at = DepotNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
                 out->unknown++;
@@ -6604,6 +6898,11 @@ struct AlbumBuilder
     // The result is usable both as the node pointer and as the reference
     // to store in a pointer field.
     template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }
+    // a BYTE BUFFER's node of exactly `length` bytes (docs/SPEC-TABLES.md §2.5):
+    // the bytes to write through, and the reference to store in a *bytes
+    // or *string slot; a blob past a slab takes a span of its own
+    TableBytesSlot AllocBytes( int64_t length ) { return main.AllocBytes( length ); }
+    TableStringSlot AllocString( int64_t length ) { return main.AllocString( length ); }
     // one worker per thread; allocate on your own, and synchronize your own
     // writes to nodes another worker allocated
     TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }
@@ -6680,9 +6979,12 @@ inline bool AlbumBuilder::Lock()
 // not a depth and two references to one node are one node.
 
 // AlbumNodeStorage: the region bytes one record commands, or -1 for a type id
-// this build cannot name — which keeps its index and reads null.
-inline int64_t AlbumNodeStorage( uint64_t type_id )
+// this build cannot name — which keeps its index and reads null. A BYTE
+// BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
+// which is the one answer the record's LENGTH decides.
+inline int64_t AlbumNodeStorage( uint64_t type_id, int64_t length )
 {
+    (void) length; // no byte buffer below this root: every node's storage is its type's
     switch ( type_id )
     {
         case 0x69ff34904242a73dull: return TableAlignUp64( (int64_t) sizeof( Tally ) ); // Tally
@@ -6694,9 +6996,11 @@ inline int64_t AlbumNodeStorage( uint64_t type_id )
 }
 
 // AlbumNodePlace: start one record's node's lifetime in the storage pass one
-// reserved for it, holding exactly the declared defaults.
-inline void AlbumNodePlace( uint64_t type_id, uint8_t * at )
+// reserved for it, holding exactly the declared defaults — a byte buffer's
+// header holds its length, and its bytes come in pass two.
+inline void AlbumNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0x69ff34904242a73dull: { Tally * node = new ( at ) Tally; TallyReset( *node ); break; } // Tally
@@ -6709,8 +7013,9 @@ inline void AlbumNodePlace( uint64_t type_id, uint8_t * at )
 // AlbumNodeAlloc: the TOOL's path — one record's node in the builder's arena.
 // Zero is the arena's null, and it is also what a type id this build cannot
 // name answers.
-inline uint32_t AlbumNodeAlloc( uint64_t type_id, TableWorker & worker )
+inline uint32_t AlbumNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
+    (void) length;
     switch ( type_id )
     {
         case 0x69ff34904242a73dull: return (uint32_t) worker.Alloc<Tally>().ref.value; // Tally
@@ -6833,7 +7138,7 @@ inline int64_t AlbumLoadMeasure( const uint8_t * wire, int64_t wire_bytes, int64
     while ( TableNodeScanNext( scan, type_id, body, length ) )
     {
         records++;
-        int64_t storage = AlbumNodeStorage( type_id );
+        int64_t storage = AlbumNodeStorage( type_id, length );
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -6867,7 +7172,7 @@ inline const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const ui
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = AlbumNodeStorage( type_id );
+            int64_t storage = AlbumNodeStorage( type_id, length );
             if ( storage > 0 ) { data += storage; }
         }
     }
@@ -6892,7 +7197,7 @@ inline const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const ui
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            int64_t storage = AlbumNodeStorage( type_id );
+            int64_t storage = AlbumNodeStorage( type_id, length );
             if ( storage <= 0 )
             {
                 // a record whose type id this build cannot name KEEPS ITS
@@ -6906,7 +7211,7 @@ inline const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const ui
             {
                 directory[k + 1].offset = (uint64_t) used;
                 directory[k + 1].type_id = type_id;
-                AlbumNodePlace( type_id, region + used );
+                AlbumNodePlace( type_id, region + used, length );
                 used += storage;
             }
             k++;
@@ -6976,7 +7281,7 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire, int6
         int64_t k = 0;
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
-            uint32_t at = AlbumNodeAlloc( type_id, builder.main );
+            uint32_t at = AlbumNodeAlloc( type_id, builder.main, length );
             if ( at == 0 )
             {
                 out->unknown++;

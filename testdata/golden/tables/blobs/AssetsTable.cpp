@@ -366,6 +366,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
 // the ELEMENT shape of an array field — the same classifier one level down
 inline char TableJsonElementShape( const TableFieldInfo * f )
 {
+    if ( f->arms != NULL ) return 'o';        // an element of an array of unions: one key, the arm (§2.6)
     if ( f->kind == 13 ) return 'o';
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
