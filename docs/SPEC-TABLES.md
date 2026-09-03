@@ -153,15 +153,16 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++ and C, and C#, Go, Rust, Java and Elixir for the FIXED
-class.** C++ is the reference, and its generated text is the C-like dialect of
-`serialize.h` — C header spellings, no STL, every call into the C library
-behind a hook the program can define (§13.9). C++ and C carry both classes; C#,
-Go, Rust, Java and Elixir carry the fixed class (§6.1) — optionals, enum-keyed
-arrays, the text form (§16) and all — and each refuses a unit whose closure
-declares a pointer, naming its variable class as a follow-on. Every other
-backend refuses a unit that declares tables at all, by name, with this document
-cited. The remaining per-language backends are named follow-ons (§15).
+**Backend status: C++ and C, and C#, Go, Rust, Java, JavaScript and Elixir for
+the FIXED class.** C++ is the reference, and its generated text is the C-like
+dialect of `serialize.h` — C header spellings, no STL, every call into the C
+library behind a hook the program can define (§13.9). C++ and C carry both
+classes; C#, Go, Rust, Java, JavaScript and Elixir carry the fixed class (§6.1)
+— optionals, enum-keyed arrays, the text form (§16) and all — and each refuses
+a unit whose closure declares a pointer, naming its variable class as a
+follow-on. Every other backend refuses a unit that declares tables at all, by
+name, with this document cited. The remaining per-language backends are named
+follow-ons (§15).
 
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this
@@ -213,6 +214,22 @@ the EMITTER through `go build -overlay`, as the fuzz controls do, because a
 control that sabotages the instrument's own loop proves the reading responds
 and not that a leak in generated code would be found. Two instruments, two
 questions, and neither one answers the other's.
+
+**JAVASCRIPT IS THE READING TIER TOO, and by the same rule.** A backend that
+controls no struct layout — no offsetof, no sizeof, no way to place a field —
+cannot PRODUCE a block or a cook, and reads both instead: every field is read at the
+offset the compiler settled, through a `DataView` with an explicit little-endian
+flag at every call, and every generated accessor is a function of
+(view, offset). The tolerant wire (§3) is the one form such a backend both
+writes and reads, because that wire is a byte stream rather than a layout. What
+the tier costs is stated rather than implied: the LAYOUT CONTRACT (§19.3) has no
+second model to check the first against in a language with no layout, so what
+runs once before any Open is the generated constants' own consistency plus the
+one pair that IS two derivations — each array's pitch constant against the size
+of the row it names, which is §19.5's named negative control. And a reference is
+BOUNDED before it is followed (§6.3): C++ trusts the delta and adds it, where a
+JavaScript read past a view throws, so a delta that leaves the region is a
+refusal rather than an escaping exception.
 
 **The RUST backend's own three divergences**, each forced by the language and
 each named where it is spelled rather than discovered in the source. The
@@ -348,8 +365,9 @@ consulted anywhere in the port. A big-endian BEAM reads the same bytes to the
 same terms. The two FOREIGN surfaces hold the refusal, and no order gate stands
 beside them because there is no platform query for one to catch.
 
-**The BLOCK FORM (§2.7, §19) is live in C++, C, C#, Go, Rust, Java and Elixir**, and it took C++ and
-C# TOGETHER to land, because the form is an ABI between two languages and one
+**The BLOCK FORM (§2.7, §19) is live in C++, C, C#, Go, Rust, Java and Elixir,
+and READ by JavaScript**, and it took C++ and C# TOGETHER to land, because the
+form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path
 inline) and `<Base>Block.cpp` (the open path and the block descriptors); C#
@@ -384,7 +402,8 @@ VARIABLE-LENGTH table has no block form — no fixed pitch anywhere in its
 closure — and neither does a table whose closure carries a UNION, because
 §19.3 pins the C# side to Sequential with generated padding and Sequential
 cannot overlay arms. Each says so in the Block header rather than going
-missing. Every other backend emits no Block file at all, as it emits no Table
+missing — and in the JavaScript module, which says the same thing in its own
+file. Every other backend emits no Block file at all, as it emits no Table
 file; those are the same named follow-on (§15).
 
 **The VIEW's type half and unit registry (§8.2–§8.7) are specified and
@@ -2974,6 +2993,11 @@ every clause above by construction.
 - **Its NEGATIVE CONTROL**: pass one, the directory scan, removed from
   `cook-check` through a build overlay, and the battery must go red. A checker
   whose battery has never gone red is watching nothing.
+- **THE READING TIER's cook pair** (§19.5's twin, on this form): every field of
+  every node of a real cook is read through the generated ACCESSORS and through
+  the DESCRIPTORS and compared, with a pointer compared as its RAW DELTA and as
+  its SLOT's own offset before any resolution — and the fuzzer's oracle over
+  `Open` requires refuse-or-be-whole with no exception escaping the reader.
 - **THE SCALE FIXTURES**: a synthetic region generator writes a 1 MB, a 100 MB
   and a 1 GB cook, streaming, so the open-cost gate — open time FLAT across the
   three — has inputs a person regenerates rather than a gigabyte in the tree.
@@ -2985,7 +3009,12 @@ every clause above by construction.
 - **THE CROSS-IMPLEMENTATION LOCK, and it is what makes THREE implementations
   of one page worth having.** The tool writes a cook in Go, the C++ `Open`
   points at it and the C# `Open` points at the very same bytes, and none of the
-  three was written from either of the others. The lock is the ATTRIBUTION part:
+  three was written from either of the others. (A FOURTH reader now points at
+  the same bytes: the JavaScript one, whose canonical node dump the conformance
+  harness byte-compares against the pinned C++ walk over all six of its
+  fixtures. It carries the DUMP half of this lock and not the directory half —
+  a reading-tier backend gets its fixtures from the harness, which holds the
+  dump and not the attribution part.) The lock is the ATTRIBUTION part:
   every node a reader reaches by following its OWN derefs, through its own
   record layouts, must be a node the directory names, at that offset, with that
   type id — and the two SETS must be equal, so an edge the reader stops
@@ -5189,15 +5218,24 @@ inspects everything in the schema built:
   does, and it is not stable before JDK 22 where this backend compiles at
   `--release 17`; both `open`s already take a `long` length, which is the seat
   that overload takes when the floor moves.
-- **Per-language backends beyond C++, C# and C** (the refusal in §11 names this).
+- **Per-language backends beyond C, C++, C#, Go, Java, JavaScript and Rust**
+  (the refusal in §11 names this).
   C# came first, because the dogfood's game engine reads the same config and
-  asset bytes the C++ tools write (§12), and the FIXED class is what that
-  needs: storage structs, measure/save/load over caller-owned buffers, the
-  report, the reflection descriptors, `?T`, `[E]T`, name-hashed vocabularies
-  and the text form (§16) — the variable class is still ahead of it.
-  A port mirrors this document and invents no contract of
-  its own; where a language forces a shape — a pseudo-union for a language
-  with no native union — the ladder above already says what is licensed.
+  asset bytes the C++ tools write (§12); Rust, Go, C and Java followed; and
+  JavaScript is the first of the READING TIER — a backend with no struct
+  layout at all, which is what proves the two accelerators can be READ by a
+  language that could never produce one. The FIXED class is what those need:
+  storage structs, measure/save/load over caller-owned buffers, the report,
+  the reflection descriptors, `?T`, `[E]T`, name-hashed vocabularies and the
+  text form (§16) — the variable class is still ahead of it. A port mirrors
+  this document and invents no contract of its own; where a language forces a
+  shape — a pseudo-union for a language with no native union — the ladder
+  above already says what is licensed.
+- **The JavaScript VARIABLE class on the WIRE** — the arena as a growable
+  buffer reserved once, references as node indices, and the flat node table
+  (kind 17). Refused by name today, on the same terms as C#'s: a pointered
+  unit gets no `<Base>Table.js`, and both accelerators are emitted all the
+  same, because neither needs a codec.
 - **The C# VARIABLE class on the WIRE** — the arena, the region, the builder
   and the node-table codec, on top of the fixed class C# carries today (§11).
   The cooked form is NOT in it: a cook is pointed at, not parsed, so
@@ -5503,9 +5541,18 @@ says how it gets there rather than reaching for its runtime's default. C++
 calls `snprintf`; C# builds a custom format string and converts under the
 invariant culture; Java rounds the double's EXACT decimal expansion through
 `BigDecimal` at HALF_EVEN, because `java.util.Formatter` rounds HALF_UP and the
-two answers differ on a tie. A tie is discarded by the shortest-round-trip loop
-at every precision but the last — and at the last there is no loop left to save
-it, which is why the mode is named rather than left to the default.
+two answers differ on a tie; JavaScript does the same in BigInt, because
+`toExponential` and `toFixed` break a tie by MAGNITUDE. A tie is discarded by
+the shortest-round-trip loop at every precision but the last — and at the last
+there is no loop left to save it, which is why the mode is named rather than
+left to the default.
+
+**The JavaScript walk is NOT `JSON.parse`/`JSON.stringify`, and could not be.**
+This section's clamping, counting, duplicate-key and trailing-comma rules ARE
+the form, and the output must be byte-identical to the goldens down to a float's
+`%.*g` spelling — so the port spells the C conversion out, as the Rust one does.
+**Both ends of that conversion bit in JavaScript, and both are worth recording,
+because the next port meets them too.**
 
 **THE TOOL TAKES BOTH DIRECTIONS.** `schema pack` and `schema unpack` take a
 variable root as one text (§16.7, §17.2), and the round trip is the gate: a
@@ -5564,6 +5611,7 @@ an offset and a width, because a `#[repr(C)]` Rust record has both — with one
 exception: a UNION's payload address comes out of a match rather than off an
 offset, since Rust spells a union as a real enum, so the union descriptor
 carries three accessors where C++ carries a tag offset and an arm offset.
+
 
 - **`FromJson` fills ONE instance from ONE text.** The instance is the
   caller's; the read path allocates nothing beyond it. Fields the text does
@@ -7065,6 +7113,12 @@ difference between a form and a convention.
   C# size and offsets are asserted under the managed model (§19.3) — the case
   where the two C# layout models disagree, pinned so a port cannot pick the
   wrong one and pass.
+- **A FORGERY FUZZER over `BlockOpen` AND the cook's `Open`, on every backend
+  that carries a reader, as a standing gate.** In a language where a read past
+  a view THROWS, "refuse, or open and be whole" and "no exception escapes a
+  reader" are the same sentence, and the reading tier's leg states it that way:
+  a forged block or cook either refuses, or opens and is walked in full through
+  its descriptors without one read leaving the bytes the caller passed.
 - **A FORGERY FUZZER over `BlockOpen`, on both backends, as a standing gate**:
   valid blocks from the generated builder over several count vectors — zero,
   mixed and every array at its declared maximum — mutated by seeded byte flips,
@@ -7086,9 +7140,52 @@ difference between a form and a convention.
   each REFUSE at `BlockOpen`, which is the same rule three times and is what
   same-build means.
 
+- **WHAT ALLOCATES, AS A RATE.** A soak with a flat heap is a LEAK instrument
+  and nothing more: an allocation made and collected every iteration leaves the
+  heap exactly as flat as no allocation at all. So a backend states its
+  allocation floor as BYTES PER ITERATION, per path, measured — and gates the
+  paths that must be zero, with a negative control that puts one extra
+  allocation per iteration in and requires them to go red. Every unavoidable
+  allocation is named rather than absorbed: in the reading tier's first port
+  that is one BigInt per 64-bit FIELD read, and nothing else — a 64-bit number
+  the FORM's own framing carries (a block array's `offset_of`, a cook
+  reference's delta) gets no such licence, because those are the two hottest
+  lines the accelerators have and a per-row or per-edge allocation on them is
+  the defect this instrument exists to find. It found both.
+
+  **AND THE FLOOR IS A PROPERTY OF THE RUNTIME, NOT ONLY OF THE CODE.** In a
+  managed language the same source allocates differently at different
+  optimization tiers, so the floor is claimed for a NAMED runtime: the reading
+  tier's first port measures on the version its CI runs, refuses to certify on
+  another major, and warms until the rate settles rather than for a fixed
+  count. What that instrument found, pointed at the right runtime, is one rule
+  worth stating for every port that follows: **a float field is read and
+  written by the generated body itself, never across a call.** A double that
+  crosses a JavaScript call boundary is a heap number — sixteen bytes, per call
+  — unless the callee is inlined, and whether it is inlined depends on the size
+  of the body around it. A `putF32` helper therefore allocates in the codecs of
+  big tables and not in those of small ones: the estate's law that a generated
+  codec must not depend on the compiler's inlining budget, arriving in a JIT.
+  What a port CANNOT close this way is its own public accessor — a float
+  returned to a caller boxes on the same terms if that caller's compiler
+  declines to inline it — so the tier states that where the accessors are
+  documented rather than claiming immunity it does not have.
+- **THE READING TIER's own pair, in every backend that has no layout to
+  assert.** (a) The generated ACCESSORS and the DESCRIPTORS are two spellings
+  of one layout, so every field of every row of every block is read both ways
+  and compared — the harness proves the descriptors against C++, and this
+  proves the accessors against the descriptors. (b) The layout check runs the
+  one comparison such a language still has that is TWO derivations: each
+  array's pitch constant against the size of the row object it names. Each half
+  carries its own negative control — an accessor four bytes off, and a pointer
+  slot eight bytes off, since the first sabotage cannot reach the second's code
+  path.
 - **The zero-cost gate** (§19): the Table headers are byte-identical with the
   Block files generated and with them absent, and the build fails if one
-  symbol of the block machinery appears in a Table header.
+  symbol of the block machinery appears in a Table header. A backend whose
+  modules are separate files holds the same property as a file-set identity:
+  the packet modules are byte-identical with a table added, and the only
+  modules a table adds are the table ones.
 - **The wire is untouched** (§3): a table's wire goldens are byte-identical
   whether or not its block form is generated, and its `Save` and `Load` are
   the ones any fixed table has. That is the test that keeps the form a form.

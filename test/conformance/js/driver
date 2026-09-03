@@ -1,0 +1,14 @@
+#!/bin/sh
+# THE JAVASCRIPT LEG's driver (test/conformance/README.md).
+#
+# Every surface comes from one module — the wire, the text form, both
+# accelerators' readers and both forgery batteries — so this leg starts node
+# once per surface and answers the whole battery from generated JavaScript and
+# nothing else.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+exec "${NODE:-node}" test/conformance/js/main.mjs "$@"

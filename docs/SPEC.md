@@ -1478,7 +1478,19 @@ tree mirrors the schema tree a person navigates.
   every wire call is a method on the stream parameter, so no wiring file
   exists and the checked/production fork stays where it lives, in the
   runtime's own load-time mode selection (generated code never reads
-  `NODE_ENV`).
+  `NODE_ENV`). A unit that declares TABLES emits three further modules per
+  schema file — `<Base>Table.js` for the table wire's codecs, its reflection
+  descriptors and its TEXT FORM (SPEC-TABLES.md §16), and `<Base>Block.js`
+  and `<Base>Cook.js` for the two accelerators' READ side (SPEC-TABLES.md
+  §19, §7). They are three modules rather than the C# single file because a
+  block and a cook are compiled by a consumer that opts into them, and
+  because a Table module carrying one block symbol is what the zero-cost gate
+  refuses. Everything SHARED by a unit — the table runtime, the text form's
+  generic walk, the record accessors — is emitted ONCE into
+  `<Package>Table.js` / `<Package>Block.js` / `<Package>Cook.js` and imported
+  everywhere else: an ES module is file-scoped, so a second copy would be a
+  second, unequal binding, and naming the home for the PACKAGE keeps file
+  order from moving it (SPEC-TABLES.md §19.2).
 
 Each generated file is headed by the source file's BASENAME
 (never an invocation-relative path — the same input must produce the same
@@ -1728,8 +1740,8 @@ internal/format/       schemafmt
 internal/codegen/      c/  cpp/  csharp/  dart/  elixir/  golang/  java/  js/
                        rust/ — registered on the driver through the public
                        generator interface; cpptable/, cstable/, gotable/,
-                       rusttable/ and elixirtable/ are the table emitters five
-                       of those backends carry
+                       jstable/, rusttable/ and elixirtable/ are the table
+                       emitters six of those backends carry
                        (SPEC-TABLES.md)
 internal/fuzz/         compiler fuzzing (gate 6)
 internal/publicapi/    the acceptance gate: an external module, public API only

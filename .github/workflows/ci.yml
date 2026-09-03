@@ -193,6 +193,8 @@ jobs:
             targets: build/conformance-harness build-conformance-cs build-cs-cook
           - lang: go
             targets: build/conformance-harness build/conformance-go
+          - lang: js
+            targets: build/conformance-harness build/tables-generated-js/.stamp
           - lang: rust
             targets: build/conformance-harness build/conformance-rust
           - lang: java
@@ -217,6 +219,7 @@ jobs:
           cs)   git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
           go)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
           rust) git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
+          js)   echo "the JavaScript leg names no runtime: generated JS never imports one" ;;
           cpp)  echo "the C++ leg names no runtime: a generated table header includes none" ;;
           java) echo "the Java leg names no runtime: a generated table source stands alone on the JDK" ;;
           c)    echo "the C leg names no runtime: a generated table header includes none, and the driver is one cc invocation" ;;
@@ -233,6 +236,11 @@ jobs:
         if: matrix.lang == 'cs'
         with:
           dotnet-version: '8.0'
+
+      - uses: actions/setup-node@v7
+        if: matrix.lang == 'js'
+        with:
+          node-version: '20'
 
       - uses: dtolnay/rust-toolchain@stable
         if: matrix.lang == 'rust'
