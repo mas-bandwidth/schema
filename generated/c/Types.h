@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xdd71ce8b50d78939 */
+   package example — protocol id 0x91a8e85156dfe2b1 */
 
 #ifndef SCHEMA_EXAMPLE_TYPES_H
 #define SCHEMA_EXAMPLE_TYPES_H
@@ -167,6 +167,17 @@ typedef struct ExpressionProbe {
 #define EXPRESSION_PROBE_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define EXPRESSION_PROBE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
 
+/* Returns a ExpressionProbe with its SPECIFIED defaults applied. A memset to zero is
+   the schema's own default (SPEC §4.2: zero initialization unless a
+   specified default overrides it), so only types carrying one get this. */
+static SCHEMA_UNUSED ExpressionProbe new_expression_probe( void )
+{
+    ExpressionProbe value;
+    memset( &value, 0, sizeof( value ) );
+    value.spin_rate = ROTATION_UNITS;
+    return value;
+}
+
 #define FLOOR_LIMIT (( -9223372036854775807LL - 1 ))
 #define CEILING_COUNT (18446744073709551615ULL)
 
@@ -189,6 +200,7 @@ static SCHEMA_UNUSED ExtremeProbe new_extreme_probe( void )
 {
     ExtremeProbe value;
     memset( &value, 0, sizeof( value ) );
+    value.ceiling_range = 1;
     value.floor_default = ( -9223372036854775807LL - 1 );
     value.ceiling_default = 18446744073709551615ULL;
     return value;
@@ -213,6 +225,7 @@ static SCHEMA_UNUSED ExtremeRow new_extreme_row( void )
 {
     ExtremeRow value;
     memset( &value, 0, sizeof( value ) );
+    value.clamped_ceiling = 1;
     value.floor_def = ( -9223372036854775807LL - 1 );
     value.ceiling_def = 18446744073709551615ULL;
     return value;

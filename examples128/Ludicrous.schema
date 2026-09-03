@@ -39,12 +39,12 @@ type FixedProbe
 // would show), riding in front of the tail byte like DegenerateProbe's.
 type UnsignedProbe
 {
-    angle   ufixed(16, 16)    | min = 0, max = 360
-    span    ufixed(48, 16)    | min = 0, max = 281474976710655
-    reach   ufixed(112, 16)   | min = 0, max = 2000000
-    ticks   ufixed(32, 0)     | min = 0, max = 1000000
-    samples [2]ufixed(16, 16) | min = 0, max = 16
-    locked  ufixed(16, 16)    | min = 3, max = 3
+    angle   ufixed(16, 16)     | min = 0, max = 360
+    span    ufixed(48, 16)     | min = 0, max = 281474976710655
+    reach   ufixed(112, 16)    | min = 0, max = 2000000
+    ticks   ufixed(32, 0)      | min = 0, max = 1000000
+    samples [2]ufixed(16, 16)  | min = 0, max = 16
+    locked  ufixed(16, 16) = 3 | min = 3, max = 3
     tail    uint8
 }
 
@@ -88,9 +88,9 @@ type LudicrousState
 // (F = 16 would appear); locked_wide is the 64/128 boundary shape.
 type DegenerateProbe
 {
-    locked_fixed fixed(16, 16) | min = -3, max = -3
-    locked_int   int32         | min = 7, max = 7
-    locked_wide  int128        | min = -12345678901234, max = -12345678901234
+    locked_fixed fixed(16, 16) = -3       | min = -3, max = -3
+    locked_int   int32 = 7                | min = 7, max = 7
+    locked_wide  int128 = -12345678901234 | min = -12345678901234, max = -12345678901234
     tail         uint8
 }
 

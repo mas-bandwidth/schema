@@ -353,7 +353,7 @@ namespace Benchtable
         public uint AckBits;
         public ulong SessionId;
         public uint ClientId;
-        public ulong Nonce;
+        public ulong Nonce = 1ul;
         public long WorldTime;
         public ulong FrameTick;
         public float ServerTime;
@@ -2684,7 +2684,7 @@ namespace Benchtable
             value.AckBits = 0;
             value.SessionId = 0;
             value.ClientId = 0;
-            value.Nonce = 0;
+            value.Nonce = 1ul;
             value.WorldTime = 0;
             value.FrameTick = 0;
             value.ServerTime = 0.0f;
@@ -2727,7 +2727,7 @@ namespace Benchtable
             if (value.AckBits != 0) { bytes += 3 + 4; } // ack_bits
             if (value.SessionId != 0) { bytes += 3 + 8; } // session_id
             if (value.ClientId != 0) { bytes += 3 + 4; } // client_id
-            if (value.Nonce != 0) { bytes += 3 + 8; } // nonce
+            if (value.Nonce != 1ul) { bytes += 3 + 8; } // nonce
             if (value.WorldTime != 0) { bytes += 3 + 8; } // world_time
             if (value.FrameTick != 0) { bytes += 3 + 8; } // frame_tick
             if (value.ServerTime != 0.0f) { bytes += 3 + 4; } // server_time
@@ -2844,7 +2844,7 @@ namespace Benchtable
                 w.Put16(0xd443); w.Put8(8); // client_id
                 w.Put32(unchecked((uint)(value.ClientId)));
             }
-            if (value.Nonce != 0)
+            if (value.Nonce != 1ul)
             {
                 w.Put16(0x80f0); w.Put8(9); // nonce
                 w.Put64(unchecked((ulong)(value.Nonce)));

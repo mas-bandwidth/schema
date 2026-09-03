@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xa388f75ddc741965
+// package ludicrous — protocol id 0x42050541a90eea8a
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -34,7 +34,7 @@ bool _unsignedLessThan(int a, int b) =>
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0xa388f75ddc741965;
+const int protocolId = 0x42050541a90eea8a;
 
 const int maxWorldUnits = 30000;
 
@@ -262,8 +262,8 @@ final class UnsignedProbe {
   int ticks = 0;
   // wire [0, 16]
   final Uint32List samples = Uint32List(2);
-  // wire [3, 3]
-  int locked = 0;
+  // specified default at construction; zero* gives the §5 zero form; wire [3, 3]
+  int locked = 196608;
   int tail = 0;
 }
 
@@ -1348,12 +1348,12 @@ int measureLudicrousState(LudicrousState value) {
 
 // type DegenerateProbe
 final class DegenerateProbe {
-  // wire [-3, -3]
-  int lockedFixed = 0;
-  // wire [7, 7]
-  int lockedInt = 0;
-  // wire [-12345678901234, -12345678901234]
-  Int128 lockedWide = Int128.zero;
+  // specified default at construction; zero* gives the §5 zero form; wire [-3, -3]
+  int lockedFixed = -196608;
+  // specified default at construction; zero* gives the §5 zero form; wire [7, 7]
+  int lockedInt = 7;
+  // specified default at construction; zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
+  Int128 lockedWide = const Int128(0xffffffffffffffff, 0xfffff4c58c31d00e);
   int tail = 0;
 }
 

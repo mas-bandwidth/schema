@@ -97,6 +97,36 @@ func TestDiagnostics(t *testing.T) {
 		{name: "float64 compressed in a plain type", want: "compressed float is float32",
 			src: "package t\ntype T { v float64 | min = 0, max = 1, resolution = 0.1 }\n"},
 
+		// ---- a range that excludes zero (issue #346) ----
+		// Zero initialization is the language's rule, so a field whose range
+		// starts above zero or ends below it is BORN outside its own range: the
+		// write side refuses the fresh value and a read-side clamp substitutes
+		// one the author never wrote. The fix is a declared default in range.
+		{name: "a range above zero with no default", want: "excludes zero",
+			src: "package t\ntype T { x uint8 | min = 1, max = 255 }\n"},
+		{name: "a range below zero with no default", want: "excludes zero",
+			src: "package t\ntype T { x int8 | min = -100, max = -1 }\n"},
+		{name: "a degenerate range that excludes zero", want: "excludes zero",
+			src: "package t\ntype T { x int32 | min = 7, max = 7 }\n"},
+		{name: "a fixed range in whole units that excludes zero", want: "excludes zero",
+			src: "package t\ntype T { x fixed(16, 16) | min = 3, max = 8 }\n"},
+		{name: "a ufixed range that excludes zero", want: "excludes zero",
+			src: "package t\ntype T { x ufixed(16, 16) | min = 3, max = 3 }\n"},
+		{name: "an int128 range that excludes zero", want: "excludes zero",
+			src: "package t\ntype T { x int128 | min = 1, max = 1267650600228229401496703205376 }\n"},
+		{name: "a compressed-float range that excludes zero", want: "excludes zero",
+			src: "package t\ntype T { v float32 | min = 1, max = 2, resolution = 0.01 }\n"},
+		{name: "a table field's range that excludes zero", want: "excludes zero",
+			src: "package t\ntable T { hp uint8 | min = 1, max = 100 }\n"},
+		// an ARRAY takes no specified default, so for an array the only fix is
+		// a range that reaches zero — the diagnostic must say so rather than
+		// naming a fix the language refuses
+		{name: "an array of a range that excludes zero", want: "widen the range to reach zero",
+			src: "package t\ntype T { xs [4]uint8 | min = 1, max = 255 }\n"},
+		// the declared default is itself range-checked, on both range kinds
+		{name: "a float default outside its compressed range", want: "is outside its range",
+			src: "package t\ntype T { v float32 = 5 | min = 1, max = 2, resolution = 0.01 }\n"},
+
 		// ---- widths and bounds ----
 		{name: "bits zero", want: "outside [1, 64]",
 			src: "package t\ntype T { b bits(0) }\n"},
@@ -454,13 +484,24 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		{name: "fixed at every storage width, F = 0, and the sign-bit-only corner",
 			src: "package t\ntype T {\n    a fixed(8, 8) | min = -100, max = 100\n    b fixed(16, 16) | min = -180, max = 180\n    c fixed(32, 0) | min = 0, max = 1000000\n    d fixed(48, 16) | min = -30000, max = 30000\n    e fixed(112, 16) | min = -1000000, max = 1000000\n    f fixed(1, 63) | min = -1, max = 0\n}\n"},
 		{name: "ufixed at every storage width, the full unsigned domains, and the one-bit corner",
-			src: "package t\ntype T {\n    a ufixed(8, 8) | min = 0, max = 255\n    b ufixed(16, 16) | min = 0, max = 360\n    c ufixed(32, 0) | min = 0, max = 4294967295\n    d ufixed(48, 16) | min = 0, max = 281474976710655\n    e ufixed(112, 16) | min = 0, max = 2000000\n    f ufixed(1, 63) | min = 0, max = 1\n    g ufixed(16, 16) | min = 3, max = 3\n}\n"},
+			src: "package t\ntype T {\n    a ufixed(8, 8) | min = 0, max = 255\n    b ufixed(16, 16) | min = 0, max = 360\n    c ufixed(32, 0) | min = 0, max = 4294967295\n    d ufixed(48, 16) | min = 0, max = 281474976710655\n    e ufixed(112, 16) | min = 0, max = 2000000\n    f ufixed(1, 63) | min = 0, max = 1\n    g ufixed(16, 16) = 3 | min = 3, max = 3\n}\n"},
 		{name: "ufixed default in whole units, exactly representable",
 			src: "package t\ntype T { x ufixed(2, 30) = 1.0 | min = 0, max = 1\n y ufixed(16, 16) = 0.5 | min = 0, max = 100 }\n"},
 		{name: "a ufixed composite as an ordinary field type",
 			src: "package t\ntype V { x ufixed(48, 16) | min = 0, max = 100\n y ufixed(48, 16) | min = 0, max = 100 }\ntype T { p V\n b bool }\n"},
 		{name: "int128 with a range only 128 bits can hold, and raw uint128",
 			src: "package t\ntype T {\n    flux int128 | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376\n    id   uint128\n}\n"},
+		// issue #346's legal side: a range that REACHES zero at either end
+		// needs nothing, and a range that excludes zero is legal the moment a
+		// default inside it is declared — on every range-carrying kind
+		{name: "a range touching zero at either end takes no default",
+			src: "package t\ntype T {\n    a uint8 | min = 0, max = 10\n    b int8  | min = -10, max = 0\n    c int8  | min = -10, max = 10\n    d int8  | min = 0, max = 0\n}\n"},
+		{name: "a range that excludes zero, with a default in range",
+			src: "package t\ntype T {\n    a uint8   = 1  | min = 1, max = 255\n    b int8    = -7 | min = -100, max = -1\n    c int32   = 7  | min = 7, max = 7\n    d fixed(16, 16) = 3 | min = 3, max = 8\n    e ufixed(16, 16) = 3 | min = 3, max = 3\n    f int128  = 1  | min = 1, max = 1267650600228229401496703205376\n    v float32 = 1.5 | min = 1, max = 2, resolution = 0.01\n}\n"},
+		{name: "a table field's excluding range, with a default in range",
+			src: "package t\ntable T { hp uint8 = 100 | min = 1, max = 100 }\n"},
+		{name: "an array whose range reaches zero stays legal",
+			src: "package t\ntype T { xs [4]uint8 | min = 0, max = 255 }\n"},
 		{name: "128-bit defaults inside their range",
 			src: "package t\ntype T {\n    a int128 = -5 | min = -10, max = 10\n    b uint128 = 7\n}\n"},
 		{name: "headroom enum with non-variant wire values",

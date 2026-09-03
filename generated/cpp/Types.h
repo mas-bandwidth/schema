@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xdd71ce8b50d78939
+// package example — protocol id 0x91a8e85156dfe2b1
 
 #pragma once
 
@@ -145,7 +145,7 @@ inline constexpr int64_t ShipCreateMaxBytes = 32; // 8-byte write granularity; r
 // type ExpressionProbe
 struct ExpressionProbe {
     int32_t hardpoint_index = 0; // wire [0, 31]
-    int32_t spin_rate = 0; // wire [1024, 2048]
+    int32_t spin_rate = RotationUnits; // wire [1024, 2048]
 };
 
 inline constexpr int64_t ExpressionProbeMaxBits = 16; // longest wire path; align pads at worst case (SPEC §6.1)
@@ -157,7 +157,7 @@ inline constexpr uint64_t CeilingCount = 18446744073709551615ull; // = 184467440
 struct ExtremeProbe {
     int64_t floor_bound = 0; // wire [-9223372036854775808, 100]
     int64_t doubled_floor = 0; // wire [-9223372036854775808, 100]
-    uint64_t ceiling_range = 0; // wire [1, 18446744073709551615]
+    uint64_t ceiling_range = 1; // wire [1, 18446744073709551615]
     int64_t floor_default = ( -9223372036854775807ll - 1 );
     uint64_t ceiling_default = 18446744073709551615ull;
 };
@@ -168,7 +168,7 @@ inline constexpr int64_t ExtremeProbeMaxBytes = 40; // 8-byte write granularity;
 // type ExtremeRow
 struct ExtremeRow {
     int64_t clamped_floor = 0; // wire [-9223372036854775808, 100]
-    uint64_t clamped_ceiling = 0; // wire [1, 18446744073709551614]
+    uint64_t clamped_ceiling = 1; // wire [1, 18446744073709551614]
     int64_t floor_def = ( -9223372036854775807ll - 1 );
     uint64_t ceiling_def = 18446744073709551615ull;
 };

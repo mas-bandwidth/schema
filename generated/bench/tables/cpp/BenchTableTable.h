@@ -242,7 +242,7 @@ namespace benchtable {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0xcbff64e49f311d0aull;
+inline constexpr uint64_t BuildVersion = 0x4ecd277aba28ff2eull;
 
 } // namespace benchtable
 
@@ -442,7 +442,7 @@ struct TableMixed {
     uint32_t ack_bits = 0;
     uint64_t session_id = 0;
     uint32_t client_id = 0;
-    uint64_t nonce = 0;
+    uint64_t nonce = 1ull;
     int64_t world_time = 0;
     uint64_t frame_tick = 0;
     float server_time = 0.0f;
@@ -570,7 +570,7 @@ inline void TableMixedReset( TableMixed & value )
     value.ack_bits = 0;
     value.session_id = 0;
     value.client_id = 0;
-    value.nonce = 0;
+    value.nonce = 1ull;
     value.world_time = 0;
     value.frame_tick = 0;
     value.server_time = 0.0f;
@@ -1066,7 +1066,7 @@ inline int64_t TableMixedMeasure( const TableMixed & value )
     if ( value.ack_bits != 0 ) { bytes += 3 + 4; } // ack_bits
     if ( value.session_id != 0 ) { bytes += 3 + 8; } // session_id
     if ( value.client_id != 0 ) { bytes += 3 + 4; } // client_id
-    if ( value.nonce != 0 ) { bytes += 3 + 8; } // nonce
+    if ( value.nonce != 1ull ) { bytes += 3 + 8; } // nonce
     if ( value.world_time != 0 ) { bytes += 3 + 8; } // world_time
     if ( value.frame_tick != 0 ) { bytes += 3 + 8; } // frame_tick
     if ( value.server_time != 0.0f ) { bytes += 3 + 4; } // server_time
@@ -1183,7 +1183,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, const TableMix
         w.put16( 0xd443 ); w.put8( 8 ); // client_id
         w.put32( uint32_t( value.client_id ) );
     }
-    if ( value.nonce != 0 )
+    if ( value.nonce != 1ull )
     {
         w.put16( 0x80f0 ); w.put8( 9 ); // nonce
         w.put64( uint64_t( value.nonce ) );

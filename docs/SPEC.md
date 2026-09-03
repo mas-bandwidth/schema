@@ -842,6 +842,13 @@ All compile errors with positions:
   `int8 | min = 0, max = 1000` is a compile error — the range determines the
   wire, the type name determines the storage, and a legal wire value the
   storage truncates would be silent corruption that passes read validation.
+- **A range that excludes zero requires a declared default in range:**
+  `x uint8 | min = 1, max = 255` is a compile error, because zero
+  initialization is the rule (§4.2) and a field whose range starts above zero
+  or ends below it would be born outside its own range —
+  `x uint8 = 1 | min = 1, max = 255` is the fix, on integer, `int128`,
+  `fixed`/`ufixed` and compressed-float ranges alike. An array takes no
+  specified default, so an array field's range must reach zero.
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
   attribute on a type that does not take it, `min` without `max` (or vice
   versa), and `resolution` without both bounds are compile errors, each

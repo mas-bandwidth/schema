@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xdd71ce8b50d78939
+# package example — protocol id 0x91a8e85156dfe2b1
 
 # type Vec3 [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
 defmodule Example.Vec3 do
@@ -99,20 +99,20 @@ end
 # type ExpressionProbe
 defmodule Example.ExpressionProbe do
   # hardpoint_index: wire [0, 31]
-  # spin_rate: wire [1024, 2048]
-  defstruct hardpoint_index: 0, spin_rate: 0
+  # spin_rate: specified default at construction; zero_* gives the §5 zero form; wire [1024, 2048]
+  defstruct hardpoint_index: 0, spin_rate: 1024
 end
 
 # type ExtremeProbe
 defmodule Example.ExtremeProbe do
   # floor_bound: wire [-9223372036854775808, 100]
   # doubled_floor: wire [-9223372036854775808, 100]
-  # ceiling_range: wire [1, 18446744073709551615]
+  # ceiling_range: specified default at construction; zero_* gives the §5 zero form; wire [1, 18446744073709551615]
   # floor_default: specified default at construction; zero_* gives the §5 zero form
   # ceiling_default: specified default at construction; zero_* gives the §5 zero form
   defstruct floor_bound: 0,
             doubled_floor: 0,
-            ceiling_range: 0,
+            ceiling_range: 1,
             floor_default: -9_223_372_036_854_775_808,
             ceiling_default: 18_446_744_073_709_551_615
 end
@@ -120,11 +120,11 @@ end
 # type ExtremeRow
 defmodule Example.ExtremeRow do
   # clamped_floor: wire [-9223372036854775808, 100]
-  # clamped_ceiling: wire [1, 18446744073709551614]
+  # clamped_ceiling: specified default at construction; zero_* gives the §5 zero form; wire [1, 18446744073709551614]
   # floor_def: specified default at construction; zero_* gives the §5 zero form
   # ceiling_def: specified default at construction; zero_* gives the §5 zero form
   defstruct clamped_floor: 0,
-            clamped_ceiling: 0,
+            clamped_ceiling: 1,
             floor_def: -9_223_372_036_854_775_808,
             ceiling_def: 18_446_744_073_709_551_615
 end

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xdd71ce8b50d78939
+// package example — protocol id 0x91a8e85156dfe2b1
 
 import 'dart:typed_data';
 
-import 'Constants.dart' show maxInputsPerPacket;
+import 'Constants.dart' show maxInputsPerPacket, rotationUnits;
 import 'Enums.dart' show Pending, ShipType, Team;
 
 // One 8-byte conversion scratch under overlaid typed-data views — single
@@ -2120,8 +2120,8 @@ int measureShipCreate(ShipCreate value) {
 final class ExpressionProbe {
   // wire [0, 31]
   int hardpointIndex = 0;
-  // wire [1024, 2048]
-  int spinRate = 0;
+  // specified default at construction; zero* gives the §5 zero form; wire [1024, 2048]
+  int spinRate = rotationUnits;
 }
 
 // expressionProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -2223,8 +2223,8 @@ final class ExtremeProbe {
   int floorBound = 0;
   // wire [-9223372036854775808, 100]
   int doubledFloor = 0;
-  // wire [1, 18446744073709551615]
-  int ceilingRange = 0;
+  // specified default at construction; zero* gives the §5 zero form; wire [1, 18446744073709551615]
+  int ceilingRange = 1;
   // specified default at construction; zero* gives the §5 zero form
   int floorDefault = 0x8000000000000000;
   // specified default at construction; zero* gives the §5 zero form
@@ -2441,8 +2441,8 @@ int measureExtremeProbe(ExtremeProbe value) => 320;
 final class ExtremeRow {
   // wire [-9223372036854775808, 100]
   int clampedFloor = 0;
-  // wire [1, 18446744073709551614]
-  int clampedCeiling = 0;
+  // specified default at construction; zero* gives the §5 zero form; wire [1, 18446744073709551614]
+  int clampedCeiling = 1;
   // specified default at construction; zero* gives the §5 zero form
   int floorDef = 0x8000000000000000;
   // specified default at construction; zero* gives the §5 zero form

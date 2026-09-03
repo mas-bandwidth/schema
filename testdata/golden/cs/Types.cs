@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xdd71ce8b50d78939
+// package example — protocol id 0x91a8e85156dfe2b1
 
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -131,7 +131,7 @@ namespace Example
     public sealed class ExpressionProbe
     {
         public int HardpointIndex; // wire [0, 31]
-        public int SpinRate; // wire [1024, 2048]
+        public int SpinRate = (int)Schema.RotationUnits; // specified default at construction; Zero* gives the §5 zero form; wire [1024, 2048]
     }
 
     // type ExtremeProbe
@@ -139,7 +139,7 @@ namespace Example
     {
         public long FloorBound; // wire [-9223372036854775808, 100]
         public long DoubledFloor; // wire [-9223372036854775808, 100]
-        public ulong CeilingRange; // wire [1, 18446744073709551615]
+        public ulong CeilingRange = 1; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551615]
         public long FloorDefault = -9223372036854775808; // specified default at construction; Zero* gives the §5 zero form
         public ulong CeilingDefault = 18446744073709551615; // specified default at construction; Zero* gives the §5 zero form
     }
@@ -148,7 +148,7 @@ namespace Example
     public sealed class ExtremeRow
     {
         public long ClampedFloor; // wire [-9223372036854775808, 100]
-        public ulong ClampedCeiling; // wire [1, 18446744073709551614]
+        public ulong ClampedCeiling = 1; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551614]
         public long FloorDef = -9223372036854775808; // specified default at construction; Zero* gives the §5 zero form
         public ulong CeilingDef = 18446744073709551615; // specified default at construction; Zero* gives the §5 zero form
     }
