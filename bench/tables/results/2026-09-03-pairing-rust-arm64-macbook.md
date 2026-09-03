@@ -97,6 +97,27 @@ forgery fuzzer both re-proved after it.
 it is not explained, so it is named here rather than declared fine. The next
 instrument is a profile, not another guess.
 
+## What moved in the tree after this window, and why it was not re-taken
+
+Three changes landed after this board and before the port did: the generated
+Rust made clippy-clean (a bool's elision test reads as the bool, three
+`% n != 0`s became `is_multiple_of`, the finite test became `is_finite`), the
+block descriptors' row-walk columns, and the clamp elision main had already
+ruled for the other two backends (#342 — a declared bound AT the storage limit
+emits no comparison). **None of them is on the wire path this board measures**
+except the last, which can only remove work, so the rust rows here are
+conservative rather than stale.
+
+**It was not re-taken because the machine had four workers on it** — a
+sibling's dotnet, two Go test binaries and a C soak — and a run in that window
+would have replaced a pairing check with a worse one. The same paragraph the
+board opens with is why: this is a laptop, and the box sitting is what
+certifies. The re-take is one command.
+
+For the record, the clippy pass WAS paired before it landed, alternately in one
+window, old binary against new: write 0.73 both, round_trip 0.34–0.36 both, new
+marginally ahead. That pairing is in the commit that made the change.
+
 ## What the numbers do not cover
 
 The same split the corpus's own README states: this leg is the tolerant wire
