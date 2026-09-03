@@ -1,0 +1,14 @@
+#!/bin/sh
+# THE DART LEG's driver (test/conformance/README.md).
+#
+# A driver is a COMMAND, not a binary, exactly so a leg can be assembled from
+# what a backend already has. This one is a single AOT-compiled executable:
+# `dart run` would pay a JIT start-up per surface, and the two-minute rule
+# (#320) is measured across every registered leg, not this one alone.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+exec build/conformance-dart "$@"

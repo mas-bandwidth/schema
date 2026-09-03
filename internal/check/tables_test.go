@@ -226,6 +226,13 @@ func TestTableRefusals(t *testing.T) {
 		{name: "by-value recursion through a chain stays refused",
 			want: "type composition cycle",
 			src:  "package t\ntable A { b B }\ntable B { a A }\n"},
+
+		// the Dart backend's table verbs are MEMBERS of the value, so a field
+		// whose Dart spelling is one of them is refused on every closure member
+		{name: "a table field spelled as a Dart table verb", want: "collides with the generated Dart table verb `measure`",
+			src: "package t\ntable Tab { measure int32 }\n"},
+		{name: "a type a table reaches, with a field spelled as a Dart table verb", want: "collides with the generated Dart table verb `toJson`",
+			src: "package t\ntype P { to_json int32 }\ntable Tab { p P }\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -241,6 +248,13 @@ func TestTableRefusals(t *testing.T) {
 			t.Fatalf("no diagnostic contains %q; got: %v", tc.want, errs)
 		})
 	}
+}
+
+// TestDartVerbClaimNeedsATable: the Dart member-verb claim is a table-wire
+// claim, and a table-free unit keeps `measure`, `save` and the rest for its
+// own fields.
+func TestDartVerbClaimNeedsATable(t *testing.T) {
+	buildUnit(t, "package t\ntype P { measure int32\n  save int32\n  to_json int32 }\n")
 }
 
 // TestTypeFreeOfTableSymbols: a table-free unit keeps its whole namespace —

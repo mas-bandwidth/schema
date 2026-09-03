@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"fmt"
-	"sort"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
@@ -11,6 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cstable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/darttable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
@@ -23,24 +23,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
-
-// refuseTables is the named refusal every target without a table backend
-// gives a unit that declares tables (docs/SPEC-TABLES.md): C, C++, C#, Go,
-// JavaScript, Rust, Java and Elixir carry table backends today, and each
-// remaining per-language one is a named follow-on — refused loudly here rather
-// than silently emitting a unit with the tables missing.
-func refuseTables(u *ir.Unit, target string) error {
-	if len(u.Tables) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return fmt.Errorf("unit declares tables (%s) — tables are C, C++, C#, Go, JavaScript, Rust, Java and Elixir only today, and the %s table backend is a named follow-on; generate with --lang c, --lang cpp, --lang cs, --lang go, --lang js, --lang rust, --lang java or --lang elixir, or move the tables to their own unit (docs/SPEC-TABLES.md)",
-		englishList(names), target)
-}
 
 // builtins is the set [New] registers. The per-language emitters stay
 // internal — they are implementations, not API, and freezing nine emitter
@@ -68,10 +50,25 @@ type dartTarget struct{}
 func (dartTarget) Names() []string { return []string{"dart"} }
 
 func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTables(u, "dart"); err != nil {
+	files, err := dart.Generate(u)
+	if err != nil {
 		return nil, err
 	}
-	return dart.Generate(u)
+	// units that declare tables ALSO get <Base>Table.dart per file — the
+	// TABLE-wire codecs, the reflection descriptors and the text form
+	// (docs/SPEC-TABLES.md); a table-free unit's output is byte-identical to what
+	// the packet emitter alone produces
+	tables, err := darttable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table library; rename one file (docs/SPEC-TABLES.md)", name)
+		}
+		files[name] = data
+	}
+	return files, nil
 }
 
 // elixirTarget emits Elixir 1.20.

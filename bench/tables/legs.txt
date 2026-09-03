@@ -19,6 +19,7 @@
 
 cpp  bench/tables/cpp/leg
 cs   bench/tables/cs/leg
+dart bench/tables/dart/leg
 go   bench/tables/go/leg
 js   bench/tables/js/leg
 rust bench/tables/rust/leg

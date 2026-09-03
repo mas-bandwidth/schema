@@ -153,13 +153,14 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++ and C, and C#, Go, Rust, Java, JavaScript and Elixir for
-the FIXED class.** C++ is the reference, and its generated text is the C-like
-dialect of `serialize.h` — C header spellings, no STL, every call into the C
-library behind a hook the program can define (§13.9). C++ and C carry both
-classes; C#, Go, Rust, Java, JavaScript and Elixir carry the fixed class (§6.1)
-— optionals, enum-keyed arrays, the text form (§16) and all — and each refuses
-a unit whose closure declares a pointer, naming its variable class as a
+**Backend status: C++ and C, and C#, Dart, Go, Rust, Java, JavaScript and
+Elixir for the FIXED class.** C++ is the reference, and its generated text is
+the C-like dialect of `serialize.h` — C header spellings, no STL, every call
+into the C library behind a hook the program can define (§13.9). C++ and C
+carry both classes; C#, Dart, Go, Rust, Java, JavaScript and Elixir carry the
+fixed class (§6.1) — optionals, enum-keyed arrays, the text form (§16) and all
+— and each refuses a unit whose closure declares a pointer, naming its
+variable class as a
 follow-on. Every other backend refuses a unit that declares tables at all, by
 name, with this document cited. The remaining per-language backends are named
 follow-ons (§15).
@@ -377,6 +378,84 @@ carrying data alone, so there are no attribution bytes to absorb the overrun.
 The size is the pointee's own `<Name>Row.size`, which every call site knows.
 `make tables-java-cook-extent` is that forgery as a gate and its negative
 control puts the start-only bound back and requires the gate to go red.
+**DART emits three libraries per unit file**: `<Base>Table.dart` (the storage
+classes, the codecs, the reflection descriptors and the text form's per-table
+entries), `<Base>Block.dart` and `<Base>Cook.dart` (the two accelerators, §19
+and §7) — plus one runtime home per unit and per surface, `<Package>Table.dart`,
+`<Package>Block.dart` and `<Package>Cook.dart`, which every other library of the
+unit imports. A Dart library IS a file, so a runtime shared across a unit's
+files has to be PUBLIC, and every spelling of it is claimed by the front end
+(§11); the backend spells NO PRIVATE LIBRARY-SCOPE NAME AT ALL, because a schema
+identifier may begin with an underscore and a private top-level name would be a
+collision no registry covers.
+
+Four spellings are Dart's own and the reason is at each site.
+
+- **THE READER AND THE WRITER ARE OBJECTS THE CALLER MAY OWN.** Dart has
+  neither a value type nor a pointer, so each carries an `attach` that
+  re-points it at another buffer, and a nested body narrows a `limit` rather
+  than taking a sub-view — a Dart sub-view is an allocation and a C++ one is
+  not. The property is the reference's: an inner decode can never reach past
+  its own framing, because every bounds test is against that limit. Their one
+  currency is the `Uint8List`: a multi-byte scalar is assembled from bytes
+  rather than read through a `ByteData`, because a `ByteData` is a second
+  object describing the same memory — two arguments for one fact, or an
+  allocation to derive one from the other. A caller that owns a reader, a
+  writer and a report allocates NOTHING per record under `dart compile` — the
+  language's release configuration and the one a shipping consumer runs — and
+  that is MEASURED rather than claimed: `make tables-dart-alloc` counts the
+  VM's own new-space scavenges over a steady phase of load, measure and save
+  across the conformance corpus and holds the count at zero under an AOT
+  snapshot, with a planted allocation per record as the control that turns
+  it red. Under the JIT the same instrument prints its count beside AOT's and
+  does not gate on it, because what the JIT boxes is the inliner's decision
+  and not the codec's: a `double` crossing a conversion call the inlining
+  budget left out of line is boxed, and where the budget runs out depends on
+  the loop around the codec — one boxed double per pass of the eight-record
+  corpus on the wire phase as measured, up to three per record with one codec
+  inlined into a monomorphic caller. Two further costs are the JIT's and never
+  AOT's: a `float32` carrying a NaN with a payload costs one boxed double, and
+  a 64-bit integer field holding a value outside ±2⁶² costs one boxed integer
+  per read.
+- **THE VERBS ARE MEMBERS OF THE VALUE** — `config.measure()`,
+  `config.save(out)`, `config.load(bytes, report)`, `loadBody`, `saveBody`,
+  `reset`, `fromJson`, `toJson`, `toJsonMeasure` — methods on a table's own
+  class, and EXTENSION methods (`extension <Name>Table on <Name>`) on a
+  closure `type`'s class, which the packet emitter owns. A Dart library is
+  written in methods; the cost is §11's: the nine spellings are claimed
+  against a FIELD name in a table closure, and `Table` joins the suffix set.
+  The refusals a save and a measure answer are the reference's `-1`, in both
+  verbs, because a value that measures as unsaveable and a buffer too short
+  are one contract in the reference and this port does not split it.
+- **A float32 field's storage is a `double`**, so every elision comparison
+  narrows first (`tableNarrowFloat`). That is what gives the decision C's own
+  float semantics rather than the double's — -0.0 equal to 0.0, a NaN equal to
+  nothing — and what makes a Dart wire byte equal the C++ one for a value the
+  two languages cannot store alike.
+- **THE DESCRIPTORS ARE `const`, and their memory columns are STATIC METHODS**
+  of a per-type `<Name>TableFields` class rather than C++'s offset and width: a
+  Dart field has no address, and a tear-off of a static method is a
+  compile-time constant where a closure is not. The whole descriptor graph
+  therefore lands in the binary's constant pool — a walk allocates nothing and
+  initializes nothing, and needs no factory to break an ordering cycle. The one
+  place a factory returns is the COOK's record column, because the DESCRIPTOR
+  graph can be cyclic — a record's field column can name its own record, as
+  `ListNode.next` names `ListNode` — and a value would then be a constant that
+  depends on itself. (A cooked region is never cyclic; the tool refuses one by
+  name, §3.1.)
+- **A REFERENCE RESOLVES TO AN OFFSET, and the deref is BOUNDED.** §6.3's slot
+  is eight bytes, signed, self-relative from the slot's own position, and null
+  is a delta of zero — but Dart's currency for "where" is an index into the
+  region, and the read after an escaping delta would be a RangeError. A reader
+  that RAISES on hostile bytes is not one that REFUSES them, so a delta leaving
+  the region answers `TableCookRef.outside`.
+
+Its LAYOUT CONTRACT has no second model to check against: C# asserts its
+blittable struct against the CLR's layout because two models must agree, and
+Dart has no struct — the generated offsets ARE the model, and the prologue's
+BUILD VERSION (§20) is what refuses a producer that disagrees with them. For
+the same reason a block's base is `(buffer, offset)` rather than an address,
+and §19.1's 64-byte alignment is checked on that offset.
 
 **BIG-ENDIAN, per backend.** The C++ leg proves the wire, the block form and
 the cooked form crossing the byte order on a real big-endian target under an
@@ -390,7 +469,14 @@ from a construction into a proof. **The GO leg RUNS**, like C++'s: the driver
 cross-builds for s390x and answers the wire, the report and both text surfaces
 under the same pinned emulator, plus the two FOREIGN surfaces (§7, §19.1) —
 a cook and a block whose magic word is byte-reversed, which every leg on every
-host must refuse.
+host must refuse. **DART has no big-endian RUN leg.** What it gives is the
+cross-endian REFUSAL, held by those two foreign surfaces in the matrix
+(`cook-foreign` 6/6, `block-foreign` 2/2): every multi-byte read of the wire
+is assembled from bytes little-endian by construction, and every block and
+cook read goes through a view whose order is spelled `Endian.little` at each
+site, so a Dart reader's order is the reader's rather than the host's — the
+same answer Java gives below — and a file of the other order is refused at
+its magic. A cross-and-emulate Dart leg is a named follow-on (§15).
 
 **JAVA's byte order is the READER's, not the host's**, and that is the whole of
 its answer here: every multi-byte read goes through `TableBytes`, which is
@@ -420,7 +506,7 @@ whose order word records the other order, which is exactly the file a reader
 leaning on one check would open.
 
 **The BLOCK FORM (§2.7, §19) is live in C++, C, C#, Go, Rust, Java and Elixir,
-and READ by JavaScript**, and it took C++ and C# TOGETHER to land, because the
+and READ by JavaScript and Dart**, and it took C++ and C# TOGETHER to land, because the
 form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path
@@ -3160,15 +3246,15 @@ the wire, and keeps the flexibility that comes with it.
   names, and the ports do not spell them alike — §11 fixes the claimed VERBS
   and leaves each language its own shape for them:
 
-  | | C++ | C# | Go | JavaScript |
-  |---|---|---|---|---|
-  | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named |
-  | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` | `{ Bytes, View, Region, Length }` — the region's offset inside the caller's view, and its length |
-  | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` | `cook.Region`, the byte offset the root's accessors take |
-  | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)`, `slot *int64` | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt |
-  | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record |
-  | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` |
-  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them | `XCook.RegionAlignment`, `RootSize`, `RootAlign` |
+  | | C++ | C# | Go | JavaScript | Dart |
+  |---|---|---|---|---|---|
+  | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named | `XCook? XCook.open(Uint8List? bytes, int at, int length)` — null is the refusal |
+  | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` | `{ Bytes, View, Region, Length }` — the region's offset inside the caller's view, and its length | `final class XCook` over `bytes`, its `region` offset and `length` |
+  | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` | `cook.Region`, the byte offset the root's accessors take | `cook.root(into)` — the cursor `cook.cursor()` made, lent and moved onto the root; no allocating twin |
+  | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)`, `slot *int64` | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
+  | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record | `XRow`, the same claim — a cursor of `(view, at)`, since Dart has no struct |
+  | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
+  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
   **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
   rather than assuming it: every record a unit's files declare carries
@@ -4818,9 +4904,9 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **37 suffixes**, and a declaration spelling one of them is
+  each of these **38 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **53 in all**:
+  seven follow below, for **54 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
@@ -4830,15 +4916,15 @@ in build version (§20.5).
   NodeStorage  NodePlace  NodeAlloc  NodeBody
   Cook  CookMeasure  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
-  FromJson  ToJson  ToJsonMeasure
+  FromJson  ToJson  ToJsonMeasure  Table
   ```
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here — 33, then
+  checker's own, and this section is held to it: the three lists here — 38, then
   the block form's nine, then the C backend's seven — are `tableGeneratedVerbs`
-  entire, spelling for spelling and 49 in all, because a claim the page states
+  entire, spelling for spelling and 54 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
@@ -5022,6 +5108,34 @@ in build version (§20.5).
     `TableRuntime`**: every function it spells is a function of that module,
     reached through its owner, and a declaration lowers to a module rather than
     to a function of one.
+
+    **DART ADDS SIX, WIDENS SEVEN, AND CLAIMS NINE VERBS AGAINST FIELD
+    NAMES.** A Dart library is a file and its privacy is per library, so a
+    runtime shared across a unit's files is PUBLIC, and every spelling of it
+    is claimed: `TableEnumVocab` (the per-enum vocabularies are its static
+    members, so one claim covers every enum), `TableScratch` (the float
+    conversion scratch), `TableNarrowFloat`, `TableUnsignedLess`,
+    `TableCookRef` (the bounded deref's answers, §7) and `TableBuildVersion`
+    — the last is the page's `BuildVersion` in Dart's spelling, since a
+    library-scope constant carries the runtime's prefix. Seven are widened to
+    Dart: `TableJson`, the four bits/float pairs (`TableBitsToFloat`,
+    `TableFloatToBits`, `TableBitsToDouble`, `TableDoubleToBits`), and
+    `TableBlockRead64` and `TableCookRead64`. The backend spells NO PRIVATE
+    library-scope name at all, because a schema identifier may begin with an
+    underscore and a private top-level name would be a collision no registry
+    covers; the compiler's own test holds the emitted source to the registry
+    both ways, and `make tables-dart-names-negative-control` plants an
+    unregistered class and requires it to go red.
+
+    **And its verbs are MEMBERS**, so a different claim applies to them: a
+    table's verbs are methods on its class and a closure `type`'s ride on
+    `extension <Name>Table on <Name>` — so `Table` joins the suffix set — and
+    a FIELD whose Dart spelling is `reset`, `measure`, `save`, `saveBody`,
+    `load`, `loadBody`, `fromJson`, `toJson` or `toJsonMeasure` is refused on
+    every closure member, because on a class it collides with the method and
+    on an extension it silently hides it. The nine are the whole per-member
+    surface: the descriptors stay library-scope constants and the accessors
+    stay on `<Name>TableFields`, precisely so the list is nine and not twenty.
 
   **The view's own unit-scope spellings are refused as declaration names in
   every unit, always** (§8.3): `UnitView`, `UnitViewInfo`, `ViewType`,
@@ -6266,6 +6380,23 @@ two answers differ on a tie; JavaScript does the same in BigInt, because
 the shortest-round-trip loop at every precision but the last — and at the last
 there is no loop left to save it, which is why the mode is named rather than
 left to the default.
+
+**DART SPELLS C's `%.*g` OUT, over the double's exact bits.** Dart has no
+printf, and its own number formatting rounds a TIE AWAY FROM ZERO where C
+rounds it TO EVEN — so the digits are generated from the value's exact decimal
+expansion with `BigInt` and rounded half-to-even, and the goldens are the same
+bytes. The same arithmetic answers the other direction: the nearest float32 to
+a decimal token is computed EXACTLY, because parsing to the nearest double and
+narrowing rounds twice, and the nearest double to a decimal just under a
+float32 midpoint can BE that midpoint — which at the top of the range turns
+FLT_MAX into an infinity the walk then counts as the wrong shape. That case has
+a name in the corpus: `num-float32-upper-band`.
+
+The price is stated rather than hidden: those are the Dart walk's allocations,
+and they are per FLOAT and per NUMBER TOKEN rather than per field. The WIRE
+path allocates nothing at all under AOT, which `make tables-dart-alloc`
+measures at zero scavenges; the same instrument prints the JIT's count and
+the text walk's count beside it, priced rather than gated.
 
 **The JavaScript walk is NOT `JSON.parse`/`JSON.stringify`, and could not be.**
 This section's clamping, counting, duplicate-key and trailing-comma rules ARE
@@ -7677,6 +7808,26 @@ schema name, as everywhere else in that backend.
   (§19.3), not to index with. That is the difference between a generated pair
   of structs and an ABI, and it is what makes §19.4's absorbed edits
   absorbable.
+
+**The DART spellings, for the same reason C#'s are here.** `Open` is
+`<Table>Block.open(Uint8List bytes, int base, int extent)` — a static that
+answers the handle or `null`, since a block is memory another build wrote and
+Dart's currency for "where" is a buffer and an offset; §19.1's 64-byte
+alignment is checked on that offset. The ROWS are `<Name>Row` — §11's claimed
+suffix — and a row is a CURSOR of `(view, at)` rather than a struct, because
+Dart has no struct: `<field>At(int index, <Name>Row into)` moves the cursor the
+caller lends, `<field>Cursor()` makes the one to lend, and there is NO
+ALLOCATING TWIN — the obvious per-frame loop must not have an obvious call
+that allocates a row object per step. **The array is ITERATED** as this
+clause asks: `for (final row in block.<field>)` yields ONE cursor, moved to
+each row at the pitch the instance gives, so a row does not outlive its step
+and the idiomatic loop is the allocation-free one; the iteration costs one
+iterator object per loop and nothing per row. **The contiguous view is
+`<field>Bytes()`**, the extent as a `Uint8List` over the rows end to end —
+Dart has no typed view of a row struct to give, the way C++ has a span and C#
+a `ReadOnlySpan<Row>`, so what a consumer gets is the bytes and the cursor to
+read them with. Every `Endian.little` is spelled at the read, which is what
+makes a Dart reader's byte order the reader's rather than the host's.
 
 ### 19.3 The layout contract
 

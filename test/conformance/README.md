@@ -257,23 +257,24 @@ ceiling. The quiet-laptop numbers this replaces are in git history:
 
 | leg | wall |
 |---|---|
-| all six, 268 cases per leg | 19.9 s |
+| all seven, 268 cases per leg | 22.8 s |
 | `java` alone | 0.63 s |
 | `go` alone | 0.74 s |
 | `c` alone | 0.76 s |
 | `rust` alone | 0.88 s |
 | `cpp` alone | 1.00 s |
+| `dart` alone | 2.86 s |
 | `cs` alone | 18.0 s |
 
 **The cost is per-PROCESS, not per-case, and the numbers say so plainly.** The
 battery grew from 80 cases per leg to 268 — the cook's 111 forgeries, the 66
 hostile trees, a sixth cook, two block row dumps and the two FOREIGN surfaces —
-and the five NATIVE legs still answer all 268 each in under a second. The C#
+and the six NATIVE legs still answer all 268 each in under three seconds. The C#
 leg starts a runtime once per surface plus once per cook, because
 `test/cs-cook`'s dump takes one root per invocation, and that is where nearly
-the whole wall is: of the 1,608 cases in this table, the 1,340 the five NATIVE
-legs answer cost about four seconds between them — under a second each, even
-under this load — and the last 268 cost eighteen.
+the whole wall is: of the 1,876 cases in this table, the 1,608 the six NATIVE
+legs answer cost about seven seconds between them — under three seconds each,
+even under this load — and the last 268 cost eighteen.
 
 **`cook-write` added 40 cases to the C++ leg alone** — twenty instances in two
 byte orders, the four VARIABLE ones among them — and the table above is NOT
@@ -287,7 +288,12 @@ than adjusted by arithmetic, which is what the sitting rule means.
 shape the contract allows and what puts its row among the fastest. A sixth leg
 cost the whole run less than the run's own spread across three repeats.
 
-**Five native legs cost about four seconds together.** Adding the two
+The DART leg is AOT-COMPILED for exactly that reason: `dart run` would pay a JIT
+start-up per surface, and the leg answers all twelve out of one binary —
+thirteen execs of something that starts in milliseconds, which is what puts its
+row among the native legs rather than beside the C# one.
+
+**Six native legs cost about seven seconds together.** Adding the two
 foreign surfaces cost each native leg two more execs of a binary that starts in
 milliseconds, and cost the C# leg two more runtime starts — which is the whole
 shape of this table in one edit. A leg that answers every surface in ONE binary

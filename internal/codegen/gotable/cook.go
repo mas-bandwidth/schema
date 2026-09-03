@@ -234,7 +234,8 @@ type cookGen struct {
 
 	// a unit's roots share records, and one package cannot declare a var twice
 	wroteDescriptor map[string]bool
-	// the Record columns, linked in init() because a cooked graph is cyclic
+	// the Record columns, linked in init() because the DESCRIPTOR graph is
+	// cyclic — a record's field column can name its own record
 	links []string
 
 	needsFmt    bool
@@ -652,9 +653,11 @@ func (g *cookGen) emitAllDescriptors() {
 	g.hf("// machinery for a prefix-and-name product. One fixed name is one claim.\n")
 	g.hf("var tableCookRecords = make([]TableCookInfo, %d)\n\n", len(g.cook.order))
 	g.hf("// THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and\n")
-	g.hf("// the reason is a language fact rather than a taste: a cooked graph is CYCLIC\n")
-	g.hf("// by design — ListNode names ListNode — and Go refuses an initialization\n")
-	g.hf("// cycle among package-level variables, a closure in an initializer included.\n")
+	g.hf("// the reason is a language fact rather than a taste: the DESCRIPTOR GRAPH is\n")
+	g.hf("// CYCLIC by design — ListNode's own field column names ListNode — and Go\n")
+	g.hf("// refuses an initialization cycle among package-level variables, a closure\n")
+	g.hf("// in an initializer included. (A cooked REGION is never cyclic: the tool\n")
+	g.hf("// refuses a cyclic wire by name, §3.1.)\n")
 	g.hf("// The links are written once, before any consumer runs, and nothing mutates\n")
 	g.hf("// them after: the descriptor surface is immutable from then on, readable from\n")
 	g.hf("// any goroutine at any time with no synchronisation.\n")
@@ -863,7 +866,9 @@ type TableCookFieldInfo struct {
 	Storage       TableCookStorage
 	// Record is the record this field NAMES, behind a function so the table
 	// stays constructible in any order — Go refuses an initialisation cycle
-	// among package-level variables, and a cooked graph is cyclic by design.
+	// among package-level variables, and the DESCRIPTOR graph is cyclic by
+	// design: a record's field column can name its own record. A cooked REGION
+	// is never cyclic; schema cook refuses one by name (§3.1).
 	// nil when the field is a scalar. Following it is how a walker DESCENDS: a
 	// pointer's target, a by-value nesting, and an array's element are all
 	// reached through this one column.

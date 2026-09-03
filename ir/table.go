@@ -3,7 +3,10 @@
 // derives one id for one field name.
 package ir
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // FieldId is the stable TABLE-wire identity of a field name:
 // fold16(fnv1a32(name)), rebounding 0 (the terminator) to 1.
@@ -214,4 +217,16 @@ func TableClosure(u *Unit) map[string]bool {
 		walk(name)
 	}
 	return closure
+}
+
+// DartMemberName is the one true mapping from a schema field name to its Dart
+// member spelling: lower_snake_case -> lowerCamelCase, the first-letter-lowered
+// form of [GoExportName]. The checker's claim over the Dart backend's table
+// verbs and the Dart emitters must share it, or the check lies.
+func DartMemberName(name string) string {
+	s := GoExportName(name)
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
 }

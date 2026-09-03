@@ -11,6 +11,7 @@
 
 cpp  test/conformance/cpp/driver
 cs   test/conformance/cs/driver
+dart test/conformance/dart/driver
 go   test/conformance/go/driver
 js   test/conformance/js/driver
 rust test/conformance/rust/driver

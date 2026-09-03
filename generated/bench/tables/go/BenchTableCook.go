@@ -109,7 +109,9 @@ type TableCookFieldInfo struct {
 	Storage       TableCookStorage
 	// Record is the record this field NAMES, behind a function so the table
 	// stays constructible in any order — Go refuses an initialisation cycle
-	// among package-level variables, and a cooked graph is cyclic by design.
+	// among package-level variables, and the DESCRIPTOR graph is cyclic by
+	// design: a record's field column can name its own record. A cooked REGION
+	// is never cyclic; schema cook refuses one by name (§3.1).
 	// nil when the field is a scalar. Following it is how a walker DESCENDS: a
 	// pointer's target, a by-value nesting, and an array's element are all
 	// reached through this one column.
@@ -213,9 +215,11 @@ func tableCookLayoutOffset(what string, got, want uintptr) {
 var tableCookRecords = make([]TableCookInfo, 2)
 
 // THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and
-// the reason is a language fact rather than a taste: a cooked graph is CYCLIC
-// by design — ListNode names ListNode — and Go refuses an initialization
-// cycle among package-level variables, a closure in an initializer included.
+// the reason is a language fact rather than a taste: the DESCRIPTOR GRAPH is
+// CYCLIC by design — ListNode's own field column names ListNode — and Go
+// refuses an initialization cycle among package-level variables, a closure
+// in an initializer included. (A cooked REGION is never cyclic: the tool
+// refuses a cyclic wire by name, §3.1.)
 // The links are written once, before any consumer runs, and nothing mutates
 // them after: the descriptor surface is immutable from then on, readable from
 // any goroutine at any time with no synchronisation.

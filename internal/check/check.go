@@ -1801,6 +1801,17 @@ func (c *checker) checkTables() {
 			c.errf(pos, "table %s: the name collides with a member of the generated %sBuilder — a member function hides the type name it shares, and the header would not compile; rename the table (docs/SPEC-TABLES.md §6.2)",
 				name, name)
 		}
+		// THE DART BACKEND'S TABLE VERBS are members of the value (§11), so a
+		// field whose Dart spelling is one of them collides with the method or
+		// silently hides it. Claimed on EVERY closure member, tables and the
+		// `type`s they reach alike, and only in a unit that declares a table —
+		// the same scoping every other table-wire claim takes.
+		for _, f := range st.Fields {
+			if slices.Contains(dartTableMembers, ir.DartMemberName(f.Name)) {
+				c.errf(pos, "%s %s: field %s collides with the generated Dart table verb `%s` — the verbs are members of the value there (a method on a table's class, an extension method on a `type`'s), and a field of that name hides one; rename the field (docs/SPEC-TABLES.md §11)",
+					what, name, f.Name, ir.DartMemberName(f.Name))
+			}
+		}
 		// the TEXT form's keys (docs/SPEC-TABLES.md §16.4): two fields of one
 		// closure member whose keys collide are indistinguishable in a JSON
 		// object, exactly as colliding ids are on the wire — refused once,
@@ -2862,6 +2873,29 @@ var tableGeneratedVerbs = []string{
 	// collides with declarations in OTHER units of the same assembly and this
 	// compiler sees one unit (docs/SPEC-TABLES.md §19.2).
 	"Row", "BlockProjection",
+	// the DART extension that carries a closure member's table verbs
+	// (internal/codegen/darttable): a `type`'s class belongs to the packet
+	// emitter, so Dart adds the verbs through `extension <Name>Table on
+	// <Name>` — and an extension is applicable only where its NAME is in
+	// scope, so the name is real and is claimed like any other.
+	"Table",
+}
+
+// dartTableMembers are the TABLE VERBS the Dart backend puts on the VALUE:
+// methods on a generated table class, extension methods on a `type`'s
+// packet-emitted class (docs/SPEC-TABLES.md §11). A FIELD whose Dart spelling is
+// one of them either collides with the method outright (on a class, a static
+// and an instance member cannot share a name and neither can two instance
+// members) or SILENTLY HIDES it (on an extension, an instance member always
+// beats an extension member) — and a silently hidden verb is the worse of the
+// two, so both are refused here.
+//
+// The list is the whole per-member surface and nothing else: the descriptors
+// stay library-scope constants and the accessors stay on <Name>TableFields,
+// precisely so this list is nine names rather than twenty-two.
+var dartTableMembers = []string{
+	"reset", "measure", "save", "saveBody", "load", "loadBody",
+	"fromJson", "toJson", "toJsonMeasure",
 }
 
 // tableBuilderMembers are the member names of a generated <Name>Builder. A

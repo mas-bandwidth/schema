@@ -1,0 +1,39 @@
+#!/bin/sh
+# THE DART LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        compile bench/tables/dart AOT
+#   leg run [args]   run it
+#
+# There is no serialize runtime in this build — the generated table codec names
+# none — so the leg needs the pinned Dart SDK and the generated library and
+# nothing else. It is compiled AOT, which is the language's one release
+# configuration and the one a shipping consumer runs; the CSV's opt column says
+# `aot` rather than borrowing C++'s spelling of a flag Dart does not have.
+set -e
+
+BIN=build/schema_tables_bench_dart
+GEN=generated/bench/tables/dart
+DART=${DART:-dist/dart-sdk-3.13.2/bin/dart}
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.dart" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    [ -x "$DART" ] || command -v "$DART" > /dev/null 2>&1 || { echo "no dart toolchain" >&2; exit 2; }
+    mkdir -p build
+    rm -f "$BIN"   # replace the inode: writing over a binary another process
+                   # is running corrupts it in place
+    "$DART" compile exe -o "$BIN" bench/tables/dart/table_main.dart > /dev/null
+    ;;
+run)
+    shift
+    exec "./$BIN" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

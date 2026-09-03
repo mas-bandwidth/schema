@@ -30,7 +30,7 @@ import "sort"
 
 // Backend is a bit per table backend, so one entry can say which of them
 // define the name.
-type Backend uint8
+type Backend uint16
 
 const (
 	// Cpp is the C++ table backend (internal/codegen/cpptable).
@@ -57,6 +57,16 @@ const (
 	// READING TIER: no struct layout, so it reads both accelerators and
 	// produces neither.
 	Js
+	// Dart is the Dart table backend (internal/codegen/darttable).
+	//
+	// DART PUTS THE TABLE VERBS ON THE VALUE — methods on a generated table
+	// class, extension methods on a `type`'s packet-emitted class — so the
+	// per-member surface claims nothing at library scope and this registry
+	// holds only the RUNTIME's own names. Where a runtime name is a free
+	// function Dart spells it lowerCamelCase and the registry holds the
+	// PascalCase form: the two are a bijection (the packet emitter's
+	// dartName), so one registration covers both.
+	Dart
 )
 
 // Name is one spelling the generated table runtimes carry, and the backends
@@ -96,17 +106,17 @@ type Name struct {
 // decide what a diagnostic says.
 var registry = []Name{
 	// the shared surface both backends define per unit
-	{Name: "TableReport", By: Cpp | Cs | Rust | Go | C | Java | Js, What: "the read report — the permissive contract's ledger"},
-	{Name: "TableWriter", By: Cpp | Cs | Rust | Go | C | Java | Js, What: "the wire writer over the caller's buffer"},
-	{Name: "TableReader", By: Cpp | Cs | Rust | Go | C | Java | Js, What: "the wire reader over the caller's buffer"},
-	{Name: "TableTypeInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a table's reflection descriptor"},
-	{Name: "TableFieldInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a field's reflection descriptor"},
+	{Name: "TableReport", By: Cpp | Cs | Dart | Rust | Go | C | Java | Js, What: "the read report — the permissive contract's ledger"},
+	{Name: "TableWriter", By: Cpp | Cs | Dart | Rust | Go | C | Java | Js, What: "the wire writer over the caller's buffer"},
+	{Name: "TableReader", By: Cpp | Cs | Dart | Rust | Go | C | Java | Js, What: "the wire reader over the caller's buffer"},
+	{Name: "TableTypeInfo", By: Cpp | Cs | Dart | Rust | Go | C | Java, What: "a table's reflection descriptor"},
+	{Name: "TableFieldInfo", By: Cpp | Cs | Dart | Rust | Go | C | Java, What: "a field's reflection descriptor"},
 	// a UNION field's shape (docs/SPEC-TABLES.md §8.1): the tag, and each arm's
 	// payload by its own descriptor. Every backend defines both, and every one
 	// puts them at unit level beside the two descriptors above — a union
 	// field's column has to name a type, and a nested one would be reached
 	// through a descriptor a walk holds by value.
-	{Name: "TableUnionInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a union field's tag and its arms"},
+	{Name: "TableUnionInfo", By: Cpp | Cs | Dart | Rust | Go | C | Java, What: "a union field's tag and its arms"},
 	{Name: "TableUnionArmInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "one union arm's payload and descriptor"},
 	{Name: "TableEnumId", By: Cpp | Cs | Go | Java, What: "an enum value -> its table-wire variant id"},
 	{Name: "TableEnumValue", By: Cpp | Cs | Go | Java, What: "a table-wire variant id -> its enum value"},
@@ -117,7 +127,7 @@ var registry = []Name{
 	// claim is unconditional on a unit declaring a table, for the same reason
 	// the variable-length names are: adding a keyed array to an existing table
 	// must not turn a legal declaration elsewhere into a collision.
-	{Name: "TableKeyed", By: Cpp | Cs | Go | Rust | Java | Js, What: "an enum-keyed array's slot storage"},
+	{Name: "TableKeyed", By: Cpp | Cs | Dart | Go | Rust | Java | Js, What: "an enum-keyed array's slot storage"},
 
 	// SCOPED: a field descriptor's nested-table column. C++ spells it `table`
 	// and C# `Table`, and either way it is reached through its owner, so a
@@ -150,16 +160,34 @@ var registry = []Name{
 	// covers the whole surface and the walk claims not one name at unit
 	// scope. C++ spells the same functions as a TableJson* family at
 	// namespace scope inside its own package guard.
-	{Name: "TableJson", By: Cs | Java | Js, What: "the text form's generic walk. C# spells it a nested class of Schema, which claims nothing; Java puts it at package scope and JavaScript at module scope — an ES module is one scope, with no nested class to hide a walk in — so the claim is the UNION and the name is claimed"},
-	{Name: "TableBitsToFloat", By: Cs | Js, What: "u32 bits -> float"},
-	{Name: "TableFloatToBits", By: Cs | Js, What: "float -> u32 bits"},
-	{Name: "TableBitsToDouble", By: Cs | Js, What: "u64 bits -> double"},
-	{Name: "TableDoubleToBits", By: Cs | Js, What: "double -> u64 bits"},
+	{Name: "TableJson", By: Cs | Dart | Java | Js, What: "the text form's generic walk. C# spells it a nested class of Schema, which claims nothing; Java puts it at package scope, Dart at library scope and JavaScript at module scope — an ES module is one scope, with no nested class to hide a walk in — so the claim is the UNION and the name is claimed"},
+	{Name: "TableBitsToFloat", By: Cs | Dart | Js, What: "u32 bits -> float"},
+	{Name: "TableFloatToBits", By: Cs | Dart | Js, What: "float -> u32 bits"},
+	{Name: "TableBitsToDouble", By: Cs | Dart | Js, What: "u64 bits -> double"},
+	{Name: "TableDoubleToBits", By: Cs | Dart | Js, What: "double -> u64 bits"},
 	// JavaScript's four go through one shared eight-byte DataView, which is a
 	// module-level binding like any other and takes a name in this family for
 	// that reason: a SCREAMING_SNAKE spelling would have been a module-scope
 	// name outside every claim the front end makes.
 	{Name: "TableBitsScratch", By: Js, What: "the JavaScript bit helpers' shared eight-byte DataView"},
+
+	// THE DART READING TIER's own runtime (internal/codegen/darttable). Dart's
+	// privacy is per LIBRARY and a generated file is one, so a runtime shared
+	// across a unit's files is PUBLIC and every spelling here is claimed. The
+	// backend spells no private library-scope name at all — a schema may
+	// declare an identifier beginning with an underscore, so a private
+	// top-level name would be an unclaimed collision — which is why the
+	// conversion scratch is a class of members rather than four constants.
+	//
+	// What is NOT here is the per-member surface: Dart puts the table verbs on
+	// the VALUE (methods on a generated table class, extension methods on a
+	// `type`'s packet-emitted class), so <Name>Measure and its family are
+	// claimed by the name-first suffix set like every other backend's and
+	// nothing per member reaches library scope.
+	{Name: "TableEnumVocab", By: Dart, What: "one enum's table-wire vocabulary; the per-enum instances are its static members, so they claim nothing"},
+	{Name: "TableScratch", By: Dart, What: "the 8-byte float conversion scratch, as overlaid typed-data views"},
+	{Name: "TableNarrowFloat", By: Dart, What: "narrow a double to its float32 value — what gives a float32 elision C's own float semantics"},
+	{Name: "TableUnsignedLess", By: Dart, What: "unsigned less-than over the bit-transparent int a u64 rides in"},
 
 	// the VARIABLE-LENGTH runtime (docs/SPEC-TABLES.md §6): the arena, the region
 	// and the reference slot. C++ only today — the C# backend carries the
@@ -218,12 +246,12 @@ var registry = []Name{
 	{Name: "TableBlockRefusal", By: Cpp | C, What: "why Begin refused: the array, its count and its maximum"},
 	{Name: "TableBlockRows", By: Cpp | Cs | Go | C | Java, What: "one array's rows, iterated at the pitch the instance gives"},
 	{Name: "TableBlockSpan", By: Cpp, What: "one array's rows as a contiguous view (C# uses ReadOnlySpan)"},
-	{Name: "TableBlockFieldInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a block field's reflection descriptor"},
-	{Name: "TableBlockInfo", By: Cpp | Cs | Rust | Go | C | Java, What: "a block's reflection descriptor"},
-	{Name: "TableBlockMagic", By: Cpp | Cs | Rust | Go | Js, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableBlockFieldInfo", By: Cpp | Cs | Dart | Rust | Go | C | Java, What: "a block field's reflection descriptor"},
+	{Name: "TableBlockInfo", By: Cpp | Cs | Dart | Rust | Go | C | Java, What: "a block's reflection descriptor"},
+	{Name: "TableBlockMagic", By: Cpp | Cs | Dart | Rust | Go | Js, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 	{Name: "TableBlockLayout", By: Cs | Java | Js, What: "the layout contract's check, run once. C# spells it a nested class of Schema; Java puts it at package scope and JavaScript at module scope, so the claim is the UNION"},
-	{Name: "TableBlockRead64", By: Cs, What: "the C# prologue read (a Schema member, so it claims nothing)", Scoped: true},
-	{Name: "TableBlockByteOrder", By: Cpp | Cs | Go | Rust | Js, What: "this build's byte order, as the prologue carries it", RustConst: true},
+	{Name: "TableBlockRead64", By: Cs | Dart, What: "the prologue read BYTEWISE. C# spells it a Schema member, which claims nothing; DART puts it at library scope, so the claim is the union"},
+	{Name: "TableBlockByteOrder", By: Cpp | Cs | Dart | Go | Rust | Js, What: "this build's byte order, as the prologue carries it", RustConst: true},
 	{Name: "table_block_byteswap64", By: Cpp | C, What: "the byte-order check's swap"},
 	{Name: "table_block_read64", By: Cpp | C, What: "the prologue read BYTEWISE"},
 	{Name: "table_block_align", By: Cpp | C, What: "round an offset up to an alignment"},
@@ -236,9 +264,9 @@ var registry = []Name{
 	// its closure gains and loses a pointer, and a name free today must not
 	// become a collision tomorrow.
 	{Name: "TableCookOpen", By: Cpp, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
-	{Name: "TableCookMagic", By: Cpp | Cs | Go | Rust | Js, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
-	{Name: "TableCookByteOrder", By: Cpp | Cs | Go | Rust | Js, What: "this build's byte order, as a cooked header records it", RustConst: true},
-	{Name: "TableCookMaxAlign", By: Cpp | Cs | Go | Rust | Js, What: "the greatest region alignment a cooked header may name", RustConst: true},
+	{Name: "TableCookMagic", By: Cpp | Cs | Dart | Go | Rust | Js, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableCookByteOrder", By: Cpp | Cs | Dart | Go | Rust | Js, What: "this build's byte order, as a cooked header records it", RustConst: true},
+	{Name: "TableCookMaxAlign", By: Cpp | Cs | Dart | Go | Rust | Js, What: "the greatest region alignment a cooked header may name", RustConst: true},
 	{Name: "table_cook_read64", By: Cpp | C, What: "the cooked header read BYTEWISE"},
 
 	// and the COOKED FORM's WRITE runtime (docs/SPEC-TABLES.md §7.6), emitted
@@ -344,11 +372,12 @@ var registry = []Name{
 	// <Base>Cook.cs — and because one assembly sees every file, a declaration
 	// taking one of these names anywhere in the unit collides with it.
 	{Name: "TableCookHeaderBytes", By: Cs | Go | Js | Rust, What: "§7.1's 64-byte header. C# spells it a Schema member, which claims nothing; Rust puts it at module level, Go at package scope and JavaScript at module scope, so the claim is the UNION and the name is claimed", RustConst: true},
-	{Name: "TableCookRead64", By: Cs, What: "the C# header read (a Schema member, so it claims nothing)", Scoped: true},
+	{Name: "TableCookRead64", By: Cs | Dart, What: "the cooked header read BYTEWISE. C# spells it a Schema member, which claims nothing; DART puts it at library scope, so the claim is the union"},
 	{Name: "TableCookLayout", By: Cs | Java | Js, What: "the cook closure's layout contract, run once (§20.3)"},
-	{Name: "TableCookInfo", By: Cs | Go | Rust | Java, What: "a cooked record's reflection descriptor"},
-	{Name: "TableCookFieldInfo", By: Cs | Go | Rust | Java, What: "a cooked field's reflection descriptor"},
-	{Name: "TableCookStorage", By: Cs | Go | Rust | Java, What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+	{Name: "TableCookInfo", By: Cs | Dart | Go | Rust | Java, What: "a cooked record's reflection descriptor"},
+	{Name: "TableCookFieldInfo", By: Cs | Dart | Go | Rust | Java, What: "a cooked field's reflection descriptor"},
+	{Name: "TableCookStorage", By: Cs | Dart | Go | Rust | Java, What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+	{Name: "TableCookRef", By: Dart, What: "what a Dart deref answers when it is not an offset: a null (a delta of zero) and a delta that leaves the region"},
 
 	// the eight MEMBERS of that vocabulary, which C# scopes inside its enum and
 	// Rust inside its own type, and which GO flattens into the package
@@ -448,6 +477,7 @@ var registry = []Name{
 	// claimed here because it is a unit-level name the generated block sources
 	// define.
 	{Name: "BuildVersion", By: Cpp | Rust | Go | Java | Elixir | Js, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
+	{Name: "TableBuildVersion", By: Dart, What: "Dart's spelling of the unit's build version, at library scope in the block runtime home (the cook's, in a unit with no block form)"},
 
 	// ---- THE C BACKEND's own spellings (internal/codegen/ctable) ----
 	//
