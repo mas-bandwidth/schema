@@ -266,7 +266,7 @@ func TestRustTableRuntimeNamesAreClaimed(t *testing.T) {
 // It is the inverse of ir.RustConstName over the names this registry carries.
 func screamingToPascal(name string) string {
 	var b strings.Builder
-	for _, part := range strings.Split(strings.ToLower(name), "_") {
+	for part := range strings.SplitSeq(strings.ToLower(name), "_") {
 		if part == "" {
 			continue
 		}

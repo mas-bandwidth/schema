@@ -34,6 +34,7 @@ package rusttable
 
 import (
 	"fmt"
+	"maps"
 	"math/big"
 	"sort"
 	"strconv"
@@ -127,9 +128,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		for name, data := range blockOut {
-			out[name] = data
-		}
+		maps.Copy(out, blockOut)
 	}
 	return out, nil
 }
