@@ -79,6 +79,52 @@ table ProfileConfig
     field has_loadout id=0xb4db kind=1
     field loadout id=0x9f78 kind=13 type=LoadoutConfig
 
+table RangedSigned
+    field i8_span id=0x8d4f kind=2
+    field i8_low id=0xe337 kind=2
+    field i8_high id=0x6a5f kind=2
+    field i8_inside id=0x8eee kind=2
+    field i16_span id=0x0a1e kind=3
+    field i16_low id=0xaaae kind=3
+    field i16_high id=0xe8f2 kind=3
+    field i16_inside id=0x1a0e kind=3
+    field i32_span id=0x6bd1 kind=4
+    field i32_low id=0xb8e0 kind=4
+    field i32_high id=0x3806 kind=4
+    field i32_inside id=0x9a24 kind=4
+    field i64_span id=0xf086 kind=5
+    field i64_low id=0xc705 kind=5
+    field i64_high id=0x328e kind=5
+    field i64_inside id=0x7d51 kind=5
+    field edges id=0xb1cb kind=14 elem=3 array=bounded bound=4
+
+table RangedUnsigned
+    field u8_span id=0x6434 kind=6
+    field u8_low id=0xb24e kind=6
+    field u8_high id=0x202a kind=6 default=1
+    field u8_inside id=0x8fbf kind=6 default=1
+    field u16_span id=0xd410 kind=7
+    field u16_low id=0x6f72 kind=7
+    field u16_high id=0x1364 kind=7 default=1
+    field u16_inside id=0xbf32 kind=7 default=1
+    field u32_span id=0x0513 kind=8
+    field u32_low id=0x4cce kind=8
+    field u32_high id=0xa2da kind=8 default=1
+    field u32_inside id=0xf596 kind=8 default=1
+    field u64_span id=0x6e8d kind=9
+    field u64_low id=0x95b5 kind=9
+    field u64_high id=0x15e4 kind=9 default=1
+    field u64_inside id=0x2ce0 kind=9 default=1
+    field counts id=0xe27a kind=14 elem=9 array=bounded bound=4
+
+table RangedWidths
+    field b8 id=0xa7cb kind=6
+    field b16 id=0xb643 kind=7
+    field b32 id=0x33f2 kind=8
+    field b64 id=0x75dc kind=9
+    field b12 id=0xbcf7 kind=7
+    field b48 id=0x9797 kind=9
+
 table RootConfig
     field version_note id=0xe726 kind=12 size=16
     field weapons id=0x91cd kind=14 elem=13 type=WeaponConfig array=bounded bound=8
@@ -166,4 +212,7 @@ union Effect
 - no compatibility-affecting edits; the wire absorbs the rest
 
 ### 2026-09-02 — enum arrays store Max slots and shift left: nothing is stored or packed for None (owner ruling 2026-09-03)
+- no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-03 — the clamp-at-storage-limits corpus (#342): RangedSigned, RangedUnsigned and RangedWidths join the corpus — new declarations only, so nothing already written moves
 - no compatibility-affecting edits; the wire absorbs the rest

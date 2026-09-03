@@ -1,4 +1,4 @@
-0x89c17e3f4a1f6255
+0x734b26e1a4d11cad
 schema-build-version 1
 protocol 9924bf6d375ec24d
 byteorder little
@@ -74,6 +74,49 @@ record ProfileConfig sizeof=304 alignof=8
     field 97dd kind=10 offset=104 size=16 elem=4 array=fixed bound=4
     field b4db kind=1 offset=120 size=1
     field 9f78 kind=13 offset=128 size=176 type=LoadoutConfig
+record RangedSigned sizeof=80 alignof=8
+    field 8d4f kind=2 offset=0 size=1 min=-128 max=127
+    field e337 kind=2 offset=1 size=1 min=-128 max=126
+    field 6a5f kind=2 offset=2 size=1 min=-127 max=127
+    field 8eee kind=2 offset=3 size=1 min=-127 max=126
+    field 0a1e kind=3 offset=4 size=2 min=-32768 max=32767
+    field aaae kind=3 offset=6 size=2 min=-32768 max=32766
+    field e8f2 kind=3 offset=8 size=2 min=-32767 max=32767
+    field 1a0e kind=3 offset=10 size=2 min=-32767 max=32766
+    field 6bd1 kind=4 offset=12 size=4 min=-2147483648 max=2147483647
+    field b8e0 kind=4 offset=16 size=4 min=-2147483648 max=2147483646
+    field 3806 kind=4 offset=20 size=4 min=-2147483647 max=2147483647
+    field 9a24 kind=4 offset=24 size=4 min=-2147483647 max=2147483646
+    field f086 kind=5 offset=32 size=8 min=-9223372036854775808 max=9223372036854775807
+    field c705 kind=5 offset=40 size=8 min=-9223372036854775808 max=9223372036854775806
+    field 328e kind=5 offset=48 size=8 min=-9223372036854775807 max=9223372036854775807
+    field 7d51 kind=5 offset=56 size=8 min=-9223372036854775807 max=9223372036854775806
+    field b1cb kind=3 offset=64 size=12 elem=2 array=bounded bound=4 min=-32768 max=32767
+record RangedUnsigned sizeof=104 alignof=8
+    field 6434 kind=6 offset=0 size=1 min=0 max=255
+    field b24e kind=6 offset=1 size=1 min=0 max=254
+    field 202a kind=6 offset=2 size=1 default=1 min=1 max=255
+    field 8fbf kind=6 offset=3 size=1 default=1 min=1 max=254
+    field d410 kind=7 offset=4 size=2 min=0 max=65535
+    field 6f72 kind=7 offset=6 size=2 min=0 max=65534
+    field 1364 kind=7 offset=8 size=2 default=1 min=1 max=65535
+    field bf32 kind=7 offset=10 size=2 default=1 min=1 max=65534
+    field 0513 kind=8 offset=12 size=4 min=0 max=4294967295
+    field 4cce kind=8 offset=16 size=4 min=0 max=4294967294
+    field a2da kind=8 offset=20 size=4 default=1 min=1 max=4294967295
+    field f596 kind=8 offset=24 size=4 default=1 min=1 max=4294967294
+    field 6e8d kind=9 offset=32 size=8 min=0 max=18446744073709551615
+    field 95b5 kind=9 offset=40 size=8 min=0 max=18446744073709551614
+    field 15e4 kind=9 offset=48 size=8 default=1 min=1 max=18446744073709551615
+    field 2ce0 kind=9 offset=56 size=8 default=1 min=1 max=18446744073709551614
+    field e27a kind=9 offset=64 size=36 elem=8 array=bounded bound=4 min=0 max=18446744073709551615
+record RangedWidths sizeof=40 alignof=8
+    field a7cb kind=6 offset=0 size=4 min=0 max=255
+    field b643 kind=7 offset=4 size=4 min=0 max=65535
+    field 33f2 kind=8 offset=8 size=4 min=0 max=4294967295
+    field 75dc kind=9 offset=16 size=8 min=0 max=18446744073709551615
+    field bcf7 kind=7 offset=24 size=4 min=0 max=4095
+    field 9797 kind=9 offset=32 size=8 min=0 max=281474976710655
 record RootConfig sizeof=1480 alignof=8
     field e726 kind=12 offset=0 size=24 bound=16
     field 91cd kind=13 offset=24 size=228 type=WeaponConfig elem=28 array=bounded bound=8
