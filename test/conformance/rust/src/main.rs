@@ -665,6 +665,44 @@ fn surface_block(manifest: &Manifest, out: &str) {
     }
 }
 
+// THE FOREIGN SURFACES (test/conformance/README.md): a cook and a block are
+// produced in the byte order of the build that wrote them (docs/SPEC-TABLES.md
+// §7, §19.1), and each carries a MAGIC word read bytewise so a reader meets a
+// foreign file at the first eight bytes and stops there. The fixture is made
+// foreign by REVERSING those eight bytes, which makes it foreign to whoever
+// reads it rather than foreign to one host — so `refuse` is the answer on every
+// leg on every host, and a big-endian leg can be GREEN here rather than absent.
+fn foreign(data: &[u8]) -> Vec<u8> {
+    let mut out = data.to_vec();
+    if out.len() >= 8 {
+        out[..8].reverse();
+    }
+    out
+}
+
+fn surface_block_foreign(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("block") {
+        let data = foreign(&slurp(&f[3]));
+        let verdict = if open_block(&f[1], &data, -1) {
+            "open\n"
+        } else {
+            "refuse\n"
+        };
+        spill(out, &f[1], verdict.as_bytes());
+    }
+}
+
+fn surface_cook_foreign(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("cook") {
+        let data = foreign(&slurp(&f[4]));
+        let storage = Aligned::new(&data, -1);
+        let opened =
+            unsafe { open_cook_at(&f[3], storage.base, storage.bytes as u64).is_some() };
+        let verdict = if opened { "open\n" } else { "refuse\n" };
+        spill(out, &f[1], verdict.as_bytes());
+    }
+}
+
 fn surface_forgery(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("forgery") {
         if f[2] != "block" {
@@ -1240,7 +1278,7 @@ fn main() {
     let surface = args[2].as_str();
     if surface == "list" {
         println!(
-            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\nblock\nblock-dump\nforgery\ncook-forgery"
+            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery"
         );
         return;
     }
@@ -1260,6 +1298,8 @@ fn main() {
         "json-write" => surface_json_write(&manifest, out),
         "json-hostile" => surface_json_hostile(&manifest, out),
         "cook" => surface_cook(&manifest, out),
+        "cook-foreign" => surface_cook_foreign(&manifest, out),
+        "block-foreign" => surface_block_foreign(&manifest, out),
         "block-dump" => surface_block_dump(&manifest, out),
         "cook-forgery" => surface_cook_forgery(&manifest, out),
         // NOT a conformance surface: the harness never asks for it, and `list`

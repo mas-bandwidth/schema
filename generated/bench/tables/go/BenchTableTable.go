@@ -1127,7 +1127,7 @@ func TableMixedReset(value *TableMixed) {
 	value.AckBits = 0
 	value.SessionId = 0
 	value.ClientId = 0
-	value.Nonce = 0
+	value.Nonce = 1
 	value.WorldTime = 0
 	value.FrameTick = 0
 	value.ServerTime = 0.0
@@ -1181,7 +1181,7 @@ func TableMixedMeasure(value *TableMixed) int64 {
 	if value.ClientId != 0 {
 		bytes += 3 + 4 // client_id
 	}
-	if value.Nonce != 0 {
+	if value.Nonce != 1 {
 		bytes += 3 + 8 // nonce
 	}
 	if value.WorldTime != 0 {
@@ -1341,7 +1341,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		w.Put8(8) // client_id
 		w.Put32(uint32(value.ClientId))
 	}
-	if value.Nonce != 0 {
+	if value.Nonce != 1 {
 		w.Put16(0x80f0)
 		w.Put8(9) // nonce
 		w.Put64(uint64(value.Nonce))
