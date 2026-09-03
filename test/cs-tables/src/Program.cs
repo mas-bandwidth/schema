@@ -1314,9 +1314,10 @@ static class Program
         Check(wrote > 0 && wrote == V2.Schema.CfgMeasure(v2), "v2_seams: measure == save");
         GoldenWire("v2_seams", new ReadOnlySpan<byte>(buffer, 0, (int)wrote));
 
-        // the three spellings over NON-DEFAULT content: byte-identical. C#
-        // carries T and ?T; *T is pointered, so this backend refuses it and
-        // the pointer's bytes come from the C++-pinned golden below.
+        // T and ?T over NON-DEFAULT content: byte-identical, one framing with
+        // two spellings. *T is NOT in that family — a pointer rides as a node
+        // index under its own kind (docs/SPEC-TABLES.md §2.3, §3.1); C# refuses
+        // the pointered unit, so its bytes come from the C++-pinned golden.
         P1.Chain value = new P1.Chain();
         BuildGoldenChainValue(value);
         long wValue = P1.Schema.ChainSave(value, buffer);
@@ -1333,8 +1334,8 @@ static class Program
         Check(wOpt == wValue && new ReadOnlySpan<byte>(other, 0, (int)wOpt).SequenceEqual(new ReadOnlySpan<byte>(buffer, 0, (int)wValue)),
             "?T and a plain nesting are byte-identical over non-default content");
         GoldenWire("chain_optional", new ReadOnlySpan<byte>(other, 0, (int)wOpt));
-        Check(new ReadOnlySpan<byte>(other, 0, (int)wOpt).SequenceEqual(ReadGolden("chain_pointer")),
-            "and so is *T — the pointer's bytes, written by C++");
+        Check(!new ReadOnlySpan<byte>(other, 0, (int)wOpt).SequenceEqual(ReadGolden("chain_pointer")),
+            "and *T is not — the pointer's bytes, written by C++, carry a node index and a node table");
 
         // the ASYMMETRY at the empty end: a by-value nesting at its defaults
         // writes nothing; a PRESENT optional writes its body anyway
@@ -1348,8 +1349,8 @@ static class Program
         long wOptEmpty = P3.Schema.ChainSave(optionalEmpty, other);
         Check(wOptEmpty > wValueEmpty, "chain_optional_empty: presence decides, not content");
         GoldenWire("chain_optional_empty", new ReadOnlySpan<byte>(other, 0, (int)wOptEmpty));
-        Check(new ReadOnlySpan<byte>(other, 0, (int)wOptEmpty).SequenceEqual(ReadGolden("chain_pointer_empty")),
-            "and a non-null pointer writes the same body — the empty end's asymmetry is shared");
+        Check(!new ReadOnlySpan<byte>(other, 0, (int)wOptEmpty).SequenceEqual(ReadGolden("chain_pointer_empty")),
+            "a non-null empty pointer shares the rule (presence decides) but not the bytes: it rides as an index and a node table");
     }
 
     // ---- gate: LOAD the C++-written seam bytes ----
@@ -1408,18 +1409,30 @@ static class Program
             Check(cfg.Ledger[(int)V2.Grade.Bronze] == 7 && cfg.Ledger[(int)V2.Grade.Gold] == 9,
                 "v2_seams: the keyed ledger");
         }
-        // the pointer's bytes, read by the two spellings C# carries
+        // the pointer's bytes, read by the two spellings C# carries: a REPORTED
+        // edit, not a decode. The pointer rides as a node index under kind 17,
+        // so a T or ?T reader counts one kind mismatch, leaves the field at its
+        // declared default and reads the rest of the body on; the node table
+        // rides under the reserved id 0xFFFF and is one unknown field to a
+        // reader that cannot name it (docs/SPEC-TABLES.md §2.3, §3.1)
         {
             byte[] golden = ReadGolden("chain_pointer");
             P1.TableReport r1 = new P1.TableReport();
             P1.Chain byValue = new P1.Chain();
+            byValue.Link.Value = 7; // junk the reset must erase
             Check(P1.Schema.ChainLoad(byValue, golden, r1), "chain_pointer loads into a by-value nesting");
-            Check(!r1.Malformed && GetString(byValue.Name, byValue.NameLength) == "chain" && byValue.Link.Value == 7,
-                "*T bytes decode as T");
+            Check(!r1.Malformed && r1.KindMismatch == 1 && r1.Unknown == 1,
+                "*T through T: one kind mismatch for the index, one unknown for the node table");
+            Check(GetString(byValue.Name, byValue.NameLength) == "chain" && byValue.Link.Value == 0,
+                "*T through T: the field takes its declared default and the rest of the body reads on");
             P3.TableReport r3 = new P3.TableReport();
             P3.Chain optional = new P3.Chain();
+            optional.LinkPresent = true; // junk the reset must erase
             Check(P3.Schema.ChainLoad(optional, golden, r3), "chain_pointer loads into an optional");
-            Check(!r3.Malformed && optional.LinkPresent && optional.Link.Value == 7, "*T bytes decode as ?T, and present");
+            Check(!r3.Malformed && r3.KindMismatch == 1 && r3.Unknown == 1,
+                "*T through ?T: one kind mismatch for the index, one unknown for the node table");
+            Check(!optional.LinkPresent && optional.Link.Value == 0 && GetString(optional.Name, optional.NameLength) == "chain",
+                "*T through ?T: absent, at its default, and the rest of the body reads on");
         }
         {
             byte[] golden = ReadGolden("chain_value_empty");
@@ -1434,7 +1447,8 @@ static class Program
             P1.TableReport r1 = new P1.TableReport();
             P1.Chain byValue = new P1.Chain();
             Check(P1.Schema.ChainLoad(byValue, golden, r1), "chain_pointer_empty loads into a by-value nesting");
-            Check(!r1.Malformed && byValue.Link.Value == 0, "a non-null empty pointee reads as the declared default by value");
+            Check(!r1.Malformed && r1.KindMismatch == 1 && r1.Unknown == 1 && byValue.Link.Value == 0,
+                "a non-null empty pointee is still an index: reported, and the field reads as the declared default by value");
         }
     }
 
@@ -1634,7 +1648,7 @@ static class Program
 
         V1.TableFieldInfo extra = V1Field(cfg, "extra");
         Check(extra != null && extra.Optional, "reflection: ?T is marked optional");
-        Check(extra.Kind == 13, "reflection: an optional table body is a table kind — the framing *T and T use");
+        Check(extra.Kind == 13, "reflection: an optional table body is a table kind — the framing ?T and T share");
         V1.TableFieldInfo tier = V1Field(cfg, "tier");
         Check(tier != null && tier.Optional && tier.Kind == 4, "reflection: an optional scalar");
         V1.TableFieldInfo grade = V1Field(cfg, "grade");
