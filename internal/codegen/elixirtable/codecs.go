@@ -127,11 +127,52 @@ func (g *gen) emitStorage(st *ir.Struct) {
 	g.owner = st
 	parts := make([]string, 0, len(st.Fields))
 	for _, f := range st.Fields {
+		if note := g.storageNote(f); note != "" {
+			g.pf("  # %s: %s\n", f.Name, note)
+		}
 		parts = append(parts, fmt.Sprintf("%s: %s", f.Name, g.storageDefault(f)))
 	}
 	g.owner = nil
 	g.pf("  defstruct %s\n", strings.Join(parts, ",\n            "))
 	g.pf("end\n\n")
+}
+
+// storageNote is what a COLD READER needs beside a folded literal: the variant
+// an enum default names, the range a clamp compares against, and the shape a
+// container's default takes. A defstruct default evaluates at compile time, so
+// the emitter folds a symbolic default to its value — and a reader who cannot
+// see the schema deserves to be told which value that was.
+func (g *gen) storageNote(f *ir.Field) string {
+	var notes []string
+	switch {
+	case f.Type.Optional:
+		notes = append(notes, fmt.Sprintf("?%s — nil is the absence; presence decides whether it rides (§2.3)", tableFieldTypeName(f)))
+	case f.Type.Kind == ir.TString:
+		notes = append(notes, fmt.Sprintf("string(%d) — a binary whose byte_size IS the used length", f.Type.Size))
+	case f.Type.Kind == ir.TBytes:
+		notes = append(notes, fmt.Sprintf("bytes(%d) — a binary whose byte_size IS the used length", f.Type.Size))
+	case f.KeyEnum != "":
+		notes = append(notes, fmt.Sprintf("[%s] — a tuple of %d slots, key k at index k - 1 (§2.4)", f.KeyEnum, arrayLen(f)))
+	case f.Array == ir.ArrayCounted:
+		notes = append(notes, fmt.Sprintf("counted array — a list of up to %d elements, and length IS the count", f.ArrayBound))
+	case f.Array == ir.ArrayFixed:
+		notes = append(notes, fmt.Sprintf("fixed array — a list of exactly %d elements", f.ArrayBound))
+	case isEnum(f) && f.HasDefault && f.DefVariant != "":
+		notes = append(notes, fmt.Sprintf("%s.%s, folded — a defstruct default evaluates at compile time", f.Type.Name, f.DefVariant))
+	case isEnum(f):
+		notes = append(notes, fmt.Sprintf("%s — the ORDINAL; the wire rides the variant's name hash (§5)", f.Type.Name))
+	case isFlags(f):
+		notes = append(notes, fmt.Sprintf("%s — the raw mask; variants ride by BIT POSITION (§4)", f.Type.Name))
+	case isUnion(f):
+		notes = append(notes, fmt.Sprintf("union %s — the tag beside one pre-allocated arm per variant", f.Type.Name))
+	}
+	if f.HasIntRange {
+		notes = append(notes, fmt.Sprintf("wire [%s, %s] — a value outside it CLAMPS and counts (§4)", intLit(f.IntMin), intLit(f.IntMax)))
+	}
+	if f.Guard != "" {
+		notes = append(notes, fmt.Sprintf("under %s — a field its guard excludes is elided (§3)", f.Guard))
+	}
+	return strings.Join(notes, "; ")
 }
 
 // storageDefault is a field's construction value: the declared default, laid
