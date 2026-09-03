@@ -523,7 +523,31 @@ struct TableWorker
         }
         uint32_t at = next;
         next += bytes;
-        slot.ptr = new ( TableArenaAt( *arena, at ) ) T{};
+        // A NODE IS BORN IN TWO HALVES: start its lifetime in the raw
+        // storage, then write the declared defaults ONE MEMBER AT A TIME.
+        //
+        // It is "T", not "T{}". Value-initialising the whole aggregate says
+        // the same thing and costs cl O(BYTES) TO COMPILE — it expands element
+        // by element in its front end — while both halves here cost
+        // O(declarations). The slab cap below refuses a large node at RUN
+        // TIME and bounds nothing at compile time: the cost is paid by
+        // whatever T a caller instantiates this with.
+        // Padding is not the difference: value-initialisation zeroes MEMBERS
+        // and not padding either way, which is why the segment is calloc'd.
+        //
+        // TableReset is an OVERLOAD SET, one per closure member, reached from
+        // this template by argument-dependent lookup on T's own namespace —
+        // Alloc is a template and cannot spell <Name>Reset.
+        //
+        // The reset is here because ONE DEFINITION SAYS WHAT THE DECLARED
+        // DEFAULTS ARE, and it is <Name>Reset. Default-initialisation lands on
+        // the same values today, because a member with a non-zero default
+        // carries a member initializer that says so — but that is the class
+        // definition agreeing with Reset, not the arena reading it, and #320's
+        // fix was itself a pass that MOVED initialisation between the two.
+        // The arena reads the definition.
+        slot.ptr = new ( TableArenaAt( *arena, at ) ) T;
+        TableReset( *slot.ptr );
         slot.ref.value = at;
         return slot;
     }
@@ -762,6 +786,16 @@ inline void MarkerReset( Marker & value )
     value.note.value = 0; // *Tally — null
 }
 
+// ---- the arena's reset hook (SPEC-TABLES.md §6) ----
+//
+// TableWorker::Alloc is a template and cannot name a member's Reset, so
+// the arena reaches it through this overload set by argument-dependent
+// lookup. It is how a node born in raw arena storage comes to hold the
+// declared defaults without value-initialising the whole aggregate.
+
+inline void TableReset( Tally & value ) { TallyReset( value ); }
+inline void TableReset( Marker & value ) { MarkerReset( value ); }
+
 // ---- pointer targets: allocation and resolution (SPEC-TABLES.md §2) ----
 //
 // A reference resolves differently in the two forms, and the CONTEXT says
@@ -797,7 +831,8 @@ inline Tally * TallyEmplace( TableRegionSink & sink, TableRef & slot )
     int64_t at = TableAlignUp64( sink.used );
     if ( at + (int64_t) sizeof( Tally ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( Tally ) );
-    Tally * node = new ( sink.base + at ) Tally{};
+    Tally * node = new ( sink.base + at ) Tally; // the lifetime; the defaults are the line below
+    TallyReset( *node ); // one member at a time, never `Tally{}` over the aggregate (#320)
     slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
@@ -838,7 +873,8 @@ inline Marker * MarkerEmplace( TableRegionSink & sink, TableRef & slot )
     int64_t at = TableAlignUp64( sink.used );
     if ( at + (int64_t) sizeof( Marker ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
-    Marker * node = new ( sink.base + at ) Marker{};
+    Marker * node = new ( sink.base + at ) Marker; // the lifetime; the defaults are the line below
+    MarkerReset( *node ); // one member at a time, never `Marker{}` over the aggregate (#320)
     slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
@@ -1135,7 +1171,7 @@ inline bool MarkerPack( const Ctx & ctx, const Marker & src, Marker & dst, uint8
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( Tally ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( Tally ) );
-            Tally * child = new ( base + at ) Tally{};
+            Tally * child = new ( base + at ) Tally; // lifetime only: the Pack below memcpy's the whole node over it
             dst.note.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.note );
             if ( !TallyPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -1249,7 +1285,7 @@ inline bool MarkerBuilder::Lock()
     if ( packed == NULL ) { return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Marker ) );
-    Marker * destination = new ( packed ) Marker{};
+    Marker * destination = new ( packed ) Marker; // lifetime only: the Pack below memcpy's the whole node over it
     if ( !MarkerPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
     {
         free( packed );
@@ -1322,7 +1358,7 @@ inline const Marker * MarkerLoad( uint8_t * region, int64_t region_bytes, const 
     sink.base = region;
     sink.capacity = region_bytes;
     sink.used = TableAlignUp64( (int64_t) sizeof( Marker ) );
-    Marker * root = new ( region ) Marker{};
+    Marker * root = new ( region ) Marker; // lifetime only: LoadBody's first act is MarkerReset
     TableReader r( wire, wire_bytes, out );
     MarkerLoadBody( r, sink, *root, 1 );
     return root;

@@ -106,6 +106,7 @@ func (g *tableGen) byValueVariableFields(st *ir.Struct) []*ir.Field {
 // ---- declarations ----
 
 func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
+	g.emitArenaResetHook(members)
 	if vars := g.varMembers(members); len(vars) > 0 {
 		g.pf("// ---- pointer targets: allocation and resolution (SPEC-TABLES.md §2) ----\n")
 		g.pf("//\n")
@@ -143,6 +144,35 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	}
 }
 
+// emitArenaResetHook gives the arena's generic Alloc a way to reach a node's
+// declared defaults.
+//
+// TableWorker::Alloc is a TEMPLATE — it cannot spell `<Name>Reset` — and a
+// node it hands back must hold exactly the declared defaults, so the two are
+// bridged by an overload set the template finds by argument-dependent lookup
+// on T's own namespace. One forwarding line per closure member; the arena is
+// the only caller, so this is emitted only into a unit that HAS an arena and a
+// pointer-free unit's header is byte-identical without it.
+//
+// Every closure member gets one, not only the pointer targets: a table gains
+// and loses pointers as an edit, and `Alloc<T>` failing to compile for want of
+// an overload is a worse answer than a line that costs nothing.
+func (g *tableGen) emitArenaResetHook(members []*ir.Struct) {
+	if !g.anyVariable || len(members) == 0 {
+		return
+	}
+	g.pf("// ---- the arena's reset hook (SPEC-TABLES.md §6) ----\n")
+	g.pf("//\n")
+	g.pf("// TableWorker::Alloc is a template and cannot name a member's Reset, so\n")
+	g.pf("// the arena reaches it through this overload set by argument-dependent\n")
+	g.pf("// lookup. It is how a node born in raw arena storage comes to hold the\n")
+	g.pf("// declared defaults without value-initialising the whole aggregate.\n\n")
+	for _, st := range members {
+		g.pf("inline void TableReset( %s & value ) { %sReset( value ); }\n", st.Name, st.Name)
+	}
+	g.pf("\n")
+}
+
 // emitPointerTargetSurface emits one pointed-at table's resolution and
 // allocation entries.
 func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
@@ -165,7 +195,8 @@ func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 	g.pf("    int64_t at = TableAlignUp64( sink.used );\n")
 	g.pf("    if ( at + (int64_t) sizeof( %s ) > sink.capacity ) { return NULL; }\n", n)
 	g.pf("    sink.used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
-	g.pf("    %s * node = new ( sink.base + at ) %s{};\n", n, n)
+	g.pf("    %s * node = new ( sink.base + at ) %s; // the lifetime; the defaults are the line below\n", n, n)
+	g.pf("    %sReset( *node ); // one member at a time, never `%s{}` over the aggregate (#320)\n", n, n)
 	g.pf("    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );\n")
 	g.pf("    return node;\n}\n")
 	g.pf("// allocate one %s in the arena; the slot holds the arena offset\n", n)
@@ -273,7 +304,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 		g.pf("            int64_t at = TableAlignUp64( used );\n")
 		g.pf("            if ( at + (int64_t) sizeof( %s ) > capacity ) { return false; }\n", t)
 		g.pf("            used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
-		g.pf("            %s * child = new ( base + at ) %s{};\n", t, t)
+		g.pf("            %s * child = new ( base + at ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", t, t)
 		g.pf("            dst.%s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.%s );\n", f.Name, f.Name)
 		g.pf("            if ( !%sPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }\n", t)
 		g.pf("        }\n    }\n")
@@ -460,7 +491,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( packed == NULL ) { return false; }\n")
 	g.pf("    memset( packed, 0, (size_t) total );\n")
 	g.pf("    int64_t used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
-	g.pf("    %s * destination = new ( packed ) %s{};\n", n, n)
+	g.pf("    %s * destination = new ( packed ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", n, n)
 	g.pf("    if ( !%sPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )\n    {\n", n)
 	g.pf("        free( packed );\n        return false;\n    }\n")
 	g.pf("    region = packed;\n")
@@ -515,7 +546,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    sink.base = region;\n")
 	g.pf("    sink.capacity = region_bytes;\n")
 	g.pf("    sink.used = TableAlignUp64( (int64_t) sizeof( %s ) );\n", n)
-	g.pf("    %s * root = new ( region ) %s{};\n", n, n)
+	g.pf("    %s * root = new ( region ) %s; // lifetime only: LoadBody's first act is %sReset\n", n, n, n)
 	g.pf("    TableReader r( wire, wire_bytes, out );\n")
 	g.pf("    %sLoadBody( r, sink, *root, 1 );\n", n)
 	g.pf("    return root;\n}\n\n")

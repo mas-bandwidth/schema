@@ -91,7 +91,15 @@ var registry = []Name{
 	// purpose: §11 freezes the 26 name-first suffixes a closure member claims,
 	// and a port does not mint a 27th — so the reset joins the runtime family
 	// here instead, where it is claimed at unit level.
-	{Name: "TableReset", By: Cs, What: "restore a value's declared defaults in place"},
+	// BOTH backends define TableReset, for the same reason and in two shapes:
+	// C# has no `<Name>Reset` and this IS its reset, while C++ has one per
+	// member and adds a verb-first overload set on top so the ARENA's generic
+	// Alloc — a template, which cannot spell `<Name>Reset` — reaches a node's
+	// declared defaults by argument-dependent lookup (§6). The C++ overloads
+	// are emitted only into a unit with pointers, which is the only unit that
+	// has an arena; the CLAIM does not vary with that, because a name free
+	// today must not become a collision the day a table gains a pointer.
+	{Name: "TableReset", By: Cpp | Cs, What: "restore a value's declared defaults in place — C#'s reset itself, and C++'s ADL hook onto <Name>Reset for the arena"},
 	{Name: "TableBitsToFloat", By: Cs, What: "u32 bits -> float"},
 	{Name: "TableFloatToBits", By: Cs, What: "float -> u32 bits"},
 	{Name: "TableBitsToDouble", By: Cs, What: "u64 bits -> double"},
