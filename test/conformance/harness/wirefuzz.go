@@ -247,9 +247,18 @@ func (l *wireLeg) receive() (legReply, error) {
 	return rep, nil
 }
 
+// close ends the stream and waits for the leg to leave at EOF.
 func (l *wireLeg) close() error {
 	_ = l.stdin.Close()
 	return l.cmd.Wait()
+}
+
+// kill ends a leg mid-stream, on a failure: it may be blocked writing a reply
+// nobody will read now, so a wait alone would never return.
+func (l *wireLeg) kill() {
+	_ = l.stdin.Close()
+	_ = l.cmd.Process.Kill()
+	_ = l.cmd.Wait()
 }
 
 // ---------------------------------------------------------------------------
@@ -362,7 +371,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		}
 	}
 	if len(live) == 0 {
-		_ = leg.close()
+		leg.kill()
 		return fmt.Errorf("the leg has a codec for none of the %d roots the corpus names", len(roots))
 	}
 
@@ -416,16 +425,16 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		root := roots[seedRoot[mut.seed]]
 		reply, err := leg.receive()
 		if err != nil {
-			_ = leg.close()
+			leg.kill()
 			return wireFailure(opts, mut, total, fmt.Sprintf("the leg died on the mutant (%v)", err), leg.stderr.String())
 		}
 		ans, err := root.oracle(mut.data)
 		if err != nil {
-			_ = leg.close()
+			leg.kill()
 			return wireFailure(opts, mut, total, err.Error(), "")
 		}
 		if verdict := wireVerdict(root, reply, ans); verdict != "" {
-			_ = leg.close()
+			leg.kill()
 			detail := fmt.Sprintf("  leg:    loaded=%t report=%s measure=%d saved=%s\n  oracle: report=%s encoded=%s",
 				reply.loaded, reply.report, reply.measure, describeBytes(reply.saved, reply.saveFail),
 				ans.report, describeBytes(ans.encoded, ans.encFail))
@@ -445,7 +454,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	}
 	if err := <-writeErr; err != nil {
 		stderr := leg.stderr.String()
-		_ = leg.close()
+		leg.kill()
 		return fmt.Errorf("FAILED: the leg closed its input mid-stream: %v\n%s", err, stderr)
 	}
 	if err := leg.close(); err != nil {

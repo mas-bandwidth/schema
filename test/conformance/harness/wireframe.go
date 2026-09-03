@@ -126,7 +126,10 @@ func (s *frameScanner) body(start, end int, root bool) {
 		off++
 		switch kind {
 		case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8, ir.TableKindI16, ir.TableKindU16,
-			ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindI64, ir.TableKindU64, ir.TableKindF64:
+			ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindI64, ir.TableKindU64, ir.TableKindF64,
+			ir.TableKindI128, ir.TableKindU128,
+			ir.TableKindFixed8, ir.TableKindFixed16, ir.TableKindFixed32, ir.TableKindFixed64, ir.TableKindFixed128,
+			ir.TableKindUFixed8, ir.TableKindUFixed16, ir.TableKindUFixed32, ir.TableKindUFixed64, ir.TableKindUFixed128:
 			w := kindWidth(int(kind))
 			if off+w > end {
 				return
@@ -256,17 +259,23 @@ func (s *frameScanner) keyed(off, end int) {
 // kindWidth is a fixed-width kind's payload width, and 0 for every other kind.
 func kindWidth(kind int) int {
 	switch kind {
-	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8:
+	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8, ir.TableKindFixed8, ir.TableKindUFixed8:
 		return 1
-	case ir.TableKindI16, ir.TableKindU16:
+	case ir.TableKindI16, ir.TableKindU16, ir.TableKindFixed16, ir.TableKindUFixed16:
 		return 2
-	case ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindPointer:
+	case ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindPointer, ir.TableKindFixed32, ir.TableKindUFixed32:
 		return 4
-	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64:
+	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64, ir.TableKindFixed64, ir.TableKindUFixed64:
 		return 8
+	case ir.TableKindI128, ir.TableKindU128, ir.TableKindFixed128, ir.TableKindUFixed128:
+		return 16
 	}
 	return 0
 }
+
+// wireKindLast is the highest kind byte the wire defines; a swap to one past
+// it is the one outside the closed set on the high side.
+const wireKindLast = ir.TableKindUFixed128
 
 // ---------------------------------------------------------------------------
 // the passes
@@ -355,8 +364,8 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 		switch sp.kind {
 		case spotKind:
 			// every kind byte swapped to every other value, the two outside
-			// the closed set included: 0 and 18 are not skippable
-			for k := uint64(0); k <= uint64(ir.TableKindPointer)+1; k++ {
+			// the closed set included: 0 and one past the last are not skippable
+			for k := uint64(0); k <= uint64(wireKindLast)+1; k++ {
 				if k != sp.value {
 					emit("kind", patched(seed, sp, k))
 				}

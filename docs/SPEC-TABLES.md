@@ -2281,6 +2281,10 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   and every pointer in the save reads null. The root body still reads on
   past the fields, so the root's own values survive — §4's
   framing-damage rule, applied to a numbering that has to be whole.
+  **A scan that failed counts nothing but malformed**: a record whose type
+  id the reader could not name, met before the damage, is not an `unknown`
+  event, because the numbering it belonged to does not exist — counting it
+  would be salvaging part of a numbering.
 
 **LOAD IS A SCAN, and that is the whole of its bound.** Reading follows
 no reference. `LoadMeasure` walks the records once — a record's type id
@@ -2697,7 +2701,8 @@ has:
   the body holds, and to the two values the sign bit spells;
 - **a duplicate field**, its enclosing lengths grown to fit so that the repeat
   is the whole event, and again with the framing left one field short;
-- **a kind swap**, every kind byte to every other value, `0` and `18` included;
+- **a kind swap**, every kind byte to every other value, `0` and one past the
+  last kind included;
 - **an id renamed** to `0`, to the reserved `0xFFFF`, to a neighbor's id and
   to a bit-flipped one; a keyed slot's key and a union's arm id likewise;
 - **in the variable class**, every node index to `0`, `1`, the last record,

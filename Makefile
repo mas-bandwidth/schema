@@ -1981,6 +1981,13 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) check-zero-range-negative-control
 	./build/schema_test_tables
 	./build/schema_test_tables_asan
+	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile
+	# bytes against the engine, plain and sanitized, at a short random pass —
+	# the enumerated passes run whole whatever N is — and its two controls at
+	# N=0, where the enumerated passes alone turn each one red. The long pass
+	# is `make tables-cpp-release`.
+	$(MAKE) tables-wire-fuzz N=20000
+	$(MAKE) tables-wire-fuzz-negative-control N=0
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
@@ -2305,6 +2312,13 @@ define wire_fuzz_control
 	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
 	@echo "negative control: removing the $(1) check from the emitter turns the wire fuzzer RED"
 endef
+
+# THE C++ RELEASE GATE: the wire fuzzer at a long random pass, both builds.
+# certify.yml runs every `tables-<lang>-release` target by name.
+.PHONY: tables-cpp-release
+tables-cpp-release:
+	$(MAKE) tables-wire-fuzz N=500000
+	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control

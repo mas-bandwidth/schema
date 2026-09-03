@@ -43,6 +43,8 @@
 #include "StreamTable.h"
 #include "M1Table.h"
 #include "M2Table.h"
+#include "ScalarsTable.h"
+#include "Scalars2Table.h"
 
 struct Reply
 {
@@ -152,6 +154,8 @@ static const Codec codecs[] = {
     FIXED( "messagedemo", messagedemo, ToolMessage ),
     FIXED( "tblm1", tblm1, Msg ),
     FIXED( "tblm2", tblm2, Msg ),
+    FIXED( "scalars", scalardemo, SimState ),
+    FIXED( "tblscalars2", scalardemo2, SimState ),
     VARIABLE( "graphdemo", graphdemo, Scene ),
     VARIABLE( "tblp2", tblp2, Chain ),
     VARIABLE( "streamdemo", streamdemo, Feed ),
