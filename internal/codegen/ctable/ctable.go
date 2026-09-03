@@ -256,6 +256,23 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 #endif
 #endif
 
+/* A record's ALIGNMENT, which the cook's layout contract asserts and which the
+   cook's Open compares the header's alignment word against (§7.1, §20.3).
+   C99 has no alignof either; C11's _Alignof, the two GNU spellings and MSVC's
+   cover every compiler this repo builds under, and the last form is the
+   portable definition of the same number. */
+#ifndef SCHEMA_TABLE_ALIGNOF
+#if defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L
+#define SCHEMA_TABLE_ALIGNOF( T ) _Alignof( T )
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define SCHEMA_TABLE_ALIGNOF( T ) __alignof__( T )
+#elif defined( _MSC_VER )
+#define SCHEMA_TABLE_ALIGNOF( T ) __alignof( T )
+#else
+#define SCHEMA_TABLE_ALIGNOF( T ) ( (size_t) offsetof( struct { char schema_pad_; T schema_member_; }, schema_member_ ) )
+#endif
+#endif
+
 /* The table-wire read report — the permissive contract's ledger. Silence
    (all zero) means the data matched this reader's schema exactly. */
 typedef struct TableReport
@@ -655,6 +672,12 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	for _, n := range native {
 		fmt.Fprintf(&h, "#include \"%s\"\n", n)
 	}
+	// SCHEMA_UNUSED with the packet emitter's own guard: every function in
+	// this header is `static`, so a translation unit that uses one and not
+	// another must not be warned about the rest. The definition is the packet
+	// header's, guarded identically, so whichever header a TU sees first
+	// defines it and the other agrees.
+	h.WriteString("\n#ifndef SCHEMA_UNUSED\n#if defined(__GNUC__) || defined(__clang__)\n#define SCHEMA_UNUSED __attribute__((unused))\n#else\n#define SCHEMA_UNUSED\n#endif\n#endif\n")
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
 	h.WriteString(tablePrimitives(u.Package, g.anyVariable, g.anyKeyed))
 	if g.anyVariable {

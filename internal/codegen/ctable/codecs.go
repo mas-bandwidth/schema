@@ -597,11 +597,17 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 	case enumRef(f) != nil:
 		g.pf("%sif ( %s == %s ) { continue; } /* a default slot elides */\n", ind, expr, g.fieldDefaultExpr(f))
 		g.emitEnumIdSwitch(enumRef(f), expr, "element_id", ind, onBad)
+		// measure counts bytes and never writes the id; the save pass writes
+		// THIS one rather than resolving the same value a second time
+		g.pf("%s(void) element_id;\n", ind)
 	default:
 		g.pf("%sif ( %s == %s ) { continue; } /* a default slot elides */\n", ind, expr, g.fieldDefaultExpr(f))
 	}
 	// i is the STORAGE index; the key it holds is i + 1
 	g.emitEnumIdSwitch(f.KeyEnumRef, fmt.Sprintf("(%s) ( i + 1 )", f.KeyEnum), "key_id", ind, onBad)
+	// the measure pass counts pairs and never writes the key; reading it here
+	// keeps one loop head for both passes without a set-but-unused diagnostic
+	g.pf("%s(void) key_id;\n", ind)
 }
 
 // emitEnumElementCheck validates an enum ARRAY's elements before they ride: a
@@ -701,7 +707,6 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        int32_t i;\n")
 		g.pf("        for ( i = 0; i < %s; i++ ) /* [%s]: every stored slot is a named variant's */\n        {\n", enumMaxConst(f.KeyEnum), f.KeyEnum)
 		g.emitKeyedSlotRides(f, kind, "            ", "return 0;")
-		g.pf("            (void) key_id;\n")
 		g.pf("            pairs_%s++;\n", f.Name)
 		g.pf("        }\n")
 		g.pf("        if ( pairs_%s > 0 )\n        {\n", f.Name)
@@ -878,7 +883,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 
 func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.isVar(st.Name) {
-		g.pf("static SCHEMA_UNUSED int %sLoadBody( TableReader * r, TableRegionSink * sink, %s * value, int32_t depth )\n{\n", st.Name, st.Name)
+		g.pf("static SCHEMA_UNUSED int %sLoadBody( TableReader * r, TableSink * sink, %s * value, int32_t depth )\n{\n", st.Name, st.Name)
 		if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
 			g.pf("    (void) sink; (void) depth;\n")
 		}
@@ -1282,8 +1287,8 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		}
 		g.pf("static const TableVariantInfo %s[] = {\n", vocabularySymbol(st.Name, f.Name, "variants"))
 		names := map[int64]string{0: "None"}
-		for _, v := range ref.Variants {
-			names[int64(ref.Value(v))] = v
+		for i, v := range ref.Variants {
+			names[int64(i)+1] = v
 		}
 		for i := int64(0); i <= ref.Max; i++ {
 			if n, ok := names[i]; ok {
@@ -1338,8 +1343,8 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 		key := f.KeyEnumRef
 		g.pf("static const TableVariantInfo %s[] = {\n", vocabularySymbol(st.Name, f.Name, "keys"))
 		names := map[int64]string{0: "None"}
-		for _, v := range key.Variants {
-			names[int64(key.Value(v))] = v
+		for i, v := range key.Variants {
+			names[int64(i)+1] = v
 		}
 		for i := int64(0); i <= key.Max; i++ {
 			if n, ok := names[i]; ok {
