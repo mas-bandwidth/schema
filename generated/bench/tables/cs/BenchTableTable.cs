@@ -28,7 +28,7 @@ namespace Benchtable
         // (docs/SPEC-TABLES.md §4, §16.2): a body carrying an id twice is legal input
         // whose last occurrence wins, silently. It rides on this struct because a
         // caller has one report type, not two — so a wire read always leaves it
-        // zero, and it is here for the JSON walk that has not been ported yet.
+        // zero, and <Name>FromJson is what raises it.
         public int Duplicate;
         public bool Malformed;     // framing damage; decode stopped, partial result kept
     }
@@ -41,16 +41,25 @@ namespace Benchtable
     // runtime with no schema files on hand. <Name>TableType() returns the
     // descriptor.
     //
-    // FOUR of the C++ surface's columns are absent, and all four are MEMORY facts
-    // with no C# twin: TableFieldInfo's offset, elem_size and count_offset, and
-    // TableTypeInfo's size (the storage struct's sizeof). A C# field has no
-    // offsetof and a C# class has no meaningful sizeof; a walker reaches storage
-    // through the language's own reflection, not through bytes. Every other
-    // column is here, name for name.
+    // THE MEMORY COLUMNS ARE SPELLED AS ACCESSORS, and that is the whole of this
+    // surface's divergence from C++'s. C++ locates a field with an offset and a
+    // width, because its storage is one flat struct; a C# field has no offsetof
+    // and a C# class has no meaningful sizeof, so the descriptor carries the
+    // reader and the writer the emitter wrote instead. Same ROLE, one place, in
+    // the language's own currency: a generic walker — the text form (§16) — reaches
+    // storage through these and through nothing else. TableTypeInfo's size column
+    // stays absent, having no role a C# walker can use.
+    //
+    // The delegates are built once, with the descriptor, and cached with it. They
+    // take the owning instance as an object, which is a REFERENCE for every storage
+    // class this backend emits, so calling one boxes nothing; the raw value
+    // crosses as a ulong, which a Func<,,ulong> carries unboxed. Nothing on a walk
+    // allocates.
 
     public sealed class TableFieldInfo
     {
         public string Name;         // schema field name, e.g. "health"
+        public string Json;         // the TEXT form's key: the json = "key" attribute, else Name (§16.4)
         public string TypeName;     // schema type name, e.g. "float32", "Grade"
         public ushort Id;           // table-wire field id (name hash; the was alias's hash after a rename)
         public byte Kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
@@ -58,6 +67,10 @@ namespace Benchtable
         public bool Counted;        // a <name>Count/<name>Length companion exists
         public bool Optional;       // a ?T field: a <name>Present bool decides whether it rides
         public int ArrayBound;      // array capacity / string max length; 0 for plain scalars
+        // the STORAGE width of one element in bytes, C++'s elem_size where it has
+        // a C# meaning: the last bound a numeric read clamps to (§16.2). 0 on
+        // every kind whose storage is not a fixed-width number.
+        public int ElemWidth;
         public bool HasRange;       // a declared [min, max] (int or float)
         public double RangeMin;     // NOTE: int64 ranges beyond 2^53 lose precision here
         public double RangeMax;
@@ -93,6 +106,57 @@ namespace Benchtable
         {
             get { return TableRef == null ? null : TableRef(); }
         }
+
+        // a UNION field's shape (docs/SPEC-TABLES.md §8.1): the tag, and each arm's
+        // payload by its own descriptor. A VALUE rather than C++'s factory — the
+        // laziness a descriptor graph needs lives in each arm's TableRef, so
+        // nothing here has to be deferred and a walk never builds one. null on
+        // every other kind, and that is what tells an enum field from a union
+        // one — both carry a value -> name function and a variant id.
+        public TableUnionInfo Arms;
+
+        // ---- the storage location, in C#'s own currency ----
+        //
+        // GetRaw/SetRaw carry one NUMERIC element: an integer sign-extended into
+        // the ulong, a bool as 0 or 1, an enum or a flags mask as its value, a
+        // float as its IEEE-754 bit pattern. GetChild hands back the OBJECT a
+        // nested table, a union or a class-typed element is stored as. GetBuffer
+        // hands back a string(N)'s or bytes(N)'s byte[]. The int is the element
+        // index — the array slot, or a keyed array's STORAGE index — and 0 for a
+        // field that is not an array.
+        public Func<object, int, ulong> GetRaw;
+        public Action<object, int, ulong> SetRaw;
+        public Func<object, int, object> GetChild;
+        public Func<object, byte[]> GetBuffer;
+        // the counted companion (a string's length, a bytes' length, a counted
+        // array's count), and the optional's presence bool. null where the field
+        // has none.
+        public Func<object, int> GetCount;
+        public Action<object, int> SetCount;
+        public Func<object, bool> GetPresent;
+        public Action<object, bool> SetPresent;
+    }
+
+    // one union arm's payload (docs/SPEC-TABLES.md §8.1). Arms run [0, EnumMax]; index
+    // 0 is the EMPTY arm and carries neither payload nor descriptor.
+    public sealed class TableUnionArmInfo
+    {
+        public Func<TableTypeInfo> TableRef;
+        public TableTypeInfo Table
+        {
+            get { return TableRef == null ? null : TableRef(); }
+        }
+        public Func<object, object> Payload; // the arm's storage, given the union's
+    }
+
+    // A union field's shape: the tag, and the arms indexed by it. C++ carries the
+    // tag's offset and width; C# carries the pair that reads and writes it, for the
+    // reason the field accessors above exist.
+    public sealed class TableUnionInfo
+    {
+        public Func<object, ulong> GetTag;
+        public Action<object, ulong> SetTag;
+        public TableUnionArmInfo[] Arms;
     }
 
     public sealed class TableTypeInfo
@@ -100,6 +164,12 @@ namespace Benchtable
         public string Name;         // schema type name
         public int NumFields;
         public TableFieldInfo[] Fields;
+        // put one instance back at its declared defaults, in place. A generic
+        // walker that FILLS a value has to establish the defaults an absent field
+        // takes, and it holds no type to spell — this is the one thing the columns
+        // could not express without a function (docs/SPEC-TABLES.md §8.1). It calls
+        // TableReset, the same prefill the wire's read path calls.
+        public Action<object> Reset;
     }
 
     // TableWriter is a ref struct over the caller's span: the wire is written in
@@ -352,6 +422,1721 @@ namespace Benchtable
             return unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
         }
 
+        // ---- json walk: begin ----
+        //
+        // The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
+        // reflection descriptors (§8). Reading fills ONE caller-owned instance and
+        // allocates nothing beyond it; writing targets a caller span with the wire's
+        // measure/write symmetry. Everything AROUND this — which file goes with which
+        // instance, what key an instance is filed under, how instances link into a
+        // root table's collections — is a packer's opinion and stays with the tool
+        // that holds it.
+        //
+        // The dialect: trailing commas are accepted on read (the authoring files this
+        // exists for carry them) and never written; comments are not JSON and are
+        // refused; unknown keys are skipped and counted; a duplicate key is last-wins
+        // and counted; a key present with the wrong JSON type is skipped and counted,
+        // never coerced. The canonical text ends with exactly ONE newline, which the
+        // writer emits and the reader accepts with or without.
+        //
+        // Everything below is a member of this nested class, so the walk claims not one
+        // name at unit scope (docs/SPEC-TABLES.md §11).
+        public static class TableJson
+        {
+            public const int MaxDepth = 128;
+
+            // A key longer than this cannot name a field, so it is skipped as unknown.
+            public const int MaxKey = 256;
+
+            // The longest numeric token the walk will convert. Anything longer is a
+            // value no field can hold and counts as a kind mismatch.
+            public const int MaxNumber = 512;
+
+            const string Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+            // A vocabulary entry the descriptor could not spell. The generated name
+            // functions answer "???" for a value outside the declared set, and that is
+            // not a name — writing it would put a spelling in the text that the reader
+            // then counts as unknown, turning a refusal into a silent loss.
+            static bool Named(string name)
+            {
+                return name != null && !string.Equals(name, "???", StringComparison.Ordinal);
+            }
+
+            // finite: not a NaN, not an infinity. C++ spells the NaN test v == v; C#
+            // refuses a comparison of a variable with itself (CS1718, an error here),
+            // so the runtime's own predicate says it.
+            static bool Finite(double v)
+            {
+                return !double.IsNaN(v) && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308;
+            }
+
+            // a counted field's companion: a string's length, a bytes' length, a
+            // counted array's count. Bounded by the declared extent on the way out, so
+            // a storage invariant a caller broke cannot walk off the end of the array.
+            static int Count(object value, TableFieldInfo f)
+            {
+                if (!f.Counted) { return f.ArrayBound; }
+                int count = f.GetCount(value);
+                if (count < 0) { count = 0; }
+                if (count > f.ArrayBound) { count = f.ArrayBound; }
+                return count;
+            }
+
+            static void PutCount(object value, TableFieldInfo f, int count)
+            {
+                if (f.Counted) { f.SetCount(value, count); }
+            }
+
+            // ---- what a field's kind expects to see in the text ----
+            //
+            // One classifier, consulted by both directions, so a reader and a writer
+            // can never disagree about a kind's JSON form. 'o' object, 'a' array, 's'
+            // string, 'n' number, 'b' boolean.
+            //
+            // A vocabulary field is spelled by NAME: an enum is one name, a flags mask
+            // is the array of the names of its set bits. The two are told apart by the
+            // id column — an enum variant rides under a wire id, a flags BIT never
+            // does (docs/SPEC-TABLES.md §4), so a name function with no id function is
+            // flags.
+            //
+            // bytes(N) is the one kind whose element kind does not decide its form: it
+            // shares u8 with a plain array of u8, and rides as base64. The schema type
+            // name settles it, and "bytes" is a keyword no declaration can claim.
+            static bool IsBytes(TableFieldInfo f)
+            {
+                return f.IsArray && f.Kind == 6 && string.Equals(f.TypeName, "bytes", StringComparison.Ordinal);
+            }
+
+            // An ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): its JSON form is an OBJECT
+            // keyed by variant name, not a positional array, because that is what the
+            // storage is — one slot per variant, addressed by the variant.
+            static bool IsKeyed(TableFieldInfo f)
+            {
+                return f.KeyName != null;
+            }
+
+            // THE KEY A STORAGE SLOT HOLDS (§2.4, §8): the storage shifts left, so slot
+            // i holds the key i + 1 and nothing is stored for None. This is the ONE
+            // place the walker spells the shift.
+            static ulong KeyedSlotKey(int slot)
+            {
+                return (ulong)(slot + 1);
+            }
+
+            // A slot whose key names a variant of the keying enum. Every slot in
+            // [0, ArrayBound) does, unless the enum carries max-headroom variants
+            // outside a table closure, where a reserved value names nothing and its key
+            // id is 0 — the reserved id no declared name can fold to (§5).
+            static bool KeyedSlotValid(TableFieldInfo f, int slot)
+            {
+                return f.KeyId(KeyedSlotKey(slot)) != 0;
+            }
+
+            static bool IsFlags(TableFieldInfo f)
+            {
+                return f.EnumName != null && f.VariantId == null;
+            }
+
+            static bool IsEnum(TableFieldInfo f)
+            {
+                return f.VariantId != null && f.Arms == null;
+            }
+
+            static char Shape(TableFieldInfo f)
+            {
+                if (f.Kind == 12) { return 's'; }          // string
+                if (IsBytes(f)) { return 's'; }            // bytes: base64
+                if (IsKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
+                if (f.IsArray) { return 'a'; }
+                if (f.Arms != null) { return 'o'; }        // union: an object with ONE key
+                if (f.Kind == 13) { return 'o'; }          // nested table or type
+                if (IsEnum(f)) { return 's'; }
+                if (IsFlags(f)) { return 'a'; }
+                if (f.Kind == 1) { return 'b'; }
+                return 'n';
+            }
+
+            // the ELEMENT shape of an array field — the same classifier one level down
+            static char ElementShape(TableFieldInfo f)
+            {
+                if (f.Kind == 13) { return 'o'; }
+                if (IsEnum(f)) { return 's'; }
+                if (IsFlags(f)) { return 'a'; }
+                if (f.Kind == 1) { return 'b'; }
+                return 'n';
+            }
+
+            // A guarded group rides only when its guard reads true — the wire's own
+            // elision (§4), carried into the text so a text and a wire written from one
+            // instance say the same thing. The guard is spelled as its branch condition
+            // over bool fields of the SAME type ("at_rest", "!at_rest",
+            // "active && has_target"), so evaluating it is a walk of the same
+            // descriptor. Nothing is inferred in the other direction: reading places
+            // every key it can name, and the guard is a plain bool key (§16.2).
+            static bool GuardHolds(object value, TableTypeInfo info, string guard)
+            {
+                int p = 0;
+                for (;;)
+                {
+                    while (p < guard.Length && (guard[p] == ' ' || guard[p] == '&')) { p++; }
+                    if (p >= guard.Length) { return true; }
+                    bool want = true;
+                    if (guard[p] == '!') { want = false; p++; }
+                    int start = p;
+                    while (p < guard.Length && guard[p] != ' ' && guard[p] != '&') { p++; }
+                    int length = p - start;
+                    bool held = false;
+                    for (int i = 0; i < info.NumFields; i++)
+                    {
+                        TableFieldInfo f = info.Fields[i];
+                        if (f.Name.Length == length && string.CompareOrdinal(f.Name, 0, guard, start, length) == 0)
+                        {
+                            held = f.GetRaw(value, 0) != 0;
+                            break;
+                        }
+                    }
+                    if (held != want) { return false; }
+                }
+            }
+
+            // ---- writing ----
+
+            // The writer sink MEASURES when Measuring is set and WRITES when it is not,
+            // over one code path — so measure and write agree byte for byte, the wire's
+            // invariant (§9) carried across.
+            public ref struct Out
+            {
+                public Span<byte> Buffer;
+                public bool Measuring;
+                public long Offset;
+                public bool Overflow;
+
+                public void Raw(ReadOnlySpan<byte> data)
+                {
+                    if (!Measuring)
+                    {
+                        if (Offset + data.Length > Buffer.Length) { Overflow = true; return; }
+                        data.CopyTo(Buffer.Slice((int)Offset, data.Length));
+                    }
+                    Offset += data.Length;
+                }
+
+                public void Put(byte c)
+                {
+                    if (!Measuring)
+                    {
+                        if (Offset + 1 > Buffer.Length) { Overflow = true; return; }
+                        Buffer[(int)Offset] = c;
+                    }
+                    Offset += 1;
+                }
+
+                // an ASCII literal of the walk's own — "true", ": ", "[]" — never a
+                // value, so widening each char is the whole encoding
+                public void Text(string s)
+                {
+                    for (int i = 0; i < s.Length; i++) { Put((byte)s[i]); }
+                }
+
+                public void Line(int depth)
+                {
+                    Put((byte)'\n');
+                    for (int i = 0; i < depth; i++) { Put((byte)' '); Put((byte)' '); }
+                }
+            }
+
+            static void WriteBase64(ref Out o, ReadOnlySpan<byte> data)
+            {
+                o.Put((byte)'"');
+                int i = 0;
+                for (; i + 3 <= data.Length; i += 3)
+                {
+                    uint triple = ((uint)data[i] << 16) | ((uint)data[i + 1] << 8) | (uint)data[i + 2];
+                    o.Put((byte)Base64Alphabet[(int)((triple >> 18) & 0x3f)]);
+                    o.Put((byte)Base64Alphabet[(int)((triple >> 12) & 0x3f)]);
+                    o.Put((byte)Base64Alphabet[(int)((triple >> 6) & 0x3f)]);
+                    o.Put((byte)Base64Alphabet[(int)(triple & 0x3f)]);
+                }
+                if (i < data.Length)
+                {
+                    int left = data.Length - i;
+                    uint triple = (uint)data[i] << 16;
+                    if (left == 2) { triple |= (uint)data[i + 1] << 8; }
+                    o.Put((byte)Base64Alphabet[(int)((triple >> 18) & 0x3f)]);
+                    o.Put((byte)Base64Alphabet[(int)((triple >> 12) & 0x3f)]);
+                    o.Put(left == 2 ? (byte)Base64Alphabet[(int)((triple >> 6) & 0x3f)] : (byte)'=');
+                    o.Put((byte)'=');
+                }
+                o.Put((byte)'"');
+            }
+
+            // One UTF-8 sequence at s[at], or -1 when the bytes there are not one.
+            // Rejects the lot: a stray continuation, an overlong form, a surrogate half,
+            // and anything past U+10FFFF.
+            static int Utf8(ReadOnlySpan<byte> s, int at, out int width)
+            {
+                width = 0;
+                byte lead = s[at];
+                int want;
+                int code;
+                if (lead < 0x80) { width = 1; return lead; }
+                else if (lead >= 0xc2 && lead <= 0xdf) { want = 2; code = lead & 0x1f; }
+                else if (lead >= 0xe0 && lead <= 0xef) { want = 3; code = lead & 0x0f; }
+                else if (lead >= 0xf0 && lead <= 0xf4) { want = 4; code = lead & 0x07; }
+                else { return -1; }
+                if (s.Length - at < want) { return -1; }
+                for (int i = 1; i < want; i++)
+                {
+                    byte next = s[at + i];
+                    if ((next & 0xc0) != 0x80) { return -1; }
+                    code = (code << 6) | (next & 0x3f);
+                }
+                if (want == 3 && code < 0x800) { return -1; }          // overlong
+                if (want == 4 && code < 0x10000) { return -1; }        // overlong
+                if (code >= 0xd800 && code <= 0xdfff) { return -1; }   // a surrogate half
+                if (code > 0x10ffff) { return -1; }
+                width = want;
+                return code;
+            }
+
+            // The escape rule, spelled once and reached from both string sources: a
+            // code point the JSON grammar names, a control character as \u00XX, and
+            // anything else as itself. Returns false when the caller must emit the
+            // code point's own bytes instead.
+            static bool WriteEscape(ref Out o, int code)
+            {
+                switch (code)
+                {
+                    case '"': o.Text("\\\""); return true;
+                    case '\\': o.Text("\\\\"); return true;
+                    case '\b': o.Text("\\b"); return true;
+                    case '\f': o.Text("\\f"); return true;
+                    case '\n': o.Text("\\n"); return true;
+                    case '\r': o.Text("\\r"); return true;
+                    case '\t': o.Text("\\t"); return true;
+                }
+                if (code < 0x20)
+                {
+                    const string hex = "0123456789abcdef";
+                    o.Text("\\u00");
+                    o.Put((byte)hex[code >> 4]);
+                    o.Put((byte)hex[code & 0xf]);
+                    return true;
+                }
+                return false;
+            }
+
+            static void WriteUtf8(ref Out o, int code)
+            {
+                if (code < 0x80) { o.Put((byte)code); return; }
+                if (code < 0x800)
+                {
+                    o.Put((byte)(0xc0 | (code >> 6)));
+                    o.Put((byte)(0x80 | (code & 0x3f)));
+                    return;
+                }
+                if (code < 0x10000)
+                {
+                    o.Put((byte)(0xe0 | (code >> 12)));
+                    o.Put((byte)(0x80 | ((code >> 6) & 0x3f)));
+                    o.Put((byte)(0x80 | (code & 0x3f)));
+                    return;
+                }
+                o.Put((byte)(0xf0 | (code >> 18)));
+                o.Put((byte)(0x80 | ((code >> 12) & 0x3f)));
+                o.Put((byte)(0x80 | ((code >> 6) & 0x3f)));
+                o.Put((byte)(0x80 | (code & 0x3f)));
+            }
+
+            // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
+            // byte-transparent — the wire imposes no encoding (§3) and a string may
+            // hold anything — so the WRITER is where that obligation is met: a byte
+            // that is not part of a well-formed sequence is written as U+FFFD, one per
+            // bad byte, and never raw. A text this walk writes is therefore readable by
+            // any conforming parser, which a raw byte would not be. The cost is stated
+            // plainly: for a string holding invalid UTF-8, the round trip is NOT
+            // byte-identical, because the alternative is emitting a text that is not
+            // JSON.
+            static void WriteString(ref Out o, ReadOnlySpan<byte> s)
+            {
+                o.Put((byte)'"');
+                for (int i = 0; i < s.Length; i++)
+                {
+                    byte c = s[i];
+                    if (WriteEscape(ref o, c)) { continue; }
+                    if (c < 0x80) { o.Put(c); continue; }
+                    int width;
+                    if (Utf8(s, i, out width) < 0)
+                    {
+                        WriteUtf8(ref o, 0xfffd); // one per bad byte
+                    }
+                    else
+                    {
+                        o.Raw(s.Slice(i, width));
+                        i += width - 1;
+                    }
+                }
+                o.Put((byte)'"');
+            }
+
+            // The same rule at the OTHER source: a descriptor's key or vocabulary name,
+            // which C# holds as a string. C++ has one writer because both of its
+            // sources are char*; here the chars are UTF-16, so a surrogate pair is
+            // recombined and a lone half — which a schema identifier cannot produce and
+            // a json = "key" attribute could not carry either — reads as U+FFFD, the
+            // same answer the byte path gives an ill-formed sequence.
+            static void WriteName(ref Out o, string s)
+            {
+                o.Put((byte)'"');
+                for (int i = 0; i < s.Length; i++)
+                {
+                    int code = s[i];
+                    if (code >= 0xd800 && code <= 0xdbff && i + 1 < s.Length &&
+                        s[i + 1] >= 0xdc00 && s[i + 1] <= 0xdfff)
+                    {
+                        code = 0x10000 + ((code - 0xd800) << 10) + (s[i + 1] - 0xdc00);
+                        i++;
+                    }
+                    else if (code >= 0xd800 && code <= 0xdfff)
+                    {
+                        code = 0xfffd;
+                    }
+                    if (WriteEscape(ref o, code)) { continue; }
+                    WriteUtf8(ref o, code);
+                }
+                o.Put((byte)'"');
+            }
+
+            static void WriteUnsigned(ref Out o, ulong value)
+            {
+                Span<byte> digits = stackalloc byte[24];
+                int n = 0;
+                do
+                {
+                    digits[n++] = (byte)('0' + (int)(value % 10));
+                    value /= 10;
+                } while (value != 0);
+                for (int i = n - 1; i >= 0; i--) { o.Put(digits[i]); }
+            }
+
+            static void WriteSigned(ref Out o, long value)
+            {
+                if (value < 0)
+                {
+                    o.Put((byte)'-');
+                    WriteUnsigned(ref o, 0ul - (ulong)value);
+                    return;
+                }
+                WriteUnsigned(ref o, (ulong)value);
+            }
+
+            // C's "%.*g" for a finite double, spelled out into chars: the exponent form
+            // when the decimal exponent is below -4 or at least the precision, the
+            // plain form otherwise, trailing zeros and a trailing point removed, and an
+            // exponent of at least two digits. The C++ walker reaches this through
+            // snprintf; a port spells it out, because the two must agree byte for byte.
+            // Every conversion here is INVARIANT-CULTURE, so nothing in the walk
+            // consults a locale — the one corner where C++ has to.
+            static int FormatG(double value, int prec, Span<char> text)
+            {
+                if (prec < 1) { prec = 1; }
+                Span<char> pattern = stackalloc char[MaxNumber];
+                Span<char> sci = stackalloc char[MaxNumber];
+                int patternLength = Pattern(pattern, prec - 1, true);
+                int sciLength;
+                if (!value.TryFormat(sci, out sciLength, pattern.Slice(0, patternLength), System.Globalization.CultureInfo.InvariantCulture))
+                {
+                    return -1;
+                }
+                int at = sci.Slice(0, sciLength).IndexOf('e');
+                if (at < 0) { return -1; }
+                int exp = 0;
+                bool negativeExp = sci[at + 1] == '-';
+                for (int i = at + 2; i < sciLength; i++) { exp = exp * 10 + (sci[i] - '0'); }
+                if (negativeExp) { exp = -exp; }
+                if (exp < -4 || exp >= prec)
+                {
+                    int mantissa = TrimZeros(sci.Slice(0, at));
+                    if (mantissa > text.Length) { return -1; }
+                    sci.Slice(0, mantissa).CopyTo(text);
+                    int n = mantissa;
+                    if (n + 4 > text.Length) { return -1; }
+                    text[n++] = 'e';
+                    text[n++] = negativeExp ? '-' : '+';
+                    int magnitude = exp < 0 ? -exp : exp;
+                    if (magnitude < 10)
+                    {
+                        text[n++] = '0';
+                        text[n++] = (char)('0' + magnitude);
+                    }
+                    else
+                    {
+                        int digits = 0;
+                        Span<char> scratch = stackalloc char[8];
+                        while (magnitude != 0) { scratch[digits++] = (char)('0' + magnitude % 10); magnitude /= 10; }
+                        if (n + digits > text.Length) { return -1; }
+                        for (int i = digits - 1; i >= 0; i--) { text[n++] = scratch[i]; }
+                    }
+                    return n;
+                }
+                patternLength = Pattern(pattern, prec - 1 - exp, false);
+                int plainLength;
+                if (!value.TryFormat(text, out plainLength, pattern.Slice(0, patternLength), System.Globalization.CultureInfo.InvariantCulture))
+                {
+                    return -1;
+                }
+                return TrimZeros(text.Slice(0, plainLength));
+            }
+
+            // the custom pattern "%.*g" needs: "0." and decimals zeros, with "e+00"
+            // appended for the exponent form — which is what fixes the exponent at two
+            // digits minimum and always signed, the one shape C's %g writes
+            static int Pattern(Span<char> pattern, int decimals, bool exponent)
+            {
+                if (decimals < 0) { decimals = 0; }
+                int n = 0;
+                pattern[n++] = '0';
+                if (decimals > 0)
+                {
+                    if (n + 1 + decimals + 4 > pattern.Length) { decimals = pattern.Length - n - 5; }
+                    pattern[n++] = '.';
+                    for (int i = 0; i < decimals; i++) { pattern[n++] = '0'; }
+                }
+                if (exponent)
+                {
+                    pattern[n++] = 'e';
+                    pattern[n++] = '+';
+                    pattern[n++] = '0';
+                    pattern[n++] = '0';
+                }
+                return n;
+            }
+
+            static int TrimZeros(Span<char> s)
+            {
+                int n = s.Length;
+                bool point = false;
+                for (int i = 0; i < n; i++) { if (s[i] == '.') { point = true; break; } }
+                if (!point) { return n; }
+                while (n > 0 && s[n - 1] == '0') { n--; }
+                if (n > 0 && s[n - 1] == '.') { n--; }
+                return n;
+            }
+
+            // A float writes at the SHORTEST precision that reads back as the same
+            // value at the field's own width, so a round trip is exact and a text stays
+            // readable. Non-finite values have no JSON spelling at all, and the writer
+            // REFUSES rather than losing one silently — the same rule measure and save
+            // already apply to an enum value no variant names (§5).
+            static bool WriteFloat(ref Out o, double value, bool single)
+            {
+                if (!Finite(value)) { return false; }
+                Span<char> text = stackalloc char[MaxNumber];
+                int low = single ? 6 : 15;
+                int high = single ? 9 : 17;
+                int length = 0;
+                for (int digits = low; ; digits++)
+                {
+                    length = FormatG(value, digits, text);
+                    if (length <= 0) { return false; }
+                    if (digits >= high) { break; }
+                    double back;
+                    if (!double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out back))
+                    {
+                        continue;
+                    }
+                    if (single)
+                    {
+                        if ((double)(float)back == value) { break; }
+                    }
+                    else if (back == value) { break; }
+                }
+                for (int i = 0; i < length; i++) { o.Put((byte)text[i]); }
+                return true;
+            }
+
+            // one scalar, at one storage slot: a nested object, a union, a vocabulary,
+            // or a number. C++ takes the storage's ADDRESS here; the C# triple
+            // (owner, field, index) is the same thing said in this language.
+            static bool WriteScalar(ref Out o, object owner, TableFieldInfo f, int index, int depth)
+            {
+                if (f.Arms != null)
+                {
+                    // a union is an object with ONE key, the arm's name; None is {}
+                    object union = f.GetChild(owner, index);
+                    ulong tag = f.Arms.GetTag(union);
+                    if (tag == 0)
+                    {
+                        o.Text("{}");
+                        return true;
+                    }
+                    if ((long)tag > f.EnumMax)
+                    {
+                        return false; // a tag no arm names, exactly as measure refuses it
+                    }
+                    string arm = f.EnumName(tag);
+                    // and refuse on the NAME, not merely on the bound: §16.2 says a
+                    // value no variant NAMES is refused, so the check is the name.
+                    // Writing whatever came back would emit "???", a spelling the
+                    // reader counts as unknown — a silent round-trip loss in place of a
+                    // refusal.
+                    if (!Named(arm)) { return false; }
+                    o.Put((byte)'{');
+                    o.Line(depth + 1);
+                    WriteName(ref o, arm);
+                    o.Text(": ");
+                    if (!WriteValue(ref o, f.Arms.Arms[(int)tag].Payload(union), f.Arms.Arms[(int)tag].Table, depth + 1))
+                    {
+                        return false;
+                    }
+                    o.Line(depth);
+                    o.Put((byte)'}');
+                    return true;
+                }
+                if (f.Kind == 13)
+                {
+                    return WriteValue(ref o, f.GetChild(owner, index), f.Table, depth);
+                }
+                if (IsEnum(f))
+                {
+                    ulong value = f.GetRaw(owner, index);
+                    // a value no variant names has no text spelling, exactly as it has
+                    // no wire identity: the writer REFUSES rather than writing None
+                    // over it, the rule measure and save already apply (§5)
+                    if ((long)value > f.EnumMax) { return false; }
+                    if (value != 0 && f.VariantId(value) == 0) { return false; }
+                    string name = f.EnumName(value);
+                    if (!Named(name)) { return false; }
+                    WriteName(ref o, name);
+                    return true;
+                }
+                if (IsFlags(f))
+                {
+                    ulong bits = f.GetRaw(owner, index);
+                    if (bits == 0)
+                    {
+                        o.Text("[]");
+                        return true;
+                    }
+                    o.Put((byte)'[');
+                    bool first = true;
+                    for (int bit = 0; bit < 64; bit++)
+                    {
+                        if ((bits & (1ul << bit)) == 0) { continue; }
+                        if (bit > f.EnumMax)
+                        {
+                            return false; // a bit no variant names has no text spelling
+                        }
+                        string name = f.EnumName((ulong)bit);
+                        if (!Named(name)) { return false; }
+                        if (!first) { o.Put((byte)','); }
+                        first = false;
+                        o.Line(depth + 1);
+                        WriteName(ref o, name);
+                    }
+                    o.Line(depth);
+                    o.Put((byte)']');
+                    return true;
+                }
+                switch (f.Kind)
+                {
+                    case 1:
+                        o.Text(f.GetRaw(owner, index) != 0 ? "true" : "false");
+                        return true;
+                    case 10:
+                        return WriteFloat(ref o, TableBitsToFloat(unchecked((uint)f.GetRaw(owner, index))), true);
+                    case 11:
+                        return WriteFloat(ref o, TableBitsToDouble(f.GetRaw(owner, index)), false);
+                    case 2: case 3: case 4: case 5:
+                        WriteSigned(ref o, (long)f.GetRaw(owner, index));
+                        return true;
+                    default:
+                        WriteUnsigned(ref o, f.GetRaw(owner, index));
+                        return true;
+                }
+            }
+
+            static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
+            {
+                if (f.Kind == 12)
+                {
+                    WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
+                    return true;
+                }
+                if (IsBytes(f))
+                {
+                    WriteBase64(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
+                    return true;
+                }
+                if (IsKeyed(f))
+                {
+                    // one entry per SLOT, keyed by the variant that owns it, so
+                    // inserting a variant next season moves nothing in the text either.
+                    // Slot i holds the key i + 1: nothing is stored for None, so
+                    // nothing is written for it.
+                    o.Put((byte)'{');
+                    bool first = true;
+                    for (int slot = 0; slot < f.ArrayBound; slot++)
+                    {
+                        if (!KeyedSlotValid(f, slot)) { continue; }
+                        if (!first) { o.Put((byte)','); }
+                        first = false;
+                        o.Line(depth + 1);
+                        WriteName(ref o, f.KeyName(KeyedSlotKey(slot)));
+                        o.Text(": ");
+                        if (!WriteScalar(ref o, value, f, slot, depth + 1))
+                        {
+                            return false;
+                        }
+                    }
+                    if (first) { o.Put((byte)'}'); return true; }
+                    o.Line(depth);
+                    o.Put((byte)'}');
+                    return true;
+                }
+                if (f.IsArray)
+                {
+                    int count = Count(value, f);
+                    if (count == 0)
+                    {
+                        o.Text("[]");
+                        return true;
+                    }
+                    o.Put((byte)'[');
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (i > 0) { o.Put((byte)','); }
+                        o.Line(depth + 1);
+                        if (!WriteScalar(ref o, value, f, i, depth + 1))
+                        {
+                            return false;
+                        }
+                    }
+                    o.Line(depth);
+                    o.Put((byte)']');
+                    return true;
+                }
+                return WriteScalar(ref o, value, f, 0, depth);
+            }
+
+            // One instance, every field, in DECLARATION ORDER, defaults included — a
+            // text is for people and tools, and a text that elides is a text a reader
+            // has to know the schema to complete.
+            static bool WriteValue(ref Out o, object value, TableTypeInfo info, int depth)
+            {
+                bool any = false;
+                for (int i = 0; i < info.NumFields; i++)
+                {
+                    TableFieldInfo f = info.Fields[i];
+                    if (f.Guard.Length != 0 && !GuardHolds(value, info, f.Guard)) { continue; }
+                    // an ABSENT optional writes no key: presence of the key IS the
+                    // presence (§16.2), so an absent field is an absent key and nothing
+                    // else would read back as absent
+                    if (f.Optional && !f.GetPresent(value)) { continue; }
+                    if (!any) { o.Put((byte)'{'); }
+                    else { o.Put((byte)','); }
+                    any = true;
+                    o.Line(depth + 1);
+                    WriteName(ref o, f.Json);
+                    o.Text(": ");
+                    if (!WriteField(ref o, value, f, depth + 1)) { return false; }
+                }
+                if (!any)
+                {
+                    o.Text("{}");
+                    return true;
+                }
+                o.Line(depth);
+                o.Put((byte)'}');
+                return true;
+            }
+
+            // ---- reading ----
+
+            // THE READER, and C# forces its shape. The reference holds the text, the
+            // cursor and the report in ONE ref struct over the span. C# refuses to hand
+            // a stackalloc'd buffer to a method that also takes a ref struct BY REF
+            // (CS8350: the callee could store the buffer in it), and this walk needs a
+            // scratch buffer for every key it compares — one per frame in C++, which is
+            // a char[256] there. So the reader is SPLIT: a plain struct carries the
+            // cursor, the report and the malformed flag, and the TEXT rides beside it
+            // as its own ReadOnlySpan parameter. Nothing is copied and nothing is
+            // allocated; the span stays the caller's bytes the whole way down.
+            public struct In
+            {
+                public int Pos;
+                public TableReport Report;
+                public bool Bad; // the text is not JSON: the walk stops and keeps what it placed
+            }
+
+            static void Space(ReadOnlySpan<byte> text, ref In input)
+            {
+                while (input.Pos < text.Length)
+                {
+                    byte c = text[input.Pos];
+                    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { input.Pos++; continue; }
+                    // comments are not JSON, and a walk that guessed at one would be
+                    // reading a dialect nobody wrote down
+                    if (c == '/') { input.Bad = true; }
+                    return;
+                }
+            }
+
+            static byte Peek(ReadOnlySpan<byte> text, ref In input)
+            {
+                Space(text, ref input);
+                return input.Pos < text.Length ? text[input.Pos] : (byte)0;
+            }
+
+            // the shape of the value sitting at the cursor, without consuming it
+            static char ValueShape(ReadOnlySpan<byte> text, ref In input)
+            {
+                byte c = Peek(text, ref input);
+                switch (c)
+                {
+                    case (byte)'{': return 'o';
+                    case (byte)'[': return 'a';
+                    case (byte)'"': return 's';
+                    case (byte)'t': case (byte)'f': return 'b';
+                    case (byte)'n': return 'z';
+                    case 0: return (char)0;
+                    default: return 'n';
+                }
+            }
+
+            static bool Literal(ReadOnlySpan<byte> text, ref In input, string word)
+            {
+                if (input.Pos + word.Length > text.Length) { input.Bad = true; return false; }
+                for (int i = 0; i < word.Length; i++)
+                {
+                    if (text[input.Pos + i] != (byte)word[i]) { input.Bad = true; return false; }
+                }
+                input.Pos += word.Length;
+                return true;
+            }
+
+            // one \uXXXX escape body; -1 when the four hex digits are not there
+            static int Hex4(ReadOnlySpan<byte> text, ref In input)
+            {
+                if (input.Pos + 4 > text.Length) { return -1; }
+                int value = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    byte c = text[input.Pos + i];
+                    int digit;
+                    if (c >= '0' && c <= '9') { digit = c - '0'; }
+                    else if (c >= 'a' && c <= 'f') { digit = c - 'a' + 10; }
+                    else if (c >= 'A' && c <= 'F') { digit = c - 'A' + 10; }
+                    else { return -1; }
+                    value = (value << 4) | digit;
+                }
+                input.Pos += 4;
+                return value;
+            }
+
+            static int EncodeUtf8(uint code, Span<byte> unit)
+            {
+                if (code < 0x80) { unit[0] = (byte)code; return 1; }
+                if (code < 0x800)
+                {
+                    unit[0] = (byte)(0xc0 | (code >> 6));
+                    unit[1] = (byte)(0x80 | (code & 0x3f));
+                    return 2;
+                }
+                if (code < 0x10000)
+                {
+                    unit[0] = (byte)(0xe0 | (code >> 12));
+                    unit[1] = (byte)(0x80 | ((code >> 6) & 0x3f));
+                    unit[2] = (byte)(0x80 | (code & 0x3f));
+                    return 3;
+                }
+                unit[0] = (byte)(0xf0 | (code >> 18));
+                unit[1] = (byte)(0x80 | ((code >> 12) & 0x3f));
+                unit[2] = (byte)(0x80 | ((code >> 6) & 0x3f));
+                unit[3] = (byte)(0x80 | (code & 0x3f));
+                return 4;
+            }
+
+            // Scan one JSON string into the caller's span. Bytes are appended ONE CODE
+            // POINT AT A TIME — an escape's encoding, or a UTF-8 sequence read whole —
+            // so a string longer than the field is clamped AT A CODE POINT BOUNDARY and
+            // never cut through a multi-byte character. Clamping is counted, never
+            // fatal, exactly as it is on the wire (§4). keep false scans past a
+            // string without keeping it, and counts no clamp for what it dropped —
+            // C++'s NULL destination.
+            static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length)
+            {
+                length = 0;
+                if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
+                input.Pos++;
+                int placed = 0;
+                bool clamped = false;
+                Span<byte> unit = stackalloc byte[4];
+                for (;;)
+                {
+                    if (input.Pos >= text.Length) { input.Bad = true; return false; }
+                    byte c = text[input.Pos];
+                    if (c == '"') { input.Pos++; break; }
+                    int unitLength = 0;
+                    if (c == '\\')
+                    {
+                        input.Pos++;
+                        if (input.Pos >= text.Length) { input.Bad = true; return false; }
+                        byte escape = text[input.Pos++];
+                        switch (escape)
+                        {
+                            case (byte)'"': unit[0] = (byte)'"'; unitLength = 1; break;
+                            case (byte)'\\': unit[0] = (byte)'\\'; unitLength = 1; break;
+                            case (byte)'/': unit[0] = (byte)'/'; unitLength = 1; break;
+                            case (byte)'b': unit[0] = (byte)'\b'; unitLength = 1; break;
+                            case (byte)'f': unit[0] = (byte)'\f'; unitLength = 1; break;
+                            case (byte)'n': unit[0] = (byte)'\n'; unitLength = 1; break;
+                            case (byte)'r': unit[0] = (byte)'\r'; unitLength = 1; break;
+                            case (byte)'t': unit[0] = (byte)'\t'; unitLength = 1; break;
+                            case (byte)'u':
+                            {
+                                int high = Hex4(text, ref input);
+                                if (high < 0) { input.Bad = true; return false; }
+                                uint code = (uint)high;
+                                if (high >= 0xd800 && high <= 0xdbff && input.Pos + 2 <= text.Length &&
+                                    text[input.Pos] == '\\' && text[input.Pos + 1] == 'u')
+                                {
+                                    int mark = input.Pos;
+                                    input.Pos += 2;
+                                    int low = Hex4(text, ref input);
+                                    if (low >= 0xdc00 && low <= 0xdfff)
+                                    {
+                                        code = (uint)(0x10000 + (((uint)high - 0xd800) << 10) + ((uint)low - 0xdc00));
+                                    }
+                                    else
+                                    {
+                                        input.Pos = mark; // a lone lead surrogate rides as itself
+                                    }
+                                }
+                                // a surrogate half that never found its partner has no
+                                // UTF-8 encoding: encoding it anyway would manufacture
+                                // CESU-8 — invalid UTF-8 — out of input that was valid
+                                // JSON, so it reads as the replacement character
+                                if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+                                unitLength = EncodeUtf8(code, unit);
+                                break;
+                            }
+                            default: input.Bad = true; return false;
+                        }
+                    }
+                    else if (c < 0x20)
+                    {
+                        input.Bad = true; // a raw control character is not a JSON string body
+                        return false;
+                    }
+                    else
+                    {
+                        // a UTF-8 sequence read WHOLE, so the clamp below can only land
+                        // between code points. Only bytes that ACTUALLY look like
+                        // continuations are taken: the wire imposes no encoding (§3),
+                        // so a string may legitimately hold a stray lead byte, and one
+                        // at the end of a text must not swallow the closing quote.
+                        int want = 1;
+                        if ((c & 0xe0) == 0xc0) { want = 2; }
+                        else if ((c & 0xf0) == 0xe0) { want = 3; }
+                        else if ((c & 0xf8) == 0xf0) { want = 4; }
+                        unit[0] = c;
+                        input.Pos++;
+                        unitLength = 1;
+                        while (unitLength < want && input.Pos < text.Length &&
+                               (text[input.Pos] & 0xc0) == 0x80)
+                        {
+                            unit[unitLength++] = text[input.Pos++];
+                        }
+                    }
+                    if (keep)
+                    {
+                        if (placed + unitLength <= destination.Length)
+                        {
+                            unit.Slice(0, unitLength).CopyTo(destination.Slice(placed, unitLength));
+                            placed += unitLength;
+                        }
+                        else
+                        {
+                            clamped = true;
+                        }
+                    }
+                }
+                if (clamped) { input.Report.Clamped++; }
+                length = placed;
+                return true;
+            }
+
+            // Scan one number, to JSON's OWN grammar (RFC 8259 §6) and not to a run of
+            // number-ish characters:
+            //
+            //     number = [ "-" ] int [ frac ] [ exp ]
+            //     int    = "0" / ( digit1-9 *digit )
+            //     frac   = "." 1*digit
+            //     exp    = ( "e" / "E" ) [ "-" / "+" ] 1*digit
+            //
+            // Scanning the production is what makes a typo in an authoring file a
+            // DIAGNOSTIC rather than a value: "1-2" scans as 1 and leaves "-2" where
+            // the object expects a comma, so the text is malformed — which is what
+            // §16.2 already promises. A permissive scan would hand "1-2" to a digit
+            // loop and report a clamp, and a config pipeline would never hear about it.
+            // Leading "+", leading zeros, ".5" and "3." are not JSON either.
+            static bool WalkNumber(ReadOnlySpan<byte> text, ref In input, out bool integral)
+            {
+                Space(text, ref input);
+                integral = true;
+                if (input.Pos < text.Length && text[input.Pos] == '-') { input.Pos++; }
+                // int: a lone zero, or a non-zero digit and any digits after it
+                if (input.Pos >= text.Length) { return false; }
+                if (text[input.Pos] == '0')
+                {
+                    input.Pos++;
+                }
+                else if (text[input.Pos] >= '1' && text[input.Pos] <= '9')
+                {
+                    while (input.Pos < text.Length && text[input.Pos] >= '0' && text[input.Pos] <= '9') { input.Pos++; }
+                }
+                else
+                {
+                    return false;
+                }
+                // frac
+                if (input.Pos < text.Length && text[input.Pos] == '.')
+                {
+                    input.Pos++;
+                    if (input.Pos >= text.Length || text[input.Pos] < '0' || text[input.Pos] > '9') { return false; }
+                    while (input.Pos < text.Length && text[input.Pos] >= '0' && text[input.Pos] <= '9') { input.Pos++; }
+                    integral = false;
+                }
+                // exp
+                if (input.Pos < text.Length && (text[input.Pos] == 'e' || text[input.Pos] == 'E'))
+                {
+                    input.Pos++;
+                    if (input.Pos < text.Length && (text[input.Pos] == '-' || text[input.Pos] == '+')) { input.Pos++; }
+                    if (input.Pos >= text.Length || text[input.Pos] < '0' || text[input.Pos] > '9') { return false; }
+                    while (input.Pos < text.Length && text[input.Pos] >= '0' && text[input.Pos] <= '9') { input.Pos++; }
+                    integral = false;
+                }
+                return true;
+            }
+
+            // the same production, with the token kept for conversion. The token is
+            // ASCII by that grammar, so it widens into chars a digit at a time and the
+            // conversions below need no encoder.
+            static bool ScanNumber(ReadOnlySpan<byte> text, ref In input, Span<char> token, out int length, out bool integral)
+            {
+                length = 0;
+                Space(text, ref input);
+                int start = input.Pos;
+                if (!WalkNumber(text, ref input, out integral)) { return false; }
+                int count = input.Pos - start;
+                if (count <= 0 || count >= token.Length) { return false; }
+                for (int i = 0; i < count; i++) { token[i] = (char)text[start + i]; }
+                length = count;
+                return true;
+            }
+
+            // the token's exact double, through the runtime's own converter — under the
+            // INVARIANT culture, so the decimal point is always '.' and the walk never
+            // crosses a locale's own
+            static double TokenDouble(ReadOnlySpan<char> token, bool single)
+            {
+                if (single)
+                {
+                    float narrow;
+                    if (!float.TryParse(token, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out narrow))
+                    {
+                        return double.NaN;
+                    }
+                    return narrow;
+                }
+                double value;
+                if (!double.TryParse(token, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out value))
+                {
+                    return double.NaN;
+                }
+                return value;
+            }
+
+            // the token's exact integer, parsed digit by digit so no width and no
+            // locale can move it. Saturation is reported as a clamp, the wire's rule
+            // for a value outside what the reader can hold (§4).
+            static long TokenInteger(ReadOnlySpan<char> token, bool isSigned, out bool saturated)
+            {
+                int i = 0;
+                bool negative = false;
+                if (i < token.Length && (token[i] == '-' || token[i] == '+'))
+                {
+                    negative = token[i] == '-';
+                    i++;
+                }
+                ulong magnitude = 0;
+                bool over = false;
+                for (; i < token.Length; i++)
+                {
+                    ulong digit = (ulong)(token[i] - '0');
+                    if (magnitude > (ulong.MaxValue - digit) / 10) { over = true; break; }
+                    magnitude = magnitude * 10 + digit;
+                }
+                if (!isSigned)
+                {
+                    // -0 IS zero, and clamping it would report an event that did not
+                    // happen; only a real negative magnitude is out of range here
+                    if (negative) { saturated = magnitude != 0; return 0; }
+                    if (over) { saturated = true; return unchecked((long)ulong.MaxValue); }
+                    saturated = false;
+                    return unchecked((long)magnitude);
+                }
+                if (negative)
+                {
+                    if (over || magnitude > (1ul << 63)) { saturated = true; return long.MinValue; }
+                    saturated = false;
+                    if (magnitude == (1ul << 63)) { return long.MinValue; }
+                    return -(long)magnitude;
+                }
+                if (over || magnitude > long.MaxValue) { saturated = true; return long.MaxValue; }
+                saturated = false;
+                return (long)magnitude;
+            }
+
+            static bool SkipContainer(ReadOnlySpan<byte> text, ref In input, byte close, int depth)
+            {
+                if (depth > MaxDepth) { input.Bad = true; return false; }
+                input.Pos++; // the opening bracket
+                for (;;)
+                {
+                    byte c = Peek(text, ref input);
+                    if (c == close) { input.Pos++; return true; }
+                    if (c == 0) { input.Bad = true; return false; }
+                    if (close == '}')
+                    {
+                        int ignored;
+                        if (!ScanString(text, ref input, Span<byte>.Empty, false, out ignored)) { return false; }
+                        if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
+                        input.Pos++;
+                    }
+                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    c = Peek(text, ref input);
+                    if (c == ',') { input.Pos++; continue; }   // a trailing comma is accepted
+                    if (c == close) { input.Pos++; return true; }
+                    input.Bad = true;
+                    return false;
+                }
+            }
+
+            static bool SkipValue(ReadOnlySpan<byte> text, ref In input, int depth)
+            {
+                byte c = Peek(text, ref input);
+                switch (c)
+                {
+                    case (byte)'{': return SkipContainer(text, ref input, (byte)'}', depth);
+                    case (byte)'[': return SkipContainer(text, ref input, (byte)']', depth);
+                    case (byte)'"':
+                    {
+                        int ignored;
+                        return ScanString(text, ref input, Span<byte>.Empty, false, out ignored);
+                    }
+                    case (byte)'t': return Literal(text, ref input, "true");
+                    case (byte)'f': return Literal(text, ref input, "false");
+                    case (byte)'n': return Literal(text, ref input, "null");
+                    case 0: input.Bad = true; return false;
+                    default:
+                    {
+                        // consumed, never converted: skipping needs no buffer, and this
+                        // is the one walk a hostile text drives to the depth cap. It is
+                        // the SAME production the value path scans, so an unknown key
+                        // cannot smuggle past a number a named key would refuse.
+                        bool integral;
+                        if (!WalkNumber(text, ref input, out integral)) { input.Bad = true; return false; }
+                        return true;
+                    }
+                }
+            }
+
+            // compare a scanned UTF-8 key against a descriptor's string. Schema
+            // identifiers are ASCII, so the common case is a byte walk; a json = "key"
+            // that is not falls to the encoder. C++ compares two char* and needs
+            // neither branch.
+            static bool Same(ReadOnlySpan<byte> text, string name)
+            {
+                if (name == null) { return false; }
+                for (int i = 0; i < name.Length; i++)
+                {
+                    char c = name[i];
+                    if (c >= 0x80) { return SameEncoded(text, name); }
+                    if (i >= text.Length || text[i] != (byte)c) { return false; }
+                }
+                return name.Length == text.Length;
+            }
+
+            static bool SameEncoded(ReadOnlySpan<byte> text, string name)
+            {
+                Span<byte> encoded = stackalloc byte[MaxKey];
+                int n = System.Text.Encoding.UTF8.GetByteCount(name);
+                if (n > encoded.Length) { return false; }
+                System.Text.Encoding.UTF8.GetBytes(name.AsSpan(), encoded);
+                return text.SequenceEqual(encoded.Slice(0, n));
+            }
+
+            // place one scalar at one storage slot
+            static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
+            {
+                if (f.Arms != null)
+                {
+                    // a union is an object with ONE key, the arm's name; {} is None,
+                    // and two keys is a text this walk will not guess at
+                    object union = f.GetChild(owner, index);
+                    if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                    input.Pos++;
+                    f.Arms.SetTag(union, 0);
+                    if (Peek(text, ref input) == '}') { input.Pos++; return true; }
+                    Span<byte> key = stackalloc byte[MaxKey];
+                    int keyLength;
+                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
+                    input.Pos++;
+                    int tag = 0;
+                    for (int t = 1; t <= f.EnumMax; t++)
+                    {
+                        if (Same(key.Slice(0, keyLength), f.EnumName((ulong)t))) { tag = t; break; }
+                    }
+                    if (tag == 0)
+                    {
+                        input.Report.Unknown++;
+                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    }
+                    else
+                    {
+                        object payload = f.Arms.Arms[tag].Payload(union);
+                        TableTypeInfo arm = f.Arms.Arms[tag].Table;
+                        arm.Reset(payload);
+                        if (!ReadTable(text, ref input, payload, arm, depth + 1)) { return false; }
+                        f.Arms.SetTag(union, (ulong)tag);
+                    }
+                    byte c = Peek(text, ref input);
+                    if (c == ',') { input.Pos++; c = Peek(text, ref input); }
+                    if (c == '}') { input.Pos++; return true; }
+                    input.Bad = true; // a second key: a one-of with two arms is not a value
+                    return false;
+                }
+                if (f.Kind == 13)
+                {
+                    object child = f.GetChild(owner, index);
+                    f.Table.Reset(child);
+                    return ReadTable(text, ref input, child, f.Table, depth + 1);
+                }
+                if (IsEnum(f))
+                {
+                    Span<byte> name = stackalloc byte[MaxKey];
+                    int nameLength;
+                    if (!ScanString(text, ref input, name, true, out nameLength)) { return false; }
+                    for (int v = 0; v <= f.EnumMax; v++)
+                    {
+                        if (Same(name.Slice(0, nameLength), f.EnumName((ulong)v)))
+                        {
+                            f.SetRaw(owner, index, (ulong)v);
+                            return true;
+                        }
+                    }
+                    // a name this build cannot name reads as None and counts as
+                    // unknown, exactly as an unknown variant id does on the wire (§4)
+                    f.SetRaw(owner, index, 0);
+                    input.Report.Unknown++;
+                    return true;
+                }
+                if (IsFlags(f))
+                {
+                    if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
+                    input.Pos++;
+                    ulong bits = 0;
+                    for (;;)
+                    {
+                        byte c = Peek(text, ref input);
+                        if (c == ']') { input.Pos++; break; }
+                        if (c == 0) { input.Bad = true; return false; }
+                        if (c != '"')
+                        {
+                            input.Report.KindMismatch++;
+                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        }
+                        else
+                        {
+                            Span<byte> name = stackalloc byte[MaxKey];
+                            int nameLength;
+                            if (!ScanString(text, ref input, name, true, out nameLength)) { return false; }
+                            bool found = false;
+                            for (int bit = 0; bit <= f.EnumMax; bit++)
+                            {
+                                if (Same(name.Slice(0, nameLength), f.EnumName((ulong)bit)))
+                                {
+                                    bits |= 1ul << bit;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) { input.Report.Unknown++; }
+                        }
+                        c = Peek(text, ref input);
+                        if (c == ',') { input.Pos++; continue; }
+                        if (c == ']') { input.Pos++; break; }
+                        input.Bad = true;
+                        return false;
+                    }
+                    f.SetRaw(owner, index, bits);
+                    return true;
+                }
+                if (f.Kind == 1)
+                {
+                    byte b = Peek(text, ref input);
+                    if (b == 't') { if (!Literal(text, ref input, "true")) { return false; } f.SetRaw(owner, index, 1); return true; }
+                    if (!Literal(text, ref input, "false")) { return false; }
+                    f.SetRaw(owner, index, 0);
+                    return true;
+                }
+                Span<char> token = stackalloc char[MaxNumber];
+                int length;
+                bool tokenIntegral;
+                if (!ScanNumber(text, ref input, token, out length, out tokenIntegral))
+                {
+                    input.Bad = true;
+                    return false;
+                }
+                if (f.Kind == 10 || f.Kind == 11)
+                {
+                    bool single = f.Kind == 10;
+                    double value = TokenDouble(token.Slice(0, length), single);
+                    // A magnitude the field's format cannot hold is the WRONG SHAPE for
+                    // the kind, and it never reaches storage: 1e400 is not a float64
+                    // and 1e300 is not a float32. Storing the infinity the conversion
+                    // produced would leave an instance this walk called CLEAN that
+                    // ToJsonMeasure then refuses forever (a non-finite float has no
+                    // JSON spelling), and §16.1's one invariant is that a text which
+                    // reads clean writes back.
+                    if (!Finite(value))
+                    {
+                        input.Report.KindMismatch++;
+                        return true;
+                    }
+                    if (f.HasRange)
+                    {
+                        if (value < f.RangeMin) { value = f.RangeMin; input.Report.Clamped++; }
+                        else if (value > f.RangeMax) { value = f.RangeMax; input.Report.Clamped++; }
+                    }
+                    if (single)
+                    {
+                        float narrow = (float)value;
+                        if (!Finite(narrow))
+                        {
+                            input.Report.KindMismatch++;
+                            return true;
+                        }
+                        f.SetRaw(owner, index, TableFloatToBits(narrow));
+                    }
+                    else
+                    {
+                        f.SetRaw(owner, index, TableDoubleToBits(value));
+                    }
+                    return true;
+                }
+                // JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
+                // library that round-trips numbers through a double emits them that
+                // way — this walker's own float writer emits 1e+21. So an integer field
+                // takes any number whose VALUE is integral, however it was spelled;
+                // only a genuinely fractional value is the wrong shape for it.
+                bool isSigned = f.Kind >= 2 && f.Kind <= 5;
+                bool saturated = false;
+                long value2 = 0;
+                if (tokenIntegral)
+                {
+                    value2 = TokenInteger(token.Slice(0, length), isSigned, out saturated);
+                }
+                else
+                {
+                    double d = TokenDouble(token.Slice(0, length), false);
+                    if (!Finite(d))
+                    {
+                        input.Report.KindMismatch++;
+                        return true;
+                    }
+                    if (isSigned)
+                    {
+                        if (d >= 9223372036854775808.0) { value2 = long.MaxValue; saturated = true; }
+                        else if (d < -9223372036854775808.0) { value2 = long.MinValue; saturated = true; }
+                        else if (d != (double)(long)d) { input.Report.KindMismatch++; return true; }
+                        else { value2 = (long)d; }
+                    }
+                    else
+                    {
+                        if (d < 0.0)
+                        {
+                            // a negative for an unsigned field clamps to zero, as the
+                            // exact digit path already does
+                            if (d != (double)(long)d) { input.Report.KindMismatch++; return true; }
+                            value2 = 0;
+                            saturated = true;
+                        }
+                        else if (d >= 18446744073709551616.0) { value2 = unchecked((long)ulong.MaxValue); saturated = true; }
+                        else if (d != (double)(ulong)d) { input.Report.KindMismatch++; return true; }
+                        else { value2 = unchecked((long)(ulong)d); }
+                    }
+                }
+                if (saturated) { input.Report.Clamped++; }
+                if (f.HasRange)
+                {
+                    if ((double)value2 < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
+                    else if ((double)value2 > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
+                }
+                // the field's own storage width is the last bound: a value past it
+                // clamps rather than wrapping, which is what the wire does too
+                if (f.ElemWidth < 8)
+                {
+                    if (isSigned)
+                    {
+                        long high = (1L << (f.ElemWidth * 8 - 1)) - 1;
+                        long low = -high - 1;
+                        if (value2 > high) { value2 = high; input.Report.Clamped++; }
+                        else if (value2 < low) { value2 = low; input.Report.Clamped++; }
+                    }
+                    else
+                    {
+                        ulong high = (1ul << (f.ElemWidth * 8)) - 1;
+                        if (value2 < 0) { value2 = 0; input.Report.Clamped++; }
+                        else if ((ulong)value2 > high) { value2 = (long)high; input.Report.Clamped++; }
+                    }
+                }
+                // at eight bytes the storage IS the parser's width, and an unsigned
+                // value past long.MaxValue rides here as a negative long by design —
+                // the token parser already turned a NEGATIVE token for an unsigned
+                // field into a clamped zero, so there is nothing left to bound.
+                f.SetRaw(owner, index, unchecked((ulong)value2));
+                return true;
+            }
+
+            // put one array field's every slot back at its declared defaults. A table
+            // element's defaults are its own (the reset hook); every other element
+            // kind's storage default is zero, which is what the generated array
+            // declares. There is no union arm here because an ARRAY OF UNIONS is
+            // refused by name (docs/SPEC-TABLES.md §11).
+            static void ResetSlots(object value, TableFieldInfo f)
+            {
+                for (int i = 0; i < f.ArrayBound; i++)
+                {
+                    if (f.Kind == 13) { f.Table.Reset(f.GetChild(value, i)); }
+                    else { f.SetRaw(value, i, 0); }
+                }
+            }
+
+            static bool ReadField(ReadOnlySpan<byte> text, ref In input, object value, TableFieldInfo f, int depth)
+            {
+                if (f.Kind == 12)
+                {
+                    byte[] storage = f.GetBuffer(value);
+                    int length;
+                    if (!ScanString(text, ref input, new Span<byte>(storage, 0, f.ArrayBound), true, out length)) { return false; }
+                    PutCount(value, f, length);
+                    return true;
+                }
+                if (IsBytes(f))
+                {
+                    // base64 decodes STRAIGHT INTO the field's storage, six bits at a
+                    // time — no window, no temporary, so a bytes(N) of any declared
+                    // extent reads the same way. A base64 body carries no escapes, so a
+                    // backslash in one is simply not an alphabet character.
+                    if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
+                    input.Pos++;
+                    byte[] storage = f.GetBuffer(value);
+                    Array.Clear(storage, 0, f.ArrayBound);
+                    PutCount(value, f, 0);
+                    int placed = 0;
+                    uint accumulator = 0;
+                    int held = 0;
+                    bool clamped = false;
+                    bool malformed = false;
+                    for (;;)
+                    {
+                        if (input.Pos >= text.Length) { input.Bad = true; return false; }
+                        byte c = text[input.Pos++];
+                        if (c == '"') { break; }
+                        if (c == '=' || malformed) { continue; }
+                        int at = Base64Alphabet.IndexOf((char)c);
+                        if (at < 0) { malformed = true; continue; }
+                        accumulator = (accumulator << 6) | (uint)at;
+                        held += 6;
+                        if (held >= 8)
+                        {
+                            held -= 8;
+                            if (placed < f.ArrayBound)
+                            {
+                                storage[placed++] = (byte)((accumulator >> held) & 0xff);
+                            }
+                            else
+                            {
+                                clamped = true;
+                            }
+                        }
+                    }
+                    if (malformed)
+                    {
+                        // a body that is not base64 is the wrong shape for the kind:
+                        // the field keeps its default and the event is counted
+                        input.Report.KindMismatch++;
+                        return true;
+                    }
+                    if (clamped) { input.Report.Clamped++; }
+                    PutCount(value, f, placed);
+                    return true;
+                }
+                if (IsKeyed(f))
+                {
+                    if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                    input.Pos++;
+                    // every slot back to its declared defaults first, so a key the text
+                    // omits keeps them and a repeated field key cannot leave an earlier
+                    // occurrence's slots standing
+                    ResetSlots(value, f);
+                    char shape = ElementShape(f);
+                    // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a
+                    // duplicate key like any other, last-wins and counted (§16.2).
+                    // Tracked the way a table's own field keys are — a bounded,
+                    // allocation-free bitmask; a vocabulary wider than this still
+                    // reads, its repeats simply stop being counted.
+                    Span<ulong> seen = stackalloc ulong[8];
+                    seen.Clear();
+                    for (;;)
+                    {
+                        byte c = Peek(text, ref input);
+                        if (c == '}') { input.Pos++; break; }
+                        if (c == 0) { input.Bad = true; return false; }
+                        Span<byte> key = stackalloc byte[MaxKey];
+                        int keyLength;
+                        if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                        if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
+                        input.Pos++;
+                        int slot = -1;
+                        for (int v = 0; v < f.ArrayBound; v++)
+                        {
+                            // nothing is stored for None, so "None" finds no slot and
+                            // is an unknown key like any other name this reader cannot
+                            // place
+                            if (!KeyedSlotValid(f, v)) { continue; }
+                            if (Same(key.Slice(0, keyLength), f.KeyName(KeyedSlotKey(v)))) { slot = v; break; }
+                        }
+                        if (slot >= 0 && slot < 512)
+                        {
+                            ulong bit = 1ul << (slot & 63);
+                            if ((seen[slot >> 6] & bit) != 0) { input.Report.Duplicate++; }
+                            seen[slot >> 6] |= bit;
+                        }
+                        if (slot < 0)
+                        {
+                            input.Report.Unknown++;
+                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        }
+                        else if (ValueShape(text, ref input) != shape)
+                        {
+                            input.Report.KindMismatch++;
+                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        }
+                        else if (!ReadScalar(text, ref input, value, f, slot, depth + 1))
+                        {
+                            return false;
+                        }
+                        c = Peek(text, ref input);
+                        if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
+                        if (c == '}') { input.Pos++; break; }
+                        input.Bad = true;
+                        return false;
+                    }
+                    return true;
+                }
+                if (f.IsArray)
+                {
+                    if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
+                    input.Pos++;
+                    // LAST WINS has to be true of a repeated ARRAY key too, and it is
+                    // wire-visible: a fixed array writes every slot, so a second,
+                    // shorter occurrence overlaying a prefix would leave the first
+                    // occurrence's tail standing. The field goes back to its declared
+                    // defaults before this occurrence's elements are placed — the
+                    // re-establishment a nested table and a union arm already get.
+                    ResetSlots(value, f);
+                    PutCount(value, f, 0);
+                    int placed = 0;
+                    char shape = ElementShape(f);
+                    for (;;)
+                    {
+                        byte c = Peek(text, ref input);
+                        if (c == ']') { input.Pos++; break; }
+                        if (c == 0) { input.Bad = true; return false; }
+                        if (placed >= f.ArrayBound)
+                        {
+                            // more elements than the reader's bound: the bounded prefix
+                            // is kept and the excess counts, the wire's rule (§4)
+                            input.Report.Clamped++;
+                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        }
+                        else if (ValueShape(text, ref input) != shape)
+                        {
+                            input.Report.KindMismatch++;
+                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            placed++;
+                        }
+                        else
+                        {
+                            if (!ReadScalar(text, ref input, value, f, placed, depth + 1)) { return false; }
+                            placed++;
+                        }
+                        c = Peek(text, ref input);
+                        if (c == ',') { input.Pos++; continue; }
+                        if (c == ']') { input.Pos++; break; }
+                        input.Bad = true;
+                        return false;
+                    }
+                    // a fixed array's tail keeps the defaults the prefill left there,
+                    // exactly as a short wire count does
+                    PutCount(value, f, placed);
+                    return true;
+                }
+                return ReadScalar(text, ref input, value, f, 0, depth);
+            }
+
+            // ONE table object: keys are field keys, unknown ones are skipped and
+            // counted, a repeated key is last-wins and counted. The instance is already
+            // at its declared defaults when this is entered, so a key the text never
+            // mentions keeps the default an absent field takes on the wire (§4).
+            static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth)
+            {
+                if (depth > MaxDepth) { input.Bad = true; return false; }
+                if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                input.Pos++;
+                // duplicate tracking, bounded and allocation-free: a table with more
+                // fields than this still reads, its repeats simply stop being counted
+                Span<ulong> seen = stackalloc ulong[8];
+                seen.Clear();
+                for (;;)
+                {
+                    byte c = Peek(text, ref input);
+                    if (c == '}') { input.Pos++; return true; }
+                    if (c == 0) { input.Bad = true; return false; }
+                    Span<byte> key = stackalloc byte[MaxKey];
+                    int keyLength;
+                    if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
+                    if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
+                    input.Pos++;
+                    int index = -1;
+                    for (int i = 0; i < info.NumFields; i++)
+                    {
+                        if (Same(key.Slice(0, keyLength), info.Fields[i].Json)) { index = i; break; }
+                    }
+                    if (index < 0)
+                    {
+                        input.Report.Unknown++;
+                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    }
+                    else
+                    {
+                        TableFieldInfo f = info.Fields[index];
+                        if (index < 512)
+                        {
+                            ulong bit = 1ul << (index & 63);
+                            if ((seen[index >> 6] & bit) != 0) { input.Report.Duplicate++; }
+                            seen[index >> 6] |= bit;
+                        }
+                        // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this
+                        // line is the key being present, so an optional is set present
+                        // whatever its value — with one exception the page names: a
+                        // JSON null, which reads as ABSENT rather than as a value.
+                        char got = ValueShape(text, ref input);
+                        if (f.Optional && got == 'z')
+                        {
+                            if (!Literal(text, ref input, "null")) { return false; }
+                            // absent, and back at its defaults: a repeated key whose
+                            // last occurrence is null must not leave an earlier value
+                            // standing
+                            if (f.Table != null) { f.Table.Reset(f.GetChild(value, 0)); }
+                            else { f.SetRaw(value, 0, 0); }
+                            f.SetPresent(value, false);
+                        }
+                        else
+                        {
+                            if (got != Shape(f))
+                            {
+                                // the wrong JSON type for the kind: skipped, never
+                                // coerced
+                                input.Report.KindMismatch++;
+                                if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            }
+                            else if (!ReadField(text, ref input, value, f, depth))
+                            {
+                                return false;
+                            }
+                            if (f.Optional)
+                            {
+                                f.SetPresent(value, true);
+                            }
+                        }
+                    }
+                    c = Peek(text, ref input);
+                    if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
+                    if (c == '}') { input.Pos++; return true; }
+                    input.Bad = true;
+                    return false;
+                }
+            }
+
+            // ---- the two entry points the per-table wrappers name ----
+
+            public static bool Read(object value, TableTypeInfo info, ReadOnlySpan<byte> text, TableReport report)
+            {
+                In input = new In();
+                input.Pos = 0;
+                // a caller with no report is off the read path this section prices: it
+                // gets one rather than a branch on every counter
+                input.Report = report != null ? report : new TableReport();
+                input.Bad = false;
+                info.Reset(value);
+                // C++ refuses a null pointer and a negative length here before it walks.
+                // A span is neither: an empty one is a text with no object in it, which
+                // the walk below already calls malformed, so there is nothing to check
+                // that the walk does not answer.
+                bool ok = ReadTable(text, ref input, value, info, 0);
+                if (ok)
+                {
+                    // the canonical text ends with ONE newline and a text without one
+                    // is the same text: whitespace after the object is skipped either
+                    // way, and anything else is trailing rubbish rather than one text
+                    Space(text, ref input);
+                    if (input.Pos != text.Length) { input.Bad = true; }
+                }
+                if (input.Bad || !ok)
+                {
+                    input.Report.Malformed = true;
+                    return false;
+                }
+                return true;
+            }
+
+            public static long Write(object value, TableTypeInfo info, Span<byte> buffer, bool measuring)
+            {
+                Out o = new Out();
+                o.Buffer = buffer;
+                o.Measuring = measuring;
+                o.Offset = 0;
+                o.Overflow = false;
+                if (!WriteValue(ref o, value, info, 0)) { return -1; }
+                // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every
+                // writer emits it — this one, the C++ walk and schema unpack — and
+                // every reader accepts a text with or without.
+                o.Put((byte)'\n');
+                if (o.Overflow) { return -1; }
+                return o.Offset;
+            }
+        }
+        // ---- json walk: end ----
         // TableWeapon on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
         // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
@@ -2186,21 +3971,22 @@ namespace Benchtable
             info.NumFields = 14;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "entity_id", TypeName = "bits(12)", Id = 0x5a13, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "pos_x", TypeName = "int32", Id = 0xaaa3, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -16383.0, RangeMax = 16383.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "pos_y", TypeName = "int32", Id = 0xa5cc, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -16383.0, RangeMax = 16383.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "pos_z", TypeName = "int32", Id = 0xa985, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -16383.0, RangeMax = 16383.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "yaw", TypeName = "bits(9)", Id = 0x80c1, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "pitch", TypeName = "bits(9)", Id = 0xf783, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "vel_x", TypeName = "int32", Id = 0x03e2, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -2048.0, RangeMax = 2047.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "vel_y", TypeName = "int32", Id = 0x0151, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -2048.0, RangeMax = 2047.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "vel_z", TypeName = "int32", Id = 0x0e88, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -2048.0, RangeMax = 2047.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "health", TypeName = "int32", Id = 0x8617, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "weapon", TypeName = "TableWeapon", Id = 0x4f72, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 15, EnumName = delegate(ulong v) { return EnumNameTableWeapon(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((TableWeapon)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "damage", TypeName = "TableDamage", Id = 0x15a9, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "moving", TypeName = "bool", Id = 0xa4b2, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "firing", TypeName = "bool", Id = 0x2302, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "entity_id", Json = "entity_id", TypeName = "bits(12)", Id = 0x5a13, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4095.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableEntity)o).EntityId; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).EntityId = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "pos_x", Json = "pos_x", TypeName = "int32", Id = 0xaaa3, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -16383.0, RangeMax = 16383.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableEntity)o).PosX; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).PosX = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "pos_y", Json = "pos_y", TypeName = "int32", Id = 0xa5cc, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -16383.0, RangeMax = 16383.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableEntity)o).PosY; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).PosY = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "pos_z", Json = "pos_z", TypeName = "int32", Id = 0xa985, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -16383.0, RangeMax = 16383.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableEntity)o).PosZ; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).PosZ = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "yaw", Json = "yaw", TypeName = "bits(9)", Id = 0x80c1, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 511.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableEntity)o).Yaw; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).Yaw = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "pitch", Json = "pitch", TypeName = "bits(9)", Id = 0xf783, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 511.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableEntity)o).Pitch; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).Pitch = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "vel_x", Json = "vel_x", TypeName = "int32", Id = 0x03e2, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2048.0, RangeMax = 2047.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableEntity)o).VelX; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).VelX = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "vel_y", Json = "vel_y", TypeName = "int32", Id = 0x0151, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2048.0, RangeMax = 2047.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableEntity)o).VelY; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).VelY = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "vel_z", Json = "vel_z", TypeName = "int32", Id = 0x0e88, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -2048.0, RangeMax = 2047.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableEntity)o).VelZ; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).VelZ = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "health", Json = "health", TypeName = "int32", Id = 0x8617, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1000.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableEntity)o).Health; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).Health = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "weapon", Json = "weapon", TypeName = "TableWeapon", Id = 0x4f72, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 15, EnumName = delegate(ulong v) { return EnumNameTableWeapon(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((TableWeapon)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableEntity)o).Weapon; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).Weapon = unchecked((TableWeapon)r); } },
+                new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "TableDamage", Id = 0x15a9, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 7, EnumName = delegate(ulong v) { return FlagNameTableDamage((int)v); }, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return ((TableEntity)o).Damage; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).Damage = r; } },
+                new TableFieldInfo { Name = "moving", Json = "moving", TypeName = "bool", Id = 0xa4b2, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return ((TableEntity)o).Moving ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).Moving = r != 0; } },
+                new TableFieldInfo { Name = "firing", Json = "firing", TypeName = "bool", Id = 0x2302, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return ((TableEntity)o).Firing ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((TableEntity)o).Firing = r != 0; } },
             };
+            info.Reset = delegate(object o) { TableReset((TableEntity)o); };
             TableEntityTableInfo = info;
             return info;
         }
@@ -2215,9 +4001,10 @@ namespace Benchtable
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "stat_id", TypeName = "bits(8)", Id = 0xfb6c, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "delta", TypeName = "int32", Id = 0x1720, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -512.0, RangeMax = 511.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "stat_id", Json = "stat_id", TypeName = "bits(8)", Id = 0xfb6c, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableStat)o).StatId; }, SetRaw = delegate(object o, int i, ulong r) { ((TableStat)o).StatId = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "delta", Json = "delta", TypeName = "int32", Id = 0x1720, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -512.0, RangeMax = 511.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableStat)o).Delta; }, SetRaw = delegate(object o, int i, ulong r) { ((TableStat)o).Delta = unchecked((int)(long)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((TableStat)o); };
             TableStatTableInfo = info;
             return info;
         }
@@ -2232,35 +4019,36 @@ namespace Benchtable
             info.NumFields = 28;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "protocol_magic", TypeName = "uint16", Id = 0xae30, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "sequence", TypeName = "bits(16)", Id = 0xd32b, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "ack_sequence", TypeName = "int32", Id = 0x3363, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "ack_bits", TypeName = "bits(32)", Id = 0xebb9, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "session_id", TypeName = "uint64", Id = 0x8790, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "client_id", TypeName = "uint32", Id = 0xd443, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "nonce", TypeName = "uint64", Id = 0x80f0, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 1.0, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "world_time", TypeName = "int64", Id = 0x77f2, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -1e+12, RangeMax = 1e+12, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "frame_tick", TypeName = "bits(48)", Id = 0xcbc2, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "server_time", TypeName = "float32", Id = 0x27f9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "entities", TypeName = "TableEntity", Id = 0x25e3, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return TableEntityTableType(); } },
-                new TableFieldInfo { Name = "stats", TypeName = "TableStat", Id = 0x76dd, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 80, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return TableStatTableType(); } },
-                new TableFieldInfo { Name = "game_event", TypeName = "TableEvent", Id = 0xa17e, Kind = 15, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { switch (v) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, VariantId = delegate(ulong v) { switch (v) { case 0: return (ushort)0; case 1: return (ushort)0xba78; case 2: return (ushort)0x5be0; case 3: return (ushort)0x99dd; default: return (ushort)0; } }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "loadout", TypeName = "uint8", Id = 0x9f78, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "player_name", TypeName = "string", Id = 0x2d3e, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "payload", TypeName = "bytes", Id = 0x44aa, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 16, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "aim_x", TypeName = "float32", Id = 0x84e9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "aim_y", TypeName = "float32", Id = 0x8d96, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "aim_z", TypeName = "float32", Id = 0x8e03, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "recoil", TypeName = "float32", Id = 0x2d04, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "drift", TypeName = "float64", Id = 0xc023, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "wide_key", TypeName = "uint64", Id = 0x272f, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "flux", TypeName = "int64", Id = 0x196a, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = -1e+18, RangeMax = 1e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "ping", TypeName = "float32", Id = 0xe6d4, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 250.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "crc_hint", TypeName = "bits(24)", Id = 0xd3dc, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "has_extra", TypeName = "bool", Id = 0xb023, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "extra", TypeName = "int32", Id = 0xb579, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "has_extra", TableRef = null },
-                new TableFieldInfo { Name = "idle_ticks", TypeName = "int32", Id = 0x9555, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 15.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "!has_extra", TableRef = null },
+                new TableFieldInfo { Name = "protocol_magic", Json = "protocol_magic", TypeName = "uint16", Id = 0xae30, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).ProtocolMagic; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).ProtocolMagic = unchecked((ushort)r); } },
+                new TableFieldInfo { Name = "sequence", Json = "sequence", TypeName = "bits(16)", Id = 0xd32b, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).Sequence; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).Sequence = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "ack_sequence", Json = "ack_sequence", TypeName = "int32", Id = 0x3363, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableMixed)o).AckSequence; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).AckSequence = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "ack_bits", Json = "ack_bits", TypeName = "bits(32)", Id = 0xebb9, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4.294967295e+09, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).AckBits; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).AckBits = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "session_id", Json = "session_id", TypeName = "uint64", Id = 0x8790, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).SessionId; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).SessionId = unchecked((ulong)r); } },
+                new TableFieldInfo { Name = "client_id", Json = "client_id", TypeName = "uint32", Id = 0xd443, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).ClientId; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).ClientId = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "nonce", Json = "nonce", TypeName = "uint64", Id = 0x80f0, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 1.0, RangeMax = 9.223372036854776e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).Nonce; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).Nonce = unchecked((ulong)r); } },
+                new TableFieldInfo { Name = "world_time", Json = "world_time", TypeName = "int64", Id = 0x77f2, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -1e+12, RangeMax = 1e+12, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableMixed)o).WorldTime; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).WorldTime = unchecked((long)(long)r); } },
+                new TableFieldInfo { Name = "frame_tick", Json = "frame_tick", TypeName = "bits(48)", Id = 0xcbc2, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 2.81474976710655e+14, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).FrameTick; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).FrameTick = unchecked((ulong)r); } },
+                new TableFieldInfo { Name = "server_time", Json = "server_time", TypeName = "float32", Id = 0x27f9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TableMixed)o).ServerTime); }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).ServerTime = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "entities", Json = "entities", TypeName = "TableEntity", Id = 0x25e3, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 8, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return TableEntityTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((TableMixed)o).Entities[i]; }, GetCount = delegate(object o) { return ((TableMixed)o).EntitiesCount; }, SetCount = delegate(object o, int n) { ((TableMixed)o).EntitiesCount = n; } },
+                new TableFieldInfo { Name = "stats", Json = "stats", TypeName = "TableStat", Id = 0x76dd, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 80, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return TableStatTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((TableMixed)o).Stats[i]; }, GetCount = delegate(object o) { return ((TableMixed)o).StatsCount; }, SetCount = delegate(object o, int n) { ((TableMixed)o).StatsCount = n; } },
+                new TableFieldInfo { Name = "game_event", Json = "game_event", TypeName = "TableEvent", Id = 0xa17e, Kind = 15, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { switch (v) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, VariantId = delegate(ulong v) { switch (v) { case 0: return (ushort)0; case 1: return (ushort)0xba78; case 2: return (ushort)0x5be0; case 3: return (ushort)0x99dd; default: return (ushort)0; } }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((TableEvent)o).Type; }, SetTag = delegate(object o, ulong t) { ((TableEvent)o).Type = unchecked((TableEventType)t); }, Arms = new TableUnionArmInfo[] { new TableUnionArmInfo(), new TableUnionArmInfo { TableRef = delegate { return TableHitEventTableType(); }, Payload = delegate(object o) { return ((TableEvent)o).Hit; } }, new TableUnionArmInfo { TableRef = delegate { return TableChatEventTableType(); }, Payload = delegate(object o) { return ((TableEvent)o).Chat; } }, new TableUnionArmInfo { TableRef = delegate { return TablePickupEventTableType(); }, Payload = delegate(object o) { return ((TableEvent)o).Pickup; } } } }, GetChild = delegate(object o, int i) { return ((TableMixed)o).GameEvent; } },
+                new TableFieldInfo { Name = "loadout", Json = "loadout", TypeName = "uint8", Id = 0x9f78, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).Loadout[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).Loadout[i] = unchecked((byte)r); } },
+                new TableFieldInfo { Name = "player_name", Json = "player_name", TypeName = "string", Id = 0x2d3e, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetBuffer = delegate(object o) { return ((TableMixed)o).PlayerName; }, GetCount = delegate(object o) { return ((TableMixed)o).PlayerNameLength; }, SetCount = delegate(object o, int n) { ((TableMixed)o).PlayerNameLength = n; } },
+                new TableFieldInfo { Name = "payload", Json = "payload", TypeName = "bytes", Id = 0x44aa, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetBuffer = delegate(object o) { return ((TableMixed)o).Payload; }, GetCount = delegate(object o) { return ((TableMixed)o).PayloadLength; }, SetCount = delegate(object o, int n) { ((TableMixed)o).PayloadLength = n; } },
+                new TableFieldInfo { Name = "aim_x", Json = "aim_x", TypeName = "float32", Id = 0x84e9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TableMixed)o).AimX); }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).AimX = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "aim_y", Json = "aim_y", TypeName = "float32", Id = 0x8d96, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TableMixed)o).AimY); }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).AimY = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "aim_z", Json = "aim_z", TypeName = "float32", Id = 0x8e03, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TableMixed)o).AimZ); }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).AimZ = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "recoil", Json = "recoil", TypeName = "float32", Id = 0x2d04, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TableMixed)o).Recoil); }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).Recoil = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "drift", Json = "drift", TypeName = "float64", Id = 0xc023, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return TableDoubleToBits(((TableMixed)o).Drift); }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).Drift = TableBitsToDouble(r); } },
+                new TableFieldInfo { Name = "wide_key", Json = "wide_key", TypeName = "uint64", Id = 0x272f, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).WideKey; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).WideKey = unchecked((ulong)r); } },
+                new TableFieldInfo { Name = "flux", Json = "flux", TypeName = "int64", Id = 0x196a, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -1e+18, RangeMax = 1e+18, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableMixed)o).Flux; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).Flux = unchecked((long)(long)r); } },
+                new TableFieldInfo { Name = "ping", Json = "ping", TypeName = "float32", Id = 0xe6d4, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 250.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((TableMixed)o).Ping); }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).Ping = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "crc_hint", Json = "crc_hint", TypeName = "bits(24)", Id = 0xd3dc, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1.6777215e+07, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableMixed)o).CrcHint; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).CrcHint = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "has_extra", Json = "has_extra", TypeName = "bool", Id = 0xb023, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return ((TableMixed)o).HasExtra ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).HasExtra = r != 0; } },
+                new TableFieldInfo { Name = "extra", Json = "extra", TypeName = "int32", Id = 0xb579, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "has_extra", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableMixed)o).Extra; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).Extra = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "idle_ticks", Json = "idle_ticks", TypeName = "int32", Id = 0x9555, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 15.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "!has_extra", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableMixed)o).IdleTicks; }, SetRaw = delegate(object o, int i, ulong r) { ((TableMixed)o).IdleTicks = unchecked((int)(long)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((TableMixed)o); };
             TableMixedTableInfo = info;
             return info;
         }
@@ -2275,11 +4063,12 @@ namespace Benchtable
             info.NumFields = 4;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "target_id", TypeName = "bits(12)", Id = 0xdf6a, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "damage", TypeName = "int32", Id = 0x15a9, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 4095.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "hit_kind", TypeName = "int32", Id = 0xaf83, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 7.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "crit", TypeName = "bool", Id = 0x93d9, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "target_id", Json = "target_id", TypeName = "bits(12)", Id = 0xdf6a, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4095.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableHitEvent)o).TargetId; }, SetRaw = delegate(object o, int i, ulong r) { ((TableHitEvent)o).TargetId = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "int32", Id = 0x15a9, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4095.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableHitEvent)o).Damage; }, SetRaw = delegate(object o, int i, ulong r) { ((TableHitEvent)o).Damage = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "hit_kind", Json = "hit_kind", TypeName = "int32", Id = 0xaf83, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 7.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableHitEvent)o).HitKind; }, SetRaw = delegate(object o, int i, ulong r) { ((TableHitEvent)o).HitKind = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "crit", Json = "crit", TypeName = "bool", Id = 0x93d9, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return ((TableHitEvent)o).Crit ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((TableHitEvent)o).Crit = r != 0; } },
             };
+            info.Reset = delegate(object o) { TableReset((TableHitEvent)o); };
             TableHitEventTableInfo = info;
             return info;
         }
@@ -2294,9 +4083,10 @@ namespace Benchtable
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "channel", TypeName = "int32", Id = 0x7366, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 3.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "speaker", TypeName = "bits(12)", Id = 0xce0b, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "channel", Json = "channel", TypeName = "int32", Id = 0x7366, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 3.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TableChatEvent)o).Channel; }, SetRaw = delegate(object o, int i, ulong r) { ((TableChatEvent)o).Channel = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "speaker", Json = "speaker", TypeName = "bits(12)", Id = 0xce0b, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 4095.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TableChatEvent)o).Speaker; }, SetRaw = delegate(object o, int i, ulong r) { ((TableChatEvent)o).Speaker = unchecked((uint)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((TableChatEvent)o); };
             TableChatEventTableInfo = info;
             return info;
         }
@@ -2311,11 +4101,116 @@ namespace Benchtable
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "item_id", TypeName = "bits(10)", Id = 0xec67, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "amount", TypeName = "int32", Id = 0x39cc, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "item_id", Json = "item_id", TypeName = "bits(10)", Id = 0xec67, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1023.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((TablePickupEvent)o).ItemId; }, SetRaw = delegate(object o, int i, ulong r) { ((TablePickupEvent)o).ItemId = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "amount", Json = "amount", TypeName = "int32", Id = 0x39cc, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((TablePickupEvent)o).Amount; }, SetRaw = delegate(object o, int i, ulong r) { ((TablePickupEvent)o).Amount = unchecked((int)(long)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((TablePickupEvent)o); };
             TablePickupEventTableInfo = info;
             return info;
+        }
+
+        // ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
+
+        // TableEntity in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool TableEntityFromJson(TableEntity value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, TableEntityTableType(), text, report);
+        }
+
+        public static long TableEntityToJsonMeasure(TableEntity value)
+        {
+            return TableJson.Write(value, TableEntityTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long TableEntityToJson(TableEntity value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, TableEntityTableType(), buffer, false);
+        }
+
+        // TableStat in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool TableStatFromJson(TableStat value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, TableStatTableType(), text, report);
+        }
+
+        public static long TableStatToJsonMeasure(TableStat value)
+        {
+            return TableJson.Write(value, TableStatTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long TableStatToJson(TableStat value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, TableStatTableType(), buffer, false);
+        }
+
+        // TableMixed in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool TableMixedFromJson(TableMixed value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, TableMixedTableType(), text, report);
+        }
+
+        public static long TableMixedToJsonMeasure(TableMixed value)
+        {
+            return TableJson.Write(value, TableMixedTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long TableMixedToJson(TableMixed value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, TableMixedTableType(), buffer, false);
+        }
+
+        // TableHitEvent in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool TableHitEventFromJson(TableHitEvent value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, TableHitEventTableType(), text, report);
+        }
+
+        public static long TableHitEventToJsonMeasure(TableHitEvent value)
+        {
+            return TableJson.Write(value, TableHitEventTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long TableHitEventToJson(TableHitEvent value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, TableHitEventTableType(), buffer, false);
+        }
+
+        // TableChatEvent in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool TableChatEventFromJson(TableChatEvent value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, TableChatEventTableType(), text, report);
+        }
+
+        public static long TableChatEventToJsonMeasure(TableChatEvent value)
+        {
+            return TableJson.Write(value, TableChatEventTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long TableChatEventToJson(TableChatEvent value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, TableChatEventTableType(), buffer, false);
+        }
+
+        // TablePickupEvent in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool TablePickupEventFromJson(TablePickupEvent value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, TablePickupEventTableType(), text, report);
+        }
+
+        public static long TablePickupEventToJsonMeasure(TablePickupEvent value)
+        {
+            return TableJson.Write(value, TablePickupEventTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long TablePickupEventToJson(TablePickupEvent value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, TablePickupEventTableType(), buffer, false);
         }
     }
 
