@@ -14,6 +14,14 @@
  * allocated at exactly the claim, so an over-read lands in a redzone rather
  * than in a neighbour.
  *
+ * AND IT WALKS WHAT IT OPENED, which is the whole difference between this and
+ * the shape it started as. An Open validates and POINTS — it reads no row — so
+ * a fuzzer that stopped at the verdict proves the checks never crash and
+ * nothing about whether they are load-bearing: deleting the block reader's
+ * extent guards left the first version of this file GREEN. The walk a consumer
+ * makes is where a guard that stopped guarding reads past the buffer, and
+ * `make tables-c-fuzz-negative-control` is that demonstration, standing.
+ *
  * The extent and the base are fuzzed too, because both are caller facts a file
  * cannot carry: a claim shorter than the file is a truncation, a claim longer
  * is a caller that lied, and an unaligned base is the one pointer fact the
