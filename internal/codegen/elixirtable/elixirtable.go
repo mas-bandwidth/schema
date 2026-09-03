@@ -107,6 +107,23 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 	ns := ir.GoExportName(u.Package)
 
+	// A DECLARATION LOWERS TO A MODULE under the unit's namespace, so one named
+	// for a generated file's module would merge two unrelated modules. The
+	// unit-level runtime names are the CHECKER's claim (internal/tablenames,
+	// docs/SPEC-TABLES.md §11); these three are derived from a schema FILE's own
+	// basename, which no unit-level registry can hold, so they are refused here
+	// — beside the same refusal the packet emitter already makes for <Base>.
+	for decl := range u.DeclFile {
+		for _, suffix := range []string{"Table", "Block", "Cook"} {
+			for _, f := range u.Files {
+				if decl == ir.GoExportName(f.Base)+suffix {
+					return nil, fmt.Errorf("declaration %s collides with the module the Elixir table backend writes for schema file %s.schema (%s.%s%s); rename one (docs/SPEC-TABLES.md §11)",
+						decl, f.Base, ns, ir.GoExportName(f.Base), suffix)
+				}
+			}
+		}
+	}
+
 	if len(refused) == 0 {
 		out[RuntimeModule+".ex"] = runtimeModule(u, ns)
 	}

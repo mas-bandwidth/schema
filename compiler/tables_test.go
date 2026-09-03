@@ -2131,3 +2131,30 @@ func TestElixirRuntimeNameCollisionRepro(t *testing.T) {
 		})
 	}
 }
+
+// TestElixirRefusesFileModuleCollision: a declaration lowers to a MODULE under
+// the unit's namespace, so one named for a generated file's module would merge
+// two unrelated modules. The unit-level runtime names are the checker's claim;
+// these three are derived from a schema FILE's own basename, which no
+// unit-level registry can hold, so the backend refuses them by name.
+func TestElixirRefusesFileModuleCollision(t *testing.T) {
+	c := New()
+	for _, suffix := range []string{"Table", "Block", "Cook"} {
+		t.Run(suffix, func(t *testing.T) {
+			u := unitFromSource(t, tableSrc+"\ntype Probe"+suffix+"\n{\n    x int32\n}\n")
+			_, err := c.Generate(u, "elixir", Options{})
+			if err == nil {
+				t.Fatalf("--lang elixir accepted a declaration named Probe%s — it is the module the "+
+					"backend writes for Probe.schema", suffix)
+			}
+			if !strings.Contains(err.Error(), "Probe"+suffix) || !strings.Contains(err.Error(), "Probe.schema") {
+				t.Errorf("the refusal names neither the declaration nor the file: %v", err)
+			}
+		})
+	}
+	// and the same names in a TABLE-FREE unit are the author's: this backend
+	// emits no such module for one, so nothing collides
+	if _, err := c.Generate(unitFromSource(t, packetSrc+"\ntype ProbeTable\n{\n    x int32\n}\n"), "elixir", Options{}); err != nil {
+		t.Errorf("a TABLE-FREE unit must keep the name ProbeTable: %v", err)
+	}
+}
