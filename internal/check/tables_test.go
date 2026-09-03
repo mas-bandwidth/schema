@@ -130,8 +130,10 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Node { x int32 }\ntype NodePack { y int32 }\n"},
 		{name: "a declaration colliding with the pack sizer", want: "generated TABLE-wire functions",
 			src: "package t\ntable Node { x int32 }\ntype NodePackMeasure { y int32 }\n"},
-		{name: "a declaration colliding with the wire sizing pre-pass", want: "generated TABLE-wire functions",
-			src: "package t\ntable Node { x int32 }\ntype NodeLoadMeasureBody { y int32 }\n"},
+		{name: "a declaration colliding with the numbering walk", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeNumber { y int32 }\n"},
+		{name: "a declaration colliding with a load's type-id dispatch", want: "generated TABLE-wire functions",
+			src: "package t\ntable Node { x int32 }\ntype NodeNodeStorage { y int32 }\n"},
 		{name: "a declaration colliding with the builder load path", want: "generated TABLE-wire functions",
 			src: "package t\ntable Node { x int32 }\ntype NodeLoadBuilder { y int32 }\n"},
 		{name: "a declaration colliding with the cook's read side", want: "generated TABLE-wire functions",
@@ -733,7 +735,7 @@ func TestSpecSection11EqualsTheChecker(t *testing.T) {
 	lines := strings.Split(string(page), "\n")
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if trimmed != "Measure  MeasureBody  Save  SaveBody  Load  LoadBody  Reset" &&
+		if trimmed != "Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody" &&
 			trimmed != "Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen" &&
 			trimmed != "BuilderInit  BuilderShutdown  BuilderLock  BuilderRoot" {
 			continue

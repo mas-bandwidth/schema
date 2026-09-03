@@ -1,8 +1,9 @@
 // P1.schema — the PRE-POINTER side of the pointer evolution pair
 // (docs/SPEC-TABLES.md §3): `link` nests Link BY VALUE, and Link has no `next`.
 // P2 turns the same field into a pointer and gives Link a pointer of its own.
-// A pointer rides with exactly a by-value nesting's framing, so both
-// directions must read.
+// A pointer rides as a NODE INDEX under its own kind (§3.1), so the edit in
+// either direction is a REPORTED kind mismatch and never a silent
+// reinterpretation — which is the whole reason kind 17 is spent.
 package tblp1
 
 table Link

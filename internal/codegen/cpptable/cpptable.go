@@ -47,6 +47,10 @@ const (
 	// positional array body and the keyed one are incompatible, so a reader
 	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
 	tkKeyed = ir.TableKindKeyed
+	// a POINTER field's kind: a u32 NODE INDEX into the flat node table
+	// (docs/SPEC-TABLES.md §3.1), distinct from kind 13 so that an edit between
+	// a by-value nesting and a pointer is an ordinary kind mismatch.
+	tkNodeIndex = ir.TableKindPointer
 )
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
@@ -471,7 +475,7 @@ struct TableReader
         {
             case 1: case 2: case 6: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: return has( 4 ) ? ( offset += 4, true ) : false;
+            case 4: case 8: case 10: case 17: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
             case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
             case 12: case 13: case 14: case 16:
             {

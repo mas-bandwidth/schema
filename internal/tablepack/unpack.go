@@ -55,6 +55,14 @@ func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bo
 	if st == nil {
 		return tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
 	}
+	if err := tablewire.RefuseVariable(m, st); err != nil {
+		// UNPACK refuses the variable class exactly as PACK does (schema#374).
+		// The decode below reads a pointered root correctly — the node table
+		// and all — but the text writer has no spelling for a reference, so
+		// every pointer would reach the page as null with a SILENT report and
+		// no pack to catch it. The refusal comes back before a file is written.
+		return tabletext.Report{}, err
+	}
 	inst := m.New(st)
 	var report tabletext.Report
 	// the refusal comes back BEFORE anything is written: a root this engine

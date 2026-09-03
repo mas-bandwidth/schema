@@ -241,7 +241,7 @@ tables-zero-cost: build/tables-generated/.stamp
 	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
 	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
 	          build/tables-generated/p3/*Table.h; do \
-		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|kTableMaxDepth|TablePack|is_pointer|Builder|PackMeasure|LoadMeasure" $$f; then \
+		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
@@ -2186,6 +2186,116 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
+# UNPACK REFUSES THE VARIABLE CLASS BY NAME (schema#374, docs/SPEC-TABLES.md
+# §16.2), the way PACK always has. The decode reads a pointered root correctly;
+# what has no spelling yet is a REFERENCE in the text, so a text written anyway
+# carries every pointer as null — and because pack refuses the same class, no
+# round trip exists to catch it. Until §16 has the form, the refusal is the
+# whole answer.
+.PHONY: tables-unpack-variable-refusal
+tables-unpack-variable-refusal: bin/schema build/flatwire/tool.wire
+	@rm -rf build/unpack-refusal && mkdir -p build/unpack-refusal
+	@if ./bin/schema unpack --one-file --root Scene --in build/flatwire/tool.wire \
+			build/unpack-refusal tables/pointers > build/unpack-refusal.log 2>&1; then \
+		echo "FAILED: unpack accepted a VARIABLE root"; cat build/unpack-refusal.log; exit 1; \
+	fi
+	@grep -q "VARIABLE-LENGTH" build/unpack-refusal.log || \
+		{ echo "FAILED: unpack refused, but not by name"; cat build/unpack-refusal.log; exit 1; }
+	@test -z "$$(ls -A build/unpack-refusal)" || \
+		{ echo "FAILED: the refusal came back AFTER writing files"; exit 1; }
+	@echo "unpack refusal: a variable root is refused by name, before a file is written"
+
+# ITS NEGATIVE CONTROL: remove the refusal and show what it is standing in front
+# of — a text that does not carry the instance. The wire holds 123 nodes, the
+# tool's own cook of it says so, and the text written without the refusal has a
+# null at every pointer with a SILENT report.
+.PHONY: tables-unpack-variable-refusal-negative-control
+tables-unpack-variable-refusal-negative-control: bin/schema build/flatwire/tool.wire
+	@mkdir -p build
+	@sed -e 's|if err := tablewire.RefuseVariable(m, st); err != nil {|if err := error(nil); err != nil { // SABOTAGED|' \
+		internal/tablepack/unpack.go > build/unpack-no-refusal.gotext
+	@cmp -s build/unpack-no-refusal.gotext internal/tablepack/unpack.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablepack/unpack.go":"%s/build/unpack-no-refusal.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/unpack-no-refusal-overlay.json
+	@go build -overlay=build/unpack-no-refusal-overlay.json -o build/schema-no-refusal ./cmd/schema
+	@rm -rf build/unpack-silent && mkdir -p build/unpack-silent
+	@./build/schema-no-refusal unpack --one-file --root Scene --in build/flatwire/tool.wire --verbose \
+		build/unpack-silent tables/pointers > build/unpack-silent.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: it refused for some OTHER reason"; cat build/unpack-silent.log; exit 1; }
+	@grep -q "silent" build/unpack-silent.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the report was not silent, so the loss was not silent"; exit 1; }
+	@grep -q '"head": null' build/unpack-silent/Scene.json || \
+		{ echo "NEGATIVE CONTROL FAILED: the text carried the graph after all"; exit 1; }
+	@./bin/schema cook --root Scene --in build/flatwire/tool.wire --out build/unpack-silent/check.cook --verbose \
+		tables/pointers | grep -q "123 nodes" || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire does not hold the nodes the text dropped"; exit 1; }
+	@echo "negative control: without the refusal, unpack writes a SILENT report and a text with a null where 122 nodes were"
+
+# THE CROSS-IMPLEMENTATION LOCK for the FLAT NODE TABLE (docs/SPEC-TABLES.md
+# §3.1), and it is what makes TWO implementations of one wire mean something.
+#
+# The compiler's engine (internal/tablewire) and the generated C++ backend were
+# not written from each other. A golden proves each against its own past; this
+# proves each against the OTHER, in both directions, over a graph carrying every
+# shape the numbering has to get right — a shared node named from two places, a
+# chain, a diamond that closes on a node already numbered, a variable table
+# nested by value, and a null in a pointer-shaped slot.
+#
+#   C++ writes -> the TOOL cooks and uncooks it -> byte-identical
+#   the TOOL writes -> C++ loads and re-saves it -> byte-identical
+#
+# The second direction also checks the SIZES: the region bytes and the
+# attribution bytes C++ computes from the framing alone are the data and
+# attribution parts the tool's cook writes.
+.PHONY: tables-flat-wire
+tables-flat-wire: build/tables-generated/.stamp bin/schema test/tables/flatwire_main.cpp
+	@mkdir -p build/flatwire
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/pointers -Itest/tables \
+		test/tables/flatwire_main.cpp -o build/schema_test_flatwire
+	./build/schema_test_flatwire write build/flatwire/cpp.wire
+	./bin/schema cook --root Scene --in build/flatwire/cpp.wire --out build/flatwire/cpp.cook --verbose tables/pointers
+	./bin/schema uncook --root Scene --in build/flatwire/cpp.cook --out build/flatwire/cpp-back.wire tables/pointers
+	cmp build/flatwire/cpp.wire build/flatwire/cpp-back.wire
+	@echo "flat wire: C++ wrote it, the tool read it, and the bytes came back identical"
+	@go build -o build/cookgen ./test/cookgen
+	./build/cookgen --bytes 4096 --root Scene --ref head --chain ListNode --next next --values --out build/flatwire/tool.cook
+	./bin/schema uncook --root Scene --in build/flatwire/tool.cook --out build/flatwire/tool.wire --verbose tables/pointers
+	./build/schema_test_flatwire reload build/flatwire/tool.wire build/flatwire/tool-back.wire
+	cmp build/flatwire/tool.wire build/flatwire/tool-back.wire
+	@echo "flat wire: the tool wrote it, C++ read it, and the bytes came back identical"
+
+# ITS NEGATIVE CONTROL: the numbering is a FIRST-VISIT order, and getting the
+# order wrong is the defect a byte comparison exists to catch. Numbering a
+# node's children before the node itself is a legal-looking walk that produces a
+# different, self-consistent wire — so the C++ side still round-trips its own
+# bytes, and only the CROSS-IMPLEMENTATION comparison goes red.
+.PHONY: tables-flat-wire-negative-control
+tables-flat-wire-negative-control: bin/schema test/tables/flatwire_main.cpp
+	@mkdir -p build/flatwire
+	@sed -e 's|if ( !TableNumberingAppend( numbering, node ) ) { return false; }\\n")|if ( !%sNumber( ctx, numbering, *pointee ) ) { return false; } // SABOTAGED\\n", t)|' \
+	     -e 's|if ( !%sNumber( ctx, numbering, \*pointee ) ) { return false; }\\n", t)|if ( !TableNumberingAppend( numbering, node ) ) { return false; }\\n")|' \
+		internal/codegen/cpptable/pointers.go > build/pointers-postorder.gotext
+	@cmp -s build/pointers-postorder.gotext internal/codegen/cpptable/pointers.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/build/pointers-postorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/pointers-postorder-overlay.json
+	@go build -overlay=build/pointers-postorder-overlay.json -o build/schema-postorder ./cmd/schema
+	@rm -rf build/tables-postorder && mkdir -p build/tables-postorder
+	./build/schema-postorder generate --lang cpp --out build/tables-postorder/pointers tables/pointers
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-postorder/pointers -Itest/tables \
+		test/tables/flatwire_main.cpp -o build/schema_test_flatwire_postorder
+	./build/schema_test_flatwire_postorder write build/flatwire/postorder.wire
+	@if cmp -s build/flatwire/postorder.wire build/flatwire/cpp.wire; then \
+		echo "NEGATIVE CONTROL FAILED: numbering a node AFTER its children moved no byte"; exit 1; \
+	fi
+	@if ./bin/schema cook --root Scene --in build/flatwire/postorder.wire --out build/flatwire/postorder.cook tables/pointers >/dev/null 2>&1 && \
+	    ./bin/schema uncook --root Scene --in build/flatwire/postorder.cook --out build/flatwire/postorder-back.wire tables/pointers >/dev/null 2>&1 && \
+	    cmp -s build/flatwire/postorder.wire build/flatwire/postorder-back.wire; then \
+		echo "NEGATIVE CONTROL FAILED: the tool agreed with a walk that is not first-visit pre-order"; exit 1; \
+	fi
+	@echo "negative control: numbering a node after its children turns the CROSS-IMPLEMENTATION lock red"
+
 # The NEGATIVE CONTROL for the SHARED NODE (docs/SPEC-TABLES.md §6.2). Lock's
 # whole claim is that its walk carries one entry per node, so a node two
 # references name is packed ONCE and both references resolve to it. A pack that
@@ -2193,14 +2303,16 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 # graph is walkable, the region relocates — which is exactly why the defect
 # lived under a green suite until the byte count was measured.
 #
-# It sabotages the EMITTER's identity map into a permanent miss, so every visit
-# is a first visit, and requires THE TABLES SUITE ITSELF to go red. The
-# sabotaged emitter reaches the compiler through `go build -overlay`, so no
-# tracked file is ever written to.
+# It sabotages the EMITTER's identity map so that a CLOSED entry reads as a
+# first visit again — which is exactly the defect, and no more than it: a
+# reference to an OPEN entry is still the cycle it is, so the sabotage removes
+# identity without removing the refusal that keeps the walk terminating. THE
+# TABLES SUITE ITSELF must go red. The sabotaged emitter reaches the compiler
+# through `go build -overlay`, so no tracked file is ever written to.
 .PHONY: tables-shared-node-negative-control
 tables-shared-node-negative-control: bin/schema
 	@mkdir -p build
-	@sed -e 's|taken = entry->key != key;|taken = true; // SABOTAGED: every visit is a first visit|' \
+	@sed -e 's|taken = entry->key != key;|taken = entry->key != key \|\| entry->open == 0; // SABOTAGED: a CLOSED entry is a first visit again|' \
 		internal/codegen/cpptable/arena.go > build/cpptable-no-identity.gotext
 	@cmp -s build/cpptable-no-identity.gotext internal/codegen/cpptable/arena.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
@@ -3037,6 +3149,10 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) conformance-negative-control-c
 	$(MAKE) conformance-negative-control-c-foreign
 	$(MAKE) tables-json-keyed-dup-negative-control
+	$(MAKE) tables-flat-wire
+	$(MAKE) tables-flat-wire-negative-control
+	$(MAKE) tables-unpack-variable-refusal
+	$(MAKE) tables-unpack-variable-refusal-negative-control
 	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-keyed-none-refusal-ndebug

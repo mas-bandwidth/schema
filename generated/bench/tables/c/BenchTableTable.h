@@ -309,7 +309,9 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
         case 3: case 7:
             if ( !table_reader_has( r, 2 ) ) { return 0; }
             r->offset += 2; return 1;
-        case 4: case 8: case 10:
+        /* 17 is a NODE INDEX (docs/SPEC-TABLES.md 3.1): four bytes, so it costs
+           one row here and a reader without the kind still skips a pointer field */
+        case 4: case 8: case 10: case 17:
             if ( !table_reader_has( r, 4 ) ) { return 0; }
             r->offset += 4; return 1;
         case 5: case 9: case 11:

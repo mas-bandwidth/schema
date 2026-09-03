@@ -207,7 +207,7 @@ struct TableReader
         {
             case 1: case 2: case 6: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: return has( 4 ) ? ( offset += 4, true ) : false;
+            case 4: case 8: case 10: case 17: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
             case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
             case 12: case 13: case 14: case 16:
             {
@@ -361,18 +361,6 @@ static const uint32_t kTableMaxSegments = 1u << ( 32 - kTableSegmentBits ); // 1
 static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one atomic per slab
 static const uint32_t kTableAlign       = 8;                           // every node starts 8-aligned
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
-
-// The pointer-chain depth cap. It bounds recursion on every walk — measure,
-// save, load and pack — so a hostile wire cannot drive the C stack into the
-// ground. A pointer chain's WIRE nesting equals its length (§3), so this also
-// caps chain length: wide structures are unbounded, deep ones are not. Lifting
-// it wants a flat, indexed node encoding — a named follow-on (§15).
-//
-// It is not what refuses a DATA CYCLE on the pack walk: TablePackMap's open
-// colouring names that cycle at the reference that closes it (§3.1). The cap
-// is still the whole of the cycle answer on the wire walks, which carry no
-// map today (§3.1's backend status).
-static const int32_t kTableMaxDepth = 128;
 
 // ---- TableRef: a relocatable reference (never a machine pointer) ----
 //
@@ -720,16 +708,341 @@ inline void TablePackMapClose( TablePackMap & map, const void * key, int64_t hin
 struct TableArenaCtx { const TableArena * arena; };
 struct TableRegionCtx {};
 
-// ---- the region sink: bump-allocating into the caller's exact buffer ----
+// ---- the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----
 //
-// LoadMeasure sized the buffer exactly, so this allocates nothing and nothing
-// moves. References come out SELF-RELATIVE, which is the region encoding.
-struct TableRegionSink
+// A pointered save writes every reachable node ONCE, into a node table, and a
+// pointer field rides as a u32 INDEX into it under kind 17. The encoding is
+// flat: no pointer edge is a nesting level, so a chain's length is not a depth,
+// and two references to one node are one node.
+
+static const uint16_t kTableNodeTableFieldId = 0xFFFF; // the RESERVED field id it rides under
+static const uint32_t kTableNodeIndexNull = 0;         // absence and null are one value
+static const uint32_t kTableNodeIndexRoot = 1;         // the body that hosts the table
+static const int64_t kTableNodeRecordHeader = 12;      // type id (u64), length (u32)
+static const int64_t kTableNodeFieldMax = 0xFFFFFFFF;  // a field's L is a u32, and so is a record's
+
+// The not-materialized sentinel (§6.3): a record whose type id this build could
+// not name. Distinct from every real offset including the root's 0, so an index
+// resolving through it yields NULL and can never fabricate the root.
+static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
+
+// ---- the numbering, on the SAVE side ----
+//
+// One entry per reachable node in FIRST-VISIT order, so entry k is node index
+// k + 2. The two thunks are what let one loop write a table of mixed types: the
+// numbering walk knows each target's type STATICALLY at the site it numbers it,
+// so it stores the instantiation there and the loop never asks what a node is.
+struct TableNumbering;
+
+struct TableNodeEntry
+{
+    const void * node;
+    uint64_t type_id;
+    int64_t ( * measure )( const void * ctx, const void * node );
+    bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node );
+};
+
+struct TableNumbering
+{
+    TablePackMap seen;              // node -> index; the ROOT is index 1, open for the whole walk
+    TableNodeEntry * entries = NULL;
+    int64_t count = 0;
+    int64_t capacity = 0;
+};
+
+inline void TableNumberingInit( TableNumbering & n )
+{
+    TablePackMapInit( n.seen );
+    n.entries = NULL;
+    n.count = 0;
+    n.capacity = 0;
+}
+
+inline void TableNumberingShutdown( TableNumbering & n )
+{
+    TablePackMapShutdown( n.seen );
+    free( n.entries );
+    n.entries = NULL;
+    n.count = 0;
+    n.capacity = 0;
+}
+
+// The index a numbered node was given, for the save that writes it into a
+// pointer slot. False means the two walks disagree about the graph, which is a
+// refusal and never a guess.
+inline bool TableNumberingIndex( const TableNumbering & n, const void * node, uint32_t & index )
+{
+    if ( n.seen.capacity == 0 ) { return false; }
+    const TablePackEntry & entry = n.seen.entries[ TablePackMapSlot( n.seen, node ) ];
+    if ( entry.key != node ) { return false; }
+    index = (uint32_t) entry.offset;
+    return true;
+}
+
+inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & entry )
+{
+    if ( n.count == n.capacity )
+    {
+        int64_t capacity = n.capacity != 0 ? n.capacity * 4 : 256;
+        TableNodeEntry * grown = (TableNodeEntry *) realloc( n.entries, (size_t) capacity * sizeof( TableNodeEntry ) );
+        if ( grown == NULL ) { return false; }
+        n.entries = grown;
+        n.capacity = capacity;
+    }
+    n.entries[n.count++] = entry;
+    return true;
+}
+
+// The thunks the numbering stores. Each resolves to the closure member's own
+// MeasureBody / SaveBodyFields through an overload set in the member's DECLARING
+// file, reached by argument-dependent lookup at instantiation — the same bridge
+// the arena's TableReset uses, and the reason a numbering may span the files of
+// one unit without any file naming another's members.
+template <typename Ctx, typename T>
+inline int64_t TableNodeMeasureThunk( const void * ctx, const void * node )
+{
+    return TableNodeMeasure( *(const Ctx *) ctx, *(const T *) node );
+}
+
+template <typename Ctx, typename T>
+inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node )
+{
+    return TableNodeSave( *(const Ctx *) ctx, numbering, w, *(const T *) node );
+}
+
+// TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
+// ONE fill rule written twice — measure derives the chunking from the graph and
+// save derives the same one, which is what makes measure == save hold across a
+// pointer graph (§3.1).
+//
+// A RECORD NEVER STRADDLES A FIELD: the next field opens when the record about
+// to be written would not fit in this one, so every multi-byte read a reader
+// makes lies inside one contiguous payload.
+template <typename Ctx>
+inline int64_t TableNodeTableMeasure( const Ctx & ctx, const TableNumbering & n )
+{
+    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
+    int64_t bytes = 0;
+    int64_t field = 8; // the FIRST field's payload opens with node_count (u64)
+    for ( int64_t k = 0; k < n.count; k++ )
+    {
+        int64_t body = n.entries[k].measure( (const void *) &ctx, n.entries[k].node );
+        if ( body < 0 || body > kTableNodeFieldMax ) { return -1; }
+        if ( field > 0 && field + kTableNodeRecordHeader + body > kTableNodeFieldMax )
+        {
+            bytes += 7 + field; // id (u16), kind (u8), L (u32)
+            field = 0;
+        }
+        field += kTableNodeRecordHeader + body;
+    }
+    return bytes + 7 + field;
+}
+
+template <typename Ctx>
+inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, const TableNumbering & n )
+{
+    if ( n.count == 0 ) { return true; }
+    int64_t length_at = 0;
+    int64_t payload_at = 0;
+    int64_t field = 0;
+    bool open = false;
+    for ( int64_t k = 0; k < n.count; k++ )
+    {
+        int64_t body = n.entries[k].measure( (const void *) &ctx, n.entries[k].node );
+        if ( body < 0 || body > kTableNodeFieldMax ) { return false; }
+        if ( !open )
+        {
+            w.put16( kTableNodeTableFieldId );
+            w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+            length_at = w.offset;
+            w.put32( 0 );
+            payload_at = w.offset;
+            open = true;
+            field = 0;
+            if ( k == 0 ) { w.put64( (uint64_t) n.count ); field = 8; }
+        }
+        else if ( field + kTableNodeRecordHeader + body > kTableNodeFieldMax )
+        {
+            w.patch32( length_at, uint32_t( w.offset - payload_at ) );
+            open = false;
+            k--; // this record opens the next field instead
+            continue;
+        }
+        w.put64( n.entries[k].type_id );
+        w.put32( uint32_t( body ) );
+        if ( !n.entries[k].save( (const void *) &ctx, n, w, n.entries[k].node ) ) { return false; }
+        field += kTableNodeRecordHeader + body;
+    }
+    w.patch32( length_at, uint32_t( w.offset - payload_at ) );
+    return true;
+}
+
+// ---- the numbering, on the LOAD side: a region's NODE DIRECTORY (§6.3) ----
+//
+// The wire's numbering made resident: one entry per numbered node, in index
+// order, position i describing node index i + 1 — so position 0 is the ROOT at
+// offset 0. It is ATTRIBUTION, and attribution is separable: nothing that reads
+// a structure touches it, a deref is one add on a self-relative offset, and a
+// caller may release it once Load returns.
+struct TableNodeDirEntry
+{
+    uint64_t offset;
+    uint64_t type_id;
+};
+
+// TableNodeMap is what a pointer slot resolves through while a body decodes.
+struct TableNodeMap
 {
     uint8_t * base = NULL;
-    int64_t capacity = 0;
-    int64_t used = 0;
+    const TableNodeDirEntry * entries = NULL;
+    int64_t count = 0;   // the ROOT's entry included, so it is records + 1
+    bool good = false;   // the node table read whole; a numbering that failed resolves nothing
+    // WHERE THE NODES LIVE, and therefore what a resolved slot holds: a region
+    // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
+    // builder path takes the node's ARENA OFFSET (§6.3).
+    bool arena = false;
 };
+
+// TableNodeResolve places one node index in a pointer slot, and every failure
+// is one of §4's events with the pointer left null. The declared TARGET type id
+// is checked at every index, the root's included: the root carries no record
+// and therefore no wire type id, so the READER'S OWN root type is what the
+// claim is checked against.
+inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint32_t index, uint64_t target, TableReport * report )
+{
+    slot.value = 0;
+    if ( index == kTableNodeIndexNull || !map.good ) { return; }
+    if ( (int64_t) ( index - 1 ) >= map.count )
+    {
+        report->malformed = true; // an index above node_count + 1
+        return;
+    }
+    const TableNodeDirEntry & entry = map.entries[index - 1];
+    if ( entry.offset == kTableNodeAbsent )
+    {
+        // a node whose type id this build could not name KEEPS ITS INDEX, and
+        // every pointer naming it reads null. The unknown was counted once, at
+        // the node, not once per pointer.
+        return;
+    }
+    if ( entry.type_id != target )
+    {
+        report->kind_mismatch++;
+        return;
+    }
+    slot.value = map.arena ? (int64_t) entry.offset
+                          : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+}
+
+// ---- the record SCAN, and it is the whole of load's bound (§3.1) ----
+//
+// Reading follows no reference. The scan walks the root body's top-level fields,
+// takes every one under the reserved id, and reads records out of their payloads
+// in order — a record never straddles a field, so nothing is copied to make a
+// body contiguous and the generated body decoder never learns that chunking
+// exists.
+struct TableNodeScan
+{
+    TableReader fields;        // over the ROOT body, skipping past everything else
+    const uint8_t * payload;   // the field currently being read out of
+    int64_t payload_size;
+    int64_t payload_offset;
+    bool first;                // the next field opened carries node_count
+    uint64_t declared;
+    int64_t records;
+    bool present;              // the root body carries a node table at all
+    bool malformed;
+};
+
+inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, TableReport * report )
+{
+    TableNodeScan s = { TableReader( body, size, report ), NULL, 0, 0, true, 0, 0, false, false };
+    return s;
+}
+
+// open the next node-table field, or answer false when the root body has no more
+inline bool TableNodeScanOpen( TableNodeScan & s )
+{
+    for ( ;; )
+    {
+        if ( !s.fields.has( 2 ) ) { return false; }
+        uint16_t id = s.fields.get16();
+        if ( id == 0 ) { return false; } // the terminator
+        if ( !s.fields.has( 1 ) ) { return false; }
+        uint8_t kind = s.fields.get8();
+        if ( id == kTableNodeTableFieldId )
+        {
+            s.present = true;
+            if ( kind != 12 ) { s.malformed = true; return false; }
+            if ( !s.fields.has( 4 ) ) { s.malformed = true; return false; }
+            uint32_t length = s.fields.get32();
+            if ( !s.fields.has( length ) ) { s.malformed = true; return false; }
+            s.payload = s.fields.buffer + s.fields.offset;
+            s.payload_size = (int64_t) length;
+            s.payload_offset = 0;
+            s.fields.offset += length;
+            if ( s.first )
+            {
+                if ( s.payload_size < 8 ) { s.malformed = true; return false; }
+                s.declared = 0;
+                for ( int i = 0; i < 8; i++ ) { s.declared |= (uint64_t) s.payload[i] << ( 8 * i ); }
+                s.payload_offset = 8;
+                s.first = false;
+            }
+            return true;
+        }
+        if ( !s.fields.skip( kind ) ) { return false; }
+    }
+}
+
+// the next record, or false at the end of the table — s.malformed says whether
+// the end was the end or the framing giving out
+inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t * & body, int64_t & length )
+{
+    for ( ;; )
+    {
+        if ( s.payload == NULL || s.payload_offset >= s.payload_size )
+        {
+            if ( s.payload != NULL && s.payload_offset != s.payload_size )
+            {
+                s.malformed = true; // bytes left over inside a field
+                return false;
+            }
+            if ( !TableNodeScanOpen( s ) ) { return false; }
+            continue;
+        }
+        if ( s.payload_offset + kTableNodeRecordHeader > s.payload_size )
+        {
+            s.malformed = true; // a record whose header runs past its field
+            return false;
+        }
+        const uint8_t * at = s.payload + s.payload_offset;
+        type_id = 0;
+        for ( int i = 0; i < 8; i++ ) { type_id |= (uint64_t) at[i] << ( 8 * i ); }
+        uint32_t declared_length = (uint32_t) at[8] | (uint32_t) at[9] << 8 | (uint32_t) at[10] << 16 | (uint32_t) at[11] << 24;
+        s.payload_offset += kTableNodeRecordHeader;
+        if ( s.payload_offset + (int64_t) declared_length > s.payload_size )
+        {
+            s.malformed = true; // a record whose length runs past its field
+            return false;
+        }
+        body = s.payload + s.payload_offset;
+        length = (int64_t) declared_length;
+        s.payload_offset += length;
+        s.records++;
+        return true;
+    }
+}
+
+// The record scan is AUTHORITATIVE: node_count is data from the wire, and a
+// count that disagrees with the scan is malformed. Nothing is sized from it
+// before the scan has confirmed it.
+inline bool TableNodeScanWhole( TableNodeScan & s )
+{
+    if ( s.malformed ) { return false; }
+    if ( !s.present ) { return true; } // no node table at all is not a broken one
+    return s.declared == (uint64_t) s.records;
+}
 
 } // namespace graphdemo
 
@@ -987,17 +1300,6 @@ inline const Tally * TallyAt( const TableArena & arena, const TableRef & ref )
 {
     return ref.value != 0 ? (const Tally *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
-// bump one Tally into the caller's exact region; the slot comes out self-relative
-inline Tally * TallyEmplace( TableRegionSink & sink, TableRef & slot )
-{
-    int64_t at = TableAlignUp64( sink.used );
-    if ( at + (int64_t) sizeof( Tally ) > sink.capacity ) { return NULL; }
-    sink.used = at + TableAlignUp64( (int64_t) sizeof( Tally ) );
-    Tally * node = new ( sink.base + at ) Tally; // the lifetime; the defaults are the line below
-    TallyReset( *node ); // one member at a time, never `Tally{}` over the aggregate (#320)
-    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
-    return node;
-}
 // allocate one Tally in the arena; the slot holds the arena offset
 inline Tally * TallyEmplace( TableWorker & worker, TableRef & slot )
 {
@@ -1029,17 +1331,6 @@ inline const Marker * MarkerAt( const TableArena & arena, const TableRef & ref )
 {
     return ref.value != 0 ? (const Marker *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
 }
-// bump one Marker into the caller's exact region; the slot comes out self-relative
-inline Marker * MarkerEmplace( TableRegionSink & sink, TableRef & slot )
-{
-    int64_t at = TableAlignUp64( sink.used );
-    if ( at + (int64_t) sizeof( Marker ) > sink.capacity ) { return NULL; }
-    sink.used = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
-    Marker * node = new ( sink.base + at ) Marker; // the lifetime; the defaults are the line below
-    MarkerReset( *node ); // one member at a time, never `Marker{}` over the aggregate (#320)
-    slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
-    return node;
-}
 // allocate one Marker in the arena; the slot holds the arena offset
 inline Marker * MarkerEmplace( TableWorker & worker, TableRef & slot )
 {
@@ -1053,18 +1344,26 @@ inline Marker * MarkerEmplace( TableWorker & worker, TableRef & slot )
 inline int64_t TallyMeasure( const Tally & value );
 GRAPHDEMO_TABLE_INLINE bool TallySaveBody( TableWriter & w, const Tally & value );
 GRAPHDEMO_TABLE_INLINE bool TallyLoadBody( TableReader & r, Tally & value );
-template <typename Ctx> inline int64_t MarkerMeasureBody( const Ctx & ctx, const Marker & value, int32_t depth );
-template <typename Ctx> inline bool MarkerSaveBody( const Ctx & ctx, TableWriter & w, const Marker & value, int32_t depth );
-template <typename Sink> inline bool MarkerLoadBody( TableReader & r, Sink & sink, Marker & value, int32_t depth );
+template <typename Ctx> inline int64_t MarkerMeasureBody( const Ctx & ctx, const Marker & value );
+template <typename Ctx> inline bool MarkerSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const Marker & value );
+template <typename Ctx> inline bool MarkerSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const Marker & value );
+inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker & value );
 
-// ---- pointer-graph walkers: pack (Lock), size (Load) ----
+// ---- pointer-graph walkers: number (measure/save), pack (Lock) ----
 
-template <typename Ctx> inline int64_t TallyPackMeasure( const Ctx & ctx, TablePackMap & seen, const Tally & value, int32_t depth );
-template <typename Ctx> inline bool TallyPack( const Ctx & ctx, TablePackMap & seen, const Tally & src, Tally & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
-inline int64_t TallyLoadMeasureBody( TableReader & r, int32_t depth );
-template <typename Ctx> inline int64_t MarkerPackMeasure( const Ctx & ctx, TablePackMap & seen, const Marker & value, int32_t depth );
-template <typename Ctx> inline bool MarkerPack( const Ctx & ctx, TablePackMap & seen, const Marker & src, Marker & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth );
-inline int64_t MarkerLoadMeasureBody( TableReader & r, int32_t depth );
+template <typename Ctx> inline bool TallyNumber( const Ctx & ctx, TableNumbering & numbering, const Tally & value );
+template <typename Ctx> inline int64_t TallyPackMeasure( const Ctx & ctx, TablePackMap & seen, const Tally & value );
+template <typename Ctx> inline bool TallyPack( const Ctx & ctx, TablePackMap & seen, const Tally & src, Tally & dst, uint8_t * base, int64_t capacity, int64_t & used );
+template <typename Ctx> inline bool MarkerNumber( const Ctx & ctx, TableNumbering & numbering, const Marker & value );
+template <typename Ctx> inline int64_t MarkerPackMeasure( const Ctx & ctx, TablePackMap & seen, const Marker & value );
+template <typename Ctx> inline bool MarkerPack( const Ctx & ctx, TablePackMap & seen, const Marker & src, Marker & dst, uint8_t * base, int64_t capacity, int64_t & used );
+
+// ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----
+
+template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const Tally & value ) { return TallyMeasure( value ); }
+template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, const Tally & value ) { return TallySaveBody( w, value ); }
+template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const Marker & value ) { return MarkerMeasureBody( ctx, value ); }
+template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const Marker & value ) { return MarkerSaveBody( ctx, numbering, w, value ); }
 
 inline int64_t TallyMeasure( const Tally & value )
 {
@@ -1136,30 +1435,26 @@ inline bool TallyLoad( Tally & value, const uint8_t * buffer, int64_t bytes, Tab
 }
 
 template <typename Ctx>
-inline int64_t MarkerMeasureBody( const Ctx & ctx, const Marker & value, int32_t depth )
+inline int64_t MarkerMeasureBody( const Ctx & ctx, const Marker & value )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap
     int64_t bytes = 2; // terminator
     if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
     if ( value.label_length > 0 ) { bytes += 3 + 4 + value.label_length; } // label
     {
         const Tally * pointee_note = TallyAt( ctx, value.note ); // *Tally
-        if ( pointee_note != NULL )
-        {
-            int64_t body_note = TallyMeasure( *pointee_note );
-            if ( body_note < 0 ) { return -1; }
-            // a pointer's PRESENCE is the payload: it rides even when the
-            // pointee is all-default, or null and non-null would be one
-            bytes += 3 + 4 + body_note;
-        }
+        // A POINTER RIDES AS A u32 NODE INDEX (docs/SPEC-TABLES.md §3.1):
+        // seven bytes and nothing below it, because the pointee's body is
+        // in the node table and not here. NULL IS ELIDED — absence and null
+        // are one value — and a non-null pointer ALWAYS rides, even when its
+        // node's body is entirely default.
+        if ( pointee_note != NULL ) { bytes += 3 + 4; }
     }
     return bytes;
 }
 
 template <typename Ctx>
-inline bool MarkerSaveBody( const Ctx & ctx, TableWriter & w, const Marker & value, int32_t depth )
+inline bool MarkerSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const Marker & value )
 {
-    if ( depth > kTableMaxDepth ) { return false; } // a data cycle, or a chain past the cap
     if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
@@ -1171,19 +1466,24 @@ inline bool MarkerSaveBody( const Ctx & ctx, TableWriter & w, const Marker & val
         const Tally * pointee_note = TallyAt( ctx, value.note ); // *Tally
         if ( pointee_note != NULL )
         {
-            int64_t body_note = TallyMeasure( *pointee_note );
-            if ( body_note < 0 ) { return false; }
-            w.put16( 0x9da7 ); w.put8( 13 ); // note — the pointee rides as a nested body
-            w.put32( uint32_t( body_note ) );
-            if ( !TallySaveBody( w, *pointee_note ) ) { return false; }
+            uint32_t index_note = 0;
+            if ( !TableNumberingIndex( numbering, (const void *) pointee_note, index_note ) ) { return false; }
+            w.put16( 0x9da7 ); w.put8( 17 ); // note — a NODE INDEX into the flat node table
+            w.put32( index_note );
         }
     }
+    return !w.overflow;
+}
+
+template <typename Ctx>
+inline bool MarkerSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const Marker & value )
+{
+    if ( !MarkerSaveBodyFields( ctx, numbering, w, value ) ) { return false; }
     w.put16( 0 ); // terminator
     return !w.overflow;
 }
 
-template <typename Sink>
-inline bool MarkerLoadBody( TableReader & r, Sink & sink, Marker & value, int32_t depth )
+inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker & value )
 {
     MarkerReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1216,35 +1516,22 @@ inline bool MarkerLoadBody( TableReader & r, Sink & sink, Marker & value, int32_
             }
             case 0x9da7: // note
             {
-                if ( kind != 13 )
+                if ( kind != 17 )
                 {
                     r.report->kind_mismatch++;
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
+                // A POINTER FIELD'S PAYLOAD IS A NUMBER (docs/SPEC-TABLES.md §3.1): it is
+                // bounds-checked and resolved through the numbering, never FOLLOWED, so
+                // there is no traversal here and therefore no traversal bound.
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t body_len = r.get32();
-                if ( !r.has( body_len ) ) { r.report->malformed = true; return false; }
-                if ( depth >= kTableMaxDepth )
-                {
-                    // past the nesting cap: the subtree is refused, the pointer stays
-                    // null, and the parent reads on (docs/SPEC-TABLES.md §4)
-                    r.report->malformed = true;
-                    r.offset += body_len;
-                    break;
-                }
-                {
-                    Tally * pointee = TallyEmplace( sink, value.note );
-                    if ( pointee == NULL )
-                    {
-                        r.report->malformed = true; // the caller's region was short
-                        r.offset += body_len;
-                        break;
-                    }
-                    TableReader sub( r.buffer + r.offset, body_len, r.report );
-                    TallyLoadBody( sub, *pointee );
-                }
-                r.offset += body_len;
+                TableNodeResolve( nodes, value.note, r.get32(), 0x69ff34904242a73dull, r.report ); // *Tally
+                break;
+            }
+            case 0xffff:
+            {
+                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
             default:
@@ -1257,14 +1544,23 @@ inline bool MarkerLoadBody( TableReader & r, Sink & sink, Marker & value, int32_
     }
 }
 
+// TallyNumber: number everything Tally POINTS AT, in first-visit order.
+// A reference to an entry whose descent is still OPEN is a data cycle,
+// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool TallyNumber( const Ctx & ctx, TableNumbering & numbering, const Tally & value )
+{
+    (void) ctx; (void) numbering; (void) value; // no pointers below this node
+    return true;
+}
+
 // TallyPackMeasure: the packed region bytes of everything Tally POINTS AT.
 // ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
 // node two references name is measured ONCE and packed once, and a
 // reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t TallyPackMeasure( const Ctx & ctx, TablePackMap & seen, const Tally & value, int32_t depth )
+inline int64_t TallyPackMeasure( const Ctx & ctx, TablePackMap & seen, const Tally & value )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
     (void) ctx; (void) seen; (void) value; // no pointers below this node
     return bytes;
@@ -1280,22 +1576,46 @@ inline int64_t TallyPackMeasure( const Ctx & ctx, TablePackMap & seen, const Tal
 // reference to a node whose descent is still OPEN is a cycle, and this
 // refuses it rather than packing one.
 template <typename Ctx>
-inline bool TallyPack( const Ctx & ctx, TablePackMap & seen, const Tally & src, Tally & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool TallyPack( const Ctx & ctx, TablePackMap & seen, const Tally & src, Tally & dst, uint8_t * base, int64_t capacity, int64_t & used )
 {
-    if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( Tally ) ); // trivially copyable, by construction
     (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;
     return true;
 }
 
-// TallyLoadMeasureBody: region bytes for the nodes under this wire body.
-// Framing only — no field value is decoded, so a caller can size its
-// buffer before a single byte is placed.
-inline int64_t TallyLoadMeasureBody( TableReader & r, int32_t depth )
+// MarkerNumber: number everything Marker POINTS AT, in first-visit order.
+// A reference to an entry whose descent is still OPEN is a data cycle,
+// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
+template <typename Ctx>
+inline bool MarkerNumber( const Ctx & ctx, TableNumbering & numbering, const Marker & value )
 {
-    int64_t bytes = 0;
-    (void) r; (void) depth; // nothing below this body allocates
-    return bytes;
+    {
+        const Tally * pointee = TallyAt( ctx, value.note ); // note
+        if ( pointee != NULL )
+        {
+            bool taken = false;
+            int64_t slot = 0;
+            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,
+                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit
+            if ( entry == NULL ) { return false; } // the map could not grow
+            if ( !taken )
+            {
+                if ( entry->open != 0 ) { return false; } // a data cycle
+            }
+            else
+            {
+                TableNodeEntry node;
+                node.node = (const void *) pointee;
+                node.type_id = 0x69ff34904242a73dull; // fnv1a64( "Tally" )
+                node.measure = &TableNodeMeasureThunk<Ctx, Tally>;
+                node.save = &TableNodeSaveThunk<Ctx, Tally>;
+                if ( !TableNumberingAppend( numbering, node ) ) { return false; }
+                if ( !TallyNumber( ctx, numbering, *pointee ) ) { return false; }
+                TablePackMapClose( numbering.seen, (const void *) pointee, slot );
+            }
+        }
+    }
+    return true;
 }
 
 // MarkerPackMeasure: the packed region bytes of everything Marker POINTS AT.
@@ -1303,9 +1623,8 @@ inline int64_t TallyLoadMeasureBody( TableReader & r, int32_t depth )
 // node two references name is measured ONCE and packed once, and a
 // reference to a node whose descent is still open is a data cycle, refused.
 template <typename Ctx>
-inline int64_t MarkerPackMeasure( const Ctx & ctx, TablePackMap & seen, const Marker & value, int32_t depth )
+inline int64_t MarkerPackMeasure( const Ctx & ctx, TablePackMap & seen, const Marker & value )
 {
-    if ( depth > kTableMaxDepth ) { return -1; } // a chain past the cap
     int64_t bytes = 0;
     {
         const Tally * pointee = TallyAt( ctx, value.note ); // note
@@ -1321,7 +1640,7 @@ inline int64_t MarkerPackMeasure( const Ctx & ctx, TablePackMap & seen, const Ma
             }
             else
             {
-                int64_t inner = TallyPackMeasure( ctx, seen, *pointee, depth + 1 );
+                int64_t inner = TallyPackMeasure( ctx, seen, *pointee );
                 if ( inner < 0 ) { return -1; }
                 TablePackMapClose( seen, (const void *) pointee, slot );
                 bytes += TableAlignUp64( (int64_t) sizeof( Tally ) ) + inner;
@@ -1341,9 +1660,8 @@ inline int64_t MarkerPackMeasure( const Ctx & ctx, TablePackMap & seen, const Ma
 // reference to a node whose descent is still OPEN is a cycle, and this
 // refuses it rather than packing one.
 template <typename Ctx>
-inline bool MarkerPack( const Ctx & ctx, TablePackMap & seen, const Marker & src, Marker & dst, uint8_t * base, int64_t capacity, int64_t & used, int32_t depth )
+inline bool MarkerPack( const Ctx & ctx, TablePackMap & seen, const Marker & src, Marker & dst, uint8_t * base, int64_t capacity, int64_t & used )
 {
-    if ( depth > kTableMaxDepth ) { return false; }
     memcpy( (void *) &dst, (const void *) &src, sizeof( Marker ) ); // trivially copyable, by construction
     {
         dst.note.value = 0; // note
@@ -1366,51 +1684,12 @@ inline bool MarkerPack( const Ctx & ctx, TablePackMap & seen, const Marker & src
                 used = at + TableAlignUp64( (int64_t) sizeof( Tally ) );
                 Tally * child = new ( base + at ) Tally; // lifetime only: the Pack below memcpy's the whole node over it
                 dst.note.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.note );
-                if ( !TallyPack( ctx, seen, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
+                if ( !TallyPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }
                 TablePackMapClose( seen, (const void *) pointee, slot );
             }
         }
     }
     return true;
-}
-
-// MarkerLoadMeasureBody: region bytes for the nodes under this wire body.
-// Framing only — no field value is decoded, so a caller can size its
-// buffer before a single byte is placed.
-inline int64_t MarkerLoadMeasureBody( TableReader & r, int32_t depth )
-{
-    int64_t bytes = 0;
-    for ( ;; )
-    {
-        if ( !r.has( 2 ) ) { return bytes; }
-        uint16_t field_id = r.get16();
-        if ( field_id == 0 ) { return bytes; }
-        if ( !r.has( 1 ) ) { return bytes; }
-        uint8_t kind = r.get8();
-        switch ( field_id )
-        {
-            case 0x9da7: // note (*Tally)
-            {
-                if ( kind != 13 ) { if ( !r.skip( kind ) ) { return bytes; } break; }
-                if ( !r.has( 4 ) ) { return bytes; }
-                uint32_t body_len = r.get32();
-                if ( !r.has( body_len ) ) { return bytes; }
-                if ( depth < kTableMaxDepth )
-                {
-                    bytes += TableAlignUp64( (int64_t) sizeof( Tally ) );
-                    TableReader sub( r.buffer + r.offset, body_len, r.report );
-                    bytes += TallyLoadMeasureBody( sub, depth + 1 );
-                }
-                r.offset += body_len;
-                break;
-            }
-            default:
-            {
-                if ( !r.skip( kind ) ) { return bytes; }
-                break;
-            }
-        }
-    }
 }
 
 // ---- Marker: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -1482,9 +1761,9 @@ inline bool MarkerBuilder::Lock()
     int64_t below = -1;
     if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) != NULL )
     {
-        below = MarkerPackMeasure( ctx, seen, root, 1 );
+        below = MarkerPackMeasure( ctx, seen, root );
     }
-    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, or a chain past kTableMaxDepth
+    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it
     int64_t total = TableAlignUp64( (int64_t) sizeof( Marker ) ) + below;
     uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate
     if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
@@ -1498,7 +1777,7 @@ inline bool MarkerBuilder::Lock()
     // rehashes nothing.
     TablePackMapReset( seen );
     if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
-         !MarkerPack( ctx, seen, root, *destination, packed, total, used, 1 ) || used != total )
+         !MarkerPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
     {
         TablePackMapShutdown( seen );
         free( packed );
@@ -1512,21 +1791,122 @@ inline bool MarkerBuilder::Lock()
     return true;
 }
 
-// ---- Marker on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----
+// ---- Marker on the wire: the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----
+//
+// A pointered save writes every reachable node ONCE, into a node table under
+// the reserved id 0xFFFF, and a pointer field rides as a u32 INDEX into it
+// under kind 17. No pointer edge is a nesting level, so a chain's length is
+// not a depth and two references to one node are one node.
+
+// MarkerNodeStorage: the region bytes one record commands, or -1 for a type id
+// this build cannot name — which keeps its index and reads null.
+inline int64_t MarkerNodeStorage( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x69ff34904242a73dull: return TableAlignUp64( (int64_t) sizeof( Tally ) ); // Tally
+        default: break;
+    }
+    return -1;
+}
+
+// MarkerNodePlace: start one record's node's lifetime in the storage pass one
+// reserved for it, holding exactly the declared defaults.
+inline void MarkerNodePlace( uint64_t type_id, uint8_t * at )
+{
+    switch ( type_id )
+    {
+        case 0x69ff34904242a73dull: { Tally * node = new ( at ) Tally; TallyReset( *node ); break; } // Tally
+        default: break;
+    }
+}
+
+// MarkerNodeAlloc: the TOOL's path — one record's node in the builder's arena.
+// Zero is the arena's null, and it is also what a type id this build cannot
+// name answers.
+inline uint32_t MarkerNodeAlloc( uint64_t type_id, TableWorker & worker )
+{
+    switch ( type_id )
+    {
+        case 0x69ff34904242a73dull: return (uint32_t) worker.Alloc<Tally>().ref.value; // Tally
+        default: break;
+    }
+    return 0;
+}
+
+// MarkerNodeBody: PASS TWO's half — decode one record's body into the storage it
+// already owns.
+inline void MarkerNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
+{
+    (void) nodes; // every node this root can name is a FIXED table
+    switch ( type_id )
+    {
+        case 0x69ff34904242a73dull: TallyLoadBody( r, *(Tally *) at ); break; // Tally
+        default: break;
+    }
+}
+
+// The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
+// root takes index 1 and its entry stays open for the whole walk, so a
+// reference back at it is the cycle it is (§3.1).
+template <typename Ctx>
+inline bool MarkerNumberFrom( const Ctx & ctx, TableNumbering & numbering, const Marker & root )
+{
+    bool taken = false;
+    int64_t slot = 0;
+    if ( TablePackMapReach( numbering.seen, (const void *) &root, (int64_t) kTableNodeIndexRoot, taken, slot ) == NULL ) { return false; }
+    return MarkerNumber( ctx, numbering, root );
+}
+
+template <typename Ctx>
+inline int64_t MarkerMeasureWire( const Ctx & ctx, const Marker & root )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering );
+    int64_t bytes = -1;
+    if ( MarkerNumberFrom( ctx, numbering, root ) )
+    {
+        bytes = MarkerMeasureBody( ctx, root );
+        if ( bytes >= 0 )
+        {
+            int64_t table = TableNodeTableMeasure( ctx, numbering );
+            bytes = table < 0 ? -1 : bytes + table;
+        }
+    }
+    TableNumberingShutdown( numbering );
+    return bytes;
+}
+
+template <typename Ctx>
+inline int64_t MarkerSaveWire( const Ctx & ctx, const Marker & root, uint8_t * buffer, int64_t capacity )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering );
+    if ( !MarkerNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    TableWriter w( buffer, capacity );
+    // the root's own fields, then the node table's fields, then the
+    // terminator: a reader that gives up inside the table has already
+    // decoded the ROOT'S OWN FIELDS (§3.1)
+    bool ok = MarkerSaveBodyFields( ctx, numbering, w, root ) && TableNodeTableSave( ctx, w, numbering );
+    TableNumberingShutdown( numbering );
+    if ( !ok ) { return -1; }
+    w.put16( 0 );
+    if ( w.overflow ) { return -1; } // the caller's buffer was too small
+    return w.offset; // == MarkerMeasure( root )
+}
 
 inline int64_t MarkerMeasure( const Marker * root )
 {
+    if ( root == NULL ) { return -1; }
     TableRegionCtx ctx;
-    return root != NULL ? MarkerMeasureBody( ctx, *root, 1 ) : -1;
+    return MarkerMeasureWire( ctx, *root );
 }
 
 inline int64_t MarkerSave( const Marker * root, uint8_t * buffer, int64_t capacity )
 {
     if ( root == NULL ) { return -1; }
     TableRegionCtx ctx;
-    TableWriter w( buffer, capacity );
-    if ( !MarkerSaveBody( ctx, w, *root, 1 ) ) { return -1; }
-    return w.offset; // == MarkerMeasure( root )
+    return MarkerSaveWire( ctx, *root, buffer, capacity );
 }
 
 inline int64_t MarkerMeasure( const MarkerBuilder & builder )
@@ -1534,7 +1914,7 @@ inline int64_t MarkerMeasure( const MarkerBuilder & builder )
     if ( builder.region != NULL ) { return MarkerMeasure( builder.AsConst() ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return MarkerMeasureBody( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 );
+    return MarkerMeasureWire( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ) );
 }
 
 inline int64_t MarkerSave( const MarkerBuilder & builder, uint8_t * buffer, int64_t capacity )
@@ -1542,25 +1922,43 @@ inline int64_t MarkerSave( const MarkerBuilder & builder, uint8_t * buffer, int6
     if ( builder.region != NULL ) { return MarkerSave( builder.AsConst(), buffer, capacity ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    TableWriter w( buffer, capacity );
-    if ( !MarkerSaveBody( ctx, w, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), 1 ) ) { return -1; }
-    return w.offset;
+    return MarkerSaveWire( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity );
 }
 
-// MarkerLoadMeasure: the exact region bytes a wire buffer will need. The
-// caller owns the allocation — generated load code allocates nothing.
-inline int64_t MarkerLoadMeasure( const uint8_t * wire, int64_t wire_bytes )
+// MarkerLoadMeasure: the exact region bytes a wire buffer will need, and it is
+// ONE SCAN — a record's type id gives its storage size, its length gives the
+// next record — reading no field value at all, so the caller owns the
+// allocation and can refuse a number it did not expect (§6.5).
+//
+// It reports the DATA bytes and the ATTRIBUTION bytes separately, because the
+// attribution is the wire's numbering made resident (§6.3) and a caller may
+// release it once Load returns. The answer is their sum.
+inline int64_t MarkerLoadMeasure( const uint8_t * wire, int64_t wire_bytes, int64_t * attribution_bytes = NULL )
 {
     TableReport ignored;
-    TableReader r( wire, wire_bytes, &ignored );
-    int64_t below = MarkerLoadMeasureBody( r, 1 );
-    if ( below < 0 ) { below = 0; }
-    return TableAlignUp64( (int64_t) sizeof( Marker ) ) + below;
+    TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored );
+    int64_t data = TableAlignUp64( (int64_t) sizeof( Marker ) );
+    int64_t records = 0;
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    while ( TableNodeScanNext( scan, type_id, body, length ) )
+    {
+        records++;
+        int64_t storage = MarkerNodeStorage( type_id );
+        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
+    return data + attribution;
 }
 
 // MarkerLoad: decode the tolerant wire into the caller's exact-sized region and
-// return the root. Partial results are kept, as everywhere on this wire —
-// the report says what happened. NULL means the CALLER's buffer was wrong.
+// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
+// follows no reference, so there is no depth cap, no visited set and no
+// ordering rule on the indices. Partial results are kept, as everywhere on
+// this wire — the report says what happened. NULL means the CALLER's buffer
+// was wrong.
 inline const Marker * MarkerLoad( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -1568,26 +1966,159 @@ inline const Marker * MarkerLoad( uint8_t * region, int64_t region_bytes, const 
     if ( region == NULL || region_bytes < (int64_t) sizeof( Marker ) ) { out->malformed = true; return NULL; }
     if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
     memset( region, 0, (size_t) region_bytes );
-    TableRegionSink sink;
-    sink.base = region;
-    sink.capacity = region_bytes;
-    sink.used = TableAlignUp64( (int64_t) sizeof( Marker ) );
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    int64_t data = TableAlignUp64( (int64_t) sizeof( Marker ) );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            int64_t storage = MarkerNodeStorage( type_id );
+            if ( storage > 0 ) { data += storage; }
+        }
+    }
+    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+
+    TableNodeMap nodes;
+    nodes.base = region;
+    nodes.entries = (const TableNodeDirEntry *) ( region + data );
+    nodes.count = records + 1;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + data );
+    directory[0].offset = 0; // position 0 is the ROOT, at offset 0 (§6.3)
+    directory[0].type_id = 0xd6458a3eef83d457ull;
     Marker * root = new ( region ) Marker; // lifetime only: LoadBody's first act is MarkerReset
+    MarkerReset( *root );
+
+    // PASS ONE: fill the numbering from the framing, so that an index
+    // resolves whichever way it points. It reads no body.
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
+        int64_t used = TableAlignUp64( (int64_t) sizeof( Marker ) );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            int64_t storage = MarkerNodeStorage( type_id );
+            if ( storage <= 0 )
+            {
+                // a record whose type id this build cannot name KEEPS ITS
+                // INDEX, is counted once here and not once per pointer, and
+                // every reference to it reads null (§3.1)
+                out->unknown++;
+                directory[k + 1].offset = kTableNodeAbsent;
+                directory[k + 1].type_id = type_id;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) used;
+                directory[k + 1].type_id = type_id;
+                MarkerNodePlace( type_id, region + used );
+                used += storage;
+            }
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        if ( !nodes.good ) { out->malformed = true; } // the table is whole or it is nothing
+    }
+
+    // PASS TWO: decode each body into its own storage. A forward index
+    // resolves without scratch, because pass one already placed every node.
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out );
+                MarkerNodeBody( type_id, sub, nodes, region + directory[k + 1].offset );
+            }
+            k++;
+        }
+    }
+
+    // and the ROOT's own body last, so every index it carries resolves
+    // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out );
-    MarkerLoadBody( r, sink, *root, 1 );
+    MarkerLoadBody( r, nodes, *root );
     return root;
 }
 
 // MarkerLoadBuilder: the TOOL's path — the same tolerant decode into a fresh
-// builder, so loaded data can be edited and locked again.
+// builder, so loaded data can be edited and locked again. The numbering is
+// the same one; what differs is where a node lives and therefore what a
+// resolved slot holds — an arena offset here, a self-relative delta there.
 inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     Marker * root = builder.GetRoot();
     if ( root == NULL ) { out->malformed = true; return false; }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );
+        while ( TableNodeScanNext( scan, type_id, body, length ) ) { records++; }
+    }
+    // the AUTHORING side may allocate (§6.5), and this is the tool's path
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) calloc( (size_t) ( records + 1 ), sizeof( TableNodeDirEntry ) );
+    if ( directory == NULL ) { out->malformed = true; return false; }
+    directory[0].offset = (uint64_t) builder.root_ref.value;
+    directory[0].type_id = 0xd6458a3eef83d457ull;
+    TableNodeMap nodes;
+    nodes.base = NULL;
+    nodes.entries = directory;
+    nodes.count = records + 1;
+    nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            uint32_t at = MarkerNodeAlloc( type_id, builder.main );
+            if ( at == 0 )
+            {
+                out->unknown++;
+                directory[k + 1].offset = kTableNodeAbsent;
+            }
+            else
+            {
+                directory[k + 1].offset = (uint64_t) at;
+            }
+            directory[k + 1].type_id = type_id;
+            k++;
+        }
+        nodes.good = TableNodeScanWhole( scan );
+        if ( !nodes.good ) { out->malformed = true; }
+    }
+    if ( nodes.good )
+    {
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out );
+        int64_t k = 0;
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            if ( directory[k + 1].offset != kTableNodeAbsent )
+            {
+                TableReader sub( body, length, out );
+                MarkerNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+            }
+            k++;
+        }
+    }
     TableReader r( wire, wire_bytes, out );
-    return MarkerLoadBody( r, builder.main, *root, 1 );
+    bool ok = MarkerLoadBody( r, nodes, *root );
+    free( directory );
+    return ok;
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
@@ -1694,7 +2225,7 @@ inline const TableTypeInfo * TallyTableType() { return &TallyTableInfo; }
 
 inline const TableFieldInfo MarkerTableFields[] = {
     { "label", "label", "string", 0xe16a, 12, false, false, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
-    { "note", "note", "Tally", 0x9da7, 13, false, true, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
+    { "note", "note", "Tally", 0x9da7, 17, false, true, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, -1, NULL, NULL, NULL, NULL, NULL, NULL, "" },
 };
 inline const TableTypeInfo MarkerTableInfo = { "Marker", (uint32_t) sizeof( Marker ), 2, MarkerTableFields, +[]( void * p ) { MarkerReset( *(Marker *) p ); }, true };
 inline const TableTypeInfo * MarkerTableType() { return &MarkerTableInfo; }

@@ -1389,18 +1389,30 @@ an array of thousands.
 Reading from the wire, the caller owns the allocation as always:
 
 ```cpp
-int64_t need = SceneLoadMeasure( wire, wire_size ); // exact, reads no values
+int64_t attribution = 0;
+int64_t need = SceneLoadMeasure( wire, wire_size, &attribution ); // exact, reads no values
 uint8_t * region = your_allocator( need );
 TableReport report;
 const Scene * scene = SceneLoad( region, need, wire, wire_size, &report );
 ```
 
-On the wire a pointer rides as its pointee's table body — framing identical
-to a by-value nesting AND to an optional (`?T`), so a field may change among
-the three and no byte moves for any non-default value (at the empty end they
-differ: a by-value `T` at its defaults elides, a non-null pointer does not).
-Null pointers are simply absent. **Wire v1 is a tree**: two pointers to one
-node write two bodies and load as two nodes.
+`LoadMeasure` is one scan of the wire's framing and it answers with both halves:
+the DATA bytes and, in the out-parameter, the ATTRIBUTION bytes — the node
+directory the load fills so an index resolves whichever way it points. The
+answer is their sum, and the attribution can be released once `Load` returns.
+Pass `NULL` (or nothing) if you only want the total.
+
+On the wire a pointer rides as a **u32 index into a flat node table**: every
+reachable node is written once, and a pointer field carries the number and not
+the body. So **two pointers to one node are one node**, on the wire as in a
+region, and a chain's length is not a nesting depth — there is no depth cap in
+either direction. Null pointers are simply absent.
+
+A by-value `T` and an optional `?T` are one framing and a field may move
+between them with no byte moving; a POINTER is its own kind, so moving a field
+to or from `*T` is a reported kind mismatch rather than a silent
+reinterpretation. A data cycle is refused at measure, save and `Lock`, naming
+the reference that closes it.
 
 **In C, the same shape without member functions.** C++'s builder methods are
 free functions under the root's name, and the two things C++ distinguishes by
@@ -1448,6 +1460,14 @@ memset( &report, 0, sizeof( report ) );
 const Scene * scene = scene_load( region, region_bytes, wire, wire_size, &report );
 const ListNode * node = list_node_at( NULL, &scene->head );  /* one add */
 ```
+
+**The C port still writes the EARLIER wire**, and that is the one place its
+surface is not C++'s in a way a reader has to know: a pointee rides inline as a
+nested body rather than as an index into a node table, so two pointers to one
+node write two bodies there, a chain's length is a nesting depth, and
+`scene_load_measure` takes no attribution out-parameter because no directory
+rides. Carrying the flat form to it is schema#349. Everything else on this page
+is the same shape in both.
 
 **The builder's members ARE its accessors.** C++ has `AsConst`, `Region`,
 `RegionBytes` and `Locked`; C has `builder.region` — the packed const form,

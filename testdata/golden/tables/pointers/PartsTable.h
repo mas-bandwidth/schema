@@ -207,7 +207,7 @@ struct TableReader
         {
             case 1: case 2: case 6: return has( 1 ) ? ( offset += 1, true ) : false;
             case 3: case 7:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: return has( 4 ) ? ( offset += 4, true ) : false;
+            case 4: case 8: case 10: case 17: return has( 4 ) ? ( offset += 4, true ) : false; // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1)
             case 5: case 9: case 11: return has( 8 ) ? ( offset += 8, true ) : false;
             case 12: case 13: case 14: case 16:
             {
@@ -361,18 +361,6 @@ static const uint32_t kTableMaxSegments = 1u << ( 32 - kTableSegmentBits ); // 1
 static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one atomic per slab
 static const uint32_t kTableAlign       = 8;                           // every node starts 8-aligned
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
-
-// The pointer-chain depth cap. It bounds recursion on every walk — measure,
-// save, load and pack — so a hostile wire cannot drive the C stack into the
-// ground. A pointer chain's WIRE nesting equals its length (§3), so this also
-// caps chain length: wide structures are unbounded, deep ones are not. Lifting
-// it wants a flat, indexed node encoding — a named follow-on (§15).
-//
-// It is not what refuses a DATA CYCLE on the pack walk: TablePackMap's open
-// colouring names that cycle at the reference that closes it (§3.1). The cap
-// is still the whole of the cycle answer on the wire walks, which carry no
-// map today (§3.1's backend status).
-static const int32_t kTableMaxDepth = 128;
 
 // ---- TableRef: a relocatable reference (never a machine pointer) ----
 //
@@ -720,16 +708,341 @@ inline void TablePackMapClose( TablePackMap & map, const void * key, int64_t hin
 struct TableArenaCtx { const TableArena * arena; };
 struct TableRegionCtx {};
 
-// ---- the region sink: bump-allocating into the caller's exact buffer ----
+// ---- the FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1) ----
 //
-// LoadMeasure sized the buffer exactly, so this allocates nothing and nothing
-// moves. References come out SELF-RELATIVE, which is the region encoding.
-struct TableRegionSink
+// A pointered save writes every reachable node ONCE, into a node table, and a
+// pointer field rides as a u32 INDEX into it under kind 17. The encoding is
+// flat: no pointer edge is a nesting level, so a chain's length is not a depth,
+// and two references to one node are one node.
+
+static const uint16_t kTableNodeTableFieldId = 0xFFFF; // the RESERVED field id it rides under
+static const uint32_t kTableNodeIndexNull = 0;         // absence and null are one value
+static const uint32_t kTableNodeIndexRoot = 1;         // the body that hosts the table
+static const int64_t kTableNodeRecordHeader = 12;      // type id (u64), length (u32)
+static const int64_t kTableNodeFieldMax = 0xFFFFFFFF;  // a field's L is a u32, and so is a record's
+
+// The not-materialized sentinel (§6.3): a record whose type id this build could
+// not name. Distinct from every real offset including the root's 0, so an index
+// resolving through it yields NULL and can never fabricate the root.
+static const uint64_t kTableNodeAbsent = 0xFFFFFFFFFFFFFFFFull;
+
+// ---- the numbering, on the SAVE side ----
+//
+// One entry per reachable node in FIRST-VISIT order, so entry k is node index
+// k + 2. The two thunks are what let one loop write a table of mixed types: the
+// numbering walk knows each target's type STATICALLY at the site it numbers it,
+// so it stores the instantiation there and the loop never asks what a node is.
+struct TableNumbering;
+
+struct TableNodeEntry
+{
+    const void * node;
+    uint64_t type_id;
+    int64_t ( * measure )( const void * ctx, const void * node );
+    bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node );
+};
+
+struct TableNumbering
+{
+    TablePackMap seen;              // node -> index; the ROOT is index 1, open for the whole walk
+    TableNodeEntry * entries = NULL;
+    int64_t count = 0;
+    int64_t capacity = 0;
+};
+
+inline void TableNumberingInit( TableNumbering & n )
+{
+    TablePackMapInit( n.seen );
+    n.entries = NULL;
+    n.count = 0;
+    n.capacity = 0;
+}
+
+inline void TableNumberingShutdown( TableNumbering & n )
+{
+    TablePackMapShutdown( n.seen );
+    free( n.entries );
+    n.entries = NULL;
+    n.count = 0;
+    n.capacity = 0;
+}
+
+// The index a numbered node was given, for the save that writes it into a
+// pointer slot. False means the two walks disagree about the graph, which is a
+// refusal and never a guess.
+inline bool TableNumberingIndex( const TableNumbering & n, const void * node, uint32_t & index )
+{
+    if ( n.seen.capacity == 0 ) { return false; }
+    const TablePackEntry & entry = n.seen.entries[ TablePackMapSlot( n.seen, node ) ];
+    if ( entry.key != node ) { return false; }
+    index = (uint32_t) entry.offset;
+    return true;
+}
+
+inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & entry )
+{
+    if ( n.count == n.capacity )
+    {
+        int64_t capacity = n.capacity != 0 ? n.capacity * 4 : 256;
+        TableNodeEntry * grown = (TableNodeEntry *) realloc( n.entries, (size_t) capacity * sizeof( TableNodeEntry ) );
+        if ( grown == NULL ) { return false; }
+        n.entries = grown;
+        n.capacity = capacity;
+    }
+    n.entries[n.count++] = entry;
+    return true;
+}
+
+// The thunks the numbering stores. Each resolves to the closure member's own
+// MeasureBody / SaveBodyFields through an overload set in the member's DECLARING
+// file, reached by argument-dependent lookup at instantiation — the same bridge
+// the arena's TableReset uses, and the reason a numbering may span the files of
+// one unit without any file naming another's members.
+template <typename Ctx, typename T>
+inline int64_t TableNodeMeasureThunk( const void * ctx, const void * node )
+{
+    return TableNodeMeasure( *(const Ctx *) ctx, *(const T *) node );
+}
+
+template <typename Ctx, typename T>
+inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, const void * node )
+{
+    return TableNodeSave( *(const Ctx *) ctx, numbering, w, *(const T *) node );
+}
+
+// TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
+// ONE fill rule written twice — measure derives the chunking from the graph and
+// save derives the same one, which is what makes measure == save hold across a
+// pointer graph (§3.1).
+//
+// A RECORD NEVER STRADDLES A FIELD: the next field opens when the record about
+// to be written would not fit in this one, so every multi-byte read a reader
+// makes lies inside one contiguous payload.
+template <typename Ctx>
+inline int64_t TableNodeTableMeasure( const Ctx & ctx, const TableNumbering & n )
+{
+    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
+    int64_t bytes = 0;
+    int64_t field = 8; // the FIRST field's payload opens with node_count (u64)
+    for ( int64_t k = 0; k < n.count; k++ )
+    {
+        int64_t body = n.entries[k].measure( (const void *) &ctx, n.entries[k].node );
+        if ( body < 0 || body > kTableNodeFieldMax ) { return -1; }
+        if ( field > 0 && field + kTableNodeRecordHeader + body > kTableNodeFieldMax )
+        {
+            bytes += 7 + field; // id (u16), kind (u8), L (u32)
+            field = 0;
+        }
+        field += kTableNodeRecordHeader + body;
+    }
+    return bytes + 7 + field;
+}
+
+template <typename Ctx>
+inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, const TableNumbering & n )
+{
+    if ( n.count == 0 ) { return true; }
+    int64_t length_at = 0;
+    int64_t payload_at = 0;
+    int64_t field = 0;
+    bool open = false;
+    for ( int64_t k = 0; k < n.count; k++ )
+    {
+        int64_t body = n.entries[k].measure( (const void *) &ctx, n.entries[k].node );
+        if ( body < 0 || body > kTableNodeFieldMax ) { return false; }
+        if ( !open )
+        {
+            w.put16( kTableNodeTableFieldId );
+            w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+            length_at = w.offset;
+            w.put32( 0 );
+            payload_at = w.offset;
+            open = true;
+            field = 0;
+            if ( k == 0 ) { w.put64( (uint64_t) n.count ); field = 8; }
+        }
+        else if ( field + kTableNodeRecordHeader + body > kTableNodeFieldMax )
+        {
+            w.patch32( length_at, uint32_t( w.offset - payload_at ) );
+            open = false;
+            k--; // this record opens the next field instead
+            continue;
+        }
+        w.put64( n.entries[k].type_id );
+        w.put32( uint32_t( body ) );
+        if ( !n.entries[k].save( (const void *) &ctx, n, w, n.entries[k].node ) ) { return false; }
+        field += kTableNodeRecordHeader + body;
+    }
+    w.patch32( length_at, uint32_t( w.offset - payload_at ) );
+    return true;
+}
+
+// ---- the numbering, on the LOAD side: a region's NODE DIRECTORY (§6.3) ----
+//
+// The wire's numbering made resident: one entry per numbered node, in index
+// order, position i describing node index i + 1 — so position 0 is the ROOT at
+// offset 0. It is ATTRIBUTION, and attribution is separable: nothing that reads
+// a structure touches it, a deref is one add on a self-relative offset, and a
+// caller may release it once Load returns.
+struct TableNodeDirEntry
+{
+    uint64_t offset;
+    uint64_t type_id;
+};
+
+// TableNodeMap is what a pointer slot resolves through while a body decodes.
+struct TableNodeMap
 {
     uint8_t * base = NULL;
-    int64_t capacity = 0;
-    int64_t used = 0;
+    const TableNodeDirEntry * entries = NULL;
+    int64_t count = 0;   // the ROOT's entry included, so it is records + 1
+    bool good = false;   // the node table read whole; a numbering that failed resolves nothing
+    // WHERE THE NODES LIVE, and therefore what a resolved slot holds: a region
+    // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
+    // builder path takes the node's ARENA OFFSET (§6.3).
+    bool arena = false;
 };
+
+// TableNodeResolve places one node index in a pointer slot, and every failure
+// is one of §4's events with the pointer left null. The declared TARGET type id
+// is checked at every index, the root's included: the root carries no record
+// and therefore no wire type id, so the READER'S OWN root type is what the
+// claim is checked against.
+inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint32_t index, uint64_t target, TableReport * report )
+{
+    slot.value = 0;
+    if ( index == kTableNodeIndexNull || !map.good ) { return; }
+    if ( (int64_t) ( index - 1 ) >= map.count )
+    {
+        report->malformed = true; // an index above node_count + 1
+        return;
+    }
+    const TableNodeDirEntry & entry = map.entries[index - 1];
+    if ( entry.offset == kTableNodeAbsent )
+    {
+        // a node whose type id this build could not name KEEPS ITS INDEX, and
+        // every pointer naming it reads null. The unknown was counted once, at
+        // the node, not once per pointer.
+        return;
+    }
+    if ( entry.type_id != target )
+    {
+        report->kind_mismatch++;
+        return;
+    }
+    slot.value = map.arena ? (int64_t) entry.offset
+                          : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+}
+
+// ---- the record SCAN, and it is the whole of load's bound (§3.1) ----
+//
+// Reading follows no reference. The scan walks the root body's top-level fields,
+// takes every one under the reserved id, and reads records out of their payloads
+// in order — a record never straddles a field, so nothing is copied to make a
+// body contiguous and the generated body decoder never learns that chunking
+// exists.
+struct TableNodeScan
+{
+    TableReader fields;        // over the ROOT body, skipping past everything else
+    const uint8_t * payload;   // the field currently being read out of
+    int64_t payload_size;
+    int64_t payload_offset;
+    bool first;                // the next field opened carries node_count
+    uint64_t declared;
+    int64_t records;
+    bool present;              // the root body carries a node table at all
+    bool malformed;
+};
+
+inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, TableReport * report )
+{
+    TableNodeScan s = { TableReader( body, size, report ), NULL, 0, 0, true, 0, 0, false, false };
+    return s;
+}
+
+// open the next node-table field, or answer false when the root body has no more
+inline bool TableNodeScanOpen( TableNodeScan & s )
+{
+    for ( ;; )
+    {
+        if ( !s.fields.has( 2 ) ) { return false; }
+        uint16_t id = s.fields.get16();
+        if ( id == 0 ) { return false; } // the terminator
+        if ( !s.fields.has( 1 ) ) { return false; }
+        uint8_t kind = s.fields.get8();
+        if ( id == kTableNodeTableFieldId )
+        {
+            s.present = true;
+            if ( kind != 12 ) { s.malformed = true; return false; }
+            if ( !s.fields.has( 4 ) ) { s.malformed = true; return false; }
+            uint32_t length = s.fields.get32();
+            if ( !s.fields.has( length ) ) { s.malformed = true; return false; }
+            s.payload = s.fields.buffer + s.fields.offset;
+            s.payload_size = (int64_t) length;
+            s.payload_offset = 0;
+            s.fields.offset += length;
+            if ( s.first )
+            {
+                if ( s.payload_size < 8 ) { s.malformed = true; return false; }
+                s.declared = 0;
+                for ( int i = 0; i < 8; i++ ) { s.declared |= (uint64_t) s.payload[i] << ( 8 * i ); }
+                s.payload_offset = 8;
+                s.first = false;
+            }
+            return true;
+        }
+        if ( !s.fields.skip( kind ) ) { return false; }
+    }
+}
+
+// the next record, or false at the end of the table — s.malformed says whether
+// the end was the end or the framing giving out
+inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t * & body, int64_t & length )
+{
+    for ( ;; )
+    {
+        if ( s.payload == NULL || s.payload_offset >= s.payload_size )
+        {
+            if ( s.payload != NULL && s.payload_offset != s.payload_size )
+            {
+                s.malformed = true; // bytes left over inside a field
+                return false;
+            }
+            if ( !TableNodeScanOpen( s ) ) { return false; }
+            continue;
+        }
+        if ( s.payload_offset + kTableNodeRecordHeader > s.payload_size )
+        {
+            s.malformed = true; // a record whose header runs past its field
+            return false;
+        }
+        const uint8_t * at = s.payload + s.payload_offset;
+        type_id = 0;
+        for ( int i = 0; i < 8; i++ ) { type_id |= (uint64_t) at[i] << ( 8 * i ); }
+        uint32_t declared_length = (uint32_t) at[8] | (uint32_t) at[9] << 8 | (uint32_t) at[10] << 16 | (uint32_t) at[11] << 24;
+        s.payload_offset += kTableNodeRecordHeader;
+        if ( s.payload_offset + (int64_t) declared_length > s.payload_size )
+        {
+            s.malformed = true; // a record whose length runs past its field
+            return false;
+        }
+        body = s.payload + s.payload_offset;
+        length = (int64_t) declared_length;
+        s.payload_offset += length;
+        s.records++;
+        return true;
+    }
+}
+
+// The record scan is AUTHORITATIVE: node_count is data from the wire, and a
+// count that disagrees with the scan is malformed. Nothing is sized from it
+// before the scan has confirmed it.
+inline bool TableNodeScanWhole( TableNodeScan & s )
+{
+    if ( s.malformed ) { return false; }
+    if ( !s.present ) { return true; } // no node table at all is not a broken one
+    return s.declared == (uint64_t) s.records;
+}
 
 } // namespace graphdemo
 

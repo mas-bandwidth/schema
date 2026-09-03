@@ -6,8 +6,8 @@ table Album
     field tint id=0x82b9 kind=13 type=Colour
     field stamp id=0x0dc6 kind=13 type=Stamp
     field marker id=0x866f kind=13 type=Marker
-    field pin id=0x69d5 kind=13 type=Marker
-    field head id=0x79aa kind=13 type=ListNode
+    field pin id=0x69d5 kind=17 type=Marker
+    field head id=0x79aa kind=17 type=ListNode
 
 table Colour
     field r id=0xb019 kind=6
@@ -18,20 +18,20 @@ table Depot
     field name id=0x30df kind=12 size=12
     field banks id=0x7f34 kind=16 elem=13 type=Layer array=keyed bound=2 key=Tier
     field spare id=0x3a4f kind=13 type=Meta optional=true
-    field head id=0x79aa kind=13 type=ListNode
+    field head id=0x79aa kind=17 type=ListNode
 
 table Layer
     field depth id=0x609f kind=4 default=0
-    field head id=0x79aa kind=13 type=ListNode
+    field head id=0x79aa kind=17 type=ListNode
 
 table ListNode
     field value id=0x9194 kind=4
     field name id=0x30df kind=12 size=12
-    field next id=0xd15e kind=13 type=ListNode
+    field next id=0xd15e kind=17 type=ListNode
 
 table Marker
     field label id=0xe16a kind=12 size=8
-    field note id=0x9da7 kind=13 type=Tally
+    field note id=0x9da7 kind=17 type=Tally
 
 table Meta
     field build id=0x3138 kind=4 default=1
@@ -40,10 +40,10 @@ table Meta
 table Scene
     field name id=0x30df kind=12 size=24
     field version id=0xe8e6 kind=4 default=1
-    field head id=0x79aa kind=13 type=ListNode
-    field tree id=0x595e kind=13 type=TreeNode
-    field settings id=0x130e kind=13 type=Settings
-    field alias id=0xfc71 kind=13 type=ListNode
+    field head id=0x79aa kind=17 type=ListNode
+    field tree id=0x595e kind=17 type=TreeNode
+    field settings id=0x130e kind=17 type=Settings
+    field alias id=0xfc71 kind=17 type=ListNode
     field ground id=0x5bdf kind=13 type=Layer
     field layers id=0x1ee8 kind=14 elem=13 type=Layer array=bounded bound=4
     field meta id=0xcea6 kind=13 type=Meta
@@ -61,8 +61,8 @@ table Tally
 
 table TreeNode
     field label id=0xe16a kind=12 size=12
-    field left id=0xfe3a kind=13 type=TreeNode
-    field right id=0x5506 kind=13 type=TreeNode
+    field left id=0xfe3a kind=17 type=TreeNode
+    field right id=0x5506 kind=17 type=TreeNode
 
 enum Tier
     variant Low id=0x24fc
@@ -74,3 +74,17 @@ enum Tier
 
 ### 2026-09-02 — enum arrays store Max slots and shift left: nothing is stored or packed for None (owner ruling 2026-09-03)
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-09-03 — schema#251: a pointer field rides as a u32 NODE INDEX under kind 17 into the flat node table, not as a nested body under kind 13 (docs/SPEC-TABLES.md §3.1). Pre-release, and the whole point of the edit is that the by-value/pointer edit stops being silent.
+- Album.pin: wire kind 13 -> 17 [refuse]
+- Album.head: wire kind 13 -> 17 [refuse]
+- Depot.head: wire kind 13 -> 17 [refuse]
+- Layer.head: wire kind 13 -> 17 [refuse]
+- ListNode.next: wire kind 13 -> 17 [refuse]
+- Marker.note: wire kind 13 -> 17 [refuse]
+- Scene.head: wire kind 13 -> 17 [refuse]
+- Scene.tree: wire kind 13 -> 17 [refuse]
+- Scene.settings: wire kind 13 -> 17 [refuse]
+- Scene.alias: wire kind 13 -> 17 [refuse]
+- TreeNode.left: wire kind 13 -> 17 [refuse]
+- TreeNode.right: wire kind 13 -> 17 [refuse]
