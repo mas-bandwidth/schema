@@ -3854,7 +3854,10 @@ build/conformance-c-asan: build/tables-generated-c/.stamp $(wildcard test/confor
 # random single-word damage over the same two forms, under the sanitizers, with
 # the one invariant an Open owes an untrusted file. It never CRASHES and it
 # never reads past the extent its caller claimed, whatever it answers.
-build/schema_test_c_fuzz: build/tables-generated-c/.stamp test/c-tables/fuzz_main.c $(wildcard test/conformance/c/*.h)
+# The cook fixtures are a DECLARED prerequisite and not an accident of the
+# tree: test/cookgen writes them deterministically, and a fuzzer whose subject
+# happens to be lying around is a fuzzer that passes by not running.
+build/schema_test_c_fuzz: build/tables-generated-c/.stamp build/cook-open/.stamp test/c-tables/fuzz_main.c $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O1 -ffp-contract=off $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) \
