@@ -225,7 +225,8 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 	if anyKeyed {
 		keyed = tableKeyedAccessor
 	}
-	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
+	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_TABLE_PRIMITIVES"
+	forceInline := tableInlineMacro(pkg)
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
 	// always emitted, to the byte (docs/SPEC-TABLES.md §2, the zero-cost gate)
@@ -239,6 +240,30 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 	}
 	return `#ifndef ` + guard + `
 #define ` + guard + `
+
+/* THE CODEC DOES NOT DEPEND ON THE COMPILER'S INLINING BUDGET. A table of a
+   realistic field count emits one large body per type, and the cursor a body
+   writes through lives in the caller's TableWriter: across a call boundary that
+   cursor round-trips through memory, and a uint8_t * store may alias the writer
+   itself, so every put reloads it. When a budget runs out mid-body the codec
+   silently degrades to that shape. Forcing the primitives and the fixed-class
+   bodies inline is what keeps the cursor in registers and lets adjacent
+   constant framing bytes merge into one store.
+
+   The spelling is FEATURE TESTED rather than assumed, exactly as the packet
+   emitter's own inlining demand is (SPEC §6.1's C column), and the macro is
+   package-scoped for the same reason the guard above is: a consumer compiles
+   several packages' Table.h files in one translation unit, and a macro every
+   one of them spelled the same way would be a redefinition. */
+#ifndef ` + forceInline + `
+#if defined( _MSC_VER )
+#define ` + forceInline + ` __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define ` + forceInline + ` inline __attribute__(( always_inline ))
+#else
+#define ` + forceInline + ` inline
+#endif
+#endif
 
 /* A COMPILE-TIME assertion under -std=c99, which has none of its own. C11's
    _Static_assert carries the message into the build log verbatim and is used
@@ -405,31 +430,31 @@ static SCHEMA_UNUSED TableWriter TableWriterMake( uint8_t * buffer, int64_t capa
     return w;
 }
 
-static SCHEMA_UNUSED void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
+static SCHEMA_UNUSED ` + forceInline + ` void TableWriterRaw( TableWriter * w, const void * data, int64_t bytes )
 {
     if ( w->offset + bytes > w->capacity ) { w->overflow = 1; return; }
     memcpy( w->buffer + w->offset, data, (size_t) bytes );
     w->offset += bytes;
 }
-static SCHEMA_UNUSED void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
-static SCHEMA_UNUSED void TableWriterPut16( TableWriter * w, uint16_t v )
+static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPut8( TableWriter * w, uint8_t v ) { TableWriterRaw( w, &v, 1 ); }
+static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPut16( TableWriter * w, uint16_t v )
 {
     uint8_t b[2];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 );
     TableWriterRaw( w, b, 2 );
 }
-static SCHEMA_UNUSED void TableWriterPut32( TableWriter * w, uint32_t v )
+static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPut32( TableWriter * w, uint32_t v )
 {
     uint8_t b[4];
     b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 );
     TableWriterRaw( w, b, 4 );
 }
-static SCHEMA_UNUSED void TableWriterPut64( TableWriter * w, uint64_t v )
+static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPut64( TableWriter * w, uint64_t v )
 {
     TableWriterPut32( w, (uint32_t) v );
     TableWriterPut32( w, (uint32_t) ( v >> 32 ) );
 }
-static SCHEMA_UNUSED void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
+static SCHEMA_UNUSED ` + forceInline + ` void TableWriterPatch32( TableWriter * w, int64_t at, uint32_t v )
 {
     if ( at + 4 > w->capacity ) { w->overflow = 1; return; }
     w->buffer[at] = (uint8_t) v; w->buffer[at+1] = (uint8_t) ( v >> 8 );
@@ -454,22 +479,22 @@ static SCHEMA_UNUSED TableReader TableReaderMake( const uint8_t * buffer, int64_
     return r;
 }
 
-static SCHEMA_UNUSED int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
-static SCHEMA_UNUSED uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
-static SCHEMA_UNUSED uint16_t TableReaderGet16( TableReader * r )
+static SCHEMA_UNUSED ` + forceInline + ` int TableReaderHas( const TableReader * r, int64_t bytes ) { return r->offset + bytes <= r->size; }
+static SCHEMA_UNUSED ` + forceInline + ` uint8_t TableReaderGet8( TableReader * r ) { return r->buffer[r->offset++]; }
+static SCHEMA_UNUSED ` + forceInline + ` uint16_t TableReaderGet16( TableReader * r )
 {
     uint16_t v = (uint16_t) ( (uint16_t) r->buffer[r->offset] | ( (uint16_t) r->buffer[r->offset+1] << 8 ) );
     r->offset += 2;
     return v;
 }
-static SCHEMA_UNUSED uint32_t TableReaderGet32( TableReader * r )
+static SCHEMA_UNUSED ` + forceInline + ` uint32_t TableReaderGet32( TableReader * r )
 {
     uint32_t v = (uint32_t) r->buffer[r->offset] | ( (uint32_t) r->buffer[r->offset+1] << 8 )
                | ( (uint32_t) r->buffer[r->offset+2] << 16 ) | ( (uint32_t) r->buffer[r->offset+3] << 24 );
     r->offset += 4;
     return v;
 }
-static SCHEMA_UNUSED uint64_t TableReaderGet64( TableReader * r )
+static SCHEMA_UNUSED ` + forceInline + ` uint64_t TableReaderGet64( TableReader * r )
 {
     uint64_t lo = TableReaderGet32( r );
     uint64_t hi = TableReaderGet32( r );
@@ -803,3 +828,17 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 func (g *tableGen) sym(name, what string) string {
 	return "schema_" + g.unit.Package + "_" + ir.RustSnake(name) + "_" + what + "_"
 }
+
+// tableInlineMacro names the unit's force-inline macro. It is package-scoped
+// for the same reason the primitives guard is: a consumer compiles several
+// packages' Table.h files in one TU, and a macro every one of them spelled the
+// same way would be a redefinition.
+//
+// IT LEADS WITH SCHEMA_, and so does every other macro this backend defines.
+// C's preprocessor namespace is the one place a generated name and a DECLARED
+// name meet with no compiler between them — a schema's constants, enum variants
+// and flag masks are all `#define`s in this target — so the generator reserves
+// that prefix and the checker refuses a declaration that would spell it
+// (internal/check's reservedCMacroPrefix). The reference puts the package first
+// because C++ has no schema-generated macros to collide with.
+func tableInlineMacro(pkg string) string { return "SCHEMA_" + strings.ToUpper(pkg) + "_TABLE_INLINE" }

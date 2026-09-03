@@ -39,7 +39,7 @@ import (
 // a Block header includes the Table header beside it, so it has a guard of its
 // own and one text — buildVersionConstant, emitted by both.
 func blockRuntime(pkg string) string {
-	guard := strings.ToUpper(pkg) + "_SCHEMA_BLOCK_PRIMITIVES"
+	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_BLOCK_PRIMITIVES"
 	return `#ifndef ` + guard + `
 #define ` + guard + `
 

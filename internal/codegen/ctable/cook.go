@@ -38,7 +38,7 @@ import (
 // text is what makes "both forms carry the same id" (§20.6) a fact of the
 // build rather than a redefinition in any translation unit that uses both.
 func buildVersionConstant(pkg string, buildVersion uint64) string {
-	guard := strings.ToUpper(pkg) + "_SCHEMA_BUILD_VERSION"
+	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_BUILD_VERSION"
 	return `#ifndef ` + guard + `
 #define ` + guard + `
 
@@ -64,7 +64,7 @@ func buildVersionConstant(pkg string, buildVersion uint64) string {
 // package like the rest of the table runtime so one definition survives any
 // include order and a lone Table.h works standalone.
 func tableCookRuntime(pkg string) string {
-	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_COOK"
+	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_TABLE_COOK"
 	return `#ifndef ` + guard + `
 #define ` + guard + `
 

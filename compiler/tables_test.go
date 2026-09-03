@@ -1654,3 +1654,149 @@ table Node
     next  *Node
 }
 `
+
+// TestCForceInlineStopsAtTheVariableClass is the C twin of the reference's
+// recursion guard (schema#343). The force-inline qualifier carries the fixed
+// class's bodies and stops there, because that is the class whose save/load
+// call graph cannot hold a cycle: a fixed table nests by value, and a by-value
+// cycle is an infinite `sizeof`. A pointered body reaches its pointee through
+// the depth-carrying form, which a self-referential declaration makes directly
+// recursive — and a recursive always_inline is a compile error under gcc.
+//
+// It also holds the line the reference draws around MEASURE: neither backend
+// force-inlines it, because it is called once per nested body to decide elision
+// and its result is a number, so it neither holds the cursor nor merges stores.
+func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
+	files, err := New().Generate(unitFromSource(t, cRuntimeSrc), "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := string(files["ProbeTable.h"])
+	if header == "" {
+		t.Fatal("no ProbeTable.h")
+	}
+	for _, want := range []string{
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int ConfigSaveBody( TableWriter * w, const Config * value )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE int ConfigLoadBody( TableReader * r, Config * value )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE void TableWriterPut32( TableWriter * w, uint32_t v )",
+		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE uint32_t TableReaderGet32( TableReader * r )",
+	} {
+		if !strings.Contains(header, want) {
+			t.Errorf("the fixed class did not carry the force-inline qualifier: %q", want)
+		}
+	}
+	// the VARIABLE class's bodies must not carry it: their pointer walk can
+	// recurse, and a recursive always_inline does not compile under gcc
+	for _, forbidden := range []string{
+		"SCHEMA_PROBE_TABLE_INLINE int NodeSaveBody",
+		"SCHEMA_PROBE_TABLE_INLINE int NodeLoadBody",
+		"SCHEMA_PROBE_TABLE_INLINE int64_t NodePackMeasure",
+		"SCHEMA_PROBE_TABLE_INLINE int NodePack",
+	} {
+		if strings.Contains(header, forbidden) {
+			t.Errorf("a variable-length table's body was force-inlined; its pointer walk can recurse: %q", forbidden)
+		}
+	}
+	// MEASURE stays plain in both classes, as it does in the reference
+	if strings.Contains(header, "SCHEMA_PROBE_TABLE_INLINE int64_t ConfigMeasure") {
+		t.Error("Measure was force-inlined; it holds no cursor and merges no stores")
+	}
+	// and the macro is PACKAGE-SCOPED, so several units' headers can meet in
+	// one translation unit without a redefinition
+	if !strings.Contains(header, "#ifndef SCHEMA_PROBE_TABLE_INLINE") {
+		t.Error("the force-inline macro is not package-scoped behind its own guard")
+	}
+}
+
+// cMacroSrc names every declaration with the same distinctive prefix, so a
+// macro in the emitted C that does NOT carry it is one the GENERATOR owns
+// rather than one the schema asked for. That is what makes the scan below
+// shape-independent: it recognises no spelling and no family, it simply
+// subtracts the schema's own contribution and looks at what is left.
+const cMacroSrc = `package zqqpkg
+
+const ZqqMax = 4
+
+enum ZqqKind { Alpha, Beta }
+
+flags ZqqPerks { Fast, Slow }
+
+type ZqqPoint
+{
+    x float32
+    y float32
+}
+
+table ZqqConfig
+{
+    scale  float32 = 1.0
+    label  string(24)
+    grade  ZqqKind
+    perks  ZqqPerks
+    slots  [ZqqKind]int32
+    extra  ?ZqqPoint
+    points [..ZqqMax]ZqqPoint
+}
+
+table ZqqNode
+{
+    value int32
+    next  *ZqqNode
+}
+`
+
+// TestCGeneratorMacrosAreOwned closes the class C has that neither other
+// backend does: the PREPROCESSOR namespace.
+//
+// A schema's constants, enum variants and flag masks are `#define`s in the C
+// target, and the generated sources define macros of their own beside them. A
+// collision there is not a redeclaration error — it is a SILENT REWRITE, since
+// the generator's `#ifndef` sees the user's definition standing and skips its
+// own. So every macro the generator defines must be one the front end refuses a
+// declaration for, and this is what says so in both directions:
+//
+//   - every macro in the emitted C that the SCHEMA did not ask for carries the
+//     reserved SCHEMA_ prefix, or is a registered runtime name;
+//   - and a declaration spelling one is refused, with the diagnostic naming the
+//     silent rewrite (the repro cases live in internal/check's break-the-
+//     language suite).
+func TestCGeneratorMacrosAreOwned(t *testing.T) {
+	files, err := New().Generate(unitFromSource(t, cMacroSrc), "c", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	define := regexp.MustCompile(`^#define ([A-Za-z_][A-Za-z0-9_]*)`)
+	owned := map[string]bool{}
+	for _, data := range files {
+		for line := range strings.SplitSeq(string(data), "\n") {
+			m := define.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			// anything carrying the schema's own prefix is a macro the
+			// DECLARATIONS asked for, in either spelling the emitter uses
+			if strings.Contains(m[1], "ZQQ") || strings.Contains(m[1], "Zqq") {
+				continue
+			}
+			owned[m[1]] = true
+		}
+	}
+	if len(owned) == 0 {
+		t.Fatal("the scan found no generator-owned macro at all — the scan, not the emitter, is what broke")
+	}
+	for name := range owned {
+		switch {
+		case strings.HasPrefix(name, "SCHEMA_"):
+			// reserved, and internal/check refuses a declaration spelling it
+		case tablenames.Registered(name):
+			// a registered runtime name, refused by the §11 claim
+		case name == "ZQQPKG_PROTOCOL_ID":
+			// the packet emitter's per-unit id; its claim is the packet
+			// emitter's own business and predates the table backend
+		default:
+			t.Errorf("the generated C defines the macro %s, which is neither under the reserved "+
+				"SCHEMA_ prefix nor a registered runtime name — a schema declaring it would silently "+
+				"rewrite the generator's own definition; move it under SCHEMA_ or register it", name)
+		}
+	}
+}

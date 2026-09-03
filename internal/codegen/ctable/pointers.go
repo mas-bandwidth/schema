@@ -134,8 +134,8 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 			continue
 		}
 		g.pf("static SCHEMA_UNUSED int64_t %sMeasure( const %s * value );\n", st.Name, st.Name)
-		g.pf("static SCHEMA_UNUSED int %sSaveBody( TableWriter * w, const %s * value );\n", st.Name, st.Name)
-		g.pf("static SCHEMA_UNUSED int %sLoadBody( TableReader * r, %s * value );\n", st.Name, st.Name)
+		g.pf("static SCHEMA_UNUSED %s int %sSaveBody( TableWriter * w, const %s * value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
+		g.pf("static SCHEMA_UNUSED %s int %sLoadBody( TableReader * r, %s * value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 	}
 	g.pf("\n")
 	if vars := g.varMembers(members); len(vars) > 0 {

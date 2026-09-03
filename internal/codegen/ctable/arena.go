@@ -29,7 +29,7 @@ import "strings"
 // tableArenaRuntime is the variable-length runtime, guarded per package like
 // tablePrimitives so one definition survives any include order.
 func tableArenaRuntime(pkg string) string {
-	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_ARENA"
+	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_TABLE_ARENA"
 	return `#ifndef ` + guard + `
 #define ` + guard + `
 

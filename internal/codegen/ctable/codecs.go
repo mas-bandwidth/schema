@@ -638,7 +638,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 			g.pf("    (void) ctx;\n")
 		}
 	} else {
-		g.pf("static SCHEMA_UNUSED int %sSaveBody( TableWriter * w, const %s * value )\n{\n", st.Name, st.Name)
+		g.pf("static SCHEMA_UNUSED %s int %sSaveBody( TableWriter * w, const %s * value )\n{\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; /* empty type: presence is the payload */\n")
@@ -891,7 +891,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.pf("    (void) sink; (void) depth;\n")
 		}
 	} else {
-		g.pf("static SCHEMA_UNUSED int %sLoadBody( TableReader * r, %s * value )\n{\n", st.Name, st.Name)
+		g.pf("static SCHEMA_UNUSED %s int %sLoadBody( TableReader * r, %s * value )\n{\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 	}
 	g.pf("    %sReset( value ); /* prefill declared defaults in place, then overlay */\n", st.Name)
 	g.pf("    for ( ;; )\n    {\n")
@@ -1499,3 +1499,20 @@ func boolC(v bool) string {
 }
 
 var _ = strings.ToUpper
+
+// THE FORCE-INLINE LINE, and why it falls where it does (schema#343).
+//
+// The FIXED class's bodies carry the qualifier and the VARIABLE-LENGTH class's
+// do not, and that boundary is the one place a table's save/load call graph can
+// hold a cycle. A fixed table has no pointer in its by-value closure, so its
+// bodies nest by value and a cycle would make `sizeof` infinite — the graph is a
+// DAG by construction and forcing it flat always terminates. A pointered body
+// reaches its pointee through the depth-carrying form (docs/SPEC-TABLES.md
+// §3.1), which a self-referential declaration makes directly recursive, and a
+// recursive always_inline is a compile error under gcc. So the switch that
+// already separates the two classes is the guard, exactly as it is in the
+// reference.
+//
+// `Measure` is NOT force-inlined, in either class and in either backend: it is
+// called once per nested body to decide elision and its result is a number, so
+// it neither holds the cursor nor merges stores.
