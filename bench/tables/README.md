@@ -117,7 +117,7 @@ without anyone remembering to.
 |---|---|---|
 | `cpp` | the reference | the bar every other row divides against |
 | `cs`, `go`, `rust` | native or JIT | same shape, same corpus, a codec compiled to machine code |
-| `elixir` | the READING TIER | what the BEAM costs: `save` allocates its own result because there is no caller-owned buffer, and `load` builds a term per field. About 37x C++ on write and 33x on round-trip, measured (`results/2026-09-03-pairing-elixir-arm64-macbook.md`) |
+| `elixir` | the READING TIER | what the BEAM costs: `save` allocates its own result because there is no caller-owned buffer, and `load` builds a term per field. About 37x C++ on write and 33x on round-trip, measured — a PAIRING CHECK, not a sitting (`results/2026-09-03-pairing-elixir-arm64-macbook.md`), with the lever named against #174 |
 
 **A reading-tier row is a number to be REPORTED, not a number to be matched.**
 The ladder in docs/SPEC-TABLES.md sets the bar for a language that can hold

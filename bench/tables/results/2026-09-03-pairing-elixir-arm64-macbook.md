@@ -50,20 +50,51 @@ sittings whose absolute numbers differ by 19% agreeing on the ratio to within
 
 This is the READING TIER (docs/SPEC-TABLES.md §2's backend status), and the
 figure is what the language costs rather than what the port left on the floor.
-Three costs, each measured rather than assumed:
 
 - **A save allocates its own result.** There is no caller-owned buffer on the
   BEAM, so `save` builds an iolist and flattens it once. The write arm therefore
   measures the codec AND the allocation, which is what a consumer pays; no
   configuration of this language pays less.
-- **A load builds a term per field.** A struct update copies the value tuple, so
-  a table of thirty fields pays thirty of them. That is the language's data
-  model, not a shape the emitter chose.
-- **`measure` inside `save` is NOT the cost.** It was the obvious suspect and it
-  is not: measuring `TableMixed` takes 2.6 µs against `save_body`'s 15.4 µs, so
-  the length prefixes the reference computes with a measure pass cost 17% here
-  and switching to `iodata_length` would buy a fraction of that. Measured before
-  it was optimised, and left alone.
+- **A load builds a term per field**, because a decoded value is a term.
+
+## Two candidate levers, measured and REFUTED
+
+Both were the obvious suspect, and neither is the cost. They are written down
+because a refutation is worth as much as a win and costs the next person the
+same measurement:
+
+- **`measure` inside `save`.** The reference computes every length prefix with a
+  measure pass, so `save` walks each nested body twice. Measuring `TableMixed`
+  takes **2.6 µs against `save_body`'s 15.4 µs** — 17%, so switching the length
+  prefixes to `IO.iodata_length` would buy a fraction of that. Left alone.
+- **One `Map.put` per field on the read path.** A struct update copies the
+  values tuple, so a thirty-field table looked like it was paying thirty copies
+  where one `struct/2` over an accumulated list would pay one. **Banked
+  prediction: 2 to 4x faster. Measured: 1.8x SLOWER** — 0.53 s against 0.97 s
+  for 200,000 iterations of a thirty-field struct. ERTS's flatmap update is
+  already cheap and `struct/2` reduces over the list on top of building it. A
+  wrong-magnitude prediction is a refutation, and this one was wrong in the
+  sign.
+
+## The lever the Elixir round does name (#174)
+
+#174's lead hypothesis is **generation-time bit-syntax swizzling**, and it has
+**no purchase on this leg**: it targets the TYPE wire's manual integer packing,
+where the wire's LSB-first order inside 64-bit words fights bit syntax's
+MSB-first grain. The TABLE wire is byte-oriented throughout (§3), every segment
+is byte-aligned and literal-width, and the emitter already hands each field to
+the ERTS bit-syntax engine as ONE construction expression. There is no
+bit-level packing left to swizzle.
+
+What does reach this leg is #174's SECOND avenue, in its own words: **"iodata
+shapes revisited under literal widths."** `save` builds one iolist cell per
+field and flattens once; a run of adjacent fields whose framing bytes are
+literals could merge into one construction. The obstacle is named too —
+ELISION makes adjacency a runtime fact (§3), so which fields are neighbours is
+not knowable at generation time. That is the pass, and it is unexplored.
+
+And #174's third: **"an honest floor statement."** This board is that, for the
+table wire.
 
 The gate the tables layer sets for a port is that the number is REPORTED, not
 that it matches C++ (bench/tables/README.md, and the ladder in
