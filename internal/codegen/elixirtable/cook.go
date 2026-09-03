@@ -459,9 +459,9 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("  #\n")
 	g.pf("  # §7.1's constants, so a consumer reading this file has the facts and not\n")
 	g.pf("  # a description of them.\n")
-	g.pf("  def %s_region_alignment, do: %d\n", lo, align)
-	g.pf("  def %s_root_size, do: %d\n", lo, layout.Size)
-	g.pf("  def %s_root_align, do: %d\n\n", lo, layout.Align)
+	g.pf("  def %s_cook_region_alignment, do: %d\n", lo, align)
+	g.pf("  def %s_cook_root_size, do: %d\n", lo, layout.Size)
+	g.pf("  def %s_cook_root_align, do: %d\n\n", lo, layout.Align)
 
 	g.pf("  def cook_open_%s(data), do: cook_open_%s(data, 0)\n\n", lo, lo)
 	g.pf("  # lead is how many bytes past an aligned base the caller's buffer\n")
@@ -498,31 +498,31 @@ func (g *gen) emitCookAccessor(st *ir.Struct, fl ir.FieldLayout) {
 	case f.Type.Pointer:
 		g.pf("  # a REFERENCE: the eight-byte signed self-relative delta of §6.3, and\n")
 		g.pf("  # NULL IS ZERO. :refuse is a delta that resolves past the region.\n")
-		g.pf("  def %s_%s(region, node), do: C.deref(region, node + %d)\n", lo, f.Name, fl.Offset)
+		g.pf("  def %s_node_%s(region, node), do: C.deref(region, node + %d)\n", lo, f.Name, fl.Offset)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		used := pieces[len(pieces)-1].Offset
 		if !f.Type.Optional {
 			used = pieces[1].Offset
 		}
-		g.pf("  def %s_%s(region, node), do: C.text(region, node + %d, C.i32(region, node + %d))\n",
+		g.pf("  def %s_node_%s(region, node), do: C.text(region, node + %d, C.i32(region, node + %d))\n",
 			lo, f.Name, fl.Offset, used)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 		size := elementSizeOf(g.unit, f)
 		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {
-			g.pf("  def %s_%s_count(region, node), do: C.i32(region, node + %d)\n",
+			g.pf("  def %s_node_%s_count(region, node), do: C.i32(region, node + %d)\n",
 				lo, f.Name, pieces[1].Offset)
 		}
-		g.pf("  def %s_%s(%s, node) do\n", lo, f.Name, regionParam(f))
+		g.pf("  def %s_node_%s(%s, node) do\n", lo, f.Name, regionParam(f))
 		g.pf("    Enum.map(0..%d//1, fn i -> %s end)\n", f.ArrayBound-1,
 			g.cookReadAt(f, fmt.Sprintf("node + %d + i * %d", fl.Offset, size), size))
 		g.pf("  end\n")
 	default:
 		size := elementSizeOf(g.unit, f)
 		if f.Type.Optional {
-			g.pf("  def %s_%s_present?(region, node), do: C.bool(region, node + %d)\n",
+			g.pf("  def %s_node_%s_present?(region, node), do: C.bool(region, node + %d)\n",
 				lo, f.Name, pieces[len(pieces)-1].Offset)
 		}
-		g.pf("  def %s_%s(%s, node), do: %s\n", lo, f.Name, regionParam(f),
+		g.pf("  def %s_node_%s(%s, node), do: %s\n", lo, f.Name, regionParam(f),
 			g.cookReadAt(f, fmt.Sprintf("node + %d", fl.Offset), size))
 	}
 }
