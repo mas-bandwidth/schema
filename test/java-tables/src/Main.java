@@ -432,19 +432,31 @@ public final class Main {
     /** what a measured path costs over its window. */
     private interface Window { long bytes(); }
 
-    // EVERY PATH IS MEASURED TWICE AND THE SECOND IS REPORTED, which is the
-    // bench's own "one warmup run, then the measured ones" applied to
-    // allocation rather than to time — and it earns its place: the typed
-    // accessor loop is a tight int loop C2 compiles LATE, and at a small window
-    // the compilation lands inside the first measured span and reads as a fixed
-    // ~576 bytes. It is a one-off and not a per-record cost (576 over 2500
-    // records is 0.23 bytes; the smallest object Java can allocate is sixteen),
-    // and measuring past it is how the number becomes the loop's own rather
-    // than the compiler's. A path that really allocated per record allocates in
-    // the second window too.
-    private static long twice(Window w) {
-        w.bytes();
-        return w.bytes();
+    // EVERY PATH IS MEASURED UNTIL TWO CONSECUTIVE WINDOWS AGREE, and that
+    // count is the one reported — the bench's own "one warmup run, then the
+    // measured ones" applied to allocation rather than to time. It earns its
+    // place: the typed accessor loop is a tight int loop C2 compiles LATE, and
+    // at a small window the compilation lands inside a measured span and reads
+    // as a fixed ~576 bytes; a deoptimization and its recompile land the same
+    // way and read as a few kilobytes. Those are one-offs and not per-record
+    // costs (576 over 2500 records is 0.23 bytes; the smallest object Java can
+    // allocate is sixteen), and no two windows carry the same one-off, so the
+    // number that repeats is the loop's own rather than the compiler's. A path
+    // that really allocates per record allocates the same amount in every
+    // window and is reported on the second. The count is bounded: a path
+    // whose allocation never settles is judged on its last window.
+    private static final int SETTLE_WINDOWS = 8;
+
+    private static long steady(Window w) {
+        long last = w.bytes();
+        for (int window = 1; window < SETTLE_WINDOWS; window++) {
+            long next = w.bytes();
+            if (next == last) {
+                return next;
+            }
+            last = next;
+        }
+        return last;
     }
 
     // one measured row: the total over `records`, the per-record number, and the
@@ -518,17 +530,17 @@ public final class Main {
 
         describe("the measured allocation window");
         boolean ok = true;
-        ok &= check(WIRE_READ, twice(() -> allocWireRead(bean, corpus, wirePasses)), (long) wirePasses * corpus.length);
-        ok &= check(WIRE_SAVE, twice(() -> allocWireSave(bean, corpus, wirePasses)), (long) wirePasses * corpus.length);
-        ok &= check(BLOCK_OPEN, twice(() -> allocBlockOpen(bean, block, wirePasses)), wirePasses);
-        ok &= check(BLOCK_READ, twice(() -> allocBlockRead(bean, blockHandle, formPasses)), formPasses);
-        ok &= check(BLOCK_TYPED, twice(() -> allocBlockTyped(bean, blockHandle, wirePasses)), wirePasses);
-        ok &= check(BLOCK_ROWS, twice(() -> allocBlockRows(bean, blockHandle, wirePasses)), wirePasses);
-        ok &= check(COOK_OPEN, twice(() -> allocCookOpen(bean, cook, wirePasses)), wirePasses);
-        ok &= check(COOK_READ, twice(() -> allocCookRead(bean, cookHandle, formPasses)), formPasses);
+        ok &= check(WIRE_READ, steady(() -> allocWireRead(bean, corpus, wirePasses)), (long) wirePasses * corpus.length);
+        ok &= check(WIRE_SAVE, steady(() -> allocWireSave(bean, corpus, wirePasses)), (long) wirePasses * corpus.length);
+        ok &= check(BLOCK_OPEN, steady(() -> allocBlockOpen(bean, block, wirePasses)), wirePasses);
+        ok &= check(BLOCK_READ, steady(() -> allocBlockRead(bean, blockHandle, formPasses)), formPasses);
+        ok &= check(BLOCK_TYPED, steady(() -> allocBlockTyped(bean, blockHandle, wirePasses)), wirePasses);
+        ok &= check(BLOCK_ROWS, steady(() -> allocBlockRows(bean, blockHandle, wirePasses)), wirePasses);
+        ok &= check(COOK_OPEN, steady(() -> allocCookOpen(bean, cook, wirePasses)), wirePasses);
+        ok &= check(COOK_READ, steady(() -> allocCookRead(bean, cookHandle, formPasses)), formPasses);
         ok &= check(JSON_WRITE, allocJsonWrite(bean, corpus, jsonScratch, formPasses),
                 (long) formPasses * corpus.length);
-        ok &= check(JSON_READ, twice(() -> allocJsonRead(bean, corpus, formPasses)), (long) formPasses * corpus.length);
+        ok &= check(JSON_READ, steady(() -> allocJsonRead(bean, corpus, formPasses)), (long) formPasses * corpus.length);
         return ok;
     }
 

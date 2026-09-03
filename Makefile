@@ -809,11 +809,15 @@ tables-cook-cli: bin/schema
 tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp
 	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
 	          build/tables-generated-cs/*/*Table.cs; do \
-		if grep -nE "TableBlock|[A-Za-z0-9_]Block" $$f; then \
+		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
 		fi; \
 	done
 	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
+# The grep runs over the CODE, with every // comment stripped first: what the
+# gate holds is that no block CONSTRUCT is in a Table source, and a comment
+# naming one (the arena runtime describes its allocator as the shape
+# TableBlockAllocator has, §19.1) is prose, not a symbol.
 # BuildVersion is NOT in that grep: it is not a block symbol — a build version
 # answers "which build?" and not "which form?", both accelerators carry it
 # (docs/SPEC-TABLES.md §20.6), and every C++ Table header carries it because every
@@ -869,7 +873,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 .PHONY: tables-block-build-version
 tables-block-build-version: bin/schema build/tables-generated/.stamp build/tables-generated-cs/.stamp
 	@v=$$(./bin/schema build-version tables/block); \
-		grep -q "inline constexpr uint64_t BuildVersion = $${v}ull;" build/tables-generated/block/RenderBlock.h || \
+		grep -q "static const uint64_t BuildVersion = $${v}ull;" build/tables-generated/block/RenderBlock.h || \
 			{ echo "BUILD VERSION GATE FAILED: the C++ constant is not $$v"; exit 1; }; \
 		grep -q "public const ulong BuildVersion = $${v}UL;" build/tables-generated-cs/block/*Block.cs || \
 			{ echo "BUILD VERSION GATE FAILED: the C# constant is not $$v"; exit 1; }; \

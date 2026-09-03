@@ -267,9 +267,15 @@ jobs:
   # every verdict pass is ahead-of-time disassembly, and a JIT has no
   # build-time artifact to gate — faking one would be a green light that
   # proves nothing.
+  #
+  # THE TIMEOUT COVERS THE `make test` PRECONDITION, not just the legs: that
+  # chain is ~22 minutes on either OS (run 33787248541: 1320 s on ubuntu, and
+  # the macOS test job the same), the selftest and the longest leg add ~5, and
+  # a saturated macOS pool stretches all of it. At 20 minutes four macOS legs
+  # died mid-chain with make still running and read as "cancelled".
   inline-gate:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
