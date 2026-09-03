@@ -58,7 +58,7 @@ func generateBlocks(u *ir.Unit, ns string, blocks *ir.BlockUnit, banner string) 
 		tables := byFile[base]
 		sort.Slice(tables, func(i, j int) bool { return tables[i].Table.Name < tables[j].Table.Name })
 		b := &blockGen{unit: u, ns: ns, base: base}
-		b.pf("defmodule %s.%sBlock do\n", ns, base)
+		b.pf("defmodule %s.%sBlock do\n", ns, moduleBase(base))
 		b.pf("%s", blockModuleBanner)
 		b.pf("  alias %s.BlockRuntime, as: B\n\n", ns)
 		b.pf("  @build_version %s.BuildVersion.build_version()\n\n", ns)
@@ -215,23 +215,27 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	proj := bl.Projection
 
 	b.pf("  # Open checks once and POINTS, and this is the WHOLE check (§19.2): the\n")
-	b.pf("  # magic, the build version, the byte order, and then, per out-of-line\n")
-	b.pf("  # array, the pitch against this build's, the count against the declared\n")
-	b.pf("  # maximum, and the rows inside the extent the caller passed.\n")
+	b.pf("  # BASE'S ALIGNMENT, the magic, the build version, the byte order, and then,\n")
+	b.pf("  # per out-of-line array, the pitch against this build's, the count against\n")
+	b.pf("  # the declared maximum, and the rows inside the extent the caller passed.\n")
 	b.pf("  #\n")
-	b.pf("  # THE BASE'S ALIGNMENT IS NOT CHECKED, and that is a fact about the BEAM\n")
-	b.pf("  # rather than a gap: a binary has no address a caller places, so there is\n")
-	b.pf("  # no unaligned base for this leg to refuse. Every ARRAY START is still\n")
-	b.pf("  # checked against the 64-byte rule, because that one is a fact the bytes\n")
-	b.pf("  # carry.\n")
+	b.pf("  # lead IS THE BASE'S ALIGNMENT, and it is the same argument the cook's Open\n")
+	b.pf("  # takes for the same reason: §19.1 lays a block at a 64-byte aligned base\n")
+	b.pf("  # and §19.2 checks it, and a BEAM binary has no address a caller can\n")
+	b.pf("  # observe or place — so the caller states how many bytes past an aligned\n")
+	b.pf("  # base its buffer begins. 0 is the aligned case a file read into a fresh\n")
+	b.pf("  # binary always is. Stating it makes the check a real one; the alternative\n")
+	b.pf("  # is a leg that cannot refuse an unaligned base at all, which is a check\n")
+	b.pf("  # four other backends make.\n")
 	b.pf("  #\n")
-	b.pf("  # EVERY NUMBER BELOW COMES FROM THE INSTANCE. BEAM integers are\n")
+	b.pf("  # EVERY OTHER NUMBER COMES FROM THE INSTANCE. BEAM integers are\n")
 	b.pf("  # arbitrary-precision, so no term of this arithmetic can carry past the\n")
 	b.pf("  # top of a type — a forged offset_of near 2^63 is simply a large number\n")
 	b.pf("  # that fails its bound.\n")
-	b.pf("  def block_open_%s(data) when is_binary(data) do\n", lo)
+	b.pf("  def block_open_%s(data), do: block_open_%s(data, 0)\n\n", lo, lo)
+	b.pf("  def block_open_%s(data, lead) when is_binary(data) and is_integer(lead) do\n", lo)
 	b.pf("    bytes = byte_size(data)\n\n")
-	b.pf("    if bytes < %d do\n", proj.Size)
+	b.pf("    if bytes < %d or rem(lead, B.align()) != 0 do\n", proj.Size)
 	b.pf("      :refuse\n")
 	b.pf("    else\n")
 	b.pf("      case data do\n")
@@ -249,7 +253,7 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("      end\n")
 	b.pf("    end\n")
 	b.pf("  end\n\n")
-	b.pf("  def block_open_%s(_data), do: :refuse\n\n", lo)
+	b.pf("  def block_open_%s(_data, _lead), do: :refuse\n\n", lo)
 
 	b.pf("  defp block_extent_%s(data, bytes) do\n", lo)
 	if len(bl.Arrays) == 0 {
@@ -519,7 +523,7 @@ func (b *blockGen) recordRef(name string) string {
 	if home == "" {
 		home = b.base
 	}
-	return fmt.Sprintf("{%s.%sBlock, :block_record_%s}", b.ns, home, ir.RustSnake(name))
+	return fmt.Sprintf("{%s.%sBlock, :block_record_%s}", b.ns, moduleBase(home), ir.RustSnake(name))
 }
 
 // recordsOf is every record the file's block forms reach, sorted: each

@@ -326,6 +326,10 @@ defmodule Driver do
     Audit.soak(parse(File.read!(manifest)), String.to_integer(seconds))
   end
 
+  def main([manifest, "block-lead"]) do
+    BlockLead.run(parse(File.read!(manifest)))
+  end
+
   def main([manifest, "fuzz", iterations]) do
     Fuzz.run(parse(File.read!(manifest)), String.to_integer(iterations))
   end
@@ -510,8 +514,17 @@ defmodule Driver do
     for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "block" do
       verdict =
         case claim(file, extent, pointer) do
-          :no_buffer -> "refuse\n"
-          bytes -> block_verdict(block_unit(subject), block_table(subject), bytes)
+          :no_buffer ->
+            "refuse\n"
+
+          bytes ->
+            # the POINTER column is the lead of the buffer the caller holds, and
+            # block_open takes it for the same reason cook_open does (§19.2's
+            # base alignment, and BlockRuntime's note). The block battery's rows
+            # all carry 0 today; passing it through is what makes a row that
+            # does not an answer rather than a silence.
+            block_verdict(block_unit(subject), block_table(subject), bytes,
+                          String.to_integer(pointer))
         end
 
       write(outdir, name, verdict)
@@ -566,6 +579,8 @@ defmodule Driver do
   end
 
   def block_table_of(name), do: block_table(name)
+  def block_rows(rows), do: rows(rows, "block")
+  def block_verdict_at(unit, root, bytes, lead), do: block_verdict(unit, root, bytes, lead)
   def block_module_of(unit, root), do: block_module(unit, root)
   def accessor_of(unit, root, prefix, arity), do: accessor(unit, root, prefix, arity)
 
@@ -574,10 +589,12 @@ defmodule Driver do
     mod
   end
 
-  defp block_verdict(unit, root, bytes) do
+  defp block_verdict(unit, root, bytes), do: block_verdict(unit, root, bytes, 0)
+
+  defp block_verdict(unit, root, bytes, lead) do
     open = String.to_atom("block_open_" <> Macro.underscore(root))
 
-    case apply(block_module(unit, root), open, [bytes]) do
+    case apply(block_module(unit, root), open, [bytes, lead]) do
       {:ok, _block} -> "open\n"
       :refuse -> "refuse\n"
     end
@@ -1003,11 +1020,16 @@ defmodule Fuzz do
   def run(rows, iterations) do
     subjects = subjects(rows)
     if subjects == [], do: raise("the manifest names no block or cook to fuzz")
-    :rand.seed(:exsss, {1, 2, 3})
+    # THE SEED IS A KNOB, as it is on every other leg (SEED=$(SEED) in the
+    # Makefile). A fixed seed with a fixed N is a regression test wearing a
+    # fuzzer's clothes: CI would explore the same mutants forever. The default
+    # is fixed so a failing run is reproducible from its own output.
+    seed = String.to_integer(System.get_env("SEED", "20260903"))
+    :rand.seed(:exsss, {seed, seed + 369, seed + 7})
     total = Enum.reduce(1..iterations, 0, fn i, opened -> opened + one(subjects, i) end)
 
     IO.puts(
-      "elixir fuzz: #{iterations} mutants over #{length(subjects)} fixtures — " <>
+      "elixir fuzz: #{iterations} mutants over #{length(subjects)} fixtures at seed #{seed} — " <>
         "#{total} opened and walked inside the buffer, the rest refused — no read left it"
     )
   end
@@ -1104,5 +1126,55 @@ defmodule Fuzz do
       3 ->
         binary_part(bytes, 0, :rand.uniform(size))
     end
+  end
+end
+
+# ---------------------------------------------------------------------------
+# THE BASE-ALIGNMENT GATE (docs/SPEC-TABLES.md §19.1, §19.2)
+# ---------------------------------------------------------------------------
+#
+# §19.1 lays a block at a 64-byte aligned base and §19.2 checks it. A BEAM
+# binary has no address a caller can observe or place, so block_open takes the
+# lead the caller states — and a stated fact nothing checks is a comment. This
+# opens every committed block image at every lead in 0..64 and requires the
+# alignment rule exactly: 0 and 64 open, 1..63 refuse.
+#
+# IT IS LEG-LOCAL, and the reason is worth naming rather than leaving to be
+# found. The shared block forgery battery carries `pointer 0` on every row by
+# its own statement (testdata/conformance/tables/MANIFEST.txt), and the block
+# path of every driver in the tree reads the extent and drops the pointer — so a
+# `block_lead_*` row is a change to the reference leg and five other drivers,
+# not to this one. This leg's driver passes the column through already; until
+# the battery carries a row, this gate holds the property.
+defmodule BlockLead do
+  def run(rows) do
+    images = Driver.block_rows(rows)
+    if images == [], do: raise("the manifest names no block image")
+
+    for [name, unit, image] <- images do
+      data = File.read!(image)
+      root = Driver.block_table_of(name)
+
+      for lead <- 0..64 do
+        want = if rem(lead, 64) == 0, do: "open\n", else: "refuse\n"
+        got = Driver.block_verdict_at(unit, root, data, lead)
+
+        if got != want do
+          IO.puts(
+            :stderr,
+            "BASE ALIGNMENT GATE FAILED: #{name} at lead #{lead} answered " <>
+              String.trim(got) <> ", wanted " <> String.trim(want) <>
+              " — §19.2 checks the base's alignment and lead is how this leg carries it"
+          )
+
+          System.halt(1)
+        end
+      end
+    end
+
+    IO.puts(
+      "elixir base-alignment gate: #{length(images)} block image(s) x 65 leads — " <>
+        "0 and 64 open, 1..63 refuse"
+    )
   end
 end

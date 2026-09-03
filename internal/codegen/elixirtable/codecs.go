@@ -30,7 +30,7 @@ func (g *gen) tableModule() []byte {
 		}
 	}
 
-	g.pf("defmodule %s.%sTable do\n", g.ns, g.file.Base)
+	g.pf("defmodule %s.%sTable do\n", g.ns, moduleBase(g.file.Base))
 	g.pf("%s", tableModuleBanner)
 	g.indent = "  "
 	g.pf("alias %s.TableRuntime, as: R\n\n", g.ns)
@@ -374,7 +374,7 @@ func (g *gen) emitEnumIdentity(e *ir.Enum) {
 func (g *gen) enumIdent(e *ir.Enum, verb, arg string) string {
 	name := verb + "_" + elixirName(e.Name)
 	if home, ok := g.unit.DeclFile[e.Name]; ok && home != g.file.Base {
-		return fmt.Sprintf("%s.%sTable.%s(%s)", g.ns, home, name, arg)
+		return fmt.Sprintf("%s.%sTable.%s(%s)", g.ns, moduleBase(home), name, arg)
 	}
 	return fmt.Sprintf("%s(%s)", name, arg)
 }

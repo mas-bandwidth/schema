@@ -48,7 +48,7 @@ func (g *gen) cookModule() []byte {
 	}
 
 	g.body.Reset()
-	g.pf("defmodule %s.%sCook do\n", g.ns, g.file.Base)
+	g.pf("defmodule %s.%sCook do\n", g.ns, moduleBase(g.file.Base))
 	g.pf("%s", cookModuleBanner)
 	g.pf("  alias %s.CookRuntime, as: C\n\n", g.ns)
 	g.pf("  @build_version %s.BuildVersion.build_version()\n\n", g.ns)
@@ -390,7 +390,7 @@ func (g *gen) cookRecordRef(name string) string {
 	if home == "" {
 		home = g.file.Base
 	}
-	return fmt.Sprintf("{%s.%sCook, :cook_info_%s}", g.ns, home, ir.RustSnake(name))
+	return fmt.Sprintf("{%s.%sCook, :cook_info_%s}", g.ns, moduleBase(home), ir.RustSnake(name))
 }
 
 // cookStorageOf classifies one slot and gives its width. An ENUM slot holds the

@@ -2158,3 +2158,75 @@ func TestElixirRefusesFileModuleCollision(t *testing.T) {
 		t.Errorf("a TABLE-FREE unit must keep the name ProbeTable: %v", err)
 	}
 }
+
+// unitFromNamedSource is unitFromSource with the schema FILE's basename under
+// the caller's control, because a generated MODULE name is derived from it.
+func unitFromNamedSource(t *testing.T, base, src string) *ir.Unit {
+	t.Helper()
+	name := base + ".schema"
+	f, perrs := parser.Parse(name, []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: name, Name: name, Base: base, Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	return u
+}
+
+// TestElixirModuleNamesAreAliases: a generated MODULE name is not a filename.
+// An Elixir alias segment must begin upper-case, so `my_frame.schema` emits
+// `my_frameTable.ex` — the packet emitter's own file convention — carrying
+// `<Ns>.MyFrameTable`. Emitting the basename raw produced
+// `defmodule Probe.my_frameTable`, which is an ArgumentError at compile time,
+// and left this backend's own collision check (which already reads the exported
+// form) naming a different module than the emitter wrote.
+//
+// The corpus is CamelCase throughout, which is exactly why nothing saw it.
+func TestElixirModuleNamesAreAliases(t *testing.T) {
+	u := unitFromNamedSource(t, "my_frame", packetSrc+`
+table Holder
+{
+    x int32
+    p Point
+}
+`)
+	files, err := New().Generate(u, "elixir", Options{})
+	if err != nil {
+		t.Fatalf("--lang elixir: %v", err)
+	}
+	// the FILES keep the schema basename, as the packet emitter's do
+	for _, want := range []string{"my_frameTable.ex", "my_frameBlock.ex", "my_frameCook.ex"} {
+		if _, ok := files[want]; !ok {
+			t.Errorf("no %s emitted; got %d files", want, len(files))
+		}
+	}
+	// and every MODULE the output names is a legal alias: an upper-case first
+	// letter after every dot
+	segment := regexp.MustCompile(`\bProbe\.([A-Za-z0-9_]+)`)
+	for name, data := range files {
+		for _, m := range segment.FindAllStringSubmatch(string(data), -1) {
+			first := m[1][0]
+			if first < 'A' || first > 'Z' {
+				t.Errorf("%s names the module Probe.%s — an Elixir alias segment must begin "+
+					"upper-case, so this unit does not compile", name, m[1])
+			}
+		}
+	}
+	// the three the basename derives, spelled out so a rename of the helper
+	// cannot make the check vacuous
+	for _, want := range []string{"Probe.MyFrameTable", "Probe.MyFrameBlock", "Probe.MyFrameCook"} {
+		found := false
+		for _, data := range files {
+			if strings.Contains(string(data), "defmodule "+want+" do") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("no file declares %s", want)
+		}
+	}
+}

@@ -3318,6 +3318,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-elixir-alloc-audit
 	$(MAKE) tables-elixir-alloc-negative-control
 	$(MAKE) tables-elixir-fuzz
+	$(MAKE) tables-elixir-block-lead
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-flat-wire
 	$(MAKE) tables-flat-wire-negative-control
@@ -3720,8 +3721,95 @@ tables-elixir-soak-negative-control: build/conformance/manifest.txt
 
 .PHONY: tables-elixir-fuzz
 tables-elixir-fuzz: build/conformance/manifest.txt
-	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+	SEED=$(SEED) BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
 		build/conformance/manifest.txt fuzz $(ELIXIR_FUZZ_N)
+
+# THE FUZZ ORACLE'S NEGATIVE CONTROL, and it sabotages the EMITTER rather than
+# the driver, which is what the Rust and Java controls do and what makes a
+# control independent of the thing it tests: the generated reader loses a bound,
+# and the gate has to FIND it.
+#
+# IT REMOVES BOTH EXTENT BOUNDS, and the reason is a measurement rather than a
+# convenience. Removing only the first — the rows against the caller's extent —
+# leaves the oracle GREEN with an identical mutant count under the seed this leg
+# shipped pinned to, because the padding check downstream absorbs it; under
+# SEED=$(SEED) the same one-bound build reds on mutant 1. A control whose
+# verdict depends on which mutant the seed reaches first is not a control, so
+# this one removes the whole layer — and that measurement is half the argument
+# for the SEED knob above.
+CONFORMANCE_NEGATIVE_ELIXIR_FUZZ := build/elixir-fuzz-negative
+ELIXIR_FUZZ_SED_ROWS := s|rows > bytes - offset_of -> {:halt, :refuse}|true -> {:cont, used}|
+ELIXIR_FUZZ_SED_PAD := s|if padding > bytes - used do|if false do|
+
+.PHONY: tables-elixir-fuzz-negative-control
+tables-elixir-fuzz-negative-control: build/conformance-harness build/conformance/manifest.txt
+	@rm -rf $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ) && mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)
+	@sed -e '$(ELIXIR_FUZZ_SED_ROWS)' -e '$(ELIXIR_FUZZ_SED_PAD)' \
+		internal/codegen/elixirtable/block.go > $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/block.go.txt
+	@cmp -s internal/codegen/elixirtable/block.go $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Elixir block emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/block.go":"%s/$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/overlay.json \
+		-o $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/schema ./cmd/schema
+	@for unit in $(ELIXIR_TABLE_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/schema generate --lang elixir \
+			--out $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/generated/$$name $$path || exit 1; \
+	done
+	@mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/ebin
+	$(ELIXIRC) -o $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/ebin \
+		$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/generated/*/*.ex test/conformance/elixir/driver_impl.ex
+	@if SEED=$(SEED) ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/ebin \
+			BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+			build/conformance/manifest.txt fuzz $(ELIXIR_FUZZ_N) > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a reader with no extent bound left the fuzz oracle green"; \
+		exit 1; \
+	else \
+		echo "elixir fuzz negative control: a block reader with both extent bounds removed reds the oracle"; \
+	fi
+
+# THE BASE-ALIGNMENT GATE (docs/SPEC-TABLES.md §19.1, §19.2): every committed
+# block image at every lead in 0..64, and the alignment rule exactly — 0 and 64
+# open, 1..63 refuse. §19.2 checks the base's alignment and this leg carries it
+# as the caller's stated `lead`, so a stated fact nothing checks would be a
+# comment rather than a check.
+.PHONY: tables-elixir-block-lead
+tables-elixir-block-lead: build/conformance/manifest.txt
+	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+		build/conformance/manifest.txt block-lead
+
+# and its control, on the EMITTER for the fuzz control's reason
+CONFORMANCE_NEGATIVE_ELIXIR_LEAD := build/elixir-lead-negative
+ELIXIR_LEAD_SED := s|or rem(lead, B.align()) != 0 do|or lead < 0 do|
+
+.PHONY: tables-elixir-block-lead-negative-control
+tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
+	@rm -rf $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD) && mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)
+	@sed '$(ELIXIR_LEAD_SED)' internal/codegen/elixirtable/block.go \
+		> $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/block.go.txt
+	@cmp -s internal/codegen/elixirtable/block.go $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Elixir base-alignment sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/block.go":"%s/$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/overlay.json \
+		-o $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/schema ./cmd/schema
+	@for unit in $(ELIXIR_TABLE_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/schema generate --lang elixir \
+			--out $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/generated/$$name $$path || exit 1; \
+	done
+	@mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/ebin
+	$(ELIXIRC) -o $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/ebin \
+		$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/generated/*/*.ex test/conformance/elixir/driver_impl.ex
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/ebin \
+			BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
+			build/conformance/manifest.txt block-lead > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a reader that does not check the base left the gate green"; \
+		exit 1; \
+	else \
+		echo "elixir base-alignment negative control: dropping the check reds the gate"; \
+	fi
 
 # THE ELIXIR LEG's BENCH GATE: the leg builds, and its GOLDEN GATE answers
 # before any clock does — variant 0 is byte-compared to the pinned instance and
@@ -3752,6 +3840,9 @@ ELIXIR_RELEASE_FUZZ_N ?= 200000
 .PHONY: tables-elixir-release
 tables-elixir-release:
 	$(MAKE) tables-elixir-fuzz ELIXIR_FUZZ_N=$(ELIXIR_RELEASE_FUZZ_N)
+	$(MAKE) tables-elixir-fuzz-negative-control
+	$(MAKE) tables-elixir-block-lead
+	$(MAKE) tables-elixir-block-lead-negative-control
 	$(MAKE) tables-elixir-alloc-audit
 	$(MAKE) tables-elixir-alloc-negative-control
 	$(MAKE) tables-elixir-soak SOAK_SECONDS=$(ELIXIR_RELEASE_SOAK_SECONDS)

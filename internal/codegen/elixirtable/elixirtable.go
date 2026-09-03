@@ -252,6 +252,19 @@ func fn(verb, typeName string) string { return verb + "_" + ir.RustSnake(typeNam
 // mod is a declaration's struct module: <Ns>.<Name>.
 func (g *gen) mod(name string) string { return g.ns + "." + name }
 
+// moduleBase is a schema FILE's basename as an Elixir ALIAS SEGMENT, and every
+// generated module name goes through it.
+//
+// A module name is not a filename. `my_frame.schema` emits `my_frameTable.ex`,
+// which is the packet emitter's own file convention, and the module inside it
+// is `<Ns>.MyFrameTable` — because an alias segment must begin upper-case and
+// `defmodule Probe.my_frameTable` is an ArgumentError at compile time, not a
+// style opinion. The packet emitter already exports the segment
+// (internal/codegen/elixir's emitFileModule), and this backend's own
+// collision check already reads the exported form, so anything else here would
+// leave the check and the emission naming two different modules.
+func moduleBase(base string) string { return ir.GoExportName(base) }
+
 // fileMod is the module a declaration's codecs live in: the <Base>Table module
 // of the file that DECLARES it, so a unit with several files defines each once.
 func (g *gen) fileMod(name string) string {
@@ -259,14 +272,14 @@ func (g *gen) fileMod(name string) string {
 	if !ok {
 		base = g.file.Base
 	}
-	return g.ns + "." + base + "Table"
+	return g.ns + "." + moduleBase(base) + "Table"
 }
 
 // call renders a call to one of a closure member's codecs, qualified when the
 // member is declared in another file of the unit.
 func (g *gen) call(verb, typeName string) string {
 	if home, ok := g.unit.DeclFile[typeName]; ok && home != g.file.Base {
-		return g.ns + "." + home + "Table." + fn(verb, typeName)
+		return g.ns + "." + moduleBase(home) + "Table." + fn(verb, typeName)
 	}
 	return fn(verb, typeName)
 }
