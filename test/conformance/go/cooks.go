@@ -18,6 +18,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"strconv"
@@ -26,6 +27,62 @@ import (
 
 	"graphdemo"
 )
+
+// cookAlignment is the alignment the header NAMES, which is where a forged
+// buffer has to be placed for the base-alignment check to mean anything. A
+// forged word that is not an alignment at all puts the buffer at the format's
+// own floor instead.
+func cookAlignment(source []byte) int64 {
+	if len(source) < 48 {
+		return 8
+	}
+	a := int64(binary.NativeEndian.Uint64(source[40:]))
+	if a < 1 || a > 64 || a&(a-1) != 0 {
+		return 8
+	}
+	return a
+}
+
+// openCookForged opens one cooked file by root name over a forged placement:
+// the buffer is exactly the extent the caller claims, its base `lead` bytes
+// past an aligned address, or absent entirely.
+func openCookForged(root string, data []byte, extent int64, lead int, nilBuffer bool) (bool, error) {
+	base, bytes, keep := place(data, extent, lead, cookAlignment(data))
+	if nilBuffer {
+		base = nil
+	}
+	opened := false
+	switch root {
+	case "Scene":
+		var c graphdemo.SceneCook
+		opened = graphdemo.SceneOpen(&c, base, bytes)
+	case "Depot":
+		var c graphdemo.DepotCook
+		opened = graphdemo.DepotOpen(&c, base, bytes)
+	case "Album":
+		var c graphdemo.AlbumCook
+		opened = graphdemo.AlbumOpen(&c, base, bytes)
+	case "TreeNode":
+		var c graphdemo.TreeNodeCook
+		opened = graphdemo.TreeNodeOpen(&c, base, bytes)
+	case "ListNode":
+		var c graphdemo.ListNodeCook
+		opened = graphdemo.ListNodeOpen(&c, base, bytes)
+	case "Settings":
+		var c graphdemo.SettingsCook
+		opened = graphdemo.SettingsOpen(&c, base, bytes)
+	case "Meta":
+		var c graphdemo.MetaCook
+		opened = graphdemo.MetaOpen(&c, base, bytes)
+	case "Layer":
+		var c graphdemo.LayerCook
+		opened = graphdemo.LayerOpen(&c, base, bytes)
+	default:
+		return false, fmt.Errorf("no cook root named %s", root)
+	}
+	keepAlive(keep)
+	return opened, nil
+}
 
 // openCook opens one cooked file by root name and hands back its region, the
 // root's descriptor, and the backing allocation the caller must keep live.
@@ -279,7 +336,10 @@ func surfaceCook(lines []line, out string) error {
 		if f[0] != "cook" {
 			continue
 		}
-		root, file := f[1], f[3]
+		// cook <case> <unit> <root> <file>: the CASE names the answer and the
+		// ROOT names the reader, because one root can have more than one
+		// fixture — Scene and SceneValued are the same table read two ways.
+		name, root, file := f[1], f[3], f[4]
 		data, err := os.ReadFile(file)
 		if err != nil {
 			return err
@@ -292,7 +352,7 @@ func surfaceCook(lines []line, out string) error {
 		if err := w.node(0, typ, 0); err != nil {
 			return fmt.Errorf("%s: %w", root, err)
 		}
-		if err := spill(out, root, []byte(w.dump.String())); err != nil {
+		if err := spill(out, name, []byte(w.dump.String())); err != nil {
 			return err
 		}
 		keepAlive(keep)

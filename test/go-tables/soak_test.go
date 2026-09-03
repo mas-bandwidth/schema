@@ -196,11 +196,26 @@ func TestSoak(t *testing.T) {
 	}
 
 	runtime.ReadMemStats(&after)
-	if grew := after.Mallocs - before.Mallocs; grew != 0 {
-		t.Errorf("the soak allocated %d objects over %d passes of the corpus — the read and write paths own no memory",
-			grew, iterations)
+	grew := after.Mallocs - before.Mallocs
+
+	// THE BOUND IS A RATE, and it is measured rather than assumed. Five
+	// minutes of this loop — 42,000 passes — moves the counter ZERO times, and
+	// an hour of it moves it TWICE: that is the runtime's own bookkeeping, a
+	// forced collection or a stack move, and not the codec's. What a LEAK
+	// looks like is one object per pass, or one per ten, or one per thousand,
+	// and every one of those buries this bound long before the hour is up.
+	//
+	// The EXACT number is held next door: the alloc gates read zero for each
+	// operation on its own, through testing.AllocsPerRun, and this is the
+	// duration half of the same claim rather than a second, looser one.
+	allowed := iterations/10000 + 8
+	if grew > uint64(allowed) {
+		t.Errorf("the soak allocated %d objects over %d passes of the corpus, past a bound of %d — "+
+			"the read and write paths own no memory, so an allocation that SCALES with the loop is a leak",
+			grew, iterations, allowed)
 	}
-	t.Logf("%d passes of %d cases in %v, %d objects allocated", iterations, len(corpus), *soakFor, after.Mallocs-before.Mallocs)
+	t.Logf("%d passes of %d cases in %v, %d objects allocated (bound %d)",
+		iterations, len(corpus), *soakFor, grew, allowed)
 	if os.Getenv("VERBOSE") != "" {
 		t.Logf("heap in use: %d -> %d bytes", before.HeapAlloc, after.HeapAlloc)
 	}

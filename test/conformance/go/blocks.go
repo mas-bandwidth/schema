@@ -23,26 +23,61 @@ import (
 // keepAlive holds a backing allocation live across a call that points into it.
 func keepAlive(b []byte) { runtime.KeepAlive(b) }
 
-// aligned copies the image into storage whose base is 64-byte aligned, and
-// hands back that base, the extent the caller claims, and the backing
-// allocation the caller must keep live for as long as it holds the base.
-func aligned(data []byte, extent int64) (unsafe.Pointer, int64, []byte) {
+// place copies the image into storage EXACTLY as long as the extent the caller
+// claims, whose base sits `lead` bytes past an `alignment`-aligned address, and
+// hands back that base, the extent, and the backing allocation the caller must
+// keep live for as long as it holds the base.
+//
+// The extent is the claim and not the file: a forgery may claim more bytes than
+// it carries — two rows of the block battery are about exactly that — or fewer,
+// which is what a truncation is. What fits is copied and the rest is zero.
+//
+// `lead` is the POINTER column: 0 an aligned base, 1..63 that many bytes past
+// one. An unaligned base is a pointer fact rather than a file fact, which is
+// why the manifest carries it as a column.
+func place(data []byte, extent int64, lead int, alignment int64) (unsafe.Pointer, int64, []byte) {
 	bytes := extent
 	if bytes < 0 {
 		bytes = int64(len(data))
 	}
-	if bytes < int64(len(data)) {
-		bytes = int64(len(data))
+	if alignment < 1 {
+		alignment = 1
 	}
-	raw := make([]byte, bytes+64)
-	skip := (64 - (uintptr(unsafe.Pointer(&raw[0])) % 64)) % 64
+	raw := make([]byte, bytes+alignment+int64(lead)+64)
+	skip := (uintptr(alignment) - (uintptr(unsafe.Pointer(&raw[0])) % uintptr(alignment))) % uintptr(alignment)
+	skip += uintptr(lead)
 	base := raw[skip : skip+uintptr(bytes)]
+	clear(base)
 	copy(base, data)
+	if bytes == 0 {
+		// a zero-length claim still has a base: point at the storage rather
+		// than at nothing, so a reader meets the length and not a nil
+		return unsafe.Pointer(&raw[skip]), 0, raw
+	}
 	return unsafe.Pointer(&base[0]), bytes, raw
 }
 
+// aligned is place at the block form's own 64-byte base and no lead.
+func aligned(data []byte, extent int64) (unsafe.Pointer, int64, []byte) {
+	bytes := extent
+	if bytes >= 0 && bytes < int64(len(data)) {
+		bytes = int64(len(data))
+	}
+	return place(data, bytes, 0, 64)
+}
+
 func openBlock(name string, data []byte, extent int64) (bool, error) {
-	base, bytes, keep := aligned(data, extent)
+	return openBlockForged(name, data, extent, 0, false)
+}
+
+// openBlockForged is openBlock over a forged placement: the buffer is exactly
+// the extent the caller claims, its base `lead` bytes past a 64-byte-aligned
+// address, or absent entirely.
+func openBlockForged(name string, data []byte, extent int64, lead int, nilBuffer bool) (bool, error) {
+	base, bytes, keep := place(data, extent, lead, 64)
+	if nilBuffer {
+		base = nil
+	}
 	opened := false
 	switch {
 	case strings.HasPrefix(name, "block_render"):

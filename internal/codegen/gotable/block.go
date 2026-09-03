@@ -263,17 +263,33 @@ func (r TableBlockRows[T]) At(i int32) *T {
 // them.
 
 // TableBlockFieldInfo is one field's position in the record this descriptor
-// describes.
+// describes, and everything a GENERIC ROW WALK needs after that.
 type TableBlockFieldInfo struct {
 	Name           string
 	Offset         uint32 // the field's offset in the record this descriptor describes
 	Size           uint32 // its size there
 	Kind           uint8  // the table-wire kind, as TableFieldInfo carries it
-	OutOfLine      bool   // an out-of-line array: the three members below are live
+	OutOfLine      bool   // an out-of-line array: the triple's three members are live
 	OffsetOfOffset uint32 // the triple's OffsetOf member, or 0xffffffff
-	CountOffset    uint32 // its Count member, or 0xffffffff
-	StrideOffset   uint32 // its Stride member, or 0xffffffff
-	Stride         uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+	// The COUNT COMPANION, and it is one column doing one job in both
+	// spellings: the triple's Count member for an out-of-line array, the int32
+	// used length of a string or a bytes inline, 0xffffffff when the field has
+	// none.
+	CountOffset  uint32
+	StrideOffset uint32 // the triple's Stride member, or 0xffffffff
+	Stride       uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+
+	// ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
+	// already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
+	// node and a block row without learning a second one. Where the field
+	// starts is the pair above; this is everything after it.
+	IsArray       bool   // inline storage of ArrayBound slots at ElemSize (bytes included)
+	Counted       bool   // CountOffset names a used-length companion
+	Optional      bool   // PresentOffset names a bool presence companion
+	ArrayBound    int32  // inline slots, or a string's declared maximum; 0 for a plain scalar
+	ElemSize      uint32 // ONE slot's size; the field's own when it holds one value
+	PresentOffset uint32 // the presence companion, or 0xffffffff
+
 	// Element is the ELEMENT's or the nested record's own layout, behind a
 	// function so a descriptor graph needs no initialisation order. nil when
 	// the field is a scalar. Following it is how a walker DESCENDS: an
@@ -701,22 +717,38 @@ func (g *blockGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 			kind = tkU8
 		}
 		outOfLine := projection && ir.BlockOutOfLine(f)
-		offsetOfOffset, countOffset, strideOffset, stride := "0xffffffff", "0xffffffff", "0xffffffff", "0"
+		facts := ir.BlockFieldOf(g.unit, f, fl.Offset, projection)
+		offsetOfOffset, strideOffset, stride := "0xffffffff", "0xffffffff", "0"
 		element := "nil"
 		if outOfLine {
 			a := bl.ArrayByName(f.Name)
 			offsetOfOffset = fmt.Sprintf("%d", a.OffsetOfOffset)
-			countOffset = fmt.Sprintf("%d", a.CountOffset)
 			strideOffset = fmt.Sprintf("%d", a.StrideOffset)
 			stride = fmt.Sprintf("%d", a.Stride)
 			element = fmt.Sprintf("func() *TableBlockInfo { return &%s }", blockInfoSymbol(owner, a.ElemName))
 		} else if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed && g.blocks.Layout(ref.Name) != nil {
+			// A field that NAMES a record carries that record's layout, whether
+			// it holds one or an array of them: an INLINE array of records is
+			// part of a row, and a walker descending one reaches its element
+			// through this same column.
 			element = fmt.Sprintf("func() *TableBlockInfo { return &%s }", blockInfoSymbol(owner, ref.Name))
 		}
-		g.hf("\t\t{Name: %q, Offset: %d, Size: %d, Kind: %d, OutOfLine: %v, OffsetOfOffset: %s, CountOffset: %s, StrideOffset: %s, Stride: %s, Element: %s},\n",
-			f.Name, fl.Offset, fl.Size, kind, outOfLine, offsetOfOffset, countOffset, strideOffset, stride, element)
+		g.hf("\t\t{Name: %q, Offset: %d, Size: %d, Kind: %d, OutOfLine: %v, OffsetOfOffset: %s, CountOffset: %s, StrideOffset: %s, Stride: %s,\n",
+			f.Name, fl.Offset, fl.Size, kind, outOfLine, offsetOfOffset, blockGoOffset(facts.CountOffset), strideOffset, stride)
+		g.hf("\t\t\tIsArray: %v, Counted: %v, Optional: %v, ArrayBound: %d, ElemSize: %d, PresentOffset: %s, Element: %s},\n",
+			facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.ElemSize,
+			blockGoOffset(facts.PresentOffset), element)
 	}
 	g.hf("\t},\n}\n\n")
+}
+
+// blockGoOffset spells a companion's offset, or the absent marker every other
+// 32-bit offset column in the descriptors uses.
+func blockGoOffset(offset int64) string {
+	if offset < 0 {
+		return "0xffffffff"
+	}
+	return fmt.Sprintf("%d", offset)
 }
 
 // blockDescriptorRecords is every record one block's descriptors reach, in a

@@ -51,6 +51,9 @@ var codecTable = []codec{
 	row("tabledemo", "ArchiveConfig", tabledemo.ArchiveConfigReset, tabledemo.ArchiveConfigLoad,
 		tabledemo.ArchiveConfigMeasure, tabledemo.ArchiveConfigSave,
 		tabledemo.ArchiveConfigFromJson, tabledemo.ArchiveConfigToJsonMeasure, tabledemo.ArchiveConfigToJson, snapDemo),
+	row("tabledemo", "PackConfig", tabledemo.PackConfigReset, tabledemo.PackConfigLoad,
+		tabledemo.PackConfigMeasure, tabledemo.PackConfigSave,
+		tabledemo.PackConfigFromJson, tabledemo.PackConfigToJsonMeasure, tabledemo.PackConfigToJson, snapDemo),
 	row("tabledemo", "KeyedConfig", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigLoad,
 		tabledemo.KeyedConfigMeasure, tabledemo.KeyedConfigSave,
 		tabledemo.KeyedConfigFromJson, tabledemo.KeyedConfigToJsonMeasure, tabledemo.KeyedConfigToJson, snapDemo),
@@ -67,5 +70,6 @@ var codecTable = []codec{
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	return []string{"wire", "report", "json-read", "json-write", "cook", "block", "forgery"}
+	return []string{"wire", "report", "json-read", "json-write", "json-hostile",
+		"cook", "block", "block-dump", "forgery", "cook-forgery"}
 }

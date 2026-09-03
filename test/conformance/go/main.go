@@ -301,10 +301,18 @@ func surfaceBlock(lines []line, out string) error {
 	return nil
 }
 
-func surfaceForgery(lines []line, out string) error {
+// surfaceForgery answers ONE of the two forgery batteries, selected by the
+// KIND column. The two are one shape and two kinds so the matrix can say which
+// reader a backend has (test/conformance/README.md).
+//
+// A derived line is `forgery <name> <kind> <subject> <file> <extent> <pointer>`.
+// <extent> is the length the caller CLAIMS and <pointer> is the BUFFER it holds
+// — `0` an aligned base, `1`..`63` that many bytes past one, `null` no buffer
+// at all. Neither is a fact a file can carry, which is why both are columns.
+func surfaceForgery(kind string, lines []line, out string) error {
 	for _, f := range lines {
-		if f[0] != "forgery" || f[2] != "block" {
-			continue // the cook's battery is its own binary's
+		if f[0] != "forgery" || f[2] != kind {
+			continue
 		}
 		data, err := os.ReadFile(f[4])
 		if err != nil {
@@ -314,13 +322,55 @@ func surfaceForgery(lines []line, out string) error {
 		if err != nil {
 			return err
 		}
-		opened, err := openBlock(f[3], data, extent)
+		lead, nilBuffer := 0, false
+		if f[6] == "null" {
+			nilBuffer = true
+		} else if lead, err = strconv.Atoi(f[6]); err != nil {
+			return err
+		}
+		var opened bool
+		if kind == "block" {
+			opened, err = openBlockForged(f[3], data, extent, lead, nilBuffer)
+		} else {
+			opened, err = openCookForged(f[3], data, extent, lead, nilBuffer)
+		}
 		if err != nil {
 			return err
 		}
 		verdict := "refuse\n"
 		if opened {
 			verdict = "open\n"
+		}
+		if err := spill(out, f[1], []byte(verdict)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// surfaceJsonHostile is the text form's hostile battery (§16.2, §16.3, §17.5):
+// one tree per rule the page states, and the verdict is `refused` or the §4
+// report the read produces. The tree is what `schema pack` reads, so the text
+// is <tree>/<root>.json (§17).
+func surfaceJsonHostile(lines []line, out string) error {
+	for _, f := range lines {
+		if f[0] != "json-hostile" {
+			continue
+		}
+		c := findCodec(f[2], f[3])
+		if c == nil || c.fromJson == nil {
+			return fmt.Errorf("no text form for %s.%s", f[2], f[3])
+		}
+		text, err := os.ReadFile(f[4] + "/" + f[3] + ".json")
+		if err != nil {
+			return err
+		}
+		value := c.fresh()
+		var rep report
+		ok := c.fromJson(value, text, &rep)
+		verdict := "refused\n"
+		if ok && !rep.malformed {
+			verdict = fmt.Sprintf("%d,%d,%d,%d,false\n", rep.unknown, rep.kindMismatch, rep.clamped, rep.duplicate)
 		}
 		if err := spill(out, f[1], []byte(verdict)); err != nil {
 			return err
@@ -363,10 +413,16 @@ func main() {
 		run = surfaceJsonWrite
 	case "cook":
 		run = surfaceCook
+	case "json-hostile":
+		run = surfaceJsonHostile
 	case "block":
 		run = surfaceBlock
+	case "block-dump":
+		run = surfaceBlockDump
 	case "forgery":
-		run = surfaceForgery
+		run = func(lines []line, out string) error { return surfaceForgery("block", lines, out) }
+	case "cook-forgery":
+		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
 	default:
 		os.Exit(2)
 	}
