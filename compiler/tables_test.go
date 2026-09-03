@@ -875,13 +875,3 @@ func unitFromNamedSource(t *testing.T, base, src string) *ir.Unit {
 	}
 	return u
 }
-
-// dartTableSource reports whether a generated file is one the DART TABLE
-// backend wrote: the wire's <Base>Table.dart, the block form's
-// <Base>Block.dart, the cook's <Base>Cook.dart. The packet emitter's own
-// libraries are not this backend's to scan.
-func dartTableSource(name string) bool {
-	return strings.HasSuffix(name, "Table.dart") ||
-		strings.HasSuffix(name, "Block.dart") ||
-		strings.HasSuffix(name, "Cook.dart")
-}
