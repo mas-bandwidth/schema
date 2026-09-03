@@ -208,6 +208,17 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   per-package macro (`__forceinline` / `always_inline` / `inline`) and stops at
   the class whose call graph cannot cycle. Read the emitted assembly for `bl` to
   a primitive before believing a header-only codec is inlined.
+- **An `Open` that only VALIDATES cannot be fuzzed by opening it.** The forgery
+  fuzzer's first shape asserted "no crash over random damage" and stayed GREEN
+  with the block reader's extent guard deleted: a match-and-point reader reads
+  no row, so a removed guard yields a wrong `open` and no symptom. A forgery
+  fuzzer must WALK what it opened. Two corollaries fell out of the same chase:
+  aim the damage (a block image is 2,816 bytes and the words a check reads are
+  the first hundred, so uniform offsets test the row bytes and nothing else; a
+  uniform 64-bit value is never a legal-but-escaping count), and delete a
+  guard that is actually load-bearing when you build the control — the block
+  reader's padding check catches the extent forgery as a side effect, so
+  deleting the extent check ALONE proves nothing.
 - **C has a namespace the other backends do not: the PREPROCESSOR.** A schema's
   constants, enum variants and flag masks are `#define`s in the C target, and the
   generated sources define macros beside them. A collision there is not a
