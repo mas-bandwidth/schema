@@ -9,8 +9,132 @@
 # whichever <Ns>.<Base>Table module exports load_<root>/1. That keeps the leg
 # free of a generated name nothing else in the language needs.
 
+# The block's canonical ROW dump (docs/SPEC-TABLES.md §19.2).
+#
+# The `block` surface says only that an image OPENS, which a reader passes by
+# checking the prologue and stopping. This is the value-for-value read, so two
+# implementations' reads of the same bytes are byte-compared — and it is
+# produced from §8's DESCRIPTORS and nothing else, no generated row accessor,
+# because that is the claim §19.2 makes for them.
+#
+# A FLOAT is its IEEE-754 BIT PATTERN. A block row is a byte-identical
+# projection, so its bits are the fact; a decimal spelling would be a rounding
+# rule two languages have to agree on for no gain.
+defmodule BlockDump do
+  def dump(base, info) do
+    IO.iodata_to_binary([
+      "projection #{info.name} @0\n",
+      record(base, 0, info, ""),
+      Enum.map(info.fields, fn f -> if f.out_of_line, do: array(base, f), else: [] end)
+    ])
+  end
+
+  defp array(base, f) do
+    offset_of = u(base, f.offset_of_offset, 8)
+    count = u(base, f.count_offset, 4)
+    stride = u(base, f.stride_offset, 4)
+    row = apply(elem(f.element, 0), elem(f.element, 1), [])
+
+    [
+      "array #{f.name} #{row.name} @#{offset_of} count=#{count} stride=#{stride}\n",
+      Enum.map(0..(count - 1)//1, fn r ->
+        at = offset_of + r * stride
+        ["row #{r} @#{at}\n", record(base, at, row, "")]
+      end)
+    ]
+  end
+
+  # One record's leaves, at two spaces, in descriptor order. Out-of-line arrays
+  # are the caller's business: they are a section of their own, not a leaf.
+  defp record(base, at, info, path) do
+    Enum.map(info.fields, fn f ->
+      cond do
+        f.out_of_line ->
+          []
+
+        f.counted ->
+          # a string or a `bytes`: the used length lives at count_offset
+          used = i32(base, at + f.count_offset)
+
+          if used < 0 or used > f.array_bound do
+            raise "#{info.name}.#{f.name} carries a used length of #{used}, " <>
+                    "outside [ 0, #{f.array_bound} ]"
+          end
+
+          ["  #{join(path, f.name)} = #{text(base, at + f.offset, used)}\n", present(base, at, f, path)]
+
+        true ->
+          slots = if f.is_array, do: f.array_bound, else: 1
+
+          [
+            Enum.map(0..(slots - 1)//1, fn slot ->
+              name = if f.is_array, do: "#{join(path, f.name)}[#{slot}]", else: join(path, f.name)
+              value = at + f.offset + slot * f.elem_size
+
+              case f.element do
+                nil -> "  #{name} = #{scalar(base, value, f.kind, f.elem_size)}\n"
+                {m, fun} -> record(base, value, apply(m, fun, []), name)
+              end
+            end),
+            present(base, at, f, path)
+          ]
+      end
+    end)
+  end
+
+  defp present(base, at, f, path) do
+    if f.optional do
+      "  #{join(path, f.name)}#present = #{u(base, at + f.present_offset, 1) != 0}\n"
+    else
+      []
+    end
+  end
+
+  defp join("", name), do: name
+  defp join(prefix, name), do: prefix <> "." <> name
+
+  defp scalar(base, at, kind, width) do
+    cond do
+      kind == 1 -> if u(base, at, 1) != 0, do: "true", else: "false"
+      kind == 10 -> "0x" <> pad(Integer.to_string(u(base, at, 4), 16), 8)
+      kind == 11 -> "0x" <> pad(Integer.to_string(u(base, at, 8), 16), 16)
+      kind >= 2 and kind <= 5 -> Integer.to_string(s(base, at, width))
+      true -> Integer.to_string(u(base, at, width))
+    end
+  end
+
+  defp pad(text, width), do: String.pad_leading(String.downcase(text), width, "0")
+
+  defp text(base, at, used) do
+    body =
+      Enum.map(0..(used - 1)//1, fn i ->
+        c = :binary.at(base, at + i)
+
+        if c >= 0x20 and c < 0x7F and c != ?" and c != ?\\ do
+          <<c>>
+        else
+          "\\x" <> pad(Integer.to_string(c, 16), 2)
+        end
+      end)
+
+    IO.iodata_to_binary(["\"", body, "\" len=#{used}"])
+  end
+
+  defp u(data, at, width) do
+    <<_::binary-size(^at), v::little-unsigned-size(^width)-unit(8), _::binary>> = data
+    v
+  end
+
+  defp s(data, at, width) do
+    <<_::binary-size(^at), v::little-signed-size(^width)-unit(8), _::binary>> = data
+    v
+  end
+
+  defp i32(data, at), do: s(data, at, 4)
+end
+
 defmodule Driver do
-  @surfaces ~w(wire report json-read json-write json-hostile)
+  @surfaces ~w(wire report json-read json-write json-hostile block block-dump forgery)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -153,12 +277,13 @@ defmodule Driver do
   defp run("block-dump", rows, outdir) do
     for [name, unit, image] <- rows(rows, "block") do
       root = block_table(name)
-      {mod, open} = accessor(unit, root, "block_open", 1)
+      mod = block_module(unit, root)
+      lo = Macro.underscore(root)
 
-      case apply(mod, open, [File.read!(image)]) do
+      case apply(mod, String.to_atom("block_open_" <> lo), [File.read!(image)]) do
         {:ok, block} ->
-          {dumper, dump} = accessor(unit, root, "block_dump", 1)
-          write(outdir, name, apply(dumper, dump, [block]))
+          info = apply(mod, String.to_atom("block_info_" <> lo), [])
+          write(outdir, name, BlockDump.dump(block.base, info))
 
         :refuse ->
           write(outdir, name, "refuse\n")
@@ -219,10 +344,15 @@ defmodule Driver do
     System.halt(2)
   end
 
-  defp block_verdict(unit, root, bytes) do
-    {mod, open} = accessor(unit, root, "block_open", 1)
+  defp block_module(unit, root) do
+    {mod, _} = accessor(unit, root, "block_open", 1)
+    mod
+  end
 
-    case apply(mod, open, [bytes]) do
+  defp block_verdict(unit, root, bytes) do
+    open = String.to_atom("block_open_" <> Macro.underscore(root))
+
+    case apply(block_module(unit, root), open, [bytes]) do
       {:ok, _block} -> "open\n"
       :refuse -> "refuse\n"
     end
