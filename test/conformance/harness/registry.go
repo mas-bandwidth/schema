@@ -101,7 +101,7 @@ func loadDrivers(path string) (drivers []driver, discovered bool, err error) {
 // "runtime" and "runtime_tag" (the sibling checkout and the workflow variable
 // holding its pin), and one key per toolchain step it can install. Every row
 // carries every key seen in any file, empty where a leg did not set it, so a
-// step's `if: matrix.<key> != ”` reads the same for every leg.
+// step's `if: matrix.<key> != ''` reads the same for every leg.
 //
 // A driver with no ci.json is an error: a leg the harness runs locally and CI
 // never sees is the gap this registry exists to close.
