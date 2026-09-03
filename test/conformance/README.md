@@ -35,6 +35,15 @@ pitch one is why `forgery` is separate from both: it removes a CHECK rather than
 moving a value, so the reader still READS correctly and has stopped REFUSING —
 which no valid image can show you.
 
+**A PER-BACKEND WALK CONTROL, one per port with a text form**, because a
+walker's break is the backend's and not the data's:
+`conformance-negative-control-go-walk` breaks the Go walk's offset arithmetic
+and `conformance-negative-control-elixir` breaks the Elixir walk's KEY, which is
+what stands in for an offset in a language whose fields have none — the read
+places every scalar under a name the instance does not have. Each has the same
+second half, and it is the point: `json-read` goes red and `json-write` stays
+green, which is what says the break is the READER's.
+
 ## The shape
 
 A driver is a **command**, not a binary — so a leg can be assembled from what a

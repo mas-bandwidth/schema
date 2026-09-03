@@ -395,7 +395,7 @@ defmodule Driver do
     case :persistent_term.get(:driver_modules, nil) do
       nil ->
         mods =
-          Path.wildcard("build/elixir-tables-ebin/*.beam")
+          Path.wildcard(System.get_env("EBIN", "build/elixir-tables-ebin") <> "/*.beam")
           |> Enum.map(fn path ->
             mod = path |> Path.basename(".beam") |> String.to_atom()
             Code.ensure_loaded(mod)

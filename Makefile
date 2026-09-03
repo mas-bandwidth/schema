@@ -278,6 +278,29 @@ tables-rust-walk: build/tables-generated-rust/.stamp
 	done
 	@echo "rust generic-walk gate: one table runtime, the same bytes in every unit"
 
+# THE ELIXIR GENERIC-WALK GATE (docs/SPEC-TABLES.md §16.1): the text form is ONE
+# walk over the descriptors, emitted once per UNIT — a unit's Elixir modules
+# compile into one application, so a second copy would be a duplicate module
+# rather than C++'s harmless re-inclusion behind a guard. This holds the
+# runtime's source byte-identical across every unit of the corpus, with nothing
+# normalised away but the five-line generated banner and the one line that
+# names the unit's own module — a module is named for its package in Elixir,
+# and no port can make that line the same in two units.
+.PHONY: tables-elixir-walk
+tables-elixir-walk: build/tables-generated-elixir/.stamp
+	@rm -rf build/elixir-walk && mkdir -p build/elixir-walk
+	@for f in build/tables-generated-elixir/*/TableRuntime.ex; do \
+		out=build/elixir-walk/$$(echo $$f | tr / _); \
+		tail -n +6 $$f | sed 's/^defmodule .*\.TableRuntime do$$/defmodule <Package>.TableRuntime do/' > $$out; \
+		if [ ! -s $$out ]; then echo "ELIXIR GENERIC-WALK GATE FAILED: no runtime in $$f"; exit 1; fi; \
+	done
+	@first=""; for f in build/elixir-walk/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "ELIXIR GENERIC-WALK GATE FAILED: the runtime in $$f is not the runtime in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "elixir generic-walk gate: one table runtime, the same bytes in every unit"
+
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
 	@rm -rf build/json-walk && mkdir -p build/json-walk
@@ -3210,6 +3233,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-rust-walk
+	$(MAKE) tables-elixir-walk
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
@@ -3260,6 +3284,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
+	$(MAKE) conformance-negative-control-elixir
 	# THE GO PORT's own instruments (docs/SPEC-TABLES.md): the allocation gate
 	# and its negative control, the forgery fuzzer plain and under -race, and
 	# two seconds of the soak. The hour is `make tables-go-soak`.
@@ -3942,6 +3967,61 @@ conformance-negative-control-go: build/conformance-harness build/tables-generate
 #
 # The second half is the point, as it is for every control here: json-read must
 # go RED and every other surface must stay GREEN.
+# THE ELIXIR WALK's negative control (docs/SPEC-TABLES.md §16.5): with the READ
+# path's placement sabotaged by one key, the text a walk reads lands somewhere
+# the writer never looks, and json-read goes red.
+#
+# WHAT STANDS IN FOR AN OFFSET HERE. C++ sabotages the walker's offset
+# arithmetic and C# the field INDEX a descriptor is looked up by. An Elixir
+# struct has neither: a field is reached by its KEY, so the key is what the
+# control breaks — the read places every scalar under a name the instance does
+# not have, which is precisely "one key's value lands in its neighbour's" in the
+# only vocabulary this language has for it.
+#
+# The second half is the point, as it is for every control here: json-read must
+# go RED and every other surface must stay GREEN. json-write staying green is
+# what says the break is the READER's.
+CONFORMANCE_NEGATIVE_ELIXIR := build/conformance-negative-elixir
+# (the marker is inside the ATOM: a Makefile variable cannot carry a "#", which
+# starts a comment, so the sabotage names itself in the only place it can)
+CONFORMANCE_NEGATIVE_ELIXIR_SED := s|{Map.put(value, f.key, slot), pos, report}|{Map.put(value, :key_SABOTAGED, slot), pos, report}|
+.PHONY: conformance-negative-control-elixir
+conformance-negative-control-elixir: build/conformance-harness
+	@rm -rf $(CONFORMANCE_NEGATIVE_ELIXIR) && mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR)
+	@sed '$(CONFORMANCE_NEGATIVE_ELIXIR_SED)' internal/codegen/elixirtable/runtime.go \
+		> $(CONFORMANCE_NEGATIVE_ELIXIR)/elixirtable-runtime.go.txt
+	@cmp -s internal/codegen/elixirtable/runtime.go $(CONFORMANCE_NEGATIVE_ELIXIR)/elixirtable-runtime.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Elixir emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/runtime.go":"%s/$(CONFORMANCE_NEGATIVE_ELIXIR)/elixirtable-runtime.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_ELIXIR)/overlay.json -o $(CONFORMANCE_NEGATIVE_ELIXIR)/schema ./cmd/schema
+	@for unit in $(ELIXIR_TABLE_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		$(CONFORMANCE_NEGATIVE_ELIXIR)/schema generate --lang elixir \
+			--out $(CONFORMANCE_NEGATIVE_ELIXIR)/generated/$$name $$path || exit 1; \
+	done
+	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_ELIXIR)/generated/*/TableRuntime.ex || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
+	@mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR)/ebin
+	$(ELIXIRC) -o $(CONFORMANCE_NEGATIVE_ELIXIR)/ebin \
+		$(CONFORMANCE_NEGATIVE_ELIXIR)/generated/*/*.ex test/conformance/elixir/driver_impl.ex
+	@printf '#!/bin/sh\nELIXIR_TABLES_EBIN=%s/ebin exec test/conformance/elixir/driver "$$@"\n' \
+		"$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_ELIXIR)/driver
+	@printf 'elixir %s/driver\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR)" > $(CONFORMANCE_NEGATIVE_ELIXIR)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_ELIXIR)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_ELIXIR)/work > $(CONFORMANCE_NEGATIVE_ELIXIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a sabotaged Elixir walker left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR)/log; exit 1; \
+	fi
+	@grep -q "elixir / json-read" $(CONFORMANCE_NEGATIVE_ELIXIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR)/log; exit 1; }
+	@grep -q "^json-write *pass" $(CONFORMANCE_NEGATIVE_ELIXIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too — the control does not localise the READER"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR)/log; exit 1; }
+	@echo "elixir walk negative control: the sabotaged read reds json-read and leaves json-write green"
+
 CONFORMANCE_NEGATIVE_GOWALK := build/conformance-negative-gowalk
 CONFORMANCE_NEGATIVE_GOWALK_SED := /^func tableJsonReadField/,/^}/ s|storage := unsafe.Add(base, uintptr(f.Offset))|storage := unsafe.Add(base, uintptr(f.Offset^4)) // SABOTAGED|
 .PHONY: conformance-negative-control-go-walk

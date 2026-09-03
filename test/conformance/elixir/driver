@@ -20,5 +20,9 @@ export PATH
 # a BEAM boot is 0.26 s and compiling this script at every start was another
 # 0.4 s on top of it, eleven times over. The two-minute rule (#320) is what that
 # is measured against.
-exec elixir --erl "+B -noinput" -pa build/elixir-tables-ebin \
+# ELIXIR_TABLES_EBIN lets the negative control point the same driver at a
+# sabotaged build of the corpus (Makefile: conformance-negative-control-elixir).
+EBIN="${ELIXIR_TABLES_EBIN:-build/elixir-tables-ebin}"
+export EBIN
+exec elixir --erl "+B -noinput" -pa "$EBIN" \
 	-e 'Driver.main(System.argv())' -- "$@"
