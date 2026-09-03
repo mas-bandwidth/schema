@@ -628,3 +628,28 @@ func TestPackageNameNeighborsAccepted(t *testing.T) {
 		}
 	}
 }
+
+// THE NEGATIVE CONTROL for the C preprocessor reservation: a refusal that
+// cannot be shown to LEAVE NEIGHBOURS ALONE is a refusal nobody can size.
+//
+// The set is enumerated rather than a bare prefix test, and this is what that
+// buys: `enum SchemaKind` folds to SCHEMA_KIND_ALPHA, `const SchemaVersion` to
+// SCHEMA_VERSION, and neither is a macro the generated C defines — so both stay
+// legal. A prefix test would have taken all of them, which is a claim nothing
+// needs taking a name away from every schema for free.
+func TestCReservedMacroNeighborsAccepted(t *testing.T) {
+	for _, src := range []string{
+		"package t\nenum SchemaKind { Alpha, Beta }\ntype H { g SchemaKind }\n",
+		"package t\nconst SchemaVersion = 3\ntype H { x uint8 }\n",
+		"package t\ntype SchemaPoint { x float32 }\n",
+		"package t\nflags SchemaPerks { Fast, Slow }\ntype H { p SchemaPerks }\n",
+		// and the one that only LOOKS like the lowercase reservation: the
+		// prefix is `schema_`, so a name that merely starts with `schema` and
+		// carries no underscore is untouched
+		"package t\ntype schematic { x uint8 }\n",
+	} {
+		if errs := runUnit(t, map[string]string{"a.schema": src}); len(errs) > 0 {
+			t.Errorf("a declaration that collides with no generated macro must stay legal: %v\n%s", errs, src)
+		}
+	}
+}
