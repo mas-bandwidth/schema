@@ -33,9 +33,7 @@ If this work helps you, please support it: **[Become a supporter](https://www.pa
 
 Supported languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.
 
-## Examples
-
-Write your data types once and generate bit-packed serialization code to read and write them in nine languages:
+## Bit-packed serialization for types
 
 ```
 package example
@@ -77,26 +75,9 @@ type ShipState
 }
 ```
 
-This declaration compiles to C, C++, C#, Go, Java, Rust, JavaScript, Dart and Elixir code that 
-reads and writes your data types and agrees on every bit. Now your native plugin, your Unity client, your Go backend, your browser client, and your tooling all speak the same language.
+Write your data types once and generate bit-packed serialization code to read and write them. Best for client/server messages and state where the client speaks the same binary protocol or won't be allowed to connect to the server.
 
-- **Bit-packed, not byte-packed** — `| min = 0, max = 1000` costs 10 bits, not
-  4 bytes. Bounds are part of the type, and the wire cost follows from them.
-- **Branches that cost nothing** — `if !at_rest { … }` omits whole field groups
-  from the wire, back-referencing a bool already sent.
-- **Compressed floats** — `| min, max, resolution` sends a step index, not a
-  float. A 0–1 throttle at 0.01 costs 7 bits.
-- **Fixed point is a type in the language** — `fixed(48, 16)` and its unsigned
-  sibling `ufixed(48, 16)` are declared like any other field, and the compiler
-  owns both the storage and the wire for them.
-- **128-bit integers**, ranged like any other, in every target language.
-- **Zero allocation, no runtime reflection** — straight-line code reading and
-  writing your own buffers.
-- **Reads validate, always — in every language.** Out-of-range values are
-  refused, not clamped or trusted.
-- **Relocatable by construction** — generated types are trivially copyable
-  and standard-layout, so raw-struct blobs and parallel scatter/gather are
-  safe by design.
+Very fast and efficient serialization code is generated in all languages, and no schema definitions or version information is emitted on the wire.
 
 ## Versioned messages passed between tools, backends and websites
 
