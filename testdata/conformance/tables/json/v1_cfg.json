@@ -1,0 +1,75 @@
+{
+  "a": 9,
+  "b": 8.5,
+  "mode": "Alpha",
+  "name": "aged",
+  "inner": {
+    "factor": 1.25
+  },
+  "items": [
+    1,
+    20,
+    255
+  ],
+  "grade": "Gold",
+  "grades": [
+    "Gold",
+    "Bronze"
+  ],
+  "podium": [
+    "Bronze",
+    "None",
+    "Gold"
+  ],
+  "slots": [
+    11,
+    22,
+    33,
+    44
+  ],
+  "tally": [
+    5,
+    0,
+    7
+  ],
+  "effect": {
+    "ward": {
+      "charge": 0.75
+    }
+  },
+  "bank": {
+    "Alpha": {
+      "power": 0,
+      "label": ""
+    },
+    "Beta": {
+      "power": 0,
+      "label": ""
+    },
+    "Gamma": {
+      "power": 0,
+      "label": ""
+    },
+    "Delta": {
+      "power": 0,
+      "label": ""
+    }
+  },
+  "tokens": {
+    "Alpha": 0,
+    "Beta": 0,
+    "Gamma": 0,
+    "Delta": 0
+  },
+  "ranks": {
+    "Alpha": "None",
+    "Beta": "None",
+    "Gamma": "None",
+    "Delta": "None"
+  },
+  "ledger": [
+    0,
+    0,
+    0
+  ]
+}

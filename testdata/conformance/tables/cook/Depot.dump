@@ -1,0 +1,510 @@
+node 0 Depot @0
+  name = "" len=0
+  banks[0].depth = 0
+  banks[0].head = null
+  banks[1].depth = 0
+  banks[1].head = null
+  spare.build = 0
+  spare.tag = "" len=0
+  spare#present = false
+  head = -> @88
+node 1 ListNode @88
+  value = 0
+  name = "" len=0
+  next = -> @120
+node 2 ListNode @120
+  value = 0
+  name = "" len=0
+  next = -> @152
+node 3 ListNode @152
+  value = 0
+  name = "" len=0
+  next = -> @184
+node 4 ListNode @184
+  value = 0
+  name = "" len=0
+  next = -> @216
+node 5 ListNode @216
+  value = 0
+  name = "" len=0
+  next = -> @248
+node 6 ListNode @248
+  value = 0
+  name = "" len=0
+  next = -> @280
+node 7 ListNode @280
+  value = 0
+  name = "" len=0
+  next = -> @312
+node 8 ListNode @312
+  value = 0
+  name = "" len=0
+  next = -> @344
+node 9 ListNode @344
+  value = 0
+  name = "" len=0
+  next = -> @376
+node 10 ListNode @376
+  value = 0
+  name = "" len=0
+  next = -> @408
+node 11 ListNode @408
+  value = 0
+  name = "" len=0
+  next = -> @440
+node 12 ListNode @440
+  value = 0
+  name = "" len=0
+  next = -> @472
+node 13 ListNode @472
+  value = 0
+  name = "" len=0
+  next = -> @504
+node 14 ListNode @504
+  value = 0
+  name = "" len=0
+  next = -> @536
+node 15 ListNode @536
+  value = 0
+  name = "" len=0
+  next = -> @568
+node 16 ListNode @568
+  value = 0
+  name = "" len=0
+  next = -> @600
+node 17 ListNode @600
+  value = 0
+  name = "" len=0
+  next = -> @632
+node 18 ListNode @632
+  value = 0
+  name = "" len=0
+  next = -> @664
+node 19 ListNode @664
+  value = 0
+  name = "" len=0
+  next = -> @696
+node 20 ListNode @696
+  value = 0
+  name = "" len=0
+  next = -> @728
+node 21 ListNode @728
+  value = 0
+  name = "" len=0
+  next = -> @760
+node 22 ListNode @760
+  value = 0
+  name = "" len=0
+  next = -> @792
+node 23 ListNode @792
+  value = 0
+  name = "" len=0
+  next = -> @824
+node 24 ListNode @824
+  value = 0
+  name = "" len=0
+  next = -> @856
+node 25 ListNode @856
+  value = 0
+  name = "" len=0
+  next = -> @888
+node 26 ListNode @888
+  value = 0
+  name = "" len=0
+  next = -> @920
+node 27 ListNode @920
+  value = 0
+  name = "" len=0
+  next = -> @952
+node 28 ListNode @952
+  value = 0
+  name = "" len=0
+  next = -> @984
+node 29 ListNode @984
+  value = 0
+  name = "" len=0
+  next = -> @1016
+node 30 ListNode @1016
+  value = 0
+  name = "" len=0
+  next = -> @1048
+node 31 ListNode @1048
+  value = 0
+  name = "" len=0
+  next = -> @1080
+node 32 ListNode @1080
+  value = 0
+  name = "" len=0
+  next = -> @1112
+node 33 ListNode @1112
+  value = 0
+  name = "" len=0
+  next = -> @1144
+node 34 ListNode @1144
+  value = 0
+  name = "" len=0
+  next = -> @1176
+node 35 ListNode @1176
+  value = 0
+  name = "" len=0
+  next = -> @1208
+node 36 ListNode @1208
+  value = 0
+  name = "" len=0
+  next = -> @1240
+node 37 ListNode @1240
+  value = 0
+  name = "" len=0
+  next = -> @1272
+node 38 ListNode @1272
+  value = 0
+  name = "" len=0
+  next = -> @1304
+node 39 ListNode @1304
+  value = 0
+  name = "" len=0
+  next = -> @1336
+node 40 ListNode @1336
+  value = 0
+  name = "" len=0
+  next = -> @1368
+node 41 ListNode @1368
+  value = 0
+  name = "" len=0
+  next = -> @1400
+node 42 ListNode @1400
+  value = 0
+  name = "" len=0
+  next = -> @1432
+node 43 ListNode @1432
+  value = 0
+  name = "" len=0
+  next = -> @1464
+node 44 ListNode @1464
+  value = 0
+  name = "" len=0
+  next = -> @1496
+node 45 ListNode @1496
+  value = 0
+  name = "" len=0
+  next = -> @1528
+node 46 ListNode @1528
+  value = 0
+  name = "" len=0
+  next = -> @1560
+node 47 ListNode @1560
+  value = 0
+  name = "" len=0
+  next = -> @1592
+node 48 ListNode @1592
+  value = 0
+  name = "" len=0
+  next = -> @1624
+node 49 ListNode @1624
+  value = 0
+  name = "" len=0
+  next = -> @1656
+node 50 ListNode @1656
+  value = 0
+  name = "" len=0
+  next = -> @1688
+node 51 ListNode @1688
+  value = 0
+  name = "" len=0
+  next = -> @1720
+node 52 ListNode @1720
+  value = 0
+  name = "" len=0
+  next = -> @1752
+node 53 ListNode @1752
+  value = 0
+  name = "" len=0
+  next = -> @1784
+node 54 ListNode @1784
+  value = 0
+  name = "" len=0
+  next = -> @1816
+node 55 ListNode @1816
+  value = 0
+  name = "" len=0
+  next = -> @1848
+node 56 ListNode @1848
+  value = 0
+  name = "" len=0
+  next = -> @1880
+node 57 ListNode @1880
+  value = 0
+  name = "" len=0
+  next = -> @1912
+node 58 ListNode @1912
+  value = 0
+  name = "" len=0
+  next = -> @1944
+node 59 ListNode @1944
+  value = 0
+  name = "" len=0
+  next = -> @1976
+node 60 ListNode @1976
+  value = 0
+  name = "" len=0
+  next = -> @2008
+node 61 ListNode @2008
+  value = 0
+  name = "" len=0
+  next = -> @2040
+node 62 ListNode @2040
+  value = 0
+  name = "" len=0
+  next = -> @2072
+node 63 ListNode @2072
+  value = 0
+  name = "" len=0
+  next = -> @2104
+node 64 ListNode @2104
+  value = 0
+  name = "" len=0
+  next = -> @2136
+node 65 ListNode @2136
+  value = 0
+  name = "" len=0
+  next = -> @2168
+node 66 ListNode @2168
+  value = 0
+  name = "" len=0
+  next = -> @2200
+node 67 ListNode @2200
+  value = 0
+  name = "" len=0
+  next = -> @2232
+node 68 ListNode @2232
+  value = 0
+  name = "" len=0
+  next = -> @2264
+node 69 ListNode @2264
+  value = 0
+  name = "" len=0
+  next = -> @2296
+node 70 ListNode @2296
+  value = 0
+  name = "" len=0
+  next = -> @2328
+node 71 ListNode @2328
+  value = 0
+  name = "" len=0
+  next = -> @2360
+node 72 ListNode @2360
+  value = 0
+  name = "" len=0
+  next = -> @2392
+node 73 ListNode @2392
+  value = 0
+  name = "" len=0
+  next = -> @2424
+node 74 ListNode @2424
+  value = 0
+  name = "" len=0
+  next = -> @2456
+node 75 ListNode @2456
+  value = 0
+  name = "" len=0
+  next = -> @2488
+node 76 ListNode @2488
+  value = 0
+  name = "" len=0
+  next = -> @2520
+node 77 ListNode @2520
+  value = 0
+  name = "" len=0
+  next = -> @2552
+node 78 ListNode @2552
+  value = 0
+  name = "" len=0
+  next = -> @2584
+node 79 ListNode @2584
+  value = 0
+  name = "" len=0
+  next = -> @2616
+node 80 ListNode @2616
+  value = 0
+  name = "" len=0
+  next = -> @2648
+node 81 ListNode @2648
+  value = 0
+  name = "" len=0
+  next = -> @2680
+node 82 ListNode @2680
+  value = 0
+  name = "" len=0
+  next = -> @2712
+node 83 ListNode @2712
+  value = 0
+  name = "" len=0
+  next = -> @2744
+node 84 ListNode @2744
+  value = 0
+  name = "" len=0
+  next = -> @2776
+node 85 ListNode @2776
+  value = 0
+  name = "" len=0
+  next = -> @2808
+node 86 ListNode @2808
+  value = 0
+  name = "" len=0
+  next = -> @2840
+node 87 ListNode @2840
+  value = 0
+  name = "" len=0
+  next = -> @2872
+node 88 ListNode @2872
+  value = 0
+  name = "" len=0
+  next = -> @2904
+node 89 ListNode @2904
+  value = 0
+  name = "" len=0
+  next = -> @2936
+node 90 ListNode @2936
+  value = 0
+  name = "" len=0
+  next = -> @2968
+node 91 ListNode @2968
+  value = 0
+  name = "" len=0
+  next = -> @3000
+node 92 ListNode @3000
+  value = 0
+  name = "" len=0
+  next = -> @3032
+node 93 ListNode @3032
+  value = 0
+  name = "" len=0
+  next = -> @3064
+node 94 ListNode @3064
+  value = 0
+  name = "" len=0
+  next = -> @3096
+node 95 ListNode @3096
+  value = 0
+  name = "" len=0
+  next = -> @3128
+node 96 ListNode @3128
+  value = 0
+  name = "" len=0
+  next = -> @3160
+node 97 ListNode @3160
+  value = 0
+  name = "" len=0
+  next = -> @3192
+node 98 ListNode @3192
+  value = 0
+  name = "" len=0
+  next = -> @3224
+node 99 ListNode @3224
+  value = 0
+  name = "" len=0
+  next = -> @3256
+node 100 ListNode @3256
+  value = 0
+  name = "" len=0
+  next = -> @3288
+node 101 ListNode @3288
+  value = 0
+  name = "" len=0
+  next = -> @3320
+node 102 ListNode @3320
+  value = 0
+  name = "" len=0
+  next = -> @3352
+node 103 ListNode @3352
+  value = 0
+  name = "" len=0
+  next = -> @3384
+node 104 ListNode @3384
+  value = 0
+  name = "" len=0
+  next = -> @3416
+node 105 ListNode @3416
+  value = 0
+  name = "" len=0
+  next = -> @3448
+node 106 ListNode @3448
+  value = 0
+  name = "" len=0
+  next = -> @3480
+node 107 ListNode @3480
+  value = 0
+  name = "" len=0
+  next = -> @3512
+node 108 ListNode @3512
+  value = 0
+  name = "" len=0
+  next = -> @3544
+node 109 ListNode @3544
+  value = 0
+  name = "" len=0
+  next = -> @3576
+node 110 ListNode @3576
+  value = 0
+  name = "" len=0
+  next = -> @3608
+node 111 ListNode @3608
+  value = 0
+  name = "" len=0
+  next = -> @3640
+node 112 ListNode @3640
+  value = 0
+  name = "" len=0
+  next = -> @3672
+node 113 ListNode @3672
+  value = 0
+  name = "" len=0
+  next = -> @3704
+node 114 ListNode @3704
+  value = 0
+  name = "" len=0
+  next = -> @3736
+node 115 ListNode @3736
+  value = 0
+  name = "" len=0
+  next = -> @3768
+node 116 ListNode @3768
+  value = 0
+  name = "" len=0
+  next = -> @3800
+node 117 ListNode @3800
+  value = 0
+  name = "" len=0
+  next = -> @3832
+node 118 ListNode @3832
+  value = 0
+  name = "" len=0
+  next = -> @3864
+node 119 ListNode @3864
+  value = 0
+  name = "" len=0
+  next = -> @3896
+node 120 ListNode @3896
+  value = 0
+  name = "" len=0
+  next = -> @3928
+node 121 ListNode @3928
+  value = 0
+  name = "" len=0
+  next = -> @3960
+node 122 ListNode @3960
+  value = 0
+  name = "" len=0
+  next = -> @3992
+node 123 ListNode @3992
+  value = 0
+  name = "" len=0
+  next = -> @4024
+node 124 ListNode @4024
+  value = 0
+  name = "" len=0
+  next = -> @4056
+node 125 ListNode @4056
+  value = 0
+  name = "" len=0
+  next = null

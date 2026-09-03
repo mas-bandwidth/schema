@@ -1,0 +1,82 @@
+{
+  "a": 7.5,
+  "c": false,
+  "mode": "Alpha",
+  "title": "fresh",
+  "inner": {
+    "factor": 9.5,
+    "gain": 4
+  },
+  "items": [
+    10,
+    200
+  ],
+  "grade": "Gold",
+  "grades": [
+    "Silver",
+    "Gold",
+    "Bronze"
+  ],
+  "podium": [
+    "None",
+    "Silver",
+    "None"
+  ],
+  "slots": [
+    7,
+    8,
+    9
+  ],
+  "tally": [
+    0,
+    3,
+    0,
+    9
+  ],
+  "effect": {
+    "hex": {
+      "level": 6
+    }
+  },
+  "bank": {
+    "Alpha": {
+      "power": 0,
+      "label": ""
+    },
+    "Omega": {
+      "power": 0,
+      "label": ""
+    },
+    "Beta": {
+      "power": 0,
+      "label": ""
+    },
+    "Delta": {
+      "power": 0,
+      "label": ""
+    },
+    "Sigma": {
+      "power": 0,
+      "label": ""
+    }
+  },
+  "tokens": {
+    "Alpha": 0,
+    "Omega": 0,
+    "Beta": 0,
+    "Delta": 0,
+    "Sigma": 0
+  },
+  "ranks": {
+    "Alpha": "None",
+    "Omega": "None",
+    "Beta": "None",
+    "Delta": "None",
+    "Sigma": "None"
+  },
+  "ledger": {
+    "Bronze": 0,
+    "Silver": 0,
+    "Gold": 0
+  }
+}

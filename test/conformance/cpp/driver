@@ -1,0 +1,32 @@
+#!/bin/sh
+# THE C++ LEG's driver (test/conformance/README.md).
+#
+# A driver is a COMMAND, not a binary, exactly so a leg can be assembled from
+# what a backend already has. This one answers the table surfaces out of
+# build/conformance-cpp and hands the cook's node dump to the binary that
+# already produces it — test/tables/cook_main.cpp — rather than compiling a
+# second copy of a walk that is already gated.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+set -e
+
+manifest=$1
+surface=$2
+out=$3
+
+case "$surface" in
+list)
+    build/conformance-cpp "$manifest" list
+    echo cook
+    ;;
+cook)
+    # one line per cook, from the derived manifest: cook <root> <unit> <file>
+    grep '^cook ' "$manifest" | while read -r _ root _ file; do
+        ./build/schema_test_cook dump "$root" "$file" > "$out/$root"
+    done
+    ;;
+*)
+    exec build/conformance-cpp "$manifest" "$surface" "$out"
+    ;;
+esac

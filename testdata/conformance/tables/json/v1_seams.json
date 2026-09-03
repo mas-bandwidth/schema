@@ -1,0 +1,64 @@
+{
+  "a": 3,
+  "b": 1.5,
+  "mode": "Beta",
+  "name": "",
+  "inner": {
+    "factor": 2.5
+  },
+  "items": [],
+  "grade": "None",
+  "grades": [],
+  "podium": [
+    "None",
+    "None",
+    "None"
+  ],
+  "slots": [],
+  "tally": [
+    0,
+    0,
+    0
+  ],
+  "effect": {},
+  "bank": {
+    "Alpha": {
+      "power": 11,
+      "label": "a1"
+    },
+    "Beta": {
+      "power": 22,
+      "label": ""
+    },
+    "Gamma": {
+      "power": 33,
+      "label": ""
+    },
+    "Delta": {
+      "power": 0,
+      "label": ""
+    }
+  },
+  "tokens": {
+    "Alpha": 101,
+    "Beta": 102,
+    "Gamma": 0,
+    "Delta": 104
+  },
+  "ranks": {
+    "Alpha": "Gold",
+    "Beta": "None",
+    "Gamma": "Bronze",
+    "Delta": "None"
+  },
+  "ledger": [
+    7,
+    0,
+    9
+  ],
+  "extra": {
+    "factor": 6.25
+  },
+  "tier": 41,
+  "mark": "Gold"
+}
