@@ -2,12 +2,11 @@
 // descriptors (docs/SPEC-TABLES.md §16).
 //
 // ONE generic walk, emitted ONCE PER UNIT — into the same file the rest of the
-// unit's shared table runtime goes, the protocol-id home — because a unit's C#
+// unit's shared table runtime goes, <Package>Table.cs — because a unit's C#
 // files compile together into one assembly and a second copy would be a
 // duplicate definition rather than C++'s harmless re-inclusion behind a guard.
-// That is the block-home rule's shape, and it makes the same gate available:
-// the walker's source is the SAME BYTES in every unit's generated output
-// (`make tables-cs-json-walk`).
+// One home per unit makes the gate available: the walker's source is the SAME
+// BYTES in every unit's generated output (`make tables-cs-json-walk`).
 //
 // THE C++ BACKEND IS THE REFERENCE and this file mirrors it: the same
 // classifier, the same shapes, the same clamps, the same report events, the

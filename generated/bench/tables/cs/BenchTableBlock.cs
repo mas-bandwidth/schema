@@ -4,6 +4,10 @@
 // AGPL-3.0, its output is not.
 // package benchtable — the BLOCK FORM (docs/SPEC-TABLES.md §19): the READ half.
 //
+// the unit's shared runtime lives here — <Package>Block.cs, one home per unit, named by
+// the package and independent of file order (§19.2). The shared runtime and
+// every blittable record of the unit are here and nowhere else.
+//
 // NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on
 // the side: compile this file only if you read a block. The unit's
 // <Base>Table.cs carries not one symbol of it.
