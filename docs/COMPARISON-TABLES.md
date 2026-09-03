@@ -118,7 +118,7 @@ the other format for this one thing.
 | 2 | **A service or SDK that only speaks Protobuf.** | certain, for that one edge | Never removable. A foreign endpoint's format is what you use at that endpoint. Tables inside, the foreign format only at the boundary. |
 | 3 | **Maps with string or integer keys.** Protobuf has `map<K,V>`; FlatBuffers has the sorted-vector idiom. | likely for a team raised on Protobuf | After 3.0.0, in tables only, never in types, and a map makes the table variable: it rides with the pointers, never in a fixed record ([#380](https://github.com/mas-bandwidth/schema/issues/380)). Enum keys are already better served by `[E]T` (§2.4). |
 | 4 | **Unbounded strings and bytes at used size.** | likely for an asset archive | [#259](https://github.com/mas-bandwidth/schema/issues/259): the byte-buffer primitive, so an image lives inside a table at its own size and a mapped cook points at it with no copy. Before 3.0.0, since it moves the wire. |
-| 5 | **A verifier for untrusted bytes.** FlatBuffers ships a separate `Verifier` pass, in three of its fifteen languages. | possible | Table reads are untrusted: they arrive over the network and carry the type wire's security posture; only the cook open is trusted. So the tolerant read IS the verifier, in every language, and [#391](https://github.com/mas-bandwidth/schema/issues/391) is the fuzzer with an independent oracle that proves it in CI. Before 3.0.0, since the release makes the claim. |
+| 5 | **A verifier for untrusted bytes.** FlatBuffers ships a separate `Verifier` pass, in C++ and Swift, with a basic one in C, of its thirteen languages. | possible | Table reads are untrusted: they arrive over the network and carry the type wire's security posture; only the cook open is trusted. So the tolerant read IS the verifier, in every language, and [#391](https://github.com/mas-bandwidth/schema/issues/391) is the fuzzer with an independent oracle that proves it in CI. Before 3.0.0, since the release makes the claim. |
 | 6 | **Every type in tables.** Nothing here is ahead of schema, but §11 refuses `fixed`, `ufixed` and the 128-bit integers in a table field today, and a deterministic simulation's save holds exactly those. | possible | [#390](https://github.com/mas-bandwidth/schema/issues/390): every type the type wire carries rides in a table. Before 3.0.0. |
 | 7 | **Sorted lookup inside a buffer.** FlatBuffers' `key` attribute and `LookupByKey`. | possible, for a large catalog opened by id | Library-side, after 3.0.0: a sort the cook writer holds and a generated `Find` over the cooked rows. Never stored semantics. |
 | 8 | **Reflection in more languages.** | possible, for an editor in Python or C# | Descriptors are built into every table's generated code with no schema files and no RTTI (§8). They reach every language with the parity matrix on [#366](https://github.com/mas-bandwidth/schema/issues/366). |
@@ -156,14 +156,14 @@ Each with the section that defines it and the reason a game cares.
 | **Two classes derived from the declaration.** A table with no pointer is a plain struct; one with a pointer gets an arena. A build-failing gate holds the fixed class to zero cost. | §2.2 | A config struct pays nothing for the machinery a scene graph needs. |
 | **No allocation on read, every class, every form, nine languages.** | ladder, §6.5 | No GC pressure and no allocator on the load path. |
 | **`Measure` equals `Save` at exact capacity**, held by a mandatory battery. | §9 | Caller-owned buffers, parallel scatter writes, never a realloc. |
-| **Pointers with sharing preserved.** A node written once however many times it is named; a flat node table, so a 260-node chain is not a recursion; cycles refused by name. | §2.1, §3.1 | Trees, graphs, palettes shared by many nodes. Neither competitor can share a node; Protobuf cannot even point. |
+| **Pointers with sharing preserved.** A node written once however many times it is named; a flat node table, so a 260-node chain is not a recursion; cycles refused by name. | §2.1, §3.1 | Trees, graphs, palettes shared by many nodes. Neither competitor shares a node, and Protobuf has no pointer at all. |
 | **Enum-keyed arrays that ride by name** and refuse a bad key in every build. | §2.4, §3.2 | Per-ship-type config survives inserting a ship type in the middle. |
 | **Evolution by name.** Fields, enum variants and union arms are identified by their name's hash. Add anywhere, remove, reorder. `was` renames; a collision is refused at compile time. | §5 | No append-only rule and no numbers to assign by hand. |
 | **A read report instead of pass or fail.** `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`; never fatal on data from another build; a damaged level stops only itself. | §4 | Tools surface it, games set policy, and a corrupt sub-table does not kill the file. |
 | **The silent-edit class enumerated: exactly three**, with a compile-time baseline that refuses them and keeps a reasoned history. | §4.1, §18 | Saves from years ago read right, and when one does not the history says why. |
 | **A build version computed by the compiler.** Every fact a cook's bytes depend on, digested; `(asset hash, build version)` is a build-cache key. Split from the protocol id, so a table edit never forces a lockstep redeploy. | §10, §20 | Distributed cooking with no version numbers by hand; ship tools and game on different days. |
 | **The cook.** `Open` is a header match and a pointer: O(1), mmap-friendly, byte order settled offline, attribution separable. In every port, not only C++. | §7 | "Don't parse, just point" at a gigabyte catalog. |
-| **The block form.** A third projection of a fixed table: rows at a pitch the compiler computes and both languages' generated code asserts, filled wide by many threads by obligation. | §19, §12.1 | Render data C++ writes and C# reads at 60 Hz with no marshalling. This is the case FlatBuffers lost on, because its builder is single-threaded. |
+| **The block form.** A third projection of a fixed table: rows at a pitch the compiler computes and both languages' generated code asserts, filled wide by many threads by obligation. | §19, §12.1 | Render data C++ writes and C# reads at 60 Hz with no marshalling. This is the render-data case FlatBuffers was tried on first and replaced (§12.1). |
 | **Optional by value.** `?T` costs a bool and changes nothing else; `T` and `?T` share one framing. | §2.3 | An optional settings block is not a pointer. |
 | **64-bit clean.** Eight-byte region references, 64-bit cook part lengths, no aggregate wire ceiling. | §6.3, §7.1 | Catalogs past 2 GiB without a C++-only attribute. FlatBuffers' `vector64` is C++ only; Protobuf stops at 2 GiB. |
 | **Reflection for free.** Descriptors in the generated header; a game build compiles none of the view. | §8 | An editor walks anything; the shipped build carries nothing. |
@@ -176,7 +176,7 @@ Each with the section that defines it and the reason a game cares.
 
 | feature | who has it | why not |
 |---|---|---|
-| `Any` and dynamic typing | Protobuf | A union whose arms are tables is the typed bag and evolves by name (§2.6). |
+| `Any` and dynamic typing | Protobuf | A union whose arms are tables is the typed bag and evolves by name (§2.6); table arms are [#258](https://github.com/mas-bandwidth/schema/issues/258), part of the closure in #392. |
 | In-place mutation of a serialized buffer | FlatBuffers | A cook is immutable and regenerated by a cache; the block form is the every-frame mutable answer. |
 | Streaming and size-prefixed messages | both | A root has no outer length and the transport frames it (§3). |
 | Extensions and custom options | both | The attribute vocabulary is closed on purpose (SPEC §4.2); type tags are the claiming mechanism when one is wanted. |
@@ -247,7 +247,7 @@ the source list at the end.
 | Framing overhead | `TableMixed`: 2391 bytes against the type wire's 438; the difference is ids, kinds, lengths, counts, terminators (the ladder) | vtable, offsets, padding | one or two byte tags plus varints |
 | Length prefixes | every nested table, string, array and union arm carries a u32 length; the root has no outer length (§3, §17.3) | not self-delimiting; `--size-prefixed` adds one (FB-flatc) | not self-delimiting; write the size first (PB-techniques) |
 | Pointer encoding | flat node table under a reserved id, u32 node index per pointer, 0 null, 1 root, one record per node however many times named (§3.1) | inline forward offsets (FB-internals) | — |
-| Size ceilings | node body up to 4 GiB, refused at save; no aggregate ceiling; 8-byte region references, 64-bit cook part lengths (§2.1, §6.3, §7.1) | 32-bit offsets: 2 GiB; `vector64` for tail vectors, C++ only (FB-64) | 2 GiB; "not designed for messages larger than a few megabytes" (PB-overview) |
+| Size ceilings | node body up to 4 GiB, refused at save; no aggregate ceiling; 8-byte region references, 64-bit cook part lengths (§2.1, §6.3, §7.1) | 32-bit offsets: 2 GiB; `vector64` for tail vectors, not in every port (FB-64) | 2 GiB (PB-limits); "for data that exceeds a few megabytes, consider a different solution" (PB-overview) |
 | Packed scalar arrays | elements back to back at fixed width (§3) | contiguous (FB-internals) | packed varints in one record (PB-encoding) |
 | Varint compaction | — ; the type wire's job, via bounds | — | varints, zigzag (PB-encoding) |
 | Byte-identical output across implementations | the tool and every backend are held to §3 by goldens; `Measure` equals `Save` (§9, §17.1) | no cross-language claim | "don't assume serialization stability across builds" (PB-dos) |
@@ -268,7 +268,7 @@ the source list at the end.
 | Array bound change | prefix kept, `clamped` counted; a short array fills with defaults (§4) | unbounded | unbounded |
 | `T` to `?T` to `*T` | `T` and `?T` are byte-identical for non-default content; to or from `*T` is a counted mismatch (§2.3, §4) | changes default semantics; required/optional changes break (FB-schema) | presence changes round-trip of defaults (PB-presence) |
 | Unknown fields on read | skipped by length, counted (§3, §4) | ignored (FB-evolution) | retained in the unknown set (PB-proto3) |
-| Unknown fields on rewrite | dropped and counted, by design; the writer has a schema | the buffer keeps them if forwarded whole; the object API drops them (FB-cpp) | preserved and re-serialized (PB-proto3) |
+| Unknown fields on rewrite | dropped and counted, by design; the writer has a schema | the buffer keeps them if forwarded whole (FB-evolution) | preserved and re-serialized (PB-proto3) |
 | Read report | `unknown`, `kind_mismatch`, `clamped`, `duplicate`, `malformed`; nothing fatal from another build (§4) | verifier pass or fail (FB-cpp) | success or failure, plus the unknown set (PB-message) |
 | Silent edits enumerated | exactly three, each with its answer (§4.1) | scattered warnings (FB-evolution) | scattered (PB-dos) |
 | Compile-time guard | `tables.baseline`: refuses the silent three plus kind, spelling and key changes; `--update --reason` keeps a dated history (§18) | `flatc --conform` (FB-flatc) | `buf breaking`, third party (buf) |
@@ -282,7 +282,7 @@ the source list at the end.
 | Point at the bytes | the cook: `Open` is O(1), mmap-friendly, order settled offline (§7); the block: rows at a fixed pitch (§19); the tolerant wire always parses | always (FB-home) | never (PB-overview) |
 | Parse into a struct | `Load` into caller-owned storage; a fixed table is a struct (§6.1) | object API `UnPack()` into STL-backed classes (FB-cpp) | generated message classes (PB-message) |
 | Allocation on read | none, every class, every form (§6.5) | none in place; the object API allocates (FB-cpp) | per message, string and repeated field; arenas mitigate (PB-message) |
-| Allocation on write | fixed class none; variable class an arena in bulk, thread-local, never per node; block takes a caller allocator (§6.4, §6.5) | the builder grows a buffer; custom allocator (FB-cpp) | into caller memory; the message objects allocate (PB-message) |
+| Allocation on write | fixed class none; variable class an arena in bulk, thread-local, never per node; block takes a caller allocator (§6.4, §6.5, §19.1) | the builder grows a buffer; custom allocator (FB-cpp) | into caller memory; the message objects allocate (PB-message) |
 | Exact size before writing | `Measure` equals `Save`, held by a battery (§9) | after `Finish` | `ByteSizeLong()` (PB-message) |
 | Mutate in place | — ; regenerate | `--gen-mutable` scalars; reflection resizes (FB-flatc) | — |
 | Multi-threaded build | thread-local arenas; block fill by N workers is an obligation checked under TSan (§6.4, §19.5) | one builder per thread | — |
@@ -298,7 +298,7 @@ the source list at the end.
 
 | feature | schema tables | FlatBuffers | Protocol Buffers |
 |---|---|---|---|
-| Untrusted bytes on the tolerant wire | the read is the validator: every length bounds-checked against its body, counts against the body, ranges clamped, a bad level stops itself; `LoadMeasure` lets the caller refuse a region size before allocating (§4, §6.5). The independent-oracle fuzzer that proves it in every language is #391 | a separate `Verifier`, required before access, in C++, C and Swift (FB-support); `max_depth` 64, `max_tables` 1M (FB-cpp) | the parser validates structure; recursion limit 100; UTF-8 verify (PB-limits) |
+| Untrusted bytes on the tolerant wire | the read is the validator: every length bounds-checked against its body, counts against the body, ranges clamped, a bad level stops itself; `LoadMeasure` lets the caller refuse a region size before allocating (§4, §6.5). The independent-oracle fuzzer that proves it in every language is #391 | a separate `Verifier`, required before access, in C++, C and Swift (FB-support); `max_depth` 64, `max_tables` 1M (FB-cpp) | the parser validates structure; recursion limit 100; UTF-8 verify (PB-features) |
 | Trusted fast path | cook and block are trusted by design; `Open` checks identity, not hostility; a signature over the file is the integrity answer (§7, §13.4) | skip the verifier for trusted buffers (FB-cpp) | — |
 | Value-range enforcement | clamp and count on the table wire; reject on the type wire (§4, SPEC §5) | — | — |
 | Depth and DoS bounds | by-value depth is fixed by the schema; a pointer graph is flat, so a chain is not a depth (§3.1) | verifier caps (FB-cpp) | recursion depth 100 (PB-limits) |
@@ -310,7 +310,7 @@ the source list at the end.
 |---|---|---|---|
 | Runtime reflection | descriptors in every table's generated header: name, kind, id, offset, bounds, guards, nesting; no schema files, no RTTI (§8.1); the type view and registry specified (§8) | binary schema plus `reflection.h` in C++, basic in C; mini-reflection (FB-IR, FB-support) | descriptors, `Reflection`, `DynamicMessage` (PB-message) |
 | Reflection cost | on the side; a game build never compiles the view (§8.4) | 2 to 6 bytes per field for mini-reflection (FB-cpp) | in the full runtime always |
-| Text form | JSON in and out by one walk, mapping pinned per kind, `\| json = "key"`, report counters; a shared node named by `&node` (§16) | JSON in `flatc`; parsing in C++ and C (FB-support) | ProtoJSON in every runtime; text format (PB-json, PB-text) |
+| Text form | JSON in and out by one walk, mapping pinned per kind, `\| json = "key"`, report counters; a shared node labeled `&node` (§16.7, landing with [#388](https://github.com/mas-bandwidth/schema/pull/388)) | JSON in `flatc`; parsing in C++ and C (FB-support) | ProtoJSON in every runtime; text format (PB-json, PB-text) |
 | Whole-tree packing | `schema pack` and `unpack`: a directory mirrors the root; keyed arrays as one file per variant; byte-stable both ways (§17) | `flatc -b` (FB-flatc) | `protoc --encode` and `--decode` |
 | Dump, diff, check | `cook-check`, `uncook`, `build-version --facts`, `projection` (§7, §20.7); generic dump and diff over the registry a follow-on (§15) | `flatc --json`, `FlatBufferToString` (FB-flatc) | `DebugString`, third-party explorers (PB-3p) |
 | Lint, breaking, registry | the baseline and the checker; no registry by design (§18) | `--conform` (FB-flatc) | `buf lint`, `buf breaking`, the BSR (buf) |
@@ -318,7 +318,7 @@ the source list at the end.
 | Debug names | `EnumName`, `FlagNames` in every target, allocation-free (USAGE) | `--gen-name-strings` (FB-flatc) | via descriptors (PB-message) |
 | Embeddable compiler | a Go library; `cmd/schema` is a thin client; your generator walks the IR (USAGE) | `libflatbuffers` | protoc plugins (PB-3p) |
 | Converters | — | `flatc --proto` reads `.proto` (FB-flatc) | — |
-| Languages | nine on the type wire held byte-identical in CI; tables landing per the matrix on #366; four more tracked on #381 | fifteen listed, coverage uneven (FB-support) | ten first-party, forty-plus third-party (PB-3p) |
+| Languages | nine on the type wire held byte-identical in CI; tables landing per the matrix on #366; four more tracked on #381 | thirteen listed, coverage uneven (FB-support) | ten first-party, forty-plus third-party (PB-3p) |
 
 ## Sources
 
