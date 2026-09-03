@@ -102,7 +102,7 @@ layout; the game memory-maps it and points at it with minimal fix-up.
   64-bit digest over every fact a cook's bytes depend on — the type wire's
   protocol id, every record's layout keyed by wire id, kind and referent, the
   facts that decide what a load PUTS in a slot, and the target's byte order —
-  so schema drift refuses at `Open` and ABI drift is meant to fail the build
+  so schema drift refuses at `Open` and ABI drift fails the build
   (§20.3). `Open` checks the magic, the byte order, the build version, every
   reserved word zero, the two part lengths and the base alignment — that is
   the whole check, and it is the runtime's only entry point — returning NULL
@@ -114,12 +114,17 @@ layout; the game memory-maps it and points at it with minimal fix-up.
   config-format example holding gate 1 (§12), the C# backend reads the same
   bytes the C++ tools write, and the dogfood carries a real game's two files
   on this wire end to end — 803 values byte-identical, every injected bit
-  flip refused rather than read as data. **The cook half is not built**: no
-  backend emits `Cook`, `CookMeasure` or `Open`, there is no cooked header,
-  `schema cook-check` does not exist, and addressing an artifact by
-  **(asset hash, build version)** is designed only. It lands with the variable
-  class's flat node encoding (§3.1), tracked by **#251**; the build version
-  itself is **#292** and is live for the block form.
+  flip refused rather than read as data. **The cook's READ half is proven
+  too**: `schema cook`, `schema cook-check` and `schema uncook` produce,
+  validate and read back the form in both byte orders, `wire → cook → wire` is
+  byte-identical over the corpus, and the C++ `<Root>Open` and the C#
+  `<Root>Cook.Open` both point at what the tool wrote — locked against the
+  tool's own attribution directory over seven roots, and against each other
+  byte for byte. What no generated runtime carries is the WRITE half, `Cook`
+  and `CookMeasure`: a build that writes a cook runs the tool (§7, §11).
+  Addressing an artifact by **(asset hash, build version)** is half live — the
+  build version is stamped in every cooked header and compared at `Open`; no
+  header field carries the asset hash (§7).
 
 ## 5. Render data written and read across two languages at runtime
 
