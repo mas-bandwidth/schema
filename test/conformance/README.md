@@ -134,6 +134,12 @@ Named, with the reason, so a port knows what it is not being asked for:
   each, and `test/tables/hostile_main.cpp` is already a data-driven driver over
   them. Folding that battery into this harness's surfaces is a move, not a
   build.
-- **The FIXED-root cooks** (`Settings`, `Stamp`). Their fixtures are written by
-  the C++ leg's own builder rather than by `test/cookgen`, so the harness cannot
-  materialise them without coupling itself to one backend.
+- **The FIXED-root cooks** (`Settings`, `Stamp`), and this one is a REAL gap
+  rather than a convenience. `test/cookgen`'s fixtures are chains of
+  value-initialised nodes, so the five pinned dumps lock every node offset,
+  every deref and every visit order — and almost no VALUES, because there are
+  almost none in them. The fixtures that do carry values are written by the C++
+  leg's own builder, which the harness cannot run without coupling itself to one
+  backend. Until a fixture generator writes values, `cook` is a structure gate
+  and the value half stays where it is, in `test/tables/cook_main.cpp`'s
+  `fixedvalues` mode and its C# twin.
