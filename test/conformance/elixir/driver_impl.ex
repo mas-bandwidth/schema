@@ -716,21 +716,30 @@ defmodule Audit do
     # <case> <heap words per iteration> <reductions per iteration>
     #
     # One iteration is one wire load, one wire save, one text read and one text
-    # write of that instance. The figures are EXACT: the audit runs the loop in a
-    # process large enough that no garbage collection happens, so the heap grows by
-    # exactly the words the loop allocated.
+    # write of that instance. The count comes from the BEAM's own cumulative
+    # figure for the heap words a collection RECLAIMED: a loop bracketed by two
+    # full collections allocated exactly that, plus whatever is still live at the
+    # end. It is a COUNT per iteration and not a drift figure — a path that
+    # allocates and frees the same words every iteration reads +0 drift for an
+    # hour and is still allocating.
     #
     # The floor is not zero and is not claimed to be — Elixir has no caller-owned
     # buffer and no mutable struct, so a decoded value IS an allocation. What this
-    # file holds is that the figure does not MOVE: the audit refuses a case that
-    # runs over its line by more than the collection boundary's own jitter.
+    # file holds is that the figure does not MOVE.
     #
-    # REDUCTIONS ride beside the words because they are the WORK half: a change
-    # that allocated the same and did twice as much of it moves this column and
-    # not the other, and an accidental quadratic moves it a great deal. They are
-    # gated LOOSER than the words — a quarter rather than sixty-four — because
-    # they are the scheduler's accounting and a different OTP build can count
-    # them differently, where a heap word count cannot.
+    # THE TWO COLUMNS ARE GATED DIFFERENTLY, and the reason is what each one is.
+    # A heap WORD count is a property of the terms the code builds: the same
+    # source on the same OTP allocates the same words on any 64-bit machine, so
+    # it is gated at 64 words — under the negative control's ~140, and well over
+    # the collection boundary's own jitter, measured at +/- 3 over four
+    # consecutive runs of the whole corpus. REDUCTIONS are the scheduler's own
+    # accounting and a different OTP build counts them differently, so that
+    # column is gated at a quarter: loose enough to cross a machine, tight enough
+    # that an accidental quadratic cannot hide in it.
+    #
+    # What is NOT counted, named rather than implied: a refc binary's payload,
+    # which lives off the process heap and has no cumulative counter of its own.
+    # The soak (make tables-elixir-soak) is that half's instrument.
     """
   end
 

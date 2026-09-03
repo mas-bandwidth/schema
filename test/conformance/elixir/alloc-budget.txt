@@ -3,33 +3,45 @@
 # <case> <heap words per iteration> <reductions per iteration>
 #
 # One iteration is one wire load, one wire save, one text read and one text
-# write of that instance. The figures are EXACT: the audit runs the loop in a
-# process large enough that no garbage collection happens, so the heap grows by
-# exactly the words the loop allocated.
+# write of that instance. The count comes from the BEAM's own cumulative
+# figure for the heap words a collection RECLAIMED: a loop bracketed by two
+# full collections allocated exactly that, plus whatever is still live at the
+# end. It is a COUNT per iteration and not a drift figure — a path that
+# allocates and frees the same words every iteration reads +0 drift for an
+# hour and is still allocating.
 #
 # The floor is not zero and is not claimed to be — Elixir has no caller-owned
 # buffer and no mutable struct, so a decoded value IS an allocation. What this
-# file holds is that the figure does not MOVE: the audit refuses a case that
-# runs over its line by more than the collection boundary's own jitter.
+# file holds is that the figure does not MOVE.
 #
-# REDUCTIONS ride beside the words because they are the WORK half: a change
-# that allocated the same and did twice as much of it moves this column and
-# not the other, and an accidental quadratic moves it a great deal.
-root_full 21738 24380
-root_default 733 783
-profile_elide 11230 12439
-loadout_full 9941 10457
-wide_blob 7914938 11384241
-archive 22396 25799
+# THE TWO COLUMNS ARE GATED DIFFERENTLY, and the reason is what each one is.
+# A heap WORD count is a property of the terms the code builds: the same
+# source on the same OTP allocates the same words on any 64-bit machine, so
+# it is gated at 64 words — under the negative control's ~140, and well over
+# the collection boundary's own jitter, measured at +/- 3 over four
+# consecutive runs of the whole corpus. REDUCTIONS are the scheduler's own
+# accounting and a different OTP build counts them differently, so that
+# column is gated at a quarter: loose enough to cross a machine, tight enough
+# that an accidental quadratic cannot hide in it.
+#
+# What is NOT counted, named rather than implied: a refc binary's payload,
+# which lives off the process heap and has no cumulative counter of its own.
+# The soak (make tables-elixir-soak) is that half's instrument.
+root_full 21738 23932
+root_default 733 786
+profile_elide 11230 12434
+loadout_full 9941 10458
+wide_blob 7914941 11512663
+archive 22396 25801
 keyed_config 19185 20442
 keyed_default 15520 17599
-v1_cfg 11515 13005
+v1_cfg 11515 13000
 v1_seams 11076 12231
 v2_cfg 13192 14732
-v2_seams 12950 14351
+v2_seams 12950 14262
 chain_value 1075 1031
 chain_value_empty 721 904
 chain_pointer 1075 1032
 chain_optional 1075 1034
 chain_optional_empty 784 942
-chain_pointer_empty 787 942
+chain_pointer_empty 787 932
