@@ -119,9 +119,6 @@ Beside them: [PERFORMANCE.md](docs/PERFORMANCE.md),
 and FlatBuffers), [FAQ.md](docs/FAQ.md), [VERSIONING.md](docs/VERSIONING.md),
 [CONTRIBUTING.md](docs/CONTRIBUTING.md) and [SECURITY.md](docs/SECURITY.md).
 
-Where a guide and a spec cover the same ground: the spec keeps the spelling a
-consumer needs to write from the page alone, even when USAGE also shows it.
-
 ## License
 
 **The compiler is AGPL-3.0, and will stay that way. The code it generates is
