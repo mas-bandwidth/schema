@@ -1512,6 +1512,9 @@ COOK_ROOTS := Scene Depot Album TreeNode ListNode
 # file with no variable table of its own, which is the shape a file-scoped
 # emission rule forgets.
 COOK_FIXED_ROOTS := Settings Stamp
+# and the roots whose cook the C++ side WRITES (docs/SPEC-TABLES.md §7.6): the two
+# fixed ones, and the pointered Scene graph test/tables/cook_main.cpp builds
+COOK_WRITE_ROOTS := Settings Stamp Scene
 
 COOK_INCLUDES := -Ibuild/tables-generated/pointers -Itest/tables
 COOK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
@@ -1551,13 +1554,15 @@ build/cook-open/.stamp: bin/schema $(SCHEMAS_TABLES_POINTERS)
 	./bin/schema cook-check --root Scene build/cook-open/Scene-be.cook tables/pointers
 	@touch $@
 
-# The FIXED-root fixtures, which the C++ side WRITES: it saves a known instance
-# to the tolerant wire, the tool cooks that wire, and the value gate reads the
-# instance back out of the cook. The tool's own read report must be SILENT over
-# a wire this backend wrote — a crossing in the other direction, for free.
+# The fixtures the C++ side WRITES: it saves a known instance to the tolerant
+# wire — a fixed root's value, or the pointered Scene graph — the tool cooks that
+# wire in both orders, the value gate reads a fixed instance back out of the
+# cook, and the write gate holds the runtime's own cook to the tool's file. The
+# tool's own read report must be SILENT over a wire this backend wrote — a
+# crossing in the other direction, for free.
 build/cook-open-fixed/.stamp: bin/schema build/schema_test_cook build/cook-open/.stamp
 	@rm -rf build/cook-open-fixed && mkdir -p build/cook-open-fixed
-	@for r in $(COOK_FIXED_ROOTS); do \
+	@for r in $(COOK_WRITE_ROOTS); do \
 		./build/schema_test_cook write $$r build/cook-open-fixed/$$r.bin || exit 1; \
 		./bin/schema cook --root $$r --in build/cook-open-fixed/$$r.bin \
 			--out build/cook-open-fixed/$$r.cook --verbose tables/pointers || exit 1; \
@@ -1595,12 +1600,15 @@ tables-cook-open: build/schema_test_cook build/schema_test_cook_asan build/cook-
 # generated <Root>Cook must land on those files exactly — a second cooker with
 # its own bytes would be a second format, and a cook is content-addressed by
 # (asset hash, build version). The same mode counts allocations across the
-# measure and both writes, requires a short capacity to write nothing, and
-# opens what it wrote. The SANITIZED twin runs it too: the writer is handed a
-# buffer of exactly its own measure, so a byte past it lands in a redzone.
+# measure and both writes — none for a fixed root; for the pointered Scene,
+# the numbering's and only through the TableAllocator handed in, cooked from
+# the unlocked builder, a loaded region and the locked region alike — requires
+# a short capacity to write nothing, and opens what it wrote. The SANITIZED
+# twin runs it too: the writer is handed a buffer of exactly its own measure,
+# so a byte past it lands in a redzone.
 .PHONY: tables-cook-write
 tables-cook-write: build/schema_test_cook build/schema_test_cook_asan build/cook-open-fixed/.stamp
-	@for r in $(COOK_FIXED_ROOTS); do \
+	@for r in $(COOK_WRITE_ROOTS); do \
 		./build/schema_test_cook      cookwrite $$r build/cook-open-fixed/$$r.cook build/cook-open-fixed/$$r-be.cook || exit 1; \
 		./build/schema_test_cook_asan cookwrite $$r build/cook-open-fixed/$$r.cook build/cook-open-fixed/$$r-be.cook || exit 1; \
 	done
@@ -1621,6 +1629,34 @@ tables-cook-write-negative-control: build/schema_test_cook build/cook-open-fixed
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the allocation"; \
 		  cat build/cook-write-control.log; exit 1; }
 	@echo "negative control: one allocation inside the write turns the cook-write gate red"
+
+# AND THE POINTERED HALF's control, which is the HOOKS test's to hold
+# (docs/SPEC-TABLES.md §7.6, §13.9): a pointered writer allocates its numbering,
+# and every byte of it must go through the pair it was handed. The sabotage
+# makes the builder overload of <Root>Cook ignore the builder's pair and take
+# the DEFAULT one — the bypass a writer would most plausibly commit — and the
+# hooks unit, whose default pair counts and must read zero, has to go red.
+COOK_WRITE_HOOKS_SABOTAGE := build/cook-write-hooks-control
+.PHONY: tables-cook-write-hooks-negative-control
+tables-cook-write-hooks-negative-control: bin/schema test/tables/hooks_main.cpp
+	@rm -rf $(COOK_WRITE_HOOKS_SABOTAGE) && mkdir -p $(COOK_WRITE_HOOKS_SABOTAGE)
+	@sed -e 's|order, builder.arena.allocator );|order, TableDefaultAllocator() /* SABOTAGED: the builder pair is ignored */ );|' \
+		internal/codegen/cpptable/cookwrite.go > $(COOK_WRITE_HOOKS_SABOTAGE)/cookwrite.go.txt
+	@cmp -s internal/codegen/cpptable/cookwrite.go $(COOK_WRITE_HOOKS_SABOTAGE)/cookwrite.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the cook-write sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cookwrite.go":"%s/$(COOK_WRITE_HOOKS_SABOTAGE)/cookwrite.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(COOK_WRITE_HOOKS_SABOTAGE)/overlay.json
+	@go build -overlay=$(COOK_WRITE_HOOKS_SABOTAGE)/overlay.json -o $(COOK_WRITE_HOOKS_SABOTAGE)/schema ./cmd/schema
+	@$(COOK_WRITE_HOOKS_SABOTAGE)/schema generate --lang cpp --out $(COOK_WRITE_HOOKS_SABOTAGE)/pointers tables/pointers > /dev/null
+	@$(CXX) $(TABLES_CXXFLAGS) -I$(COOK_WRITE_HOOKS_SABOTAGE)/pointers -Itest/tables test/tables/hooks_main.cpp \
+		$$(ls $(COOK_WRITE_HOOKS_SABOTAGE)/pointers/*Table.cpp) -o $(COOK_WRITE_HOOKS_SABOTAGE)/hooks
+	@if $(COOK_WRITE_HOOKS_SABOTAGE)/hooks > $(COOK_WRITE_HOOKS_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a cook through the default pair left the hooks test GREEN"; exit 1; \
+	fi
+	@grep -q "g_fallback_allocs == 0" $(COOK_WRITE_HOOKS_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the hooks test went red, but not on the default pair's count"; \
+		  cat $(COOK_WRITE_HOOKS_SABOTAGE)/log; exit 1; }
+	@echo "negative control: a pointered cook that ignores the builder's pair turns the hooks test red"
 
 # THE VALUED FIXTURE, cross-checked by the ENGINE's own uncook (§7.5, §7.4).
 #
@@ -3344,6 +3380,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cook-open
 	$(MAKE) tables-cook-write
 	$(MAKE) tables-cook-write-negative-control
+	$(MAKE) tables-cook-write-hooks-negative-control
 	$(MAKE) tables-cook-valued
 	$(MAKE) tables-cook-open-lengths-negative-control
 	$(MAKE) tables-cook-open-root-negative-control

@@ -8,16 +8,41 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring> // the prefill's scalar-array fills
-#include <cstddef> // offsetof, for the reflection descriptors
-#include <type_traits> // the enforced relocatability asserts
+#include <stdint.h>
+#include <string.h> // the prefill's scalar-array fills
+#include <stddef.h> // offsetof, for the reflection descriptors
+
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// serialize's asserts writes `#define schema_assert serialize_assert` before
+// including this header and both halves land in one handler.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
+// schema_fatal — what stands after the assert on a path that cannot continue.
+// NDEBUG does not remove it. Supply it and <stdlib.h> is never included.
+#ifndef schema_fatal
+#include <stdlib.h> // abort
+#define schema_fatal abort
+#endif // #ifndef schema_fatal
+
+// schema_allocate / schema_release — what "no allocator handed in" means for
+// this program. schema_allocate hands back ZEROED bytes and NULL on failure:
+// an arena segment is copied whole, padding included, so anything left
+// uninitialized here would reach a packed region. Supply both and <stdlib.h>
+// is never included; hand a TableAllocator to a builder to route one
+// structure's allocations somewhere else again.
+#ifndef schema_allocate
+#include <stdlib.h> // calloc, free
+#define schema_allocate( bytes ) calloc( (size_t) 1, (size_t) ( bytes ) )
+#define schema_release( pointer ) free( pointer )
+#endif // #ifndef schema_allocate
 #include <new> // a node's lifetime starts in arena storage (placement new)
-#include <cstdlib> // the arena's segments (the AUTHORING path may allocate)
 #include <atomic> // one atomic per slab: the arena is lock-free by ownership
-#include <cassert> // the keyed accessor's None refusal, in a debug build
-#include <cstdlib> // and its abort, which NDEBUG does not remove
-#include <iterator> // the keyed iterator's traits typedefs
 
 #include "Marks.h"
 
@@ -268,11 +293,13 @@ struct TableKeyed
     // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
     // holds one slot per NAMED variant: nothing for None below it and nothing
     // above Max, so a build that skipped this compare would index one element
-    // BEFORE the array or past its end — undefined behaviour in the
+    // BEFORE the array or past its end — undefined behavior in the
     // configuration a game ships. Either key is a program error, so the
     // accessor ends the program rather than reading something. The assert
     // carries the message where a debugger can read it and NDEBUG removes
-    // that; the abort is what stands after it.
+    // that; the fatal is what stands after it. BOTH GO THROUGH THE HOOKS —
+    // define schema_assert and schema_fatal and this refusal lands in your
+    // own handler.
     //
     // ONE UNSIGNED COMPARE COVERS BOTH ENDS: the storage index is key - 1, and
     // None's is -1, which wraps above kSlots unsigned. The cost is one
@@ -281,8 +308,8 @@ struct TableKeyed
     {
         if ( (uint32_t) ( (int32_t) key - 1 ) >= (uint32_t) kSlots )
         {
-            assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
-            abort();
+            schema_assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
+            schema_fatal();
         }
     }
 
@@ -295,20 +322,17 @@ struct TableKeyed
     // non-const lvalue reference cannot bind to the proxy. Write
     // auto [ ... ], or auto && [ ... ] if you prefer the reference form.
     //
-    // The iterators carry the five iterator_traits typedefs, so std::distance
-    // and the algorithms that only need a forward pass work on them.
+    // THE ITERATORS CARRY NO iterator_traits TYPEDEFS. They bought std::distance
+    // and the forward-pass algorithms for an audience that does not call them,
+    // and the <iterator> they need is the single most expensive include the
+    // generated corpus had: 536 headers and 986 KB, in a header whose whole
+    // remaining set is 123. begin(), end() and size() need none of it.
 
     struct Entry { E key; T & element; };
     struct ConstEntry { E key; const T & element; };
 
     struct Iterator
     {
-        typedef std::forward_iterator_tag iterator_category;
-        typedef Entry value_type;
-        typedef std::ptrdiff_t difference_type;
-        typedef void pointer;
-        typedef Entry reference;
-
         T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
@@ -319,12 +343,6 @@ struct TableKeyed
 
     struct ConstIterator
     {
-        typedef std::forward_iterator_tag iterator_category;
-        typedef ConstEntry value_type;
-        typedef std::ptrdiff_t difference_type;
-        typedef void pointer;
-        typedef ConstEntry reference;
-
         const T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
@@ -367,6 +385,42 @@ static const uint32_t kTableMaxSegments = 1u << ( 32 - kTableSegmentBits ); // 1
 static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one atomic per slab
 static const uint32_t kTableAlign       = 8;                           // every node starts 8-aligned
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
+
+// ---- THE CALLER'S ALLOCATOR (docs/SPEC-TABLES.md §6.5) ----
+//
+// Every allocation the variable-length runtime makes goes through one of
+// these — the arena's segments, the pack walk's identity map, the numbering's
+// entry array, the packed region, and the tool path's node directory. There is
+// no other call to the C library on this path, so a counting allocator sees
+// every byte and a game's own heap can own all of it.
+//
+// It is the shape TableBlockAllocator already has (§19.1): two function
+// pointers and a context the caller carries. What it adds is a CONTRACT ON
+// alloc — the bytes come back ZEROED. Lock copies whole nodes, PADDING
+// INCLUDED, so anything left uninitialized reaches a packed region; the default
+// pair reaches that through calloc, which costs nothing measurable because a
+// fresh segment is untouched pages either way.
+struct TableAllocator
+{
+    void * ( *alloc )( void * context, int64_t bytes ); // ZEROED bytes, NULL on failure
+    void ( *free )( void * context, void * pointer );
+    void * context;
+};
+
+// The default pair, and it is the one every entry point takes when the caller
+// names none. It calls schema_allocate / schema_release, so a program with its
+// own C-library replacement can move the floor without writing a struct at all.
+inline void * table_default_alloc( void * context, int64_t bytes ) { (void) context; return schema_allocate( bytes ); }
+inline void table_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
+
+inline TableAllocator TableDefaultAllocator()
+{
+    TableAllocator allocator;
+    allocator.alloc = table_default_alloc;
+    allocator.free = table_default_free;
+    allocator.context = NULL;
+    return allocator;
+}
 
 // ---- TableRef: a relocatable reference (never a machine pointer) ----
 //
@@ -434,9 +488,13 @@ struct TableArena
     std::atomic<uint8_t *> segments[ kTableMaxSegments ];
     std::atomic<uint32_t> cursor; // (segment << kTableSegmentBits) | bytes handed out
     bool locked = false;          // MONOTONIC: Lock() is one-way, there is no unlock
+    // THE ARENA CARRIES ITS OWN, so everything downstream of a builder —
+    // segments, pack map, numbering, region, node directory — allocates through
+    // the one pair the caller named, with nothing to thread by hand.
+    TableAllocator allocator;
 };
 
-inline void TableArenaInit( TableArena & arena )
+inline void TableArenaInit( TableArena & arena, TableAllocator allocator )
 {
     for ( uint32_t i = 0; i < kTableMaxSegments; i++ )
     {
@@ -444,6 +502,7 @@ inline void TableArenaInit( TableArena & arena )
     }
     arena.cursor.store( 0, std::memory_order_relaxed );
     arena.locked = false;
+    arena.allocator = allocator;
 }
 
 inline void TableArenaShutdown( TableArena & arena )
@@ -451,7 +510,7 @@ inline void TableArenaShutdown( TableArena & arena )
     for ( uint32_t i = 0; i < kTableMaxSegments; i++ )
     {
         uint8_t * segment = arena.segments[i].exchange( NULL, std::memory_order_acq_rel );
-        if ( segment != NULL ) { free( segment ); }
+        if ( segment != NULL ) { arena.allocator.free( arena.allocator.context, segment ); }
     }
     arena.cursor.store( 0, std::memory_order_relaxed );
 }
@@ -478,19 +537,21 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
         {
             if ( arena.segments[segment].load( std::memory_order_acquire ) == NULL )
             {
-                // calloc, NOT malloc: Lock copies whole nodes, PADDING
-                // INCLUDED, so anything uninitialised here reaches a packed
-                // region. Value-initialising a node
-                // with placement new zeroes its MEMBERS and not its padding, so
-                // the zeroing has to happen here or not at all. It costs nothing
-                // measurable: a fresh segment is untouched pages either way, and
-                // calloc has the kernel hand them over zeroed.
-                uint8_t * memory = (uint8_t *) calloc( 1, kTableSegmentSize );
+                // THE SEGMENT COMES BACK ZEROED, which is the allocator's
+                // contract and not an extra pass here: Lock copies whole nodes,
+                // PADDING INCLUDED, so anything uninitialized reaches a packed
+                // region. Value-initializing a node with placement new zeroes
+                // its MEMBERS and not its padding, so the zeroing has to happen
+                // at the segment or not at all. It costs nothing measurable: a
+                // fresh segment is untouched pages either way, and the default
+                // pair's calloc has the kernel hand them over zeroed.
+                uint8_t * memory = (uint8_t *) arena.allocator.alloc( arena.allocator.context, (int64_t) kTableSegmentSize );
                 if ( memory == NULL ) { return kTableAllocFailed; }
                 uint8_t * expected = NULL;
                 if ( !arena.segments[segment].compare_exchange_strong( expected, memory, std::memory_order_acq_rel ) )
                 {
-                    free( memory ); // another worker published this segment first
+                    // another worker published this segment first
+                    arena.allocator.free( arena.allocator.context, memory );
                 }
             }
             if ( arena.cursor.compare_exchange_weak( cursor, cursor + kTableSlabBytes, std::memory_order_acq_rel ) )
@@ -595,19 +656,21 @@ struct TablePackMap
     TablePackEntry * entries = NULL;
     int64_t capacity = 0; // a power of two, or zero while empty
     int64_t count = 0;
+    TableAllocator allocator; // the caller's, carried from the walk that built it
 };
 
-inline void TablePackMapInit( TablePackMap & map )
+inline void TablePackMapInit( TablePackMap & map, TableAllocator allocator )
 {
     map.entries = NULL;
     map.capacity = 0;
     map.count = 0;
+    map.allocator = allocator;
 }
 
 inline void TablePackMapShutdown( TablePackMap & map )
 {
-    free( map.entries );
-    TablePackMapInit( map );
+    map.allocator.free( map.allocator.context, map.entries );
+    TablePackMapInit( map, map.allocator );
 }
 
 // The two walks behind Lock re-derive the SAME map from the same graph — the
@@ -651,8 +714,9 @@ inline TablePackEntry * TablePackMapFind( TablePackMap & map, const void * key )
 inline bool TablePackMapGrow( TablePackMap & map )
 {
     TablePackMap grown;
+    grown.allocator = map.allocator;
     grown.capacity = map.capacity != 0 ? map.capacity * 4 : 1024;
-    grown.entries = (TablePackEntry *) calloc( (size_t) grown.capacity, sizeof( TablePackEntry ) );
+    grown.entries = (TablePackEntry *) map.allocator.alloc( map.allocator.context, grown.capacity * (int64_t) sizeof( TablePackEntry ) );
     if ( grown.entries == NULL ) { return false; }
     for ( int64_t i = 0; i < map.capacity; i++ )
     {
@@ -660,7 +724,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
         grown.entries[ TablePackMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
         grown.count++;
     }
-    free( map.entries );
+    map.allocator.free( map.allocator.context, map.entries );
     map = grown;
     return true;
 }
@@ -756,9 +820,11 @@ struct TableNumbering
     int64_t capacity = 0;
 };
 
-inline void TableNumberingInit( TableNumbering & n )
+// The numbering allocates through the map's pair rather than carrying a second
+// copy of it: one numbering is one walk, and a walk has one allocator.
+inline void TableNumberingInit( TableNumbering & n, TableAllocator allocator )
 {
-    TablePackMapInit( n.seen );
+    TablePackMapInit( n.seen, allocator );
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
@@ -766,8 +832,9 @@ inline void TableNumberingInit( TableNumbering & n )
 
 inline void TableNumberingShutdown( TableNumbering & n )
 {
+    TableAllocator allocator = n.seen.allocator;
     TablePackMapShutdown( n.seen );
-    free( n.entries );
+    allocator.free( allocator.context, n.entries );
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
@@ -789,9 +856,19 @@ inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & ent
 {
     if ( n.count == n.capacity )
     {
+        // GROW BY COPY, never by realloc: the allocator hook is a PAIR, and a
+        // game's heap is not required to have a resize primitive at all. The
+        // schedule quadruples, so the copying is amortized to a constant per
+        // entry and the growth is the same growth it always was.
         int64_t capacity = n.capacity != 0 ? n.capacity * 4 : 256;
-        TableNodeEntry * grown = (TableNodeEntry *) realloc( n.entries, (size_t) capacity * sizeof( TableNodeEntry ) );
+        TableAllocator allocator = n.seen.allocator;
+        TableNodeEntry * grown = (TableNodeEntry *) allocator.alloc( allocator.context, capacity * (int64_t) sizeof( TableNodeEntry ) );
         if ( grown == NULL ) { return false; }
+        if ( n.entries != NULL )
+        {
+            memcpy( grown, n.entries, (size_t) n.count * sizeof( TableNodeEntry ) );
+            allocator.free( allocator.context, n.entries );
+        }
         n.entries = grown;
         n.capacity = capacity;
     }
@@ -1071,7 +1148,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0xe7c54936602ceecaull;
+static const uint64_t BuildVersion = 0xe7c54936602ceecaull;
 
 } // namespace graphdemo
 
@@ -1116,7 +1193,7 @@ static const int64_t kTableCookHeaderBytes = 64;
 // OTHER order — or something that is not a cook. All three answers but the
 // first refuse, and a cook and a BLOCK are separated here too, because a
 // form's identity belongs in its magic rather than in a second digest.
-inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 
 // THIS BUILD's byte order, as the header's own word carries it. The magic is
 // what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -1128,16 +1205,16 @@ inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 // GENERATION input, little for every target schema generates for today, so
 // two builds of one schema for two orders emit the same id.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-inline constexpr uint64_t TableCookByteOrder = 2; // big
+static const uint64_t TableCookByteOrder = 2; // big
 #else
-inline constexpr uint64_t TableCookByteOrder = 1; // little
+static const uint64_t TableCookByteOrder = 1; // little
 #endif
 
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
 // describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
-inline constexpr uint64_t TableCookMaxAlign = 64;
+static const uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
 // bytes, in this machine's order"; every compiler this repo builds under folds
@@ -1275,6 +1352,54 @@ inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, i
 } // namespace graphdemo
 
 #endif // GRAPHDEMO_SCHEMA_TABLE_COOK
+
+#ifndef GRAPHDEMO_SCHEMA_TABLE_COOK_VARIABLE
+#define GRAPHDEMO_SCHEMA_TABLE_COOK_VARIABLE
+
+namespace graphdemo {
+
+// ---- the cooked form's WRITE side for a POINTERED root (docs/SPEC-TABLES.md §7.6) ----
+//
+// A pointered root's cook is the region of §7.2: every node the numbering
+// reached (§3.1), once, at its own type's alignment, in index order, the root
+// at offset zero. This is that region while it is being laid out and written —
+// the tool's own Layout and Write, in one struct.
+//
+// The OFFSETS are one per node, the root's zero at position 0 and node index k
+// at position k - 1, which is the directory's own order (§6.3); they are the
+// one allocation the write makes beyond the numbering, and they go through the
+// same pair. A measure needs no offsets and leaves the pointer NULL.
+struct TableCookRegion
+{
+    const TableNumbering * numbering = NULL; // node -> index, from the walk that placed it
+    int64_t * offsets = NULL;                // index - 1 -> the node's region offset; NULL while measuring
+    int64_t count = 0;                       // nodes, the root included
+    int64_t bytes = 0;                       // the data part's length, rounded to align
+    int64_t align = 0;                       // the region's alignment: the nodes' greatest, never below eight
+    uint8_t * base = NULL;                   // where the data part is being written; NULL while measuring
+};
+
+// A reference slot: the SELF-RELATIVE delta from the slot's own address to the
+// node's start (§6.3), and zero for null. The node is found by the address the
+// numbering keyed it under, which is the same address the walk resolved through
+// the same context — so a reference the numbering does not carry is a slot the
+// walk never reached (a counted array's slot past its count, an absent
+// optional's value) holding a node the region will not hold, and it is refused
+// rather than written as a delta to nowhere.
+inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const void * pointee, TableByteOrder order )
+{
+    if ( pointee == NULL ) { table_cook_put( at, 0, 8, order ); return true; }
+    uint32_t index = 0;
+    if ( !TableNumberingIndex( *region.numbering, pointee, index ) ) { return false; }
+    if ( index == 0 || (int64_t) index > region.count ) { return false; }
+    const int64_t delta = region.offsets[index - 1] - (int64_t) ( at - region.base );
+    table_cook_put( at, (uint64_t) delta, 8, order );
+    return true;
+}
+
+} // namespace graphdemo
+
+#endif // GRAPHDEMO_SCHEMA_TABLE_COOK_VARIABLE
 
 namespace graphdemo {
 
@@ -1758,14 +1883,18 @@ struct MarkerBuilder
     uint8_t * region = NULL; // the packed const form, produced by Lock()
     int64_t region_bytes = 0;
 
-    MarkerBuilder()
+    // THE ALLOCATOR IS THE BUILDER'S, and everything this structure ever
+    // allocates goes through it: the arena's segments, Lock's identity map,
+    // the packed region, the wire walks' numbering, and the tool path's node
+    // directory. Name your own and a profiler sees every byte under it.
+    MarkerBuilder( TableAllocator allocator = TableDefaultAllocator() )
     {
-        TableArenaInit( arena );
+        TableArenaInit( arena, allocator );
         main.arena = &arena;
         TableSlot<Marker> slot = main.Alloc<Marker>();
         root_ref = slot.ref;
     }
-    ~MarkerBuilder() { TableArenaShutdown( arena ); free( region ); }
+    ~MarkerBuilder() { TableArenaShutdown( arena ); arena.allocator.free( arena.allocator.context, region ); }
     MarkerBuilder( const MarkerBuilder & ) = delete;
     MarkerBuilder & operator=( const MarkerBuilder & ) = delete;
 
@@ -1803,7 +1932,7 @@ inline bool MarkerBuilder::Lock()
     // The ROOT takes the map's first entry: it is packed at offset 0, and its
     // descent is open for the whole walk (docs/SPEC-TABLES.md §3.1).
     TablePackMap seen;
-    TablePackMapInit( seen );
+    TablePackMapInit( seen, arena.allocator );
     bool root_taken = false;
     int64_t root_slot = 0;
     int64_t below = -1;
@@ -1813,9 +1942,11 @@ inline bool MarkerBuilder::Lock()
     }
     if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it
     int64_t total = TableAlignUp64( (int64_t) sizeof( Marker ) ) + below;
-    uint8_t * packed = (uint8_t *) malloc( (size_t) total ); // the AUTHORING path may allocate
+    // the AUTHORING path may allocate (§6.5), and it does so through the
+    // builder's own pair. The region comes back ZEROED, which is the
+    // allocator's contract: a packed region carries node padding.
+    uint8_t * packed = (uint8_t *) arena.allocator.alloc( arena.allocator.context, total );
     if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
-    memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Marker ) );
     Marker * destination = new ( packed ) Marker; // lifetime only: the Pack below memcpy's the whole node over it
     // The pack walk RE-DERIVES the same numbering rather than carrying the
@@ -1828,7 +1959,7 @@ inline bool MarkerBuilder::Lock()
          !MarkerPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
     {
         TablePackMapShutdown( seen );
-        free( packed );
+        arena.allocator.free( arena.allocator.context, packed );
         return false;
     }
     TablePackMapShutdown( seen );
@@ -1907,10 +2038,10 @@ inline bool MarkerNumberFrom( const Ctx & ctx, TableNumbering & numbering, const
 }
 
 template <typename Ctx>
-inline int64_t MarkerMeasureWire( const Ctx & ctx, const Marker & root )
+inline int64_t MarkerMeasureWire( const Ctx & ctx, const Marker & root, TableAllocator allocator )
 {
     TableNumbering numbering;
-    TableNumberingInit( numbering );
+    TableNumberingInit( numbering, allocator );
     int64_t bytes = -1;
     if ( MarkerNumberFrom( ctx, numbering, root ) )
     {
@@ -1926,10 +2057,10 @@ inline int64_t MarkerMeasureWire( const Ctx & ctx, const Marker & root )
 }
 
 template <typename Ctx>
-inline int64_t MarkerSaveWire( const Ctx & ctx, const Marker & root, uint8_t * buffer, int64_t capacity )
+inline int64_t MarkerSaveWire( const Ctx & ctx, const Marker & root, uint8_t * buffer, int64_t capacity, TableAllocator allocator )
 {
     TableNumbering numbering;
-    TableNumberingInit( numbering );
+    TableNumberingInit( numbering, allocator );
     if ( !MarkerNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
     TableWriter w( buffer, capacity );
     // the root's own fields, then the node table's fields, then the
@@ -1943,34 +2074,34 @@ inline int64_t MarkerSaveWire( const Ctx & ctx, const Marker & root, uint8_t * b
     return w.offset; // == MarkerMeasure( root )
 }
 
-inline int64_t MarkerMeasure( const Marker * root )
+inline int64_t MarkerMeasure( const Marker * root, TableAllocator allocator = TableDefaultAllocator() )
 {
     if ( root == NULL ) { return -1; }
     TableRegionCtx ctx;
-    return MarkerMeasureWire( ctx, *root );
+    return MarkerMeasureWire( ctx, *root, allocator );
 }
 
-inline int64_t MarkerSave( const Marker * root, uint8_t * buffer, int64_t capacity )
+inline int64_t MarkerSave( const Marker * root, uint8_t * buffer, int64_t capacity, TableAllocator allocator = TableDefaultAllocator() )
 {
     if ( root == NULL ) { return -1; }
     TableRegionCtx ctx;
-    return MarkerSaveWire( ctx, *root, buffer, capacity );
+    return MarkerSaveWire( ctx, *root, buffer, capacity, allocator );
 }
 
 inline int64_t MarkerMeasure( const MarkerBuilder & builder )
 {
-    if ( builder.region != NULL ) { return MarkerMeasure( builder.AsConst() ); }
+    if ( builder.region != NULL ) { return MarkerMeasure( builder.AsConst(), builder.arena.allocator ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return MarkerMeasureWire( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ) );
+    return MarkerMeasureWire( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator );
 }
 
 inline int64_t MarkerSave( const MarkerBuilder & builder, uint8_t * buffer, int64_t capacity )
 {
-    if ( builder.region != NULL ) { return MarkerSave( builder.AsConst(), buffer, capacity ); }
+    if ( builder.region != NULL ) { return MarkerSave( builder.AsConst(), buffer, capacity, builder.arena.allocator ); }
     if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
     TableArenaCtx ctx = { &builder.arena };
-    return MarkerSaveWire( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity );
+    return MarkerSaveWire( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );
 }
 
 // MarkerLoadMeasure: the exact region bytes a wire buffer will need, and it is
@@ -2118,8 +2249,11 @@ inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire, in
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting );
         while ( TableNodeScanNext( scan, type_id, body, length ) ) { records++; }
     }
-    // the AUTHORING side may allocate (§6.5), and this is the tool's path
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) calloc( (size_t) ( records + 1 ), sizeof( TableNodeDirEntry ) );
+    // the AUTHORING side may allocate (§6.5), and this is the tool's path.
+    // It goes through the builder's own pair, like everything else the
+    // builder reaches, and the entries come back zeroed.
+    const TableAllocator allocator = builder.arena.allocator;
+    TableNodeDirEntry * directory = (TableNodeDirEntry *) allocator.alloc( allocator.context, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
     if ( directory == NULL ) { out->malformed = true; return false; }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xd6458a3eef83d457ull;
@@ -2165,7 +2299,7 @@ inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire, in
     }
     TableReader r( wire, wire_bytes, out );
     bool ok = MarkerLoadBody( r, nodes, *root );
-    free( directory );
+    allocator.free( allocator.context, directory );
     return ok;
 }
 
@@ -2230,10 +2364,19 @@ inline const Marker * MarkerOpen( const void * bytes, uint64_t length )
 // instance produce ONE artifact or the pair means nothing.
 
 inline void TallyCookBody( uint8_t * at, const Tally & value, TableByteOrder order );
+template <typename Ctx> inline bool MarkerCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Marker & value, TableByteOrder order );
 
 inline void TallyCookBody( uint8_t * at, const Tally & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.hits, 4, order );
+}
+
+template <typename Ctx> inline bool MarkerCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Marker & value, TableByteOrder order )
+{
+    table_cook_bytes( at + 0, value.label, value.label_length, 9 );
+    table_cook_put( at + 12, (uint64_t) (uint32_t) value.label_length, 4, order );
+    if ( !table_cook_ref( region, at + 16, (const void *) TallyAt( ctx, value.note ), order ) ) { return false; } // note
+    return true;
 }
 
 // TallyCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -2288,10 +2431,173 @@ inline bool TallyCook( const Tally & value, void * out, uint64_t capacity, Table
     return true;
 }
 
-// Marker is VARIABLE-LENGTH and has no MarkerCook: a pointered root's writer
-// packs a region from a builder and numbers its nodes (§6.2, §6.3), and that
-// half is a named follow-on (docs/SPEC-TABLES.md §15). MarkerOpen reads one today,
-// and `schema cook` writes one.
+// MarkerCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
+// numbering — the root at zero, then every node in index order at
+// align_up( offset, alignof ) for its OWN type, no slack between them, the
+// data length rounded to the greatest alignment among them and never below
+// eight. The offsets go into the region's table when it has one, and are only
+// summed when it does not (a measure). A type id the numbering carries that
+// this root cannot name is the two walks disagreeing, and it is refused.
+inline bool MarkerCookLayout( const TableNumbering & numbering, TableCookRegion & region )
+{
+    region.numbering = &numbering;
+    region.count = numbering.count + 1;
+    int64_t offset = 24; // the root, at zero
+    int64_t align = 8;
+    if ( region.offsets != NULL ) { region.offsets[0] = 0; }
+    for ( int64_t k = 0; k < numbering.count; k++ )
+    {
+        int64_t size = 0;
+        int64_t node_align = 0;
+        switch ( numbering.entries[k].type_id )
+        {
+            case 0x69ff34904242a73dull: size = 4; node_align = 4; break; // Tally
+            default: return false;
+        }
+        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
+        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
+        offset += size;
+        if ( node_align > align ) { align = node_align; }
+    }
+    region.bytes = ( offset + align - 1 ) & ~( align - 1 );
+    region.align = align;
+    return true;
+}
+
+// MarkerCookMeasureFrom: the whole cooked file's bytes for one graph — the header,
+// the data part and the attribution part (§7.1). IT DEPENDS ON THE VALUE,
+// because the answer is the numbering: the depth-first walk of §3.1 is run
+// here and run again by the write, and neither carries the other's (§7.6). A
+// data cycle is refused by the walk and answers -1.
+template <typename Ctx>
+inline int64_t MarkerCookMeasureFrom( const Ctx & ctx, const Marker & root, TableAllocator allocator )
+{
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    TableCookRegion region;
+    int64_t bytes = -1;
+    if ( MarkerNumberFrom( ctx, numbering, root ) && MarkerCookLayout( numbering, region ) )
+    {
+        const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );
+        bytes = data_offset + region.bytes + region.count * (int64_t) sizeof( TableNodeDirEntry );
+    }
+    TableNumberingShutdown( numbering );
+    return bytes;
+}
+
+// MarkerCookFrom: write one cooked file of a pointered graph, in the byte order
+// the caller names. The bytes are `schema cook`'s, byte for byte (§7.6).
+//
+// THE CALLER OWNS THE OUTPUT and nothing is allocated toward it. What is
+// allocated is the numbering — the identity map, the entry array and one
+// offset per node — through the pair handed in, and released before this
+// returns (§6.5, §13.9). A capacity short of the measure writes nothing.
+//
+// THE HEADER IS WRITTEN LAST. A reference the numbering did not carry is
+// found while a body is being written, and a write that refuses there has
+// already put bytes in the buffer; with no magic ahead of them, no Open can
+// mistake them for a cook.
+template <typename Ctx>
+inline bool MarkerCookFrom( const Ctx & ctx, const Marker & root, void * out, uint64_t capacity, TableByteOrder order, TableAllocator allocator )
+{
+    if ( out == NULL ) { return false; }
+    TableNumbering numbering;
+    TableNumberingInit( numbering, allocator );
+    TableCookRegion region;
+    bool ok = MarkerNumberFrom( ctx, numbering, root );
+    if ( ok )
+    {
+        region.offsets = (int64_t *) allocator.alloc( allocator.context, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
+        ok = region.offsets != NULL && MarkerCookLayout( numbering, region );
+    }
+    if ( ok )
+    {
+        const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );
+        const int64_t attribution = region.count * (int64_t) sizeof( TableNodeDirEntry );
+        const int64_t need = data_offset + region.bytes + attribution;
+        ok = (uint64_t) need <= capacity;
+        if ( ok )
+        {
+            uint8_t * raw = (uint8_t *) out;
+            memset( raw, 0, (size_t) need ); // EVERY BYTE NO FIELD COVERS IS ZERO (§7.2)
+            region.base = raw + data_offset;
+            // the DATA part: the root at the region's base, then every numbered
+            // node at the offset the layout gave it, each through its own writer
+            ok = MarkerCookBody( ctx, region, region.base, root, order );
+            for ( int64_t k = 0; ok && k < numbering.count; k++ )
+            {
+                uint8_t * at = region.base + region.offsets[k + 1];
+                const void * node = numbering.entries[k].node;
+                switch ( numbering.entries[k].type_id )
+                {
+                    case 0x69ff34904242a73dull: TallyCookBody( at, *(const Tally *) node, order ); break; // Tally
+                    default: ok = false; break;
+                }
+            }
+            // the ATTRIBUTION part: the node directory (§6.3), one entry per node
+            // in index order, for `schema cook-check`
+            uint8_t * entry = raw + data_offset + region.bytes;
+            table_cook_put( entry, 0, 8, order );
+            table_cook_put( entry + 8, 0xd6458a3eef83d457ull, 8, order ); // the root: fnv1a64( "Marker" )
+            for ( int64_t k = 0; k < numbering.count; k++ )
+            {
+                entry += sizeof( TableNodeDirEntry );
+                table_cook_put( entry, (uint64_t) region.offsets[k + 1], 8, order );
+                table_cook_put( entry + 8, numbering.entries[k].type_id, 8, order );
+            }
+            // and the HEADER (§7.1), every word a u64 in the order the file is
+            // produced in; the two RESERVED words are the memset's zeros
+            if ( ok )
+            {
+                table_cook_put( raw + 0, TableCookMagic, 8, order );
+                table_cook_put( raw + 8, BuildVersion, 8, order );
+                table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );
+                table_cook_put( raw + 24, (uint64_t) region.bytes, 8, order );
+                table_cook_put( raw + 32, (uint64_t) attribution, 8, order );
+                table_cook_put( raw + 40, (uint64_t) region.align, 8, order );
+            }
+        }
+    }
+    allocator.free( allocator.context, region.offsets );
+    TableNumberingShutdown( numbering );
+    return ok;
+}
+
+// MarkerCookMeasure / MarkerCook over a REGION root — a locked builder's AsConst, a
+// region MarkerLoad produced, or an opened cook — with the pair the numbering
+// allocates through as an optional last argument, as the wire's own entries
+// take it (§13.9).
+inline int64_t MarkerCookMeasure( const Marker * root, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return -1; }
+    TableRegionCtx ctx;
+    return MarkerCookMeasureFrom( ctx, *root, allocator );
+}
+
+inline bool MarkerCook( const Marker * root, void * out, uint64_t capacity, TableByteOrder order, TableAllocator allocator = TableDefaultAllocator() )
+{
+    if ( root == NULL ) { return false; }
+    TableRegionCtx ctx;
+    return MarkerCookFrom( ctx, *root, out, capacity, order, allocator );
+}
+
+// and over a BUILDER, locked or not: the builder's own pair, and the arena
+// encoding while it is still mutable (§6.3).
+inline int64_t MarkerCookMeasure( const MarkerBuilder & builder )
+{
+    if ( builder.region != NULL ) { return MarkerCookMeasure( builder.AsConst(), builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed
+    TableArenaCtx ctx = { &builder.arena };
+    return MarkerCookMeasureFrom( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator );
+}
+
+inline bool MarkerCook( const MarkerBuilder & builder, void * out, uint64_t capacity, TableByteOrder order )
+{
+    if ( builder.region != NULL ) { return MarkerCook( builder.AsConst(), out, capacity, order, builder.arena.allocator ); }
+    if ( builder.root_ref.null() ) { return false; } // the root allocation failed
+    TableArenaCtx ctx = { &builder.arena };
+    return MarkerCookFrom( ctx, *(const Marker *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), out, capacity, order, builder.arena.allocator );
+}
 
 // ---- relocatability, enforced: the wire is a pure length-prefixed
 // stream AND the decoded storage is pointer-free — every closure type
@@ -2299,14 +2605,18 @@ inline bool TallyCook( const Tally & value, void * out, uint64_t capacity, Table
 // memcpy'd, mmap'd, shared across processes, and walked through
 // descriptor offsets. A failure here means a pointer, virtual or
 // non-trivial member crept into generated storage.
+//
+// They ask the COMPILER ITSELF, which is what every C++ standard library
+// answers the same two questions with — and it costs this header no
+// include at all.
 // A pointer FIELD is a TableRef — eight bytes and no address — so the
 // property holds in BOTH forms: a fixed-size table is one relocatable
 // struct, and a packed region is one relocatable block whose references
 // are self-relative and therefore survive a plain memcpy.
-static_assert( std::is_trivially_copyable<Tally>::value, "Tally must stay relocatable" );
-static_assert( std::is_standard_layout<Tally>::value, "Tally must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<Marker>::value, "Marker must stay relocatable" );
-static_assert( std::is_standard_layout<Marker>::value, "Marker must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( Tally ), "Tally must stay relocatable" );
+static_assert( __is_standard_layout( Tally ), "Tally must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( Marker ), "Marker must stay relocatable" );
+static_assert( __is_standard_layout( Marker ), "Marker must stay standard-layout for offsetof" );
 
 // ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //

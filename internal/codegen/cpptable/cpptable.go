@@ -700,6 +700,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		h.WriteString(buildVersionConstant(u.Package, ir.BuildVersion(u)))
 		h.WriteString("\n")
 		h.WriteString(tableCookRuntime(u.Package))
+		if anyVariable {
+			// the cook's WRITE side for a POINTERED root names the numbering,
+			// so it follows both runtimes and only a pointered unit carries it
+			h.WriteString("\n")
+			h.WriteString(tableCookWriteVariableRuntime(u.Package))
+		}
 		fmt.Fprintf(&h, "\nnamespace %s {\n\n", u.Package)
 		h.WriteString(g.body.String())
 		fmt.Fprintf(&h, "} // namespace %s\n", u.Package)

@@ -246,6 +246,10 @@ struct VarCodec
     const void * ( *load )( std::vector<uint8_t> &, const uint8_t *, int64_t, Report * );
     int64_t ( *measure )( const void * );
     int64_t ( *save )( const void *, uint8_t *, int64_t );
+    // the COOK's write side over a REGION root (§7.6): the numbering it runs
+    // allocates through the default pair, which is the hook pair
+    int64_t ( *cook_measure )( const void * );
+    bool ( *cook )( const void *, void *, uint64_t, int );
 };
 
 #define VARCODEC( unit_key, ns, type )                                                         \
@@ -263,6 +267,12 @@ struct VarCodec
         []( const void * v ) { return ns::type##Measure( (const ns::type *) v ); },             \
         []( const void * v, uint8_t * b, int64_t n ) {                                          \
             return ns::type##Save( (const ns::type *) v, b, n );                                \
+        },                                                                                     \
+        []( const void * v ) { return ns::type##CookMeasure( (const ns::type *) v ); },         \
+        []( const void * v, void * o, uint64_t c, int big ) {                                   \
+            return ns::type##Cook( (const ns::type *) v, o, c,                                  \
+                                   big ? ns::TableByteOrder::Big                               \
+                                       : ns::TableByteOrder::Little );                         \
         }                                                                                      \
     }
 
@@ -724,21 +734,39 @@ static int surface_cook_write( const std::string & out )
             if ( g[0] == "instance" && g[1] == f[1] ) { inst = &manifest_lines[j].field; break; }
         }
         if ( inst == NULL ) { fprintf( stderr, "driver: no instance %s\n", f[1].c_str() ); return 1; }
-        const Codec * codec = find_codec( ( *inst )[2], ( *inst )[3] );
-        if ( codec == NULL || codec->cook == NULL ) return 2; // this backend writes no cook
         std::vector<uint8_t> wire;
         if ( !slurp( ( *inst )[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", ( *inst )[4].c_str() ); return 1; }
 
-        void * value = codec->make();
-        codec->reset( value );
+        // a FIXED root is a value; a POINTERED root is a region and a root
+        // pointer (§6.2), loaded exactly as the wire surface loads it
+        int64_t need = 0;
+        std::vector<uint8_t> file;
+        const Codec * codec = find_codec( ( *inst )[2], ( *inst )[3] );
+        const VarCodec * var = codec == NULL ? find_var_codec( ( *inst )[2], ( *inst )[3] ) : NULL;
+        if ( codec == NULL && var == NULL ) return 2; // this backend writes no cook of this root
+        void * value = NULL;
+        std::vector<uint8_t> region;
         Report report;
-        if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) return 1;
-        const int64_t need = codec->cook_measure( value );
+        if ( codec != NULL )
+        {
+            value = codec->make();
+            codec->reset( value );
+            if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) return 1;
+            need = codec->cook_measure( value );
+        }
+        else
+        {
+            value = (void *) var->load( region, wire.data(), (int64_t) wire.size(), &report );
+            if ( value == NULL ) return 1;
+            need = var->cook_measure( value );
+        }
         if ( need <= 0 ) return 1;
-        std::vector<uint8_t> file( (size_t) need );
+        file.resize( (size_t) need );
         for ( int big = 0; big < 2; big++ )
         {
-            if ( !codec->cook( value, file.data(), (uint64_t) need, big ) ) return 1;
+            const bool ok = codec != NULL ? codec->cook( value, file.data(), (uint64_t) need, big )
+                                          : var->cook( value, file.data(), (uint64_t) need, big );
+            if ( !ok ) return 1;
             const std::string name = big ? f[1] + "-be" : f[1];
             if ( !spill( out, name, file.data(), (size_t) need ) ) return 1;
         }

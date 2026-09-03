@@ -242,6 +242,10 @@ var registry = []Name{
 	{Name: "TableByteOrder", By: Cpp, What: "the byte order a cook is WRITTEN in, as Cook's parameter"},
 	{Name: "table_cook_put", By: Cpp, What: "one scalar into a cook, in the target's byte order"},
 	{Name: "table_cook_bytes", By: Cpp, What: "a string or bytes buffer's used prefix into a cook"},
+	// and its POINTERED half, in a unit that has a variable-length table: the
+	// region being laid out and written, and the one reference store
+	{Name: "TableCookRegion", By: Cpp, What: "a pointered root's region while a cook lays it out and writes it: the numbering, one offset per node, the extent and the alignment"},
+	{Name: "table_cook_ref", By: Cpp, What: "a reference slot into a cook: the self-relative delta, or a refusal for a node the numbering did not reach"},
 
 	// ---- the RUST backend's own spellings (internal/codegen/rusttable) ----
 	//

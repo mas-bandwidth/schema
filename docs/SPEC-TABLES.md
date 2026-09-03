@@ -2222,8 +2222,8 @@ const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 
 `schema cook` writes the file; the runtime only ever points at one.
 
-**Backend status: the TOOL, EVERY READ SIDE, and the C++ WRITE side for the
-FIXED class are built (schema#251).** `schema cook`, `schema cook-check` and
+**Backend status: the TOOL, EVERY READ SIDE, and the C++ WRITE side for BOTH
+classes are built (schema#251).** `schema cook`, `schema cook-check` and
 `schema uncook` produce, validate and read back the form below, in both byte
 orders, over the same IR the emitters consume — and `wire → cook → wire` is
 byte-identical over the corpus, which is what proves the accelerator loses no
@@ -2234,9 +2234,10 @@ table — in its own idiom: the C++ backend `<Root>Open`, the C# backend
 check a BEAM binary cannot carry (§7.1's alignment word, and the backend status
 in §2). A game points at a cook the tooling produced, whichever language it
 reads from. The WRITE side (`Cook` and `CookMeasure`, §7.6) is emitted by the
-C++ backend for every FIXED table, and its bytes are the tool's, byte for byte,
-in both byte orders; a pointered root's writer and every other language's are
-named follow-ons (§15), and until they land those builds run the tool.
+C++ backend for every table, fixed or pointered, and its bytes are the tool's,
+byte for byte, in both byte orders over every instance the corpus carries;
+every other language's writer is a named follow-on (§15), and until it lands
+that build runs the tool.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -3178,7 +3179,8 @@ or a cook farm that already holds the structure should not have to shell out to
 the compiler to lay it out — *"game developers could write tools in any
 language and a runtime in any other."*
 
-**THE C++ SURFACE**, name first (§6.1), one pair per table beside `<Root>Open`:
+**THE C++ SURFACE**, name first (§6.1), one pair per table beside `<Root>Open`
+— a FIXED table's takes the value:
 
 ```cpp
 int64_t SettingsCookMeasure( const Settings & value );
@@ -3191,8 +3193,10 @@ bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, Tab
   bits and the scale this form exists for is a catalog. `Cook` writes exactly
   that many bytes into the caller's buffer, or writes nothing and returns
   `false` when the capacity is short. **THE CALLER OWNS THE BUFFER AND THE
-  WRITER ALLOCATES NOTHING**, which is the rule the generated codecs already
-  live under, and it is measured rather than claimed (below).
+  WRITER ALLOCATES NOTHING TOWARD IT**, which is the rule the generated codecs
+  already live under; a fixed root's writer allocates nothing at all, and a
+  pointered root's allocates its numbering through the caller's pair (below).
+  Both are measured rather than claimed.
 - **THE BYTE ORDER IS A PARAMETER, AND IT IS THE TARGET'S RATHER THAN THE
   HOST'S.** The order is settled at cook time for the build the file is for
   (§7), so passing `TableByteOrder::Big` on a little-endian machine produces a
@@ -3211,41 +3215,110 @@ bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, Tab
   for a value a wire load or `Reset` produced, that is the value-initialized
   element the page names, which is why a cook of a loaded wire and a cook of a
   built structure agree.
-- **THE ATTRIBUTION PART IS WRITTEN.** A fixed root's is one entry — the root
-  at offset zero, its type id the `fnv1a64` of the table's name — so what comes
-  out is a file `schema cook-check` can check. A cook that carries DATA ALONE
-  is the tool's `--attribution` option and a named follow-on here (§15), not a
-  parameter on this call.
+- **THE ATTRIBUTION PART IS WRITTEN.** One entry per node in index order —
+  `offset (u64), type id (u64)`, the root first at offset zero, a type id the
+  `fnv1a64` of the table's name (§3.1, §6.3) — so what comes out is a file
+  `schema cook-check` can check. A fixed root's is that one entry. A cook that
+  carries DATA ALONE is the tool's `--attribution` option and a named
+  follow-on here (§15), not a parameter on this call.
 - **IT IS WRITE-COLD, AND THE GENERATED CODE SAYS SO**: the writer is ordinary
   `inline` rather than the force-inlined shape the wire codecs take (§9),
   because a cook is produced offline once per (asset, build version) and read
   every time a build starts. The performance ladder puts the two halves in
   different places and the emitter follows it.
 
-**THE CLASS IT COVERS IS THE FIXED ONE.** A fixed table is one struct (§6.1),
-so its cook is ONE REGION OF ONE NODE and this is the header, the record and
-the one directory entry. A pointered root's `Cook` — the numbering (§3.1), the
-region and `Lock`'s identity map (§6.2, §6.3) — is the next step, and until it
-lands the generated header NAMES the absence where a reader meets the table
-rather than leaving a missing symbol.
+**A FIXED TABLE'S COOK IS ONE REGION OF ONE NODE.** A fixed table is one
+struct (§6.1), so its cook is the header, the record and one directory entry,
+and `CookMeasure` is a constant the compiler folded from the layout — it does
+not depend on the value.
+
+**A POINTERED ROOT'S COOK IS THE REGION OF §7.2**, every reachable node once,
+and the surface takes the two forms the wire's own entries take (§6.2) — a
+region root, or a builder — never a value, because a pointered root is a region
+and a root pointer rather than a struct you copy:
+
+```cpp
+int64_t SceneCookMeasure( const Scene * root, TableAllocator allocator = TableDefaultAllocator() );
+bool    SceneCook( const Scene * root, void * out, uint64_t capacity, TableByteOrder order,
+                   TableAllocator allocator = TableDefaultAllocator() );
+int64_t SceneCookMeasure( const SceneBuilder & builder );
+bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, TableByteOrder order );
+```
+
+- **`CookMeasure` IS VALUE-DEPENDENT HERE, because the answer is the
+  numbering.** `CookMeasure` and `Cook` each derive it from the graph — the
+  depth-first first-visit walk over pointer edges of §3.1, carrying the
+  identity map of §6.2 — and neither carries the other's, the rule the wire's
+  measure and save already live under. A node named from three places is one
+  node in the answer, and a reference to an entry whose descent is still open
+  is the cycle refusal, here as at save and at `Lock`: the measure answers `-1`,
+  the write answers `false`, and nothing partial is written.
+- **THE LAYOUT IS THE TOOL'S (§7.2).** The root at zero; each numbered node at
+  `align_up( offset, alignof )` for its OWN type, in index order, with zero
+  slack; the data length rounded to the region's alignment, which is the
+  greatest of the nodes' and never below eight; a `*T` slot holding the signed
+  self-relative delta from the slot's own address to the node's start, and
+  zero for null. The nodes are the numbering's entries, so the directory is
+  filled from the same pass that placed them.
+- **A REFERENCE THE NUMBERING DOES NOT CARRY IS A REFUSAL.** The walk visits
+  what a writer writes (§3.1) — it does not descend a counted array's slot past
+  the count, an absent optional's value or an unset union arm — while the record
+  writer writes the whole storage (§7.2). A non-null slot in storage the walk
+  did not reach names a node the region will not hold, and `Cook` returns
+  `false` rather than writing a partial region, which is what the tool does with
+  the same input. A region `Load` produced holds null in every such slot, so a
+  cook of a loaded wire never meets the case; a built structure that does has a
+  pointer in storage its own count says is dead.
+- **WHAT ALLOCATES, AND THROUGH WHAT.** The caller still owns the OUTPUT
+  buffer and nothing is allocated toward it. What the pointered writer
+  allocates is the NUMBERING — the identity map, the entry array, and one
+  region offset per node — proportional to nodes, never to bytes, and released
+  before the call returns; it is the same allocation the wire's `Measure` and
+  `Save` over a region make (§6.5, §13.9). Every byte of it goes through the
+  `TableAllocator` the call is handed: the builder's own for the builder
+  overloads, the optional last argument for the region overloads, defaulting
+  to the hook pair. Nothing on the path reaches the C library directly, and
+  that is measured rather than claimed (below).
 
 **Held by test**:
 
 - **THE HARNESS SURFACE, and it is the gate**: `cook-write` — a language writes
   the cook from an instance's WIRE and the harness byte-compares the result
-  against `schema cook`'s file, in BOTH byte orders, over every instance the
-  corpus carries. Every leg that has no writer prints ABSENT, which is the
-  distinction the matrix exists for (test/conformance/README.md).
+  against `schema cook`'s file, in BOTH byte orders, over EVERY instance the
+  corpus carries, the four variable ones included: a tree, a graph whose
+  shared node is named three times and whose tree closes a diamond, an empty
+  root, and a chain of 260 nodes. Every leg that has no writer prints ABSENT,
+  which is the distinction the matrix exists for (test/conformance/README.md).
 - **THE TWO FIXED FIXTURES, against the tool's own files**: the same
   `Settings` and `Stamp` cooks §7.5's value crossing already reads, written by
   the runtime this time and compared byte for byte — and then OPENED by
   `<Root>Open`, which is the writer and the reader of one implementation
   meeting over the tool's format.
-- **ZERO ALLOCATION, MEASURED**: a counting `operator new` around the measure
-  and both writes, requiring not one allocation, with a negative control that
-  puts one inside the measured region and requires the gate to go red.
+- **THE POINTERED FIXTURE, from THREE sources to ONE file**: a `Scene` built in
+  a builder — a list node named from `head`, from `alias` and from a by-value
+  layer, a tree, a pointed-at fixed `Settings`, and a counted array of layers
+  with heads of their own — is saved to the wire by this runtime and cooked by
+  the tool in both orders. The runtime then cooks the same graph from the
+  UNLOCKED builder (the arena encoding), from the LOCKED region, and from a
+  region `Load` produced out of that wire, and each of the three is byte for
+  byte the tool's file. `<Root>Open` then opens what was written and walks the
+  chain through `<T>At`.
+- **ZERO ALLOCATION FOR THE FIXED CLASS, MEASURED**: a counting `operator new`
+  around the measure and both writes, requiring not one allocation, with a
+  negative control that puts one inside the measured region and requires the
+  gate to go red.
+- **EVERY POINTERED ALLOCATION THROUGH THE PAIR, MEASURED**: the pointered
+  fixture is cooked under a counting `TableAllocator`, whose allocations must
+  match its frees and whose count is reported, while the same `operator new`
+  counter stays at zero; and the hooks unit (§13.9) cooks a builder's graph with
+  the DEFAULT pair defined to a separate counter, which must read zero — the
+  place a writer that ignored the pair it was handed would land. Its negative
+  control makes the builder overload cook through the default pair instead of
+  the builder's own, through a `go build -overlay`, regenerates the corpus, and
+  requires the hooks unit to go red. A raw `calloc` planted in the same writer
+  is the dialect scan's to catch (§13.9), and it does.
 - **A SHORT CAPACITY WRITES NOTHING**: one byte less than the measure returns
-  false, and the buffer is untouched.
+  false, and the buffer is untouched — for both classes.
 
 ## 8. Reflection: the view
 
@@ -4004,9 +4077,9 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **32 suffixes**, and a declaration spelling one of them is
+  each of these **36 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **48 in all**:
+  seven follow below, for **52 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
@@ -4014,7 +4087,8 @@ in build version (§20.5).
   At  Emplace  Pack  PackMeasure
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
-  Cook  CookMeasure  Open  TableFields  TableInfo
+  Cook  CookMeasure  CookBody  CookLayout  CookMeasureFrom  CookFrom
+  Open  TableFields  TableInfo
   FromJson  ToJson  ToJsonMeasure
   ```
 
@@ -4063,11 +4137,14 @@ in build version (§20.5).
   them.
 
   **`CookMeasure` AND THE WRITE HALF OF `Cook` ARE EMITTED NOW TOO**, by the
-  C++ backend, for every FIXED table (§7.6) — so `Cook` names a definition in
-  two backends and two different things: the READ handle in C#, and the write
-  function in C++. Both are claimed on every closure member all the same, on
-  this list's own rule; a pointered root's writer and the other languages' are
-  named follow-ons (§15), and a build that wants one today runs the tool.
+  C++ backend, for every table of either class (§7.6) — so `Cook` names a
+  definition in two backends and two different things: the READ handle in C#,
+  and the write function in C++. Both are claimed on every closure member all
+  the same, on this list's own rule; the other languages' writers are named
+  follow-ons (§15), and a build that wants one today runs the tool. The write
+  side's own spellings — `CookBody`, the record writer every closure member
+  gets, and the pointered root's `CookLayout`, `CookMeasureFrom` and
+  `CookFrom` — are on the list for the same reason `Number` and `NodeBody` are.
   **`OpenWalk` LEFT THIS LIST**, and it is the one entry ever removed: it named
   wire v1's validating walk, and §7's `Open` is a header match with no walk in
   it, so the name went with the design rather than being held for an emitter
@@ -5074,14 +5151,13 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE for the VARIABLE class, and in every other
-  language.** C++ writes a FIXED root's cook today and its bytes are the tool's
-  (§7.6). A pointered root's writer needs three things the fixed one does not:
-  the depth-first numbering (§3.1), the region `Lock` packs (§6.2, §6.3) and
-  the identity map that packs a shared node once. Every other language's writer
-  is the same feature in that language's own idiom, held to the same
-  `cook-write` surface — a language writes, the harness compares to the tool's
-  bytes.
+- **THE COOK's WRITE SIDE in every other language.** C++ writes a cook of
+  either class today and its bytes are the tool's (§7.6). Every other
+  language's writer is the same feature in that language's own idiom, held to
+  the same `cook-write` surface — a language writes, the harness compares to
+  the tool's bytes — and a pointered root's needs what the C++ one needed: the
+  depth-first numbering (§3.1), the region layout (§7.2) and the identity map
+  that writes a shared node once (§6.2).
 - **A DATA-ONLY COOK from the runtime.** `schema cook --attribution` writes the
   node directory beside the file instead of inside it, so a build that ships no
   tooling carries just data (§7, §7.1). The generated `Cook` always writes the
@@ -5144,9 +5220,10 @@ inspects everything in the schema built:
   and a `Lock`ed one does not, so the two agree on the DATA and differ in what
   sits beside it. Filling it costs `Lock` nothing it is not already doing — the
   pack knows every node's offset and the numbering already holds the order — and
-  what it buys is that `Cook` can be handed a locked region rather than a wire.
-  Until it lands, cooking goes through the wire, which is what `schema cook`
-  does anyway.
+  what it buys is a check a tool can run over a locked region as it runs one
+  over a cook (§7.4). `Cook` does not wait on it: handed a locked region, it
+  re-derives the numbering from the graph, as the wire's `Measure` and `Save`
+  over a region do (§7.6).
 - **THE NUMBERING WALK, ITERATIVE.** The walk recurses once per POINTER EDGE on
   the authoring side (§3.1), so a graph deeper than the C stack is a build-time
   crash rather than a refusal. The wire has no such bound — a chain's length is

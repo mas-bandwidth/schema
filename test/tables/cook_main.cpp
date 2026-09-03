@@ -1,25 +1,25 @@
 /*
     THE COOKED FORM in C++, under test (docs/SPEC-TABLES.md §7): the READ side,
-    and the fixed class's WRITE side beside it (§7.6).
+    and the WRITE side beside it (§7.6).
 
     `schema cook` writes the file and the generated <Root>Open points at it, and
     the two were written from the page independently: the tool in Go, this side
-    in C++, neither reading the other. That is what makes the first mode below a
-    CROSS-IMPLEMENTATION gate rather than one implementation agreeing with
-    itself. What it does NOT cross is field VALUES through the tolerant wire:
-    the tool writes §3.1's FLAT NODE TABLE and this backend still writes the
-    earlier nested form, so a tool-written wire's pointer fields reach this
-    reader as an unskippable kind and the decode stops (§3.1's backend status,
-    schema#251). The lock below needs no wire — it is the DIRECTORY, which is
-    the tool's own independent statement of where every node is and what it is.
+    in C++, neither reading the other. That is what makes the `golden` mode below
+    a CROSS-IMPLEMENTATION gate rather than one implementation agreeing with
+    itself: it needs no wire — it is the DIRECTORY, which is the tool's own
+    independent statement of where every node is and what it is.
 
-      write  <root> <wire>        a known instance of a FIXED root, to the wire,
-                                  for `schema cook` to cook
+      write  <root> <wire>        a known instance — a FIXED root's value, or the
+                                  pointered Scene graph built in a builder — to
+                                  the wire, for `schema cook` to cook
       cookwrite <root> <le> <be>  the same instance COOKED BY THIS RUNTIME and
                                   byte-compared against the tool's two files, one
                                   per byte order — with the allocation count, the
                                   short-capacity refusal and an Open over what it
-                                  wrote (§7.6)
+                                  wrote (§7.6). The pointered graph is cooked from
+                                  THREE sources — the unlocked builder, a region
+                                  Load produced from the wire, and the locked
+                                  region — and every one lands on the tool's file
       fixedvalues <root> <cook>   that instance read back OUT of the cook, value
                                   for value: the VALUE crossing, which the fixed
                                   class can have because its wire has no pointers
@@ -789,6 +789,88 @@ static const char * const SettingsLabel = "cooked-fixed";
 static const int32_t StampSeq = 907;
 static const char * const StampTag = "stamped";
 
+// THE POINTERED FIXTURE (§7.6): the shapes a writer that duplicates a shared
+// node, or numbers in another order, cannot land on. One list node is named
+// from head, from alias and from ground.head; a chain hangs off it; the tree
+// closes a DIAMOND on one leaf; settings is a pointed-at FIXED table; and two
+// of the four layers are live, each with a head of its own.
+static const char * const SceneName = "cooked-graph";
+static const int32_t SceneVersion = 7;
+static const int SceneChain = 3;
+static const int32_t SceneSettingsQuality = 4;
+
+static void set_text( char * buffer, size_t capacity, int32_t & length, const char * text )
+{
+    snprintf( buffer, capacity, "%s", text );
+    length = (int32_t) strlen( text );
+}
+
+static void build_scene( graphdemo::SceneBuilder & builder )
+{
+    graphdemo::Scene * root = builder.GetRoot();
+    if ( root == NULL ) fail( "the builder has no root" );
+    set_text( root->name, sizeof( root->name ), root->name_length, SceneName );
+    root->version = SceneVersion;
+    root->meta.build = 42;
+    set_text( root->meta.tag, sizeof( root->meta.tag ), root->meta.tag_length, "meta" );
+
+    // the chain, whose first node is the SHARED one
+    graphdemo::TableSlot<graphdemo::ListNode> previous;
+    for ( int i = 0; i < SceneChain; i++ )
+    {
+        graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+        if ( node.null() ) fail( "out of arena" );
+        node->value = 100 + i;
+        char name[16];
+        snprintf( name, sizeof( name ), "n%d", i );
+        set_text( node->name, sizeof( node->name ), node->name_length, name );
+        if ( previous.null() )
+        {
+            root->head = node;
+            root->alias = node;
+            root->ground.head = node;
+        }
+        else
+        {
+            previous->next = node;
+        }
+        previous = node;
+    }
+    root->ground.depth = 5;
+
+    // the tree: left and right both reach ONE leaf
+    graphdemo::TableSlot<graphdemo::TreeNode> top = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> left = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> right = builder.Alloc<graphdemo::TreeNode>();
+    graphdemo::TableSlot<graphdemo::TreeNode> leaf = builder.Alloc<graphdemo::TreeNode>();
+    set_text( top->label, sizeof( top->label ), top->label_length, "top" );
+    set_text( left->label, sizeof( left->label ), left->label_length, "left" );
+    set_text( right->label, sizeof( right->label ), right->label_length, "right" );
+    set_text( leaf->label, sizeof( leaf->label ), leaf->label_length, "leaf" );
+    top->left = left;
+    top->right = right;
+    left->left = leaf;
+    right->right = leaf;
+    root->tree = top;
+
+    // a pointed-at FIXED table: its cook body is the fixed writer's
+    graphdemo::TableSlot<graphdemo::Settings> settings = builder.Alloc<graphdemo::Settings>();
+    settings->quality = SceneSettingsQuality;
+    set_text( settings->label, sizeof( settings->label ), settings->label_length, "shared-settings" );
+    root->settings = settings;
+
+    // two live layers of four, each with a head the walk reaches by descending
+    // a counted array of variable tables
+    root->layers_count = 2;
+    for ( int i = 0; i < 2; i++ )
+    {
+        root->layers[i].depth = 10 + i;
+        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+        head->value = 200 + i;
+        root->layers[i].head = head;
+    }
+}
+
 static void mode_write( const Root * root, const char * path )
 {
     uint8_t buffer[4096];
@@ -813,9 +895,17 @@ static void mode_write( const Root * root, const char * path )
         if ( size <= 0 || size > (int64_t) sizeof( buffer ) || !graphdemo::StampSave( stamp, buffer, size ) )
             fail( "could not write a Stamp wire" );
     }
+    else if ( strcmp( root->name, "Scene" ) == 0 )
+    {
+        graphdemo::SceneBuilder builder;
+        build_scene( builder );
+        size = graphdemo::SceneMeasure( builder );
+        if ( size <= 0 || size > (int64_t) sizeof( buffer ) || graphdemo::SceneSave( builder, buffer, size ) != size )
+            fail( "could not write the Scene graph's wire" );
+    }
     else
     {
-        fail( "the write mode covers the FIXED roots only, and was asked for %s", root->name );
+        fail( "the write mode covers Settings, Stamp and Scene, and was asked for %s", root->name );
     }
     FILE * f = fopen( path, "wb" );
     if ( f == NULL || fwrite( buffer, 1, (size_t) size, f ) != (size_t) size )
@@ -911,9 +1001,207 @@ void * operator new( size_t bytes )
 void operator delete( void * p ) noexcept { free( p ); }
 void operator delete( void * p, size_t ) noexcept { free( p ); }
 
+// THE POINTERED HALF of the same mode (§7.6). The graph is the one `write` saved
+// to the wire the tool cooked, and it is cooked here from THREE sources — the
+// UNLOCKED builder, whose references are arena offsets; a region Load produced
+// from that wire; and the LOCKED region — because a writer that lands on the
+// tool's file from every encoding it can be handed is one writer and not three.
+//
+// WHAT ALLOCATES IS MEASURED, AND THROUGH WHAT: the pointered writer allocates
+// its numbering and nothing else, every byte through the TableAllocator it is
+// handed — the builder's own pair, or the region overload's last argument —
+// and releases it before returning. The counting operator new above stays at
+// ZERO across every measure and write, which is where an allocation that
+// bypassed the pair would land in this program; hooks_main.cpp holds the same
+// claim with the DEFAULT pair defined to a counter.
+
+struct Counters
+{
+    int64_t allocs;
+    int64_t frees;
+};
+
+static void * counting_alloc( void * context, int64_t bytes )
+{
+    ( (Counters *) context )->allocs++;
+    return calloc( (size_t) 1, (size_t) bytes ); // ZEROED: the allocator's contract
+}
+
+static void counting_free( void * context, void * pointer )
+{
+    if ( pointer != NULL ) ( (Counters *) context )->frees++;
+    free( pointer );
+}
+
+static void compare_cook( const char * source, const char * path, const uint8_t * mine, const uint8_t * theirs, int64_t need )
+{
+    for ( int64_t at = 0; at < need; at++ )
+    {
+        if ( mine[at] != theirs[at] )
+            fail( "%s, cooked from %s: byte %lld is 0x%02x and the tool wrote 0x%02x — the runtime's cook is not the tool's file (docs/SPEC-TABLES.md §7.6)",
+                  path, source, (long long) at, mine[at], theirs[at] );
+    }
+}
+
+static void mode_cookwrite_pointered( const char * little_path, const char * big_path )
+{
+    Counters counters = { 0, 0 };
+    graphdemo::TableAllocator pair;
+    pair.alloc = counting_alloc;
+    pair.free = counting_free;
+    pair.context = &counters;
+
+    graphdemo::SceneBuilder builder( pair );
+    build_scene( builder );
+
+    const char * const paths[2] = { little_path, big_path };
+    const graphdemo::TableByteOrder orders[2] = { graphdemo::TableByteOrder::Little,
+                                                  graphdemo::TableByteOrder::Big };
+
+    counting = true;
+    allocations = 0;
+    int64_t live = counters.allocs - counters.frees;
+    const int64_t need = graphdemo::SceneCookMeasure( builder );
+    counting = false;
+    if ( need <= 0 )
+        fail( "SceneCookMeasure answered %lld", (long long) need );
+    if ( counters.allocs - counters.frees != live )
+        fail( "SceneCookMeasure left %lld allocations live", (long long) ( counters.allocs - counters.frees - live ) );
+    if ( counters.allocs == 0 )
+        fail( "the numbering allocated nothing, so the counting pair saw nothing" );
+
+    uint8_t * theirs[2] = { NULL, NULL };
+    for ( int i = 0; i < 2; i++ )
+    {
+        uint64_t length = 0;
+        theirs[i] = whole_file( paths[i], &length );
+        if ( (int64_t) length != need )
+            fail( "SceneCookMeasure says %lld bytes and the tool's %s is %llu",
+                  (long long) need, paths[i], (unsigned long long) length );
+    }
+    uint8_t * mine = (uint8_t *) malloc( (size_t) need );
+    if ( mine == NULL ) fail( "out of memory" );
+
+    // SOURCE ONE: the unlocked builder, references in the arena encoding
+    for ( int i = 0; i < 2; i++ )
+    {
+        memset( mine, 0xCD, (size_t) need );
+        counting = true;
+        live = counters.allocs - counters.frees;
+        const bool ok = graphdemo::SceneCook( builder, mine, (uint64_t) need, orders[i] );
+        counting = false;
+        if ( !ok ) fail( "SceneCook over the builder refused a buffer of its own measure" );
+        if ( counters.allocs - counters.frees != live ) fail( "SceneCook over the builder left an allocation live" );
+        compare_cook( "the unlocked builder", paths[i], mine, theirs[i], need );
+    }
+
+    // SOURCE TWO: a region Load produced from the wire this graph saves —
+    // which is the wire the tool cooked — through the region overload and its
+    // allocator argument
+    {
+        uint8_t wire[4096];
+        const int64_t wire_bytes = graphdemo::SceneSave( builder, wire, (int64_t) sizeof( wire ) );
+        if ( wire_bytes <= 0 ) fail( "the graph did not save to the wire" );
+        const int64_t region_bytes = graphdemo::SceneLoadMeasure( wire, wire_bytes );
+        uint8_t * region = (uint8_t *) malloc( (size_t) region_bytes );
+        if ( region == NULL ) fail( "out of memory" );
+        graphdemo::TableReport report;
+        const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_bytes, wire, wire_bytes, &report );
+        if ( loaded == NULL || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 )
+            fail( "the graph's own wire did not load clean" );
+        for ( int i = 0; i < 2; i++ )
+        {
+            memset( mine, 0xCD, (size_t) need );
+            counting = true;
+            live = counters.allocs - counters.frees;
+            if ( graphdemo::SceneCookMeasure( loaded, pair ) != need )
+                fail( "the loaded region measures differently from the builder" );
+            const bool ok = graphdemo::SceneCook( loaded, mine, (uint64_t) need, orders[i], pair );
+            counting = false;
+            if ( !ok ) fail( "SceneCook over the loaded region refused a buffer of its own measure" );
+            if ( counters.allocs - counters.frees != live ) fail( "SceneCook over the region left an allocation live" );
+            compare_cook( "a loaded region", paths[i], mine, theirs[i], need );
+        }
+        free( region );
+    }
+
+    // SOURCE THREE: the locked region, through the builder overload again
+    if ( !builder.Lock() ) fail( "the graph did not lock" );
+    for ( int i = 0; i < 2; i++ )
+    {
+        memset( mine, 0xCD, (size_t) need );
+        counting = true;
+        live = counters.allocs - counters.frees;
+        if ( graphdemo::SceneCookMeasure( builder ) != need )
+            fail( "the locked region measures differently from the builder" );
+        const bool ok = graphdemo::SceneCook( builder, mine, (uint64_t) need, orders[i] );
+        counting = false;
+        if ( !ok ) fail( "SceneCook over the locked region refused a buffer of its own measure" );
+        if ( counters.allocs - counters.frees != live ) fail( "SceneCook over the locked region left an allocation live" );
+        compare_cook( "the locked region", paths[i], mine, theirs[i], need );
+    }
+
+    if ( allocations != 0 )
+        fail( "the pointered write side allocated %lld times outside the TableAllocator it was handed (docs/SPEC-TABLES.md §7.6)",
+              (long long) allocations );
+
+    // A SHORT CAPACITY WRITES NOTHING
+    memset( mine, 0xCD, (size_t) need );
+    if ( graphdemo::SceneCook( builder, mine, (uint64_t) need - 1, graphdemo::TableByteOrder::Little ) )
+        fail( "SceneCook wrote into a buffer one byte short of its own measure" );
+    for ( int64_t at = 0; at < need; at++ )
+    {
+        if ( mine[at] != 0xCD )
+            fail( "a refused SceneCook wrote at byte %lld", (long long) at );
+    }
+
+    // AND THE FILE THE RUNTIME WROTE OPENS, with identity holding through it
+    {
+        if ( !graphdemo::SceneCook( builder, mine, (uint64_t) need, graphdemo::TableByteOrder::Little ) )
+            fail( "the final write refused" );
+        File file = place( mine, (uint64_t) need, (uint64_t) need, 0 );
+        const graphdemo::Scene * scene = graphdemo::SceneOpen( file.base, file.length );
+        if ( scene == NULL ) fail( "the cook this runtime wrote did not open" );
+        if ( scene->version != SceneVersion || strcmp( scene->name, SceneName ) != 0 )
+            fail( "the cook this runtime wrote opened onto other values" );
+        int chain = 0;
+        for ( const graphdemo::ListNode * n = graphdemo::ListNodeAt( scene->head ); n != NULL; n = graphdemo::ListNodeAt( n->next ) )
+            chain++;
+        if ( chain != SceneChain )
+            fail( "the chain reads %d long off the cook, and %d was built", chain, SceneChain );
+        // ONE NODE, named three times
+        if ( graphdemo::ListNodeAt( scene->alias ) != graphdemo::ListNodeAt( scene->head ) ||
+             graphdemo::ListNodeAt( scene->ground.head ) != graphdemo::ListNodeAt( scene->head ) )
+            fail( "the shared node was written more than once" );
+        const graphdemo::TreeNode * top = graphdemo::TreeNodeAt( scene->tree );
+        if ( top == NULL || graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( top->left )->left ) !=
+                            graphdemo::TreeNodeAt( graphdemo::TreeNodeAt( top->right )->right ) )
+            fail( "the diamond's leaf was written more than once" );
+        const graphdemo::Settings * settings = graphdemo::SettingsAt( scene->settings );
+        if ( settings == NULL || settings->quality != SceneSettingsQuality )
+            fail( "the pointed-at fixed table did not survive the cook" );
+        if ( scene->layers_count != 2 || graphdemo::ListNodeAt( scene->layers[1].head ) == NULL ||
+             graphdemo::ListNodeAt( scene->layers[1].head )->value != 201 )
+            fail( "a layer's head did not survive the cook" );
+        file.destroy();
+    }
+
+    free( mine );
+    free( theirs[0] );
+    free( theirs[1] );
+    printf( "cook write side: Scene's cook is `schema cook`'s file, byte for byte, in both orders, from the "
+            "builder, a loaded region and the locked region — %lld bytes, %lld allocations through the caller's "
+            "pair and none outside it\n", (long long) need, (long long) counters.allocs );
+}
+
 static void mode_cookwrite( const Root * root, const char * little_path, const char * big_path )
 {
     describe( "cookwrite %s against %s and %s", root->name, little_path, big_path );
+    if ( strcmp( root->name, "Scene" ) == 0 )
+    {
+        mode_cookwrite_pointered( little_path, big_path );
+        return;
+    }
 
     // the same instance the `write` mode saved to the wire the tool cooked
     graphdemo::Settings settings;
@@ -933,7 +1221,7 @@ static void mode_cookwrite( const Root * root, const char * little_path, const c
     }
     else
     {
-        fail( "the cookwrite mode covers the FIXED roots only, and was asked for %s", root->name );
+        fail( "the cookwrite mode covers Settings, Stamp and Scene, and was asked for %s", root->name );
     }
 
     const char * const paths[2] = { little_path, big_path };
@@ -1078,6 +1366,31 @@ static bool usage_write_example()
     return graphdemo::SettingsOpen( file.data(), file.size() ) != NULL;
 }
 
+// and the POINTERED half of that example: a builder's graph, cooked by the
+// runtime. The same text as docs/USAGE.md's, for the same reason.
+static bool usage_write_pointered_example()
+{
+    graphdemo::SceneBuilder builder;
+    graphdemo::Scene * root = builder.GetRoot();
+    graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+    node->value = 1;
+    root->head = node;
+    root->alias = node; // named twice, written once
+
+    // a pointered root is a region and a root pointer, so its Cook takes the
+    // builder — locked or not — or a region root, and never a value. What it
+    // allocates is the numbering, through the builder's own allocator.
+    const int64_t bytes = graphdemo::SceneCookMeasure( builder );
+    std::vector<uint8_t> file( (size_t) bytes );
+    if ( !graphdemo::SceneCook( builder, file.data(), file.size(),
+                                graphdemo::TableByteOrder::Little ) )
+    {
+        return false; // a capacity short of the measure, or a data cycle
+    }
+    const graphdemo::Scene * scene = graphdemo::SceneOpen( file.data(), file.size() );
+    return scene != NULL && graphdemo::ListNodeAt( scene->head ) == graphdemo::ListNodeAt( scene->alias );
+}
+
 static void mode_usage( const Root * root, const char * path )
 {
     if ( strcmp( root->name, "Scene" ) != 0 )
@@ -1091,8 +1404,10 @@ static void mode_usage( const Root * root, const char * path )
         fail( "USAGE's example did not open the cook, or found no chain in it" );
     if ( !usage_write_example() )
         fail( "USAGE's WRITE example did not produce a cook this build opens" );
+    if ( !usage_write_pointered_example() )
+        fail( "USAGE's pointered WRITE example did not produce a cook this build opens with one shared node" );
     printf( "cook usage example: docs/USAGE.md's C++ compiles and runs — %d chain nodes off Scene.head, "
-            "and the write example's cook opens\n", nodes );
+            "and both write examples' cooks open\n", nodes );
     file.destroy();
     free( source );
 }
