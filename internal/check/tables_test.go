@@ -742,7 +742,7 @@ func TestSpecSection11EqualsTheChecker(t *testing.T) {
 			if strings.Contains(body, "```") {
 				break
 			}
-			for _, word := range strings.Fields(body) {
+			for word := range strings.FieldsSeq(body) {
 				stated[word] = true
 			}
 		}
