@@ -3096,6 +3096,11 @@ generated/bench/tables/java/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang java --out generated/bench/tables/java bench/corpus/BenchTable.schema
 	@touch $@
 
+generated/bench/tables/elixir/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/elixir
+	./bin/schema generate --lang elixir --out generated/bench/tables/elixir bench/corpus/BenchTable.schema
+	@touch $@
+
 generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/go
 	./bin/schema generate --lang go --out generated/bench/tables/go bench/corpus/BenchTable.schema
@@ -3434,7 +3439,7 @@ bench-table-check: build/schema_test_bench_table
 # estate's bench rules — core 15, server stopped, not live, blessed per run;
 # a run on a shared interactive machine is a pairing check and the board says
 # which one it is.
-bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/c/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp generated/bench/tables/java/.stamp bench-table-check
+bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/c/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp generated/bench/tables/java/.stamp generated/bench/tables/elixir/.stamp bench-table-check
 	bench/tables/run.sh
 
 # Prove the COMMITTED generated/ tree matches what the current compiler

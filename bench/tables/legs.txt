@@ -23,3 +23,4 @@ go   bench/tables/go/leg
 rust bench/tables/rust/leg
 java bench/tables/java/leg
 c    bench/tables/c/leg
+elixir bench/tables/elixir/leg

@@ -153,15 +153,42 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++ and C, and C#, Go, Rust and Java for the FIXED class.**
-C++ is the reference, and its generated text is the C-like dialect of
+**Backend status: C++ and C, and C#, Go, Rust, Java and Elixir for the FIXED
+class.** C++ is the reference, and its generated text is the C-like dialect of
 `serialize.h` — C header spellings, no STL, every call into the C library
-behind a hook the program can define (§13.9). C++ and C carry both classes; C#, Go, Rust and Java carry the fixed class
-(§6.1) — optionals, enum-keyed arrays, the text form (§16) and all — and each
-refuses a unit whose closure declares a pointer, naming its variable class as a
-follow-on. Every other backend refuses a unit that declares tables at all, by
-name, with this document cited. The remaining per-language backends are named
-follow-ons (§15).
+behind a hook the program can define (§13.9). C++ and C carry both classes; C#,
+Go, Rust, Java and Elixir carry the fixed class (§6.1) — optionals, enum-keyed
+arrays, the text form (§16) and all — and each refuses a unit whose closure
+declares a pointer, naming its variable class as a follow-on. Every other
+backend refuses a unit that declares tables at all, by name, with this document
+cited. The remaining per-language backends are named follow-ons (§15).
+
+**ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
+than of the port.** A BEAM term has no layout a producer could write, so this
+backend never produces a block or a cook: it OPENS one another build wrote and
+reads every slot at its offset. The tolerant wire and the text form are whole —
+measure, save, load, the report, `FromJson` and `ToJson` — because those are
+about bytes and not about addresses. Six spellings are the language's and each
+is named where it is spelled: the READ REPORT is a value the caller threads,
+because the BEAM has no mutable struct; STORAGE is SPEC §6.1's Elixir column, so
+a `string(N)` is a binary whose `byte_size` IS the used length and an array is a
+list whose `length` IS the count, with no companion to keep in step; a `?T` is
+`nil` when absent; an enum-keyed array's slots are a TUPLE, so a slot is reached
+in constant time; a non-finite float travels as `{:nonfinite, bits}`, the
+convention the packet emitter already established; and `Open` takes a `lead`
+beside the bytes — how many bytes past an aligned base the caller's buffer
+begins — because §7 and §19.2 check the alignment of the BASE and a BEAM binary
+has no address a caller can observe or place. That last one is an ADDITION and
+not a subtraction: stating the fact makes the check a real one, where the
+alternative is a leg that cannot refuse an unaligned base at all.
+
+**And what a reading-tier leg cannot claim, said plainly.** "The read path
+allocates nothing" is a claim about a language with caller-owned buffers, and
+Elixir has none: a decoded value IS an allocation and a sub-binary over the
+caller's bytes is a small one. What the leg holds instead is that the COUNT per
+iteration does not move — pinned per case, re-pinned deliberately, with a
+negative control that reds it — which is the same instrument the Rust leg's
+allocation audit uses and a different number.
 
 **The RUST backend's own three divergences**, each forced by the language and
 each named where it is spelled rather than discovered in the source. The
@@ -289,7 +316,7 @@ byte-swapped and its order word is not this reader's — which is what the two
 FOREIGN surfaces ask for, and `make tables-java-order` holds the same property
 over a whole big-endian cook the tool wrote.
 
-**The BLOCK FORM (§2.7, §19) is live in C++, C#, Go, Rust, Java and C**, and it took C++ and
+**The BLOCK FORM (§2.7, §19) is live in C++, C, C#, Go, Rust, Java and Elixir**, and it took C++ and
 C# TOGETHER to land, because the form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path
@@ -307,9 +334,13 @@ generated padding as C#'s do and the layout contract as the refusing `init()`
 above; Java emits `<Table>Block.java` per block-form table and `<Name>Row.java`
 per record, whose generated ACCESSORS read each field at its offset because
 there is no struct to lay out, with the layout contract as the
-accessors-against-descriptors check above; and C emits `<Base>Block.h` and
+accessors-against-descriptors check above; C emits `<Base>Block.h` and
 `<Base>Block.c` on the C++ pair's terms, with the layout contract asserted at
-compile time under C99's own means (§20.3). **The unit's
+compile time under C99's own means (§20.3); and **Elixir emits `<Base>Block.ex`
+beside `BlockRuntime.ex`, and it is the READING TIER** — there is no projection
+record and no layout assert, because a BEAM term has no layout to assert, so the
+descriptors ARE the mechanism and the typed accessors read each row field at its
+offset out of a SUB-BINARY the runtime shares rather than copies. **The unit's
 shared runtime is named by the PACKAGE in every port, so file order cannot
 reach it (§19.2)** — and in Java the package IS the unit scope, so each runtime
 type is a file of its own name and no rule is needed at all. The READ side is what the ported backends carry: a block is
@@ -2154,8 +2185,11 @@ orders, over the same IR the emitters consume — and `wire → cook → wire` i
 byte-identical over the corpus, which is what proves the accelerator loses no
 fact. Every port emits the entry point for EVERY TABLE (below) — a root is any
 table — in its own idiom: the C++ backend `<Root>Open`, the C# backend
-`<Root>Cook.Open`, the Java backend `<Root>Cook.open`. A game points at a cook
-the tooling produced, whichever language it reads from. The WRITE side
+`<Root>Cook.Open`, the Java backend `<Root>Cook.open`, and the Elixir backend
+`cook_open_<root>`, which takes a `lead` beside the bytes for the base-alignment
+check a BEAM binary cannot carry (§7.1's alignment word, and the backend status
+in §2). A game points at a cook the tooling produced, whichever language it
+reads from. The WRITE side
 (`Cook` and `CookMeasure`, §7.6) is emitted by the C++ backend for every FIXED
 table, and its bytes are the tool's, byte for byte, in both byte orders; a
 pointered root's writer and every other language's are named follow-ons (§15),
@@ -5293,13 +5327,14 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class, in C++, C#, Rust, Java and C.** No
-backend implements the variable class's text form yet — a pointered unit
-gets no `FromJson`, refused by name with this section cited, never emitted
-with the function missing — and the second walker it needs, emitted only in
-units that declare a pointer, is tracked as schema#275. In C#, Rust and Java
-that refusal is already made one level up: a pointered unit gets no table source
-at all (§11), so it has no text form for the same reason it has no wire codec.
+**Backend status for this section: the FIXED class, in C++, C, C#, Go, Rust,
+Java and Elixir.** No backend implements the variable class's text form yet — a
+pointered unit gets no `FromJson`, refused by name with this section cited,
+never emitted with the function missing — and the second walker it needs,
+emitted only in units that declare a pointer, is tracked as schema#275. In C#,
+Go, Rust, Java and Elixir that refusal is already made one level up: a pointered
+unit gets no table source at all (§11), so it has no text form for the same
+reason it has no wire codec.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++
@@ -5330,6 +5365,25 @@ reads zero. The instrument matters as much as the number: an earlier soak
 gated on LIVE BYTES, which answers "does this leak", and a formatter that
 allocated and freed the same bytes every iteration read +0 there for an hour.
 The count is what the claim is about.
+
+**ELIXIR'S WALK CANNOT CLAIM ZERO AND DOES NOT**, and the same instrument is
+what it holds instead. The BEAM owns allocation: there is no caller-owned
+buffer for a text to be written into and no mutable struct for a read to fill,
+so a decoded value IS an allocation. `make tables-elixir-alloc-audit` counts the
+heap words and the reductions ONE iteration costs — the loop bracketed by two
+full collections, so the count is what the collections reclaimed plus what is
+still live — and gates each case against a PINNED budget, re-pinned deliberately
+the way a wire golden is, with `make tables-elixir-alloc-negative-control`
+proving one extra allocation reds every case. A number that cannot go red is not
+a gate, and a claim a language cannot make is better stated than approximated.
+
+**Elixir's float spelling is C's, digit for digit, and its READ is a single
+correctly-rounded conversion at the field's own width.** Erlang has no `strtof`
+and converting a decimal through a double rounds TWICE — the two roundings part
+company between `FLT_MAX` and the float32 rounding midpoint, and again at the
+subnormal end — so the walk converts over exact integers instead. `%.*g` is
+reproduced through Erlang's own scientific and fixed formatters, because the
+goldens are its bytes.
 
 **Rust's walk is a UNIT's, on the same terms C#'s is**, and for the same
 reason: a unit is one crate, so a second copy would be a duplicate definition

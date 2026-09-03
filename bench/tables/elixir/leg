@@ -1,0 +1,40 @@
+#!/bin/sh
+# THE ELIXIR LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        generate the corpus's Elixir and compile it to .beam
+#   leg run [args]   run the runner over it
+#
+# There is no runtime checkout — the generated table codec names none — so the
+# leg needs the pinned BEAM toolchain and nothing else. The BEAM has ONE
+# optimisation configuration and no flag to name, so BENCH_OPT records what the
+# board can honestly say about it, which is `default`.
+set -e
+
+EBIN=build/bench-tables-elixir-ebin
+GEN=generated/bench/tables/elixir
+BEAM_PATH="${BEAM_PATH:-$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin}"
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.ex" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    PATH="$BEAM_PATH:$PATH" command -v elixirc > /dev/null 2>&1 || {
+        echo "no elixirc on \$BEAM_PATH (populate dist/ per the Makefile, or set BEAM_PATH)" >&2
+        exit 2
+    }
+    rm -rf "$EBIN" && mkdir -p "$EBIN"
+    PATH="$BEAM_PATH:$PATH" elixirc -o "$EBIN" "$GEN"/*.ex > /dev/null
+    ;;
+run)
+    shift
+    exec env PATH="$BEAM_PATH:$PATH" elixir --erl "+B -noinput" -pa "$EBIN" \
+        bench/tables/elixir/table_main.exs "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

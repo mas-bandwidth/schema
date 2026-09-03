@@ -194,12 +194,19 @@ gap is real and the matrix says so rather than a parser papering over it.
 The registry today:
 
 ```
-cpp  test/conformance/cpp/driver
-cs   test/conformance/cs/driver
-go   test/conformance/go/driver
-rust test/conformance/rust/driver
-java test/conformance/java/driver
+cpp    test/conformance/cpp/driver
+cs     test/conformance/cs/driver
+go     test/conformance/go/driver
+rust   test/conformance/rust/driver
+java   test/conformance/java/driver
+elixir test/conformance/elixir/driver
 ```
+
+**THE ELIXIR LEG's shape, because its cost is all start-up.** Its driver's own
+modules are compiled to `.beam` WITH the unit corpus rather than at every start:
+an `.exs` compiled per invocation cost 0.4 s on top of the BEAM's own 0.26 s
+boot, twelve times over. The leg answers all twelve surfaces in 5.6 s, and none
+of that is the cases.
 
 The first driver in the registry is the **reference leg**: `make conformance-pin`
 takes the cook dumps, the block row dumps and both forgery batteries' offsets

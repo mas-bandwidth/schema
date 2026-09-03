@@ -588,9 +588,9 @@ that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
 A table lives on its own wire — evolution-tolerant TLV, carried by C++ and C
-(both classes) and by C#, Go, Rust and Java (the fixed class, wire and text
-form both; the pointer surface ON THE WIRE is a follow-on in those four — their
-cook and block accelerators read a pointered unit today). Field
+(both classes) and by C#, Go, Rust, Java and Elixir (the fixed class, wire and
+text form both; the pointer surface ON THE WIRE is a follow-on in those five —
+their cook and block accelerators read a pointered unit today). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
@@ -1102,6 +1102,69 @@ overload; Java at `--release 17` has no second spelling, since `MemorySegment`
 is not stable before 22. The `long length` on both `open`s is the seat that
 overload takes when the floor moves — it is a named follow-on, not an oversight,
 and until it lands a cook past 2 GiB has no Java reader.
+
+**The Elixir surface is the same three functions again**, module functions
+on the declaring file's `<Base>Table`, over a struct the caller owns. There is no
+buffer to pass and no instance to reset: `save` returns the binary and `load`
+starts from the declared defaults, because a BEAM term is immutable and there is
+nothing to clear.
+
+```elixir
+alias Example.ShipConfig
+alias Example.ShipTable
+
+ship = %ShipConfig{health: 250.0, settings: %Example.Settings{}}
+#                                 ^ ?T: a value is presence, nil is absence
+
+size = ShipTable.measure_ship_config(ship)   # exact, writes nothing
+wire = ShipTable.save_ship_config(ship)      # byte_size(wire) == size, or :refused
+
+{loaded, report} = ShipTable.load_ship_config(wire)
+
+if report.malformed do
+  # framing damage: the good prefix is in `loaded`
+end
+
+if not Example.TableRuntime.silent?(report) do
+  # unknown, kind_mismatch, clamped: the data did not match this build exactly
+end
+```
+
+**THE REPORT IS A VALUE THE CALLER OWNS**, threaded rather than pointed at: the
+BEAM has no mutable struct, so `load` hands it back beside the instance. One
+report, one caller, the same five counters as everywhere else.
+
+**Storage is SPEC §6.1's Elixir column and nothing new.** A `string(N)` and a
+`bytes(N)` are binaries whose `byte_size` IS the used length; a `[..N]T` is a
+list whose `length` IS the count; an enum is its ordinal and a `flags` its mask.
+There is no `_length` and no `_count` companion, because there is nothing to
+keep one in step with — the value cannot disagree with itself.
+
+**An enum-keyed array's slots are a TUPLE**, one per named variant, so a slot is
+reached in constant time; `None` keys no slot and the storage shifts left, which
+is the same rule every backend follows:
+
+```elixir
+ships = put_elem(fleet.ships, Example.ShipType.bomber() - 1, ship)
+```
+
+**What Elixir does NOT do, and it is the language rather than the port:** it
+never PRODUCES a block or a cook. A BEAM term has no layout a producer could
+write. It OPENS one another build wrote and reads every slot at its offset —
+`ExampleBlock.block_open_render_frame(bytes)` and
+`ExampleCook.cook_open_scene(bytes)` — with a row handed back as a SUB-BINARY
+the runtime shares rather than copies. Both take an optional `lead` beside the
+bytes, which is how many bytes past an aligned base the caller's buffer begins:
+§7 and §19 check the alignment of the BASE, and a BEAM binary has no address a
+caller can observe or place, so the caller states it and the check stays a real
+one.
+
+**And what it cannot claim: "the read path allocates nothing."** There is no
+caller-owned buffer and no mutable struct, so a decoded value IS an allocation.
+What the backend holds instead is that the COUNT does not move — the heap words
+and the reductions one iteration costs are pinned per case and re-pinned
+deliberately, with a negative control that reds every case when one extra
+allocation is added.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every
