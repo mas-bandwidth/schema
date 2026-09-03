@@ -42,6 +42,42 @@ static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one at
 static const uint32_t kTableAlign       = 8;                           // every node starts 8-aligned
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
+// ---- THE CALLER'S ALLOCATOR (docs/SPEC-TABLES.md §6.5) ----
+//
+// Every allocation the variable-length runtime makes goes through one of
+// these — the arena's segments, the pack walk's identity map, the numbering's
+// entry array, the packed region, and the tool path's node directory. There is
+// no other call to the C library on this path, so a counting allocator sees
+// every byte and a game's own heap can own all of it.
+//
+// It is the shape TableBlockAllocator already has (§19.1): two function
+// pointers and a context the caller carries. What it adds is a CONTRACT ON
+// alloc — the bytes come back ZEROED. Lock copies whole nodes, PADDING
+// INCLUDED, so anything left uninitialized reaches a packed region; the default
+// pair reaches that through calloc, which costs nothing measurable because a
+// fresh segment is untouched pages either way.
+struct TableAllocator
+{
+    void * ( *alloc )( void * context, int64_t bytes ); // ZEROED bytes, NULL on failure
+    void ( *free )( void * context, void * pointer );
+    void * context;
+};
+
+// The default pair, and it is the one every entry point takes when the caller
+// names none. It calls schema_allocate / schema_release, so a program with its
+// own C-library replacement can move the floor without writing a struct at all.
+inline void * table_default_alloc( void * context, int64_t bytes ) { (void) context; return schema_allocate( bytes ); }
+inline void table_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
+
+inline TableAllocator TableDefaultAllocator()
+{
+    TableAllocator allocator;
+    allocator.alloc = table_default_alloc;
+    allocator.free = table_default_free;
+    allocator.context = NULL;
+    return allocator;
+}
+
 // ---- TableRef: a relocatable reference (never a machine pointer) ----
 //
 // Two encodings, one slot, and the FORM says which is in force:
@@ -108,9 +144,13 @@ struct TableArena
     std::atomic<uint8_t *> segments[ kTableMaxSegments ];
     std::atomic<uint32_t> cursor; // (segment << kTableSegmentBits) | bytes handed out
     bool locked = false;          // MONOTONIC: Lock() is one-way, there is no unlock
+    // THE ARENA CARRIES ITS OWN, so everything downstream of a builder —
+    // segments, pack map, numbering, region, node directory — allocates through
+    // the one pair the caller named, with nothing to thread by hand.
+    TableAllocator allocator;
 };
 
-inline void TableArenaInit( TableArena & arena )
+inline void TableArenaInit( TableArena & arena, TableAllocator allocator )
 {
     for ( uint32_t i = 0; i < kTableMaxSegments; i++ )
     {
@@ -118,6 +158,7 @@ inline void TableArenaInit( TableArena & arena )
     }
     arena.cursor.store( 0, std::memory_order_relaxed );
     arena.locked = false;
+    arena.allocator = allocator;
 }
 
 inline void TableArenaShutdown( TableArena & arena )
@@ -125,7 +166,7 @@ inline void TableArenaShutdown( TableArena & arena )
     for ( uint32_t i = 0; i < kTableMaxSegments; i++ )
     {
         uint8_t * segment = arena.segments[i].exchange( NULL, std::memory_order_acq_rel );
-        if ( segment != NULL ) { free( segment ); }
+        if ( segment != NULL ) { arena.allocator.free( arena.allocator.context, segment ); }
     }
     arena.cursor.store( 0, std::memory_order_relaxed );
 }
@@ -152,19 +193,21 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
         {
             if ( arena.segments[segment].load( std::memory_order_acquire ) == NULL )
             {
-                // calloc, NOT malloc: Lock copies whole nodes, PADDING
-                // INCLUDED, so anything uninitialised here reaches a packed
-                // region. Value-initialising a node
-                // with placement new zeroes its MEMBERS and not its padding, so
-                // the zeroing has to happen here or not at all. It costs nothing
-                // measurable: a fresh segment is untouched pages either way, and
-                // calloc has the kernel hand them over zeroed.
-                uint8_t * memory = (uint8_t *) calloc( 1, kTableSegmentSize );
+                // THE SEGMENT COMES BACK ZEROED, which is the allocator's
+                // contract and not an extra pass here: Lock copies whole nodes,
+                // PADDING INCLUDED, so anything uninitialized reaches a packed
+                // region. Value-initializing a node with placement new zeroes
+                // its MEMBERS and not its padding, so the zeroing has to happen
+                // at the segment or not at all. It costs nothing measurable: a
+                // fresh segment is untouched pages either way, and the default
+                // pair's calloc has the kernel hand them over zeroed.
+                uint8_t * memory = (uint8_t *) arena.allocator.alloc( arena.allocator.context, (int64_t) kTableSegmentSize );
                 if ( memory == NULL ) { return kTableAllocFailed; }
                 uint8_t * expected = NULL;
                 if ( !arena.segments[segment].compare_exchange_strong( expected, memory, std::memory_order_acq_rel ) )
                 {
-                    free( memory ); // another worker published this segment first
+                    // another worker published this segment first
+                    arena.allocator.free( arena.allocator.context, memory );
                 }
             }
             if ( arena.cursor.compare_exchange_weak( cursor, cursor + kTableSlabBytes, std::memory_order_acq_rel ) )
@@ -269,19 +312,21 @@ struct TablePackMap
     TablePackEntry * entries = NULL;
     int64_t capacity = 0; // a power of two, or zero while empty
     int64_t count = 0;
+    TableAllocator allocator; // the caller's, carried from the walk that built it
 };
 
-inline void TablePackMapInit( TablePackMap & map )
+inline void TablePackMapInit( TablePackMap & map, TableAllocator allocator )
 {
     map.entries = NULL;
     map.capacity = 0;
     map.count = 0;
+    map.allocator = allocator;
 }
 
 inline void TablePackMapShutdown( TablePackMap & map )
 {
-    free( map.entries );
-    TablePackMapInit( map );
+    map.allocator.free( map.allocator.context, map.entries );
+    TablePackMapInit( map, map.allocator );
 }
 
 // The two walks behind Lock re-derive the SAME map from the same graph — the
@@ -325,8 +370,9 @@ inline TablePackEntry * TablePackMapFind( TablePackMap & map, const void * key )
 inline bool TablePackMapGrow( TablePackMap & map )
 {
     TablePackMap grown;
+    grown.allocator = map.allocator;
     grown.capacity = map.capacity != 0 ? map.capacity * 4 : 1024;
-    grown.entries = (TablePackEntry *) calloc( (size_t) grown.capacity, sizeof( TablePackEntry ) );
+    grown.entries = (TablePackEntry *) map.allocator.alloc( map.allocator.context, grown.capacity * (int64_t) sizeof( TablePackEntry ) );
     if ( grown.entries == NULL ) { return false; }
     for ( int64_t i = 0; i < map.capacity; i++ )
     {
@@ -334,7 +380,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
         grown.entries[ TablePackMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
         grown.count++;
     }
-    free( map.entries );
+    map.allocator.free( map.allocator.context, map.entries );
     map = grown;
     return true;
 }
@@ -430,9 +476,11 @@ struct TableNumbering
     int64_t capacity = 0;
 };
 
-inline void TableNumberingInit( TableNumbering & n )
+// The numbering allocates through the map's pair rather than carrying a second
+// copy of it: one numbering is one walk, and a walk has one allocator.
+inline void TableNumberingInit( TableNumbering & n, TableAllocator allocator )
 {
-    TablePackMapInit( n.seen );
+    TablePackMapInit( n.seen, allocator );
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
@@ -440,8 +488,9 @@ inline void TableNumberingInit( TableNumbering & n )
 
 inline void TableNumberingShutdown( TableNumbering & n )
 {
+    TableAllocator allocator = n.seen.allocator;
     TablePackMapShutdown( n.seen );
-    free( n.entries );
+    allocator.free( allocator.context, n.entries );
     n.entries = NULL;
     n.count = 0;
     n.capacity = 0;
@@ -463,9 +512,19 @@ inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & ent
 {
     if ( n.count == n.capacity )
     {
+        // GROW BY COPY, never by realloc: the allocator hook is a PAIR, and a
+        // game's heap is not required to have a resize primitive at all. The
+        // schedule quadruples, so the copying is amortized to a constant per
+        // entry and the growth is the same growth it always was.
         int64_t capacity = n.capacity != 0 ? n.capacity * 4 : 256;
-        TableNodeEntry * grown = (TableNodeEntry *) realloc( n.entries, (size_t) capacity * sizeof( TableNodeEntry ) );
+        TableAllocator allocator = n.seen.allocator;
+        TableNodeEntry * grown = (TableNodeEntry *) allocator.alloc( allocator.context, capacity * (int64_t) sizeof( TableNodeEntry ) );
         if ( grown == NULL ) { return false; }
+        if ( n.entries != NULL )
+        {
+            memcpy( grown, n.entries, (size_t) n.count * sizeof( TableNodeEntry ) );
+            allocator.free( allocator.context, n.entries );
+        }
         n.entries = grown;
         n.capacity = capacity;
     }

@@ -8,10 +8,9 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring> // the prefill's scalar-array fills
-#include <cstddef> // offsetof, for the reflection descriptors
-#include <type_traits> // the enforced relocatability asserts
+#include <stdint.h>
+#include <string.h> // the prefill's scalar-array fills
+#include <stddef.h> // offsetof, for the reflection descriptors
 
 #include "BenchTable.h"
 
@@ -242,7 +241,7 @@ namespace benchtable {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x4ecd277aba28ff2eull;
+static const uint64_t BuildVersion = 0x4ecd277aba28ff2eull;
 
 } // namespace benchtable
 
@@ -287,7 +286,7 @@ static const int64_t kTableCookHeaderBytes = 64;
 // OTHER order — or something that is not a cook. All three answers but the
 // first refuse, and a cook and a BLOCK are separated here too, because a
 // form's identity belongs in its magic rather than in a second digest.
-inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
+static const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 
 // THIS BUILD's byte order, as the header's own word carries it. The magic is
 // what REFUSES a foreign order; this word is what RECORDS which order wrote
@@ -299,16 +298,16 @@ inline constexpr uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 // GENERATION input, little for every target schema generates for today, so
 // two builds of one schema for two orders emit the same id.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-inline constexpr uint64_t TableCookByteOrder = 2; // big
+static const uint64_t TableCookByteOrder = 2; // big
 #else
-inline constexpr uint64_t TableCookByteOrder = 1; // little
+static const uint64_t TableCookByteOrder = 1; // little
 #endif
 
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
 // describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
-inline constexpr uint64_t TableCookMaxAlign = 64;
+static const uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
 // bytes, in this machine's order"; every compiler this repo builds under folds
@@ -2619,18 +2618,22 @@ inline bool TableMixedCook( const TableMixed & value, void * out, uint64_t capac
 // memcpy'd, mmap'd, shared across processes, and walked through
 // descriptor offsets. A failure here means a pointer, virtual or
 // non-trivial member crept into generated storage.
-static_assert( std::is_trivially_copyable<TableEntity>::value, "TableEntity must stay relocatable" );
-static_assert( std::is_standard_layout<TableEntity>::value, "TableEntity must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<TableStat>::value, "TableStat must stay relocatable" );
-static_assert( std::is_standard_layout<TableStat>::value, "TableStat must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<TableMixed>::value, "TableMixed must stay relocatable" );
-static_assert( std::is_standard_layout<TableMixed>::value, "TableMixed must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<TableHitEvent>::value, "TableHitEvent must stay relocatable" );
-static_assert( std::is_standard_layout<TableHitEvent>::value, "TableHitEvent must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<TableChatEvent>::value, "TableChatEvent must stay relocatable" );
-static_assert( std::is_standard_layout<TableChatEvent>::value, "TableChatEvent must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<TablePickupEvent>::value, "TablePickupEvent must stay relocatable" );
-static_assert( std::is_standard_layout<TablePickupEvent>::value, "TablePickupEvent must stay standard-layout for offsetof" );
+//
+// They ask the COMPILER ITSELF, which is what every C++ standard library
+// answers the same two questions with — and it costs this header no
+// include at all.
+static_assert( __is_trivially_copyable( TableEntity ), "TableEntity must stay relocatable" );
+static_assert( __is_standard_layout( TableEntity ), "TableEntity must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( TableStat ), "TableStat must stay relocatable" );
+static_assert( __is_standard_layout( TableStat ), "TableStat must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( TableMixed ), "TableMixed must stay relocatable" );
+static_assert( __is_standard_layout( TableMixed ), "TableMixed must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( TableHitEvent ), "TableHitEvent must stay relocatable" );
+static_assert( __is_standard_layout( TableHitEvent ), "TableHitEvent must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( TableChatEvent ), "TableChatEvent must stay relocatable" );
+static_assert( __is_standard_layout( TableChatEvent ), "TableChatEvent must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( TablePickupEvent ), "TablePickupEvent must stay relocatable" );
+static_assert( __is_standard_layout( TablePickupEvent ), "TablePickupEvent must stay standard-layout for offsetof" );
 
 // ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //

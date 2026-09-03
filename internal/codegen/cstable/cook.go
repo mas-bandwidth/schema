@@ -661,7 +661,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("    // pin below does not.\n")
 	g.hf("    //\n")
 	g.hf("    // A span's length is an int, so this overload reaches 2 GiB and the POINTER\n")
-	g.hf("    // FORM is the one with the reach the cook is built for (§6.3): a catalogue\n")
+	g.hf("    // FORM is the one with the reach the cook is built for (§6.3): a catalog\n")
 	g.hf("    // past that ceiling is opened through the pointer form, never through this.\n")
 	g.hf("    public static bool Open(out %sCook cook, ReadOnlySpan<byte> bytes)\n    {\n", name)
 	g.hf("        fixed (byte* p = bytes)\n        {\n")

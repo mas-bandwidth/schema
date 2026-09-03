@@ -75,9 +75,11 @@ struct TableBlockAllocator
 };
 
 // The default pair, for a caller that has no allocator of its own to hand in.
-// Nothing in the generated surface reaches for it: a caller names it.
-inline void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return malloc( (size_t) bytes ); }
-inline void table_block_default_free( void * context, void * pointer ) { (void) context; ::free( pointer ); }
+// Nothing in the generated surface reaches for it: a caller names it. It calls
+// schema_allocate / schema_release, the same hook pair the variable class
+// defaults to, so one definition moves every default in the program.
+inline void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return schema_allocate( bytes ); }
+inline void table_block_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
 
 inline TableBlockAllocator TableBlockDefaultAllocator()
 {
@@ -93,9 +95,9 @@ inline TableBlockAllocator TableBlockDefaultAllocator()
 // big-endian fix-up path is a named obligation, not something a consumer
 // improvises row by row.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-inline constexpr uint64_t TableBlockByteOrder = 2; // big
+static const uint64_t TableBlockByteOrder = 2; // big
 #else
-inline constexpr uint64_t TableBlockByteOrder = 1; // little
+static const uint64_t TableBlockByteOrder = 1; // little
 #endif
 
 // Why Begin refused: the array, its count and its maximum (§19.1). Clamping a
@@ -213,7 +215,7 @@ struct TableBlockInfo
 // the producer's NATIVE order; a consumer that reads back the byte-swapped
 // value has found a foreign byte order, and one that reads back anything else
 // has not found a block at all.
-inline constexpr uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
+static const uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
 
 inline uint64_t table_block_byteswap64( uint64_t v )
 {
@@ -307,7 +309,12 @@ func blockHeader(u *ir.Unit, f *ir.File, g *tableGen, formed int) []byte {
 	h.WriteString("// many there are and how far apart they sit — and then those rows, each array\n")
 	h.WriteString("// at a fixed pitch. The other side reads those three facts and points.\n\n")
 	h.WriteString("#pragma once\n\n")
-	h.WriteString("#include <cstdint>\n#include <cstring>\n#include <cstddef> // offsetof, for the layout contract\n#include <cstdlib> // the DEFAULT allocator pair, for a caller with none of its own\n#include <type_traits> // the layout contract's standard-layout asserts\n")
+	// The C spellings, as serialize.h uses them. The layout contract's asserts
+	// read the compiler intrinsics, so <type_traits> is not here. The DEFAULT
+	// allocator pair is the caller's opt-in and it lands in the schema_allocate
+	// hook, so the C library is behind the hook's #ifndef and nowhere else.
+	h.WriteString("#include <stdint.h>\n#include <string.h>\n#include <stddef.h> // offsetof, for the layout contract\n")
+	h.WriteString(tableAllocatorHook)
 	fmt.Fprintf(&h, "\n#include \"%sTable.h\"\n", f.Base)
 	names := make([]string, 0, len(g.includes))
 	for n := range g.includes {
@@ -387,7 +394,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("// can add to more than can ever be occupied at once.\n")
 	g.pf("// It is allocated ONCE, at build time, through the CALLER'S allocator, and\n")
 	g.pf("// released through the same pair. The fill path allocates nothing.\n")
-	g.pf("inline constexpr int64_t %sBlockMaxBytes = %d;\n\n", name, bl.MaxBytes)
+	g.pf("static const int64_t %sBlockMaxBytes = %d;\n\n", name, bl.MaxBytes)
 	g.pf("struct %sBlockStorage\n{\n", name)
 	g.pf("    uint8_t * base = NULL;             // the extent, 64-byte aligned\n")
 	g.pf("    void * allocation = NULL;          // what the allocator handed back\n")
@@ -484,8 +491,8 @@ func (g *tableGen) emitBlockLayoutAsserts(bl *ir.BlockLayout) {
 	g.pf("static_assert( sizeof( bool ) == 1, \"a bool in a block row is ONE byte: the standard leaves sizeof(bool) implementation-defined, and this two-language layout contract does not (docs/SPEC-TABLES.md §19.3)\" );\n")
 	g.pf("static_assert( sizeof( TableBlockTriple ) == 16, \"a triple is sixteen bytes with no interior padding (docs/SPEC-TABLES.md §2.7)\" );\n")
 	g.pf("static_assert( offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, \"a triple's members sit at 0/8/12 (docs/SPEC-TABLES.md §2.7)\" );\n")
-	g.pf("static_assert( std::is_standard_layout<%sBlock::Projection>::value, \"%s's block projection must stay standard-layout for offsetof\" );\n", name, name)
-	g.pf("static_assert( std::is_trivially_copyable<%sBlock::Projection>::value, \"%s's block projection must stay relocatable\" );\n", name, name)
+	g.pf("static_assert( __is_standard_layout( %sBlock::Projection ), \"%s's block projection must stay standard-layout for offsetof\" );\n", name, name)
+	g.pf("static_assert( __is_trivially_copyable( %sBlock::Projection ), \"%s's block projection must stay relocatable\" );\n", name, name)
 	g.pf("static_assert( sizeof( %sBlock::Projection ) == %d, \"%s's block projection sizeof moved: the C# side asserts %d for the same declaration (docs/SPEC-TABLES.md §19.3)\" );\n",
 		name, bl.Projection.Size, name, bl.Projection.Size)
 	g.pf("static_assert( alignof( %sBlock::Projection ) == %d, \"%s's block projection alignof moved (docs/SPEC-TABLES.md §19.3)\" );\n",

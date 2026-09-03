@@ -104,14 +104,14 @@ const tableJsonWalkSource = `// ---- json walk: begin ----
 // last-wins and counted; a key present with the wrong JSON type is skipped
 // and counted, never coerced.
 
-constexpr int32_t kTableJsonMaxDepth = 128;
+static const int32_t kTableJsonMaxDepth = 128;
 
 // A key longer than this cannot name a field, so it is skipped as unknown.
-constexpr int32_t kTableJsonMaxKey = 256;
+static const int32_t kTableJsonMaxKey = 256;
 
 // The longest numeric token the walk will convert. Anything longer is a
 // value no field can hold and counts as a kind mismatch.
-constexpr int32_t kTableJsonMaxNumber = 512;
+static const int32_t kTableJsonMaxNumber = 512;
 
 // The decimal point the C runtime is CURRENTLY using. Number conversion is
 // the one locale-sensitive corner of the grammar — JSON's point is always

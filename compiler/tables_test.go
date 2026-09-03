@@ -579,8 +579,8 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 	for _, want := range []string{
 		"ConfigMeasure", "ConfigSave", "ConfigLoad", "ConfigSaveBody", "ConfigLoadBody",
 		"ConfigTableType", "struct TableReport",
-		"static_assert( std::is_trivially_copyable<Config>::value",
-		"static_assert( std::is_standard_layout<Config>::value",
+		"static_assert( __is_trivially_copyable( Config )",
+		"static_assert( __is_standard_layout( Config )",
 	} {
 		if !strings.Contains(table, want) {
 			t.Errorf("generated table header is missing %q", want)
@@ -619,6 +619,149 @@ table Root
     meta Plain
 }
 `
+
+// tableDialectViolations lists the spellings in a generated C++ table or
+// block header that are not the C-like dialect serialize.h sets
+// (docs/SPEC-TABLES.md §13.9): the <c*> header spellings, the STL headers,
+// a std:: name, an inline constexpr, and a call into the C library that does
+// not go through a hook. The hook blocks — `#ifndef schema_...` through their
+// `#endif` — are the one place a raw C-library call belongs, because they ARE
+// the default, so they are cut out before the scan, and so are comments. A
+// pointered unit's <atomic> and <new> are named follow-ons and not on the
+// list, and std::atomic and std::memory_order are the names <atomic> brings.
+func tableDialectViolations(header string) []string {
+	var code strings.Builder
+	inHook := false
+	for line := range strings.SplitSeq(header, "\n") {
+		if strings.HasPrefix(line, "#ifndef schema_") {
+			inHook = true
+		}
+		if !inHook {
+			if i := strings.Index(line, "//"); i >= 0 {
+				line = line[:i]
+			}
+			code.WriteString(line)
+			code.WriteString("\n")
+		}
+		if inHook && strings.HasPrefix(line, "#endif") {
+			inHook = false
+		}
+	}
+	text := strings.NewReplacer("std::atomic", "ATOMIC", "std::memory_order", "MEMORY_ORDER").Replace(code.String())
+	var found []string
+	for _, banned := range []string{
+		"<cstdint>", "<cstring>", "<cstddef>", "<cstdlib>", "<cassert>", "<cstdio>",
+		"<type_traits>", "<iterator>", "<algorithm>", "std::", "inline constexpr",
+	} {
+		if strings.Contains(text, banned) {
+			found = append(found, banned)
+		}
+	}
+	// a raw call: the name as a whole token followed by its open parenthesis.
+	// `allocator.free(` and the hook's own `table_default_free(` are not the
+	// token; ` free(` is.
+	for _, call := range []string{"abort", "assert", "malloc", "calloc", "realloc", "free"} {
+		for line := range strings.SplitSeq(text, "\n") {
+			at := 0
+			for {
+				i := strings.Index(line[at:], call+"(")
+				if i < 0 {
+					break
+				}
+				i += at
+				before := byte(' ')
+				if i > 0 {
+					before = line[i-1]
+				}
+				identifier := before == '_' || before == '.' || before == ':' || before == '>' ||
+					(before >= 'a' && before <= 'z') || (before >= 'A' && before <= 'Z') || (before >= '0' && before <= '9')
+				if !identifier {
+					found = append(found, call+"(")
+					break
+				}
+				at = i + len(call)
+			}
+		}
+	}
+	return found
+}
+
+// TestTableHeadersAreTheCDialect: every generated C++ table and block header
+// is the C-like dialect (docs/SPEC-TABLES.md §13.9), in each class that
+// changes what the header carries — a fixed unit, a keyed one whose accessor
+// refuses through the assert and fatal hooks, a pointered one whose arena
+// allocates through the allocator hook, and the block header whose default
+// pair lands in the same hook. The cook's runtime and its WRITE side (§7.6)
+// ride in the Table header, so the scan covers them by covering it — and the
+// probe below is what says so, rather than the scan passing over a header
+// that happened not to carry them.
+func TestTableHeadersAreTheCDialect(t *testing.T) {
+	for name, src := range map[string]string{"fixed": tableSrc, "keyed": runtimeSrc, "pointered": pointerSrc} {
+		cook := []string{"TableCookOpen(", "ConfigCookMeasure(", "ConfigCookBody(", "ConfigCook("}
+		if name == "pointered" {
+			cook = []string{"TableCookOpen(", "PlainCookBody("} // the fixed table in a pointered unit; a pointered root's Cook is a follow-on (§15)
+		}
+		files, err := New().Generate(unitFromSource(t, src), "cpp", Options{})
+		if err != nil {
+			t.Fatalf("%s: generate: %v", name, err)
+		}
+		scanned := 0
+		for file, body := range files {
+			if !strings.HasSuffix(file, "Table.h") && !strings.HasSuffix(file, "Block.h") {
+				continue
+			}
+			scanned++
+			if strings.HasSuffix(file, "Table.h") {
+				for _, want := range cook {
+					if !strings.Contains(string(body), want) {
+						t.Errorf("%s: %s does not carry the cook surface %q, so the dialect scan is not over it", name, file, want)
+					}
+				}
+			}
+			for _, v := range tableDialectViolations(string(body)) {
+				t.Errorf("%s: %s contains %q — the table half is C-like C++ (schema#382)", name, file, v)
+			}
+		}
+		if scanned == 0 {
+			t.Fatalf("%s: no table or block header generated", name)
+		}
+	}
+}
+
+// TestTableDialectCheckBites is the NEGATIVE CONTROL for the scan above: a
+// clean header reports nothing, and a header with one raw spelling planted —
+// an include, an abort, an allocation, a free, a std:: name — reports exactly
+// that spelling. A scan that never went red would prove nothing about what
+// the corpus contains.
+func TestTableDialectCheckBites(t *testing.T) {
+	clean := tableHeader(t, runtimeSrc)
+	if v := tableDialectViolations(clean); len(v) != 0 {
+		t.Fatalf("the clean header reports %v", v)
+	}
+	for _, plant := range []struct{ text, want string }{
+		{"#include <cstdlib>\n", "<cstdlib>"},
+		{"#include <iterator>\n", "<iterator>"},
+		{"#include <type_traits>\n", "<type_traits>"},
+		{"static_assert( std::is_standard_layout<int>::value, \"\" );\n", "std::"},
+		{"inline constexpr int planted = 1;\n", "inline constexpr"},
+		{"inline void planted() { abort(); }\n", "abort("},
+		{"inline void planted() { assert( false ); }\n", "assert("},
+		{"inline void * planted() { return malloc( 8 ); }\n", "malloc("},
+		{"inline void * planted() { return calloc( 1, 8 ); }\n", "calloc("},
+		{"inline void * planted( void * p ) { return realloc( p, 8 ); }\n", "realloc("},
+		{"inline void planted( void * p ) { free( p ); }\n", "free("},
+	} {
+		got := tableDialectViolations(clean + plant.text)
+		if len(got) != 1 || got[0] != plant.want {
+			t.Errorf("planted %q: the scan reports %v, want [%s]", strings.TrimSpace(plant.text), got, plant.want)
+		}
+	}
+	// and the hook block's OWN raw calls are the default, not a violation
+	hook := "#ifndef schema_allocate\n#include <stdlib.h>\n#define schema_allocate( bytes ) calloc( (size_t) 1, (size_t) ( bytes ) )\n#define schema_release( pointer ) free( pointer )\n#endif // #ifndef schema_allocate\n"
+	if v := tableDialectViolations(clean + hook); len(v) != 0 {
+		t.Errorf("the hook block's default pair reports %v", v)
+	}
+}
 
 // tableHeader returns the generated Table header's text.
 func tableHeader(t *testing.T, src string) string {

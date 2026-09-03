@@ -154,7 +154,9 @@ reach.
   building is TOOLING's path — the game points at the cook (§7).
 
 **Backend status: C++ and C, and C#, Go, Rust and Java for the FIXED class.**
-C++ and C carry both classes; C#, Go, Rust and Java carry the fixed class
+C++ is the reference, and its generated text is the C-like dialect of
+`serialize.h` — C header spellings, no STL, every call into the C library
+behind a hook the program can define (§13.9). C++ and C carry both classes; C#, Go, Rust and Java carry the fixed class
 (§6.1) — optionals, enum-keyed arrays, the text form (§16) and all — and each
 refuses a unit whose closure declares a pointer, naming its variable class as a
 follow-on. Every other backend refuses a unit that declares tables at all, by
@@ -242,7 +244,7 @@ costs a stated requirement. C# meets the same `int` ceiling on its span overload
 and answers it with the pointer form beside it; Java at `--release 17` has no
 second spelling, because the foreign-memory API (`MemorySegment`) is not stable
 before 22. **The FFM overload is the named follow-on** (§15), and until it lands
-a catalogue past 2 GiB has no Java reader. Both `open`s take a `long` length
+a catalog past 2 GiB has no Java reader. Both `open`s take a `long` length
 that a `byte[]` can never fill: it is the seat that overload takes, and the
 generated source says so at the site rather than leaving a reader to meet the
 ceiling by hitting it.
@@ -753,9 +755,10 @@ enum is keyed.
   `for ( auto [ key, element ] : keyed )`. In C++ `auto & [ ... ]` does not
   compile — a non-const lvalue reference cannot bind to the proxy — and the
   refusal is by design rather than an omission; `auto && [ ... ]` binds if a
-  reference form is wanted. C++ iterators carry the `iterator_traits`
-  typedefs (`forward_iterator_tag`), so a forward pass such as
-  `std::distance` works on them.
+  reference form is wanted. C++ iterators carry NO `iterator_traits`
+  typedefs: `begin()`, `end()` and `size()` are the surface, a hand-written
+  forward pass works, and an STL algorithm does not, because the header
+  includes no `<iterator>` (§13.9).
 
   **Held by test**: every keyed array in the corpus is iterated in both
   backends and every walk yields `E.Max` entries whose keys run `1 .. E.Max`;
@@ -1988,7 +1991,7 @@ hold: there is no reach to check, no refusal to write and no case to get
 wrong. It is what the scale §7 is built for asks for — *"Assume we have say,
 100mbs or many gigabytes of data in Assets.bin at some point."* — and a
 four-byte slot would have bounded ONE REGION at `2 GiB`, which is a ceiling in
-exactly the place a mesh or texture catalogue meets it (§13.4).
+exactly the place a mesh or texture catalog meets it (§13.4).
 
 **The cost, stated.** Eight bytes a reference instead of four, in every
 VARIABLE-LENGTH record, whether the structure needs the reach or not; and the
@@ -2235,7 +2238,7 @@ the wire, and keeps the flexibility that comes with it.
   - **Both part lengths are 64 bits.** `CookMeasure` answers in
     `int64_t`, and a 32-bit header field would reimpose at cook time the
     ceiling §3.1 just removed — on exactly the huge mesh or texture
-    catalogue a cook exists for.
+    catalog a cook exists for.
 
   The build version is a compiler-settled digest over every fact a cook's
   bytes depend on: the type wire's protocol id, every record's layout as the
@@ -2253,7 +2256,7 @@ the wire, and keeps the flexibility that comes with it.
   needs: a cook is produced before any game binary exists.
 
   **The id is UNIT-WIDE, so a cook outlives only what the unit does.** A mesh
-  catalogue is re-cooked when any table in its unit moves, not only when its
+  catalog is re-cooked when any table in its unit moves, not only when its
   own closure does. That is the model rather than a cost — the work is
   offline and a build cache exists to absorb it (§20.6) — and it is the price
   of two ids in the whole design instead of three.
@@ -2275,7 +2278,7 @@ the wire, and keeps the flexibility that comes with it.
   version, the lengths and the alignment answer "did we write this?", and
   nothing answers "is this hostile?" because that is not the question a load is
   asking. **There is NO PER-NODE VALIDATION AT LOAD, ever**, and that is not a
-  cost saved but the design: a per-node pass over a catalogue-scale file is the
+  cost saved but the design: a per-node pass over a catalog-scale file is the
   parse the whole form exists to delete.
 
   **A file that did not come from your own pipeline is a TOOL's problem, not a
@@ -2417,7 +2420,7 @@ the wire, and keeps the flexibility that comes with it.
   `ReadOnlySpan<byte>` overload sits beside it for a consumer that already holds
   the bytes; it is the same contract in a different spelling, and its length is
   an `int`, so **the pointer form is the one with the reach the cook is built
-  for** (§6.3) and a catalogue past 2 GiB is opened through it.
+  for** (§6.3) and a catalog past 2 GiB is opened through it.
 
   **THE LENGTH IS SIGNED HERE, and that is a decision and not a drift from the
   C++ rule above.** C# has no unsigned-length idiom — `Span.Length`, `Array.Length`
@@ -4437,7 +4440,7 @@ are these rulings, in the owner's words:
 - **The cook is ON the ladder, and the dogfood not using it is not a verdict
   on it**, 2026-09-02: "We do cook. We just aren't using it in space game
   right now." The two files the dogfood carries are small enough to stay on
-  the generic wire (below); the cook is built for the catalogue-scale files
+  the generic wire (below); the cook is built for the catalog-scale files
   beside them (§7).
 - **The scale, and when its gate binds**: "We can keep the gigabyte scale
   stuff for v2, but think about it as we work now." The 1 GB open-time gate
@@ -4479,7 +4482,7 @@ are these rulings, in the owner's words:
   applies the two facts already on this page to it: the sizing rule above,
   "u64 now, why fuck around", and the scale the cook exists for, "Assume we
   have say, 100mbs or many gigabytes of data in Assets.bin at some point."
-  A ceiling that a mesh or texture catalogue is exactly the thing to meet is
+  A ceiling that a mesh or texture catalog is exactly the thing to meet is
   not a ceiling to keep pre-release. **The cost is stated rather than
   discovered** (§6.3): eight bytes a reference in every variable-length
   record, needed or not, and every affected unit's BUILD VERSION moves, so
@@ -4698,6 +4701,101 @@ produced.
 - **And the whole design's id count**: "yes on protocol id and build version"
   — two ids, and §20 states them as the two.
 
+### 13.9 The C++ dialect, ruled
+
+Owner ruling, 2026-09-03: *"It should also feel good and look native to a
+C++ game programmer (C-like C++, no modern C++ features, not pulling in STL or
+a lot of big headers from modern C++, ability to pass in custom assert
+function, log function, allocate/free functions)."* Then, against the
+findings on the generated corpus (schema#382): *"fully go C-like C++ dialect
+with minimal modern feature usage, like serialize"* and *"save any modern
+stuff for cpp_modern... Just don't."*
+
+**The reference is `serialize.h`**, and the generated table text follows what
+it does rather than a list of its own:
+
+- **The C header spellings** — `<stdint.h>`, `<string.h>`, `<stddef.h>` —
+  never `<cstdint>`, `<cstring>`, `<cstddef>`. No STL header: no
+  `<type_traits>`, no `<iterator>`, no `<algorithm>`, and no `std::` name in
+  a fixed-class header at all.
+- **The layout guarantees read the compiler**, not a library:
+  `static_assert( __is_trivially_copyable( T ) )` and
+  `static_assert( __is_standard_layout( T ) )` are the intrinsics every C++
+  standard library implements the traits with, and every compiler this repo
+  builds under — gcc, clang, MSVC — takes them without a header. The asserts
+  still bite: a `virtual` member fails them (held by test).
+- **Iteration over a keyed array is `begin()`, `end()` and `size()`.** The
+  iterators carry no `iterator_traits` typedefs; `std::distance` bought
+  `<iterator>`, which measured as the most expensive include in the corpus
+  (536 headers, 986 KB) for an audience that does not call it.
+- **Compile-time constants are `static const`**, the C++98 spelling serialize
+  uses, not `inline constexpr`. In-class integral constants stay
+  `static constexpr`.
+- **Every call into the C library goes through a hook**, spelled the way
+  `serialize_assert` is: a plain `#ifndef` the program wins, and the C header
+  included only when the program supplied nothing. The names carry no
+  package: a program defines them once, before its first generated header,
+  and every unit picks them up.
+
+  | hook | where it fires | default | NDEBUG |
+  |---|---|---|---|
+  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message | `assert`, from `<assert.h>` | removed, as `assert` is |
+  | `schema_fatal()` | after the assert, on the path that cannot continue | `abort`, from `<stdlib.h>` | kept |
+  | `schema_allocate( bytes )` | the default allocator pair: ZEROED bytes, NULL on failure | `calloc`, from `<stdlib.h>` | — |
+  | `schema_release( pointer )` | the default allocator pair | `free` | — |
+
+  A unit whose closure declares no keyed array emits no assert hook and
+  no fatal hook; one that declares no pointer emits no allocator hook in its
+  `Table.h`. The block header emits the allocator hook, because
+  `TableBlockDefaultAllocator()` lands in it (§19.1). Define `schema_fatal`
+  and `schema_allocate` and no generated header includes `<stdlib.h>`.
+
+- **A `TableAllocator` per structure, on top of the default.** It is the
+  shape `TableBlockAllocator` already had (§19.1) — `alloc` and `free`
+  function pointers and a caller context — with one contract added:
+  `alloc` returns ZEROED bytes, because a packed region carries node padding.
+  A builder takes one (`<Name>Builder( allocator )`, defaulting to
+  `TableDefaultAllocator()`, which is the hook pair) and everything the
+  builder ever allocates goes through it: the arena's segments, `Lock`'s
+  identity map and the packed region, the wire walks' numbering, and
+  `LoadBuilder`'s node directory. `<Name>Measure` and `<Name>Save` over a
+  REGION take the pair as an optional last argument, because the numbering
+  walk behind them is the one reading-side path that allocates (§6.5). The
+  numbering's entry array grows by copy, never by `realloc`: a game's heap is
+  not required to have a resize primitive.
+- **There is no log hook, because the runtime never logs.** Every outcome is
+  a return value or a `TableReport` field; nothing writes to a stream.
+
+**Held by test.** One translation unit (`test/tables/hooks_main.cpp`) defines
+all four hooks before its first generated header and observes them: the
+keyed refusal raises its assert and then its fatal, which escapes by
+`longjmp` rather than ending the process; a counting `TableAllocator` handed
+to a builder sees every allocation the pointer path makes, and the default
+pair — defined there to a separate counter, which is where a bypassing
+`malloc`, `calloc`, `realloc` or `free` would land — reads ZERO. The Go tests
+scan a fixed, a keyed, a pointered and a block header for the `<c*>`
+spellings, the STL headers, `std::`, `inline constexpr` and a raw C-library
+call outside the hook blocks, and a negative control plants each spelling
+and shows the scan go red.
+
+**Measured, Apple clang 21 on arm64, one translation unit including one
+header.** `KeyedTable.h`: 542 headers and 1,051,525 preprocessed bytes before;
+126 headers and 172,428 bytes after, and 68 headers and 110,378 bytes with
+`schema_assert` and `schema_fatal` supplied. `KeyedBlock.h`: 543 / 1,076,817
+before, 136 / 203,913 after. `GraphTable.h` (pointered): 612 / 1,446,328
+before, 384 / 898,010 after — what remains there is `<atomic>` and `<new>`.
+A packet header (`Types.h`) is 36 headers and 30,856 bytes.
+
+**Named follow-ons (§15).** `<atomic>` in a pointered unit's header — the
+arena's per-slab atomics need a gcc/clang `__atomic_*` against MSVC
+`_Interlocked*` shim, and that is a portability piece with its own tests;
+`<new>` — the placement new is load-bearing for the object model and the
+header swap is the game-engine `operator new( size_t, void * )` spelling; the
+builder's destructor, which is the one RAII construct in the corpus and now
+routes through the hook, so what is left of it is an ownership model rather
+than an un-hookable call; and `inline constexpr` in the PACKET half, which is
+the packet emitter's own change.
+
 ## 14. Design notes: the shapes rejected
 
 One paragraph a rejected shape: what it was, and the reason it lost. The
@@ -4877,7 +4975,7 @@ inspects everything in the schema built:
   declaring the ids it will accept, so an asset format that rarely changes
   need not be re-cooked for a build whose facts did not move. It matters
   more under a UNIT-wide id than it would have under a narrower one, because
-  a catalogue is re-cooked when any table in its unit moves (§7).
+  a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
 - **THE COOK's WRITE SIDE for the VARIABLE class, and in every other
@@ -5077,6 +5175,13 @@ inspects everything in the schema built:
   stored semantics).
 - Arrays of unions in table bodies.
 - `fixed` and 128-bit table-wire kinds, if a need ever materializes.
+- **THE REST OF THE C++ DIALECT** (§13.9), four pieces, each its own change:
+  `<atomic>` out of a pointered unit's header, behind a `__atomic_*` /
+  `_Interlocked*` shim the msvc and big-endian legs prove; `<new>` out of the
+  same header, behind the `operator new( size_t, void * )` spelling; an
+  explicit `<Name>BuilderShutdown` in place of the builder's destructor,
+  which is the shape the C column's `<name>_builder_shutdown` has already; and
+  `static const` for the packet half's `inline constexpr` constants.
 - **An `--envelope` shape for `schema pack`** (§17), if one recurring
   wrapper — a magic, a content hash, a protocol id — earns being schema's
   rather than each caller's.
@@ -6008,8 +6113,10 @@ row.** `Begin` asks for nothing; the accessors ask for nothing; the fill asks
 for nothing. That is the whole of what the refuser (below) claims, and stating
 the allocator here is what makes the claim checkable rather than a slogan
 about a form that "allocates nothing" — it allocates once, and the caller
-holds the pointer. `TableBlockDefaultAllocator()` is the malloc/free pair, for
-a caller with none of its own; nothing in the generated surface reaches for it.
+holds the pointer. `TableBlockDefaultAllocator()` is the `schema_allocate` /
+`schema_release` pair (§13.9) — `calloc` and `free` unless the program defined
+the hooks — for a caller with none of its own; nothing in the generated
+surface reaches for it.
 
 **The block's STORAGE is sized from the declared maxima** —
 `<Table>BlockMaxBytes`, a compile-time constant over the projection plus every

@@ -129,9 +129,54 @@ func formatFloat(v float64, single bool) string {
 	return s
 }
 
+// tableHooks is the C library a generated table header reaches for, and the
+// macros that replace it. It is spelled the way serialize.h spells
+// serialize_assert: a plain #ifndef the caller wins, and the C header pulled in
+// only when the caller supplied nothing.
+//
+// The names carry NO package scope. A consumer defines them once for the whole
+// program, the way it defines serialize_assert once, and every generated header
+// in every package picks the definition up.
+const tableHooks = `
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// serialize's asserts writes ` + "`#define schema_assert serialize_assert`" + ` before
+// including this header and both halves land in one handler.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
+// schema_fatal — what stands after the assert on a path that cannot continue.
+// NDEBUG does not remove it. Supply it and <stdlib.h> is never included.
+#ifndef schema_fatal
+#include <stdlib.h> // abort
+#define schema_fatal abort
+#endif // #ifndef schema_fatal
+`
+
+// tableAllocatorHook is the DEFAULT allocator pair behind the same #ifndef,
+// emitted only into a unit that has a variable-length table — the only unit
+// whose runtime allocates at all.
+const tableAllocatorHook = `
+// schema_allocate / schema_release — what "no allocator handed in" means for
+// this program. schema_allocate hands back ZEROED bytes and NULL on failure:
+// an arena segment is copied whole, padding included, so anything left
+// uninitialized here would reach a packed region. Supply both and <stdlib.h>
+// is never included; hand a TableAllocator to a builder to route one
+// structure's allocations somewhere else again.
+#ifndef schema_allocate
+#include <stdlib.h> // calloc, free
+#define schema_allocate( bytes ) calloc( (size_t) 1, (size_t) ( bytes ) )
+#define schema_release( pointer ) free( pointer )
+#endif // #ifndef schema_allocate
+`
+
 // unitHasKeyedArray reports whether any closure member declares an enum-keyed
 // array, which is what decides whether the unit's Table.h carries the keyed
-// storage type and its <cassert>.
+// storage type and its refusal.
 func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 	for name := range closure {
 		st := u.Tables[name]
@@ -201,11 +246,13 @@ struct TableKeyed
     // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
     // holds one slot per NAMED variant: nothing for None below it and nothing
     // above Max, so a build that skipped this compare would index one element
-    // BEFORE the array or past its end — undefined behaviour in the
+    // BEFORE the array or past its end — undefined behavior in the
     // configuration a game ships. Either key is a program error, so the
     // accessor ends the program rather than reading something. The assert
     // carries the message where a debugger can read it and NDEBUG removes
-    // that; the abort is what stands after it.
+    // that; the fatal is what stands after it. BOTH GO THROUGH THE HOOKS —
+    // define schema_assert and schema_fatal and this refusal lands in your
+    // own handler.
     //
     // ONE UNSIGNED COMPARE COVERS BOTH ENDS: the storage index is key - 1, and
     // None's is -1, which wraps above kSlots unsigned. The cost is one
@@ -214,8 +261,8 @@ struct TableKeyed
     {
         if ( (uint32_t) ( (int32_t) key - 1 ) >= (uint32_t) kSlots )
         {
-            assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
-            abort();
+            schema_assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
+            schema_fatal();
         }
     }
 
@@ -228,20 +275,17 @@ struct TableKeyed
     // non-const lvalue reference cannot bind to the proxy. Write
     // auto [ ... ], or auto && [ ... ] if you prefer the reference form.
     //
-    // The iterators carry the five iterator_traits typedefs, so std::distance
-    // and the algorithms that only need a forward pass work on them.
+    // THE ITERATORS CARRY NO iterator_traits TYPEDEFS. They bought std::distance
+    // and the forward-pass algorithms for an audience that does not call them,
+    // and the <iterator> they need is the single most expensive include the
+    // generated corpus had: 536 headers and 986 KB, in a header whose whole
+    // remaining set is 123. begin(), end() and size() need none of it.
 
     struct Entry { E key; T & element; };
     struct ConstEntry { E key; const T & element; };
 
     struct Iterator
     {
-        typedef std::forward_iterator_tag iterator_category;
-        typedef Entry value_type;
-        typedef std::ptrdiff_t difference_type;
-        typedef void pointer;
-        typedef Entry reference;
-
         T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
@@ -252,12 +296,6 @@ struct TableKeyed
 
     struct ConstIterator
     {
-        typedef std::forward_iterator_tag iterator_category;
-        typedef ConstEntry value_type;
-        typedef std::ptrdiff_t difference_type;
-        typedef void pointer;
-        typedef ConstEntry reference;
-
         const T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
@@ -568,8 +606,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			g.emitCookWriteSurface(members)
 			g.emitRelocatabilityPreamble()
 			for _, st := range members {
-				g.pf("static_assert( std::is_trivially_copyable<%s>::value, \"%s must stay relocatable\" );\n", st.Name, st.Name)
-				g.pf("static_assert( std::is_standard_layout<%s>::value, \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
+				g.pf("static_assert( __is_trivially_copyable( %s ), \"%s must stay relocatable\" );\n", st.Name, st.Name)
+				g.pf("static_assert( __is_standard_layout( %s ), \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
 			}
 			g.pf("\n")
 			g.emitCookLayoutAsserts(members)
@@ -611,22 +649,23 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x (packets only: tables version by field id, not by protocol id)\n", u.Package, u.ProtocolId)
 		h.WriteString("// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
-		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring> // the prefill's scalar-array fills\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <type_traits> // the enforced relocatability asserts\n")
-		if anyVariable {
-			// VARIABLE-LENGTH tables only: a unit of pointer-free tables pays
-			// for none of these headers (docs/SPEC-TABLES.md §2, the zero-cost gate)
-			h.WriteString("#include <new> // a node's lifetime starts in arena storage (placement new)\n")
-			h.WriteString("#include <cstdlib> // the arena's segments (the AUTHORING path may allocate)\n")
-			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
-		}
+		// The C spellings, as serialize.h uses them: <stdint.h>, not <cstdint>.
+		// The relocatability and standard-layout asserts read the COMPILER
+		// INTRINSICS, so <type_traits> — 124 headers on its own — is not here.
+		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n")
 		if anyKeyed {
 			// ENUM-KEYED arrays only: indexing one by None is a program error in
 			// EVERY configuration, and the accessor is where a runtime key can
-			// first be caught (docs/SPEC-TABLES.md §2.4). The refusal aborts, so it
-			// needs <cstdlib> whether or not NDEBUG keeps the assert.
-			h.WriteString("#include <cassert> // the keyed accessor's None refusal, in a debug build\n")
-			h.WriteString("#include <cstdlib> // and its abort, which NDEBUG does not remove\n")
-			h.WriteString("#include <iterator> // the keyed iterator's traits typedefs\n")
+			// first be caught (docs/SPEC-TABLES.md §2.4). It is the runtime's
+			// only refusal, so it is the only reason these two hooks are here.
+			h.WriteString(tableHooks)
+		}
+		if anyVariable {
+			// VARIABLE-LENGTH tables only: a unit of pointer-free tables pays
+			// for none of these headers (docs/SPEC-TABLES.md §2, the zero-cost gate)
+			h.WriteString(tableAllocatorHook)
+			h.WriteString("#include <new> // a node's lifetime starts in arena storage (placement new)\n")
+			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
 		}
 		fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 		names := make([]string, 0, len(g.includes))
@@ -690,9 +729,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			c.WriteString("// Compile this file to use <Name>FromJson / <Name>ToJson; a project that\n")
 			c.WriteString("// never reads or writes a text does not compile it and pays nothing.\n\n")
 			fmt.Fprintf(&c, "#include \"%sTable.h\"\n\n", f.Base)
-			c.WriteString("#include <cstdio> // the text form: number formatting\n")
-			c.WriteString("#include <cstdlib> // the text form: exact number conversion\n")
-			c.WriteString("#include <clocale> // the text form: the runtime's decimal point\n\n")
+			c.WriteString("#include <stdio.h> // the text form: number formatting\n")
+			c.WriteString("#include <stdlib.h> // the text form: exact number conversion\n")
+			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n\n")
 			c.WriteString(tableJsonWalk(u.Package))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
 			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, blocks: blocks, variable: variable, targets: targets,
