@@ -1978,15 +1978,8 @@ the wire, and keeps the flexibility that comes with it.
   loader. It costs the lazy paging, and §15 carries both that and the shape
   that keeps it; not built.
 
-  **The forgery battery and the fuzzer (§7.5) are hardening gates on the
-  REFUSAL PATH and they do not shape this runtime.** What they hold is that a
-  file `Open` refuses is refused cleanly — no crash, no read past the `length`
-  the caller passed, no undefined behaviour inside the check — because the
-  check runs on whatever bytes a disk hands back, including a corrupt or
-  truncated one. They do not ask `Open` to validate a graph, and the three
-  forgeries that OPEN by design (a reference leaving the region, a negative
-  delta past the base, a directory entry outside it) are exactly that
-  distinction written down.
+  The forgery battery and the fuzzer harden the REFUSAL PATH and shape nothing
+  here; §7.5 states what they hold and what they do not.
 
 - **`Open` checks the header and points, and this is the WHOLE check**,
   because nothing else is checked at all: **the magic, the byte order it
