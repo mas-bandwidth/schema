@@ -26,11 +26,6 @@ memory. A lever proven in one language is only a THEORY in the next — the
 register says where to look, and the port's own measurement says whether it
 holds there.
 
-The evidence the page was written from: the independent allocation instrument
-was discovered by the Dart reader, then again by the Elixir reader, then again
-by the JavaScript reader — three discoveries of one technique, each costing a
-read cycle, because nothing carried it from the first port to the next brief.
-
 ## How a technique enters
 
 Three rules, and the gate holds the second.
@@ -39,6 +34,8 @@ Three rules, and the gate holds the second.
    register lacks adds the method's section in that PR — its own cell carried,
    the rest not yet — exactly as a spec section lands with its code. A
    technique with no section is a technique the next port will rediscover.
+   A new section takes the next free number of its run: methods continue
+   `M`, instruments continue `I`, gates a port found continue `J`.
 2. **A not-yet cell cites the carry-across.** Every ❌ cell names the issue
    that carries the technique to that language (`❌ #NNN`), or the cell is a
    `—` with the reason the platform cannot. The gate goes red on a bare ❌.
@@ -63,17 +60,19 @@ and requires the finding that names each.
 - A technique is a `###` section. Its **Targets:** line names the slugs of its
   Makefile-checkable form, or `none` for a method the tree holds by inspection
   and by the instruments of other sections.
-- The cell table has the nine columns in this order: `cpp`, `c`, `rust`, `go`,
-  `cs`, `java`, `js`, `dart`, `elixir` — the languages the conformance harness
-  discovers as `test/conformance/<lang>/driver`.
+- The cell table's header names the columns, the reference first; the first
+  table's header is the order every table repeats, and its set is exactly the
+  languages the harness discovers as `test/conformance/<lang>/driver` — a
+  port's column is one of the shared edits docs/CONTRIBUTING.md tolerates.
 - A cell starts with one of three marks. **✅** carried — followed by what
   proves it. **❌ #NNN** not yet — the carry-across issue. **—** the platform
   cannot — followed by the reason.
 - **What a carried cell names.** In backticks: a Makefile target
   (`tables-…`, `conformance-…`), a Go test (`TestName`, in the root module or
-  in `test/go-tables`, both of which `make test` runs), or a source path. The
-  gate holds every named target to exist and to be RUN by the tree, and every
-  named test to exist. In a section whose Targets line is not `none`, a
+  in `test/go-tables`, both of which `make test` runs), or a source path with its
+  `:line` citation. The gate holds every named target to exist and to be RUN
+  by the tree, every named test to exist, and every cited path to be in the
+  tree — a line may drift, a path may not. In a section whose Targets line is not `none`, a
   carried cell must name at least one target or test; a cell that names none
   is held to the conventional names, `tables-<lang>-<slug>` for a port and
   `tables-<slug>` for the reference.
@@ -102,9 +101,9 @@ and a limit is an integer. Where the language can hold a reader on the stack
 sub-reader costs nothing and the reference uses one. Where it cannot (Java,
 Dart, JavaScript), the limit is the technique in its stated form.
 
-**Reference.** `internal/codegen/cpptable/cpptable.go:499-513` (the reader is
+**Reference.** `internal/codegen/cpptable/cpptable.go:524-538` (the reader is
 `buffer/size/offset`); the stack sub-reader at
-`internal/codegen/cpptable/codecs.go:1145`. The limit form:
+`internal/codegen/cpptable/codecs.go:1113`. The limit form:
 `internal/codegen/javatable/runtime.go:151-186`, with the reason written at
 `:151-158`.
 
@@ -123,7 +122,7 @@ red on the one row it was planted in.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/codecs.go:1145` | ✅ `internal/codegen/ctable/codecs.go:1074` | ✅ `internal/codegen/rusttable/runtime.go:364` | ✅ `internal/codegen/gotable/gotable.go:717` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ✅ `internal/codegen/javatable/codecs.go:1016` (the limit) | ✅ `internal/codegen/jstable/jstable.go:960` (the limit) | ✅ `internal/codegen/darttable/codecs.go:762` (the limit) | — a decoded BEAM term is an allocation and no buffer is caller-owned; the leg pins the per-case COUNT instead (`tables-elixir-alloc-audit`, docs/SPEC-TABLES.md) |
+| ✅ `internal/codegen/cpptable/codecs.go:1113` | ✅ `internal/codegen/ctable/codecs.go:1074` | ✅ `internal/codegen/rusttable/runtime.go:364` | ✅ `internal/codegen/gotable/gotable.go:717` | ✅ `internal/codegen/cstable/cstable.go:958` (a `ref struct`) | ✅ `internal/codegen/javatable/codecs.go:1016` (the limit) | ✅ `internal/codegen/jstable/jstable.go:960` (the limit) | ✅ `internal/codegen/darttable/codecs.go:762` (the limit) | — a decoded BEAM term is an allocation and no buffer is caller-owned; the leg pins the per-case COUNT instead (`tables-elixir-alloc-audit`, docs/SPEC-TABLES.md) |
 
 ### M2 — 64-bit values without boxing
 
@@ -134,8 +133,8 @@ form is byte-order-neutral by construction (M12) and one shape ports mirror.
 On an accelerator path (a block's `offset_of`, a cook's self-relative delta)
 the composed form is what keeps a deref allocation-free in JavaScript.
 
-**Reference.** `internal/codegen/cpptable/cpptable.go:490` (`put64` as two
-`put32`) and `:513` (`get64` as two `get32`). The JavaScript accelerator
+**Reference.** `internal/codegen/cpptable/cpptable.go:513` (`put64` as two
+`put32`) and `:538` (`get64` as two `get32`). The JavaScript accelerator
 paths: `internal/codegen/jstable/block.go:384` (`offset_of` from two u32
 reads, the reason at `:375-382`) and `internal/codegen/jstable/cook.go:513-517`
 (the delta from a u32 low half and an i32 high half).
@@ -152,7 +151,7 @@ per edge to 0.7 bytes per iteration (ceiling 8) once the delta was composed.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:490` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ✅ `internal/codegen/rusttable/runtime.go:352-356` (one `from_le_bytes`; nothing boxes) | ✅ `internal/codegen/gotable/gotable.go:710-714` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ✅ `internal/codegen/javatable/runtime.go:206-210` | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 |
+| ✅ `internal/codegen/cpptable/cpptable.go:513` | ✅ `internal/codegen/ctable/ctable.go:514-518` | ✅ `internal/codegen/rusttable/runtime.go:352-356` (one `from_le_bytes`; nothing boxes) | ✅ `internal/codegen/gotable/gotable.go:710-714` | ✅ `internal/codegen/cstable/cstable.go:986-991` | ✅ `internal/codegen/javatable/runtime.go:206-210` | — the accelerator paths compose (`internal/codegen/jstable/block.go:384`, `cook.go:513`); a 64-bit wire FIELD's value is a BigInt or loses precision, so those rows read one under a stated ceiling (`test/js-tables/main.mjs`, the RootConfig rows) | — an `int` is a 64-bit machine word and nothing boxes (`internal/codegen/darttable/block.go:213`) | ❌ #403 |
 
 ### M3 — A float never crosses a call
 
@@ -161,7 +160,7 @@ inline; only integers cross into the reader and writer. There is no `getF32`
 primitive, because a double crossing a call boundary on a JIT threshold boxes,
 and a generated codec must not depend on the compiler's inlining budget.
 
-**Reference.** `internal/codegen/cpptable/cpptable.go:543-546`
+**Reference.** `internal/codegen/cpptable/cpptable.go:572-573`
 (`table_bits_to_float` and its three siblings, `inline` free functions over
 `get32`/`get64`). The JavaScript statement of the rule:
 `internal/codegen/jstable/jstable.go:979-985` and `codecs.go:897-902`; elevated
@@ -180,7 +179,7 @@ reads as bytes per iteration on the pinned runtime.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:543-546` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ✅ `internal/codegen/rusttable/runtime.go:181-199` | ✅ `internal/codegen/gotable/codecs.go:781-786` | ❌ #404 | ✅ `internal/codegen/javatable/codecs.go:919-921` | ✅ `internal/codegen/jstable/codecs.go:1209-1219` | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
+| ✅ `internal/codegen/cpptable/cpptable.go:572-573` | ✅ `internal/codegen/ctable/ctable.go:565-568` | ✅ `internal/codegen/rusttable/runtime.go:181-199` | ✅ `internal/codegen/gotable/codecs.go:781-786` | ❌ #404 | ✅ `internal/codegen/javatable/codecs.go:919-921` | ✅ `internal/codegen/jstable/codecs.go:1209-1219` | ❌ #404 | — a BEAM float is a boxed term whatever the call shape; `R.f32_bits` costs what the term costs |
 
 ### M4 — The codec is shaped for the optimizer
 
@@ -192,8 +191,8 @@ qualifier or gives noalias by construction (Rust's `&mut`), the body takes it.
 Where the language has neither a directive nor a qualifier, the shape it can
 take is M4b's.
 
-**Reference.** `internal/codegen/cpptable/cpptable.go:353-359` (the macro,
-with the reason at `:344-352`) and `codecs.go:672-679` (the stop at the
+**Reference.** `internal/codegen/cpptable/cpptable.go:358-364` (the macro,
+with the reason at `:350-357`) and `codecs.go:732` (the stop at the
 variable class). Rust: `internal/codegen/rusttable/runtime.go:220-363` and
 `codecs.go:663-669`. C: `internal/codegen/ctable/ctable.go:275-283`, pinned by
 `TestCForceInlineStopsAtTheVariableClass`.
@@ -213,7 +212,7 @@ from a fixed one, is red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:353-359` `TestPointerSurfaceEmitted` | ✅ `internal/codegen/ctable/ctable.go:275-283` `TestCForceInlineStopsAtTheVariableClass` | ✅ `internal/codegen/rusttable/runtime.go:220` (`#[inline(always)]`; noalias by construction) | ❌ #362 | ❌ #405 | — the JIT takes no inlining directive and no aliasing qualifier; M4b is the shape | — no inlining directive and no aliasing qualifier for V8; M4b is the shape | — no inlining directive and no aliasing qualifier for the AOT compiler; M4b is the shape | — no inlining directive and no aliasing qualifier for the BEAM; M4b is the shape |
+| ✅ `internal/codegen/cpptable/cpptable.go:358-364` `TestPointerSurfaceEmitted` | ✅ `internal/codegen/ctable/ctable.go:275-283` `TestCForceInlineStopsAtTheVariableClass` | ✅ `internal/codegen/rusttable/runtime.go:220` (`#[inline(always)]`; noalias by construction) | ❌ #362 | ❌ #405 | — the JIT takes no inlining directive and no aliasing qualifier; M4b is the shape | — no inlining directive and no aliasing qualifier for V8; M4b is the shape | — no inlining directive and no aliasing qualifier for the AOT compiler; M4b is the shape | — no inlining directive and no aliasing qualifier for the BEAM; M4b is the shape |
 
 ### M4b — The codec is self-contained
 
@@ -254,9 +253,9 @@ the caller never does the shift. The runtime's own bounds check is not the
 technique: it is absent in C, silent past the array in JavaScript, and names
 an index rather than a key everywhere else.
 
-**Reference.** `internal/codegen/cpptable/cpptable.go:228-278`
+**Reference.** `internal/codegen/cpptable/cpptable.go:222-260`
 (`TableKeyed<T,E>`, `RefuseKey`); golden
-`testdata/golden/tables/examples/KeyedTable.h:241-286`.
+`testdata/golden/tables/examples/KeyedTable.h:279-333`.
 
 **Proven in.** C++; the None-only guard was found and fixed in JavaScript
 (#377 names the same gap in C).
@@ -287,9 +286,9 @@ cap. A fixed-class reader that has no variable class still carries kind 17 in
 its fixed-width skip row, so a pointered wire reads as unknown fields rather
 than as damage.
 
-**Reference.** `internal/codegen/cpptable/pointers.go:525-530` (the table),
-`:245` (the numbering), `:257-388` (the map and the OPEN refusal);
-`TablePackMap` at `internal/codegen/cpptable/arena.go:315-318`. The skip row:
+**Reference.** `internal/codegen/cpptable/pointers.go:545` (the table),
+`:245` (the numbering), `:257-394` (the map and the OPEN refusal);
+`TablePackMap` at `internal/codegen/cpptable/arena.go:310`. The skip row:
 `case 4: case 8: case 10: case 17:` in every fixed-class runtime.
 
 **Proven in.** C++ (#373 the identity map, #376 the flat table).
@@ -318,8 +317,8 @@ per-row object is what the technique excludes, and where a convenience
 iterator allocates one, the emitter says so at the site and offers the
 allocation-free spelling beside it.
 
-**Reference.** `internal/codegen/cpptable/block.go:114-139`
-(`TableBlockRows<T>`, `:626-631` the accessor). The managed spellings:
+**Reference.** `internal/codegen/cpptable/block.go:120`
+(`TableBlockRows<T>`, `:626-627` the accessor). The managed spellings:
 `internal/codegen/javatable/block.go:420-432` (`<F>Count()`/`<F>At(int)` as an
 offset; the allocating record iterator named at `:130-136`),
 `internal/codegen/darttable/block.go:217-247` (`<F>Cursor()`, `<F>At(i,
@@ -336,7 +335,7 @@ table and 0.0 bytes per iteration in JavaScript's (`RenderFrame ships walk`).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/block.go:114-139` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ❌ #409 (an eager list of `count` sub-binaries per call) |
+| ✅ `internal/codegen/cpptable/block.go:120` | ✅ `internal/codegen/ctable/block.go:109-125` | ✅ `internal/codegen/rusttable/block.go:583-598` (a slice over the region) | ✅ `internal/codegen/gotable/block.go:243-256` | ✅ `internal/codegen/cstable/block.go:781-790` | ✅ `internal/codegen/javatable/block.go:420-432` | ✅ `internal/codegen/jstable/block.go:382-386` | ✅ `internal/codegen/darttable/block.go:217-247` | ❌ #409 (an eager list of `count` sub-binaries per call) |
 
 ### M8 — The cook opens in O(1)
 
@@ -349,7 +348,7 @@ alignment as a residue. Nothing per node. A deref is bounded where the
 language gives the reader a region to bound it against.
 
 **Reference.** `internal/codegen/cpptable/cook.go:150-173`; golden
-`testdata/golden/tables/examples/TablesTable.h:461-518`.
+`testdata/golden/tables/examples/TablesTable.h:492-540`.
 
 **Proven in.** C++.
 
@@ -374,7 +373,7 @@ codec per table. A byte comparison across units holds it. The variable class
 rides the same walk through adapters (#388), with a shared node labeled once
 as `&node` and named by its label after (M14).
 
-**Reference.** `internal/codegen/cpptable/json.go:91-1695` between the
+**Reference.** `internal/codegen/cpptable/json.go:166-2192` between the
 `---- json walk: begin/end ----` markers; `tables-json-walk` compares every
 generated unit's walk; `tables-json-graph-walk` the variable class's.
 
@@ -401,9 +400,9 @@ proves nothing falls through to the default. Who calls the allocator is per
 form (docs/SPEC-TABLES.md): the block form takes a caller-provided allocator;
 a managed backend allocates inside its runtime and says so.
 
-**Reference.** `internal/codegen/cpptable/cpptable.go:141-174`;
-`TableAllocator` at `internal/codegen/cpptable/arena.go:59-77`;
-`test/tables/hooks_main.cpp:40-70, 183-209`.
+**Reference.** `internal/codegen/cpptable/cpptable.go:141-168`;
+`TableAllocator` at `internal/codegen/cpptable/arena.go:59-74`;
+`test/tables/hooks_main.cpp:18-90`.
 
 **Proven in.** C++ (#386).
 
@@ -425,9 +424,9 @@ offset against the numbers the compiler computed, including each array's pitch
 constant against the row's own size — two independent derivations held against
 each other. A producer that disagrees is refused before any row is read.
 
-**Reference.** `internal/codegen/cpptable/cook.go:334-341` and
-`block.go:491-533` (`static_assert`); C's C89-portable macro at
-`internal/codegen/ctable/ctable.go:288-298`.
+**Reference.** `internal/codegen/cpptable/cook.go:334-336` and
+`block.go:491-492` (`static_assert`); C's C89-portable macro at
+`internal/codegen/ctable/ctable.go:291-293`.
 
 **Proven in.** C++.
 
@@ -441,7 +440,7 @@ asserts on a foreign target.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cook.go:334-341` | ✅ `internal/codegen/ctable/ctable.go:288-298` | ✅ `internal/codegen/rusttable/block.go:87-93` `TestCookLayoutIsAssertedAtCompileTime` | ✅ `internal/codegen/gotable/block.go:491-572` (at package init) | ✅ `internal/codegen/cstable/block.go:431-437` | ✅ `internal/codegen/javatable/block.go:479` | ✅ `internal/codegen/jstable/block.go:610-639` | — no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TABLES.md) | — no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codegen/elixirtable/elixirtable.go:15-18`) |
+| ✅ `internal/codegen/cpptable/cook.go:334-336` | ✅ `internal/codegen/ctable/ctable.go:291-293` | ✅ `internal/codegen/rusttable/block.go:87-93` `TestCookLayoutIsAssertedAtCompileTime` | ✅ `internal/codegen/gotable/block.go:491-572` (at package init) | ✅ `internal/codegen/cstable/block.go:431-437` | ✅ `internal/codegen/javatable/block.go:479` | ✅ `internal/codegen/jstable/block.go:610-639` | — no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TABLES.md) | — no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codegen/elixirtable/elixirtable.go:15-18`) |
 
 ### M12 — Byte order is the reader's, not the host's
 
@@ -451,9 +450,9 @@ a foreign file twice over: the magic, read in the machine's own order and
 compared, and then the order word. The cook writer takes the target's order
 as a parameter.
 
-**Reference.** `internal/codegen/cpptable/cpptable.go:490-513`; the cook
-magic and order word at `testdata/golden/tables/examples/TablesTable.h:404-419`
-and `:469-471`.
+**Reference.** `internal/codegen/cpptable/cpptable.go:513-538`; the cook
+magic and order word at `testdata/golden/tables/examples/TablesTable.h:435-449`
+and `:501-502`.
 
 **Proven in.** C++ (#303).
 
@@ -467,7 +466,7 @@ host order and requires red on the target while green on the host.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cpptable.go:490-513` | ✅ `internal/codegen/ctable/ctable.go:503-518` | ✅ `internal/codegen/rusttable/runtime.go:334-354` | ✅ `internal/codegen/gotable/gotable.go:698-714` | ✅ `internal/codegen/cstable/cstable.go:971-991` | ✅ `internal/codegen/javatable/block.go:101-117` | ✅ `internal/codegen/jstable/jstable.go` (every DataView read passes `true`) | ✅ `internal/codegen/darttable/runtime.go` (`Endian.little` on every read) | ✅ `internal/codegen/elixirtable/block.go:242` (every segment names `little`) |
+| ✅ `internal/codegen/cpptable/cpptable.go:513-538` | ✅ `internal/codegen/ctable/ctable.go:503-518` | ✅ `internal/codegen/rusttable/runtime.go:334-354` | ✅ `internal/codegen/gotable/gotable.go:698-714` | ✅ `internal/codegen/cstable/cstable.go:971-991` | ✅ `internal/codegen/javatable/block.go:101-117` | ✅ `internal/codegen/jstable/jstable.go` (every DataView read passes `true`) | ✅ `internal/codegen/darttable/block.go` `internal/codegen/darttable/cook.go` (`Endian.little` on every read) | ✅ `internal/codegen/elixirtable/block.go:242` (every segment names `little`) |
 
 ### M13 — Descriptors are constants
 
@@ -478,7 +477,7 @@ a language needs a factory to break an initialization cycle, the factory is
 the one exception and is named. The plain-cache idiom (read a static, build on
 null, store back, no lock) is banned by name.
 
-**Reference.** `testdata/golden/tables/examples/KeyedTable.h:2199-2206`
+**Reference.** `testdata/golden/tables/examples/KeyedTable.h:2245-2249`
 (`static const` inside an `inline` accessor). The safe-publication form:
 `internal/codegen/javatable/codecs.go:1334` (the holder class), gated by
 `TestJavaDescriptorsAreSafelyPublished`.
@@ -495,7 +494,7 @@ plain-cache line.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `testdata/golden/tables/examples/KeyedTable.h:2199-2206` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ✅ `internal/codegen/rusttable/descriptors.go` (`&'static`) | ✅ `internal/codegen/gotable/codecs.go:1116-1138` | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ✅ `internal/codegen/jstable/codecs.go:1301-1324` (built once on first use, frozen; one thread) | ✅ `docs/SPEC-TABLES.md` (const descriptors, static tear-offs in the constant pool) | ✅ `internal/codegen/elixirtable/descriptors.go:4-12` (module attributes) |
+| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ✅ `internal/codegen/rusttable/descriptors.go` (`&'static`) | ✅ `internal/codegen/gotable/codecs.go:1116-1138` | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ✅ `internal/codegen/jstable/codecs.go:1301-1324` (built once on first use, frozen; one thread) | ✅ `internal/codegen/darttable/descriptors.go:75` (`const` descriptors, static tear-offs in the constant pool) | ✅ `internal/codegen/elixirtable/descriptors.go:4-12` (module attributes) |
 
 ### M14 — The `&node` label in the text form
 
@@ -540,8 +539,7 @@ nothing); `test/java-tables/src/Main.java:209-223`;
 `test/js-tables/main.mjs:1124-1153` (settle); `test/dart-tables/gcgate.dart`
 and `DART_GC_FLAGS` in the Makefile; `test/conformance/elixir/driver_impl.ex:1032-1086`.
 
-**Proven in.** Go; rediscovered in Dart, Elixir and JavaScript — the evidence
-this page was written from.
+**Proven in.** Go; the managed forms in Java, JavaScript, Dart and Elixir.
 
 **Measured effect.** Go: exact 0 on six paths. Java: wire read/save exactly
 0, block row walk and cook read exactly 0, open one handle per file. JavaScript:
@@ -654,7 +652,7 @@ the block's is not (#387), so a port holds it itself.
 
 **Reference.** `test/conformance/elixir/driver_impl.ex:1298`
 (`BlockLead.run/1`: every image × every lead); the enumerated pass in the
-reference fuzzer at `test/tables/block_fuzz_main.cpp:939-942`.
+reference fuzzer at `test/tables/block_fuzz_main.cpp:940`.
 
 **Proven in.** Elixir (#369).
 
@@ -835,7 +833,7 @@ table of controls.
 by a gate, so the documented surface goes red with the code rather than
 drifting from it.
 
-**Reference.** `test/tables/cook_main.cpp:1026-1094` (the `usage` mode,
+**Reference.** `test/tables/cook_main.cpp:1394` (`mode_usage`,
 under `tables-cook-open`); `tables-dart-usage` runs the page's Dart verbatim
 against the golden.
 
@@ -892,9 +890,8 @@ refusal, `SCHEMA_JS_ALLOC_ANY_NODE`).
 
 **Proven in.** JavaScript.
 
-**Measured effect.** The allocation the gate exists to catch was invisible
-on a newer V8 and steady at sixteen bytes a call on the pinned one; measuring
-on whatever `node` a PATH lookup found is how it hid for three CI reds.
+**Measured effect.** The allocation the gate exists to catch is invisible on
+a newer V8 and steady at sixteen bytes a call on the pinned one.
 
 **Negative control.** Running the gate on another major must refuse.
 

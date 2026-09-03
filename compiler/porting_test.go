@@ -13,14 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 )
-
-// portingLanguages is the column order the register uses; the reference is
-// first because its target names carry no language segment.
-var portingLanguages = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir"}
 
 // portingRow is one technique section of the register: its heading, the
 // target slugs its `Targets:` line names (none for a method the tree holds
@@ -29,6 +26,14 @@ type portingRow struct {
 	Title string
 	Slugs []string
 	Cells map[string]string
+}
+
+// portingRegister is the parsed page: the column order its first table
+// declares — the reference first, because its target names carry no language
+// segment — and every technique section, each holding exactly those columns.
+type portingRegister struct {
+	Languages []string
+	Rows      []portingRow
 }
 
 var (
@@ -47,8 +52,10 @@ var (
 
 // parsePortingRegister reads the register's technique sections. A section is
 // a `### ` heading, a `**Targets:**` line, and a table whose header row names
-// the language columns and whose single data row holds the cells.
-func parsePortingRegister(text string) ([]portingRow, error) {
+// the language columns and whose single data row holds the cells. The first
+// table's header is the column order; every later table must repeat it.
+func parsePortingRegister(text string) (*portingRegister, error) {
+	reg := &portingRegister{}
 	var rows []portingRow
 	var cur *portingRow
 	lines := strings.Split(text, "\n")
@@ -78,24 +85,31 @@ func parsePortingRegister(text string) ([]portingRow, error) {
 		if cur.Cells != nil || !strings.HasPrefix(line, "|") {
 			continue
 		}
-		header := splitTableRow(line)
-		if len(header) != len(portingLanguages) {
-			return nil, fmt.Errorf("%s: the table has %d columns, the register has %d languages", cur.Title, len(header), len(portingLanguages))
+		var header []string
+		for _, h := range splitTableRow(line) {
+			header = append(header, strings.TrimSpace(h))
 		}
-		for j, h := range header {
-			if strings.TrimSpace(h) != portingLanguages[j] {
-				return nil, fmt.Errorf("%s: column %d is %q, want %q", cur.Title, j, strings.TrimSpace(h), portingLanguages[j])
+		if reg.Languages == nil {
+			seen := map[string]bool{}
+			for _, h := range header {
+				if h == "" || seen[h] {
+					return nil, fmt.Errorf("%s: the first table's header names %q twice or names an empty column", cur.Title, h)
+				}
+				seen[h] = true
 			}
+			reg.Languages = header
+		} else if strings.Join(header, "|") != strings.Join(reg.Languages, "|") {
+			return nil, fmt.Errorf("%s: the table's columns are %q, the register's are %q", cur.Title, header, reg.Languages)
 		}
 		if i+2 >= len(lines) {
 			return nil, fmt.Errorf("%s: the table has no data row", cur.Title)
 		}
 		data := splitTableRow(strings.TrimRight(lines[i+2], "\r"))
-		if len(data) != len(portingLanguages) {
-			return nil, fmt.Errorf("%s: the data row has %d cells, want %d", cur.Title, len(data), len(portingLanguages))
+		if len(data) != len(reg.Languages) {
+			return nil, fmt.Errorf("%s: the data row has %d cells, want %d", cur.Title, len(data), len(reg.Languages))
 		}
 		cur.Cells = map[string]string{}
-		for j, lang := range portingLanguages {
+		for j, lang := range reg.Languages {
 			cur.Cells[lang] = strings.TrimSpace(data[j])
 		}
 		i += 2
@@ -108,7 +122,8 @@ func parsePortingRegister(text string) ([]portingRow, error) {
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("no technique sections found")
 	}
-	return rows, nil
+	reg.Rows = rows
+	return reg, nil
 }
 
 // splitTableRow splits one Markdown table row into its cells, dropping the
@@ -334,8 +349,9 @@ func conventionalTargets(lang string, slugs []string) []string {
 }
 
 // cellNames reads what a carried cell names in backticks: the Makefile
-// targets and the Go tests. Source paths are cited, not checked.
-func cellNames(cell string) (targets, tests []string) {
+// targets, the Go tests, and the source paths (a path with its `:line`
+// citation stripped — a line may drift, a path may not).
+func cellNames(cell string) (targets, tests, paths []string) {
 	for _, m := range portingBacktick.FindAllStringSubmatch(cell, -1) {
 		name := m[1]
 		switch {
@@ -343,13 +359,16 @@ func cellNames(cell string) (targets, tests []string) {
 			targets = append(targets, name)
 		case portingTestName.MatchString(name):
 			tests = append(tests, name)
+		case strings.Contains(name, "/"):
+			paths = append(paths, strings.SplitN(name, ":", 2)[0])
 		}
 	}
-	return targets, tests
+	return targets, tests, paths
 }
 
 // portingTree is what the register is held to.
 type portingTree struct {
+	root     string
 	registry []string
 	exists   map[string]bool
 	reached  map[string]bool
@@ -358,29 +377,33 @@ type portingTree struct {
 
 // checkPortingRegister holds the register to the tree. Every finding is one
 // string naming the technique, the language and what is wrong.
-func checkPortingRegister(rows []portingRow, tree portingTree) []string {
+func checkPortingRegister(reg *portingRegister, tree portingTree) []string {
 	var findings []string
 	registered := map[string]bool{}
 	for _, lang := range tree.registry {
 		registered[lang] = true
-		found := false
-		for _, l := range portingLanguages {
-			if l == lang {
-				found = true
-			}
-		}
-		if !found {
+		if !slices.Contains(reg.Languages, lang) {
 			findings = append(findings, fmt.Sprintf("registry language %q has no column in the register", lang))
 		}
 	}
-	for _, row := range rows {
-		for _, lang := range portingLanguages {
+	for _, lang := range reg.Languages {
+		if !registered[lang] {
+			findings = append(findings, fmt.Sprintf("register column %q is no language the harness discovers", lang))
+		}
+	}
+	for _, row := range reg.Rows {
+		for _, lang := range reg.Languages {
 			cell := row.Cells[lang]
 			switch {
 			case strings.HasPrefix(cell, "✅"):
-				targets, tests := cellNames(cell)
+				targets, tests, paths := cellNames(cell)
 				if len(row.Slugs) > 0 && registered[lang] && len(targets) == 0 && len(tests) == 0 {
 					targets = conventionalTargets(lang, row.Slugs)
+				}
+				for _, p := range paths {
+					if _, err := os.Stat(filepath.Join(tree.root, filepath.FromSlash(p))); err != nil {
+						findings = append(findings, fmt.Sprintf("%s / %s: carried, but the cited path %q is not in the tree", row.Title, lang, p))
+					}
 				}
 				for _, name := range targets {
 					switch {
@@ -455,6 +478,7 @@ func readPortingInputs(t *testing.T) (register string, tree portingTree) {
 	if !tree.exists["test"] {
 		t.Fatal("the Makefile parse found no `test` rule")
 	}
+	tree.root = root
 	tree.registry, err = discoverDrivers(root)
 	if err != nil {
 		t.Fatal(err)
@@ -474,13 +498,14 @@ func readPortingInputs(t *testing.T) (register string, tree portingTree) {
 // as committed.
 func TestPortingRegisterHoldsTheTree(t *testing.T) {
 	register, tree := readPortingInputs(t)
-	rows, err := parsePortingRegister(register)
+	reg, err := parsePortingRegister(register)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range checkPortingRegister(rows, tree) {
+	for _, f := range checkPortingRegister(reg, tree) {
 		t.Error(f)
 	}
+	rows := reg.Rows
 	carried, notYet, cannot := 0, 0, 0
 	for _, r := range rows {
 		for _, c := range r.Cells {
@@ -503,13 +528,14 @@ func TestPortingRegisterHoldsTheTree(t *testing.T) {
 // names it, and only that finding.
 func TestPortingRegisterGateGoesRed(t *testing.T) {
 	register, tree := readPortingInputs(t)
-	rows, err := parsePortingRegister(register)
+	reg, err := parsePortingRegister(register)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(checkPortingRegister(rows, tree)); n != 0 {
+	if n := len(checkPortingRegister(reg, tree)); n != 0 {
 		t.Fatalf("the committed register has %d findings; the control needs a green baseline", n)
 	}
+	rows := reg.Rows
 
 	// the row the plants go into: one with a Makefile-checkable form
 	checkable := -1
@@ -537,11 +563,13 @@ func TestPortingRegisterGateGoesRed(t *testing.T) {
 			copied[i] = portingRow{Title: r.Title, Slugs: r.Slugs, Cells: cells}
 		}
 		copied[checkable].Cells[lang] = cell
-		findings := checkPortingRegister(copied, tree)
+		findings := checkPortingRegister(&portingRegister{Languages: reg.Languages, Rows: copied}, tree)
 		if len(findings) != 1 || !strings.Contains(findings[0], want) {
 			t.Errorf("%s: want one finding containing %q, got %q", name, want, findings)
 		}
 	}
+	tree.exists["tables-"+lang+"-planted"], tree.reached["tables-"+lang+"-planted"] = true, true
+	plant("a carried cell citing a path not in the tree", "✅ `internal/codegen/gotable/nonesuch.go:717` `tables-"+lang+"-planted`", "is not in the tree")
 	plant("a carried cell naming no existing target", "✅ `tables-"+lang+"-no-such-gate`", "has no target")
 	plant("a carried cell naming a target nothing reaches", "✅ `"+unreached+"`", "nothing reaches it")
 	plant("a carried cell naming no test that exists", "✅ `TestNoSuchGate`", "no Go test")
@@ -550,9 +578,21 @@ func TestPortingRegisterGateGoesRed(t *testing.T) {
 	plant("a cannot cell with no reason", "— ", "no stated reason")
 	plant("a cell with no marker", "carried", "starts with none of")
 
-	// the parser's own controls: a column renamed, and a section with no table
+	// the registry's own controls: a discovered language with no column, and a
+	// column no driver backs, each named by the finding
+	extra := portingTree{root: tree.root, registry: append(slices.Clone(tree.registry), "zig"), exists: tree.exists, reached: tree.reached, tests: tree.tests}
+	if f := checkPortingRegister(reg, extra); len(f) != 1 || !strings.Contains(f[0], `"zig" has no column`) {
+		t.Errorf("a tenth driver with no column: want one finding naming it, got %q", f)
+	}
+	fewer := portingTree{root: tree.root, registry: tree.registry[1:], exists: tree.exists, reached: tree.reached, tests: tree.tests}
+	if f := checkPortingRegister(reg, fewer); len(f) != 1 || !strings.Contains(f[0], `"`+tree.registry[0]+`" is no language`) {
+		t.Errorf("a column with no driver: want one finding naming it, got %q", f)
+	}
+
+	// the parser's own controls: a column renamed in one table, and a section
+	// with no table
 	if _, err := parsePortingRegister(strings.Replace(register, "| cpp |", "| c++ |", 1)); err == nil {
-		t.Error("the parser accepted a register whose first column is not cpp")
+		t.Error("the parser accepted a register whose tables do not agree on the columns")
 	}
 	if _, err := parsePortingRegister(register + "\n### A technique with no table\n\n**Targets:** none\n"); err == nil {
 		t.Error("the parser accepted a section with no cell table")
