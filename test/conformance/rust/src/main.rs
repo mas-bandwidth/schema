@@ -257,6 +257,11 @@ fn codecs() -> Vec<Codec> {
             tabledemo::keyed_config_from_json, tabledemo::keyed_config_to_json_measure, tabledemo::keyed_config_to_json
         ),
         codec!(
+            "tabledemo", "PackConfig", tabledemo, tabledemo::PackConfig,
+            tabledemo::pack_config_measure, tabledemo::pack_config_save, tabledemo::pack_config_load,
+            tabledemo::pack_config_from_json, tabledemo::pack_config_to_json_measure, tabledemo::pack_config_to_json
+        ),
+        codec!(
             "tblv1", "Cfg", tblv1, tblv1::Cfg,
             tblv1::cfg_measure, tblv1::cfg_save, tblv1::cfg_load,
             tblv1::cfg_from_json, tblv1::cfg_to_json_measure, tblv1::cfg_to_json
@@ -312,17 +317,34 @@ impl Aligned {
         if bytes < data.len() as i64 {
             bytes = data.len() as i64;
         }
-        let layout = Layout::from_size_align(bytes.max(1) as usize, 64).unwrap();
-        let base = unsafe { alloc_zeroed(layout) };
-        if base.is_null() {
+        Aligned::placed(data, bytes, 0)
+    }
+
+    // The buffer the CALLER holds: exactly `claim` bytes, `lead` bytes past an
+    // aligned base, with what fits copied in and the rest zeroed. A claim
+    // SHORT of the file is a truncation, and the allocation IS the claim, so a
+    // reader that walks past what it was given walks off the end of a real
+    // allocation.
+    fn placed(data: &[u8], claim: i64, lead: usize) -> Aligned {
+        let want = (claim as usize + lead).max(1);
+        let layout = Layout::from_size_align(want, 64).unwrap();
+        let allocation = unsafe { alloc_zeroed(layout) };
+        if allocation.is_null() {
             fail("out of memory");
         }
-        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), base, data.len()) };
+        let base = unsafe { allocation.add(lead) };
+        let copy = (claim as usize).min(data.len());
+        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), base, copy) };
         Aligned {
-            base,
+            base: allocation,
             layout,
-            bytes,
+            bytes: claim,
         }
+    }
+
+    // the base the caller passes, which is `lead` bytes into the allocation
+    fn at(&self, lead: usize) -> *mut u8 {
+        unsafe { self.base.add(lead) }
     }
 }
 
@@ -330,6 +352,162 @@ impl Drop for Aligned {
     fn drop(&mut self) {
         unsafe { dealloc(self.base, self.layout) };
     }
+}
+
+// ---------------------------------------------------------------------------
+// the block's canonical ROW dump (docs/SPEC-TABLES.md §19.2)
+// ---------------------------------------------------------------------------
+//
+// The `block` surface says only that an image OPENS, which a reader passes by
+// checking the prologue and stopping. This is the value-for-value read, so two
+// implementations' reads of the same bytes are byte-compared — and it is
+// produced from §8's DESCRIPTORS and nothing else, no generated row struct,
+// because that is the claim §19.2 makes for them.
+//
+// A FLOAT is its IEEE-754 BIT PATTERN. A block row is a byte-identical
+// projection, so its bits are the fact; a decimal spelling would be a rounding
+// rule two languages have to agree on for no gain.
+
+use blockdemo::TableBlockInfo;
+
+unsafe fn dump_scalar_block(at: *const u8, kind: u8, width: u32) -> String {
+    unsafe {
+        match kind {
+            1 => {
+                if *at != 0 {
+                    "true".to_string()
+                } else {
+                    "false".to_string()
+                }
+            }
+            10 => format!("{:#010x}", std::ptr::read_unaligned(at as *const u32)),
+            11 => format!("{:#018x}", std::ptr::read_unaligned(at as *const u64)),
+            2..=5 => {
+                let v: i64 = match width {
+                    1 => std::ptr::read_unaligned(at as *const i8) as i64,
+                    2 => std::ptr::read_unaligned(at as *const i16) as i64,
+                    4 => std::ptr::read_unaligned(at as *const i32) as i64,
+                    _ => std::ptr::read_unaligned(at as *const i64),
+                };
+                format!("{v}")
+            }
+            _ => {
+                let v: u64 = match width {
+                    1 => *at as u64,
+                    2 => std::ptr::read_unaligned(at as *const u16) as u64,
+                    4 => std::ptr::read_unaligned(at as *const u32) as u64,
+                    _ => std::ptr::read_unaligned(at as *const u64),
+                };
+                format!("{v}")
+            }
+        }
+    }
+}
+
+// One record's leaves, at two spaces, in descriptor order. Out-of-line arrays
+// are the caller's business: they are a section of their own, not a leaf.
+unsafe fn dump_block_record(out: &mut String, storage: *const u8, info: &'static TableBlockInfo, path: &str) {
+    unsafe {
+        for f in info.fields.iter() {
+            if f.out_of_line {
+                continue;
+            }
+            let name = join(path, f.name);
+            if f.counted {
+                // a string or a `bytes`: the used length lives at count_offset
+                let used = read_i32(storage.add(f.count_offset as usize));
+                if used < 0 || used > f.array_bound {
+                    fail(&format!(
+                        "{}.{} carries a used length of {used}, outside [ 0, {} ]",
+                        info.name, f.name, f.array_bound
+                    ));
+                }
+                out.push_str(&format!("  {name} = {}\n", dump_text(storage.add(f.offset as usize), used)));
+            } else {
+                let slots = if f.is_array { f.array_bound as i64 } else { 1 };
+                for slot in 0..slots {
+                    let at = if f.is_array {
+                        format!("{name}[{slot}]")
+                    } else {
+                        name.clone()
+                    };
+                    let value = storage.add(f.offset as usize + (slot * f.elem_size as i64) as usize);
+                    match f.element {
+                        Some(element) => dump_block_record(out, value, element(), &at),
+                        None => out.push_str(&format!(
+                            "  {at} = {}\n",
+                            dump_scalar_block(value, f.kind, f.elem_size)
+                        )),
+                    }
+                }
+            }
+            if f.optional {
+                let present = *storage.add(f.present_offset as usize) != 0;
+                out.push_str(&format!(
+                    "  {name}#present = {}\n",
+                    if present { "true" } else { "false" }
+                ));
+            }
+        }
+    }
+}
+
+// the whole dump of one opened block: the projection's own fields, then every
+// out-of-line array in declaration order, row by row
+unsafe fn dump_block(base: *const u8, info: &'static TableBlockInfo) -> String {
+    unsafe {
+        let mut out = format!("projection {} @0\n", info.name);
+        dump_block_record(&mut out, base, info, "");
+        for f in info.fields.iter() {
+            if !f.out_of_line {
+                continue;
+            }
+            let offset_of = read_u64(base.add(f.offset_of_offset as usize));
+            let count = read_u32(base.add(f.count_offset as usize));
+            let stride = read_u32(base.add(f.stride_offset as usize));
+            let row = match f.element {
+                Some(element) => element(),
+                None => fail(&format!("{} names no element", f.name)),
+            };
+            out.push_str(&format!(
+                "array {} {} @{offset_of} count={count} stride={stride}\n",
+                f.name, row.name
+            ));
+            for r in 0..count {
+                let at = offset_of + r as u64 * stride as u64;
+                out.push_str(&format!("row {r} @{at}\n"));
+                dump_block_record(&mut out, base.add(at as usize), row, "");
+            }
+        }
+        out
+    }
+}
+
+fn block_dump(name: &str, data: &[u8]) -> String {
+    let storage = Aligned::new(data, -1);
+    unsafe {
+        if name.starts_with("block_render") {
+            match blockdemo::RenderFrameBlock::open(storage.base, storage.bytes) {
+                Some(block) => dump_block(block.base(), blockdemo::RenderFrameBlock::type_info()),
+                None => fail(&format!("{name} did not open")),
+            }
+        } else if name.starts_with("block_padded") {
+            match blockdemo::PaddedFrameBlock::open(storage.base, storage.bytes) {
+                Some(block) => dump_block(block.base(), blockdemo::PaddedFrameBlock::type_info()),
+                None => fail(&format!("{name} did not open")),
+            }
+        } else {
+            fail(&format!("no block named {name}"))
+        }
+    }
+}
+
+fn read_u64(p: *const u8) -> u64 {
+    unsafe { std::ptr::read_unaligned(p as *const u64) }
+}
+
+fn read_u32(p: *const u8) -> u32 {
+    unsafe { std::ptr::read_unaligned(p as *const u32) }
 }
 
 fn open_block(name: &str, data: &[u8], extent: i64) -> bool {
@@ -408,6 +586,37 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
+fn surface_block_dump(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("block") {
+        let data = slurp(&f[3]);
+        let text = block_dump(&f[1], &data);
+        spill(out, &f[1], text.as_bytes());
+    }
+}
+
+// json-hostile: one tree per rule the text form states (§16.2, §16.3, §17.5).
+// The answer is the REPORT the read produces, or `refused` — the same
+// two-valued verdict the engine's own gate holds, over the same data.
+fn surface_json_hostile(manifest: &Manifest, out: &str) {
+    let rows = codecs();
+    for f in manifest.of_kind("json-hostile") {
+        let codec = find_codec(&rows, &f[2], &f[3]);
+        // the tree is what `schema pack` reads, so the text is <tree>/<root>.json (§17)
+        let text = slurp(&format!("{}/{}.json", f[4], f[3]));
+        let mut report = Report::default();
+        let ok = (codec.json_read)(&text, &mut report).is_some();
+        let verdict = if !ok || report.malformed {
+            "refused\n".to_string()
+        } else {
+            format!(
+                "{},{},{},{},false\n",
+                report.unknown, report.kind_mismatch, report.clamped, report.duplicate
+            )
+        };
+        spill(out, &f[1], verdict.as_bytes());
+    }
+}
+
 fn surface_block(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("block") {
         let data = slurp(&f[3]);
@@ -423,15 +632,48 @@ fn surface_block(manifest: &Manifest, out: &str) {
 fn surface_forgery(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("forgery") {
         if f[2] != "block" {
-            continue; // the cook's battery is not data yet
+            continue; // the cook's battery is the surface beside this one
         }
         let data = slurp(&f[4]);
         let extent: i64 = parse_int(&f[5]);
+        // every block row is read out of an ALIGNED base; the pointer column
+        // is the cook battery's, and it is read here rather than assumed
+        if f[6] != "0" {
+            fail(&format!("{}: a block forgery with pointer {}", f[1], f[6]));
+        }
         let verdict = if open_block(&f[3], &data, extent) {
             "open\n"
         } else {
             "refuse\n"
         };
+        spill(out, &f[1], verdict.as_bytes());
+    }
+}
+
+// The COOK forgery battery: the same shape as the block one, over the kind
+// this driver's cook reader answers. The POINTER column is the buffer the
+// caller holds — 0 an aligned base, 1..63 that many bytes past one, `null` no
+// buffer at all — because an unaligned base is a pointer fact and not a file
+// fact, and a file alone cannot carry it.
+fn surface_cook_forgery(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("forgery") {
+        if f[2] != "cook" {
+            continue;
+        }
+        let data = slurp(&f[4]);
+        let extent: i64 = parse_int(&f[5]);
+        let claim = if extent < 0 { data.len() as i64 } else { extent };
+        let null_buffer = f[6] == "null";
+        let lead = if null_buffer { 0 } else { parse_int(&f[6]) as usize };
+        let storage = Aligned::placed(&data, claim, lead);
+        let opened = unsafe {
+            if null_buffer {
+                open_cook_at(&f[3], std::ptr::null(), claim as u64).is_some()
+            } else {
+                open_cook_at(&f[3], storage.at(lead), claim as u64).is_some()
+            }
+        };
+        let verdict = if opened { "open\n" } else { "refuse\n" };
         spill(out, &f[1], verdict.as_bytes());
     }
 }
@@ -713,6 +955,26 @@ fn dump_cook(root: &str, path: &str) -> String {
     walk.out
 }
 
+// The same Open, answering whether it opened rather than failing: the forgery
+// battery's verdict is exactly that question.
+unsafe fn open_cook_at(root: &str, base: *const u8, length: u64) -> Option<(*const u8, u64)> {
+    unsafe {
+        macro_rules! try_root {
+            ($name:literal, $cook:ty) => {
+                if root == $name {
+                    return <$cook>::open(base, length).map(|c| (c.region(), c.region_length()));
+                }
+            };
+        }
+        try_root!("Scene", graphdemo::SceneCook);
+        try_root!("Depot", graphdemo::DepotCook);
+        try_root!("Album", graphdemo::AlbumCook);
+        try_root!("TreeNode", graphdemo::TreeNodeCook);
+        try_root!("ListNode", graphdemo::ListNodeCook);
+        fail(&format!("no cook root named {root}"))
+    }
+}
+
 unsafe fn open_cook(root: &str, base: *mut u8, length: u64) -> (*const u8, u64, &'static TableCookInfo) {
     unsafe {
         macro_rules! try_root {
@@ -740,7 +1002,10 @@ unsafe fn open_cook(root: &str, base: *mut u8, length: u64) -> (*const u8, u64, 
 
 fn surface_cook(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("cook") {
-        let text = dump_cook(&f[1], &f[3]);
+        // cook <case> <unit> <root> <file>: the CASE names the dump and the
+        // ROOT names the reader, and they differ wherever one root has more
+        // than one fixture
+        let text = dump_cook(&f[3], &f[4]);
         spill(out, &f[1], text.as_bytes());
     }
 }
@@ -875,7 +1140,9 @@ fn main() {
     let manifest = Manifest::read(&args[1]);
     let surface = args[2].as_str();
     if surface == "list" {
-        println!("wire\nreport\njson-read\njson-write\ncook\nblock\nforgery");
+        println!(
+            "wire\nreport\njson-read\njson-write\njson-hostile\ncook\nblock\nblock-dump\nforgery\ncook-forgery"
+        );
         return;
     }
     if args.len() < 4 {
@@ -888,7 +1155,10 @@ fn main() {
         "report" => surface_report(&manifest, out),
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
+        "json-hostile" => surface_json_hostile(&manifest, out),
         "cook" => surface_cook(&manifest, out),
+        "block-dump" => surface_block_dump(&manifest, out),
+        "cook-forgery" => surface_cook_forgery(&manifest, out),
         // NOT a conformance surface: the harness never asks for it, and `list`
         // does not name it. It is here because this binary already carries
         // every codec of the corpus, exactly as the C++ driver carries its

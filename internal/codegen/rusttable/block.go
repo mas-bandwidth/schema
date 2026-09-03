@@ -132,11 +132,25 @@ pub struct TableBlockFieldInfo {
     pub offset: u32,       // the field's offset in the record this describes
     pub size: u32,         // its size there
     pub kind: u8,          // the table-wire kind, as TableFieldInfo carries it
-    pub out_of_line: bool, // an out-of-line array: the three members below are live
+    pub out_of_line: bool, // an out-of-line array: the triple's three members are live
     pub offset_of_offset: u32, // the triple's offset_of member, or u32::MAX
-    pub count_offset: u32,     // its count member, or u32::MAX
-    pub stride_offset: u32,    // its stride member, or u32::MAX
-    pub stride: u32,           // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    // The COUNT COMPANION, and it is one column doing one job in both
+    // spellings: the triple's count member for an out-of-line array, the i32
+    // used length of a string or a bytes inline, u32::MAX when the field has
+    // none.
+    pub count_offset: u32,
+    pub stride_offset: u32, // the triple's stride member, or u32::MAX
+    pub stride: u32,        // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
+    // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node
+    // and a block row without learning a second one. Where the field starts is
+    // the pair above; this is everything after it.
+    pub is_array: bool,      // inline storage of array_bound slots at elem_size (bytes included)
+    pub counted: bool,       // count_offset names a used-length companion
+    pub optional: bool,      // present_offset names a bool presence companion
+    pub array_bound: i32,    // inline slots, or a string's declared maximum; 0 for a plain scalar
+    pub elem_size: u32,      // ONE slot's size; the field's own when it holds one value
+    pub present_offset: u32, // the presence companion, or u32::MAX
     // the ELEMENT's or the nested record's own layout, behind a function so the
     // whole table stays a constant. None when the field is a scalar. Following
     // it is how a walker DESCENDS: an out-of-line array's rows, and a nested
@@ -268,7 +282,7 @@ func (b *blockGen) emitBlockTypeInfo(bl *ir.BlockLayout) {
 	b.pf("    pub fn type_info() -> &'static TableBlockInfo {\n")
 	b.pf("        static FIELDS: [TableBlockFieldInfo; %d] = [\n", len(bl.Projection.Fields))
 	for _, fl := range bl.Projection.Fields {
-		b.pf("            %s,\n", b.blockFieldRow(bl, fl, true))
+		b.pf("            %s,\n", b.blockFieldRow(bl, fl, true, "            "))
 	}
 	b.pf("        ];\n")
 	b.pf("        static INFO: TableBlockInfo = TableBlockInfo {\n")
@@ -301,7 +315,7 @@ func (b *blockGen) emitRecordInfos(bl *ir.BlockLayout) {
 		b.pf("pub fn %s() -> &'static TableBlockInfo {\n", fn(name, "block_info"))
 		b.pf("    static FIELDS: [TableBlockFieldInfo; %d] = [\n", len(layout.Fields))
 		for _, fl := range layout.Fields {
-			b.pf("        %s,\n", b.blockFieldRow(nil, fl, false))
+			b.pf("        %s,\n", b.blockFieldRow(nil, fl, false, "        "))
 		}
 		b.pf("    ];\n")
 		b.pf("    static INFO: TableBlockInfo = TableBlockInfo {\n")
@@ -358,37 +372,87 @@ func (b *blockGen) recordsOf(bl *ir.BlockLayout) []string {
 }
 
 // blockFieldRow renders one TableBlockFieldInfo literal.
-func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projection bool) string {
+func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projection bool, ind string) string {
 	f := fl.Field
 	outOfLine := projection && ir.BlockOutOfLine(f)
 	offsetOfOffset, countOffset, strideOffset, stride := "u32::MAX", "u32::MAX", "u32::MAX", "0"
+	presentOffset := "u32::MAX"
 	element := "None"
-	if outOfLine {
+	isArray, counted := false, false
+	arrayBound, elemSize := int64(0), fl.Size
+
+	pieces := ir.BlockFieldPieceOffsets(b.unit, f, fl.Offset, projection)
+	switch {
+	case outOfLine:
 		a := bl.ArrayByName(f.Name)
 		offsetOfOffset = fmt.Sprint(a.OffsetOfOffset)
 		countOffset = fmt.Sprint(a.CountOffset)
 		strideOffset = fmt.Sprint(a.StrideOffset)
 		stride = fmt.Sprint(a.Stride)
 		element = fmt.Sprintf("Some(%s)", fn(a.ElemName, "block_info"))
-	} else if f.Type.Kind == ir.TNamed {
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-			element = fmt.Sprintf("Some(%s)", fn(ref.Name, "block_info"))
+		isArray, counted, arrayBound, elemSize = true, true, f.ArrayBound, 0
+	case f.Type.Kind == ir.TString:
+		counted, arrayBound, elemSize = true, f.Type.Size, 1
+		if len(pieces) > 1 {
+			countOffset = fmt.Sprint(pieces[1].Offset)
+		}
+	case f.Type.Kind == ir.TBytes:
+		isArray, counted, arrayBound, elemSize = true, true, f.Type.Size, 1
+		if len(pieces) > 1 {
+			countOffset = fmt.Sprint(pieces[1].Offset)
+		}
+	default:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			isArray, arrayBound = true, f.ArrayBound
+			elemSize = elementSizeOf(b.unit, f)
+		}
+		if f.Type.Kind == ir.TNamed {
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+				element = fmt.Sprintf("Some(%s)", fn(ref.Name, "block_info"))
+			}
 		}
 	}
+	if f.Type.Optional {
+		presentOffset = fmt.Sprint(pieces[len(pieces)-1].Offset)
+		elemSize = elementSizeOf(b.unit, f)
+	}
+	if !isArray && !counted && !f.Type.Optional {
+		elemSize = elementSizeOf(b.unit, f)
+	}
+
+	kind := ir.TableScalarKind(f)
+	if f.Type.Kind == ir.TBytes {
+		kind = ir.TableElemKind(f)
+	}
+
 	var out strings.Builder
 	fmt.Fprintf(&out, "TableBlockFieldInfo {\n")
-	fmt.Fprintf(&out, "            name: %q,\n", f.Name)
-	fmt.Fprintf(&out, "            offset: %d,\n", fl.Offset)
-	fmt.Fprintf(&out, "            size: %d,\n", fl.Size)
-	fmt.Fprintf(&out, "            kind: %d,\n", ir.TableFieldKind(f))
-	fmt.Fprintf(&out, "            out_of_line: %v,\n", outOfLine)
-	fmt.Fprintf(&out, "            offset_of_offset: %s,\n", offsetOfOffset)
-	fmt.Fprintf(&out, "            count_offset: %s,\n", countOffset)
-	fmt.Fprintf(&out, "            stride_offset: %s,\n", strideOffset)
-	fmt.Fprintf(&out, "            stride: %s,\n", stride)
-	fmt.Fprintf(&out, "            element: %s,\n", element)
-	fmt.Fprintf(&out, "        }")
+	fmt.Fprintf(&out, ind+"    name: %q,\n", f.Name)
+	fmt.Fprintf(&out, ind+"    offset: %d,\n", fl.Offset)
+	fmt.Fprintf(&out, ind+"    size: %d,\n", fl.Size)
+	fmt.Fprintf(&out, ind+"    kind: %d,\n", kind)
+	fmt.Fprintf(&out, ind+"    out_of_line: %v,\n", outOfLine)
+	fmt.Fprintf(&out, ind+"    offset_of_offset: %s,\n", offsetOfOffset)
+	fmt.Fprintf(&out, ind+"    count_offset: %s,\n", countOffset)
+	fmt.Fprintf(&out, ind+"    stride_offset: %s,\n", strideOffset)
+	fmt.Fprintf(&out, ind+"    stride: %s,\n", stride)
+	fmt.Fprintf(&out, ind+"    is_array: %v,\n", isArray)
+	fmt.Fprintf(&out, ind+"    counted: %v,\n", counted)
+	fmt.Fprintf(&out, ind+"    optional: %v,\n", f.Type.Optional)
+	fmt.Fprintf(&out, ind+"    array_bound: %d,\n", arrayBound)
+	fmt.Fprintf(&out, ind+"    elem_size: %d,\n", elemSize)
+	fmt.Fprintf(&out, ind+"    present_offset: %s,\n", presentOffset)
+	fmt.Fprintf(&out, ind+"    element: %s,\n", element)
+	out.WriteString(ind + "}")
 	return out.String()
+}
+
+// elementSizeOf is ONE slot's size: an array element's, or the field's own
+// when it holds one value. It is the layout model's answer, never a Rust
+// size_of — the descriptors describe the bytes a producer wrote.
+func elementSizeOf(u *ir.Unit, f *ir.Field) int64 {
+	_, size := cookStorageOf(u, f)
+	return size
 }
 
 // projectionMembers names the projection's generated members for one field,

@@ -107,12 +107,21 @@ func (g *gen) descriptorRow(st *ir.Struct, f *ir.Field, guard string) string {
 		presentOffset = offsetOf(st.Name, f.Name+"_present")
 	}
 
+	// the declared [min, max], and a bits(N) field's IMPLIED one: N bits hold
+	// [0, 2^N - 1] whether or not the declaration spells it, and the text
+	// form's walk is what needs it — the wire codec masks by the storage
+	// width, and a text carries a number with no width at all
 	hasRange := "false"
 	rangeMin, rangeMax := "0.0", "0.0"
-	if f.HasIntRange {
+	switch {
+	case f.HasIntRange:
 		hasRange = "true"
 		rangeMin = formatFloat(bigFloat(f.IntMin), false)
 		rangeMax = formatFloat(bigFloat(f.IntMax), false)
+	case f.Type.Kind == ir.TBits:
+		hasRange = "true"
+		rangeMin = "0.0"
+		rangeMax = formatFloat(bigFloat(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))), false)
 	}
 
 	enumMax := "-1"

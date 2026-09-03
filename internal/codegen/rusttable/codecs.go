@@ -1004,14 +1004,32 @@ func (g *gen) emitScalarDecode(f *ir.Field, kind int, reader, target string) {
 		g.pf("%s = %s.get64();\n", target, reader)
 		return
 	}
-	mutable := ""
+	// A declared bound sitting ON the decode local's own storage limit is a
+	// comparison no decoded value can satisfy, so it is not emitted — the same
+	// "this check cannot fire" rule the C++ reference applies, and here it is
+	// also what keeps the generated code clear of clippy's
+	// absurd_extreme_comparisons, which is DENY by default and would fail a
+	// consumer's build for something they did not write (#342).
+	low, high := false, false
 	if f.HasIntRange {
+		low, high = clampEnds(f, width)
+	}
+	mutable := ""
+	if low || high {
 		mutable = "mut "
 	}
 	g.pf("let %sdecoded = %s.%s() as %s;\n", mutable, reader, getFn(width), typ)
-	if f.HasIntRange {
-		g.pf("if decoded < %s {\n    decoded = %s;\n    report.clamped += 1;\n} else if decoded > %s {\n    decoded = %s;\n    report.clamped += 1;\n}\n",
-			intLit(f.IntMin, typ), intLit(f.IntMin, typ), intLit(f.IntMax, typ), intLit(f.IntMax, typ))
+	switch {
+	case low && high:
+		lo, hi := intLit(f.IntMin, typ), intLit(f.IntMax, typ)
+		g.pf("if decoded < %s {\n    decoded = %s;\n    report.clamped += 1;\n", lo, lo)
+		g.pf("} else if decoded > %s {\n    decoded = %s;\n    report.clamped += 1;\n}\n", hi, hi)
+	case low:
+		lo := intLit(f.IntMin, typ)
+		g.pf("if decoded < %s {\n    decoded = %s;\n    report.clamped += 1;\n}\n", lo, lo)
+	case high:
+		hi := intLit(f.IntMax, typ)
+		g.pf("if decoded > %s {\n    decoded = %s;\n    report.clamped += 1;\n}\n", hi, hi)
 	}
 	g.pf("%s = decoded;\n", target)
 }
@@ -1232,10 +1250,30 @@ func tableFieldTypeName(f *ir.Field) string {
 	return "?"
 }
 
+// storageRange is the inclusive range an integer storage of the given width
+// can hold.
+func storageRange(signed bool, bits int) (*big.Int, *big.Int) {
+	one := big.NewInt(1)
+	if signed {
+		hi := new(big.Int).Lsh(one, uint(bits-1))
+		return new(big.Int).Neg(hi), new(big.Int).Sub(hi, one)
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits)), one)
+}
+
+// clampEnds answers which ends of a declared min/max range a read can actually
+// clamp at. The decode local is the wire kind's own width, so a bound sitting
+// ON that width's limit is a comparison no decoded value can satisfy and the
+// emitter drops it (#342, docs/SPEC-TABLES.md §4: an elided end is one that
+// could never have clamped or counted, so no read report moves).
+func clampEnds(f *ir.Field, widthBytes int) (low, high bool) {
+	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	lo, hi := storageRange(signed, widthBytes*8)
+	return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0
+}
+
 // keyOfSlot renders the KEY a storage slot holds: the storage shifts left, so
 // slot i holds the key i + 1, at the key enum's own storage width.
 func keyOfSlot(f *ir.Field, index string) string {
 	return fmt.Sprintf("%s((%s + 1) as %s)", f.KeyEnum, index, rustUint(f.KeyEnumRef.StorageBits))
 }
-
-var _ = big.NewInt

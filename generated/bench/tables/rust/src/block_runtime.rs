@@ -68,11 +68,25 @@ pub struct TableBlockFieldInfo {
     pub offset: u32,       // the field's offset in the record this describes
     pub size: u32,         // its size there
     pub kind: u8,          // the table-wire kind, as TableFieldInfo carries it
-    pub out_of_line: bool, // an out-of-line array: the three members below are live
+    pub out_of_line: bool, // an out-of-line array: the triple's three members are live
     pub offset_of_offset: u32, // the triple's offset_of member, or u32::MAX
-    pub count_offset: u32,     // its count member, or u32::MAX
-    pub stride_offset: u32,    // its stride member, or u32::MAX
-    pub stride: u32,           // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    // The COUNT COMPANION, and it is one column doing one job in both
+    // spellings: the triple's count member for an out-of-line array, the i32
+    // used length of a string or a bytes inline, u32::MAX when the field has
+    // none.
+    pub count_offset: u32,
+    pub stride_offset: u32, // the triple's stride member, or u32::MAX
+    pub stride: u32,        // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
+    // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node
+    // and a block row without learning a second one. Where the field starts is
+    // the pair above; this is everything after it.
+    pub is_array: bool,      // inline storage of array_bound slots at elem_size (bytes included)
+    pub counted: bool,       // count_offset names a used-length companion
+    pub optional: bool,      // present_offset names a bool presence companion
+    pub array_bound: i32,    // inline slots, or a string's declared maximum; 0 for a plain scalar
+    pub elem_size: u32,      // ONE slot's size; the field's own when it holds one value
+    pub present_offset: u32, // the presence companion, or u32::MAX
     // the ELEMENT's or the nested record's own layout, behind a function so the
     // whole table stays a constant. None when the field is a scalar. Following
     // it is how a walker DESCENDS: an out-of-line array's rows, and a nested
