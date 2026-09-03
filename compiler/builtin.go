@@ -26,18 +26,28 @@ var tableTargets []string
 // refuseTableArms names them.
 var tableArmTargets []string
 
+// unionArrayTargets is the canonical name of every built-in target whose
+// table backend carries an ARRAY OF UNIONS (docs/SPEC-TABLES.md §2.6);
+// refuseUnionArrays names them.
+var unionArrayTargets []string
+
 // registerBuiltin is what a target's file calls from its init. tables says
 // whether the target emits table sources; one that does not refuses a unit
 // declaring tables through refuseTables, and is named there as a follow-on.
 // arms says whether those sources carry a union with table arms; one that
 // does not refuses a unit declaring one through refuseTableArms, the same way.
-func registerBuiltin(g Generator, tables, arms bool) {
+// unionArrays says whether they carry an array of unions in a table closure;
+// one that does not refuses through refuseUnionArrays.
+func registerBuiltin(g Generator, tables, arms, unionArrays bool) {
 	builtinTargets = append(builtinTargets, g)
 	if tables {
 		tableTargets = append(tableTargets, g.Names()[0])
 	}
 	if arms {
 		tableArmTargets = append(tableArmTargets, g.Names()[0])
+	}
+	if unionArrays {
+		unionArrayTargets = append(unionArrayTargets, g.Names()[0])
 	}
 }
 
@@ -82,6 +92,21 @@ func refuseTableArms(u *ir.Unit, target string) error {
 	carry, flags := carriers(tableArmTargets)
 	return fmt.Errorf("unit declares a union whose arm is a table (%s) — a union with table arms is %s only today, and the %s form is a named follow-on; generate with %s, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
 		englishList(names), englishList(carry), target, englishList(flags))
+}
+
+// refuseUnionArrays is the named refusal every target without the form gives
+// a unit whose table closure holds an ARRAY OF UNIONS (docs/SPEC-TABLES.md
+// §2.6, §11): the targets that carry it are named, and each remaining port's
+// is a named follow-on — refused loudly here rather than emitted as a
+// fixed-class codec that never met the element.
+func refuseUnionArrays(u *ir.Unit, target string) error {
+	fields := ir.TableUnionArrays(u)
+	if len(fields) == 0 {
+		return nil
+	}
+	carry, flags := carriers(unionArrayTargets)
+	return fmt.Errorf("unit declares an array of unions in a table closure (%s) — an array of unions is %s only today, and the %s form is a named follow-on; generate with %s, or wrap the union in a table and declare an array of that (docs/SPEC-TABLES.md §2.6, §11)",
+		englishList(fields), englishList(carry), target, englishList(flags))
 }
 
 // carriers is the registered targets that carry a form, sorted, beside the

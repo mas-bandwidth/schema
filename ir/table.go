@@ -230,3 +230,30 @@ func DartMemberName(name string) string {
 	}
 	return strings.ToLower(s[:1]) + s[1:]
 }
+
+// TableUnionArrays names every ARRAY OF UNIONS a table closure holds
+// (docs/SPEC-TABLES.md §2.6), as `Member.field`, sorted: the fields a backend
+// without the form refuses a unit over, by name.
+func TableUnionArrays(u *Unit) []string {
+	closure := TableClosure(u)
+	var out []string
+	for name := range closure {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Array == ArrayNone || f.Type.Kind != TNamed {
+				continue
+			}
+			if _, isUnion := f.Type.Ref.(*Union); isUnion {
+				out = append(out, name+"."+f.Name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}

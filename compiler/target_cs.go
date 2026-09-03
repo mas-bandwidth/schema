@@ -19,6 +19,9 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseTableArms(u, "cs"); err != nil {
 		return nil, err
 	}
+	if err := refuseUnionArrays(u, "cs"); err != nil {
+		return nil, err
+	}
 	files, err := csharp.Generate(u)
 	if err != nil {
 		return nil, err
@@ -39,4 +42,4 @@ func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(csTarget{}, true, false) }
+func init() { registerBuiltin(csTarget{}, true, false, false) }

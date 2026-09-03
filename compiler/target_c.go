@@ -19,6 +19,9 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseTableArms(u, "c"); err != nil {
 		return nil, err
 	}
+	if err := refuseUnionArrays(u, "c"); err != nil {
+		return nil, err
+	}
 	files, err := cgen.Generate(u)
 	if err != nil {
 		return nil, err
@@ -39,4 +42,4 @@ func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(cTarget{}, true, false) }
+func init() { registerBuiltin(cTarget{}, true, false, false) }

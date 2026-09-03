@@ -19,6 +19,9 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseTableArms(u, "rust"); err != nil {
 		return nil, err
 	}
+	if err := refuseUnionArrays(u, "rust"); err != nil {
+		return nil, err
+	}
 	files, err := rust.Generate(u)
 	if err != nil {
 		return nil, err
@@ -49,4 +52,4 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(rustTarget{}, true, false) }
+func init() { registerBuiltin(rustTarget{}, true, false, false) }

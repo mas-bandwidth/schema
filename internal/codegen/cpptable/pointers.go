@@ -292,8 +292,8 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 		})
 	}
 	for _, f := range g.byValueVariableUnionFields(st) {
-		g.emitVariableUnionWalk(f, "value", func(armType, armName string) {
-			g.pf("            if ( !%sNumber( ctx, numbering, value.%s.%s ) ) { return false; }\n", armType, f.Name, armName)
+		g.emitVariableUnionWalk(f, "value", func(armType, arm string) {
+			g.pf("            if ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", armType, arm)
 		})
 	}
 	g.pf("    return true;\n}\n\n")
@@ -342,8 +342,8 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 		})
 	}
 	for _, f := range g.byValueVariableUnionFields(st) {
-		g.emitVariableUnionWalk(f, "value", func(armType, armName string) {
-			g.pf("            int64_t inner = %sPackMeasure( ctx, seen, value.%s.%s );\n", armType, f.Name, armName)
+		g.emitVariableUnionWalk(f, "value", func(armType, arm string) {
+			g.pf("            int64_t inner = %sPackMeasure( ctx, seen, %s );\n", armType, arm)
 			g.pf("            if ( inner < 0 ) { return -1; }\n")
 			g.pf("            bytes += inner;\n")
 		})
@@ -420,8 +420,8 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 		g.emitVariableByValueWalkPack(f)
 	}
 	for _, f := range g.byValueVariableUnionFields(st) {
-		g.emitVariableUnionWalk(f, "src", func(armType, armName string) {
-			g.pf("            if ( !%sPack( ctx, seen, src.%s.%s, dst.%s.%s, base, capacity, used ) ) { return false; }\n", armType, f.Name, armName, f.Name, armName)
+		g.emitVariableUnionWalk(f, "src", func(armType, arm string) {
+			g.pf("            if ( !%sPack( ctx, seen, %s, dst%s, base, capacity, used ) ) { return false; }\n", armType, arm, arm[len("src"):])
 		})
 	}
 	g.pf("    return true;\n}\n\n")
@@ -956,18 +956,34 @@ func (g *tableGen) noVariableEdges(st *ir.Struct) bool {
 // emitVariableUnionWalk emits the switch over a union field's SET arm and calls
 // body once per variable arm with the arm's table name and member name; an arm
 // that is fixed, or a type, holds no pointer and takes no case.
-func (g *tableGen) emitVariableUnionWalk(f *ir.Field, subject string, body func(armType, armName string)) {
+func (g *tableGen) emitVariableUnionWalk(f *ir.Field, subject string, body func(armType, armExpr string)) {
 	un := f.Type.Ref.(*ir.Union)
-	g.pf("    switch ( %s.%s.type ) // %s: the set arm is the by-value edge\n    {\n", subject, f.Name, f.Name)
-	for _, v := range un.Variants {
-		if !g.isVar(v.Type) {
-			continue
+	each := func(elem string) {
+		g.pf("    switch ( %s.type ) // %s: the set arm is the by-value edge\n    {\n", elem, f.Name)
+		for _, v := range un.Variants {
+			if !g.isVar(v.Type) {
+				continue
+			}
+			g.pf("        case %sType::%s:\n        {\n", un.Name, ir.GoExportName(v.Name))
+			body(v.Type, elem+"."+v.Name)
+			g.pf("            break;\n        }\n")
 		}
-		g.pf("        case %sType::%s:\n        {\n", un.Name, ir.GoExportName(v.Name))
-		body(v.Type, v.Name)
-		g.pf("            break;\n        }\n")
+		g.pf("        default: break;\n    }\n")
 	}
-	g.pf("        default: break;\n    }\n")
+	// an ARRAY of unions (§2.6) is that switch per element, the live elements
+	// of a counted array only — a slot past the count is not written (§3.1)
+	switch f.Array {
+	case ir.ArrayCounted:
+		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s: [..%d]%s\n    {\n", subject, f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		each(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		g.pf("    }\n")
+	case ir.ArrayFixed:
+		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		each(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		g.pf("    }\n")
+	default:
+		each(subject + "." + f.Name)
+	}
 }
 
 // emitPointerSlots emits one block per POINTER SLOT of a field — the field

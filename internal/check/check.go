@@ -1135,6 +1135,13 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 					f.Name, out.KeyEnum, f.Type.Name, f.Type.Name, f.Type.Name)
 				return nil
 			}
+			if _, isUnion := out.Type.Ref.(*ir.Union); isUnion {
+				// a KEYED array of unions is a named follow-on (docs/SPEC-TABLES.md
+				// §2.6, §15); the bounded spellings `[N]U` and `[..N]U` serve
+				c.errf(f.Type.Pos, "field %s: [%s]%s is a named follow-on — an enum-keyed array of unions; declare [..N]%s or [N]%s (docs/SPEC-TABLES.md §2.6, §15)",
+					f.Name, out.KeyEnum, f.Type.Name, f.Type.Name, f.Type.Name)
+				return nil
+			}
 			// ONE SLOT PER NAMED VARIANT and not one more: None is the null
 			// key, so nothing is stored for it and the storage SHIFTS LEFT —
 			// the key k lives at index k-1 (docs/SPEC-TABLES.md §2.4). The bound is
@@ -1758,9 +1765,8 @@ func (c *checker) closureMember(name string) *ir.Struct {
 // on table-wire kinds — plain fixed-width scalars, length-prefixed
 // strings/bytes/tables, the neutral encoding a third party could implement
 // from a one-page description. int128/uint128 and fixed(I, F) have no
-// table-wire kind, string/bytes/array extents ride in uint16, and an array
-// of unions is a named follow-on — each is refused HERE, loudly, instead of
-// surprising a generated reader later.
+// table-wire kind and string/bytes/array extents ride in uint16 — each is
+// refused HERE, loudly, instead of surprising a generated reader later.
 //
 // Identity: a field's wire id is fold16(fnv1a32(name)) — of the `was` alias
 // where one is declared — and two fields of one closure member whose
@@ -1895,17 +1901,6 @@ func (c *checker) checkTables() {
 				}
 				seen[id] = f
 				continue
-			}
-			if f.Type.Kind == ir.TNamed {
-				if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Array != ir.ArrayNone {
-					// a SCALAR union field rides the table wire as kUnion:
-					// a u16 arm id, then the selected arm length-prefixed —
-					// skippable, elidable (None), kind-mismatch-safe. An
-					// ARRAY of unions is the remaining named follow-on.
-					c.errf(pos, "%s.%s: an array of unions may not sit on a table-closure path yet — wrap the union in a type, or ask for the pass (docs/SPEC-TABLES.md)",
-						name, f.Name)
-					continue
-				}
 			}
 			id := ir.TableFieldId(f)
 			if prev, dup := seen[id]; dup {

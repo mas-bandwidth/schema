@@ -36,4 +36,4 @@ func (cppTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(cppTarget{}, true, true) }
+func init() { registerBuiltin(cppTarget{}, true, true, true) }
