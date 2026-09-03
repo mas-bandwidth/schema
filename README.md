@@ -2,6 +2,10 @@
 
 **The schema language for games: your constants, enums and data types compiled to C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.**
 
+If you write a game in more than one language, or ship a client and server that
+have to agree on every bit, schema is a language that will help you do this
+without ever having to hand-code definitions in each language ever again.
+
 [![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
