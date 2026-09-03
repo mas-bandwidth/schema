@@ -681,10 +681,19 @@ defmodule Audit do
 
   # THE TOLERANCE, and why it is not zero. The count is taken at a garbage
   # collection boundary, and where that boundary falls moves the figure by a
-  # handful of words between runs — measured at plus or minus five over the
-  # whole corpus. The negative control adds about a hundred and forty, so
-  # sixty-four separates a real allocation from the boundary's jitter and the
-  # gate stays a gate.
+  # handful of words between runs — measured at plus or minus three over four
+  # consecutive runs of the whole corpus. The negative control adds about a
+  # hundred and forty, so sixty-four separates a real allocation from the
+  # boundary's jitter and the gate stays a gate.
+  #
+  # THE TWO COLUMNS ARE NOT GATED ALIKE, and the reason is what each one is. A
+  # heap WORD count is a property of the terms the code builds: the same source
+  # on the same OTP allocates the same words on any 64-bit machine, so it is
+  # gated tight. REDUCTIONS are the scheduler's own accounting and a different
+  # OTP build can count them differently, so that column is gated at a quarter —
+  # loose enough to cross a machine, tight enough that an accidental quadratic
+  # cannot hide in it. A number pinned tighter than it can be reproduced is a
+  # gate that reds for the machine rather than for the code.
   @tolerance 64
 
   def run(rows) do
@@ -718,7 +727,10 @@ defmodule Audit do
     #
     # REDUCTIONS ride beside the words because they are the WORK half: a change
     # that allocated the same and did twice as much of it moves this column and
-    # not the other, and an accidental quadratic moves it a great deal.
+    # not the other, and an accidental quadratic moves it a great deal. They are
+    # gated LOOSER than the words — a quarter rather than sixty-four — because
+    # they are the scheduler's accounting and a different OTP build can count
+    # them differently, where a heap word count cannot.
     """
   end
 
@@ -736,7 +748,7 @@ defmodule Audit do
     over =
       Enum.filter(measured, fn {name, {words, reductions}} ->
         case Map.fetch(budget, name) do
-          {:ok, {w, r}} -> words > w + @tolerance or reductions > r + div(r, 20) + @tolerance
+          {:ok, {w, r}} -> words > w + @tolerance or reductions > r + div(r, 4) + @tolerance
           :error -> true
         end
       end)
