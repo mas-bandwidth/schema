@@ -1,0 +1,1505 @@
+// The TEXT form in Java: JSON in and out of one table, driven by the reflection
+// descriptors (docs/SPEC-TABLES.md §16).
+//
+// ONE generic walk, emitted ONCE PER UNIT into TableJson.java — Java's unit
+// scope is the package, and a public type lives in a file of its own name, so
+// there is exactly one place for it and no rule to state. The walk's source
+// never varies with the unit, which is the generic-walk gate.
+//
+// THE C++ BACKEND IS THE REFERENCE and this file mirrors it: the same
+// classifier, the same shapes, the same clamps, the same report events, the
+// same acceptance of a trailing comma and the same refusal of a comment. Where
+// Java forces a different spelling the reason is stated at the site, and there
+// are exactly five:
+//
+//   - Storage is reached through the descriptor's ACCESSORS rather than an
+//     offset and a width: a Java field has no address (see runtime.go's
+//     TableFieldInfo). C++'s `storage` pointer becomes the triple
+//     (owner, field, index) throughout.
+//   - C's "%.*g" is spelled with BigDecimal at HALF_EVEN over the double's
+//     EXACT decimal expansion, because Java's own Formatter rounds HALF_UP and
+//     the two answers differ on a tie. The float spelling has to be C's byte for
+//     byte, so the conversion is done where the rounding mode can be named.
+//   - A JSON string is written from TWO sources — a descriptor's key, which is a
+//     Java String, and a string(N)'s storage, which is bytes — where C++ has
+//     char* for both. The escaping rule is one rule, spelled at each source.
+//   - Java has no out parameters, so a scan that returns a length AND a verdict
+//     returns the length and -1 for the verdict, and the one-bit answers
+//     (`integral`, `saturated`) ride on the reader's own state.
+//   - Java has no stack arrays. The reader's scratch — the key buffer, the
+//     number token, the UTF-8 unit — is allocated ONCE with the reader and
+//     shared, which is sound because every one of them is dead before the walk
+//     recurses. The duplicate-key frame is the one exception: it is live across
+//     a recursion, so it is a 64-byte array per object read, and that is the
+//     text form's whole allocation. The WIRE path allocates nothing.
+package javatable
+
+import (
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// emitJsonSurface emits one closure member's text-form surface: three thin
+// wrappers over the generic walk, each naming a descriptor and nothing else.
+// FIXED-SIZE members only, which in this backend is every member a
+// <Base>Table.java exists for — a pointered unit gets no such file at all
+// (docs/SPEC-TABLES.md §11).
+func (g *tableGen) emitJsonSurface(st *ir.Struct) {
+	ref := g.ref(st.Name)
+	g.pf("// %s in and out of a JSON text — one instance, one text, the generic\n", st.Name)
+	g.pf("// walk over this type's descriptors (docs/SPEC-TABLES.md §16).\n")
+	g.pf("public static boolean %sFromJson(%s value, byte[] text, TableReport report) {\n", st.Name, ref)
+	g.pf("    return %sFromJson(value, text, 0, text.length, report);\n}\n\n", st.Name)
+	g.pf("public static boolean %sFromJson(%s value, byte[] text, int offset, int length, TableReport report) {\n", st.Name, ref)
+	g.pf("    return TableJson.read(value, %sTableType(), text, offset, length, report);\n}\n\n", st.Name)
+	g.pf("public static long %sToJsonMeasure(%s value) {\n", st.Name, ref)
+	g.pf("    return TableJson.write(value, %sTableType(), null, 0, 0, true);\n}\n\n", st.Name)
+	g.pf("public static long %sToJson(%s value, byte[] buffer) {\n", st.Name, ref)
+	g.pf("    return %sToJson(value, buffer, 0, buffer.length);\n}\n\n", st.Name)
+	g.pf("public static long %sToJson(%s value, byte[] buffer, int offset, int length) {\n", st.Name, ref)
+	g.pf("    return TableJson.write(value, %sTableType(), buffer, offset, length, false);\n}\n\n", st.Name)
+}
+
+// jsonWalkFile is TableJson.java. It reads and writes ONLY the columns every
+// unit's descriptors carry, so its text never varies with the unit — which is
+// what the generic-walk gate asserts.
+func jsonWalkFile(u *ir.Unit) string {
+	var b strings.Builder
+	b.WriteString(generatedFrom("", u))
+	b.WriteString(license)
+	b.WriteString("// package " + u.Package + " — the TEXT form's generic walk (docs/SPEC-TABLES.md §16).\n\n")
+	b.WriteString("package " + u.Package + ";\n\n")
+	b.WriteString(tableJsonWalkSource)
+	return b.String()
+}
+
+const tableJsonWalkSource = `// ---- json walk: begin ----
+//
+// The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
+// reflection descriptors (§8). Reading fills ONE caller-owned instance;
+// writing targets a caller array with the wire's measure/write symmetry.
+// Everything AROUND this — which file goes with which instance, what key an
+// instance is filed under, how instances link into a root table's collections —
+// is a packer's opinion and stays with the tool that holds it.
+//
+// The dialect: trailing commas are accepted on read (the authoring files this
+// exists for carry them) and never written; comments are not JSON and are
+// refused; unknown keys are skipped and counted; a duplicate key is last-wins
+// and counted; a key present with the wrong JSON type is skipped and counted,
+// never coerced. The canonical text ends with exactly ONE newline, which the
+// writer emits and the reader accepts with or without.
+public final class TableJson {
+    private TableJson() {}
+
+    public static final int MAX_DEPTH = 128;
+
+    // A key longer than this cannot name a field, so it is skipped as unknown.
+    public static final int MAX_KEY = 256;
+
+    // The longest numeric token the walk will convert. Anything longer is a
+    // value no field can hold and counts as a kind mismatch.
+    public static final int MAX_NUMBER = 512;
+
+    private static final String BASE64 =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    // A vocabulary entry the descriptor could not spell. The generated name
+    // functions answer "???" for a value outside the declared set, and that is
+    // not a name — writing it would put a spelling in the text that the reader
+    // then counts as unknown, turning a refusal into a silent loss.
+    private static boolean named(String name) {
+        return name != null && !name.equals("???");
+    }
+
+    // a counted field's companion: a string's length, a bytes' length, a
+    // counted array's count. Bounded by the declared extent on the way out, so
+    // a storage invariant a caller broke cannot walk off the end of the array.
+    private static int count(Object value, TableFieldInfo f) {
+        if (!f.counted) { return f.arrayBound; }
+        int count = f.getCount.get(value);
+        if (count < 0) { count = 0; }
+        if (count > f.arrayBound) { count = f.arrayBound; }
+        return count;
+    }
+
+    private static void putCount(Object value, TableFieldInfo f, int count) {
+        if (f.counted) { f.setCount.set(value, count); }
+    }
+
+    // ---- what a field's kind expects to see in the text ----
+    //
+    // One classifier, consulted by both directions, so a reader and a writer
+    // can never disagree about a kind's JSON form. 'o' object, 'a' array, 's'
+    // string, 'n' number, 'b' boolean.
+    //
+    // A vocabulary field is spelled by NAME: an enum is one name, a flags mask
+    // is the array of the names of its set bits. The two are told apart by the
+    // id column — an enum variant rides under a wire id, a flags BIT never does
+    // (docs/SPEC-TABLES.md §4), so a name function with no id function is flags.
+    //
+    // bytes(N) is the one kind whose element kind does not decide its form: it
+    // shares u8 with a plain array of u8, and rides as base64. The schema type
+    // name settles it, and "bytes" is a keyword no declaration can claim.
+    private static boolean isBytes(TableFieldInfo f) {
+        return f.isArray && f.kind == 6 && "bytes".equals(f.typeName);
+    }
+
+    // An ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): its JSON form is an OBJECT
+    // keyed by variant name, not a positional array, because that is what the
+    // storage is — one slot per variant, addressed by the variant.
+    private static boolean isKeyed(TableFieldInfo f) {
+        return f.keyName != null;
+    }
+
+    // THE KEY A STORAGE SLOT HOLDS (§2.4, §8): the storage shifts left, so slot
+    // i holds the key i + 1 and nothing is stored for None. This is the ONE
+    // place the walker spells the shift.
+    private static long keyedSlotKey(int slot) {
+        return slot + 1L;
+    }
+
+    // A slot whose key names a variant of the keying enum. Every slot in
+    // [0, arrayBound) does, unless the enum carries max-headroom variants
+    // outside a table closure, where a reserved value names nothing and its key
+    // id is 0 — the reserved id no declared name can fold to (§5).
+    private static boolean keyedSlotValid(TableFieldInfo f, int slot) {
+        return f.keyId.of(keyedSlotKey(slot)) != 0;
+    }
+
+    private static boolean isFlags(TableFieldInfo f) {
+        return f.enumName != null && f.variantId == null;
+    }
+
+    private static boolean isEnum(TableFieldInfo f) {
+        return f.variantId != null && f.arms == null;
+    }
+
+    private static char shape(TableFieldInfo f) {
+        if (f.kind == 12) { return 's'; }          // string
+        if (isBytes(f)) { return 's'; }            // bytes: base64
+        if (isKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
+        if (f.isArray) { return 'a'; }
+        if (f.arms != null) { return 'o'; }        // union: an object with ONE key
+        if (f.kind == 13) { return 'o'; }          // nested table or type
+        if (isEnum(f)) { return 's'; }
+        if (isFlags(f)) { return 'a'; }
+        if (f.kind == 1) { return 'b'; }
+        return 'n';
+    }
+
+    // the ELEMENT shape of an array field — the same classifier one level down
+    private static char elementShape(TableFieldInfo f) {
+        if (f.kind == 13) { return 'o'; }
+        if (isEnum(f)) { return 's'; }
+        if (isFlags(f)) { return 'a'; }
+        if (f.kind == 1) { return 'b'; }
+        return 'n';
+    }
+
+    // A guarded group rides only when its guard reads true — the wire's own
+    // elision (§4), carried into the text so a text and a wire written from one
+    // instance say the same thing. The guard is spelled as its branch condition
+    // over bool fields of the SAME type ("at_rest", "!at_rest",
+    // "active && has_target"), so evaluating it is a walk of the same
+    // descriptor. Nothing is inferred in the other direction: reading places
+    // every key it can name, and the guard is a plain bool key (§16.2).
+    private static boolean guardHolds(Object value, TableTypeInfo info, String guard) {
+        int p = 0;
+        for (;;) {
+            while (p < guard.length() && (guard.charAt(p) == ' ' || guard.charAt(p) == '&')) { p++; }
+            if (p >= guard.length()) { return true; }
+            boolean want = true;
+            if (guard.charAt(p) == '!') { want = false; p++; }
+            int start = p;
+            while (p < guard.length() && guard.charAt(p) != ' ' && guard.charAt(p) != '&') { p++; }
+            int length = p - start;
+            boolean held = false;
+            for (int i = 0; i < info.numFields; i++) {
+                TableFieldInfo f = info.fields[i];
+                if (f.name.length() == length && guard.regionMatches(start, f.name, 0, length)) {
+                    held = f.getRaw.get(value, 0) != 0;
+                    break;
+                }
+            }
+            if (held != want) { return false; }
+        }
+    }
+
+    // ---- writing ----
+
+    // The writer sink MEASURES when measuring is set and WRITES when it is not,
+    // over one code path — so measure and write agree byte for byte, the wire's
+    // invariant (§9) carried across.
+    public static final class Out {
+        byte[] buffer;
+        int base;
+        int limit;
+        boolean measuring;
+        long offset;
+        boolean overflow;
+        final char[] number = new char[MAX_NUMBER];
+        final byte[] digits = new byte[24];
+
+        void raw(byte[] data, int from, int count) {
+            if (!measuring) {
+                if (offset + count > limit - base) { overflow = true; return; }
+                System.arraycopy(data, from, buffer, base + (int) offset, count);
+            }
+            offset += count;
+        }
+
+        void put(int c) {
+            if (!measuring) {
+                if (offset + 1 > limit - base) { overflow = true; return; }
+                buffer[base + (int) offset] = (byte) c;
+            }
+            offset += 1;
+        }
+
+        // an ASCII literal of the walk's own — "true", ": ", "[]" — never a
+        // value, so widening each char is the whole encoding
+        void ascii(String s) {
+            for (int i = 0; i < s.length(); i++) { put(s.charAt(i)); }
+        }
+
+        void line(int depth) {
+            put('\n');
+            for (int i = 0; i < depth; i++) { put(' '); put(' '); }
+        }
+    }
+
+    private static void writeBase64(Out o, byte[] data, int length) {
+        o.put('"');
+        int i = 0;
+        for (; i + 3 <= length; i += 3) {
+            int triple = ((data[i] & 0xff) << 16) | ((data[i + 1] & 0xff) << 8) | (data[i + 2] & 0xff);
+            o.put(BASE64.charAt((triple >> 18) & 0x3f));
+            o.put(BASE64.charAt((triple >> 12) & 0x3f));
+            o.put(BASE64.charAt((triple >> 6) & 0x3f));
+            o.put(BASE64.charAt(triple & 0x3f));
+        }
+        if (i < length) {
+            int left = length - i;
+            int triple = (data[i] & 0xff) << 16;
+            if (left == 2) { triple |= (data[i + 1] & 0xff) << 8; }
+            o.put(BASE64.charAt((triple >> 18) & 0x3f));
+            o.put(BASE64.charAt((triple >> 12) & 0x3f));
+            o.put(left == 2 ? BASE64.charAt((triple >> 6) & 0x3f) : '=');
+            o.put('=');
+        }
+        o.put('"');
+    }
+
+    // One UTF-8 sequence at s[at], packed as (code << 3) | width, or -1 when the
+    // bytes there are not one. Rejects the lot: a stray continuation, an
+    // overlong form, a surrogate half, and anything past U+10FFFF. Java has no
+    // out parameter, so the width rides in the low three bits — a width is
+    // 1..4 and a code point is 21 bits, so nothing is lost.
+    private static long utf8(byte[] s, int to, int at) {
+        int lead = s[at] & 0xff;
+        int want;
+        int code;
+        if (lead < 0x80) { return ((long) lead << 3) | 1L; }
+        else if (lead >= 0xc2 && lead <= 0xdf) { want = 2; code = lead & 0x1f; }
+        else if (lead >= 0xe0 && lead <= 0xef) { want = 3; code = lead & 0x0f; }
+        else if (lead >= 0xf0 && lead <= 0xf4) { want = 4; code = lead & 0x07; }
+        else { return -1L; }
+        if (to - at < want) { return -1L; }
+        for (int i = 1; i < want; i++) {
+            int next = s[at + i] & 0xff;
+            if ((next & 0xc0) != 0x80) { return -1L; }
+            code = (code << 6) | (next & 0x3f);
+        }
+        if (want == 3 && code < 0x800) { return -1L; }          // overlong
+        if (want == 4 && code < 0x10000) { return -1L; }        // overlong
+        if (code >= 0xd800 && code <= 0xdfff) { return -1L; }   // a surrogate half
+        if (code > 0x10ffff) { return -1L; }
+        return ((long) code << 3) | want;
+    }
+
+    // The escape rule, spelled once and reached from both string sources: a code
+    // point the JSON grammar names, a control character as a u00XX escape, and
+    // anything else as itself. Returns false when the caller must emit the code
+    // point's own bytes instead.
+    private static boolean writeEscape(Out o, int code) {
+        switch (code) {
+            case '"': o.ascii("\\\""); return true;
+            case '\\': o.ascii("\\\\"); return true;
+            case '\b': o.ascii("\\b"); return true;
+            case '\f': o.ascii("\\f"); return true;
+            case '\n': o.ascii("\\n"); return true;
+            case '\r': o.ascii("\\r"); return true;
+            case '\t': o.ascii("\\t"); return true;
+            default: break;
+        }
+        if (code < 0x20) {
+            final String hex = "0123456789abcdef";
+            o.ascii("\\u00");
+            o.put(hex.charAt(code >> 4));
+            o.put(hex.charAt(code & 0xf));
+            return true;
+        }
+        return false;
+    }
+
+    private static void writeUtf8(Out o, int code) {
+        if (code < 0x80) { o.put(code); return; }
+        if (code < 0x800) {
+            o.put(0xc0 | (code >> 6));
+            o.put(0x80 | (code & 0x3f));
+            return;
+        }
+        if (code < 0x10000) {
+            o.put(0xe0 | (code >> 12));
+            o.put(0x80 | ((code >> 6) & 0x3f));
+            o.put(0x80 | (code & 0x3f));
+            return;
+        }
+        o.put(0xf0 | (code >> 18));
+        o.put(0x80 | ((code >> 12) & 0x3f));
+        o.put(0x80 | ((code >> 6) & 0x3f));
+        o.put(0x80 | (code & 0x3f));
+    }
+
+    // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
+    // byte-transparent — the wire imposes no encoding (§3) and a string may hold
+    // anything — so the WRITER is where that obligation is met: a byte that is
+    // not part of a well-formed sequence is written as U+FFFD, one per bad byte,
+    // and never raw. A text this walk writes is therefore readable by any
+    // conforming parser, which a raw byte would not be. The cost is stated
+    // plainly: for a string holding invalid UTF-8, the round trip is NOT
+    // byte-identical, because the alternative is emitting a text that is not
+    // JSON.
+    private static void writeString(Out o, byte[] s, int length) {
+        o.put('"');
+        for (int i = 0; i < length; i++) {
+            int c = s[i] & 0xff;
+            if (writeEscape(o, c)) { continue; }
+            if (c < 0x80) { o.put(c); continue; }
+            long packed = utf8(s, length, i);
+            if (packed < 0) {
+                writeUtf8(o, 0xfffd); // one per bad byte
+            } else {
+                int width = (int) (packed & 7L);
+                o.raw(s, i, width);
+                i += width - 1;
+            }
+        }
+        o.put('"');
+    }
+
+    // The same rule at the OTHER source: a descriptor's key or vocabulary name,
+    // which Java holds as a String. C++ has one writer because both of its
+    // sources are char*; here the chars are UTF-16, so a surrogate pair is
+    // recombined and a lone half — which a schema identifier cannot produce and
+    // a json = "key" attribute could not carry either — reads as U+FFFD, the
+    // same answer the byte path gives an ill-formed sequence.
+    private static void writeName(Out o, String s) {
+        o.put('"');
+        for (int i = 0; i < s.length(); i++) {
+            int code = s.charAt(i);
+            if (code >= 0xd800 && code <= 0xdbff && i + 1 < s.length() &&
+                    s.charAt(i + 1) >= 0xdc00 && s.charAt(i + 1) <= 0xdfff) {
+                code = 0x10000 + ((code - 0xd800) << 10) + (s.charAt(i + 1) - 0xdc00);
+                i++;
+            } else if (code >= 0xd800 && code <= 0xdfff) {
+                code = 0xfffd;
+            }
+            if (writeEscape(o, code)) { continue; }
+            writeUtf8(o, code);
+        }
+        o.put('"');
+    }
+
+    private static void writeUnsigned(Out o, long value) {
+        int n = 0;
+        do {
+            o.digits[n++] = (byte) ('0' + (int) Long.remainderUnsigned(value, 10));
+            value = Long.divideUnsigned(value, 10);
+        } while (value != 0);
+        for (int i = n - 1; i >= 0; i--) { o.put(o.digits[i]); }
+    }
+
+    private static void writeSigned(Out o, long value) {
+        if (value < 0) {
+            o.put('-');
+            writeUnsigned(o, -value);
+            return;
+        }
+        writeUnsigned(o, value);
+    }
+
+    // C's "%.*g" for a finite double, spelled out: the exponent form when the
+    // decimal exponent is below -4 or at least the precision, the plain form
+    // otherwise, trailing zeros and a trailing point removed, and an exponent of
+    // at least two digits. The C++ walker reaches this through snprintf; a port
+    // spells it out, because the two must agree byte for byte.
+    //
+    // THE ROUNDING MODE IS NAMED, and it is why this does not go through
+    // java.util.Formatter: C's printf rounds the EXACT decimal expansion of the
+    // double to nearest, ties to EVEN, and Java's %e/%f round HALF UP. The two
+    // differ exactly on a tie, so the conversion is done over BigDecimal, whose
+    // double constructor is the exact expansion and whose MathContext names the
+    // mode. A tie is discarded by the round-trip loop below at every precision
+    // but the last, and at the last there is no loop left to save it — which is
+    // the whole reason this is not left to the default.
+    private static int formatG(double value, int prec, char[] text) {
+        if (prec < 1) { prec = 1; }
+        boolean negative = Double.doubleToRawLongBits(value) < 0;
+        double magnitude = negative ? -value : value;
+        java.math.BigDecimal rounded = new java.math.BigDecimal(magnitude)
+                .round(new java.math.MathContext(prec, java.math.RoundingMode.HALF_EVEN));
+        int exp = rounded.signum() == 0 ? 0 : rounded.precision() - rounded.scale() - 1;
+        String body;
+        if (exp < -4 || exp >= prec) {
+            String mantissa = trimZeros(rounded.movePointLeft(exp)
+                    .setScale(prec - 1, java.math.RoundingMode.HALF_EVEN).toPlainString());
+            StringBuilder b = new StringBuilder(mantissa);
+            b.append('e');
+            b.append(exp < 0 ? '-' : '+');
+            int m = exp < 0 ? -exp : exp;
+            if (m < 10) { b.append('0'); }
+            b.append(m);
+            body = b.toString();
+        } else {
+            body = trimZeros(rounded.setScale(prec - 1 - exp, java.math.RoundingMode.HALF_EVEN).toPlainString());
+        }
+        if (negative) { body = "-" + body; }
+        if (body.length() > text.length) { return -1; }
+        body.getChars(0, body.length(), text, 0);
+        return body.length();
+    }
+
+    private static String trimZeros(String s) {
+        if (s.indexOf('.') < 0) { return s; }
+        int n = s.length();
+        while (n > 0 && s.charAt(n - 1) == '0') { n--; }
+        if (n > 0 && s.charAt(n - 1) == '.') { n--; }
+        return s.substring(0, n);
+    }
+
+    // A float writes at the SHORTEST precision that reads back as the same value
+    // at the field's own width, so a round trip is exact and a text stays
+    // readable. Non-finite values have no JSON spelling at all, and the writer
+    // REFUSES rather than losing one silently — the same rule measure and save
+    // already apply to an enum value no variant names (§5).
+    private static boolean writeFloat(Out o, double value, boolean single) {
+        if (!Double.isFinite(value)) { return false; }
+        int low = single ? 6 : 15;
+        int high = single ? 9 : 17;
+        int length = 0;
+        for (int digits = low; ; digits++) {
+            length = formatG(value, digits, o.number);
+            if (length <= 0) { return false; }
+            if (digits >= high) { break; }
+            double back;
+            try {
+                back = Double.parseDouble(new String(o.number, 0, length));
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            if (single) {
+                if ((double) (float) back == value) { break; }
+            } else if (back == value) { break; }
+        }
+        for (int i = 0; i < length; i++) { o.put(o.number[i]); }
+        return true;
+    }
+
+    // one scalar, at one storage slot: a nested object, a union, a vocabulary,
+    // or a number. C++ takes the storage's ADDRESS here; the Java triple
+    // (owner, field, index) is the same thing said in this language.
+    private static boolean writeScalar(Out o, Object owner, TableFieldInfo f, int index, int depth) {
+        if (f.arms != null) {
+            // a union is an object with ONE key, the arm's name; None is {}
+            Object union = f.getChild.get(owner, index);
+            long tag = f.arms.getTag.of(union);
+            if (tag == 0) {
+                o.ascii("{}");
+                return true;
+            }
+            if (tag > f.enumMax) {
+                return false; // a tag no arm names, exactly as measure refuses it
+            }
+            String arm = f.enumName.of(tag);
+            // and refuse on the NAME, not merely on the bound: §16.2 says a value
+            // no variant NAMES is refused, so the check is the name. Writing
+            // whatever came back would emit "???", a spelling the reader counts
+            // as unknown — a silent round-trip loss in place of a refusal.
+            if (!named(arm)) { return false; }
+            o.put('{');
+            o.line(depth + 1);
+            writeName(o, arm);
+            o.ascii(": ");
+            if (!writeValue(o, f.arms.arms[(int) tag].payload.of(union), f.arms.arms[(int) tag].table(), depth + 1)) {
+                return false;
+            }
+            o.line(depth);
+            o.put('}');
+            return true;
+        }
+        if (f.kind == 13) {
+            return writeValue(o, f.getChild.get(owner, index), f.table(), depth);
+        }
+        if (isEnum(f)) {
+            long value = f.getRaw.get(owner, index);
+            // a value no variant names has no text spelling, exactly as it has no
+            // wire identity: the writer REFUSES rather than writing None over it,
+            // the rule measure and save already apply (§5)
+            if (value > f.enumMax) { return false; }
+            if (value != 0 && f.variantId.of(value) == 0) { return false; }
+            String name = f.enumName.of(value);
+            if (!named(name)) { return false; }
+            writeName(o, name);
+            return true;
+        }
+        if (isFlags(f)) {
+            long bits = f.getRaw.get(owner, index);
+            if (bits == 0) {
+                o.ascii("[]");
+                return true;
+            }
+            o.put('[');
+            boolean first = true;
+            for (int bit = 0; bit < 64; bit++) {
+                if ((bits & (1L << bit)) == 0) { continue; }
+                if (bit > f.enumMax) {
+                    return false; // a bit no variant names has no text spelling
+                }
+                String name = f.enumName.of(bit);
+                if (!named(name)) { return false; }
+                if (!first) { o.put(','); }
+                first = false;
+                o.line(depth + 1);
+                writeName(o, name);
+            }
+            o.line(depth);
+            o.put(']');
+            return true;
+        }
+        switch (f.kind) {
+            case 1:
+                o.ascii(f.getRaw.get(owner, index) != 0 ? "true" : "false");
+                return true;
+            case 10:
+                return writeFloat(o, Float.intBitsToFloat((int) f.getRaw.get(owner, index)), true);
+            case 11:
+                return writeFloat(o, Double.longBitsToDouble(f.getRaw.get(owner, index)), false);
+            case 2: case 3: case 4: case 5:
+                writeSigned(o, f.getRaw.get(owner, index));
+                return true;
+            default:
+                writeUnsigned(o, f.getRaw.get(owner, index));
+                return true;
+        }
+    }
+
+    private static boolean writeField(Out o, Object value, TableFieldInfo f, int depth) {
+        if (f.kind == 12) {
+            writeString(o, f.getBuffer.get(value), count(value, f));
+            return true;
+        }
+        if (isBytes(f)) {
+            writeBase64(o, f.getBuffer.get(value), count(value, f));
+            return true;
+        }
+        if (isKeyed(f)) {
+            // one entry per SLOT, keyed by the variant that owns it, so inserting
+            // a variant next season moves nothing in the text either. Slot i holds
+            // the key i + 1: nothing is stored for None, so nothing is written
+            // for it.
+            o.put('{');
+            boolean first = true;
+            for (int slot = 0; slot < f.arrayBound; slot++) {
+                if (!keyedSlotValid(f, slot)) { continue; }
+                if (!first) { o.put(','); }
+                first = false;
+                o.line(depth + 1);
+                writeName(o, f.keyName.of(keyedSlotKey(slot)));
+                o.ascii(": ");
+                if (!writeScalar(o, value, f, slot, depth + 1)) {
+                    return false;
+                }
+            }
+            if (first) { o.put('}'); return true; }
+            o.line(depth);
+            o.put('}');
+            return true;
+        }
+        if (f.isArray) {
+            int count = count(value, f);
+            if (count == 0) {
+                o.ascii("[]");
+                return true;
+            }
+            o.put('[');
+            for (int i = 0; i < count; i++) {
+                if (i > 0) { o.put(','); }
+                o.line(depth + 1);
+                if (!writeScalar(o, value, f, i, depth + 1)) {
+                    return false;
+                }
+            }
+            o.line(depth);
+            o.put(']');
+            return true;
+        }
+        return writeScalar(o, value, f, 0, depth);
+    }
+
+    // One instance, every field, in DECLARATION ORDER, defaults included — a
+    // text is for people and tools, and a text that elides is a text a reader
+    // has to know the schema to complete.
+    private static boolean writeValue(Out o, Object value, TableTypeInfo info, int depth) {
+        boolean any = false;
+        for (int i = 0; i < info.numFields; i++) {
+            TableFieldInfo f = info.fields[i];
+            if (f.guard.length() != 0 && !guardHolds(value, info, f.guard)) { continue; }
+            // an ABSENT optional writes no key: presence of the key IS the
+            // presence (§16.2), so an absent field is an absent key and nothing
+            // else would read back as absent
+            if (f.optional && !f.getPresent.get(value)) { continue; }
+            if (!any) { o.put('{'); } else { o.put(','); }
+            any = true;
+            o.line(depth + 1);
+            writeName(o, f.json);
+            o.ascii(": ");
+            if (!writeField(o, value, f, depth + 1)) { return false; }
+        }
+        if (!any) {
+            o.ascii("{}");
+            return true;
+        }
+        o.line(depth);
+        o.put('}');
+        return true;
+    }
+
+    // ---- reading ----
+
+    // The reader: the text, the cursor, the report and the walk's SCRATCH. The
+    // scratch is allocated once here and shared by the whole walk, which is sound
+    // because a key buffer, a number token and a UTF-8 unit are each dead before
+    // the walk recurses. The duplicate-key frame is not — it is live across a
+    // recursion — so it is a local per object read and the one allocation this
+    // form makes.
+    public static final class In {
+        byte[] text;
+        int pos;
+        int end;
+        TableReport report;
+        boolean bad;      // the text is not JSON: the walk stops and keeps what it placed
+        boolean integral; // the last number token had no fraction and no exponent
+        boolean saturated;
+        int scanned;      // the last scan's length
+        final byte[] key = new byte[MAX_KEY];
+        final char[] token = new char[MAX_NUMBER];
+        final byte[] unit = new byte[4];
+    }
+
+    private static void space(In in) {
+        while (in.pos < in.end) {
+            byte c = in.text[in.pos];
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') { in.pos++; continue; }
+            // comments are not JSON, and a walk that guessed at one would be
+            // reading a dialect nobody wrote down
+            if (c == '/') { in.bad = true; }
+            return;
+        }
+    }
+
+    private static int peek(In in) {
+        space(in);
+        return in.pos < in.end ? (in.text[in.pos] & 0xff) : 0;
+    }
+
+    // the shape of the value sitting at the cursor, without consuming it
+    private static char valueShape(In in) {
+        int c = peek(in);
+        switch (c) {
+            case '{': return 'o';
+            case '[': return 'a';
+            case '"': return 's';
+            case 't': case 'f': return 'b';
+            case 'n': return 'z';
+            case 0: return (char) 0;
+            default: return 'n';
+        }
+    }
+
+    private static boolean literal(In in, String word) {
+        if (in.pos + word.length() > in.end) { in.bad = true; return false; }
+        for (int i = 0; i < word.length(); i++) {
+            if ((in.text[in.pos + i] & 0xff) != word.charAt(i)) { in.bad = true; return false; }
+        }
+        in.pos += word.length();
+        return true;
+    }
+
+    // one uXXXX escape body; -1 when the four hex digits are not there
+    private static int hex4(In in) {
+        if (in.pos + 4 > in.end) { return -1; }
+        int value = 0;
+        for (int i = 0; i < 4; i++) {
+            int c = in.text[in.pos + i] & 0xff;
+            int digit;
+            if (c >= '0' && c <= '9') { digit = c - '0'; }
+            else if (c >= 'a' && c <= 'f') { digit = c - 'a' + 10; }
+            else if (c >= 'A' && c <= 'F') { digit = c - 'A' + 10; }
+            else { return -1; }
+            value = (value << 4) | digit;
+        }
+        in.pos += 4;
+        return value;
+    }
+
+    private static int encodeUtf8(int code, byte[] unit) {
+        if (code < 0x80) { unit[0] = (byte) code; return 1; }
+        if (code < 0x800) {
+            unit[0] = (byte) (0xc0 | (code >> 6));
+            unit[1] = (byte) (0x80 | (code & 0x3f));
+            return 2;
+        }
+        if (code < 0x10000) {
+            unit[0] = (byte) (0xe0 | (code >> 12));
+            unit[1] = (byte) (0x80 | ((code >> 6) & 0x3f));
+            unit[2] = (byte) (0x80 | (code & 0x3f));
+            return 3;
+        }
+        unit[0] = (byte) (0xf0 | (code >> 18));
+        unit[1] = (byte) (0x80 | ((code >> 12) & 0x3f));
+        unit[2] = (byte) (0x80 | ((code >> 6) & 0x3f));
+        unit[3] = (byte) (0x80 | (code & 0x3f));
+        return 4;
+    }
+
+    // Scan one JSON string into the caller's array. Bytes are appended ONE CODE
+    // POINT AT A TIME — an escape's encoding, or a UTF-8 sequence read whole —
+    // so a string longer than the field is clamped AT A CODE POINT BOUNDARY and
+    // never cut through a multi-byte character. Clamping is counted, never fatal,
+    // exactly as it is on the wire (§4). A null destination scans past a string
+    // without keeping it, and counts no clamp for what it dropped — C++'s NULL
+    // destination. Returns the kept length, or -1 when the text is not a string.
+    private static int scanString(In in, byte[] destination, int room) {
+        if (peek(in) != '"') { in.bad = true; return -1; }
+        in.pos++;
+        int placed = 0;
+        boolean clamped = false;
+        byte[] unit = in.unit;
+        for (;;) {
+            if (in.pos >= in.end) { in.bad = true; return -1; }
+            int c = in.text[in.pos] & 0xff;
+            if (c == '"') { in.pos++; break; }
+            int unitLength;
+            if (c == '\\') {
+                in.pos++;
+                if (in.pos >= in.end) { in.bad = true; return -1; }
+                int escape = in.text[in.pos++] & 0xff;
+                switch (escape) {
+                    case '"': unit[0] = (byte) '"'; unitLength = 1; break;
+                    case '\\': unit[0] = (byte) '\\'; unitLength = 1; break;
+                    case '/': unit[0] = (byte) '/'; unitLength = 1; break;
+                    case 'b': unit[0] = (byte) '\b'; unitLength = 1; break;
+                    case 'f': unit[0] = (byte) '\f'; unitLength = 1; break;
+                    case 'n': unit[0] = (byte) '\n'; unitLength = 1; break;
+                    case 'r': unit[0] = (byte) '\r'; unitLength = 1; break;
+                    case 't': unit[0] = (byte) '\t'; unitLength = 1; break;
+                    case 'u': {
+                        int high = hex4(in);
+                        if (high < 0) { in.bad = true; return -1; }
+                        int code = high;
+                        if (high >= 0xd800 && high <= 0xdbff && in.pos + 2 <= in.end &&
+                                in.text[in.pos] == '\\' && in.text[in.pos + 1] == 'u') {
+                            int mark = in.pos;
+                            in.pos += 2;
+                            int low = hex4(in);
+                            if (low >= 0xdc00 && low <= 0xdfff) {
+                                code = 0x10000 + ((high - 0xd800) << 10) + (low - 0xdc00);
+                            } else {
+                                in.pos = mark; // a lone lead surrogate rides as itself
+                            }
+                        }
+                        // a surrogate half that never found its partner has no
+                        // UTF-8 encoding: encoding it anyway would manufacture
+                        // CESU-8 — invalid UTF-8 — out of input that was valid
+                        // JSON, so it reads as the replacement character
+                        if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+                        unitLength = encodeUtf8(code, unit);
+                        break;
+                    }
+                    default: in.bad = true; return -1;
+                }
+            } else if (c < 0x20) {
+                in.bad = true; // a raw control character is not a JSON string body
+                return -1;
+            } else {
+                // a UTF-8 sequence read WHOLE, so the clamp below can only land
+                // between code points. Only bytes that ACTUALLY look like
+                // continuations are taken: the wire imposes no encoding (§3), so a
+                // string may legitimately hold a stray lead byte, and one at the
+                // end of a text must not swallow the closing quote.
+                int want = 1;
+                if ((c & 0xe0) == 0xc0) { want = 2; }
+                else if ((c & 0xf0) == 0xe0) { want = 3; }
+                else if ((c & 0xf8) == 0xf0) { want = 4; }
+                unit[0] = (byte) c;
+                in.pos++;
+                unitLength = 1;
+                while (unitLength < want && in.pos < in.end &&
+                        (in.text[in.pos] & 0xc0) == 0x80) {
+                    unit[unitLength++] = in.text[in.pos++];
+                }
+            }
+            if (destination != null) {
+                if (placed + unitLength <= room) {
+                    System.arraycopy(unit, 0, destination, placed, unitLength);
+                    placed += unitLength;
+                } else {
+                    clamped = true;
+                }
+            }
+        }
+        if (clamped) { in.report.clamped++; }
+        return placed;
+    }
+
+    // Scan one number, to JSON's OWN grammar (RFC 8259 §6) and not to a run of
+    // number-ish characters:
+    //
+    //     number = [ "-" ] int [ frac ] [ exp ]
+    //     int    = "0" / ( digit1-9 *digit )
+    //     frac   = "." 1*digit
+    //     exp    = ( "e" / "E" ) [ "-" / "+" ] 1*digit
+    //
+    // Scanning the production is what makes a typo in an authoring file a
+    // DIAGNOSTIC rather than a value: "1-2" scans as 1 and leaves "-2" where the
+    // object expects a comma, so the text is malformed — which is what §16.2
+    // already promises. A permissive scan would hand "1-2" to a digit loop and
+    // report a clamp, and a config pipeline would never hear about it. Leading
+    // "+", leading zeros, ".5" and "3." are not JSON either.
+    private static boolean walkNumber(In in) {
+        space(in);
+        in.integral = true;
+        if (in.pos < in.end && in.text[in.pos] == '-') { in.pos++; }
+        // int: a lone zero, or a non-zero digit and any digits after it
+        if (in.pos >= in.end) { return false; }
+        if (in.text[in.pos] == '0') {
+            in.pos++;
+        } else if (in.text[in.pos] >= '1' && in.text[in.pos] <= '9') {
+            while (in.pos < in.end && in.text[in.pos] >= '0' && in.text[in.pos] <= '9') { in.pos++; }
+        } else {
+            return false;
+        }
+        // frac
+        if (in.pos < in.end && in.text[in.pos] == '.') {
+            in.pos++;
+            if (in.pos >= in.end || in.text[in.pos] < '0' || in.text[in.pos] > '9') { return false; }
+            while (in.pos < in.end && in.text[in.pos] >= '0' && in.text[in.pos] <= '9') { in.pos++; }
+            in.integral = false;
+        }
+        // exp
+        if (in.pos < in.end && (in.text[in.pos] == 'e' || in.text[in.pos] == 'E')) {
+            in.pos++;
+            if (in.pos < in.end && (in.text[in.pos] == '-' || in.text[in.pos] == '+')) { in.pos++; }
+            if (in.pos >= in.end || in.text[in.pos] < '0' || in.text[in.pos] > '9') { return false; }
+            while (in.pos < in.end && in.text[in.pos] >= '0' && in.text[in.pos] <= '9') { in.pos++; }
+            in.integral = false;
+        }
+        return true;
+    }
+
+    // the same production, with the token kept for conversion. The token is
+    // ASCII by that grammar, so it widens into chars a digit at a time and the
+    // conversions below need no encoder. Returns the token's length, or -1.
+    private static int scanNumber(In in) {
+        space(in);
+        int start = in.pos;
+        if (!walkNumber(in)) { return -1; }
+        int count = in.pos - start;
+        if (count <= 0 || count >= in.token.length) { return -1; }
+        for (int i = 0; i < count; i++) { in.token[i] = (char) (in.text[start + i] & 0xff); }
+        return count;
+    }
+
+    // the token's exact double, through the runtime's own converter — which is
+    // locale-independent in Java, so nothing here consults one
+    private static double tokenDouble(char[] token, int length, boolean single) {
+        String s = new String(token, 0, length);
+        try {
+            if (single) { return Float.parseFloat(s); }
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            return Double.NaN;
+        }
+    }
+
+    // the token's exact integer, parsed digit by digit so no width and no locale
+    // can move it. Saturation is reported as a clamp, the wire's rule for a value
+    // outside what the reader can hold (§4).
+    private static long tokenInteger(In in, int length, boolean isSigned) {
+        int i = 0;
+        boolean negative = false;
+        if (i < length && (in.token[i] == '-' || in.token[i] == '+')) {
+            negative = in.token[i] == '-';
+            i++;
+        }
+        long magnitude = 0;
+        boolean over = false;
+        for (; i < length; i++) {
+            long digit = in.token[i] - '0';
+            if (Long.compareUnsigned(magnitude, Long.divideUnsigned(-1L - digit, 10)) > 0) { over = true; break; }
+            magnitude = magnitude * 10 + digit;
+        }
+        if (!isSigned) {
+            // -0 IS zero, and clamping it would report an event that did not
+            // happen; only a real negative magnitude is out of range here
+            if (negative) { in.saturated = magnitude != 0; return 0; }
+            if (over) { in.saturated = true; return -1L; } // every bit set: 2^64 - 1
+            in.saturated = false;
+            return magnitude;
+        }
+        if (negative) {
+            if (over || Long.compareUnsigned(magnitude, Long.MIN_VALUE) > 0) { in.saturated = true; return Long.MIN_VALUE; }
+            in.saturated = false;
+            if (magnitude == Long.MIN_VALUE) { return Long.MIN_VALUE; }
+            return -magnitude;
+        }
+        if (over || Long.compareUnsigned(magnitude, Long.MAX_VALUE) > 0) { in.saturated = true; return Long.MAX_VALUE; }
+        in.saturated = false;
+        return magnitude;
+    }
+
+    private static boolean skipContainer(In in, int close, int depth) {
+        if (depth > MAX_DEPTH) { in.bad = true; return false; }
+        in.pos++; // the opening bracket
+        for (;;) {
+            int c = peek(in);
+            if (c == close) { in.pos++; return true; }
+            if (c == 0) { in.bad = true; return false; }
+            if (close == '}') {
+                if (scanString(in, null, 0) < 0) { return false; }
+                if (peek(in) != ':') { in.bad = true; return false; }
+                in.pos++;
+            }
+            if (!skipValue(in, depth + 1)) { return false; }
+            c = peek(in);
+            if (c == ',') { in.pos++; continue; }   // a trailing comma is accepted
+            if (c == close) { in.pos++; return true; }
+            in.bad = true;
+            return false;
+        }
+    }
+
+    private static boolean skipValue(In in, int depth) {
+        int c = peek(in);
+        switch (c) {
+            case '{': return skipContainer(in, '}', depth);
+            case '[': return skipContainer(in, ']', depth);
+            case '"': return scanString(in, null, 0) >= 0;
+            case 't': return literal(in, "true");
+            case 'f': return literal(in, "false");
+            case 'n': return literal(in, "null");
+            case 0: in.bad = true; return false;
+            default:
+                // consumed, never converted: skipping needs no buffer, and this
+                // is the one walk a hostile text drives to the depth cap. It is
+                // the SAME production the value path scans, so an unknown key
+                // cannot smuggle past a number a named key would refuse.
+                if (!walkNumber(in)) { in.bad = true; return false; }
+                return true;
+        }
+    }
+
+    // compare a scanned UTF-8 key against a descriptor's string. Schema
+    // identifiers are ASCII, so the common case is a byte walk; a json = "key"
+    // that is not falls to the encoder. C++ compares two char* and needs neither
+    // branch.
+    private static boolean same(byte[] text, int length, String name) {
+        if (name == null) { return false; }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c >= 0x80) { return sameEncoded(text, length, name); }
+            if (i >= length || (text[i] & 0xff) != c) { return false; }
+        }
+        return name.length() == length;
+    }
+
+    private static boolean sameEncoded(byte[] text, int length, String name) {
+        byte[] encoded = name.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (encoded.length != length) { return false; }
+        for (int i = 0; i < length; i++) {
+            if (encoded[i] != text[i]) { return false; }
+        }
+        return true;
+    }
+
+    // place one scalar at one storage slot
+    private static boolean readScalar(In in, Object owner, TableFieldInfo f, int index, int depth) {
+        if (f.arms != null) {
+            // a union is an object with ONE key, the arm's name; {} is None, and
+            // two keys is a text this walk will not guess at
+            Object union = f.getChild.get(owner, index);
+            if (peek(in) != '{') { in.bad = true; return false; }
+            in.pos++;
+            f.arms.setTag.set(union, 0);
+            if (peek(in) == '}') { in.pos++; return true; }
+            int keyLength = scanString(in, in.key, MAX_KEY);
+            if (keyLength < 0) { return false; }
+            if (peek(in) != ':') { in.bad = true; return false; }
+            in.pos++;
+            int tag = 0;
+            for (int t = 1; t <= f.enumMax; t++) {
+                if (same(in.key, keyLength, f.enumName.of(t))) { tag = t; break; }
+            }
+            if (tag == 0) {
+                in.report.unknown++;
+                if (!skipValue(in, depth + 1)) { return false; }
+            } else {
+                Object payload = f.arms.arms[tag].payload.of(union);
+                TableTypeInfo arm = f.arms.arms[tag].table();
+                arm.reset.reset(payload);
+                if (!readTable(in, payload, arm, depth + 1)) { return false; }
+                f.arms.setTag.set(union, tag);
+            }
+            int c = peek(in);
+            if (c == ',') { in.pos++; c = peek(in); }
+            if (c == '}') { in.pos++; return true; }
+            in.bad = true; // a second key: a one-of with two arms is not a value
+            return false;
+        }
+        if (f.kind == 13) {
+            Object child = f.getChild.get(owner, index);
+            f.table().reset.reset(child);
+            return readTable(in, child, f.table(), depth + 1);
+        }
+        if (isEnum(f)) {
+            int nameLength = scanString(in, in.key, MAX_KEY);
+            if (nameLength < 0) { return false; }
+            for (int v = 0; v <= f.enumMax; v++) {
+                if (same(in.key, nameLength, f.enumName.of(v))) {
+                    f.setRaw.set(owner, index, v);
+                    return true;
+                }
+            }
+            // a name this build cannot name reads as None and counts as unknown,
+            // exactly as an unknown variant id does on the wire (§4)
+            f.setRaw.set(owner, index, 0);
+            in.report.unknown++;
+            return true;
+        }
+        if (isFlags(f)) {
+            if (peek(in) != '[') { in.bad = true; return false; }
+            in.pos++;
+            long bits = 0;
+            for (;;) {
+                int c = peek(in);
+                if (c == ']') { in.pos++; break; }
+                if (c == 0) { in.bad = true; return false; }
+                if (c != '"') {
+                    in.report.kindMismatch++;
+                    if (!skipValue(in, depth + 1)) { return false; }
+                } else {
+                    int nameLength = scanString(in, in.key, MAX_KEY);
+                    if (nameLength < 0) { return false; }
+                    boolean found = false;
+                    for (int bit = 0; bit <= f.enumMax; bit++) {
+                        if (same(in.key, nameLength, f.enumName.of(bit))) {
+                            bits |= 1L << bit;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) { in.report.unknown++; }
+                }
+                c = peek(in);
+                if (c == ',') { in.pos++; continue; }
+                if (c == ']') { in.pos++; break; }
+                in.bad = true;
+                return false;
+            }
+            f.setRaw.set(owner, index, bits);
+            return true;
+        }
+        if (f.kind == 1) {
+            int b = peek(in);
+            if (b == 't') {
+                if (!literal(in, "true")) { return false; }
+                f.setRaw.set(owner, index, 1);
+                return true;
+            }
+            if (!literal(in, "false")) { return false; }
+            f.setRaw.set(owner, index, 0);
+            return true;
+        }
+        int length = scanNumber(in);
+        if (length < 0) {
+            in.bad = true;
+            return false;
+        }
+        if (f.kind == 10 || f.kind == 11) {
+            boolean single = f.kind == 10;
+            double value = tokenDouble(in.token, length, single);
+            // A magnitude the field's format cannot hold is the WRONG SHAPE for
+            // the kind, and it never reaches storage: 1e400 is not a float64 and
+            // 1e300 is not a float32. Storing the infinity the conversion produced
+            // would leave an instance this walk called CLEAN that ToJsonMeasure
+            // then refuses forever (a non-finite float has no JSON spelling), and
+            // §16.1's one invariant is that a text which reads clean writes back.
+            if (!Double.isFinite(value)) {
+                in.report.kindMismatch++;
+                return true;
+            }
+            if (f.hasRange) {
+                if (value < f.rangeMin) { value = f.rangeMin; in.report.clamped++; }
+                else if (value > f.rangeMax) { value = f.rangeMax; in.report.clamped++; }
+            }
+            if (single) {
+                float narrow = (float) value;
+                if (!Float.isFinite(narrow)) {
+                    in.report.kindMismatch++;
+                    return true;
+                }
+                f.setRaw.set(owner, index, Float.floatToRawIntBits(narrow) & 0xffffffffL);
+            } else {
+                f.setRaw.set(owner, index, Double.doubleToRawLongBits(value));
+            }
+            return true;
+        }
+        // JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
+        // library that round-trips numbers through a double emits them that way —
+        // this walker's own float writer emits 1e+21. So an integer field takes
+        // any number whose VALUE is integral, however it was spelled; only a
+        // genuinely fractional value is the wrong shape for it.
+        boolean isSigned = f.kind >= 2 && f.kind <= 5;
+        boolean saturated = false;
+        long placed = 0;
+        if (in.integral) {
+            placed = tokenInteger(in, length, isSigned);
+            saturated = in.saturated;
+        } else {
+            double d = tokenDouble(in.token, length, false);
+            if (!Double.isFinite(d)) {
+                in.report.kindMismatch++;
+                return true;
+            }
+            if (isSigned) {
+                if (d >= 9223372036854775808.0) { placed = Long.MAX_VALUE; saturated = true; }
+                else if (d < -9223372036854775808.0) { placed = Long.MIN_VALUE; saturated = true; }
+                else if (d != Math.floor(d)) { in.report.kindMismatch++; return true; }
+                else { placed = (long) d; }
+            } else {
+                if (d < 0.0) {
+                    // a negative for an unsigned field clamps to zero, as the
+                    // exact digit path already does
+                    if (d != Math.floor(d)) { in.report.kindMismatch++; return true; }
+                    placed = 0;
+                    saturated = true;
+                } else if (d >= 18446744073709551616.0) { placed = -1L; saturated = true; }
+                else if (d != Math.floor(d)) { in.report.kindMismatch++; return true; }
+                else if (d >= 9223372036854775808.0) { placed = (long) (d - 9223372036854775808.0) + Long.MIN_VALUE; }
+                else { placed = (long) d; }
+            }
+        }
+        if (saturated) { in.report.clamped++; }
+        if (f.hasRange) {
+            if ((double) placed < f.rangeMin) { placed = (long) f.rangeMin; in.report.clamped++; }
+            else if ((double) placed > f.rangeMax) { placed = (long) f.rangeMax; in.report.clamped++; }
+        }
+        // the field's own storage width is the last bound: a value past it clamps
+        // rather than wrapping, which is what the wire does too
+        if (f.elemWidth < 8) {
+            if (isSigned) {
+                long high = (1L << (f.elemWidth * 8 - 1)) - 1;
+                long low = -high - 1;
+                if (placed > high) { placed = high; in.report.clamped++; }
+                else if (placed < low) { placed = low; in.report.clamped++; }
+            } else {
+                long high = (1L << (f.elemWidth * 8)) - 1;
+                if (placed < 0) { placed = 0; in.report.clamped++; }
+                else if (placed > high) { placed = high; in.report.clamped++; }
+            }
+        }
+        // at eight bytes the storage IS the parser's width, and an unsigned value
+        // past Long.MAX_VALUE rides here as a negative long by design — the token
+        // parser already turned a NEGATIVE token for an unsigned field into a
+        // clamped zero, so there is nothing left to bound.
+        f.setRaw.set(owner, index, placed);
+        return true;
+    }
+
+    // put one array field's every slot back at its declared defaults. A table
+    // element's defaults are its own (the reset hook); every other element kind's
+    // storage default is zero, which is what the generated array declares. There
+    // is no union arm here because an ARRAY OF UNIONS is refused by name
+    // (docs/SPEC-TABLES.md §11).
+    private static void resetSlots(Object value, TableFieldInfo f) {
+        for (int i = 0; i < f.arrayBound; i++) {
+            if (f.kind == 13) { f.table().reset.reset(f.getChild.get(value, i)); }
+            else { f.setRaw.set(value, i, 0); }
+        }
+    }
+
+    private static boolean readField(In in, Object value, TableFieldInfo f, int depth) {
+        if (f.kind == 12) {
+            byte[] storage = f.getBuffer.get(value);
+            int length = scanString(in, storage, f.arrayBound);
+            if (length < 0) { return false; }
+            putCount(value, f, length);
+            return true;
+        }
+        if (isBytes(f)) {
+            // base64 decodes STRAIGHT INTO the field's storage, six bits at a
+            // time — no window, no temporary, so a bytes(N) of any declared extent
+            // reads the same way. A base64 body carries no escapes, so a backslash
+            // in one is simply not an alphabet character.
+            if (peek(in) != '"') { in.bad = true; return false; }
+            in.pos++;
+            byte[] storage = f.getBuffer.get(value);
+            java.util.Arrays.fill(storage, 0, f.arrayBound, (byte) 0);
+            putCount(value, f, 0);
+            int placed = 0;
+            int accumulator = 0;
+            int held = 0;
+            boolean clamped = false;
+            boolean malformed = false;
+            for (;;) {
+                if (in.pos >= in.end) { in.bad = true; return false; }
+                int c = in.text[in.pos++] & 0xff;
+                if (c == '"') { break; }
+                if (c == '=' || malformed) { continue; }
+                int at = BASE64.indexOf(c);
+                if (at < 0) { malformed = true; continue; }
+                accumulator = (accumulator << 6) | at;
+                held += 6;
+                if (held >= 8) {
+                    held -= 8;
+                    if (placed < f.arrayBound) {
+                        storage[placed++] = (byte) ((accumulator >> held) & 0xff);
+                    } else {
+                        clamped = true;
+                    }
+                }
+            }
+            if (malformed) {
+                // a body that is not base64 is the wrong shape for the kind: the
+                // field keeps its default and the event is counted
+                in.report.kindMismatch++;
+                return true;
+            }
+            if (clamped) { in.report.clamped++; }
+            putCount(value, f, placed);
+            return true;
+        }
+        if (isKeyed(f)) {
+            if (peek(in) != '{') { in.bad = true; return false; }
+            in.pos++;
+            // every slot back to its declared defaults first, so a key the text
+            // omits keeps them and a repeated field key cannot leave an earlier
+            // occurrence's slots standing
+            resetSlots(value, f);
+            char shape = elementShape(f);
+            // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
+            // key like any other, last-wins and counted (§16.2). Tracked the way a
+            // table's own field keys are — a bounded bitmask; a vocabulary wider
+            // than this still reads, its repeats simply stop being counted.
+            long[] seen = new long[8];
+            for (;;) {
+                int c = peek(in);
+                if (c == '}') { in.pos++; break; }
+                if (c == 0) { in.bad = true; return false; }
+                int keyLength = scanString(in, in.key, MAX_KEY);
+                if (keyLength < 0) { return false; }
+                if (peek(in) != ':') { in.bad = true; return false; }
+                in.pos++;
+                int slot = -1;
+                for (int v = 0; v < f.arrayBound; v++) {
+                    // nothing is stored for None, so "None" finds no slot and is an
+                    // unknown key like any other name this reader cannot place
+                    if (!keyedSlotValid(f, v)) { continue; }
+                    if (same(in.key, keyLength, f.keyName.of(keyedSlotKey(v)))) { slot = v; break; }
+                }
+                if (slot >= 0 && slot < 512) {
+                    long bit = 1L << (slot & 63);
+                    if ((seen[slot >> 6] & bit) != 0) { in.report.duplicate++; }
+                    seen[slot >> 6] |= bit;
+                }
+                if (slot < 0) {
+                    in.report.unknown++;
+                    if (!skipValue(in, depth + 1)) { return false; }
+                } else if (valueShape(in) != shape) {
+                    in.report.kindMismatch++;
+                    if (!skipValue(in, depth + 1)) { return false; }
+                } else if (!readScalar(in, value, f, slot, depth + 1)) {
+                    return false;
+                }
+                c = peek(in);
+                if (c == ',') { in.pos++; continue; } // a trailing comma is accepted
+                if (c == '}') { in.pos++; break; }
+                in.bad = true;
+                return false;
+            }
+            return true;
+        }
+        if (f.isArray) {
+            if (peek(in) != '[') { in.bad = true; return false; }
+            in.pos++;
+            // LAST WINS has to be true of a repeated ARRAY key too, and it is
+            // wire-visible: a fixed array writes every slot, so a second, shorter
+            // occurrence overlaying a prefix would leave the first occurrence's
+            // tail standing. The field goes back to its declared defaults before
+            // this occurrence's elements are placed — the re-establishment a
+            // nested table and a union arm already get.
+            resetSlots(value, f);
+            putCount(value, f, 0);
+            int placed = 0;
+            char shape = elementShape(f);
+            for (;;) {
+                int c = peek(in);
+                if (c == ']') { in.pos++; break; }
+                if (c == 0) { in.bad = true; return false; }
+                if (placed >= f.arrayBound) {
+                    // more elements than the reader's bound: the bounded prefix is
+                    // kept and the excess counts, the wire's rule (§4)
+                    in.report.clamped++;
+                    if (!skipValue(in, depth + 1)) { return false; }
+                } else if (valueShape(in) != shape) {
+                    in.report.kindMismatch++;
+                    if (!skipValue(in, depth + 1)) { return false; }
+                    placed++;
+                } else {
+                    if (!readScalar(in, value, f, placed, depth + 1)) { return false; }
+                    placed++;
+                }
+                c = peek(in);
+                if (c == ',') { in.pos++; continue; }
+                if (c == ']') { in.pos++; break; }
+                in.bad = true;
+                return false;
+            }
+            // a fixed array's tail keeps the defaults the prefill left there,
+            // exactly as a short wire count does
+            putCount(value, f, placed);
+            return true;
+        }
+        return readScalar(in, value, f, 0, depth);
+    }
+
+    // ONE table object: keys are field keys, unknown ones are skipped and
+    // counted, a repeated key is last-wins and counted. The instance is already
+    // at its declared defaults when this is entered, so a key the text never
+    // mentions keeps the default an absent field takes on the wire (§4).
+    private static boolean readTable(In in, Object value, TableTypeInfo info, int depth) {
+        if (depth > MAX_DEPTH) { in.bad = true; return false; }
+        if (peek(in) != '{') { in.bad = true; return false; }
+        in.pos++;
+        // duplicate tracking, bounded: a table with more fields than this still
+        // reads, its repeats simply stop being counted
+        long[] seen = new long[8];
+        for (;;) {
+            int c = peek(in);
+            if (c == '}') { in.pos++; return true; }
+            if (c == 0) { in.bad = true; return false; }
+            int keyLength = scanString(in, in.key, MAX_KEY);
+            if (keyLength < 0) { return false; }
+            if (peek(in) != ':') { in.bad = true; return false; }
+            in.pos++;
+            int index = -1;
+            for (int i = 0; i < info.numFields; i++) {
+                if (same(in.key, keyLength, info.fields[i].json)) { index = i; break; }
+            }
+            if (index < 0) {
+                in.report.unknown++;
+                if (!skipValue(in, depth + 1)) { return false; }
+            } else {
+                TableFieldInfo f = info.fields[index];
+                if (index < 512) {
+                    long bit = 1L << (index & 63);
+                    if ((seen[index >> 6] & bit) != 0) { in.report.duplicate++; }
+                    seen[index >> 6] |= bit;
+                }
+                // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
+                // is the key being present, so an optional is set present whatever
+                // its value — with one exception the page names: a JSON null,
+                // which reads as ABSENT rather than as a value.
+                char got = valueShape(in);
+                if (f.optional && got == 'z') {
+                    if (!literal(in, "null")) { return false; }
+                    // absent, and back at its defaults: a repeated key whose last
+                    // occurrence is null must not leave an earlier value standing
+                    if (f.table() != null) { f.table().reset.reset(f.getChild.get(value, 0)); }
+                    else { f.setRaw.set(value, 0, 0); }
+                    f.setPresent.set(value, false);
+                } else {
+                    if (got != shape(f)) {
+                        // the wrong JSON type for the kind: skipped, never coerced
+                        in.report.kindMismatch++;
+                        if (!skipValue(in, depth + 1)) { return false; }
+                    } else if (!readField(in, value, f, depth)) {
+                        return false;
+                    }
+                    if (f.optional) {
+                        f.setPresent.set(value, true);
+                    }
+                }
+            }
+            c = peek(in);
+            if (c == ',') { in.pos++; continue; } // a trailing comma is accepted
+            if (c == '}') { in.pos++; return true; }
+            in.bad = true;
+            return false;
+        }
+    }
+
+    // ---- the two entry points the per-table wrappers name ----
+
+    public static boolean read(Object value, TableTypeInfo info, byte[] text, int offset, int length,
+                               TableReport report) {
+        In in = new In();
+        in.text = text;
+        in.pos = offset;
+        in.end = offset + length;
+        // a caller with no report is off the read path this section prices: it
+        // gets one rather than a branch on every counter
+        in.report = report != null ? report : new TableReport();
+        in.bad = false;
+        info.reset.reset(value);
+        // C++ refuses a null pointer and a negative length here before it walks.
+        // An empty range is a text with no object in it, which the walk below
+        // already calls malformed, so there is nothing to check that the walk
+        // does not answer.
+        boolean ok = readTable(in, value, info, 0);
+        if (ok) {
+            // the canonical text ends with ONE newline and a text without one is
+            // the same text: whitespace after the object is skipped either way,
+            // and anything else is trailing rubbish rather than one text
+            space(in);
+            if (in.pos != in.end) { in.bad = true; }
+        }
+        if (in.bad || !ok) {
+            in.report.malformed = true;
+            return false;
+        }
+        return true;
+    }
+
+    public static long write(Object value, TableTypeInfo info, byte[] buffer, int offset, int length,
+                             boolean measuring) {
+        Out o = new Out();
+        o.buffer = buffer;
+        o.base = offset;
+        o.limit = offset + length;
+        o.measuring = measuring;
+        o.offset = 0;
+        o.overflow = false;
+        if (!writeValue(o, value, info, 0)) { return -1; }
+        // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every writer
+        // emits it — this one, the C++ walk and schema unpack — and every reader
+        // accepts a text with or without.
+        o.put('\n');
+        if (o.overflow) { return -1; }
+        return o.offset;
+    }
+}
+// ---- json walk: end ----
+`

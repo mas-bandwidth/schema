@@ -14,21 +14,36 @@ make conformance-pin                 rewrite the half the reference leg writes
 make conformance-negative-control    prove the harness can go red
 ```
 
-Three negative controls stand behind it, and each localises a different thing:
-`conformance-negative-control` flips a byte of a C++ dump (a wrong ANSWER),
-`conformance-negative-control-cs` breaks the C# walker in the emitter (a wrong
-WALK), and `conformance-negative-control-block-dump` flips a byte INSIDE A ROW
-of the block image — which `Open` cannot see, so `block` stays green while
-`block-dump` goes red. That last one is the whole reason `block-dump` exists.
+**Seven negative controls stand behind it, and each localises a different
+thing** — a harness that has never gone red is watching nothing, and one that
+goes red everywhere localises nothing:
+
+| control | what it breaks | what must go red | what must stay green |
+|---|---|---|---|
+| `conformance-negative-control` | one byte of a C++ dump | `cpp / json-write` | `wire` |
+| `conformance-negative-control-block-dump` | one byte INSIDE A ROW of the block image | `block-dump` | `block`, `forgery` |
+| `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
+| `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
+| `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
+| `conformance-negative-control-java` | the Java walk's field index | `java / json-read` | `json-write` |
+| `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
+
+Two of those rows are the reason two surfaces exist at all. The row-dump one is
+why `block-dump` is separate from `block`: `Open` reads the prologue and the
+triples and nothing else, so a byte inside a row cannot move its answer. And the
+pitch one is why `forgery` is separate from both: it removes a CHECK rather than
+moving a value, so the reader still READS correctly and has stopped REFUSING —
+which no valid image can show you.
 
 ## The shape
 
 A driver is a **command**, not a binary — so a leg can be assembled from what a
-backend already has rather than from a second copy of it. Both registered
+backend already has rather than from a second copy of it. Some registered
 drivers are shell scripts that dispatch: the C++ one answers the table and block
 surfaces from `build/conformance-cpp` and hands the two COOK surfaces to
 `build/schema_test_cook`, which already opens that unit and already runs that
-battery.
+battery. Others are one binary that answers everything — see "Registering a
+language" below, where both shapes are stated.
 
 ```
 <command> <manifest> list
@@ -128,6 +143,16 @@ gap is real and the matrix says so rather than a parser papering over it.
 2. Add `<language> <command>` to `drivers.txt`.
 3. `make conformance`.
 
+The registry today:
+
+```
+cpp  test/conformance/cpp/driver
+cs   test/conformance/cs/driver
+go   test/conformance/go/driver
+rust test/conformance/rust/driver
+java test/conformance/java/driver
+```
+
 The first driver in the registry is the **reference leg**: `make conformance-pin`
 takes the cook dumps, the block row dumps and both forgery batteries' offsets
 from it. That is C++ and it is the repo's standing convention — C++ writes the
@@ -138,23 +163,29 @@ manifest nobody reviews.
 **A leg may be assembled from more than one binary, and it may be one.** The
 C++ and C# drivers dispatch the cook's dump to a binary each backend already
 had; the Go driver is a single binary that answers every surface in process,
-which is why its `cook` surface costs one exec rather than five. Both shapes
-satisfy the contract, because the contract is a COMMAND.
+which is why its `cook` surface costs one exec rather than five, and the Java
+driver is one class on one classpath for the same reason — its generated units,
+the wire ones and the block and pointered ones, are packages of a single
+classpath, so the cook's node dump and the 111-row cook forgery battery ride
+inside processes that were already starting. Both shapes satisfy the contract,
+because the contract is a COMMAND.
 
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64
-macOS, everything already built, median of five (the whole) and of three (each
-leg), with other work running on the same laptop — so these are an upper bound,
-and repeats of one unchanged leg spread about a fifth:
+macOS, everything already built, median of three, **one sitting on an otherwise
+quiet laptop** — the whole table re-measured together, because a table whose
+rows come from different sittings can say the whole costs less than one of its
+parts:
 
 | leg | wall |
 |---|---|
-| all four, 268 cases per leg | 21.1 s |
-| `go` alone | 0.79 s |
-| `rust` alone | 0.81 s |
-| `cpp` alone | 0.92 s |
-| `cs` alone | 16.5 s |
+| all five, 268 cases per leg | 13.8 s |
+| `go` alone | 0.57 s |
+| `rust` alone | 0.59 s |
+| `cpp` alone | 0.65 s |
+| `java` alone | 2.2 s |
+| `cs` alone | 11.7 s |
 
 **The cost is per-PROCESS, not per-case, and the numbers say so plainly.** The
 battery grew from 80 cases per leg to 268 — the cook's 111 forgeries, the 66
@@ -162,10 +193,11 @@ hostile trees, a sixth cook, two block row dumps and the two FOREIGN surfaces �
 and the three NATIVE legs still answer all 268 each in under a second. The C#
 leg starts a runtime once per surface plus once per cook, because
 `test/cs-cook`'s dump takes one root per invocation, and that is where nearly
-the whole wall is: 804 of the 1,072 cases in this table cost about two and a
-half seconds between them, and the remaining 268 cost sixteen.
+the whole wall is: of the 1,340 cases in this table, the 804 the native legs
+answer cost under two seconds between them, the 268 Java answers cost two, and
+the last 268 cost twelve.
 
-**Three native legs cost two and a half seconds together.** Adding the two
+**Three native legs cost under two seconds together.** Adding the two
 foreign surfaces cost each native leg two more execs of a binary that starts in
 milliseconds, and cost the C# leg two more runtime starts — which is the whole
 shape of this table in one edit. A leg that answers every surface in ONE binary
@@ -173,6 +205,16 @@ is the cheapest shape the contract allows, and `cook` and `cook-forgery`
 answered in the same binary as everything else rather than delegated is what
 makes it so; the C++ and C# legs cost what they do because each was assembled
 from a binary that already existed, which the contract exists to allow.
+
+**The two MANAGED legs differ by seven times, and the difference is the SHAPE
+rather than the runtime.** Both start a process per surface; the C# leg starts
+one more per cook, because `test/cs-cook`'s dump takes one root per invocation,
+and the Java leg starts none, because its generated units — the wire ones, the
+block unit and the pointered unit — are packages of a single classpath, so both
+cook surfaces ride inside processes that were already starting. Twelve JVM
+starts is 2.2 s; twelve runtime starts plus six more is 11.7 s. A managed leg
+pays for its process starts and nothing else, so the number of them is the
+whole design decision.
 
 **So what the remaining languages cost depends on the SHAPE each leg takes
 rather than on the corpus**, and the two shapes measured here differ by twenty

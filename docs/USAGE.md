@@ -588,8 +588,8 @@ that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
 A table lives on its own wire — evolution-tolerant TLV, carried by C++, by C#,
-by Go and by Rust (all three ports carry the fixed class, wire and text form
-both; the pointer surface ON THE WIRE is a follow-on in every one of them —
+by Go, by Rust and by Java (every port carries the fixed class, wire and text
+form both; the pointer surface ON THE WIRE is a follow-on in every one of them —
 their cook and block accelerators read a pointered unit today). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
@@ -886,6 +886,107 @@ them through `block.Type()` and `cook.Type()`; every record hangs off the
 element column, so one walk reaches the whole graph from either root. The wire's
 `TableTypeInfo` is not those and does not substitute for them: it describes the
 STORAGE a codec fills, and the accelerators describe bytes another build wrote.
+
+**The Java surface is the same three functions once more**, name first, as
+`static` methods on the file's `<Base>Table` class, over `byte[]` the caller
+owns. Storage is a `final` class with public fields, lowerCamel, every buffer
+allocated at construction — the Java packet emitter's own spelling, because a
+table's closure decodes into that emitter's own classes:
+
+```java
+import example.ConfigTable;
+import example.TableReport;
+
+ConfigTable.ShipConfig ship = new ConfigTable.ShipConfig();
+ship.health = 250.0f;
+ship.settingsPresent = true;          // ?T: presence decides whether it rides
+
+long size = ConfigTable.ShipConfigMeasure(ship);   // exact, writes nothing
+byte[] buffer = new byte[(int) size];              // or any storage you own
+ConfigTable.ShipConfigSave(ship, buffer);          // returns size, or -1
+
+TableReport report = new TableReport();
+ConfigTable.ShipConfig loaded = new ConfigTable.ShipConfig();
+if (!ConfigTable.ShipConfigLoad(loaded, buffer, report)) {
+    // framing damage: report.malformed is set, the good prefix is kept
+}
+if (report.unknown != 0 || report.kindMismatch != 0 || report.clamped != 0) {
+    // the data came from a different schema generation — loaded is still
+    // fully usable; log the counts so drift is visible
+}
+```
+
+**A hot loop hoists the reader and reuses it**, which is the shape to reach for
+when you are reading a stream of records rather than a config file once:
+
+```java
+TableReader reader = new TableReader();            // yours, not the codec's
+TableReport report = new TableReport();
+for (byte[] record : records) {
+    reader.reset(record, 0, record.length, report.clear());
+    ConfigTable.ShipConfigLoadBody(reader, loaded); // allocates nothing at all
+}
+```
+
+**Nothing on that path allocates, and in Java that is measured rather than
+asserted** — the same standard the Go leg holds itself to, with the JVM's own
+per-thread allocation counter in place of `testing.AllocsPerRun`. The wire's
+read and save, the block's row walk and the cook's read each read **zero bytes
+per record** across a measured window, a soak re-measures every path at every
+sample for an hour, and a negative control adds one `new byte[1]` per record and
+requires the gate to go red. A nested body is bounded by MOVING THE READER'S
+LIMIT rather than by allocating a sub-reader, which is what makes the number
+reachable at all. The text form allocates by nature and says what it allocates.
+
+Java's unit scope is the PACKAGE and a public type lives in a file of its own
+name, so the shared runtime is **one file per type** — `TableReport.java`,
+`TableReader.java`, `TableWriter.java`, `TableJson.java` and the rest — rather
+than one home file. Nothing about that varies with which schema file sorts
+first, and a unit that declares no table emits not one of them.
+
+`string(N)` and `bytes(N)` are a `byte[N]` beside an `int` used length, arrays a
+`T[N]` beside an `int` used count, `?T` a value beside a `<name>Present` bool,
+and a union its tag beside one pre-allocated arm per variant.
+
+**An enum-keyed array in Java is a plain typed array of `E.max` slots** on the
+owning class — Java has no generic container that could hold a primitive slot
+without boxing, and an `[E]int32` is exactly that case — with an accessor pair
+beside it that takes the KEY:
+
+```java
+hull.turrets(Weapon.missile).ammo = 20;            // by the key, never the slot
+hull.scores(Grade.gold, 7);                        // the setter, for a value element
+
+for (int i = 0; i < TableKeyed.count(hull.turrets); i++) {
+    int key = TableKeyed.key(i);                   // the KEY, 1 .. E.max
+    hull.turrets(key).health *= 2.0f;
+}
+```
+
+No call site spells the shift or the bound: `TableKeyed` is the one place the
+`k - 1` lives, and indexing by `None` throws from it, in every build, as the C++
+abort does. The generated codecs walk the raw array by storage index and never
+pay for the guard.
+
+`<Name>TableType()` returns the reflection descriptor. **Its memory columns are
+ACCESSORS rather than offsets**, which is the one place a walker written from
+the C++ example has to know the difference: a Java field has no offset and a
+Java object has no meaningful sizeof, so the descriptor carries the reader and
+the writer the emitter wrote — `getRaw`, `setRaw`, `getChild`, `getBuffer` and
+the counted and presence companions beside them. Same role, one place, in the
+language's own currency, and the generic text-form walk reaches storage through
+those and through nothing else.
+
+**A block row and a cooked record have no Java type at all.** There is no struct
+to lay out, so `<Name>Row`'s generated accessors read each field at its offset
+out of the array you hold — `RenderShipRow.objectId(data, rows.at(i))` — and
+`<Table>Block.open` / `<Root>Cook.open` take `(byte[] data, int offset, long
+length)` and answer a handle or `null`. The base's ALIGNMENT is that offset's
+residue rather than an address's: the same arithmetic, so the same refusals. A
+reference resolves through `<Root>Cook.at`, which answers the target's offset,
+or `-1` for a null AND for a delta that leaves the region — because an unchecked
+deref in Java is an exception escaping a reader rather than a pointer into
+trusted bytes.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every

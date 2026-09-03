@@ -1,0 +1,44 @@
+#!/bin/sh
+# THE JAVA LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        javac the generated codec beside the runner
+#   leg run [args]   java -cp <classes> Main [args]
+#
+# JAVA / JAVAC override the pinned JDK, the same variables the Makefile uses;
+# CI installs the same major and sets JAVA=java JAVAC=javac.
+set -e
+
+GEN=generated/bench/tables/java
+OUT=build/tables-bench-java
+JAVA=${JAVA:-$PWD/dist/jdk-21.0.12.1/Contents/Home/bin/java}
+JAVAC=${JAVAC:-$PWD/dist/jdk-21.0.12.1/Contents/Home/bin/javac}
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.java" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    if [ ! -x "$JAVAC" ] && ! command -v "$JAVAC" >/dev/null 2>&1; then
+        echo "no javac" >&2
+        exit 2
+    fi
+    rm -rf "$OUT"
+    mkdir -p "$OUT"
+    # -Xlint:all -Werror: the generated codec compiles under the CONSUMER's
+    # javac, so a warning here is a build failure in their tree and not only
+    # in ours
+    "$JAVAC" --release 17 -Xlint:all -Werror -d "$OUT" "$GEN"/*.java bench/tables/java/src/Main.java >&2
+    ;;
+run)
+    shift
+    # DEFAULT JVM FLAGS, no -ea: asserts are dormant, so the number a user
+    # gets is the number reported (bench/java/Main.java's own stance)
+    exec "$JAVA" -cp "$OUT" Main "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac
