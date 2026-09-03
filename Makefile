@@ -2978,17 +2978,24 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	cd test/cs-tables && dotnet run
 	# THE C TABLES LEG (docs/SPEC-TABLES.md; test/conformance/README.md): the
 	# same corpus in C, with the two gates that hold the emitter honest, the
-	# forgery fuzzer under ASan and UBSan, and a short soak. The HOUR-long soak
-	# is a release act rather than a per-build one: `make tables-c-soak
-	# SOAK_SECONDS=3600`.
+	# forgery fuzzer under ASan and UBSan, and a short soak.
+	#
+	# THE SHORT FORMS RIDE HERE AND THE LONG ONES DO NOT, because this job runs
+	# on every push and had three minutes of headroom before a fifth leg
+	# existed. Every gate below FIRES here — the fuzzer's enumerated passes
+	# cover the boundaries whatever N is, and the soak's allocator-call gate
+	# reads the same at two seconds as at twenty — and what the long forms buy
+	# is more random mutants and more wall clock. `make tables-c` runs the leg
+	# whole at the full N, and the HOUR-long soak is a release act:
+	# `make tables-c-soak SOAK_SECONDS=3600`.
 	$(MAKE) tables-c-zero-cost
 	$(MAKE) tables-c-json-walk
-	$(MAKE) tables-c-fuzz
+	$(MAKE) tables-c-fuzz N=25000
 	$(MAKE) tables-c-fuzz-negative-control
 	$(MAKE) tables-c-variable
 	$(MAKE) tables-c-keyed-none-refusal-ndebug
 	$(MAKE) tables-c-keyed-none-refusal-negative-control
-	$(MAKE) tables-c-soak SOAK_SECONDS=20
+	$(MAKE) tables-c-soak SOAK_SECONDS=2
 	$(MAKE) tables-c-soak-negative-control
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
@@ -3776,6 +3783,13 @@ build/tables-generated-c/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_P
 TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
 	-O2 -ffp-contract=off
 
+# The flags a NEGATIVE CONTROL builds with. A control is built to be RUN ONCE
+# and thrown away — it proves a gate can go red and is never measured — so it
+# pays the warnings and skips the optimiser. On the driver's twenty-eight
+# translation units that is most of the build, and `make test` runs two of
+# these.
+TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
+
 C_CONFORMANCE_SOURCES = test/conformance/c/main.c \
 	test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
 	test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c \
@@ -3946,7 +3960,7 @@ conformance-negative-control-c: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p3 test/tables/P3.schema
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_C)/generated/*/*Table.c || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
-	$(CC) $(TABLES_CFLAGS) -Itest/conformance/c \
+	$(CC) $(TABLES_CFLAGS_CONTROL) -Itest/conformance/c \
 		-I$(CONFORMANCE_NEGATIVE_C)/generated/examples -I$(CONFORMANCE_NEGATIVE_C)/generated/v1 \
 		-I$(CONFORMANCE_NEGATIVE_C)/generated/v2 -I$(CONFORMANCE_NEGATIVE_C)/generated/p1 \
 		-I$(CONFORMANCE_NEGATIVE_C)/generated/p3 -I$(CONFORMANCE_NEGATIVE_C)/generated/block \
@@ -4000,7 +4014,7 @@ conformance-negative-control-c-foreign: build/conformance-harness build/tables-g
 		test/conformance/c/main.c > $(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c
 	@grep -q SABOTAGED $(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c || \
 		{ echo "NEGATIVE CONTROL: the byte-swap sabotage did not apply"; exit 1; }
-	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) \
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_CONFORMANCE_INCLUDES) \
 		$(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) \
 		-o $(CONFORMANCE_NEGATIVE_C_FOREIGN)/driver-bin -lm
 	@printf '#!/bin/sh\nexec %s/driver-bin "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_FOREIGN)" > $(CONFORMANCE_NEGATIVE_C_FOREIGN)/driver
