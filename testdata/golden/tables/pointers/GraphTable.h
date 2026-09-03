@@ -526,7 +526,31 @@ struct TableWorker
         }
         uint32_t at = next;
         next += bytes;
-        slot.ptr = new ( TableArenaAt( *arena, at ) ) T{};
+        // A NODE IS BORN IN TWO HALVES: start its lifetime in the raw
+        // storage, then write the declared defaults ONE MEMBER AT A TIME.
+        //
+        // It is "T", not "T{}". Value-initialising the whole aggregate says
+        // the same thing and costs cl O(BYTES) TO COMPILE — it expands element
+        // by element in its front end — while both halves here cost
+        // O(declarations). The slab cap below refuses a large node at RUN
+        // TIME and bounds nothing at compile time: the cost is paid by
+        // whatever T a caller instantiates this with.
+        // Padding is not the difference: value-initialisation zeroes MEMBERS
+        // and not padding either way, which is why the segment is calloc'd.
+        //
+        // TableReset is an OVERLOAD SET, one per closure member, reached from
+        // this template by argument-dependent lookup on T's own namespace —
+        // Alloc is a template and cannot spell <Name>Reset.
+        //
+        // The reset is here because ONE DEFINITION SAYS WHAT THE DECLARED
+        // DEFAULTS ARE, and it is <Name>Reset. Default-initialisation lands on
+        // the same values today, because a member with a non-zero default
+        // carries a member initializer that says so — but that is the class
+        // definition agreeing with Reset, not the arena reading it, and #320's
+        // fix was itself a pass that MOVED initialisation between the two.
+        // The arena reads the definition.
+        slot.ptr = new ( TableArenaAt( *arena, at ) ) T;
+        TableReset( *slot.ptr );
         slot.ref.value = at;
         return slot;
     }
@@ -926,6 +950,22 @@ inline void AlbumReset( Album & value )
     value.head.value = 0; // *ListNode — null
 }
 
+// ---- the arena's reset hook (SPEC-TABLES.md §6) ----
+//
+// TableWorker::Alloc is a template and cannot name a member's Reset, so
+// the arena reaches it through this overload set by argument-dependent
+// lookup. It is how a node born in raw arena storage comes to hold the
+// declared defaults without value-initialising the whole aggregate.
+
+inline void TableReset( Meta & value ) { MetaReset( value ); }
+inline void TableReset( Settings & value ) { SettingsReset( value ); }
+inline void TableReset( ListNode & value ) { ListNodeReset( value ); }
+inline void TableReset( TreeNode & value ) { TreeNodeReset( value ); }
+inline void TableReset( Layer & value ) { LayerReset( value ); }
+inline void TableReset( Scene & value ) { SceneReset( value ); }
+inline void TableReset( Depot & value ) { DepotReset( value ); }
+inline void TableReset( Album & value ) { AlbumReset( value ); }
+
 // ---- pointer targets: allocation and resolution (SPEC-TABLES.md §2) ----
 //
 // A reference resolves differently in the two forms, and the CONTEXT says
@@ -961,7 +1001,8 @@ inline Settings * SettingsEmplace( TableRegionSink & sink, TableRef & slot )
     int64_t at = TableAlignUp64( sink.used );
     if ( at + (int64_t) sizeof( Settings ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
-    Settings * node = new ( sink.base + at ) Settings{};
+    Settings * node = new ( sink.base + at ) Settings; // the lifetime; the defaults are the line below
+    SettingsReset( *node ); // one member at a time, never `Settings{}` over the aggregate (#320)
     slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
@@ -1002,7 +1043,8 @@ inline ListNode * ListNodeEmplace( TableRegionSink & sink, TableRef & slot )
     int64_t at = TableAlignUp64( sink.used );
     if ( at + (int64_t) sizeof( ListNode ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-    ListNode * node = new ( sink.base + at ) ListNode{};
+    ListNode * node = new ( sink.base + at ) ListNode; // the lifetime; the defaults are the line below
+    ListNodeReset( *node ); // one member at a time, never `ListNode{}` over the aggregate (#320)
     slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
@@ -1043,7 +1085,8 @@ inline TreeNode * TreeNodeEmplace( TableRegionSink & sink, TableRef & slot )
     int64_t at = TableAlignUp64( sink.used );
     if ( at + (int64_t) sizeof( TreeNode ) > sink.capacity ) { return NULL; }
     sink.used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-    TreeNode * node = new ( sink.base + at ) TreeNode{};
+    TreeNode * node = new ( sink.base + at ) TreeNode; // the lifetime; the defaults are the line below
+    TreeNodeReset( *node ); // one member at a time, never `TreeNode{}` over the aggregate (#320)
     slot.value = (int64_t) ( ( sink.base + at ) - (uint8_t *) &slot );
     return node;
 }
@@ -2785,7 +2828,7 @@ inline bool ListNodePack( const Ctx & ctx, const ListNode & src, ListNode & dst,
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode{};
+            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.next.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.next );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -2880,7 +2923,7 @@ inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst,
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            TreeNode * child = new ( base + at ) TreeNode{};
+            TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.left.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.left );
             if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -2893,7 +2936,7 @@ inline bool TreeNodePack( const Ctx & ctx, const TreeNode & src, TreeNode & dst,
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            TreeNode * child = new ( base + at ) TreeNode{};
+            TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.right.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.right );
             if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -2994,7 +3037,7 @@ inline bool LayerPack( const Ctx & ctx, const Layer & src, Layer & dst, uint8_t 
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode{};
+            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -3118,7 +3161,7 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode{};
+            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -3131,7 +3174,7 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( TreeNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-            TreeNode * child = new ( base + at ) TreeNode{};
+            TreeNode * child = new ( base + at ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.tree.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.tree );
             if ( !TreeNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -3144,7 +3187,7 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( Settings ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( Settings ) );
-            Settings * child = new ( base + at ) Settings{};
+            Settings * child = new ( base + at ) Settings; // lifetime only: the Pack below memcpy's the whole node over it
             dst.settings.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.settings );
             if ( !SettingsPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -3157,7 +3200,7 @@ inline bool ScenePack( const Ctx & ctx, const Scene & src, Scene & dst, uint8_t 
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode{};
+            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.alias.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.alias );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -3340,7 +3383,7 @@ inline bool DepotPack( const Ctx & ctx, const Depot & src, Depot & dst, uint8_t 
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode{};
+            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -3471,7 +3514,7 @@ inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t 
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( Marker ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( Marker ) );
-            Marker * child = new ( base + at ) Marker{};
+            Marker * child = new ( base + at ) Marker; // lifetime only: the Pack below memcpy's the whole node over it
             dst.pin.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.pin );
             if ( !MarkerPack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -3484,7 +3527,7 @@ inline bool AlbumPack( const Ctx & ctx, const Album & src, Album & dst, uint8_t 
             int64_t at = TableAlignUp64( used );
             if ( at + (int64_t) sizeof( ListNode ) > capacity ) { return false; }
             used = at + TableAlignUp64( (int64_t) sizeof( ListNode ) );
-            ListNode * child = new ( base + at ) ListNode{};
+            ListNode * child = new ( base + at ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
             dst.head.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.head );
             if ( !ListNodePack( ctx, *pointee, *child, base, capacity, used, depth + 1 ) ) { return false; }
         }
@@ -3630,7 +3673,7 @@ inline bool ListNodeBuilder::Lock()
     if ( packed == NULL ) { return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( ListNode ) );
-    ListNode * destination = new ( packed ) ListNode{};
+    ListNode * destination = new ( packed ) ListNode; // lifetime only: the Pack below memcpy's the whole node over it
     if ( !ListNodePack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
     {
         free( packed );
@@ -3703,7 +3746,7 @@ inline const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, co
     sink.base = region;
     sink.capacity = region_bytes;
     sink.used = TableAlignUp64( (int64_t) sizeof( ListNode ) );
-    ListNode * root = new ( region ) ListNode{};
+    ListNode * root = new ( region ) ListNode; // lifetime only: LoadBody's first act is ListNodeReset
     TableReader r( wire, wire_bytes, out );
     ListNodeLoadBody( r, sink, *root, 1 );
     return root;
@@ -3788,7 +3831,7 @@ inline bool TreeNodeBuilder::Lock()
     if ( packed == NULL ) { return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-    TreeNode * destination = new ( packed ) TreeNode{};
+    TreeNode * destination = new ( packed ) TreeNode; // lifetime only: the Pack below memcpy's the whole node over it
     if ( !TreeNodePack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
     {
         free( packed );
@@ -3861,7 +3904,7 @@ inline const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, co
     sink.base = region;
     sink.capacity = region_bytes;
     sink.used = TableAlignUp64( (int64_t) sizeof( TreeNode ) );
-    TreeNode * root = new ( region ) TreeNode{};
+    TreeNode * root = new ( region ) TreeNode; // lifetime only: LoadBody's first act is TreeNodeReset
     TableReader r( wire, wire_bytes, out );
     TreeNodeLoadBody( r, sink, *root, 1 );
     return root;
@@ -3946,7 +3989,7 @@ inline bool LayerBuilder::Lock()
     if ( packed == NULL ) { return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Layer ) );
-    Layer * destination = new ( packed ) Layer{};
+    Layer * destination = new ( packed ) Layer; // lifetime only: the Pack below memcpy's the whole node over it
     if ( !LayerPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
     {
         free( packed );
@@ -4019,7 +4062,7 @@ inline const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const ui
     sink.base = region;
     sink.capacity = region_bytes;
     sink.used = TableAlignUp64( (int64_t) sizeof( Layer ) );
-    Layer * root = new ( region ) Layer{};
+    Layer * root = new ( region ) Layer; // lifetime only: LoadBody's first act is LayerReset
     TableReader r( wire, wire_bytes, out );
     LayerLoadBody( r, sink, *root, 1 );
     return root;
@@ -4104,7 +4147,7 @@ inline bool SceneBuilder::Lock()
     if ( packed == NULL ) { return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Scene ) );
-    Scene * destination = new ( packed ) Scene{};
+    Scene * destination = new ( packed ) Scene; // lifetime only: the Pack below memcpy's the whole node over it
     if ( !ScenePack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
     {
         free( packed );
@@ -4177,7 +4220,7 @@ inline const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const ui
     sink.base = region;
     sink.capacity = region_bytes;
     sink.used = TableAlignUp64( (int64_t) sizeof( Scene ) );
-    Scene * root = new ( region ) Scene{};
+    Scene * root = new ( region ) Scene; // lifetime only: LoadBody's first act is SceneReset
     TableReader r( wire, wire_bytes, out );
     SceneLoadBody( r, sink, *root, 1 );
     return root;
@@ -4262,7 +4305,7 @@ inline bool DepotBuilder::Lock()
     if ( packed == NULL ) { return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Depot ) );
-    Depot * destination = new ( packed ) Depot{};
+    Depot * destination = new ( packed ) Depot; // lifetime only: the Pack below memcpy's the whole node over it
     if ( !DepotPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
     {
         free( packed );
@@ -4335,7 +4378,7 @@ inline const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const ui
     sink.base = region;
     sink.capacity = region_bytes;
     sink.used = TableAlignUp64( (int64_t) sizeof( Depot ) );
-    Depot * root = new ( region ) Depot{};
+    Depot * root = new ( region ) Depot; // lifetime only: LoadBody's first act is DepotReset
     TableReader r( wire, wire_bytes, out );
     DepotLoadBody( r, sink, *root, 1 );
     return root;
@@ -4420,7 +4463,7 @@ inline bool AlbumBuilder::Lock()
     if ( packed == NULL ) { return false; }
     memset( packed, 0, (size_t) total );
     int64_t used = TableAlignUp64( (int64_t) sizeof( Album ) );
-    Album * destination = new ( packed ) Album{};
+    Album * destination = new ( packed ) Album; // lifetime only: the Pack below memcpy's the whole node over it
     if ( !AlbumPack( ctx, root, *destination, packed, total, used, 1 ) || used != total )
     {
         free( packed );
@@ -4493,7 +4536,7 @@ inline const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const ui
     sink.base = region;
     sink.capacity = region_bytes;
     sink.used = TableAlignUp64( (int64_t) sizeof( Album ) );
-    Album * root = new ( region ) Album{};
+    Album * root = new ( region ) Album; // lifetime only: LoadBody's first act is AlbumReset
     TableReader r( wire, wire_bytes, out );
     AlbumLoadBody( r, sink, *root, 1 );
     return root;

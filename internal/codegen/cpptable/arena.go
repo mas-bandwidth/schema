@@ -219,7 +219,31 @@ struct TableWorker
         }
         uint32_t at = next;
         next += bytes;
-        slot.ptr = new ( TableArenaAt( *arena, at ) ) T{};
+        // A NODE IS BORN IN TWO HALVES: start its lifetime in the raw
+        // storage, then write the declared defaults ONE MEMBER AT A TIME.
+        //
+        // It is "T", not "T{}". Value-initialising the whole aggregate says
+        // the same thing and costs cl O(BYTES) TO COMPILE — it expands element
+        // by element in its front end — while both halves here cost
+        // O(declarations). The slab cap below refuses a large node at RUN
+        // TIME and bounds nothing at compile time: the cost is paid by
+        // whatever T a caller instantiates this with.
+        // Padding is not the difference: value-initialisation zeroes MEMBERS
+        // and not padding either way, which is why the segment is calloc'd.
+        //
+        // TableReset is an OVERLOAD SET, one per closure member, reached from
+        // this template by argument-dependent lookup on T's own namespace —
+        // Alloc is a template and cannot spell <Name>Reset.
+        //
+        // The reset is here because ONE DEFINITION SAYS WHAT THE DECLARED
+        // DEFAULTS ARE, and it is <Name>Reset. Default-initialisation lands on
+        // the same values today, because a member with a non-zero default
+        // carries a member initializer that says so — but that is the class
+        // definition agreeing with Reset, not the arena reading it, and #320's
+        // fix was itself a pass that MOVED initialisation between the two.
+        // The arena reads the definition.
+        slot.ptr = new ( TableArenaAt( *arena, at ) ) T;
+        TableReset( *slot.ptr );
         slot.ref.value = at;
         return slot;
     }
