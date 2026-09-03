@@ -2256,13 +2256,10 @@ the wire, and keeps the flexibility that comes with it.
 - **Alignment.** The header pads the data part to the region's alignment,
   so a base the allocator or `mmap` gave you is already aligned; `mmap`
   gives page alignment for free.
-- **Endianness is part of the COOK, not of `Open`.** A cook is produced
-  in the byte order of the build it is cooked for — the cook knows its
-  target — so a matching build version already means a matching byte order
-  and `Open` never fixes anything up. Cooking for a foreign target is
-  where a byte swap would live if one is ever wanted (§15); a cooked file
-  whose recorded order is not this build's is simply not this build's
-  file, and refuses.
+- **Endianness is part of the COOK, not of `Open`** (above): a matching
+  build version already means a matching byte order, so `Open` never fixes
+  anything up. Cooking for a foreign target is where a byte swap would live
+  if one is ever wanted (§15).
 
 Prior art gets one sentence, and it is the contrast: systems that made
 pointed-at access their ONLY wire coupled access to evolution and paid
