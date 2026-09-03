@@ -1610,7 +1610,7 @@ to resolve.
 
 **Backend status: OWED, not emitted.** No guarded block carries an identity
 today and no generated file asserts one, so the silent case above is live in
-all four of the C++ table emitter's guarded blocks. Tracked as schema#301,
+every one of the C++ table emitter's guarded blocks. Tracked as schema#301,
 with the negative control it must carry: perturb one header's copy of a block
 and show the translation unit red, naming that header — the same control that
 measured the silence, run in the other direction.
