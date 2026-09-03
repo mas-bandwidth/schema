@@ -1,0 +1,200 @@
+// BenchTable.schema — the TABLES bench corpus (bench/tables/README.md, and
+// BENCH-STANDARD.md §1.9). One shape, `TableMixed`: a REPRESENTATIVE FIXED
+// TABLE on the tolerant wire (docs/SPEC-TABLES.md §3), which is the form a
+// reader of protobuf or flatbuffers already has a number for.
+//
+// It MIRRORS BenchMixed, the type corpus's one measured shape, field for
+// field: same field count, same kinds, same nesting, same bounds, same
+// pinned structure. That is the owner's sizing rule (issue #330): "Make the
+// fixed table roughly equivalent to the profiled type in size", for the
+// reason he gave — "so we don't hyper-fixate on serializing a few fields and
+// it's all memcpy". Two boards over ONE shape is what makes the bitpacked
+// type wire and the tolerant table wire comparable at all: the ratio between
+// them is the price of tolerance, and nothing else.
+//
+// THE FOUR SUBSTITUTIONS, named rather than silently dropped. The table wire
+// is a neutral byte wire with a closed set of kinds (§3), so four of
+// BenchMixed's declarations are REFUSED in a table body by name (§11 —
+// "`fixed`/`ufixed` or the 128-bit family (no wire kind), `const`/`reserved`/
+// `align` (no bit positions)"). Each is replaced by the nearest kind that
+// does the same amount of per-field work, so the field count and the work
+// per field survive the move:
+//
+//   BenchMixed                       TableMixed                  why
+//   const(0xC0DE, 16)             -> protocol_magic uint16       no bit positions
+//   server_time fixed(24, 8)      -> server_time f32 compressed  no wire kind
+//   wide_key uint128              -> wide_key uint64             no wire kind
+//   flux int128 | min, max        -> flux int64 | min, max       no wire kind
+//   ping ufixed(8, 8)             -> ping f32 compressed         no wire kind
+//   reserved(4)                   -> (dropped)                   no bit positions
+//   align                         -> (dropped)                   nothing to align
+//
+// The substitute for `const` is spelled `protocol_magic` rather than `magic`
+// because `magic` is one of the three names the block form's generated
+// prologue claims in every projection (§19.1, §11), and the compiler refuses
+// the collision by name. The refusal is correct and the rename is the whole
+// of the fix.
+//
+// `reserved` and `align` drop rather than substitute because neither carries
+// a value: on the table wire there are no bit positions to hold open and no
+// padding to skip, so there is no work to preserve. Everything else maps one
+// declaration to one declaration.
+//
+// ELISION IS THE STRUCTURE RULE HERE. §3's writer "elides what readers
+// default", so a value that lands on its declared default writes NO BYTES —
+// which would move bytes/op under §2.7 variation and break the harness's
+// constant-record contract. So the pinned instance and all 64 variants hold
+// every field OFF its default (bools true, the enum never `None`, no zero
+// scalar, the string and byte-buffer lengths pinned), and the producer —
+// test/bench/table_main.cpp — REFUSES to emit a corpus whose 64 records are
+// not all the same length. That is §2.7's "structure fields stay fixed" rule
+// restated for a wire that frames by presence instead of by width.
+//
+// The nested aggregates are `table` and the union arms are `type`, which is
+// what a table closure looks like in practice (tables/examples/Tables.schema
+// has both): a `type` in the closure gets table codecs too, and both ride as
+// a kind-13 body, so the choice costs no wire byte either way.
+
+package benchtable
+
+// 15 declared variants + the implicit None, mirroring MixedWeapon. On the
+// table wire an enum rides as u16 carrying the hash of its VARIANT NAME
+// (§3), not as a 4-bit dense index — one of the places the tolerance is paid
+// for, and the reason this bench exists.
+enum TableWeapon
+{
+    Fists,  Pistol, Shotgun, Rifle, Sniper,
+    Smg,    Rocket, Grenade, Plasma, Railgun,
+    Flamer, Mine, Turret, Drone, Repair
+}
+
+// 8 named bits, mirroring MixedDamage. Rides as a u64 of raw bits (§3).
+flags TableDamage
+{
+    Bleeding, Burning, Stunned, Slowed,
+    Poisoned, Shielded, Airborne, Downed
+}
+
+// The per-entity update — MixedEntity's mirror, 14 fields, same kinds and
+// same bounds. Arrayed 8 deep, it carries the bulk of the message here as
+// it does there.
+table TableEntity
+{
+    entity_id bits(12)
+    pos_x     int32       | min = -16383, max = 16383
+    pos_y     int32       | min = -16383, max = 16383
+    pos_z     int32       | min = -16383, max = 16383
+    yaw       bits(9)
+    pitch     bits(9)
+    vel_x     int32       | min = -2048, max = 2047
+    vel_y     int32       | min = -2048, max = 2047
+    vel_z     int32       | min = -2048, max = 2047
+    health    int32       | min = 0, max = 1000
+    weapon    TableWeapon
+    damage    TableDamage
+    moving    bool
+    firing    bool
+}
+
+// The integer mass element — MixedStat's mirror. Arrayed 80 deep, it is the
+// weighting law made mechanical, and on this wire it is also the clearest
+// view of the per-field id+kind overhead: two fields, six bytes of framing.
+table TableStat
+{
+    stat_id bits(8)
+    delta   int32   | min = -512, max = 511
+}
+
+// The three union payloads — MixedHitEvent, MixedChatEvent, MixedPickupEvent.
+// `hit` is the pinned arm and the largest, so the pinned wire IS the union's
+// worst case, exactly as in the type corpus.
+type TableHitEvent
+{
+    target_id bits(12)
+    damage    int32    | min = 0, max = 4095
+    hit_kind  int32    | min = 0, max = 7
+    crit      bool
+}
+
+type TableChatEvent
+{
+    channel int32    | min = 0, max = 3
+    speaker bits(12)
+}
+
+type TablePickupEvent
+{
+    item_id bits(10)
+    amount  int32    | min = 0, max = 255
+}
+
+union TableEvent
+{
+    hit    TableHitEvent
+    chat   TableChatEvent
+    pickup TablePickupEvent
+}
+
+// The message. Field for field, BenchMixed with the four substitutions above.
+table TableMixed
+{
+    // ---- header ----
+    protocol_magic uint16
+    sequence       bits(16)
+    ack_sequence   int32    | min = 0, max = 65535
+    ack_bits       bits(32)
+    session_id     uint64
+    client_id      uint32
+    // BenchMixed's `nonce` is the FULL-UNSIGNED ranged path: on the type wire
+    // a bound spanning the whole storage width still selects an encoding, so
+    // it is real work. On the table wire it selects nothing — a ranged u64
+    // rides as kind 9 whatever its bounds, and the bounds only clamp on load
+    // (§3) — so a bound at the storage limits clamps nothing. The mirror
+    // therefore keeps the ranged-u64 field with a bound that is LIVE at both
+    // ends, which is the same per-field work with a check that can fire.
+    // (A `min = 0, max = 18446744073709551615` spelling additionally makes
+    // the C++ table emitter write `decoded_v < 0ull` and
+    // `decoded_v > 18446744073709551615ull`, which g++ rejects under
+    // -Wtype-limits. The emitter already elides a `bits(N)` width clamp when
+    // N is the storage width and should elide a declared bound the same way;
+    // that is a defect of its own, not something this corpus should carry.)
+    nonce       uint64   | min = 1, max = 9223372036854775807
+    world_time  int64    | min = -1000000000000, max = 1000000000000
+    frame_tick  bits(48)
+    server_time float32  | min = 0, max = 65535, resolution = 0.01
+
+    // ---- entity block: the counted array of nested tables ----
+    entities [1..8]TableEntity
+
+    // ---- integer mass ----
+    stats [..80]TableStat
+
+    // ---- event section ----
+    game_event  TableEvent
+    loadout     [4]uint8
+    player_name string(15)
+    payload     bytes(16)
+
+    // ---- coverage singles ----
+    aim_x    float32  | min = -1, max = 1, resolution = 0.01
+    aim_y    float32  | min = -1, max = 1, resolution = 0.01
+    aim_z    float32  | min = -1, max = 1, resolution = 0.01
+    recoil   float32
+    drift    float64
+    wide_key uint64
+    flux     int64    | min = -1000000000000000000, max = 1000000000000000000
+    ping     float32  | min = 0, max = 250, resolution = 0.01
+    crc_hint bits(24)
+
+    // The branch gate: STRUCTURE, pinned true, so `extra` rides and
+    // `idle_ticks` never does — the same pin the type corpus holds.
+    has_extra bool
+    if has_extra
+    {
+        extra int32 | min = 0, max = 255
+    }
+    else
+    {
+        idle_ticks int32 | min = 0, max = 15
+    }
+}

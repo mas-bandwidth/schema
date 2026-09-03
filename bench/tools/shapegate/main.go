@@ -104,6 +104,11 @@ var runnerDirs = []string{
 	"bench/rust/",
 	"bench/tools/",
 	"bench/run.sh",
+	// the TABLES leg (bench/tables/README.md): its own runners, its own
+	// registry and its own pass, for the corpus_id reason that page states.
+	// Same rule inside it as everywhere else — a runner names the generated
+	// type at one call site and no field, and the ledger below counts it.
+	"bench/tables/",
 }
 
 // corpusDir — the shape definition and its committed data. Shape names are
@@ -164,7 +169,11 @@ var nameStoplist = map[string]bool{
 }
 
 var (
-	declRe  = regexp.MustCompile(`^\s*(?:type|enum|union|flags)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	// `table` rides here beside `type`: bench/corpus/BenchTable.schema
+	// declares the tables leg's shape and its nested records as tables, and a
+	// declaration keyword missing from this list is a shape name the gate
+	// does not guard at all.
+	declRe  = regexp.MustCompile(`^\s*(?:type|table|enum|union|flags)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	fieldRe = regexp.MustCompile(`^\s+([a-z_][a-z0-9_]*)\s`)
 	bitsRe  = regexp.MustCompile(`=\s*(\d+)\s*bits`)
 )

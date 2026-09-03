@@ -71,6 +71,10 @@ wire corpus — a 438-byte packet exercising every construct, with integers carr
 bytes. Raw sweeps are committed under [bench/results](bench/results/); reproduce
 with `./bench/run.sh` and render any sweep's table with `./bench/run.sh --render <csv>`.
 
+Tables — the evolvable format, tolerant across versions — ride a different wire and have their
+own board: the same shape, declared as a fixed table, written and read on that wire in every
+language that carries tables ([bench/tables](bench/tables/), `make bench-tables`).
+
 ## Why it exists
 
 Multiplayer games serialize the same data in several languages at once — an

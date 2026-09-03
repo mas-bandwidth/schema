@@ -141,3 +141,27 @@ timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame rea
 
 timing test/tables/cook_main.cpp 2 the cook's open-cost gate (§7, §7.5): open time flat across 1 MB and 100 MB, paired medians — a constant-time header match, no shape named
 timing test/cs-cook/src/Program.cs 3 the cook's open-cost gate on the C# leg (§7, §7.5): the same two fixtures, the same paired medians, one warm-up pass because a tiered runtime measured cold measures tier-up — a constant-time header match, no shape named
+
+# ---------------------------------------------------------------------------
+# THE TABLES LEG (bench/tables/README.md).
+#
+# The same design as the nine type legs and the same three kinds of entry: a
+# shape-blind runner has to NAME the generated type at the point it hands it
+# to the generated Save/Load, and it names nothing else about the shape — no
+# field, no pinned value, no wire size. The corpus's own producer is the one
+# place that knows the shape, and it carries no clock.
+#
+# The gate guards this corpus at all because `table` now rides in the
+# declaration keywords it extracts from bench/corpus/*.schema; before that a
+# table's name was invisible to it, and a leg could have hand-written one.
+# ---------------------------------------------------------------------------
+
+names bench/tables/cpp/table_main.cpp 4 shape-blind leg: 1 comment + `benchtable::TableMixed` as the bench_table template argument and its Reset/Save/Load call sites (callsite)
+names bench/tables/cs/src/Program.cs 2 shape-blind leg: `Benchtable.TableMixed` as the BenchTable type argument and its constructor (callsite)
+
+# The tables corpus's golden pinner and oracle: correctness code, no clock.
+# It is the ONE place that names a field of BenchTable.schema, which is what
+# lets both legs above read the committed data blind. Only its bench-shaped
+# PATH trips a check, exactly as its type twin's does.
+
+paths test/bench/table_main.cpp 1 the tables corpus's producer and §1.5 oracle: correctness code, no timing

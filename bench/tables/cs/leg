@@ -1,0 +1,37 @@
+#!/bin/sh
+# THE C# LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        dotnet build -c Release
+#   leg run [args]   dotnet run --no-build
+#
+# SERIALIZE_CS overrides the serialize.cs checkout the project's packet file
+# compiles against, the same env var and the same sibling default the type
+# leg uses.
+set -e
+
+PROJ=bench/tables/cs
+GEN=generated/bench/tables/cs
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.cs" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    command -v dotnet >/dev/null 2>&1 || { echo "no dotnet" >&2; exit 2; }
+    if [ -n "$SERIALIZE_CS" ]; then
+        dotnet build "$PROJ" -c Release -v q --nologo "-property:SerializeCsRoot=$SERIALIZE_CS" >&2
+    else
+        dotnet build "$PROJ" -c Release -v q --nologo >&2
+    fi
+    ;;
+run)
+    shift
+    exec dotnet run --project "$PROJ" -c Release --no-build -- "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

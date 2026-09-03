@@ -1,0 +1,39 @@
+#!/bin/sh
+# THE C++ LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        compile bench/tables/cpp/table_main.cpp
+#   leg run [args]   run it
+#
+# Flags are the repo's own plus the Release bench configuration the type leg
+# uses (bench/README.md): -O3 -DNDEBUG -fno-rtti, and -ffp-contract=off
+# because this repo pins wire determinism. There is no serialize runtime in
+# this build — the generated table codec names none.
+set -e
+
+BIN=build/schema_tables_bench_cpp
+SRC=bench/tables/cpp/table_main.cpp
+GEN=generated/bench/tables/cpp
+: "${CXX:=c++}"
+: "${BENCH_OPT_LEVEL:=O3}"
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.h" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    mkdir -p build
+    $CXX -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+        "-$BENCH_OPT_LEVEL" -DNDEBUG -fno-rtti "-DBENCH_OPT=\"$BENCH_OPT_LEVEL\"" \
+        -I"$GEN" "$SRC" -o "$BIN"
+    ;;
+run)
+    shift
+    exec "./$BIN" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

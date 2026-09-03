@@ -308,8 +308,25 @@ CSV row.
 
 A probe is the right shape when the question is about a LANGUAGE (two
 storage forms of the same data) rather than about the wire. A question about
-the wire belongs in a leg, under the standard — the tables leg the table work
-owes is schema#270, and no probe closes it.
+the wire belongs in a leg, under the standard — and the table wire's leg is
+`bench/tables/`, below.
+
+## The tables leg
+
+`bench/tables/` is the second pass and the second board: ONE representative
+fixed table written and read on the tolerant table wire, over
+`bench/corpus/BenchTable.schema`, which mirrors `BenchMixed` field for field
+so the two boards carry one shape on two wires. Its rows carry family
+`table` (BENCH-STANDARD.md §1.9) and its own `corpus_id`, so nothing there can
+be divided against a row here by accident.
+
+    make bench-tables            the pass
+    bench/tables/README.md       the operating manual and the port contract
+
+It is a separate pass rather than a leg of `run.sh` for one mechanical reason:
+`corpus_id` covers the goldens a RUN loaded, so folding the table corpus in
+would change every `bench_mixed` row's id and make today's type numbers
+un-ratioable against every earlier board.
 
 ## The shape gate
 

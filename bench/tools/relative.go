@@ -42,12 +42,15 @@ import (
 	"strings"
 )
 
-// The bench/corpus/Bench.schema shapes — ONE, since the ruling on #199 left
-// a single bench corpus. Presentation order only; the family column, not
-// this list, is what the §5.3 refusal rules read. A bench absent from this
-// list would silently vanish from every table and from aggregate, so the
-// list must know every bench the runners emit.
-var benchCorpus = []string{"bench_mixed"}
+// The corpus shapes. `bench_mixed` is bench/corpus/Bench.schema's ONE shape,
+// since the ruling on #199 left a single type-bench corpus; `bench_table` is
+// bench/corpus/BenchTable.schema's, the tables leg's one shape, which rides
+// family `table` and therefore never divides against the other. Presentation
+// order only; the family column, not this list, is what the §5.3 refusal
+// rules read. A bench absent from this list would silently vanish from every
+// table and from aggregate, so the list must know every bench the runners
+// emit.
+var benchCorpus = []string{"bench_mixed", "bench_table"}
 
 const bitpacker = "bitpacker"
 

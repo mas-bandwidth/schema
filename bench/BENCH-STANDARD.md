@@ -510,6 +510,57 @@ implementation (corpus type, goldens, runner rows) lands as its own additive
 change, and the runtime repos' in-repo benches carry their own local rows
 under the same measure-first rule.
 
+### §1.9 The tables corpus and family `table`
+
+**A second corpus, a second pass, a second board — and family `table` so the
+two can never be divided by accident.** `bench/corpus/BenchTable.schema`
+declares ONE measured shape, `TableMixed`: a representative fixed table
+written and read on the tolerant table wire (docs/SPEC-TABLES.md §3). It is
+the tables layer's per-language release gate, and `bench/tables/README.md` is
+its operating manual.
+
+The owner's ruling (issue #330), verbatim: *"At minimum we should have a
+representative fixed table"* / *"that's the sort of equivalent to like
+protobufs/flatbuffers"* / *"Make the fixed table roughly equivalent to the
+profiled type in size"* / *"so we don't hyper-fixate on serializing a few
+fields and it's all memcpy."* So `TableMixed` MIRRORS `BenchMixed` field for
+field — same field count, kinds, nesting and bounds, with the four
+declarations a table body refuses (§11 there) substituted by their nearest
+kind and named in the schema's own header. That mirror is the whole point: the
+two boards carry one shape on two wires, so the ratio between them is the
+price of tolerance and nothing else.
+
+**Everything in §1.5, §1.6 and §2 applies unchanged** — the golden gate before
+the clock, the 64-record variant corpus, the escape barriers, 1 warmup + 7
+runs, the §2.9 write/round_trip contract with `read` derived to stderr. Two
+clauses are restated because the wire differs:
+
+- **Structure is PRESENCE here, not width.** The table wire elides a field
+  holding its declared default, so §2.7's "structure fields stay fixed" means
+  every varied value must stay OFF its default or the record shortens and
+  `bytes_per_op` moves. The producer (`test/bench/table_main.cpp`) holds them
+  off by construction and REFUSES to emit a corpus whose 64 records are not
+  all the same length.
+- **The read arm resets before it loads**, inside the clock. `Load` fills only
+  what rode, so resetting is part of a correct read into reused storage in
+  every language; hiding it outside the clock would publish a decode number
+  that no caller can obtain.
+
+**Why the pass is separate from `bench/run.sh`.** `corpus_id` is computed over
+the goldens a RUN loaded (§1.6). Folding the table corpus into the type pass
+would change the `corpus_id` of every `bench_mixed` row and the tools would
+then correctly refuse to divide today's type numbers against any earlier
+board. Family `table` is the second, independent guard: §5.3 refuses a ratio
+across families, so a tolerant-wire row and a bitpacked-wire row cannot be
+divided even inside one file.
+
+**What this corpus does NOT measure**, by the owner's scope ruling on the same
+issue — *"I think that's sufficient for now for the profiling, the rest can be
+C++/C# specific with render data tables as we work in space"* — is the block
+form and the cook. Those stay C++/C#, measured in the game on real render
+data, under `make tables-block-gate2` (docs/SPEC-TABLES.md §12.1) and the
+cook's open-cost gate (§7.5). No per-language block or cook bench is owed.
+
 ---
 
 ## §2 Methodology
@@ -1315,7 +1366,7 @@ lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max
 | 1–11 | unchanged from v1 |
 | `path` (col 3) | `write` \| `read` \| `round_trip`. `round_trip` was added 2026-08-31 by §2.9 and appears on the gen family's data-driven `bench_mixed` rows, which report `write` + `round_trip` and no measured `read`. Every tool that walks rows walks `relative.go`'s one `paths` list, so a path added to a runner and not to that list REFUSES the aggregation rather than dropping rows. |
 | `corpus_id` | 16 hex digits, §1.6 |
-| `family` | `gen` \| `bits` \| `local` |
+| `family` | `gen` \| `bits` \| `local` \| `table` (§1.9) |
 | `linkage` | `hdr` \| `tu` \| `hdr+tu` \| `tu-lto` \| `crate` \| `pkg` \| `asm` (§3.1) |
 | `checks` | `removed` \| `always` \| `contract` (§3.4) |
 | `opt` | `O2` \| `O3` \| `default` |
