@@ -623,9 +623,19 @@ const runtimeSource = `  @moduledoc """
     end
   end
 
+  # one emulated float32 step: a double that no float32 can hold rounds to the
+  # infinity pattern on the way in, and NO BEAM FLOAT TERM CAN HOLD ONE, so the
+  # answer is the atom rather than a value. The text form's read turns that into
+  # a kind mismatch, which is what keeps an infinity out of storage (§16.2).
   defp narrow32(v) do
-    <<narrow::float-little-32>> = <<v::float-little-32>>
-    narrow
+    <<bits::little-unsigned-32>> = <<v::float-little-32>>
+
+    if (bits >>> 23 &&& 0xFF) == 0xFF do
+      :infinity
+    else
+      <<narrow::float-little-32>> = <<bits::little-unsigned-32>>
+      narrow
+    end
   rescue
     ArgumentError -> :infinity
   end
@@ -1324,28 +1334,108 @@ const runtimeSource = `  @moduledoc """
   # would leave an instance this walk called CLEAN that the writer then refuses
   # forever (§16.2, §16.3)
   defp place_float(token, f, single, report) do
-    parsed =
-      case Float.parse(token) do
-        {v, ""} -> v
-        _ -> :error
-      end
-
-    cond do
-      parsed == :error ->
+    case decimal_to_float(token, single) do
+      :infinity ->
         {0.0, kind_mismatch(report)}
 
-      true ->
-        {value, report} = clamp_range(parsed, f, report)
-
-        if single do
-          case narrow32(value) do
-            :infinity -> {0.0, kind_mismatch(report)}
-            narrow -> {narrow, report}
-          end
-        else
-          {value, report}
-        end
+      parsed ->
+        clamp_range(parsed, f, report)
     end
+  end
+
+  # ---- decimal -> binary float, ONE correctly-rounded conversion ----
+  #
+  # At the field's OWN width, over exact integers. Converting through a double
+  # first would round TWICE, and the two roundings part company across a whole
+  # band: a decimal between FLT_MAX and the float32 rounding midpoint lands ON
+  # the midpoint as a double and overflows from there, and again at the
+  # subnormal end, where the double rounds to zero and the single does not.
+  # The page's rule is exact conversion at both float widths (§16.2), and the
+  # BEAM offers no strtof, so this is it.
+  def decimal_to_float(token, single) do
+    {precision, min_ulp, overflow_exp} =
+      if single, do: {24, -149, 128}, else: {53, -1074, 1024}
+
+    {sign, m, e} = decimal_parts(token)
+
+    if m == 0 do
+      0.0 * sign
+    else
+      {n, d} = if e >= 0, do: {m * pow10(e), 1}, else: {m, pow10(-e)}
+      ulp = max(exponent_of(n, d) - (precision - 1), min_ulp)
+      {q, ulp} = normalise(round_half_even(n, d, ulp), ulp, precision)
+
+      # q * 2^ulp >= 2^overflow_exp has no float of this width: the value
+      # overflows, and no BEAM float term can hold the infinity
+      room = overflow_exp - ulp
+
+      if room <= 0 or q >= 1 <<< room do
+        :infinity
+      else
+        sign * q * :math.pow(2.0, ulp)
+      end
+    end
+  end
+
+  defp decimal_parts(token) do
+    {sign, rest} =
+      case token do
+        "-" <> r -> {-1, r}
+        "+" <> r -> {1, r}
+        r -> {1, r}
+      end
+
+    {mantissa, exponent} =
+      case String.split(rest, ["e", "E"]) do
+        [m] -> {m, "0"}
+        [m, x] -> {m, x}
+      end
+
+    {whole, fraction} =
+      case String.split(mantissa, ".") do
+        [i] -> {i, ""}
+        [i, f] -> {i, f}
+      end
+
+    digits = whole <> fraction
+    m = if digits == "", do: 0, else: String.to_integer(digits)
+    {sign, m, String.to_integer(exponent) - byte_size(fraction)}
+  end
+
+  defp pow10(k), do: Integer.pow(10, k)
+
+  # n/d >= 2^k, over integers
+  defp ge_pow2(n, d, k) do
+    if k >= 0, do: n >= d <<< k, else: n <<< -k >= d
+  end
+
+  # the k with 2^k <= n/d < 2^(k+1)
+  defp exponent_of(n, d) do
+    k = bit_length(n) - bit_length(d)
+    if ge_pow2(n, d, k), do: k, else: k - 1
+  end
+
+  defp bit_length(0), do: 0
+  defp bit_length(x), do: byte_size(Integer.to_string(x, 2))
+
+  # round(n / (d * 2^ulp)) to nearest, ties to even
+  defp round_half_even(n, d, ulp) do
+    {num, den} = if ulp >= 0, do: {n, d <<< ulp}, else: {n <<< -ulp, d}
+    q = div(num, den)
+    r = rem(num, den)
+    twice = r * 2
+
+    cond do
+      twice > den -> q + 1
+      twice < den -> q
+      rem(q, 2) == 0 -> q
+      true -> q + 1
+    end
+  end
+
+  # a carry out of the top bit widens the exponent by one
+  defp normalise(q, ulp, precision) do
+    if q >= 1 <<< precision, do: {div(q, 2), ulp + 1}, else: {q, ulp}
   end
 
   defp clamp_range(value, f, report) do

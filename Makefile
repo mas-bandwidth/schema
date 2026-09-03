@@ -63,6 +63,7 @@ JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
 BEAM_PATH ?= $(CURDIR)/dist/otp-29.0.5/bin:$(CURDIR)/dist/elixir-1.20.4/bin
 ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
 MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
+ELIXIRC   ?= PATH="$(BEAM_PATH):$$PATH" elixirc
 
 # cmd, internal, AND the public API packages: ir/ and compiler/ are compiled
 # into bin/schema like any other source, and leaving them out made an edit to
@@ -3578,6 +3579,33 @@ build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	done
 	@touch $@
 
+# THE ELIXIR TABLE CORPUS: one generated directory per unit, all compiled into
+# ONE ebin, because a unit's namespace is its package and the corpus's packages
+# are distinct. The conformance driver starts a BEAM per surface over these
+# .beam files, so nothing is compiled at driver time.
+ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+	blockdemo:tables/block blockhome:tables/blockhome \
+	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
+	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
+
+build/tables-generated-elixir/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+	@mkdir -p build/tables-generated-elixir
+	@for unit in $(ELIXIR_TABLE_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		rm -rf build/tables-generated-elixir/$$name; \
+		./bin/schema generate --lang elixir --out build/tables-generated-elixir/$$name $$path || exit 1; \
+	done
+	@touch $@
+
+build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp
+	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
+	$(ELIXIRC) -o build/elixir-tables-ebin build/tables-generated-elixir/*/*.ex
+	@touch $@
+
+.PHONY: build-conformance-elixir
+build-conformance-elixir: build/elixir-tables-ebin/.stamp test/conformance/elixir/driver.exs
+
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
 	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
@@ -3628,7 +3656,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/conformance-c build/schema_test_cook \
 		build-conformance-cs build-cs-cook build/conformance-go build/conformance-rust \
-		build-conformance-java
+		build-conformance-java build-conformance-elixir
 	JAVA=$(JAVA) ./build/conformance-harness run
 
 # The GENERATED half of the data: the JSON text of every instance and the read
