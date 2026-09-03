@@ -2423,6 +2423,11 @@ generated/bench/tables/rust/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/rust/src
 	./bin/schema generate --lang rust --out generated/bench/tables/rust/src bench/corpus/BenchTable.schema
 	@printf '[package]\nname = "benchtable"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' > generated/bench/tables/rust/Cargo.toml
+
+generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/go
+	./bin/schema generate --lang go --out generated/bench/tables/go bench/corpus/BenchTable.schema
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
@@ -2695,7 +2700,7 @@ bench-table-check: build/schema_test_bench_table
 # estate's bench rules — core 15, server stopped, not live, blessed per run;
 # a run on a shared interactive machine is a pairing check and the board says
 # which one it is.
-bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/rust/.stamp bench-table-check
+bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp bench-table-check
 	bench/tables/run.sh
 
 # Prove the COMMITTED generated/ tree matches what the current compiler

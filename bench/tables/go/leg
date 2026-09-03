@@ -1,0 +1,36 @@
+#!/bin/sh
+# THE GO LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        build bench/tables/go
+#   leg run [args]   run it
+#
+# There is no serialize runtime in this build — the generated table codec names
+# none — so the leg needs the Go toolchain and the generated package and
+# nothing else. Go's own release configuration is its only one: the compiler
+# has no -O flag, so BENCH_OPT records what the board can honestly say about
+# it, which is `default`.
+set -e
+
+BIN=build/schema_tables_bench_go
+GEN=generated/bench/tables/go
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.go" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    command -v go > /dev/null 2>&1 || { echo "no go toolchain" >&2; exit 2; }
+    mkdir -p build
+    ( cd bench/tables/go && go build -o "../../../$BIN" . )
+    ;;
+run)
+    shift
+    exec "./$BIN" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

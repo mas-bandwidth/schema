@@ -159,6 +159,7 @@ timing test/conformance/rust/src/main.rs 3 the Rust SOAK's deadline and its inte
 
 names bench/tables/cpp/table_main.cpp 4 shape-blind leg: 1 comment + `benchtable::TableMixed` as the bench_table template argument and its Reset/Save/Load call sites (callsite)
 names bench/tables/cs/src/Program.cs 2 shape-blind leg: `Benchtable.TableMixed` as the BenchTable type argument and its constructor (callsite)
+names bench/tables/go/table_main.go 2 shape-blind leg: `benchtable.TableMixed` as the benchTable type argument and in the one load closure's signature (callsite)
 names bench/tables/rust/src/main.rs 1 shape-blind leg: `TableMixed` as the bench_table type argument, once — its reset/save/load are snake_case free functions the corpus vocabulary does not spell, so the Rust leg names the shape in exactly one place (callsite)
 
 # The tables corpus's golden pinner and oracle: correctness code, no clock.
