@@ -2582,7 +2582,18 @@ func (c *checker) checkClaimedNames() {
 		// emitters actually emit. A second copy of it in this file is exactly
 		// how the C# runtime's names came to be unclaimed in the first place.
 		for _, gen := range tablenames.Claimed() {
-			add(gen, "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)", unitPos)
+			what := "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)"
+			if gen[0] >= 'a' && gen[0] <= 'z' {
+				// UNEXPORTED IS NOT PRIVATE. A Go package is one namespace, so
+				// a lowercase runtime name is a package-scope name a
+				// declaration collides with exactly as a PascalCase one does —
+				// `const tableJsonMaxDepth = 5` beside a table is a
+				// redeclaration and the unit does not compile. The diagnostic
+				// says which half, because a reader meeting it will otherwise
+				// wonder why an unexported name was reserved (§11).
+				what = "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
+			}
+			add(gen, what, unitPos)
 		}
 		// AND THE SAME NAMES IN THE RUST CONSTANT SPACE. Rust spells a
 		// constant SCREAMING_SNAKE, and that spelling is MANY-TO-ONE:

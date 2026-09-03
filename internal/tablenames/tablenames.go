@@ -294,6 +294,73 @@ var registry = []Name{
 	{Name: "TableCookStorageString", By: Go, What: "char[N + 1] with an int32 used length beside it"},
 	{Name: "TableCookStorageBytes", By: Go, What: "uint8[N] with an int32 used length beside it"},
 
+	// ---- THE GO PORT'S LOWERCASE FAMILY (docs/SPEC-TABLES.md §11) ----
+	//
+	// Go is the first backend whose runtime puts UNEXPORTED names at package
+	// scope, and unexported is not private: a Go package is one namespace, so
+	// `const tableJsonMaxDepth = 5` in a schema generates a redeclaration and
+	// the unit does not compile. That is precisely the defect §11 promises
+	// cannot happen, so every one of these is claimed on the same terms as the
+	// PascalCase surface above.
+	//
+	// THE THREE SLICES ARE WHY THERE ARE ONLY THREE OF THEM. A descriptor graph
+	// could have taken one variable per record — `cookRecordScene`,
+	// `blockInfoRenderFrameShipRow` — and each of those is a name DERIVED from
+	// a declaration's own spelling, which is a name a declaration can collide
+	// with and which this registry has no shape for. One fixed name per graph
+	// is one claim, and the emitters index into it.
+	{Name: "tableBlockLayoutOffset", By: Go, What: "the block layout contract's offset refusal"},
+	{Name: "tableBlockLayoutSize", By: Go, What: "the block layout contract's size refusal"},
+	{Name: "tableBlockNativeOrder", By: Go, What: "this machine's byte order, read once at package initialisation"},
+	{Name: "tableBlockRecords", By: Go, What: "the unit's whole block descriptor graph, one slice"},
+	{Name: "tableCookLayoutOffset", By: Go, What: "the cook layout contract's offset refusal"},
+	{Name: "tableCookLayoutSize", By: Go, What: "the cook layout contract's size refusal"},
+	{Name: "tableCookNativeOrder", By: Go, What: "this machine's byte order, read once at package initialisation"},
+	{Name: "tableCookRecords", By: Go, What: "the unit's whole cooked-record descriptor graph, one slice"},
+	{Name: "tableJsonBase64Alphabet", By: Go, What: "the base64 alphabet a `bytes` field rides under"},
+	{Name: "tableJsonBytes", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonCount", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonElementShape", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonEncodeUtf8", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonFinite", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonGetRaw", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonGetSigned", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonGuardHolds", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonIn", By: Go, What: "the text reader's cursor"},
+	{Name: "tableJsonIsBytes", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonIsEnum", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonIsFlags", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonIsKeyed", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonKeyedSlotKey", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonKeyedSlotValid", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonMaxDepth", By: Go, What: "the walk's nesting cap"},
+	{Name: "tableJsonMaxKey", By: Go, What: "the longest key the walk will place"},
+	{Name: "tableJsonMaxNumber", By: Go, What: "the longest numeric token the walk will convert"},
+	{Name: "tableJsonNameIs", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonNamed", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonOut", By: Go, What: "the text writer's sink"},
+	{Name: "tableJsonRead", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonReadField", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonReadScalar", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonReadTable", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonSetCount", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonSetRaw", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonShape", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonText", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonTokenDouble", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonTokenInteger", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonUtf8", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWrite", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWriteBase64", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWriteField", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWriteFloat", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWriteScalar", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWriteSigned", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWriteString", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWriteUnsigned", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableJsonWriteValue", By: Go, What: "one step of the text form's generic walk (§16)"},
+	{Name: "tableUnionArms", By: Go, What: "the unit's union-field shapes, one slice"},
+
 	// the unit's BUILD VERSION (docs/SPEC-TABLES.md §20): the one digest a block
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is
 	// claimed here because it is a unit-level name the generated block sources

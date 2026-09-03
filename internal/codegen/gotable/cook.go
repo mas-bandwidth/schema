@@ -82,6 +82,9 @@ type cookUnit struct {
 	order   []string                    // those record names, sorted
 	skipped map[string]string           // table -> why it has no Go Open
 	align   int64                       // the unit's region alignment (§7.1)
+	// every record's slot in the unit's ONE descriptor graph, so no descriptor
+	// takes a name derived from a declaration's own spelling (§11)
+	slot map[string]int
 }
 
 func (c *cookUnit) home(u *ir.Unit) string {
@@ -141,6 +144,10 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 		aligns = append(aligns, c.members[name].Align)
 	}
 	sort.Strings(c.order)
+	c.slot = make(map[string]int, len(c.order))
+	for i, name := range c.order {
+		c.slot[name] = i
+	}
 	c.align = ir.RegionAlignOf(aligns...)
 	return c
 }
@@ -525,7 +532,8 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	g.emitAt(st)
 	g.hf("// Type is %s's cooked-record descriptor, the head of the graph a reflective\n", name)
 	g.hf("// walk follows (docs/SPEC-TABLES.md §8).\n")
-	g.hf("func (c %sCook) Type() *TableCookInfo { return &%s }\n\n", name, cookInfoSymbol(name))
+	g.hf("func (c %sCook) Type() *TableCookInfo { return &tableCookRecords[%d] }\n\n",
+		name, g.cook.slot[name])
 }
 
 func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout) {
@@ -637,13 +645,13 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 // not a parse. Every record the region can hold hangs off the field column, so
 // a walker reaches the whole graph from any root.
 func (g *cookGen) emitAllDescriptors() {
-	for _, name := range g.cook.order {
-		g.emitRecordDescriptor(name)
-	}
-	if len(g.links) == 0 {
-		return
-	}
-	g.hf("// THE RECORD COLUMNS are linked here rather than in the literals above, and\n")
+	g.hf("// tableCookRecords is the unit's whole cooked-record descriptor graph. It is\n")
+	g.hf("// ONE package-level slice rather than one variable per record, and that is a\n")
+	g.hf("// §11 fact rather than a taste: a name derived from a DECLARATION's own\n")
+	g.hf("// spelling is a name a declaration can collide with, and the checker has no\n")
+	g.hf("// machinery for a prefix-and-name product. One fixed name is one claim.\n")
+	g.hf("var tableCookRecords = make([]TableCookInfo, %d)\n\n", len(g.cook.order))
+	g.hf("// THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and\n")
 	g.hf("// the reason is a language fact rather than a taste: a cooked graph is CYCLIC\n")
 	g.hf("// by design — ListNode names ListNode — and Go refuses an initialization\n")
 	g.hf("// cycle among package-level variables, a closure in an initializer included.\n")
@@ -651,6 +659,9 @@ func (g *cookGen) emitAllDescriptors() {
 	g.hf("// them after: the descriptor surface is immutable from then on, readable from\n")
 	g.hf("// any goroutine at any time with no synchronisation.\n")
 	g.hf("func init() {\n")
+	for _, name := range g.cook.order {
+		g.emitRecordDescriptor(name)
+	}
 	for _, l := range g.links {
 		g.hf("\t%s\n", l)
 	}
@@ -662,21 +673,21 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 	if ml == nil {
 		return
 	}
-	symbol := cookInfoSymbol(record)
-	if g.wroteDescriptor[symbol] {
+	if g.wroteDescriptor[record] {
 		return
 	}
-	g.wroteDescriptor[symbol] = true
-	g.hf("var %s = TableCookInfo{\n", symbol)
-	g.hf("\tName: %q, Size: %d, Align: %d, NumFields: %d,\n", record, ml.Size, ml.Align, len(ml.Fields))
-	g.hf("\tFields: []TableCookFieldInfo{\n")
+	g.wroteDescriptor[record] = true
+	slot := g.cook.slot[record]
+	g.hf("\ttableCookRecords[%d] = TableCookInfo{\n", slot)
+	g.hf("\t\tName: %q, Size: %d, Align: %d, NumFields: %d,\n", record, ml.Size, ml.Align, len(ml.Fields))
+	g.hf("\t\tFields: []TableCookFieldInfo{\n")
 	var fieldIndex []string
 	for _, fl := range ml.Fields {
 		f := fl.Field
 		if f.Type.Kind == ir.TNamed {
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-				g.links = append(g.links, fmt.Sprintf("%s.Fields[%d].Record = func() *TableCookInfo { return &%s }",
-					symbol, len(fieldIndex), cookInfoSymbol(ref.Name)))
+				g.links = append(g.links, fmt.Sprintf("tableCookRecords[%d].Fields[%d].Record = func() *TableCookInfo { return &tableCookRecords[%d] }",
+					slot, len(fieldIndex), g.cook.slot[ref.Name]))
 			}
 		}
 		fieldIndex = append(fieldIndex, f.Name)
@@ -710,14 +721,12 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			presentOffset = pieces[len(pieces)-1].Offset
 		}
-		g.hf("\t\t{Name: %q, Offset: %d, Size: %d, ElemSize: %d, IsArray: %t, ArrayBound: %d, IsPointer: %t, CountOffset: %d, PresentOffset: %d, Storage: TableCookStorage%s},\n",
+		g.hf("\t\t\t{Name: %q, Offset: %d, Size: %d, ElemSize: %d, IsArray: %t, ArrayBound: %d, IsPointer: %t, CountOffset: %d, PresentOffset: %d, Storage: TableCookStorage%s},\n",
 			f.Name, fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
 			cookStorageKind(f))
 	}
-	g.hf("\t},\n}\n\n")
+	g.hf("\t\t},\n\t}\n")
 }
-
-func cookInfoSymbol(record string) string { return "cookRecord" + record }
 
 // cookStorageKind is what a cooked SLOT holds, which is not always what the
 // wire carries: an ENUM slot holds the ORDINAL at the enum's own derived

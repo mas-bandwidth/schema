@@ -32,7 +32,6 @@ package gotable
 import (
 	"fmt"
 	"go/format"
-	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -57,11 +56,12 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	if home == "" {
 		return out, nil
 	}
+	slots := newBlockSlots(blocks)
 	for _, f := range u.Files {
 		if len(f.Tables) == 0 && f.Base != home {
 			continue
 		}
-		g := &blockGen{unit: u, file: f, blocks: blocks, home: f.Base == home}
+		g := &blockGen{unit: u, file: f, blocks: blocks, home: f.Base == home, slots: slots}
 		g.emit()
 		src, err := g.assemble()
 		if err != nil {
@@ -95,6 +95,7 @@ type blockGen struct {
 	runtime     strings.Builder // the shared runtime, home file only
 	structs     strings.Builder // the blittable records
 	handles     strings.Builder // the block handles, their Open and their descriptors
+	slots       *blockSlots     // every descriptor's slot in the unit's one graph
 	needsFmt    bool
 	needsUnsafe bool
 }
@@ -125,6 +126,7 @@ func (g *blockGen) emit() {
 	}
 	if g.home {
 		g.emitLayoutCheck()
+		g.emitAllDescriptors()
 	}
 	for _, st := range g.file.Tables {
 		if bl := g.blocks.Block(st.Name); bl != nil {
@@ -601,7 +603,12 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	}
 
 	g.emitBlockOpen(bl)
-	g.emitBlockDescriptors(bl)
+	g.hf("// Type is this block's descriptors: constant data, so a reflective read costs\n")
+	g.hf("// a lookup and not a parse. The row layouts hang off the element column\n")
+	g.hf("// rather than taking names of their own, so a walker reaches every record\n")
+	g.hf("// through the graph.\n")
+	g.hf("func (b *%sBlock) Type() *TableBlockInfo { return &tableBlockRecords[%d] }\n\n",
+		name, g.slots.at(blockRecordKey{projection: name}))
 }
 
 func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
@@ -677,39 +684,87 @@ func blockStartAlign(a ir.BlockArray) int64 {
 	return int64(ir.BlockAlign)
 }
 
-// emitBlockDescriptors emits one table's block reflection: the projection
-// offset of every field, the offsets of the three members inside each triple,
-// and the ELEMENT's own descriptor beside them (docs/SPEC-TABLES.md §8,
-// §19.2). A consumer holding these reads the facts out of an instance and
-// points at rows, with no hand-written struct per table.
-func (g *blockGen) emitBlockDescriptors(bl *ir.BlockLayout) {
-	name := bl.Table.Name
-	records := blockDescriptorRecords(g.blocks, bl)
-	for _, r := range records {
-		g.emitBlockRecordDescriptor(name, r, g.blocks.Layout(r), nil)
+// emitAllDescriptors writes the unit's whole block descriptor graph into the
+// home file: the projection of every marked table, then every record their
+// arrays and nestings reach. It is ONE package-level slice, and that is a §11
+// fact rather than a taste — a name derived from a DECLARATION's own spelling
+// is a name a declaration can collide with, and the checker has no machinery
+// for a prefix-and-name product. One fixed name is one claim.
+func (g *blockGen) emitAllDescriptors() {
+	g.hf("// tableBlockRecords is the unit's whole block descriptor graph: constant\n")
+	g.hf("// data, so a reflective read costs a lookup and not a parse. Every record\n")
+	g.hf("// hangs off the element column rather than taking a name of its own, so a\n")
+	g.hf("// walker reaches the whole graph from any block's Type (§8, §19.2).\n")
+	g.hf("var tableBlockRecords = make([]TableBlockInfo, %d)\n\n", len(g.slots.order))
+	g.hf("// The graph is FILLED HERE rather than in the slice's own initializer, and\n")
+	g.hf("// the reason is a language fact: a field's element column names another\n")
+	g.hf("// record — a slot of this very slice — and Go refuses an initialization\n")
+	g.hf("// cycle among package-level variables, a closure in an initializer\n")
+	g.hf("// included. An init body is not part of that analysis. Nothing mutates it\n")
+	g.hf("// afterwards: the surface is immutable from here on, readable from any\n")
+	g.hf("// goroutine with no synchronisation.\n")
+	g.hf("func init() {\n")
+	for i, key := range g.slots.order {
+		if key.projection != "" {
+			bl := g.blocks.Block(key.projection)
+			g.emitBlockRecordDescriptor(i, &bl.Projection, bl)
+			continue
+		}
+		g.emitBlockRecordDescriptor(i, g.blocks.Layout(key.record), nil)
 	}
-	g.emitBlockRecordDescriptor(name, "", &bl.Projection, bl)
-	g.hf("// Type is this block's descriptors: constant data, so a reflective read costs\n")
-	g.hf("// a lookup and not a parse. The row layouts hang off the element column\n")
-	g.hf("// rather than taking names of their own, so a walker reaches every record\n")
-	g.hf("// through the graph.\n")
-	g.hf("func (b *%sBlock) Type() *TableBlockInfo { return &%s }\n\n", name, blockInfoSymbol(name, ""))
+	g.hf("}\n\n")
 }
 
-func (g *blockGen) emitBlockRecordDescriptor(owner, record string, ml *ir.MemberLayout, bl *ir.BlockLayout) {
+// blockRecordKey names one descriptor slot: a marked table's PROJECTION, or a
+// record its arrays and nestings reach. A table can be both a block root and
+// another block's row, and the two differ by the prologue, so they are two
+// slots.
+type blockRecordKey struct {
+	projection string
+	record     string
+}
+
+// blockSlots numbers every descriptor the unit's blocks reach, in a stable
+// order, so the emitted text is deterministic and every file can name a slot
+// the home file will emit.
+type blockSlots struct {
+	order []blockRecordKey
+	index map[blockRecordKey]int
+}
+
+func (s *blockSlots) at(key blockRecordKey) int { return s.index[key] }
+
+func newBlockSlots(b *ir.BlockUnit) *blockSlots {
+	slots := &blockSlots{index: map[blockRecordKey]int{}}
+	add := func(key blockRecordKey) {
+		if _, seen := slots.index[key]; seen {
+			return
+		}
+		slots.index[key] = len(slots.order)
+		slots.order = append(slots.order, key)
+	}
+	for _, bl := range b.Tables {
+		add(blockRecordKey{projection: bl.Table.Name})
+	}
+	for _, name := range b.Order {
+		add(blockRecordKey{record: name})
+	}
+	return slots
+}
+
+func (g *blockGen) emitBlockRecordDescriptor(slot int, ml *ir.MemberLayout, bl *ir.BlockLayout) {
 	if ml == nil {
 		return
 	}
-	symbol := blockInfoSymbol(owner, record)
-	name := record
 	projection := bl != nil
+	name := ml.Name
 	if projection {
 		name = bl.Table.Name
 	}
-	g.hf("var %s = TableBlockInfo{\n", symbol)
-	g.hf("\tName: %q, BuildVersion: BuildVersion, Size: %d, Align: %d, NumFields: %d,\n",
+	g.hf("\ttableBlockRecords[%d] = TableBlockInfo{\n", slot)
+	g.hf("\t\tName: %q, BuildVersion: BuildVersion, Size: %d, Align: %d, NumFields: %d,\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
-	g.hf("\tFields: []TableBlockFieldInfo{\n")
+	g.hf("\t\tFields: []TableBlockFieldInfo{\n")
 	for _, fl := range ml.Fields {
 		f := fl.Field
 		kind := tableScalarKind(f)
@@ -725,21 +780,28 @@ func (g *blockGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 			offsetOfOffset = fmt.Sprintf("%d", a.OffsetOfOffset)
 			strideOffset = fmt.Sprintf("%d", a.StrideOffset)
 			stride = fmt.Sprintf("%d", a.Stride)
-			element = fmt.Sprintf("func() *TableBlockInfo { return &%s }", blockInfoSymbol(owner, a.ElemName))
+			element = g.blockElement(blockRecordKey{record: a.ElemName})
 		} else if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed && g.blocks.Layout(ref.Name) != nil {
 			// A field that NAMES a record carries that record's layout, whether
 			// it holds one or an array of them: an INLINE array of records is
 			// part of a row, and a walker descending one reaches its element
 			// through this same column.
-			element = fmt.Sprintf("func() *TableBlockInfo { return &%s }", blockInfoSymbol(owner, ref.Name))
+			element = g.blockElement(blockRecordKey{record: ref.Name})
 		}
-		g.hf("\t\t{Name: %q, Offset: %d, Size: %d, Kind: %d, OutOfLine: %v, OffsetOfOffset: %s, CountOffset: %s, StrideOffset: %s, Stride: %s,\n",
+		g.hf("\t\t\t{Name: %q, Offset: %d, Size: %d, Kind: %d, OutOfLine: %v, OffsetOfOffset: %s, CountOffset: %s, StrideOffset: %s, Stride: %s,\n",
 			f.Name, fl.Offset, fl.Size, kind, outOfLine, offsetOfOffset, blockGoOffset(facts.CountOffset), strideOffset, stride)
-		g.hf("\t\t\tIsArray: %v, Counted: %v, Optional: %v, ArrayBound: %d, ElemSize: %d, PresentOffset: %s, Element: %s},\n",
+		g.hf("\t\t\t\tIsArray: %v, Counted: %v, Optional: %v, ArrayBound: %d, ElemSize: %d, PresentOffset: %s, Element: %s},\n",
 			facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.ElemSize,
 			blockGoOffset(facts.PresentOffset), element)
 	}
-	g.hf("\t},\n}\n\n")
+	g.hf("\t\t},\n\t}\n")
+}
+
+// blockElement is one field's element column: a closure over the slot the home
+// file gives that record. It is a FUNCTION and not an address because the graph
+// is written as one slice literal, which cannot name its own elements.
+func (g *blockGen) blockElement(key blockRecordKey) string {
+	return fmt.Sprintf("func() *TableBlockInfo { return &tableBlockRecords[%d] }", g.slots.at(key))
 }
 
 // blockGoOffset spells a companion's offset, or the absent marker every other
@@ -749,55 +811,4 @@ func blockGoOffset(offset int64) string {
 		return "0xffffffff"
 	}
 	return fmt.Sprintf("%d", offset)
-}
-
-// blockDescriptorRecords is every record one block's descriptors reach, in a
-// stable order: each out-of-line array's element and everything it nests by
-// value, sorted so the generated text is deterministic.
-func blockDescriptorRecords(b *ir.BlockUnit, bl *ir.BlockLayout) []string {
-	seen := map[string]bool{}
-	var walk func(name string)
-	walk = func(name string) {
-		if seen[name] {
-			return
-		}
-		ml := b.Layout(name)
-		if ml == nil {
-			return
-		}
-		seen[name] = true
-		for _, fl := range ml.Fields {
-			if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok && fl.Field.Type.Kind == ir.TNamed {
-				walk(ref.Name)
-			}
-		}
-	}
-	for _, a := range bl.Arrays {
-		walk(a.ElemName)
-	}
-	for _, fl := range bl.Projection.Fields {
-		if ir.BlockOutOfLine(fl.Field) {
-			continue
-		}
-		if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok && fl.Field.Type.Kind == ir.TNamed {
-			walk(ref.Name)
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for name := range seen {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// blockInfoSymbol names one record's descriptor. The descriptors are package
-// data, so they take an unexported name — a schema declaration always
-// generates an exported spelling, so nothing a user writes can collide with
-// one, and the block form claims no file-scope name beyond §11's set.
-func blockInfoSymbol(owner, record string) string {
-	if record == "" {
-		return "blockInfo" + owner
-	}
-	return "blockInfo" + owner + record
 }

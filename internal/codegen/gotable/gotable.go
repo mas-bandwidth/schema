@@ -125,16 +125,42 @@ type tableGen struct {
 	needsMath  bool
 	unsafeUsed bool
 
-	// the union-field shapes this file declares, filled in an init() below the
-	// descriptors so a cyclic descriptor graph stays expressible
-	unionArms []unionArms
+	// the assignments that fill this file's slots of the unit's arms table,
+	// emitted in an init() below the descriptors so a cyclic descriptor graph
+	// stays expressible
+	unionArms []string
+	// every union FIELD of the unit, by (owner, field), to the slot it takes
+	// in the one arms table — computed for the whole unit before any file is
+	// emitted, so the slice is one name and not one per declaration
+	unionArmSlot map[armKey]int
 }
 
-// unionArms is one union field's shape: the package-level value a descriptor's
-// Arms column points at, and the assignment that fills it.
-type unionArms struct {
-	symbol string
-	fill   string
+// armKey names one union FIELD: the closure member that carries it and the
+// field's own name. A union's arm offsets are the union's, but a descriptor
+// column belongs to the field that carries it.
+type armKey struct {
+	owner string
+	field string
+}
+
+// unionArmSlots numbers every union field in the unit, in the order the files
+// and their members declare them, so the emitted text is deterministic.
+func unionArmSlots(u *ir.Unit, closure map[string]bool) map[armKey]int {
+	slots := map[armKey]int{}
+	for _, f := range u.Files {
+		for _, st := range fileMembers(f, closure) {
+			for _, field := range st.Fields {
+				if field.Type.Kind != ir.TNamed || field.Array != ir.ArrayNone {
+					continue
+				}
+				if _, isUnion := field.Type.Ref.(*ir.Union); !isUnion {
+					continue
+				}
+				slots[armKey{owner: st.Name, field: field.Name}] = len(slots)
+			}
+		}
+	}
+	return slots
 }
 
 // needsUnsafe marks this file as reaching for the layout model — every
@@ -203,14 +229,23 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// definition is a compile error rather than C++'s harmless re-inclusion
 	// behind a guard
 	usedEnums := closureEnums(u, closure)
+	armSlots := unionArmSlots(u, closure)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, unionArmSlot: armSlots}
 		members := fileMembers(f, closure)
 		if g.home {
 			g.needsUnsafe() // the descriptor surface's reset column takes an unsafe.Pointer
 			g.pf("%s", tableRuntime())
 			if anyKeyed {
 				g.pf("%s", tableKeyedAccessor)
+			}
+			if len(armSlots) > 0 {
+				g.pf("// tableUnionArms is the unit's ONE arms table: one slot per union\n")
+				g.pf("// FIELD, filled by the init() beside the descriptors that point into\n")
+				g.pf("// it. One fixed name for the whole unit rather than one derived from\n")
+				g.pf("// each declaration's own spelling, because a derived name is a name a\n")
+				g.pf("// declaration can collide with (docs/SPEC-TABLES.md §11).\n")
+				g.pf("var tableUnionArms = make([]TableUnionInfo, %d)\n\n", len(armSlots))
 			}
 		}
 		for _, st := range members {

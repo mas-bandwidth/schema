@@ -431,6 +431,20 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype V | cpp_native = VMath, cpp_include = vh { x float64 }\n"},
 		{name: "a valued type attr that is not a binding is still rejected", want: "bare identifier",
 			src: "package t\ntype V | vec3 = 4 { x float64 }\n"},
+		// ---- §11's claimed runtime names, including the GO port's LOWERCASE
+		// ---- family. Unexported is not private: a Go package is one namespace,
+		// ---- so `const tableJsonMaxDepth = 5` beside a table generates a
+		// ---- redeclaration and the unit does not compile. This is the blind
+		// ---- reader's own repro on #338. ----
+		{name: "a const spelling the Go text walk's depth cap, beside a table",
+			src:  "package probe\n\nconst tableJsonMaxDepth = 5\n\ntable Thing\n{\n    n int32\n}\n",
+			want: "tableJsonMaxDepth"},
+		{name: "a type spelling the Go text walk's reader cursor, beside a table",
+			src:  "package probe\n\ntype tableJsonIn { n int32 }\n\ntable Thing\n{\n    n int32\n}\n",
+			want: "unexported names at package scope"},
+		{name: "a table spelling the Go cook's descriptor graph",
+			src:  "package probe\n\ntable tableCookRecords\n{\n    n int32\n}\n",
+			want: "tableCookRecords"},
 	}
 
 	for _, tc := range cases {
@@ -461,6 +475,8 @@ func TestGoodCornersStillCompile(t *testing.T) {
 		src  string
 		srcs map[string]string
 	}{
+		{name: "the Go runtime's lowercase names in a TABLE-FREE unit (the negative control)",
+			src: "package t\nconst tableJsonMaxDepth = 5\ntype tableJsonIn { n int32 }\ntype tableCookRecords { n int32 }\n"},
 		{name: "nested if with cond in the same branch",
 			src: "package t\ntype T {\n    a bool\n    if a {\n        b bool\n        if b { x uint8 }\n    }\n}\n"},
 		{name: "fixed default in whole units, exactly representable (the reopened door)",

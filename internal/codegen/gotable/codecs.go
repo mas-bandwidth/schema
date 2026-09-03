@@ -1257,64 +1257,54 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	g.pf("\t\tGuard: %q, Table: %s},\n", guard, table)
 }
 
-// unionArmsFunc renders a union field's Arms column: a closure over ONE
-// package-level value, so a walk that asks a union for its shape pays a load
-// rather than an allocation. Rebuilding the table per call is what a naive
-// spelling does, and the soak sees it immediately: ten objects per ToJson of an
-// instance carrying five unions.
+// unionArmsFunc renders a union field's Arms column: a closure over ONE SLOT of
+// the unit's single arms table, so a walk that asks a union for its shape pays
+// a load rather than an allocation. Rebuilding the table per call is what a
+// naive spelling does, and the soak sees it immediately: ten objects per ToJson
+// of an instance carrying five unions.
 //
-// The value is FILLED IN AN init() rather than in its own initializer, and the
-// reason is the one the cook's descriptors already carry: Go refuses an
+// The table is ONE package-level slice for the whole unit rather than one
+// variable per union field, and that is a §11 fact rather than a taste: a name
+// derived from a DECLARATION's own spelling is a name a declaration can
+// collide with, and the checker has no machinery for a prefix-and-name
+// product. One fixed name is one claim.
+//
+// The slots are filled in an init() rather than in the slice's own initializer,
+// for the reason the cook's descriptors already carry: Go refuses an
 // initialization cycle among package-level variables, an arm's Table column
-// names a descriptor, and a descriptor can name the union back. An init body is
-// not part of that analysis, so the graph is expressible whatever a schema
-// declares. Nothing mutates it afterwards.
+// names a descriptor, and a descriptor can name the union back.
 func (g *tableGen) unionArmsFunc(un *ir.Union, owner *ir.Struct, f *ir.Field) string {
-	symbol := unionArmsSymbol(owner, f)
+	slot := g.unionArmSlot[armKey{owner: owner.Name, field: f.Name}]
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(%s{}.Type)), TagSize: uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{\n{Offset: 0, Table: nil},\n",
-		symbol, un.Name, un.Name)
+	fmt.Fprintf(&b, "tableUnionArms[%d] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(%s{}.Type)), TagSize: uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{\n{Offset: 0, Table: nil},\n",
+		slot, un.Name, un.Name)
 	for _, v := range un.Variants {
 		fmt.Fprintf(&b, "{Offset: uint32(unsafe.Offsetof(%s{}.%s)), Table: %sTableType},\n",
 			un.Name, ir.GoExportName(v.Name), v.Type)
 	}
 	b.WriteString("}}")
-	g.unionArms = append(g.unionArms, unionArms{symbol: symbol, fill: b.String()})
-	return fmt.Sprintf("func() *TableUnionInfo { return &%s }", symbol)
+	g.unionArms = append(g.unionArms, b.String())
+	return fmt.Sprintf("func() *TableUnionInfo { return &tableUnionArms[%d] }", slot)
 }
 
-// unionArmsSymbol names one union FIELD's shape. It is unexported, so nothing a
-// schema declares can collide with it, and it is keyed by the owner and the
-// field because a union's arm offsets are the union's but a descriptor column
-// belongs to the field that carries it.
-func unionArmsSymbol(owner *ir.Struct, f *ir.Field) string {
-	return "unionArms" + owner.Name + ir.GoExportName(f.Name)
-}
-
-// emitUnionArms declares this file's union-field shapes and fills them in an
-// init(). One value per union FIELD, so a walk that asks a union for its shape
-// pays a load; and filled in an init() rather than in its own initializer,
-// because Go refuses an initialization cycle among package-level variables and
-// a descriptor graph is allowed to be cyclic (docs/SPEC-TABLES.md §8).
+// emitUnionArms fills this file's slots of the unit's arms table in an init().
+// The table itself is declared once, in the wire home, because it is one name
+// for the whole unit (docs/SPEC-TABLES.md §11).
 func (g *tableGen) emitUnionArms() {
 	if len(g.unionArms) == 0 {
 		return
 	}
 	g.pf("// The UNION FIELD SHAPES the descriptors above point at: the tag, and the\n")
-	g.pf("// arms indexed by it (docs/SPEC-TABLES.md §8.1). One value per field, so a\n")
-	g.pf("// walk that asks a union for its shape pays a load and not an allocation.\n")
-	for _, a := range g.unionArms {
-		g.pf("var %s TableUnionInfo\n", a.symbol)
-	}
-	g.pf("\n// They are FILLED HERE rather than in their own initializers: an arm's Table\n")
-	g.pf("// column names a descriptor, a descriptor may name the union back, and Go\n")
-	g.pf("// refuses an initialization cycle among package-level variables. An init body\n")
-	g.pf("// is not part of that analysis, so the graph is expressible whatever a schema\n")
+	g.pf("// arms indexed by it (docs/SPEC-TABLES.md §8.1). They are FILLED HERE rather\n")
+	g.pf("// than in the table's own initializer: an arm's Table column names a\n")
+	g.pf("// descriptor, a descriptor may name the union back, and Go refuses an\n")
+	g.pf("// initialization cycle among package-level variables. An init body is not\n")
+	g.pf("// part of that analysis, so the graph is expressible whatever a schema\n")
 	g.pf("// declares. Nothing mutates them afterwards: the surface is immutable from\n")
 	g.pf("// here on, readable from any goroutine with no synchronisation.\n")
 	g.pf("func init() {\n")
 	for _, a := range g.unionArms {
-		g.pf("\t%s\n", a.fill)
+		g.pf("\t%s\n", a)
 	}
 	g.pf("}\n\n")
 }

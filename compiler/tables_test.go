@@ -870,6 +870,28 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 	}
 }
 
+// goRuntimeSrc is runtimeSrc plus a table carrying a UNION field, which is the
+// one construct the Go runtime's arms table needs to exist. It is a THIRD
+// table rather than a union added to an existing one, because a union in a
+// closure keeps that table out of both accelerators (§19.3) and the scan below
+// has to see the block and cook halves too.
+const goRuntimeSrc = runtimeSrc + `
+type Boost
+{
+    power int32 = 0
+}
+
+union Effect
+{
+    boost Boost
+}
+
+table Effected
+{
+    effect Effect
+}
+`
+
 // TestTableRuntimeNamesAreClaimedGo is the §11 promise's GO half, and the
 // reason it is a second test rather than a parameter is that the two backends
 // define overlapping but different sets: the scan asserts both directions
@@ -877,18 +899,25 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 // fails here, and a name registered for Go that nothing emits fails here too.
 //
 // The scan is the C# one's, shape-independent for the same reason: it collects
-// every Table*-prefixed identifier in the emitted text, declaration or use, and
+// every table-prefixed identifier in the emitted text, declaration or use, and
 // requires the whole set to be registered. Line comments are stripped first —
 // prose is not an identifier.
+//
+// IT MATCHES BOTH CASES, and that is the whole reason this scan is not the C#
+// one copied. Go is the first backend whose runtime puts UNEXPORTED names at
+// package scope, and unexported is not private: a Go package is one namespace,
+// so `const tableJsonMaxDepth = 5` in a schema is a redeclaration and the unit
+// does not compile. A PascalCase-only scan is blind to exactly what this port
+// adds, which is how the hole reached a reviewer.
 func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, runtimeSrc), "go", Options{})
+	files, err := New().Generate(unitFromSource(t, goRuntimeSrc), "go", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// BuildVersion rides in the alternation because it is the one registered
-	// name that is not a Table* spelling, and the Go backend defines it
+	// name that is not a table spelling, and the Go backend defines it
 	// (docs/SPEC-TABLES.md §20).
-	ident := regexp.MustCompile(`\b(?:Table[A-Za-z0-9_]*|BuildVersion)\b`)
+	ident := regexp.MustCompile(`\b(?:[Tt]able[A-Za-z0-9_]*|BuildVersion)\b`)
 	emitted := map[string]bool{}
 	for _, data := range files {
 		for line := range strings.SplitSeq(string(data), "\n") {
