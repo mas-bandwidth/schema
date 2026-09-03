@@ -1,6 +1,11 @@
 # The tables conformance harness — the driver contract
 
-A port of the tables layer is **"make the driver pass"**.
+A port of the tables layer is **"make the driver pass"** — and fill its column
+on [docs/PORTING.md](../../docs/PORTING.md), the techniques register. The
+register is read before the port brief is written; the port PR is not ready
+until every technique on it is carried or cited in the port's column; and a
+blind read of the port reports two lists against it — methods the port uses
+that the register lacks, and methods the register has that the port lacks.
 
 The data lives under `testdata/conformance/tables` and names no language
 (`FORMAT.md` there states every file shape). This page states what a language's
@@ -214,6 +219,8 @@ gap is real and the matrix says so rather than a parser papering over it.
 2. Write `test/conformance/<lang>/ci.json`, the leg's row in the pull-request
    matrix.
 3. `make conformance`.
+4. Fill the language's column on `docs/PORTING.md`; `go test ./compiler`
+   holds it to the tree.
 
 **THE REGISTRY IS DISCOVERED, NOT LISTED.** The harness reads every
 `test/conformance/<lang>/driver` that exists, and `harness matrix` reads every

@@ -111,7 +111,9 @@ bin/schema generate --lang c|cpp|cs|dart|elixir|go|java|js|rust --out <outdir> <
 | **[SPEC.md](docs/SPEC.md)** | The normative reference for the type wire: grammar, wire law, every edge case. |
 | **[SPEC-TABLES.md](docs/SPEC-TABLES.md)** | The normative reference for tables: the wire, the cook, the block form, reflection, the build version. |
 
-Beside them: [PERFORMANCE.md](docs/PERFORMANCE.md),
+Beside them: [PORTING.md](docs/PORTING.md) (the techniques register: every
+method and instrument a table backend carries, with a cell per language and a
+gate), [PERFORMANCE.md](docs/PERFORMANCE.md),
 [COMPARISON-TABLES.md](docs/COMPARISON-TABLES.md) (tables against FlatBuffers and
 Protobuf, feature by feature, with the verdict on every gap),
 [COMPARISON.md](docs/COMPARISON.md) (the same packet against Cap'n Proto, Protobuf
