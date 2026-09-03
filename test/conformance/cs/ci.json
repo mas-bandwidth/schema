@@ -1,0 +1,3 @@
+{"targets": "build/conformance-harness build-conformance-cs build-cs-cook",
+ "runtime": "serialize.cs", "runtime_tag": "SERIALIZE_CS_TAG",
+ "dotnet": "8.0"}

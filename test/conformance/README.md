@@ -4,8 +4,8 @@ A port of the tables layer is **"make the driver pass"**.
 
 The data lives under `testdata/conformance/tables` and names no language
 (`FORMAT.md` there states every file shape). This page states what a language's
-DRIVER must do. Registering a port is one line in `drivers.txt` plus one driver;
-nothing else moves.
+DRIVER must do. Registering a port is one driver at `<lang>/driver`: the
+harness discovers it, and nothing lists it.
 
 ```
 make conformance                     run every registered driver, print the matrix
@@ -91,10 +91,10 @@ every FIXED instance, and a leg that failed the whole surface for them would say
 nothing about what it does carry.
 
 **THE REFERENCE LEG MAY NOT ANSWER ABSENT**, and that rule is what makes
-per-case absence safe rather than a place to hide: an absence from the first
-driver in the COMMITTED registry — the one `conformance-pin` takes its pins
-from — is the corpus losing its own expectation, not a port's missing feature.
-It belongs to that registry alone: a run handed a SUBSTITUTED one with
+per-case absence safe rather than a place to hide: an absence from the
+reference leg — `cpp`, first in the discovered registry, and the one
+`conformance-pin` takes its pins from — is the corpus losing its own
+expectation, not a port's missing feature. It belongs to that registry alone: a run handed a SUBSTITUTED one with
 `--drivers`, as the big-endian leg does for its single Go driver, is one leg of
 a port and not the matrix, so its first line is not the reference and its
 absences are ordinary.
@@ -208,20 +208,35 @@ gap is real and the matrix says so rather than a parser papering over it.
 
 ## Registering a language
 
-1. Write a driver that answers `list` and the surfaces the backend has.
-2. Add `<language> <command>` to `drivers.txt`.
+1. Write a driver at `test/conformance/<lang>/driver` that answers `list` and
+   the surfaces the backend has.
+2. Write `test/conformance/<lang>/ci.json`, the leg's row in the pull-request
+   matrix.
 3. `make conformance`.
 
-The registry today:
+**THE REGISTRY IS DISCOVERED, NOT LISTED.** The harness reads every
+`test/conformance/<lang>/driver` that exists, and `harness matrix` reads every
+`ci.json` beside one; no file names every language, so a port adds its
+directory and touches nothing another port touches (`docs/CONTRIBUTING.md`,
+"Adding a language"). The reference leg is `cpp` — the harness's own constant,
+sorted first — and the rest follow by name.
 
-```
-cpp    test/conformance/cpp/driver
-cs     test/conformance/cs/driver
-go     test/conformance/go/driver
-rust   test/conformance/rust/driver
-java   test/conformance/java/driver
-elixir test/conformance/elixir/driver
-```
+**`ci.json` is one JSON object of strings**, and `.github/workflows/ci.yml`'s
+conformance job reads it as the leg's matrix row:
+
+| key | what it is |
+|---|---|
+| `targets` | the make targets that build the leg (required) |
+| `env` | `VAR=value` assignments the make and run steps carry — a toolchain on PATH rather than in `dist/` |
+| `runtime`, `runtime_tag` | the sibling checkout the leg needs (`serialize.cs`) and the workflow variable that pins it (`SERIALIZE_CS_TAG`) |
+| `dotnet`, `node`, `rust`, `dart`, `java`, `otp` + `elixir` | the toolchain step to run, and the version it installs |
+
+A leg that names a toolchain with no step yet adds one step to the workflow,
+keyed on its new field; that is the one edit a port makes there. A driver with
+no `ci.json` fails `harness matrix`, and the registry gate
+(`harness/registry_test.go`) plants a fake language in a copy of the tree and
+requires the harness, the bench pass and the Makefile to discover it with no
+shared file edited.
 
 **THE ELIXIR LEG's shape, because its cost is all start-up.** Its driver's own
 modules are compiled to `.beam` WITH the unit corpus rather than at every start:
@@ -229,9 +244,9 @@ an `.exs` compiled per invocation cost 0.4 s on top of the BEAM's own 0.26 s
 boot, twelve times over. The leg answers all twelve surfaces in 5.6 s, and none
 of that is the cases.
 
-The first driver in the registry is the **reference leg**: `make conformance-pin`
+The reference leg is `cpp`, and the harness sorts it first: `make conformance-pin`
 takes the cook dumps, the block row dumps and both forgery batteries' offsets
-from it. That is C++ and it is the repo's standing convention — C++ writes the
+from it. That is the repo's standing convention — C++ writes the
 pins, every other leg compares. The two batteries print their manifest rows on
 stdout rather than editing the manifest: a manifest that rewrites itself is a
 manifest nobody reviews.

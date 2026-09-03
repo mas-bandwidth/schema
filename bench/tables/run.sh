@@ -11,9 +11,10 @@
 #   bench/tables/run.sh --tag pairing   name the sitting in the file name
 #   bench/tables/run.sh --bare          rows only, no preamble, stdout
 #
-# Run from the REPOSITORY ROOT. The legs come from bench/tables/legs.txt and
-# nothing here knows a language: adding a port is one line there plus one
-# command, which is the whole registration contract (bench/tables/README.md).
+# Run from the REPOSITORY ROOT. The legs are DISCOVERED — every
+# bench/tables/<lang>/leg, in name order — and nothing here knows a language:
+# adding a port is that one command, which is the whole registration contract
+# (bench/tables/README.md).
 #
 # WHY THIS IS A SEPARATE PASS FROM bench/run.sh, stated once and not repeated:
 # a run's `corpus_id` is FNV-1a-64 over the goldens THAT RUN LOADED (§1.6), so
@@ -38,7 +39,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ ! -f bench/tables/legs.txt ]; then
+if [ ! -d bench/tables ]; then
     echo "run this from the repository root" >&2
     exit 1
 fi
@@ -103,8 +104,9 @@ emit() {
 }
 
 RAN=0
-while read -r lang cmd; do
-    case "$lang" in ''|\#*) continue ;; esac
+for cmd in bench/tables/*/leg; do
+    [ -f "$cmd" ] || continue
+    lang="$(basename "$(dirname "$cmd")")"
     [ -n "$ONLY" ] && [ "$ONLY" != "$lang" ] && continue
 
     echo "== $lang: build ==" >&2
@@ -130,7 +132,7 @@ while read -r lang cmd; do
         r=$(( r + 1 ))
     done
     RAN=$(( RAN + 1 ))
-done < bench/tables/legs.txt
+done
 
 if [ "$RAN" = 0 ]; then
     echo "no legs ran" >&2

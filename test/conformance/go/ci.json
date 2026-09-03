@@ -1,0 +1,2 @@
+{"targets": "build/conformance-harness build/conformance-go",
+ "runtime": "serialize.go", "runtime_tag": "SERIALIZE_GO_TAG"}

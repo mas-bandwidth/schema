@@ -1949,8 +1949,8 @@ generated/bench/cpp/.stamp: bin/schema $(SCHEMAS_BENCH)
 # beside the type corpus because every other backend REFUSES a unit that
 # declares tables, by name (docs/SPEC-TABLES.md §11) — generating it into
 # generated/bench/<lang> would break seven legs' generation the day it landed.
-# A port adds its stamp here in the same change that adds its leg to
-# bench/tables/legs.txt.
+# A port adds its stamp in its make/<lang>.mk, registered in BENCH_TABLES_LEGS,
+# beside its bench/tables/<lang>/leg.
 generated/bench/tables/cpp/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/cpp
 	./bin/schema generate --lang cpp --out generated/bench/tables/cpp bench/corpus/BenchTable.schema
@@ -2182,8 +2182,8 @@ clean:
 # A port of the tables layer is "make the driver pass". The DATA lives under
 # testdata/conformance/tables and names no language; the CONTRACT lives in
 # test/conformance/README.md; the harness runs every registered driver over
-# every surface and prints the matrix. Registering a port is one line in
-# test/conformance/drivers.txt plus one driver.
+# every surface and prints the matrix. Registering a port is its driver at
+# test/conformance/<lang>/driver, which the harness discovers.
 #
 # The rule this target lives under is the two-minute one (#320). Measured on
 # arm64 macOS at the landing, everything already built, median of three:

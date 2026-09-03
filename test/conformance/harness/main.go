@@ -8,6 +8,7 @@
 //
 //	harness generate              rewrite the generated half of the data
 //	harness run                   run every registered driver, print the matrix
+//	harness matrix                print the CI matrix the registry implies
 //
 // Flags are the same for both so a Makefile line reads the same way; see usage.
 package main
@@ -24,7 +25,7 @@ const (
 	defaultManifest = "testdata/conformance/tables/MANIFEST.txt"
 	defaultJSONDir  = "testdata/conformance/tables/json"
 	defaultReports  = "testdata/conformance/tables/reports.txt"
-	defaultDrivers  = "test/conformance/drivers.txt"
+	defaultDrivers  = defaultDriversDir
 	defaultWork     = "build/conformance"
 )
 
@@ -51,11 +52,17 @@ func usage() {
              per-language matrix. Exits nonzero if any registered surface
              fails.
 
+  matrix     print the CI matrix as JSON: one row per registered driver, from
+             test/conformance/<lang>/ci.json (README.md, "Registering a
+             language").
+
 flags:
   --manifest <path>   the conformance manifest
   --json <dir>        where an instance's JSON text lives
   --reports <path>    the generated report expectations
-  --drivers <path>    the driver registry (run only)
+  --drivers <path>    the driver registry: a directory of <lang>/driver
+                      commands (the committed one), or a file of
+                      "<language> <command...>" lines (a substituted one)
   --work <dir>        scratch: fixtures, driver output, the derived manifest
   --only <lang>       run one registered language (run only)
 `)
@@ -77,6 +84,15 @@ func main() {
 	only := fs.String("only", "", "run one registered language")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
+	}
+
+	if command == "matrix" {
+		out, err := matrix(*drivers)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		fmt.Println(string(out))
+		return
 	}
 
 	m, err := ReadManifest(*manifest, *jsonDir)
