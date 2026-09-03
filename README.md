@@ -11,13 +11,13 @@ without ever having to hand-code definitions in each language ever again.
 
 Features:
 
-1. Define constants, enums, flags, types and tables in one language
-2. Fast bit-packed serialization for struct types that don't need versioning (eg. client/server messages and state)
-3. Fixed tables that support versioning for messages, data, assets, save game files and everything else!
-4. Recursive table definitions (pointer to table in table) for full data structure support.
-5. Cooking to fast binary formats at runtime for tool pipelines and loading assets.
+1. Define constants, enums, flags, types and tables in one language.
+2. Generate fast bit-packed serialization for struct types that don't need versioning (eg. client/server messages and state)
+3. Generate tables that support versioning for messages, data, assets, save game files and everything else!
+4. Supports recursive table definitions (pointer to table in table) for full data structure support.
+5. Cooks to fast binary formats at runtime for tool pipelines and asset loading.
 
-Supports C, C++, C#, Rust, Golang, Java, JavaScript, Dart and Elixir.
+Supported languages: C, C++, C#, Rust, Golang, Java, JavaScript, Dart and Elixir.
 
 If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
 
