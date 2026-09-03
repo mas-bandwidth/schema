@@ -691,10 +691,15 @@ each refused by name (§11):
 - **A pointer field takes no specified default.** A fresh pointer is
   null, and null is the only value a default could name.
 
-**An ARRAY OF POINTERS is refused, and it is a named follow-on** (§15).
-`[..8]*Node` and `[8]*Node` are both refused by name, and the diagnostic says
-what to write instead: a bounded array of tables BY VALUE, or a pointer to a
-table that holds the array.
+**An ARRAY OF POINTERS is a pointer slot per element.** `[..8]*Node` and
+`[8]*Node` are the two bounded spellings, and each element is what a `*Node`
+field is — an eight-byte reference, null until assigned — so a node with a
+fixed fan-out costs four wire bytes a slot where a by-value array costs a whole
+table. A slot is an edge like any pointer field: it may name a node another
+slot or another field names, and sharing is preserved end to end (§3.1). The
+storage is `TableRef name[N]`, with the used count beside it for the counted
+spelling, and the framing is §3.1's. The enum-KEYED spelling `[E]*T` is a
+named follow-on (§2.4, §15).
 
 A pointer's STORAGE is an EIGHT-byte relocatable reference — never a
 machine address — which is what keeps §9's relocatability true with
@@ -2144,13 +2149,29 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   counted, never misdecoded, the field taking its default. The framings
   cannot merge while identity holds: a body that may be named twice
   cannot also sit inline at one of its names.
-- **No array carries indices**, because an array of pointers is refused and
-  is a named follow-on (§2.1, §15). Kind `17` is a field's kind and never an
-  array's element kind, so an array of `uint32` is the only four-byte array
-  the wire has and there is no pair for §3's element-kind rule to hold
-  apart. What the follow-on would frame — `kind = 14`, element kind `17`,
-  `N`, then `N` `u32` indices — is what it costs to state, and nothing
-  writes it.
+- **An ARRAY OF POINTERS rides as an array whose ELEMENT kind is `17`**
+  (§2.1): `kind = 14`, `L`, then element kind `17`, `N`, then `N` `u32` node
+  indices back to back. Three rules, each the one it inherits:
+  - **A null slot is index `0`**, the null every pointer is, and it rides in
+    its place: a counted array with three live slots of which one is null
+    writes three indices.
+  - **Elision is the by-value array's** (§3), because the array is by-value
+    content whose elements happen to be indices: an EMPTY counted array
+    elides, and a counted array with a live slot rides whatever the slots
+    hold; a FIXED array holding only null is all-default and elides, and one
+    non-null slot makes it ride whole. A reader that meets no field leaves
+    every slot null, which is correct in both directions.
+  - **Element kind `17` is held apart from element kind `8` by §3's
+    element-kind rule**, exactly as the field kinds are: `[N]uint32` read
+    into a `[N]*T` field — or the reverse, or `[N]*T` against a by-value
+    `[N]T` (element kind `13`) — is a kind mismatch, counted, and the field
+    stays empty. Nothing reads a number as an index.
+  - **A slot's index is read by the same rules as a field's** (below): an
+    index out of range is `malformed` and THAT SLOT reads null, the rest of
+    the array unaffected; a count past the reader's bound keeps the bounded
+    prefix and counts `clamped` (§4).
+  The numbering visits the slots in index order, the live slots of a
+  counted array only (above), and a slot is an edge like any pointer field.
 
 **Reading: every failure is one of §4's events, and none is new.**
 
@@ -3612,6 +3633,8 @@ fields would get wrong:
 | `[..N]T` | `N` elements, then `int32` used count |
 | `[E]T` | `E.Max` elements, one per named variant, nothing for `None` |
 | `*T` | `int64` self-relative delta, eight bytes at eight |
+| `[N]*T` | `N` `int64` self-relative deltas, each eight bytes at eight, null zero |
+| `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes all `N` slots, below) |
 | `?T` | the value's own pieces, then `bool` present |
 | `map[K]V` | `int64` self-relative delta to the entry array, then `uint32` count; the entries follow the record inside the node's extent (§2.8) |
 
@@ -4845,9 +4868,10 @@ in build version (§20.5).
   in every port**, which a whole-unit refusal made impossible to say.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
-  outside a table body; a specified default on a pointer field; and an
-  ARRAY of pointers — `[..N]*T` and `[N]*T` — which is a named follow-on
-  (§15), the diagnostic naming the two spellings that serve today.
+  outside a table body; and a specified default on a pointer field. The
+  bounded arrays `[..N]*T` and `[N]*T` are legal (§2.1); the KEYED `[E]*T` is
+  refused as a named follow-on (§15), the diagnostic naming the two spellings
+  that serve.
 - **Optional fields** (§2.3): `?T` outside a table body; `?` on a pointer
   (already optional); `?` on a union (its `None` IS the absence); `?` on an
   array, a string or `bytes` (a named follow-on, §15 — the count or length
@@ -4855,8 +4879,8 @@ in build version (§20.5).
   field whose name collides with an optional's `<field>_present` companion.
 - **Enum-keyed arrays** (§2.4): a bound naming a `flags` declaration (a mask
   names no single slot); a bounded keyed array, `[..E]` or `[A..E]` (a keyed
-  array is complete by construction); an element that is a pointer, as for
-  any array (§15); an index of `E::None`, which names no slot — asserted
+  array is complete by construction); an element that is a pointer — `[E]*T`,
+  a named follow-on (§15) where the bounded arrays of pointers are not (§2.1); an index of `E::None`, which names no slot — asserted
   through `operator[]( E )` in a debug build, and not reachable at all
   through the iteration surface, which offers the valid slots only (§2.4);
   and, on the KEY ENUM itself because a key is a reaching edge into the
@@ -6170,16 +6194,12 @@ inspects everything in the schema built:
   as its own wire bytes and decoded only when something asks for it. What it
   needs decided is the framing it rides under and the elision at the empty
   end, since a null buffer and a zero-length one are different values.
-- **AN ARRAY OF POINTERS** — `[..N]*T` and `[N]*T`. It is refused by name
-  today (§11), and the diagnostic carries the two spellings that serve
-  instead: *"declare a
-  bounded array of tables by value, or a pointer to a table that holds the
-  array"*. It is the spelling a node with a fixed fan-out wants, and it costs
-  four bytes a slot where a by-value array costs a whole table. What it needs
-  decided first is the wire: an array whose ELEMENT kind is the pointer index
-  `17` (§3.1) is one shape, and it wants the null element, the all-null
-  elision and the element-kind separation from an array of `uint32` settled
-  together rather than one at a time.
+- **A KEYED ARRAY OF POINTERS** — `[E]*T`, one pointer slot per named
+  variant. The bounded spellings landed (§2.1, §3.1) and the keyed one did
+  not: a keyed body rides slots by variant id under kind `16` (§3.2), and
+  a null slot there is elided by name rather than written in place, so the
+  form wants its empty-end rule stated before it is wire. `[..N]*T` and
+  `[N]*T` serve today, as does a keyed array of tables by value.
 - **Cross-endian COOKING**: producing a cook for a target whose byte order
   is not the cooking machine's, by swapping as the region is written. The
   ENDIAN FIX-UP ITSELF IS NOT DEFERRED — it is part of the cook and §7 states
@@ -6570,7 +6590,7 @@ Per kind:
 | nested `type` / `table` | object | the same walk, recursively |
 | `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only |
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form |
-| pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class |
+| pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `map[K]V` | object keyed by the KEY | a string key is the string; an integer key is its decimal spelling, quoted, and any other spelling under an integer key is `malformed`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |
 
 **A `table` arm takes the union row's form because a text mapping is a
@@ -6904,8 +6924,10 @@ an older reader is exactly the unknown key §4 exists to survive.
 - **Anywhere else, the prefix is `malformed`**: at the ROOT, which takes no
   label because nothing may name it (a reference to the root is a reference to a node
   whose descent is open, which is the cycle §3.1 refuses); in a by-value
-  nesting, a union arm, an array element, which are values and not nodes; under
-  any spelling but `&node`.
+  nesting, a union arm, an element of a BY-VALUE array, which are values and
+  not nodes — an element of an array of pointers (§2.1) is a pointer slot and
+  takes the pointer row, definition or reference alike; under any spelling but
+  `&node`.
 - **`null` is unchanged**: it is a null pointer, as §16.2 says, and it never
   carries a label.
 - **A writer emits the construct only where it must** — for a node it will name

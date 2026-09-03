@@ -126,8 +126,8 @@ func (r *wireReader) skip(kind uint8) bool {
 // — or between a pointer and a plain `uint32` — is §4's kind mismatch, counted
 // and never misdecoded.
 func wireKind(f *ir.Field) int {
-	if f.Type.Pointer {
-		return ir.TableKindPointer
+	if f.Type.Pointer && f.Array == ir.ArrayNone {
+		return ir.TableKindPointer // an ARRAY of pointers is kind 14 with element kind 17 (§2.1)
 	}
 	if f.Type.Kind == ir.TBytes {
 		return ir.TableKindArray
@@ -197,7 +197,7 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 func (r *wireReader) field(fv *tabletext.Field) bool {
 	f := fv.Def
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A pointer field's payload is a NUMBER: it is bounds-checked and
 		// stored, never followed. There is no traversal on the load path, and
 		// therefore no traversal bound — no depth cap, no visited set, no
@@ -317,6 +317,16 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 
 func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 	f := fv.Def
+	if f.Type.Pointer {
+		// an element of an array of pointers: a node index, bounds-checked and
+		// stored, never followed (§3.1)
+		if !r.has(4) {
+			r.report.Malformed = true
+			return false
+		}
+		r.resolveCell(&fv.Elems[i], f, r.u32())
+		return true
+	}
 	if tabletext.StructOf(f) != nil && tabletext.EnumOf(f) == nil {
 		if !r.has(4) {
 			r.report.Malformed = true

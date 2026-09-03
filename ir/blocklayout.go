@@ -543,7 +543,7 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 	}
 	var pieces []storagePiece
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ArrayNone:
 		// TableRef: EIGHT bytes at eight (docs/SPEC-TABLES.md §6.3). The slot holds
 		// an arena offset in one form and a self-relative region delta in the
 		// other, and the region delta is what sizes it: at eight bytes one
@@ -578,6 +578,11 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 // the scalar itself.
 func elementPiece(u *Unit, f *Field) storagePiece {
 	t := f.Type
+	if t.Pointer {
+		// an ARRAY OF POINTERS (docs/SPEC-TABLES.md §2.1): every element is one
+		// TableRef, the eight-byte slot a scalar pointer field is
+		return storagePiece{size: 8, align: 8}
+	}
 	switch t.Kind {
 	case TBool:
 		return storagePiece{size: 1, align: 1}
@@ -747,7 +752,7 @@ func BlockFieldOf(u *Unit, f *Field, fieldOffset int64, projection bool) BlockFi
 		return facts
 	}
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ArrayNone:
 		facts.ElemSize = pieces[0].Size
 	case f.Type.Kind == TString:
 		// char[N+1] buffer, then the int32 used length. A string is not an

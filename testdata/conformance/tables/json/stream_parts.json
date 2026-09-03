@@ -1,0 +1,47 @@
+{
+  "id": 3,
+  "frame": {
+    "chunk": {
+      "data": "AQ==",
+      "next": {
+        "&node": 1,
+        "data": "Ag==",
+        "next": {
+          "&node": 2,
+          "data": "Aw==",
+          "next": null,
+          "links": []
+        },
+        "links": [
+          {
+            "&node": 2
+          },
+          null
+        ]
+      },
+      "links": [
+        {
+          "&node": 3,
+          "data": "CQ==",
+          "next": null,
+          "links": []
+        }
+      ]
+    }
+  },
+  "parts": [
+    {
+      "&node": 1
+    },
+    null,
+    {
+      "&node": 3
+    }
+  ],
+  "pair": [
+    null,
+    {
+      "&node": 3
+    }
+  ]
+}

@@ -155,7 +155,7 @@ func (s *scan) field(at int64, f *ir.Field) error {
 	}
 	value := pieces[0]
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return s.ref(value.Offset, f)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		return s.companion(pieces[1].Offset, f.Type.Size, "used length")
@@ -192,6 +192,9 @@ func (s *scan) slots(at int64, f *ir.Field, n int64) error {
 }
 
 func (s *scan) element(at int64, f *ir.Field) error {
+	if f.Type.Pointer {
+		return s.ref(at, f) // an element of an array of pointers (§2.1)
+	}
 	if f.Type.Kind != ir.TNamed {
 		return nil // a scalar has nothing a walker could be steered by
 	}

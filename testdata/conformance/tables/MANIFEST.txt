@@ -103,6 +103,7 @@ instance m2_close             tblm2       Msg         testdata/wire/tables/m2_cl
 instance m2_open              tblm2       Msg         testdata/wire/tables/m2_open.bin
 instance stream_chain         streamdemo  Feed        testdata/wire/tables/stream_chain.bin
 instance stream_header        streamdemo  Feed        testdata/wire/tables/stream_header.bin
+instance stream_parts         streamdemo  Feed        testdata/wire/tables/stream_parts.bin
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -131,6 +132,15 @@ report p2_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_pointer_empty.bin
 report p1_as_p2       tblp2 Chain testdata/wire/tables/chain_value.bin
 report p3_as_p2       tblp2 Chain testdata/wire/tables/chain_optional.bin
 report p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
+# AN ARRAY OF POINTERS read under §3.1's rules, as shared rows: three hand-built
+# Feed bodies with one `parts` field each and no node table. The element kind
+# 8 where the reader declares 17 is a kind mismatch and the field stays empty;
+# five slots against a bound of four keep the prefix and count clamped; a slot
+# naming index 7 where no node exists is malformed and THAT slot reads null,
+# the array kept at its count. The bytes are fixed by this file, not generated.
+report parts_elem_kind          streamdemo Feed testdata/wire/tables/parts_elem_kind.bin
+report parts_count_past_bound   streamdemo Feed testdata/wire/tables/parts_count_past_bound.bin
+report parts_index_out_of_range streamdemo Feed testdata/wire/tables/parts_index_out_of_range.bin
 # the message pair (§2.6, §4): M2 inserted `close` first, removed `save` and
 # grew Open, so open's tag moved and both sides meet an arm they cannot name
 report m1_open_as_m2  tblm2 Msg testdata/wire/tables/m1_open.bin
@@ -202,6 +212,7 @@ cook-write m1_open                testdata/conformance/tables/cook-write/m1_open
 cook-write m2_open                testdata/conformance/tables/cook-write/m2_open.cook testdata/conformance/tables/cook-write/m2_open-be.cook
 cook-write stream_chain           testdata/conformance/tables/cook-write/stream_chain.cook testdata/conformance/tables/cook-write/stream_chain-be.cook
 cook-write stream_header          testdata/conformance/tables/cook-write/stream_header.cook testdata/conformance/tables/cook-write/stream_header-be.cook
+cook-write stream_parts           testdata/conformance/tables/cook-write/stream_parts.cook testdata/conformance/tables/cook-write/stream_parts-be.cook
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
@@ -440,6 +451,8 @@ json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/con
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
 json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    refused
 json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown 1,0,0,0,false
+json-hostile pointer-array-element-shape    streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-element-shape    0,1,0,0,false
+json-hostile pointer-array-shared-label     streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-shared-label     0,0,0,0,false
 json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,false
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
 json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false

@@ -7,9 +7,17 @@
         "data": "Ag==",
         "next": {
           "data": "Aw==",
-          "next": null
-        }
-      }
+          "next": null,
+          "links": []
+        },
+        "links": []
+      },
+      "links": []
     }
-  }
+  },
+  "parts": [],
+  "pair": [
+    null,
+    null
+  ]
 }

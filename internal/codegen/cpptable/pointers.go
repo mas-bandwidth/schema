@@ -262,27 +262,29 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 	}
 	for _, f := range pointerFields(st) {
 		t := f.Type.Name
-		g.pf("    {\n")
-		g.pf("        const %s * pointee = %sAt( ctx, value.%s ); // %s\n", t, t, f.Name, f.Name)
-		g.pf("        if ( pointee != NULL )\n        {\n")
-		g.pf("            bool taken = false;\n")
-		g.pf("            int64_t slot = 0;\n")
-		g.pf("            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,\n")
-		g.pf("                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit\n")
-		g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
-		g.pf("            if ( !taken )\n            {\n")
-		g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
-		g.pf("            }\n            else\n            {\n")
-		g.pf("                TableNodeEntry node;\n")
-		g.pf("                node.node = (const void *) pointee;\n")
-		g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableTypeId(t), t)
-		g.pf("                node.measure = &TableNodeMeasureThunk<Ctx, %s>;\n", t)
-		g.pf("                node.save = &TableNodeSaveThunk<Ctx, %s>;\n", t)
-		g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
-		g.pf("                if ( !%sNumber( ctx, numbering, *pointee ) ) { return false; }\n", t)
-		g.pf("                TablePackMapClose( numbering.seen, (const void *) pointee, slot );\n")
-		g.pf("            }\n")
-		g.pf("        }\n    }\n")
+		g.emitPointerSlots(f, "value", func(slotExpr string) {
+			g.pf("    {\n")
+			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slotExpr, f.Name)
+			g.pf("        if ( pointee != NULL )\n        {\n")
+			g.pf("            bool taken = false;\n")
+			g.pf("            int64_t slot = 0;\n")
+			g.pf("            const TablePackEntry * entry = TablePackMapReach( numbering.seen, (const void *) pointee,\n")
+			g.pf("                (int64_t) ( numbering.count + 2 ), taken, slot ); // its index, if this is its first visit\n")
+			g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
+			g.pf("            if ( !taken )\n            {\n")
+			g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
+			g.pf("            }\n            else\n            {\n")
+			g.pf("                TableNodeEntry node;\n")
+			g.pf("                node.node = (const void *) pointee;\n")
+			g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableTypeId(t), t)
+			g.pf("                node.measure = &TableNodeMeasureThunk<Ctx, %s>;\n", t)
+			g.pf("                node.save = &TableNodeSaveThunk<Ctx, %s>;\n", t)
+			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
+			g.pf("                if ( !%sNumber( ctx, numbering, *pointee ) ) { return false; }\n", t)
+			g.pf("                TablePackMapClose( numbering.seen, (const void *) pointee, slot );\n")
+			g.pf("            }\n")
+			g.pf("        }\n    }\n")
+		})
 	}
 	for _, f := range g.byValueVariableFields(st) {
 		g.emitVariableByValueWalk(f, func(expr string) {
@@ -311,24 +313,26 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 	}
 	for _, f := range pointerFields(st) {
 		t := f.Type.Name
-		g.pf("    {\n")
-		g.pf("        const %s * pointee = %sAt( ctx, value.%s ); // %s\n", t, t, f.Name, f.Name)
-		g.pf("        if ( pointee != NULL )\n        {\n")
-		// a pointer TARGET always has walkers (ir.PointerTargets feeds them), so
-		// there is no walker-less arm to write here
-		g.pf("            bool taken = false;\n")
-		g.pf("            int64_t slot = 0;\n")
-		g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );\n")
-		g.pf("            if ( entry == NULL ) { return -1; } // the map could not grow\n")
-		g.pf("            if ( !taken )\n            {\n")
-		g.pf("                if ( entry->open != 0 ) { return -1; } // a data cycle\n")
-		g.pf("            }\n            else\n            {\n")
-		g.pf("                int64_t inner = %sPackMeasure( ctx, seen, *pointee );\n", t)
-		g.pf("                if ( inner < 0 ) { return -1; }\n")
-		g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
-		g.pf("                bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
-		g.pf("            }\n")
-		g.pf("        }\n    }\n")
+		g.emitPointerSlots(f, "value", func(slotExpr string) {
+			g.pf("    {\n")
+			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slotExpr, f.Name)
+			g.pf("        if ( pointee != NULL )\n        {\n")
+			// a pointer TARGET always has walkers (ir.PointerTargets feeds them), so
+			// there is no walker-less arm to write here
+			g.pf("            bool taken = false;\n")
+			g.pf("            int64_t slot = 0;\n")
+			g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot );\n")
+			g.pf("            if ( entry == NULL ) { return -1; } // the map could not grow\n")
+			g.pf("            if ( !taken )\n            {\n")
+			g.pf("                if ( entry->open != 0 ) { return -1; } // a data cycle\n")
+			g.pf("            }\n            else\n            {\n")
+			g.pf("                int64_t inner = %sPackMeasure( ctx, seen, *pointee );\n", t)
+			g.pf("                if ( inner < 0 ) { return -1; }\n")
+			g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
+			g.pf("                bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
+			g.pf("            }\n")
+			g.pf("        }\n    }\n")
+		})
 	}
 	for _, f := range g.byValueVariableFields(st) {
 		g.emitVariableByValueWalk(f, func(expr string) {
@@ -387,27 +391,30 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 	}
 	for _, f := range pointerFields(st) {
 		t := f.Type.Name
-		g.pf("    {\n")
-		g.pf("        dst.%s.value = 0; // %s\n", f.Name, f.Name)
-		g.pf("        const %s * pointee = %sAt( ctx, src.%s );\n", t, t, f.Name)
-		g.pf("        if ( pointee != NULL )\n        {\n")
-		g.pf("            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit\n")
-		g.pf("            bool taken = false;\n")
-		g.pf("            int64_t slot = 0;\n")
-		g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );\n")
-		g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
-		g.pf("            if ( !taken )\n            {\n")
-		g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
-		g.pf("                dst.%s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.%s ); // the one body it already has\n", f.Name, f.Name)
-		g.pf("            }\n            else\n            {\n")
-		g.pf("                if ( at + (int64_t) sizeof( %s ) > capacity ) { return false; }\n", t)
-		g.pf("                used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
-		g.pf("                %s * child = new ( base + at ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", t, t)
-		g.pf("                dst.%s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &dst.%s );\n", f.Name, f.Name)
-		g.pf("                if ( !%sPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }\n", t)
-		g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
-		g.pf("            }\n")
-		g.pf("        }\n    }\n")
+		g.emitPointerSlots(f, "src", func(srcSlot string) {
+			dstSlot := "dst" + srcSlot[len("src"):]
+			g.pf("    {\n")
+			g.pf("        %s.value = 0; // %s\n", dstSlot, f.Name)
+			g.pf("        const %s * pointee = %sAt( ctx, %s );\n", t, t, srcSlot)
+			g.pf("        if ( pointee != NULL )\n        {\n")
+			g.pf("            int64_t at = TableAlignUp64( used ); // where it WOULD land, if this is its first visit\n")
+			g.pf("            bool taken = false;\n")
+			g.pf("            int64_t slot = 0;\n")
+			g.pf("            const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, at, taken, slot );\n")
+			g.pf("            if ( entry == NULL ) { return false; } // the map could not grow\n")
+			g.pf("            if ( !taken )\n            {\n")
+			g.pf("                if ( entry->open != 0 ) { return false; } // a data cycle\n")
+			g.pf("                %s.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &%s ); // the one body it already has\n", dstSlot, dstSlot)
+			g.pf("            }\n            else\n            {\n")
+			g.pf("                if ( at + (int64_t) sizeof( %s ) > capacity ) { return false; }\n", t)
+			g.pf("                used = at + TableAlignUp64( (int64_t) sizeof( %s ) );\n", t)
+			g.pf("                %s * child = new ( base + at ) %s; // lifetime only: the Pack below memcpy's the whole node over it\n", t, t)
+			g.pf("                %s.value = (int64_t) ( ( base + at ) - (const uint8_t *) &%s );\n", dstSlot, dstSlot)
+			g.pf("                if ( !%sPack( ctx, seen, *pointee, *child, base, capacity, used ) ) { return false; }\n", t)
+			g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
+			g.pf("            }\n")
+			g.pf("        }\n    }\n")
+		})
 	}
 	for _, f := range g.byValueVariableFields(st) {
 		g.emitVariableByValueWalkPack(f)
@@ -961,4 +968,23 @@ func (g *tableGen) emitVariableUnionWalk(f *ir.Field, subject string, body func(
 		g.pf("            break;\n        }\n")
 	}
 	g.pf("        default: break;\n    }\n")
+}
+
+// emitPointerSlots emits one block per POINTER SLOT of a field — the field
+// itself, or each element of an array of pointers (docs/SPEC-TABLES.md §2.1),
+// in index order, the live slots of a counted array only — and calls body with
+// the slot's expression under the given subject (`value`, `src`).
+func (g *tableGen) emitPointerSlots(f *ir.Field, subject string, body func(slot string)) {
+	switch f.Array {
+	case ir.ArrayCounted:
+		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s: [..%d]*%s\n    {\n", subject, f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		g.pf("    }\n")
+	case ir.ArrayFixed:
+		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+		body(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		g.pf("    }\n")
+	default:
+		body(fmt.Sprintf("%s.%s", subject, f.Name))
+	}
 }
