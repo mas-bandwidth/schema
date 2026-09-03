@@ -130,3 +130,13 @@ timing internal/baseline/file.go 1 the history entry's calendar date — a day w
 
 timing test/tables/block_gate2_main.cpp 6 gate 2's C++ half (§12.1): the per-frame write, generated against the hand-written scatter
 timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame read, generated against the hand mirror
+
+# THE COOK's OPEN-COST GATE (SPEC-TABLES.md §7, §7.5) measures the ABSENCE of
+# work, which is why it needs a clock and why it is not a bench. `Open` is
+# O(1) in the file's size — a header match and nothing per node — and the gate
+# is that a 1 MB cook and a 100 MB cook open in the SAME time. It names no
+# shape and reads no field: the two arms are the same generated `SceneOpen`
+# over two synthetic regions, paired in one sitting and reported as medians,
+# and what a red arm would mean is that somebody put a walk back.
+
+timing test/tables/cook_main.cpp 2 the cook's open-cost gate (§7, §7.5): open time flat across 1 MB and 100 MB, paired medians — a constant-time header match, no shape named
