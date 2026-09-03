@@ -1981,53 +1981,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
-<<<<<<< HEAD
-=======
-	$(MAKE) tables-cs-json-walk
-	$(MAKE) tables-cs-standalone
-	$(MAKE) tables-cs-refuses-pointers
-	$(MAKE) tables-js-json-walk
-	$(MAKE) tables-js-standalone
-	$(MAKE) tables-js-refuses-pointers
 	$(MAKE) tables-ports-refuse-wide-scalars
 	$(MAKE) tables-scalars-block-asserts
-	cd test/cs-tables && dotnet run
-	# THE C TABLES LEG (docs/SPEC-TABLES.md; test/conformance/README.md): the
-	# same corpus in C, with the two gates that hold the emitter honest, the
-	# forgery fuzzer under ASan and UBSan, and a short soak.
-	#
-	# THE SHORT FORMS RIDE HERE AND THE LONG ONES DO NOT, because this job runs
-	# on every push and had three minutes of headroom before a fifth leg
-	# existed. Every gate below FIRES here — the fuzzer's enumerated passes
-	# cover the boundaries whatever N is, and the soak's allocator-call gate
-	# reads the same at two seconds as at twenty — and what the long forms buy
-	# is more random mutants and more wall clock. `make tables-c` runs the leg
-	# whole at the full N, and the HOUR-long soak is a release act:
-	# `make tables-c-soak SOAK_SECONDS=3600`.
-	$(MAKE) tables-c-zero-cost
-	$(MAKE) tables-c-json-walk
-	$(MAKE) tables-c-fuzz N=25000
-	$(MAKE) tables-c-fuzz-negative-control
-	$(MAKE) tables-c-variable
-	$(MAKE) tables-c-keyed-none-refusal-ndebug
-	$(MAKE) tables-c-keyed-none-refusal-negative-control
-	$(MAKE) tables-c-soak SOAK_SECONDS=2
-	$(MAKE) tables-c-soak-negative-control
-	# and the whole matrix again under ASan + UBSan: the sanitized run is the
-	# strongest gate this leg has, and a gate that only fires under a target
-	# nobody types is not in the chain.
-	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
-	$(MAKE) tables-js-leg
-	$(MAKE) tables-js-accessor-negative-control
-	$(MAKE) tables-js-slot-negative-control
-	$(MAKE) tables-js-keyed-negative-control
-	$(MAKE) tables-js-fuzz
-	$(MAKE) tables-js-fuzz-negative-control
-	$(MAKE) tables-js-alloc
-	$(MAKE) tables-js-alloc-negative-control
-	$(MAKE) tables-js-json-differential
-	$(MAKE) tables-js-json-differential-negative-control
->>>>>>> 6ae2cb12 (Every scalar the type wire carries rides in a table: fixed, ufixed and the 128-bit integers gain table-wire kinds 18-29 in the C++ reference and the tool (#390))
 	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as
 	# data, one driver per language, and the matrix that says which surfaces a
 	# backend has. The reference leg's own negative controls ride beside it;
