@@ -19,6 +19,9 @@ func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseTableArms(u, "java"); err != nil {
 		return nil, err
 	}
+	if err := refuseUnionArrays(u, "java"); err != nil {
+		return nil, err
+	}
 	files, err := java.Generate(u)
 	if err != nil {
 		return nil, err
@@ -40,4 +43,4 @@ func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(javaTarget{}, true, false) }
+func init() { registerBuiltin(javaTarget{}, true, false, false) }

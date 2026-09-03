@@ -6389,6 +6389,235 @@ static void test_pointer_arrays_element_kind_mismatch()
     if ( loaded != NULL ) CHECK( loaded->parts_count == 0 );
 }
 
+// ---- ARRAYS OF UNIONS (docs/SPEC-TABLES.md §2.6, §3) -----------------------
+//
+// tables/messages carries the construct at the same three depths the table
+// arms ride at: history is a counted batch of messages in the root, pending a
+// fixed pair of edit bodies inside a transaction, origins a counted array
+// inside an insert. Each element is the union payload in its place — the arm
+// id, then the arm length-prefixed — and a None element is the two-byte arm
+// id 0, because position is identity in an array.
+
+static void build_golden_message_batch( messagedemo::ToolMessage & m )
+{
+    m.sequence = 11;
+    m.body.type = messagedemo::ToolBodyType::Transact;
+    m.body.transact = messagedemo::Transaction{};
+    set_string( m.body.transact.reason, m.body.transact.reason_length, "batch" );
+    // depth two: pending is FIXED [2]EditBody — one set element makes the
+    // array ride whole, and the None element rides in place as arm id 0
+    messagedemo::EditBody & p = m.body.transact.pending[0];
+    p.type = messagedemo::EditBodyType::Insert;
+    p.insert = messagedemo::InsertText{};
+    p.insert.at.line = 7;
+    p.insert.at.column = 1;
+    set_string( p.insert.text, p.insert.text_length, "yo" );
+    // depth three: origins is COUNTED inside the insert, both elements set
+    p.insert.origins_count = 2;
+    p.insert.origins[0].type = messagedemo::OriginType::User;
+    p.insert.origins[0].user = messagedemo::User{};
+    set_string( p.insert.origins[0].user.name, p.insert.origins[0].user.name_length, "rowan" );
+    p.insert.origins[1].type = messagedemo::OriginType::Script;
+    p.insert.origins[1].script = messagedemo::Script{};
+    set_string( p.insert.origins[1].script.path, p.insert.origins[1].script.path_length, "gen.lua" );
+    p.insert.origins[1].script.line = 3;
+    // depth one: history is COUNTED in the root, with a LIVE None slot first
+    m.history_count = 2;
+    m.history[0].type = messagedemo::ToolBodyType::None;
+    m.history[1].type = messagedemo::ToolBodyType::Ping;
+    m.history[1].ping = messagedemo::Ping{};
+    m.history[1].ping.nonce = 42;
+}
+
+static void check_message_batch( const messagedemo::ToolMessage & m )
+{
+    CHECK( m.sequence == 11 );
+    CHECK( m.body.type == messagedemo::ToolBodyType::Transact );
+    CHECK( m.body.transact.pending[0].type == messagedemo::EditBodyType::Insert );
+    CHECK( m.body.transact.pending[0].insert.origins_count == 2 );
+    CHECK( m.body.transact.pending[0].insert.origins[0].type == messagedemo::OriginType::User );
+    CHECK( strcmp( m.body.transact.pending[0].insert.origins[0].user.name, "rowan" ) == 0 );
+    CHECK( m.body.transact.pending[0].insert.origins[1].type == messagedemo::OriginType::Script );
+    CHECK( m.body.transact.pending[0].insert.origins[1].script.line == 3 );
+    CHECK( m.body.transact.pending[1].type == messagedemo::EditBodyType::None );
+    CHECK( m.history_count == 2 );
+    CHECK( m.history[0].type == messagedemo::ToolBodyType::None );
+    CHECK( m.history[1].type == messagedemo::ToolBodyType::Ping );
+    CHECK( m.history[1].ping.nonce == 42 );
+}
+
+// the three depths through the wire, the text and the cook, pinned as the
+// shared instance the harness reads
+static void test_union_arrays()
+{
+    messagedemo::ToolMessage m;
+    build_golden_message_batch( m );
+    static uint8_t wire[4096];
+    static uint8_t again[4096];
+    int64_t need = messagedemo::ToolMessageMeasure( m );
+    int64_t wrote = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    CHECK( wrote > 0 && wrote == need );
+    pin_table_golden( "message_batch", wire, wrote );
+    reload_table_golden( "message_batch", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+
+    messagedemo::ToolMessage back;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    check_message_batch( back );
+    CHECK( messagedemo::ToolMessageSave( back, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the text: an array of the union row — one-key objects, `{}` for the
+    // None elements — and back to the same bytes
+    int64_t size = messagedemo::ToolMessageToJsonMeasure( m );
+    CHECK( size > 0 );
+    std::vector<char> text( (size_t) size + 1 );
+    CHECK( messagedemo::ToolMessageToJson( m, text.data(), size ) == size );
+    text[(size_t) size] = 0;
+    CHECK( strstr( text.data(), "{}" ) != NULL );
+    messagedemo::ToolMessage from_text;
+    messagedemo::TableReport text_report;
+    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
+    check_message_batch( from_text );
+    CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the cook: pointed at, every element's arm in place
+    int64_t cook_bytes = messagedemo::ToolMessageCookMeasure( m );
+    CHECK( cook_bytes > 0 );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( messagedemo::ToolMessageCook( m, cook, (uint64_t) cook_bytes, host_byte_order( messagedemo::TableByteOrder::Little, messagedemo::TableByteOrder::Big ) ) );
+    const messagedemo::ToolMessage * opened = messagedemo::ToolMessageOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        check_message_batch( *opened );
+        CHECK( messagedemo::ToolMessageSave( *opened, again, sizeof( again ) ) == wrote );
+        CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+    }
+    free( cook );
+
+    // the reflection: an array of unions describes its element as kind 15,
+    // with the arms column a union FIELD gets, at elem_size strides
+    const messagedemo::TableTypeInfo * type = messagedemo::ToolMessageTableType();
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+    {
+        const messagedemo::TableFieldInfo * f = &type->fields[i];
+        if ( strcmp( f->name, "history" ) != 0 ) continue;
+        CHECK( f->kind == 15 && f->is_array && f->counted && f->array_bound == 2 );
+        CHECK( f->elem_size == sizeof( messagedemo::ToolBody ) );
+        CHECK( f->enum_max == 4 && f->arms != NULL );
+        CHECK( f->variant_id != NULL && f->variant_id( 1 ) == field_id( "open" ) );
+        const messagedemo::TableUnionInfo * arms = f->arms();
+        CHECK( arms->arms[4].table == messagedemo::PingTableType() );
+        CHECK( arms->tag_offset == offsetof( messagedemo::ToolBody, type ) );
+    }
+}
+
+// the elision rules at the empty end (§3): an empty counted array and an
+// all-None fixed array write nothing — a message that sets neither is
+// byte-identical to the pinned message_transaction, which is the wire from
+// before the arrays were declared — and a counted array of live None
+// elements is content and rides
+static void test_union_arrays_elision()
+{
+    static uint8_t wire[4096];
+    messagedemo::ToolMessage m;
+    build_golden_message_transaction( m );
+    int64_t wrote = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    const int64_t pinned = read_table_golden( "message_transaction" );
+    CHECK( pinned == wrote && memcmp( golden_pinned, wire, (size_t) wrote ) == 0 );
+
+    // two live None slots: id + kind + L, the element header, one arm id 0
+    // per element
+    m.history_count = 2;
+    int64_t with_nones = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    CHECK( with_nones == wrote + 3 + 4 + 5 + 2 * 2 );
+    CHECK( messagedemo::ToolMessageMeasure( m ) == with_nones );
+    messagedemo::ToolMessage back;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( back, wire, with_nones, &report ) );
+    CHECK( !report.malformed && back.history_count == 2 );
+    CHECK( back.history[0].type == messagedemo::ToolBodyType::None );
+    CHECK( back.history[1].type == messagedemo::ToolBodyType::None );
+}
+
+// the element-kind separation (§3): `history` arriving as an array of TABLES —
+// element kind 13 where this reader declares 15 — is a kind mismatch, counted,
+// and the field stays empty; `[N]Body` ⇄ `[N]Table` is a reported edit. The
+// wire is pinned as a shared report row every leg reads.
+static void test_union_arrays_element_kind_mismatch()
+{
+    uint8_t wire[64];
+    size_t n = 0;
+    le16( wire + n, field_id( "history" ) ); n += 2;
+    wire[n++] = 14;                       // kind: array
+    le32( wire + n, 5 + 4 + 2 ); n += 4;  // L: element kind, N, one table element
+    wire[n++] = 13;                       // element kind: table, not union
+    le32( wire + n, 1 ); n += 4;
+    le32( wire + n, 2 ); n += 4;          // the element's own L
+    le16( wire + n, 0 ); n += 2;          // the element: an empty body
+    le16( wire + n, 0 ); n += 2;          // terminator
+    pin_table_golden( "batch_elem_kind", wire, (int64_t) n );
+    messagedemo::ToolMessage out;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.malformed && report.kind_mismatch == 1 );
+    CHECK( out.history_count == 0 );
+}
+
+// an arm this reader cannot name, inside an element (§4): the element reads
+// None, the body skips by its length, unknown counts — and the slot is LIVE,
+// so the count keeps it. The wire is pinned as a shared report row.
+static void test_union_arrays_unknown_arm()
+{
+    uint8_t wire[64];
+    size_t n = 0;
+    le16( wire + n, field_id( "history" ) ); n += 2;
+    wire[n++] = 14;                        // kind: array
+    le32( wire + n, 5 + 2 + 4 + 2 ); n += 4;
+    wire[n++] = 15;                        // element kind: union
+    le32( wire + n, 1 ); n += 4;
+    le16( wire + n, field_id( "rename" ) ); n += 2; // an arm no build declares
+    le32( wire + n, 2 ); n += 4;           // the arm's L
+    le16( wire + n, 0 ); n += 2;           // the arm: an empty body
+    le16( wire + n, 0 ); n += 2;           // terminator
+    pin_table_golden( "batch_unknown_arm", wire, (int64_t) n );
+    messagedemo::ToolMessage out;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( out, wire, (int64_t) n, &report ) );
+    CHECK( !report.malformed && report.unknown == 1 );
+    CHECK( out.history_count == 1 );
+    CHECK( out.history[0].type == messagedemo::ToolBodyType::None );
+}
+
+// the text refusals over an element: the union row's rules, per element
+static void test_union_arrays_json_hostile()
+{
+    messagedemo::ToolMessage value;
+
+    // an element that is not an object is the wire's kind mismatch
+    messagedemo::TableReport shape;
+    const char * number = "{ \"history\": [ 5 ] }";
+    CHECK( messagedemo::ToolMessageFromJson( value, number, (int64_t) strlen( number ), &shape ) );
+    CHECK( shape.kind_mismatch == 1 && !shape.malformed );
+
+    // TWO keys in an element is not a one-of
+    messagedemo::TableReport two;
+    const char * both = "{ \"history\": [ { \"open\": { \"path\": \"a\" }, \"save\": { \"path\": \"b\" } } ] }";
+    CHECK( !messagedemo::ToolMessageFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( two.malformed );
+
+    // an arm no build declares reads as a None element and counts
+    messagedemo::TableReport unknown_arm;
+    const char * strange = "{ \"history\": [ { \"rename\": { \"path\": \"x\" } } ] }";
+    CHECK( messagedemo::ToolMessageFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( unknown_arm.unknown == 1 && !unknown_arm.malformed );
+    CHECK( value.history_count == 1 && value.history[0].type == messagedemo::ToolBodyType::None );
+}
+
 int main()
 {
     test_golden_wire();
@@ -6483,6 +6712,11 @@ int main()
     test_pointer_arrays();
     test_pointer_arrays_elision();
     test_pointer_arrays_element_kind_mismatch();
+    test_union_arrays();
+    test_union_arrays_elision();
+    test_union_arrays_element_kind_mismatch();
+    test_union_arrays_unknown_arm();
+    test_union_arrays_json_hostile();
     test_json_fuzz_tokenizer();
 
     if ( failures > 0 )

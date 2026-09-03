@@ -21,6 +21,9 @@ func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseTableArms(u, "js"); err != nil {
 		return nil, err
 	}
+	if err := refuseUnionArrays(u, "js"); err != nil {
+		return nil, err
+	}
 	files, err := js.Generate(u)
 	if err != nil {
 		return nil, err
@@ -43,4 +46,4 @@ func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(jsTarget{}, true, false) }
+func init() { registerBuiltin(jsTarget{}, true, false, false) }

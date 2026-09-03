@@ -91,12 +91,16 @@ instance graph_deep           graphdemo Scene         testdata/wire/tables/graph
 # arm rides even when its body is entirely default, for a type arm and a table
 # arm alike; message_empty is the elided None. streamdemo's Frame has a VARIABLE
 # arm, so Feed is a region and a root pointer, and its chunk arm's chain is
-# numbered through the union.
+# numbered through the union. message_batch is the ARRAY OF UNIONS (§3) at the
+# same three depths — history counted in the root with a live None slot,
+# pending fixed inside the transaction with its None element riding in place,
+# origins counted inside the insert.
 instance message_open         messagedemo ToolMessage testdata/wire/tables/message_open.bin
 instance message_transaction  messagedemo ToolMessage testdata/wire/tables/message_transaction.bin
 instance message_ping         messagedemo ToolMessage testdata/wire/tables/message_ping.bin
 instance message_save         messagedemo ToolMessage testdata/wire/tables/message_save.bin
 instance message_empty        messagedemo ToolMessage testdata/wire/tables/message_empty.bin
+instance message_batch        messagedemo ToolMessage testdata/wire/tables/message_batch.bin
 instance m1_open              tblm1       Msg         testdata/wire/tables/m1_open.bin
 instance m1_save              tblm1       Msg         testdata/wire/tables/m1_save.bin
 instance m2_close             tblm2       Msg         testdata/wire/tables/m2_close.bin
@@ -141,6 +145,14 @@ report p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
 report parts_elem_kind          streamdemo Feed testdata/wire/tables/parts_elem_kind.bin
 report parts_count_past_bound   streamdemo Feed testdata/wire/tables/parts_count_past_bound.bin
 report parts_index_out_of_range streamdemo Feed testdata/wire/tables/parts_index_out_of_range.bin
+# AN ARRAY OF UNIONS read under §3's rules, as shared rows: two hand-built
+# ToolMessage bodies with one `history` field each. The element kind 13 where
+# the reader declares 15 is a kind mismatch and the field stays empty —
+# `[N]Body` ⇄ `[N]Table` is a reported edit; an arm id no build declares reads
+# as a None element, skipped by its length and counted, the slot kept live.
+# The bytes are pinned by the C++ leg (test/tables/main.cpp builds them).
+report batch_elem_kind   messagedemo ToolMessage testdata/wire/tables/batch_elem_kind.bin
+report batch_unknown_arm messagedemo ToolMessage testdata/wire/tables/batch_unknown_arm.bin
 # the message pair (§2.6, §4): M2 inserted `close` first, removed `save` and
 # grew Open, so open's tag moved and both sides meet an arm they cannot name
 report m1_open_as_m2  tblm2 Msg testdata/wire/tables/m1_open.bin
@@ -208,6 +220,7 @@ cook-write message_transaction    testdata/conformance/tables/cook-write/message
 cook-write message_ping           testdata/conformance/tables/cook-write/message_ping.cook testdata/conformance/tables/cook-write/message_ping-be.cook
 cook-write message_save           testdata/conformance/tables/cook-write/message_save.cook testdata/conformance/tables/cook-write/message_save-be.cook
 cook-write message_empty          testdata/conformance/tables/cook-write/message_empty.cook testdata/conformance/tables/cook-write/message_empty-be.cook
+cook-write message_batch          testdata/conformance/tables/cook-write/message_batch.cook testdata/conformance/tables/cook-write/message_batch-be.cook
 cook-write m1_open                testdata/conformance/tables/cook-write/m1_open.cook testdata/conformance/tables/cook-write/m1_open-be.cook
 cook-write m2_open                testdata/conformance/tables/cook-write/m2_open.cook testdata/conformance/tables/cook-write/m2_open-be.cook
 cook-write stream_chain           testdata/conformance/tables/cook-write/stream_chain.cook testdata/conformance/tables/cook-write/stream_chain-be.cook
@@ -453,6 +466,9 @@ json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/con
 json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown 1,0,0,0,false
 json-hostile pointer-array-element-shape    streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-element-shape    0,1,0,0,false
 json-hostile pointer-array-shared-label     streamdemo  Feed        testdata/conformance/tables/json-hostile/pointer-array-shared-label     0,0,0,0,false
+json-hostile union-array-element-shape      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-shape      0,1,0,0,false
+json-hostile union-array-element-two-keys   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-two-keys   refused
+json-hostile union-array-element-unknown    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-array-element-unknown    1,0,0,0,false
 json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,false
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
 json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false

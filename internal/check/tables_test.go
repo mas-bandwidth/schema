@@ -89,8 +89,8 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntype A { x int32 }\ntype B { y int32 }\nunion U\n{\n    costarring A\n    liquid B\n}\ntable Tab { u U }\n"},
 		{name: "enum headroom has no name to ride under", want: "headroom value has no NAME",
 			src: "package t\nenum E | max = 8\n{ A, B }\ntable Tab { e E }\n"},
-		{name: "an array of unions in a closure", want: "an array of unions may not sit on a table-closure path",
-			src: "package t\ntype P { x int32 }\nunion U\n{\n    p P\n}\ntable Tab { us [..4]U }\n"},
+		{name: "a keyed array of unions stays a named follow-on", want: "an enum-keyed array of unions",
+			src: "package t\nenum E { A, B }\ntype P { x int32 }\nunion U\n{\n    p P\n}\ntable Tab { us [E]U }\n"},
 		{name: "a declaration colliding with the table runtime", want: "generated TABLE-wire runtime",
 			src: "package t\ntable Tab { x int32 }\ntype TableReport { y int32 }\n"},
 		{name: "a declaration colliding with generated table codecs", want: "generated TABLE-wire functions",
@@ -961,5 +961,55 @@ table Tab
 	}
 	if pieces := ir.FieldPieces(u, tab.Fields[1], 0); len(pieces) != 1 || pieces[0].Size != 16 {
 		t.Fatalf("[2]*Node is two eight-byte slots, got %+v", pieces)
+	}
+}
+
+// TestUnionArraysAreLegal is §2.6's bounded spellings: `[N]U` and `[..N]U`
+// are a union slot per element under kind 14 with element kind 15, a holder
+// of fixed arms stays fixed, a VARIABLE arm makes the holder variable through
+// the array exactly as through a field, and the enum-keyed spelling `[E]U`
+// stays a named follow-on.
+func TestUnionArraysAreLegal(t *testing.T) {
+	u := buildUnit(t, `package t
+type P { x int32 }
+table Node { y int32 }
+union U
+{
+    p P
+    n Node
+}
+table Tab
+{
+    log  [..4]U
+    undo [2]U
+}
+table Var { next *Node }
+union V
+{
+    step Var
+}
+table Holder { history [..2]V }
+`)
+	tab := u.Tables["Tab"]
+	if tab == nil || len(tab.Fields) != 2 {
+		t.Fatalf("Tab did not resolve: %+v", tab)
+	}
+	for _, f := range tab.Fields {
+		if f.Array == ir.ArrayNone {
+			t.Fatalf("%s: not an array: %+v", f.Name, f.Type)
+		}
+		if ir.TableFieldKind(f) != ir.TableKindArray || ir.TableElemKind(f) != ir.TableKindUnion {
+			t.Fatalf("%s: kinds %d/%d, want 14/15", f.Name, ir.TableFieldKind(f), ir.TableElemKind(f))
+		}
+	}
+	if got := ir.TableUnionArrays(u); len(got) != 3 {
+		t.Fatalf("TableUnionArrays names %d fields, the unit declares 3: %v", len(got), got)
+	}
+	v := ir.VariableTables(u)
+	if v["Tab"] {
+		t.Fatalf("an array of unions over fixed arms made its holder variable: %v", v)
+	}
+	if !v["Holder"] {
+		t.Fatalf("a VARIABLE arm did not make the holder variable through the array: %v", v)
 	}
 }

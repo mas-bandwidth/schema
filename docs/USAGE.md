@@ -1286,7 +1286,9 @@ field and leave the old one alone.
 ### Nesting: a root table IS a format
 
 A field whose type is another table nests it by value; bounded arrays of
-tables give you collections. That is the whole recipe for a config or asset
+tables give you collections, and a bounded array of a union whose arms are
+tables — `[..N]ToolBody` — is a batch of messages in one field. That is the
+whole recipe for a config or asset
 bin — declare the root, and the format falls out (the same bytes work as a
 file on disk or a message on a socket):
 

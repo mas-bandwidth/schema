@@ -629,7 +629,8 @@ compressed floats, enums, flags, strings, bytes, bounded arrays, unions,
   exactly one slot per NAMED variant, keyed by the variant, and nothing for
   `None`.
 - **A union arm may be a table** (§2.6), which is what makes an evolvable
-  message set expressible.
+  message set expressible, and **an array of unions** is a collection of
+  them — a batch of messages is `[..N]ToolBody`.
 - **A table may hold a MAP** (§2.8). `ships map[string(32)]ShipConfig` is a
   lookup by key over entries the wire carries as a sorted array of one
   generated `{ key, value }` table; it spends no wire kind, and it makes its
@@ -786,8 +787,8 @@ projection (§19.2). The by-value form is for tooling and for the wire.
 and the 128-bit integers have kinds of their own (§3), a fixed field's
 whole-unit bounds clamp on the raw scale (§4), and its text is the value in
 whole units (§16.2). The exclusions, each refused by name: `const`/`reserved`/`align`
-describe bit positions, and the table wire has none; and arrays of unions are
-a named follow-on. **Extents have no wire ceiling**: lengths and counts ride as u32
+describe bit positions, and the table wire has none. **Extents have no wire
+ceiling**: lengths and counts ride as u32
 (§3), so the only limit is the language's own — a string, bytes or array
 extent lives in int32 storage (SPEC §4.3), and that cap is what a too-large
 extent is refused against.
@@ -1108,15 +1109,34 @@ carry a nested table, a collection, or anything else a table body holds —
 which is what a message set of documents needs and what a `type`-only
 payload could never express.
 
+**An ARRAY OF UNIONS is a union slot per element.** `[..N]ToolBody` and
+`[N]ToolBody` are the two bounded spellings, and each element is what a
+`ToolBody` field is — a tag beside the arms, `None` until an arm is selected —
+so a batch of messages is one field rather than a table per message. The
+storage is `ToolBody name[N]`, with the used count beside it for the counted
+spelling, and the framing is §3's: kind `14` with element kind `15`, each
+element the union payload in place. The three rules the construct needs are
+each the one it inherits, and §3 states them: a `None` element is the arm id
+`0` in its place; elision is the by-value array's — an empty counted array and
+a fixed array of `None` elide, and a live `None` element rides; and element
+kind `15` is held apart from `13` by the element-kind rule, so `[N]Body` ⇄
+`[N]Table` is a reported edit. The arms may be types, tables or a mix, and a
+VARIABLE arm makes the holder variable through an array exactly as through a
+field. The enum-KEYED spelling `[E]Body` is a named follow-on (§15): a keyed
+body elides slots by name (§3.2), and a `None` slot there wants its rule
+stated before it is wire, as `[E]*T` does.
+
 **Backend status for this section: the C++ REFERENCE and the TOOL carry it;
 every other backend refuses a unit that declares one, by name** (§11), and
 the ports are a named follow-on (§15). The corpus holds the form at THREE
 DEPTHS — `tables/messages` nests a union of tables inside a table arm inside a
-union of tables — and a union with a VARIABLE arm (`tables/stream`), and every
-instance crosses the wire, the text and the cook in the harness; the message
-evolution pair (`test/tables/M1.schema`, `M2.schema`) inserts an arm first,
-removes one and grows a third, both directions. Every leg that lacks the form
-answers ABSENT for those cases, so its fixed-class pass is untouched.
+union of tables, and an ARRAY of unions at each of those depths (`history` in
+the root, `pending` inside a transaction, `origins` inside an insert) — and a
+union with a VARIABLE arm (`tables/stream`), and every instance crosses the
+wire, the text and the cook in the harness; the message evolution pair
+(`test/tables/M1.schema`, `M2.schema`) inserts an arm first, removes one and
+grows a third, both directions. Every leg that lacks the form answers ABSENT
+for those cases, so its fixed-class pass is untouched.
 
 **A union with a table arm is a TABLE-CLOSURE construct, and it has no packet
 wire.** It is emitted beside the tables — in C++, in the Table header after the
@@ -1835,12 +1855,18 @@ schema's codebase:
   edit: it changes kind, and §4 counts it (§3.1).
   - **Array elements.** For a scalar element kind the elements sit back to
     back at that kind's fixed width. For element kind `13` (table) each
-    element is preceded by its own `L`. `bytes(N)` rides as an array of
+    element is preceded by its own `L`. For element kind `15` (union) each
+    element is the union payload in its place — the `arm id`, then `L` and
+    the arm body when the id is not 0 — so a `None` element is the two-byte
+    arm id `0` a reader already accepts, and position stays identity. For
+    element kind `17` (pointer) each element is a `u32` node index, null as
+    `0` (§3.1). `bytes(N)` rides as an array of
     element kind `6` (u8). A fixed-extent array writes all its declared
     elements, so a reader that decodes fewer than its own bound leaves the
     tail at its declared defaults.
   - **An arm id of 0 is the empty union** and carries nothing after it.
-    This writer never emits it — an empty union elides (below) — but a
+    This writer emits it in one place only — a `None` element of an array
+    of unions that rides (above); an empty union FIELD elides (below) — and a
     reader accepts it.
 - **Skipping a field you cannot name** needs the kind byte and nothing
   else, which is what makes an unknown field survivable (§4). Three rules
@@ -4825,9 +4851,8 @@ in build version (§20.5).
 ## 11. Refused by name
 
 - `table` bodies containing `const`/`reserved`/`align` (§2 — no bit
-  positions), or arrays of unions (§2 — named follow-on). Extents have no
-  wire ceiling (§3); an extent past the language's own int32 storage cap is
-  refused there, not here.
+  positions). Extents have no wire ceiling (§3); an extent past the
+  language's own int32 storage cap is refused there, not here.
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name (§5).
 - Id collisions, hash or `was`-induced (§5).
@@ -4934,6 +4959,11 @@ in build version (§20.5).
   table arm under every backend but C++**, refused naming the union and the
   target: the ports are a named follow-on (§15), and a port that emitted the
   union would name a table it never declares.
+- **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
+  follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
+  **an array of unions in a table closure under every backend but C++**,
+  refused naming the field and the target — the ports' fixed-class codecs
+  never met one, and the form is a named follow-on (§15).
 - **The text form's key** (§16): `json = "..."` on a field no table closure
   reaches — keys are a table-wire construct; two fields of one table whose
   JSON keys collide, naming both, as wire ids do (§5); and a key beginning
@@ -6285,7 +6315,17 @@ inspects everything in the schema built:
   wire forecloses any of it — §2.8's closing paragraph is the confirmation.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
-- Arrays of unions in table bodies.
+- **AN ARRAY OF UNIONS in every ported backend** (§2.6): C++ and the tool
+  carry `[..N]Body` and `[N]Body`, and every other backend refuses a table
+  closure holding one, by name (§11). What a port needs is the union element
+  in its fixed-class walks — measure, save, load, the descriptors' arms column
+  on an array field, and the text form's one-key object per element — held to
+  the `message_batch` instance and the hostile rows the harness carries.
+- **A KEYED ARRAY OF UNIONS** — `[E]Body`, one union slot per named variant.
+  The bounded spellings landed (§2.6) and the keyed one did not, for the
+  reason `[E]*T` did not: a keyed body rides slots by variant id under kind
+  `16` (§3.2) and elides a slot by name, so whether a `None` slot is elided or
+  ridden in place wants stating before it is wire.
 - **A UNION WITH TABLE ARMS in every ported backend** (§2.6): C++ carries it
   and every other backend refuses the unit by name (§11). What a port needs is
   what the C++ one needed — the union's shape emitted beside the tables rather
@@ -6589,7 +6629,7 @@ Per kind:
 | `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key is last-wins and counted**, as any duplicate key is; an unknown key is skipped and counted, and **`"None"` is such a key** — it names no slot (§2.4) |
 | nested `type` / `table` | object | the same walk, recursively |
 | `?T` optional | the value, or the key absent | **presence of the KEY is presence**: a key present sets the field present, whatever its value; an absent key leaves it absent. `ToJson` writes present optionals only |
-| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form |
+| union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. A `table` arm (§2.6) is the same object form. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `map[K]V` | object keyed by the KEY | a string key is the string; an integer key is its decimal spelling, quoted, and any other spelling under an integer key is `malformed`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |
 

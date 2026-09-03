@@ -144,8 +144,25 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			continue
 		}
 		if un := tabletext.UnionOf(f); un != nil {
-			if fv.Cell.U != 0 && fv.Cell.Tab != nil {
-				visitEdges(m, fv.Cell.Tab, visit)
+			// a union's set arm is an edge, and so is every element's of an
+			// array of unions — the live elements of a counted one only (§3.1)
+			switch f.Array {
+			case ir.ArrayNone:
+				if fv.Cell.U != 0 && fv.Cell.Tab != nil {
+					visitEdges(m, fv.Cell.Tab, visit)
+				}
+			case ir.ArrayFixed:
+				for k := range fv.Elems {
+					if fv.Elems[k].U != 0 && fv.Elems[k].Tab != nil {
+						visitEdges(m, fv.Elems[k].Tab, visit)
+					}
+				}
+			case ir.ArrayCounted:
+				for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
+					if fv.Elems[k].U != 0 && fv.Elems[k].Tab != nil {
+						visitEdges(m, fv.Elems[k].Tab, visit)
+					}
+				}
 			}
 			continue
 		}

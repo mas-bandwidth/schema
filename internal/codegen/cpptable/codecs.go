@@ -659,6 +659,28 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("            if ( elem_%s < 0 ) { return -1; }\n", f.Name)
 		g.pf("            bytes += 4 + elem_%s;\n", f.Name)
 		g.pf("        }\n    }\n")
+	case f.Array == ir.ArrayCounted && kind == tkUnion:
+		// an ARRAY OF UNIONS (docs/SPEC-TABLES.md §2.6, §3): kind 14 with element
+		// kind 15, each element the union payload in its place. CONTENT decides,
+		// as for any by-value array: an empty one elides, and a live None
+		// element rides as the two-byte arm id 0.
+		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
+		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+		g.pf("        bytes += 3 + 4 + 5; // %s\n", f.Name)
+		g.pf("        for ( int32_t i = 0; i < value.%s_count; i++ )\n        {\n", f.Name)
+		g.emitUnionElementMeasure(f, fmt.Sprintf("value.%s[i]", f.Name), "            ")
+		g.pf("        }\n    }\n")
+	case f.Array == ir.ArrayFixed && kind == tkUnion:
+		// a FIXED array of unions holding only None is all-default and elides;
+		// one set element makes it ride whole, None elements in place (§3)
+		g.pf("    {\n")
+		g.pf("        bool any_%s = false;\n", f.Name)
+		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i].type != %sType::None ) { any_%s = true; break; } }\n", f.ArrayBound, f.Name, f.Type.Name, f.Name)
+		g.pf("        if ( any_%s )\n        {\n", f.Name)
+		g.pf("            bytes += 3 + 4 + 5; // %s (fixed [%d])\n", f.Name, f.ArrayBound)
+		g.pf("            for ( int32_t i = 0; i < %d; i++ )\n            {\n", f.ArrayBound)
+		g.emitUnionElementMeasure(f, fmt.Sprintf("value.%s[i]", f.Name), "                ")
+		g.pf("            }\n        }\n    }\n")
 	case f.Array == ir.ArrayCounted:
 		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.ArrayBound)
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
@@ -708,6 +730,24 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	default:
 		g.pf("    if ( value.%s != %s ) { bytes += 3 + %d; } // %s\n", f.Name, g.fieldDefaultExpr(f), width, f.Name)
 	}
+}
+
+// emitUnionElementMeasure adds one element of an ARRAY OF UNIONS to `bytes`
+// (docs/SPEC-TABLES.md §2.6, §3): the two-byte arm id for None, and the arm
+// id, the length and the arm body for a set arm. A tag no arm names measures
+// as -1, exactly as the write side refuses it.
+func (g *tableGen) emitUnionElementMeasure(f *ir.Field, expr, ind string) {
+	un := f.Type.Ref.(*ir.Union)
+	g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+	g.pf("%s    case %sType::None: bytes += 2; break; // a None element is the arm id 0 in its place\n", ind, un.Name)
+	for _, v := range un.Variants {
+		g.noteRef(v.Type)
+		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
+		g.pf("%s        int64_t arm_bytes = %s;\n", ind, g.measureCall(v.Type, expr+"."+v.Name))
+		g.pf("%s        if ( arm_bytes < 0 ) { return -1; }\n", ind)
+		g.pf("%s        bytes += 2 + 4 + arm_bytes; // the u16 ARM ID, then the arm length-prefixed\n%s        break;\n%s    }\n", ind, ind, ind)
+	}
+	g.pf("%s    default: return -1; // invalid tag — the write side refuses it too\n%s}\n", ind, ind)
 }
 
 // emitKeyedSlotRides emits the head of an enum-keyed array's per-slot loop
@@ -953,6 +993,20 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "            ")
 		g.pf("        }\n")
 		g.pf("        w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n    }\n", f.Name, f.Name)
+	case f.Array == ir.ArrayFixed && kind == tkUnion:
+		// a fixed array of unions is positional too: all None elides, and one
+		// set element makes every element ride in its place (§2.6, §3)
+		g.pf("    {\n")
+		g.pf("        bool any_%s = false;\n", f.Name)
+		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i].type != %sType::None ) { any_%s = true; break; } }\n", f.ArrayBound, f.Name, f.Type.Name, f.Name)
+		g.pf("        if ( any_%s )\n        {\n", f.Name)
+		g.pf("            w.put16( 0x%04x ); w.put8( %d ); // %s (fixed [%d])\n", id, tkArray, f.Name, f.ArrayBound)
+		g.pf("            int64_t len_at_%s = w.offset; w.put32( 0 );\n", f.Name)
+		g.pf("            w.put8( %d ); w.put32( %d );\n", kind, f.ArrayBound)
+		g.pf("            for ( int32_t i = 0; i < %d; i++ )\n            {\n", f.ArrayBound)
+		g.emitTableWriteElement(f, kind, fmt.Sprintf("value.%s[i]", f.Name), "                ")
+		g.pf("            }\n")
+		g.pf("            w.patch32( len_at_%s, uint32_t( w.offset - len_at_%s - 4 ) );\n        }\n    }\n", f.Name, f.Name)
 	case f.Array == ir.ArrayFixed:
 		// fixed arrays are positional; an all-default array elides entirely
 		// (parity with the reader's prefill)
@@ -1039,6 +1093,21 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%s{\n%s    int64_t elem_len_at = w.offset; w.put32( 0 );\n", ind, ind)
 		g.pf("%s    if ( !%s ) return false;\n", ind, g.saveCall(f.Type.Name, expr))
 		g.pf("%s    w.patch32( elem_len_at, uint32_t( w.offset - elem_len_at - 4 ) );\n%s}\n", ind, ind)
+	case tkUnion:
+		// one element of an array of unions: the union payload in its place —
+		// the arm id, then the arm length-prefixed; None is the arm id 0 (§3)
+		un := f.Type.Ref.(*ir.Union)
+		g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+		g.pf("%s    case %sType::None: w.put16( 0 ); break; // a None element rides in its place\n", ind, un.Name)
+		for _, v := range un.Variants {
+			g.noteRef(v.Type)
+			g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
+			g.pf("%s        w.put16( 0x%04x ); // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n", ind, ir.VariantId(v.Name))
+			g.pf("%s        int64_t arm_len_at = w.offset; w.put32( 0 );\n", ind)
+			g.pf("%s        if ( !%s ) return false;\n", ind, g.saveCall(v.Type, expr+"."+v.Name))
+			g.pf("%s        w.patch32( arm_len_at, uint32_t( w.offset - arm_len_at - 4 ) );\n%s        break;\n%s    }\n", ind, ind, ind)
+		}
+		g.pf("%s    default: return false; // write validates the tag before it rides\n%s}\n", ind, ind)
 	case tkNodeIndex:
 		// one slot of an array of pointers: its node index, null as 0 (§3.1)
 		g.pf("%s{\n%s    const %s * slot_pointee = %sAt( ctx, %s );\n", ind, ind, f.Type.Name, f.Type.Name, expr)
@@ -1301,6 +1370,30 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 // without stopping the parent decode.
 func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 	switch kind {
+	case tkUnion:
+		// one element of an array of unions: the union payload in its place
+		// (§3). The element is re-established as None before the arm is read,
+		// so a repeated field id leaves no earlier arm standing (§4).
+		un := f.Type.Ref.(*ir.Union)
+		g.pf("%sif ( !sub.has( 2 ) ) { r.report->malformed = true; break; }\n", ind)
+		g.pf("%s{\n", ind)
+		g.pf("%s    uint16_t arm_id = sub.get16();\n", ind)
+		g.pf("%s    value.%s[i].type = %sType::None;\n", ind, f.Name, un.Name)
+		g.pf("%s    if ( arm_id != 0 ) // 0 is a None element in its place\n%s    {\n", ind, ind)
+		g.pf("%s        if ( !sub.has( 4 ) ) { r.report->malformed = true; break; }\n", ind)
+		g.pf("%s        uint32_t arm_len = sub.get32();\n", ind)
+		g.pf("%s        if ( !sub.has( arm_len ) ) { r.report->malformed = true; break; }\n", ind)
+		g.pf("%s        TableReader arm( sub.buffer + sub.offset, arm_len, r.report );\n", ind)
+		g.pf("%s        switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s        {\n", ind, ind)
+		for _, v := range un.Variants {
+			g.pf("%s            case 0x%04x: // %s\n%s                value.%s[i].type = %sType::%s;\n%s                %s;\n%s                break;\n",
+				ind, ir.VariantId(v.Name), v.Name, ind, f.Name, un.Name, ir.GoExportName(v.Name),
+				ind, g.loadCall(v.Type, "arm", fmt.Sprintf("value.%s[i].%s", f.Name, v.Name)), ind)
+		}
+		g.pf("%s            default: r.report->unknown++; break; // an arm this reader cannot name: the element reads None, the body skips by its length\n", ind)
+		g.pf("%s        }\n", ind)
+		g.pf("%s        sub.offset += arm_len;\n", ind)
+		g.pf("%s    }\n%s}\n", ind, ind)
 	case tkNodeIndex:
 		// one slot of an array of pointers: a node index, bounds-checked and
 		// resolved through the numbering, never followed (§3.1)
@@ -1614,7 +1707,9 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 					enumName = fmt.Sprintf("+[]( uint64_t v ) { return FlagName%s( (int) v ); }", f.Type.Name)
 				}
 			case *ir.Union:
-				if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone {
+				// on an ARRAY of unions too (§2.6): the walker asks the same
+				// column per element, at elem_size strides
+				if f.Type.Kind == ir.TNamed {
 					enumMax = fmt.Sprintf("%d", len(ref.Variants))
 					enumName = unionArmLambda(ref, "const char *", func(v ir.UnionVariant) string {
 						return fmt.Sprintf("\"%s\"", v.Name)

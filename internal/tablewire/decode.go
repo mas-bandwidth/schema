@@ -317,6 +317,10 @@ func (r *wireReader) array(fv *tabletext.Field) bool {
 
 func (r *wireReader) element(fv *tabletext.Field, i int) bool {
 	f := fv.Def
+	if tabletext.UnionOf(f) != nil {
+		// an element of an ARRAY OF UNIONS: the union payload in its place (§3)
+		return r.unionCell(&fv.Elems[i], f)
+	}
 	if f.Type.Pointer {
 		// an element of an array of pointers: a node index, bounds-checked and
 		// stored, never followed (§3.1)
@@ -414,16 +418,20 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	return true
 }
 
-func (r *wireReader) union(fv *tabletext.Field) bool {
-	un := tabletext.UnionOf(fv.Def)
+func (r *wireReader) union(fv *tabletext.Field) bool { return r.unionCell(&fv.Cell, fv.Def) }
+
+// unionCell decodes the union framing into one cell — a field's, or an element
+// of an array of unions (§3).
+func (r *wireReader) unionCell(cell *tabletext.Cell, f *ir.Field) bool {
+	un := tabletext.UnionOf(f)
 	if !r.has(2) {
 		r.report.Malformed = true
 		return false
 	}
 	armID := r.u16()
 	if armID == 0 {
-		fv.Cell.U = 0
-		fv.Cell.Tab = nil
+		cell.U = 0
+		cell.Tab = nil
 		return true // empty: the id is the whole payload
 	}
 	if !r.has(4) {
@@ -448,14 +456,14 @@ func (r *wireReader) union(fv *tabletext.Field) bool {
 		// is skipped by its length, never misdecoded. The reset is explicit: a
 		// repeated field id must not leave an arm an earlier occurrence
 		// decoded standing (§4).
-		fv.Cell.U = 0
-		fv.Cell.Tab = nil
+		cell.U = 0
+		cell.Tab = nil
 		r.report.Unknown++
 	} else {
 		payload := r.m.New(un.Variants[tag-1].Ref)
 		sub.body(payload)
-		fv.Cell.U = uint64(tag)
-		fv.Cell.Tab = payload
+		cell.U = uint64(tag)
+		cell.Tab = payload
 	}
 	r.off += n
 	return true

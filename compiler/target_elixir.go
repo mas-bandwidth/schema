@@ -19,6 +19,9 @@ func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseTableArms(u, "elixir"); err != nil {
 		return nil, err
 	}
+	if err := refuseUnionArrays(u, "elixir"); err != nil {
+		return nil, err
+	}
 	files, err := elixir.Generate(u)
 	if err != nil {
 		return nil, err
@@ -40,4 +43,4 @@ func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return files, nil
 }
 
-func init() { registerBuiltin(elixirTarget{}, true, false) }
+func init() { registerBuiltin(elixirTarget{}, true, false, false) }

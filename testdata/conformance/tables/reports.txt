@@ -6,6 +6,8 @@
 # Regenerate with: make conformance-generate. A counter that MOVES under an
 # unchanged schema is stop-the-line, exactly as a wire golden is.
 
+batch_elem_kind    0,1,0,0,false
+batch_unknown_arm  1,0,0,0,false
 m1_open_as_m2      0,0,0,0,false
 m1_save_as_m2      1,0,0,0,false
 m2_close_as_m1     1,0,0,0,false

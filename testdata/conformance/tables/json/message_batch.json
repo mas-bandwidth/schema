@@ -1,0 +1,43 @@
+{
+  "sequence": 11,
+  "body": {
+    "transact": {
+      "reason": "batch",
+      "edits": [],
+      "pending": [
+        {
+          "insert": {
+            "at": {
+              "line": 7,
+              "column": 1
+            },
+            "text": "yo",
+            "origin": {},
+            "origins": [
+              {
+                "user": {
+                  "name": "rowan"
+                }
+              },
+              {
+                "script": {
+                  "path": "gen.lua",
+                  "line": 3
+                }
+              }
+            ]
+          }
+        },
+        {}
+      ]
+    }
+  },
+  "history": [
+    {},
+    {
+      "ping": {
+        "nonce": 42
+      }
+    }
+  ]
+}

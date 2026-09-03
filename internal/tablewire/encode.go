@@ -374,6 +374,31 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		// an element of an ARRAY OF POINTERS is a node index like any pointer
 		// field's payload (docs/SPEC-TABLES.md §3.1): null rides as 0 in its slot
 		w.u32(e.g.Index(cell.Node))
+	case ir.TableKindUnion:
+		// an element of an ARRAY OF UNIONS is the union payload in its place
+		// (docs/SPEC-TABLES.md §3): the arm id, then the arm length-prefixed —
+		// and a None element rides as arm id 0, because position is identity
+		// in an array
+		un := tabletext.UnionOf(f)
+		if cell.U == 0 {
+			w.u16(0)
+			return nil
+		}
+		if int(cell.U) > len(un.Variants) {
+			return fmt.Errorf("union %s: tag %d names no arm — save refuses it (docs/SPEC-TABLES.md §5)", un.Name, cell.U)
+		}
+		arm := un.Variants[cell.U-1]
+		payload := cell.Tab
+		if payload == nil {
+			payload = e.m.New(arm.Ref)
+		}
+		body, err := encodeBody(e, payload)
+		if err != nil {
+			return err
+		}
+		w.u16(ir.VariantId(arm.Name))
+		w.u32(uint32(len(body)))
+		w.raw(body)
 	default:
 		if ir.TableKindWide(kind) {
 			// the raw integer at the kind's width, two's complement, little-endian —
