@@ -24,6 +24,10 @@
 /test/cs-cook/obj/
 /test/conformance/cs/bin/
 /test/conformance/cs/obj/
+/test/conformance/rust/target/
+/test/conformance/rust/Cargo.lock
+/test/rust-fuzz/target/
+/test/rust-fuzz/Cargo.lock
 /bench/tools/cs-union-form/bin/
 /bench/tools/cs-union-form/obj/
 # every build stamp under generated/ — stamps order the build and are not
@@ -31,6 +35,10 @@
 generated/**/.stamp
 /bench/rust/target/
 /bench/rust/Cargo.lock
+/bench/tables/rust/target/
+/bench/tables/rust/Cargo.lock
+/generated/bench/tables/rust/target/
+/generated/bench/tables/rust/Cargo.lock
 /bench/cs/bin/
 /bench/cs/obj/
 /bench/tables/cs/bin/

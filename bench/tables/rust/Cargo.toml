@@ -1,0 +1,24 @@
+# THE RUST LEG of the tables bench (bench/tables/README.md).
+#
+# It depends on the GENERATED crate and on nothing else: the Rust table codec
+# names no runtime, so there is no serialize.rs to link against here — the one
+# contract difference from bench/rust, and the same one the C# leg records.
+[package]
+name = "benchtablesrust"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "benchtablesrust"
+path = "src/main.rs"
+
+[dependencies]
+benchtable = { path = "../../../generated/bench/tables/rust" }
+
+[profile.release]
+# the reference leg is one translation unit at -O3 with header-only codecs, so
+# these are what make the two comparable rather than a linkage comparison
+# (bench/BENCH-STANDARD.md §0's own finding, and the linkage column records it)
+opt-level = 3
+codegen-units = 1
+lto = true

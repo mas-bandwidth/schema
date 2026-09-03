@@ -124,24 +124,32 @@ macOS, everything already built, median of three:
 
 | leg | wall |
 |---|---|
-| both, 260 cases per leg | 7.24 s |
+| all three, 260 cases per leg | 10.65 s |
 | `cpp` alone | 0.48 s |
+| `rust` alone | 0.60 s |
 | `cs` alone | 7.36 s |
 
 The cost is per-PROCESS, not per-case, and the numbers say so plainly. The
 battery grew from 80 cases per leg to 260 — the cook's 111 forgeries, the 66
 hostile trees, a sixth cook, two block row dumps — and the wall went from about
-5 s to about 7 s. The C++ leg is a handful of native execs and answers all 260
-in under half a second; the C# leg starts a runtime once per surface plus once
-per cook, because `test/cs-cook`'s dump takes one root per invocation, and that
-is where nearly the whole wall is. Everything this round added rides inside a
-process that was already starting.
+5 s to about 7 s for two legs. The C++ leg is a handful of native execs and
+answers all 260 in under half a second; the Rust leg is ten native execs and
+answers them in six tenths, its cook node dump and block row dump in the same
+binary; the C# leg starts a runtime once per surface plus once per cook,
+because `test/cs-cook`'s dump takes one root per invocation, and that is where
+nearly the whole wall is. Everything this round added rides inside a process
+that was already starting.
+
+**A third leg cost three seconds, and none of it was the cases.** The two
+NATIVE legs together answer 520 cases in about a second; the rest of the wall
+is one runtime's start-ups. That is the shape the budget projection assumed and
+it is now measured rather than assumed.
 
 So the data can grow a great deal before it matters, and the budget left for
-seven more languages is nearly the whole two minutes. Nine languages each
-starting a runtime per surface lands near 20 s. Sharding per language leg — the
-way the type wire's nine legs already are — is what the numbers say to do if
-that stops holding; it is not needed at this size.
+six more languages is most of the two minutes. Nine languages each starting a
+runtime per surface lands near 20 s. Sharding per language leg — the way the
+type wire's nine legs already are — is what the numbers say to do if that stops
+holding; it is not needed at this size.
 
 ## What is not here yet
 

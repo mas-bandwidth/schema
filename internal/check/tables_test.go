@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -87,6 +88,25 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { x int32 }\ntype TabLoad { y int32 }\n"},
 		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
+
+		// THE RUST CONSTANT SPACE (docs/SPEC-TABLES.md §11). Rust spells a
+		// constant SCREAMING_SNAKE, and the spelling is MANY-TO-ONE:
+		// TableCookMagic, TABLE_COOK_MAGIC and table_cook_magic all lower to
+		// one crate-scope TABLE_COOK_MAGIC. Claiming the registered spelling
+		// alone left the other two legal, and what they generated was a pair
+		// of ambiguous glob re-exports — the crate built with a warning, the
+		// author's own constant was silently shadowed at the crate root, and a
+		// CONSUMER naming the symbol failed to compile under
+		// ambiguous_glob_imports, which is deny-by-default and
+		// future-incompatible.
+		{name: "a lowercase const lowering onto a runtime constant", want: "TABLE_COOK_MAGIC",
+			src: "package t\ntable Tab { x int32 }\nconst table_cook_magic = 1\n"},
+		{name: "a SCREAMING const lowering onto a runtime constant", want: "TABLE_JSON_MAX_DEPTH",
+			src: "package t\ntable Tab { x int32 }\nconst TABLE_JSON_MAX_DEPTH = 1\n"},
+		{name: "a lowercase const lowering onto the build version", want: "BUILD_VERSION",
+			src: "package t\ntable Tab { x int32 }\nconst build_version = 1\n"},
+		{name: "a lowercase const lowering onto a table's block extent", want: "TAB_BLOCK_MAX_BYTES",
+			src: "package t\ntable Tab { x int32 }\nconst tab_block_max_bytes = 1\n"},
 
 		// ---- pointers (docs/SPEC-TABLES.md §11) ----
 		{name: "a pointer to a type is refused by name", want: "may only target a `table`",
@@ -201,6 +221,51 @@ func TestTableRefusals(t *testing.T) {
 func TestTypeFreeOfTableSymbols(t *testing.T) {
 	if errs := runUnit(t, map[string]string{"T.schema": "package t\ntype TableReport { y int32 }\n"}); len(errs) > 0 {
 		t.Fatalf("a table-free unit must not claim the table runtime names: %v", errs)
+	}
+	// and the RUST CONSTANT SPACE is scoped the same way: a table-free unit
+	// keeps every spelling that would lower onto a runtime constant
+	for _, name := range []string{"table_cook_magic", "TABLE_JSON_MAX_DEPTH", "build_version", "tab_block_max_bytes"} {
+		src := "package t\nconst " + name + " = 1\ntype P { x int32 }\n"
+		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
+			t.Errorf("a table-free unit must keep %s: %v", name, errs)
+		}
+	}
+}
+
+// TestRustConstantSpaceIsClaimedForEveryRuntimeConstant is the SELF-MAINTAINING
+// half: every registered name the Rust backend spells as a crate-scope constant
+// is refused in the MAPPED space, whatever spelling the schema uses to reach
+// it. A registry entry somebody adds without the mapped claim fails here.
+//
+// It walks the registry rather than a list of its own, so the two cannot
+// disagree — the same reason internal/check reads tablenames rather than
+// keeping a second copy.
+func TestRustConstantSpaceIsClaimedForEveryRuntimeConstant(t *testing.T) {
+	names := tablenames.RustConstants()
+	if len(names) == 0 {
+		t.Fatal("the registry names no Rust crate-scope constant at all — the registry, not the claim, is what broke")
+	}
+	for _, name := range names {
+		lowered := strings.ToLower(ir.RustConstName(name))
+		src := "package t\ntable Tab { x int32 }\nconst " + lowered + " = 1\n"
+		errs := runUnit(t, map[string]string{"T.schema": src})
+		if len(errs) == 0 {
+			t.Errorf("a declaration named %s was accepted beside a table — it lowers to the runtime's own %s, "+
+				"and the generated crate would carry two glob re-exports of that symbol; internal/check must "+
+				"claim the Rust constant space for every tablenames.RustConstants() entry",
+				lowered, ir.RustConstName(name))
+			continue
+		}
+		named := false
+		for _, e := range errs {
+			if strings.Contains(e.Error(), ir.RustConstName(name)) {
+				named = true
+			}
+		}
+		if !named {
+			t.Errorf("%s is refused, but the diagnostic does not name the symbol %s it collides with: %v",
+				lowered, ir.RustConstName(name), errs)
+		}
 	}
 }
 

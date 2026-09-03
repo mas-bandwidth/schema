@@ -1,0 +1,39 @@
+#!/bin/sh
+# THE RUST LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        cargo build --release
+#   leg run [args]   the built binary, with the runner's own arguments
+#
+# BENCH_OPT is passed through to the runner at COMPILE time, the same seam the
+# type Rust leg uses: cargo has no operator-visible level in the binary, so the
+# level the driver asked for is stamped in rather than asserted, and an
+# unstamped build records "unknown" rather than guessing.
+set -e
+
+PROJ=bench/tables/rust
+GEN=generated/bench/tables/rust
+RUSTUP_BIN=${RUSTUP_BIN:-/opt/homebrew/opt/rustup/bin}
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/src/benchtable_table.rs" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    if ! PATH="$RUSTUP_BIN:$PATH" command -v cargo >/dev/null 2>&1; then
+        echo "no cargo" >&2
+        exit 2
+    fi
+    ( cd "$PROJ" && PATH="$RUSTUP_BIN:$PATH" BENCH_OPT="${OPT_LEVEL:-O3}" \
+        cargo build --release --quiet ) >&2
+    ;;
+run)
+    shift
+    exec "$PROJ/target/release/benchtablesrust" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

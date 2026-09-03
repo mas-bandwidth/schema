@@ -1,0 +1,12 @@
+[package]
+name = "benchtable"
+version = "0.0.0"
+edition = "2024"
+
+[features]
+default = ["block", "cook"]
+block = []
+cook = []
+
+[dependencies]
+serialize = { package = "serialize-official", path = "../../../../../serialize.rs" }

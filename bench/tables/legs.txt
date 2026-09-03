@@ -17,5 +17,6 @@
 # on the board beside C++, and the ratio to C++ is its speed bar
 # (docs/SPEC-TABLES.md's ladder: same speed, or not significantly slower).
 
-cpp bench/tables/cpp/leg
-cs  bench/tables/cs/leg
+cpp  bench/tables/cpp/leg
+cs   bench/tables/cs/leg
+rust bench/tables/rust/leg

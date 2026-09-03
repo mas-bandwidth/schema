@@ -15,14 +15,15 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // refuseTables is the named refusal every target without a table backend
-// gives a unit that declares tables (docs/SPEC-TABLES.md): C++ and C# carry table
-// backends today, and each remaining per-language one is a named follow-on —
-// refused loudly here rather than silently emitting a unit with the tables
-// missing.
+// gives a unit that declares tables (docs/SPEC-TABLES.md): C++, C# and Rust
+// carry table backends today, and each remaining per-language one is a named
+// follow-on — refused loudly here rather than silently emitting a unit with
+// the tables missing.
 func refuseTables(u *ir.Unit, target string) error {
 	if len(u.Tables) == 0 {
 		return nil
@@ -32,7 +33,7 @@ func refuseTables(u *ir.Unit, target string) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return fmt.Errorf("unit declares tables (%s) — tables are C++ and C# only today, and the %s table backend is a named follow-on; generate with --lang cpp or --lang cs, or move the tables to their own unit (docs/SPEC-TABLES.md)",
+	return fmt.Errorf("unit declares tables (%s) — tables are C++, C# and Rust only today, and the %s table backend is a named follow-on; generate with --lang cpp, --lang cs or --lang rust, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), target)
 }
 
@@ -186,8 +187,32 @@ type rustTarget struct{}
 func (rustTarget) Names() []string { return []string{"rust"} }
 
 func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTables(u, "rust"); err != nil {
+	files, err := rust.Generate(u)
+	if err != nil {
 		return nil, err
 	}
-	return rust.Generate(u)
+	// units that declare tables ALSO get the table modules — the TABLE-wire
+	// codecs, the reflection descriptors, the text form and the two
+	// accelerators (docs/SPEC-TABLES.md); a table-free unit's output is
+	// byte-identical to what the packet emitter alone produces.
+	tables, err := rusttable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	if len(tables) == 0 {
+		return files, nil
+	}
+	for name, data := range tables {
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file whose lowered basename collides with a generated table module; rename one file (docs/SPEC-TABLES.md §11)", name)
+		}
+		files[name] = data
+	}
+	// the crate root is a generated index, so it has to declare them
+	lib, err := rust.Lib(u, rusttable.Modules(tables))
+	if err != nil {
+		return nil, err
+	}
+	files["lib.rs"] = lib
+	return files, nil
 }

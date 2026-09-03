@@ -587,9 +587,10 @@ allocates, a fixed table WITH a union may allocate for the arm in a language
 that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
-A table lives on its own wire — evolution-tolerant TLV, carried by C++ and by
-C# (the fixed class, wire and text form both; C#'s pointer surface ON THE WIRE
-is a follow-on — its cook and block accelerators read a pointered unit today).
+A table lives on its own wire — evolution-tolerant TLV, carried by C++, by C#
+and by Rust (the fixed class, wire and text form both; the pointer surface ON
+THE WIRE is a follow-on in both ports — their cook and block accelerators read
+a pointered unit today).
 Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
@@ -743,6 +744,71 @@ an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
 the KEY — `KeyId(0)` is `0`, the reserved id that says `None` names no slot.
 `ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
 `i + 1`.
+
+The Rust surface is the same three functions, name first, as free functions in
+the generated crate, over slices the caller owns. Storage is a `#[repr(C)]`
+struct of public fields — every buffer fixed at its declared capacity, so
+`load` allocates nothing and overlays in place after restoring the declared
+defaults:
+
+```rust
+use example::*;
+
+let mut ship = ShipConfig::default();   // the DECLARED defaults, not zeros
+ship.health = 250.0;
+ship.settings_present = true;           // ?T: presence decides whether it rides
+
+let size = ship_config_measure(&ship);  // exact, writes nothing
+let mut buffer = vec![0u8; size as usize];
+ship_config_save(&ship, &mut buffer);   // returns size, or -1
+
+let mut report = TableReport::default();
+let mut loaded = ShipConfig::default();
+if !ship_config_load(&mut loaded, &buffer, &mut report) {
+    // framing damage: report.malformed is set, the good prefix is kept
+}
+if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
+    // the data came from a different schema generation — loaded is still
+    // fully usable; log the counts so drift is visible
+}
+```
+
+The report is a PARAMETER rather than a member of the reader, which is the one
+place the Rust codecs read differently from the C++ ones: a reader holding
+`&mut TableReport` could not hand a sub-reader out of its own buffer while that
+borrow stood. One report, one caller, the same five counters.
+
+`string(N)` and `bytes(N)` are a `[u8; N]` beside an `i32` used length, arrays
+a `[T; N]` beside an `i32` used count, `?T` a value beside a `<name>_present`
+bool, and a union is a real Rust `enum` — the same spelling the packet backend
+uses, because a table's closure decodes into the packet backend's own types.
+
+An enum-keyed array is a `TableKeyed<T, { E::MAX.0 as usize }>` holding `E.Max`
+slots — one per named variant, nothing for `None`, the key `k` at index
+`k - 1`. Nothing outside the array names its size: the const generic IS the
+enum's own `Max`, so there is no constant a consumer could put out of step with
+it. **Rust indexes it by the KEY**, as every port does:
+
+```rust
+fleet.ships[ShipType::BOMBER.0 as u64].health *= 2.0;
+
+for (ship_type, ship) in fleet.ships.iter_mut() {
+    ship.health *= 2.0;    // ship_type is the KEY, 1 ..= E.Max, never a storage index
+}
+```
+
+The `None` refusal is a panic from the indexer, and it stands in every build,
+as the C++ abort does — the storage shifts left and holds no slot for `None`,
+so a build that skipped the compare would index one element before the array.
+Generated code walks `.slots` directly and never pays for it.
+
+`<name>_table_type()` returns the reflection descriptor: field names, wire ids
+and kinds, storage offsets, bounds, ranges, guards, `optional`, the enum/union
+vocabulary, and an enum-keyed array's `key_type_name`/`key_name`/`key_id`,
+which are functions of the KEY — `key_id(0)` is `0`, the reserved id that says
+`None` names no slot. `array_bound` is the storage extent, `E.Max`, and the key
+at index `i` is `i + 1`. It is `static` data, so any thread may read it and it
+costs a lookup rather than a parse.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every
@@ -1078,9 +1144,11 @@ are, and how far apart they sit. The other side reads those three facts and
 points.
 
 You reach for it by INCLUDING it. The form is generated on the side, in
-`<Base>Block.h` / `<Base>Block.cpp` beside the unit's `<Base>Table.h`, and in
-`<Base>Block.cs` plus the unit's one runtime home, `<Package>Block.cs`, for C#
-— so a project that never blocks a table compiles none of it, and the table headers are the same bytes either way:
+`<Base>Block.h` / `<Base>Block.cpp` beside the unit's `<Base>Table.h`, in
+`<Base>Block.cs` plus the unit's one runtime home `<Package>Block.cs` for C#,
+and in `<base>_block.rs` beside `block_runtime.rs` for Rust — so a project that
+never blocks a table compiles none of it, and the table sources are the same
+bytes either way:
 
 ```cpp
 #include "RenderTable.h"                      // the ordinary table surface
@@ -1144,6 +1212,18 @@ foreach ( ref readonly RenderShipRow ship in block.Ships )
 // and the fast path a per-frame job takes: one contiguous reinterpret, at
 // pitch == sizeof, with nothing per row
 ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;
+```
+
+Rust reads it the same way, and its rows come back as a plain slice, because
+the pitch IS the element's size and a slice is the honest view:
+
+```rust
+let Some(block) = (unsafe { RenderFrameBlock::open(pointer, bytes) }) else {
+    return;
+};
+for ship in block.ships() {          // &[RenderShipRow]
+    draw(ship);
+}
 ```
 
 `Open` verifies the magic, the byte order, the build version, the base's
@@ -1289,6 +1369,37 @@ you get the unit's `*Cook.cs` and `*Block.cs` and no Table sources at all, becau
 codec for the variable class is a named follow-on and neither accelerator needs
 one. Your cooked assets open in full; `Measure`, `Save` and `Load` for those
 tables are C++'s or the tool's for now.
+
+**The same cook, from Rust**, on the same two terms — the records are the same
+`<Name>Row` structs the block form uses, and a pointered unit's WIRE surface is
+refused by name while both accelerators are emitted in full. What differs is
+where the layout is checked: Rust asserts it AT COMPILE TIME, with a const
+assert per size and per offset, so a runtime that disagreed with the model
+would not build rather than throw at start-up:
+
+```rust
+use graphdemo::*;
+
+// the region must stay put and stay ALIGNED for as long as you use the handle
+// or anything you reach through it: nothing here copies, and nothing here pins
+let Some(cook) = (unsafe { SceneCook::open(pointer, length) }) else {
+    // wrong build, corrupt, truncated, or a foreign byte order:
+    // fall back to a wire load, which is the path that carries every version
+    return load_from_wire();
+};
+
+let scene = cook.root();
+unsafe {
+    // a reference is one add through <name>_at, which takes the SLOT because
+    // the delta is relative to the slot's own address, and a null reference is
+    // a null pointer
+    let mut node = list_node_at(&(*scene).head);
+    while !node.is_null() {
+        println!("  {}", (*node).value);
+        node = list_node_at(&(*node).next);
+    }
+}
+```
 
 A cooked file is an ACCELERATOR, not an archive: it is build-locked by a
 build version that covers the schema's layout, its meaning facts and your
@@ -1712,7 +1823,28 @@ codecs. The read path allocates nothing beyond the instance you passed in —
 strings land in the field's own `byte[]` storage, and keys, names and number
 tokens are handled in stack buffers.
 
-Both writers end the text with exactly one newline, and both readers accept a
+The same three in Rust, as free functions over slices you own:
+
+```rust
+let mut report = TableReport::default();
+let mut ship = ShipConfig::default();
+ship_config_from_json(&mut ship, text, &mut report);   // text is &[u8]
+
+let size = ship_config_to_json_measure(&ship);         // exact, writes nothing
+let mut buffer = vec![0u8; size as usize];
+ship_config_to_json(&ship, &mut buffer);
+```
+
+There is nothing extra to add to a Rust build either, for the same reason: a
+unit is one crate, so the walk is already in the `table_runtime.rs` the crate
+root declares. It reads through the descriptors' storage offsets — one of the
+four places the generated table code is `unsafe`, all four listed under **Rust**
+in [Per-language notes](#per-language-notes) — and it **allocates nothing**:
+numbers format through a stack sink, strings and keys land in the field's own
+storage, and `make tables-rust-alloc-audit` counts zero on every read and write
+path of every instance in the corpus.
+
+Every writer ends the text with exactly one newline, and every reader accepts a
 text with or without one — so a text is the same text in a file, in a diff and
 in a pipe.
 
@@ -1992,7 +2124,33 @@ if (!ok) {
 }
 ```
 
-**Rust** — no `unsafe` in generated code, `Result`-returning read and write.
+**Rust** — no `unsafe` in the generated PACKET code, `Result`-returning read
+and write. **The generated TABLE WIRE is safe Rust too**: `<name>_measure`,
+`<name>_save`, `<name>_load` and their bodies index caller-owned slices and
+contain no `unsafe` at all.
+
+`unsafe` appears in FOUR places, each by nature rather than by taste and each
+carrying a `# Safety` clause:
+
+1. **The text form's one generic walk**, which reads and writes storage
+   through the descriptors' offsets — an offset and a width are not a typed
+   reference.
+2. **Every table's REFLECTION DESCRIPTOR**, and this one rides in every table
+   module rather than in an accelerator: §8.1's `reset: fn(*mut u8)` hook takes
+   a raw pointer because a generic walker holds no type to spell, and a union
+   field's four descriptor columns (`read_tag`, `clear`, `select`, `payload`)
+   reach a Rust enum's payload the same way. Every table carries them always.
+3. **The cooked form's `Open`**, which takes a pointer and a length and points.
+4. **The block form's `Open`**, which does the same.
+
+Sites 3 and 4 are behind **cargo features**, both on by default: build with
+`default-features = false` and the block and cook modules are not compiled at
+all — the Rust analogue of C++'s "include the header only if you use the form"
+(§19). On the corpus's widest unit that is 7,181 of 23,290 generated lines not
+compiled. `--features cook` and `--features block` take one without the other.
+What stays either way is the wire, the text form, the reflection descriptors
+and the blittable `<Name>Row` records — a cooked record IS the blittable row,
+so the record family belongs to neither feature.
 
 **JavaScript** — ES modules, zero dependencies, Number storage for widths of
 32 bits or fewer, BigInt for 64 and 128. Two codecs are generated over the

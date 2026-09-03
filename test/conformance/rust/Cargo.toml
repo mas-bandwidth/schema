@@ -1,0 +1,28 @@
+# THE RUST CONFORMANCE DRIVER (test/conformance/README.md).
+#
+# One binary answering every surface the Rust table backend implements, over
+# the generated crates in build/tables-generated-rust — one crate per unit,
+# because a unit is a Rust crate the way it is a C++ namespace.
+[package]
+name = "conformance-rust"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "conformance-rust"
+path = "src/main.rs"
+
+[dependencies]
+tabledemo = { path = "../../../build/tables-generated-rust/tabledemo" }
+graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }
+blockdemo = { path = "../../../build/tables-generated-rust/blockdemo" }
+tblv1 = { path = "../../../build/tables-generated-rust/tblv1" }
+tblv2 = { path = "../../../build/tables-generated-rust/tblv2" }
+tblp1 = { path = "../../../build/tables-generated-rust/tblp1" }
+tblp3 = { path = "../../../build/tables-generated-rust/tblp3" }
+
+[profile.dev]
+# the conformance corpus is small and the driver runs seven times per matrix;
+# an optimised build costs nothing here and keeps the leg's wall inside the
+# two-minute rule
+opt-level = 1

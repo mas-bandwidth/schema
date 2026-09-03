@@ -255,6 +255,28 @@ tables-zero-cost: build/tables-generated/.stamp
 # name lives in the guard and the namespace, outside the markers, so this is a
 # strict byte comparison with nothing normalised away. (It moved from the
 # headers to the .cpp files with the walker itself — docs/SPEC-TABLES.md §16.1.)
+# THE RUST GENERIC-WALK GATE (docs/SPEC-TABLES.md §16), the Rust twin of the
+# one above: the text form is ONE walk over the reflection descriptors, and
+# the Rust backend emits it as ONE MODULE PER UNIT. Its bytes must therefore
+# not vary with what a unit declares — the units below disagree about
+# packages, tables, kinds, keyed arrays and pointer modes — so this is a strict
+# byte comparison of table_runtime.rs across the whole corpus, with nothing
+# normalised away except the generated banner, which names the schema file.
+.PHONY: tables-rust-walk
+tables-rust-walk: build/tables-generated-rust/.stamp
+	@rm -rf build/rust-walk && mkdir -p build/rust-walk
+	@for f in build/tables-generated-rust/*/src/table_runtime.rs; do \
+		out=build/rust-walk/$$(echo $$f | tr / _); \
+		tail -n +6 $$f > $$out; \
+		if [ ! -s $$out ]; then echo "RUST GENERIC-WALK GATE FAILED: no runtime in $$f"; exit 1; fi; \
+	done
+	@first=""; for f in build/rust-walk/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "RUST GENERIC-WALK GATE FAILED: the runtime in $$f is not the runtime in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "rust generic-walk gate: one table runtime, the same bytes in every unit"
+
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
 	@rm -rf build/json-walk && mkdir -p build/json-walk
@@ -532,6 +554,196 @@ tables-block-fuzz: build/schema_test_block_fuzz build/schema_test_block_fuzz_asa
 	SEED=$(SEED) N=$(N) ./build/schema_test_block_fuzz_asan
 	cd test/cs-block && SEED=$(SEED) N=$(N) dotnet run -- --fuzz
 
+# THE COOK FIXTURES the Rust fuzzer's cook half forges, written by test/cookgen
+# with the same chains the conformance harness uses — the fixture generator's
+# own facts, which the conformance data deliberately does not carry.
+build/cook-fuzz/.stamp: $(wildcard test/cookgen/*.go) $(SCHEMAS_TABLES_POINTERS)
+	@rm -rf build/cook-fuzz && mkdir -p build/cook-fuzz
+	go build -o build/cookgen ./test/cookgen
+	./build/cookgen --bytes 4096 --root Scene    --ref head --chain ListNode --next next --out build/cook-fuzz/Scene.cook
+	./build/cookgen --bytes 4096 --root Depot    --ref head --chain ListNode --next next --out build/cook-fuzz/Depot.cook
+	./build/cookgen --bytes 4096 --root Album    --ref head --chain ListNode --next next --out build/cook-fuzz/Album.cook
+	./build/cookgen --bytes 4096 --root TreeNode --ref left --chain TreeNode --next left --out build/cook-fuzz/TreeNode.cook
+	./build/cookgen --bytes 4096 --root ListNode --ref next --chain ListNode --next next --out build/cook-fuzz/ListNode.cook
+	@touch $@
+
+# THE RUST FORGERY FUZZER (docs/SPEC-TABLES.md §19.5, §7): the block half over
+# the C++ leg's seed blocks, and a COOK half over test/cookgen's fixtures. It
+# runs TWICE, for the reason the C++ leg runs twice:
+#
+#   - the ORDINARY build proves a mutant that OPENED stays inside the extent,
+#     because the oracle re-derives every bound and reads every row;
+#   - the MIRI build proves a mutant that Open REFUSED read nothing outside
+#     that extent on the way to refusing, which no oracle can prove from
+#     inside. Every region is allocated at exactly the bytes the caller claims,
+#     so the byte after it is off the end of a real allocation and Miri stops
+#     there. It is this leg's address sanitizer, and it is the reason the
+#     region is allocated to the CLAIM rather than to the file.
+#
+# Miri INTERPRETS, so it runs the ENUMERATED passes — every slot x width x
+# boundary value, every truncation, every unaligned base, which are what cover
+# the boundaries — with a token random budget on top (MIRI_N) and only over the
+# SMALL count vectors (MIRI_MAX_SEED_BYTES). The cap is not a concession: what
+# Miri is there to prove is that a REFUSED mutant read nothing outside the
+# extent on the way to refusing, which is a property of Open and of the
+# projection, and every count vector carries both. The oracle's per-byte row
+# walk over the 7.5 MiB vector would cost hours and cover no check the small
+# vectors do not — and the native leg runs it in full.
+#
+# It needs the nightly toolchain and the miri component:
+# `rustup toolchain install nightly && rustup +nightly component add miri`.
+#
+# IT IS A BY-HAND GATE, like tables-cook-scale-1gb: 51,940 mutants at the
+# defaults measured 478 s on arm64 macOS, which is not a per-push cost. What
+# rides every push is the NATIVE leg (tables-rust-fuzz), 409,746 mutants in
+# 4.5 s at N=100000.
+MIRI_N ?= 8
+MIRI_MAX_SEED_BYTES ?= 4224
+
+# THE GENERATED RUST BUILDS UNDER A CONSUMER'S CLIPPY. A consumer who runs
+# clippy over their own crate runs it over the generated modules too, and a
+# DEFAULT-DENY lint there would fail their build for something they did not
+# write. This runs plain `cargo clippy` over every generated unit of the
+# corpus, which is exactly that question: it exits non-zero on a denied lint
+# and zero on a warning.
+#
+# It is deliberately NOT `-D warnings`. A clippy release that adds a new
+# warning must not turn this red — that is version drift breaking a gate, the
+# thing the estate's pins exist to prevent — and a warning breaks no
+# consumer's build. What a denied lint does is exactly what this catches.
+# THE ACCELERATOR FEATURES (docs/SPEC-TABLES.md §19). §19's rule is that the
+# block form costs nothing unless you reach for it — in C++ by not including
+# the header, and here by not enabling the cargo feature. Both are ON by
+# default, so a consumer that says nothing gets the whole surface and the
+# saving is opt-in.
+#
+# The gate is that all four combinations BUILD: a wire-only consumer, a cook
+# consumer, a block consumer, and everything. It is not a formality — the
+# first cut of it found two real couplings, the unit's BUILD VERSION and its
+# blittable RECORDS, each of which belongs to neither accelerator and had been
+# sitting inside one of them.
+.PHONY: tables-rust-features
+tables-rust-features: build/tables-generated-rust/.stamp
+	@for unit in build/tables-generated-rust/*/; do \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features cook ) || exit 1; \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --no-default-features --features block ) || exit 1; \
+	done
+	@echo "rust feature gate: wire-only, cook-only, block-only and everything all build"
+
+.PHONY: tables-rust-clippy
+tables-rust-clippy: build/tables-generated-rust/.stamp
+	@for unit in build/tables-generated-rust/*/; do \
+		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet ) || exit 1; \
+	done
+	@echo "rust clippy gate: every generated unit builds under a consumer's clippy"
+
+# THE RUST TABLE SURFACE ON A BIG-ENDIAN TARGET (docs/SPEC-TABLES.md §7.1,
+# §19.1, §20.3). The pinned toolchain cross-compiles to s390x — the same
+# big-endian target the C++ leg uses — so this is a CHECK of the whole
+# generated surface for that target, and it needs no linker and no emulator.
+#
+# WHAT IT PROVES, which is more than a compile: every cooked record's and every
+# block projection's LAYOUT CONTRACT is a const assert over size_of and
+# offset_of, so `cargo check` EVALUATES it for s390x. A record whose C ABI
+# layout differed on a big-endian target — a padding rule, an alignment, a
+# bool's width — would fail here rather than in a file nobody could read.
+#
+# WHAT IT DOES NOT PROVE, named rather than implied: that the wire's bytes
+# cross the order at RUN time. That needs the cross linker and qemu the C++
+# leg's job installs, and it is the next step rather than this one — a
+# cross-and-emulate leg's first run belongs in a change that can iterate on it,
+# not in a port branch that cannot exercise it locally. The code is
+# order-neutral by construction (to_le_bytes / from_le_bytes everywhere, and
+# the two accelerators carry cfg!(target_endian) order words that refuse a
+# foreign file), so what the runtime leg would add is proof rather than
+# suspicion.
+RUST_BE_TARGET ?= s390x-unknown-linux-gnu
+
+.PHONY: tables-rust-big-endian
+tables-rust-big-endian: build/tables-generated-rust/.stamp
+	@if ! PATH="$(RUSTUP_BIN):$$PATH" rustup target list --installed 2>/dev/null | grep -qx "$(RUST_BE_TARGET)"; then \
+		echo "SKIP tables-rust-big-endian: $(RUST_BE_TARGET) is not installed"; \
+		echo "  rustup target add $(RUST_BE_TARGET)"; \
+		exit 0; \
+	fi; \
+	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" \
+		cargo check --quiet --target $(RUST_BE_TARGET) && \
+		echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), every layout const assert with it"
+
+# THE RUST SOAK (docs/SPEC-TABLES.md: "every read path allocates nothing").
+# Every instance of the conformance corpus, wire-loaded and re-saved and
+# text-read and text-written, in a loop, with the bytes compared every
+# iteration — so a run that drifted stops rather than merely getting slower —
+# and with LIVE ALLOCATED BYTES as the instrument.
+#
+# The instrument is the point. RSS answers a different question, and an
+# allocator that grew by one byte per iteration would take a very long time to
+# show up in it; the driver installs a counting global allocator, takes a
+# baseline after a warm pass, and REFUSES the run if the number moved.
+#
+# It is a by-hand gate at an hour. SOAK_SECONDS shortens it for a working
+# check; the number the port was landed on is 3600.
+SOAK_SECONDS ?= 3600
+
+# It reads the DERIVED manifest the harness writes, so `conformance` is the
+# dependency: a soak over a corpus whose matrix is red would be timing a
+# defect.
+.PHONY: tables-rust-soak
+tables-rust-soak: conformance
+	./build/conformance-rust build/conformance/manifest.txt soak $(SOAK_SECONDS)
+
+# THE ALLOCATION AUDIT: every instance of the corpus, every generated read and
+# write path, counted at the global allocator with this driver's own buffers
+# hoisted out of the measured region — so what the number measures is the
+# CODEC. The claim it holds is docs/USAGE.md's: the generated code allocates
+# nothing beyond the value and the buffers the caller passed.
+.PHONY: tables-rust-alloc-audit
+tables-rust-alloc-audit: conformance
+	./build/conformance-rust build/conformance/manifest.txt alloc-audit
+
+# ITS NEGATIVE CONTROL, and the soak's. A gate that has never fired proves
+# nothing, and the LIVE-BYTE gate could not fire on this class at all: live
+# bytes answer "does this leak", and a path that allocates and frees the same
+# bytes every iteration reads +0 there forever — which is exactly how 74
+# allocations per ToJson sat under a green soak. SOAK_SABOTAGE puts ONE
+# allocation per iteration inside the measured region and both gates must go
+# red on it.
+.PHONY: tables-rust-alloc-negative-control
+tables-rust-alloc-negative-control: conformance
+	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt alloc-audit \
+			> build/rust-alloc-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the allocation audit stayed green with one allocation per iteration"; \
+		exit 1; \
+	fi
+	@grep -q "allocates on a read or write path" build/rust-alloc-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the audit went red, but not on the allocation"; \
+		  cat build/rust-alloc-control.log; exit 1; }
+	@if SOAK_SABOTAGE=1 ./build/conformance-rust build/conformance/manifest.txt soak 5 \
+			> build/rust-soak-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the soak stayed green with one allocation per iteration"; \
+		exit 1; \
+	fi
+	@grep -q "allocation(s) on the read and write paths" build/rust-soak-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the allocation"; \
+		  cat build/rust-soak-control.log; exit 1; }
+	@grep -m1 "allocation(s) on the read and write paths" build/rust-soak-control.log
+	@echo "rust allocation negative control: one allocation per iteration turns BOTH gates red"
+
+.PHONY: tables-rust-fuzz
+tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
+	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	SEED=$(SEED) N=$(N) ./test/rust-fuzz/target/debug/rust-fuzz
+
+.PHONY: tables-rust-fuzz-miri
+tables-rust-fuzz-miri: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
+	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" \
+		MIRIFLAGS="-Zmiri-disable-isolation" SEED=$(SEED) N=$(MIRI_N) \
+		MAX_SEED_BYTES=$(MIRI_MAX_SEED_BYTES) \
+		BLOCK_SEEDS="$(CURDIR)/build/block-fuzz" COOK_FIXTURES="$(CURDIR)/build/cook-fuzz" \
+		cargo +nightly miri run --quiet
+
 # The NEGATIVE CONTROLS. A fuzzer that has never gone red proves nothing about
 # the checks it is watching, so each of these REMOVES one of BlockOpen's checks
 # from the EMITTER — from both backends at once — and requires the fuzzer to
@@ -550,6 +762,8 @@ BLOCK_FUZZ_SED_CPP_extent := /rows > (uint64_t) bytes - offset_of/d; /padding > 
 BLOCK_FUZZ_SED_CS_extent := /rows > (ulong) bytes - offsetOf/d; /padding > bytes - used/d
 BLOCK_FUZZ_SED_CPP_maximum := /count > (uint64_t) %sBlock/,/overflow on a count the maximum does not bound/d
 BLOCK_FUZZ_SED_CS_maximum := /count > (ulong) %sMax/d
+BLOCK_FUZZ_SED_RUST_extent := /rows > bytes as u64 - offset_of/d; /padding > bytes - used/d
+BLOCK_FUZZ_SED_RUST_maximum := /count > Self::%s_MAX as u64/,/on a count the maximum does not bound/d
 
 # how a sabotage is built: $(1) is its name, and the two sed programs above
 # named by it are what come out of each emitter. The replacement files take a
@@ -560,12 +774,15 @@ define block_fuzz_sabotage
 	@rm -rf build/block-fuzz-$(1) && mkdir -p build/block-fuzz-$(1)
 	@sed '$(BLOCK_FUZZ_SED_CPP_$(1))' internal/codegen/cpptable/block.go > build/block-fuzz-$(1)/cpptable-block.go.txt
 	@sed '$(BLOCK_FUZZ_SED_CS_$(1))' internal/codegen/cstable/block.go > build/block-fuzz-$(1)/cstable-block.go.txt
+	@sed '$(BLOCK_FUZZ_SED_RUST_$(1))' internal/codegen/rusttable/block.go > build/block-fuzz-$(1)/rusttable-block.go.txt
 	@cmp -s internal/codegen/cpptable/block.go build/block-fuzz-$(1)/cpptable-block.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ emitter sabotage did not apply"; exit 1; } || true
 	@cmp -s internal/codegen/cstable/block.go build/block-fuzz-$(1)/cstable-block.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C# emitter sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/block.go":"%s/build/block-fuzz-$(1)/cpptable-block.go.txt","%s/internal/codegen/cstable/block.go":"%s/build/block-fuzz-$(1)/cstable-block.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/block-fuzz-$(1)/overlay.json
+	@cmp -s internal/codegen/rusttable/block.go build/block-fuzz-$(1)/rusttable-block.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/block.go":"%s/build/block-fuzz-$(1)/cpptable-block.go.txt","%s/internal/codegen/cstable/block.go":"%s/build/block-fuzz-$(1)/cstable-block.go.txt","%s/internal/codegen/rusttable/block.go":"%s/build/block-fuzz-$(1)/rusttable-block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/block-fuzz-$(1)/overlay.json
 	go build -overlay build/block-fuzz-$(1)/overlay.json -o build/block-fuzz-$(1)/schema ./cmd/schema
 	@rm -rf build/block-fuzz-$(1)/generated
 	./build/block-fuzz-$(1)/schema generate --lang cpp --out build/block-fuzz-$(1)/generated/block tables/block
@@ -591,23 +808,33 @@ define block_fuzz_sabotage
 	fi
 	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/cs.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the C# leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/cs.log; exit 1; }
+	@rm -f build/tables-generated-rust/.stamp
+	./build/block-fuzz-$(1)/schema generate --lang rust --out build/tables-generated-rust/blockdemo/src tables/block
+	./build/block-fuzz-$(1)/schema generate --lang rust --out build/tables-generated-rust/blockhome/src tables/blockhome
+	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	@if SEED=$(SEED) N=$(N) ./test/rust-fuzz/target/debug/rust-fuzz > build/block-fuzz-$(1)/rust.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust fuzzer stayed green with the $(1) check removed from the emitter"; \
+		exit 1; \
+	fi
+	@grep -q "^FAILED: an opened block" build/block-fuzz-$(1)/rust.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the Rust leg went red, but not on the oracle"; cat build/block-fuzz-$(1)/rust.log; exit 1; }
 	@grep -m1 "^FAILED" build/block-fuzz-$(1)/cpp.log
 	@grep -m1 "  mutation" build/block-fuzz-$(1)/cpp.log
-	@echo "block fuzz $(1) negative control: removing that check from BOTH emitters turns the fuzzer red on both backends"
+	@echo "block fuzz $(1) negative control: removing that check from EVERY emitter turns the fuzzer red on every backend"
 endef
 
 # The EXTENT check: an array's rows must end inside the bytes the caller
 # passed, and the used extent it reports must too. Both spellings go, because
 # either one alone still refuses what the other would have.
 .PHONY: tables-block-fuzz-extent-negative-control
-tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp
+tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
 	$(call block_fuzz_sabotage,extent)
 
 # The DECLARED MAXIMUM check: a count past the maximum Begin refuses on the
 # producer side. This is §19.2's tenth forgery, the one a reader found OPEN,
 # and the control is what keeps it closed.
 .PHONY: tables-block-fuzz-maximum-negative-control
-tables-block-fuzz-maximum-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp
+tables-block-fuzz-maximum-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
 	$(call block_fuzz_sabotage,maximum)
 
 # THE COOK'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §7.5). The hostile battery in
@@ -636,6 +863,40 @@ tables-cook-fuzz-negative-control:
 	@grep -q "FAILED" build/cook-fuzz-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the battery went red, but not on the bar"; cat build/cook-fuzz-control/log; exit 1; }
 	@grep -m1 "FAILED" build/cook-fuzz-control/log
+
+# THE RUST NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). The claim
+# that a schema declaration may not lower onto one of the table runtime's Rust
+# CONSTANTS is a refusal, and a refusal that has never fired proves nothing —
+# so this removes it from internal/check and requires the suite to go red.
+#
+# It is the control that the whole class needed and did not have: the first
+# version of the registry scan was C#'s regex verbatim, blind to lowercase and
+# to SCREAMING_SNAKE, so forty-four crate items went unregistered and three
+# spellings of every runtime constant stayed legal. A green test over a blind
+# scan is what let that happen.
+#
+# The sabotage reaches the build through `go test -overlay`, so no tracked file
+# is edited and it cannot survive the target that made it.
+.PHONY: tables-rust-names-negative-control
+tables-rust-names-negative-control:
+	@rm -rf build/rust-names-control && mkdir -p build/rust-names-control
+	@sed 's|^\t\tfor _, gen := range tablenames.RustConstants() {$$|\t\tfor _, gen := range []string{} { _ = gen; // NEGATIVE CONTROL|' \
+		internal/check/check.go > build/rust-names-control/check.go.txt
+	@cmp -s internal/check/check.go build/rust-names-control/check.go.txt && \
+		{ echo "NEGATIVE CONTROL: the name-claim sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/rust-names-control/check.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-names-control/overlay.json
+	@if go test -count=1 -overlay=build/rust-names-control/overlay.json \
+			-run 'TestRustConstantSpaceIsClaimedForEveryRuntimeConstant|TestTableRefusals' \
+			./internal/check/ > build/rust-names-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the Rust constant-space claim removed"; \
+		exit 1; \
+	fi
+	@grep -q "was accepted beside a table" build/rust-names-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the claim"; \
+		  cat build/rust-names-control/log; exit 1; }
+	@grep -m1 "was accepted beside a table" build/rust-names-control/log
+	@echo "rust name-claim negative control: removing the mapped-space claim turns the suite RED on it"
 
 # THE SCALE FIXTURES (docs/SPEC-TABLES.md §7.5). `test/cookgen` writes a synthetic
 # region streaming, in O(1) memory, so the OPEN-COST gate the emitter owes —
@@ -1999,6 +2260,18 @@ generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
 	@touch $@
 
+# the Rust leg's generated crate: a unit is a Rust CRATE, so the corpus needs a
+# Cargo.toml beside its modules. The TABLE modules name no runtime — the
+# generated table surface carries no serialize dependency, which is the leg's
+# recorded linkage fact — but the unit's PACKET module does, because a table
+# closure's types are the packet backend's own and they carry their type-wire
+# codecs whether or not this bench calls one.
+generated/bench/tables/rust/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/rust/src
+	./bin/schema generate --lang rust --out generated/bench/tables/rust/src bench/corpus/BenchTable.schema
+	@printf '[package]\nname = "benchtable"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' > generated/bench/tables/rust/Cargo.toml
+	@touch $@
+
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
 	./bin/schema generate --lang go --out generated/bench/go/realworld bench/corpus/RealWorld.schema
@@ -2098,6 +2371,16 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test_tables_asan
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
+	$(MAKE) tables-rust-walk
+	$(MAKE) tables-rust-clippy
+	$(MAKE) tables-rust-features
+	$(MAKE) tables-rust-names-negative-control
+	$(MAKE) tables-rust-alloc-audit
+	$(MAKE) tables-rust-alloc-negative-control
+	# the generated Rust table surface CHECKED for a big-endian target, layout
+	# const asserts and all. It SKIPS cleanly where the target is not
+	# installed, so it costs a machine without it nothing.
+	$(MAKE) tables-rust-big-endian
 	$(MAKE) tables-json-negative-control
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
@@ -2250,7 +2533,7 @@ bench-table-check: build/schema_test_bench_table
 # estate's bench rules — core 15, server stopped, not live, blessed per run;
 # a run on a shared interactive machine is a pairing check and the board says
 # which one it is.
-bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp bench-table-check
+bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/rust/.stamp bench-table-check
 	bench/tables/run.sh
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
@@ -2368,9 +2651,38 @@ build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.c
 build-conformance-cs: build/tables-generated-cs/.stamp
 	cd test/conformance/cs && dotnet build -v q --nologo
 
+
+# THE RUST TABLE CORPUS: one CRATE per unit, because a unit is a Rust crate the
+# way it is a C++ namespace — its own package, its own protocol id, its own
+# table runtime. The crates carry a generated Cargo.toml each; nothing here is
+# checked in.
+RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+	blockdemo:tables/block blockhome:tables/blockhome \
+	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
+	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
+
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+	@mkdir -p build/tables-generated-rust
+	@for unit in $(RUST_TABLE_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		rm -rf build/tables-generated-rust/$$name/src; \
+		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path || exit 1; \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
+			> build/tables-generated-rust/$$name/Cargo.toml; \
+	done
+	@touch $@
+
+build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
+	@mkdir -p build
+	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	@rm -f $@   # replace the inode: writing over a binary another process is
+	            # running corrupts it in place, and a long soak runs this one
+	cp test/conformance/rust/target/debug/conformance-rust $@
+
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook \
-		build-conformance-cs build-cs-cook
+		build-conformance-cs build-cs-cook build/conformance-rust
 	./build/conformance-harness run
 
 # The GENERATED half of the data: the JSON text of every instance and the read

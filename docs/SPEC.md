@@ -1390,7 +1390,29 @@ tree mirrors the schema tree a person navigates.
   packages are order-free across files, so there is no topo sort and no
   include graph to refuse.
 - **Rust:** one module per schema file (lowercased basename) plus a generated
-  `lib.rs` declaring and glob re-exporting them.
+  `lib.rs` declaring and glob re-exporting them. A unit that declares TABLES
+  grows three per-file modules and three per-UNIT runtimes, all declared by
+  that same crate root: `<base>_table.rs` with the table wire's codecs, its
+  reflection descriptors and its TEXT FORM (SPEC-TABLES.md §16);
+  `<base>_cook.rs` with the cooked form's blittable `<Name>Row` records and
+  their layout contract as const asserts (§7, §20.3); `<base>_block.rs` with
+  the block form's projection and open path (§19); and beside them
+  `table_runtime.rs`, `cook_runtime.rs` and `block_runtime.rs`, which carry
+  each surface's shared runtime and the text form's one generic walk. **The
+  three runtimes are named by the PACKAGE and not by a file**, on the rule
+  §19.2 states for every port: a unit is one crate, so a second copy would be
+  a duplicate definition rather than C++'s harmless re-inclusion behind a
+  guard, and a runtime that lived in whichever file sorted first would
+  relocate whole whenever a corpus file sorted earlier. Two more modules are
+  always compiled and belong to neither accelerator: `build_version.rs`
+  (SPEC-TABLES.md §20 — one digest answering "which build?", which both the
+  block form and the cooked form compare against) and `<base>_records.rs` (the
+  blittable `<Name>Row` records with their layout contract, because a cooked
+  record IS the blittable row). **The block and cook modules sit behind cargo
+  features, both on by default**, so a consumer that reaches for neither
+  compiles neither — the Rust answer to §19's "the form costs nothing unless
+  you include it". A table-free unit grows none of it, and its packet modules
+  are byte-identical either way.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
   `namespace <Package>`. A unit that declares TABLES emits one further file
@@ -1657,8 +1679,9 @@ internal/check/        resolver, constant folding, shape checks, dominance rule,
 internal/format/       schemafmt
 internal/codegen/      c/  cpp/  csharp/  dart/  elixir/  golang/  java/  js/
                        rust/ — registered on the driver through the public
-                       generator interface; cpptable/ and cstable/ are the
-                       table emitters two of those backends carry
+                       generator interface; cpptable/, cstable/ and
+                       rusttable/ are the table emitters three of those
+                       backends carry
                        (SPEC-TABLES.md)
 internal/fuzz/         compiler fuzzing (gate 6)
 internal/publicapi/    the acceptance gate: an external module, public API only

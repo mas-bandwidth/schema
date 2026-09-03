@@ -37,6 +37,8 @@ const (
 	Cpp Backend = 1 << iota
 	// Cs is the C# table backend (internal/codegen/cstable).
 	Cs
+	// Rust is the Rust table backend (internal/codegen/rusttable).
+	Rust
 )
 
 // Name is one spelling the generated table runtimes carry, and the backends
@@ -46,13 +48,29 @@ type Name struct {
 	By   Backend
 	What string // what it is, for a reader of this file
 
-	// Scoped marks a spelling that exists ONLY as a member of another
-	// registered type, so it claims nothing: a schema may declare it, because
-	// the generated member is reached through its owner and cannot collide
-	// with a namespace-level declaration. Registered anyway, so the scan that
-	// holds this list honest has an answer for every name it finds rather
-	// than a filter nobody can see.
+	// Scoped marks a spelling NO DECLARATION CAN COLLIDE WITH, so it claims
+	// nothing: a member reached through its owner, or — in Rust — an item
+	// private to the shared runtime module, which the crate root never sees.
+	// Registered anyway, so the scan that holds this list honest has an answer
+	// for every name it finds rather than a filter nobody can see.
 	Scoped bool
+
+	// RustConst marks a name the Rust backend spells as a CRATE-SCOPE
+	// CONSTANT, whose emitted identifier is therefore ir.RustConstName of the
+	// name rather than the name itself.
+	//
+	// It exists because Rust's constant spelling is MANY-TO-ONE: a schema
+	// const named TableCookMagic, TABLE_COOK_MAGIC or table_cook_magic all
+	// lower to one crate-scope TABLE_COOK_MAGIC, and claiming the registered
+	// spelling alone leaves the other two legal. What they generate is a pair
+	// of ambiguous glob re-exports — the generated crate builds with a
+	// warning, the user's own constant is silently shadowed at the crate root,
+	// and any CONSUMER that names the symbol fails to compile under
+	// ambiguous_glob_imports, which is deny-by-default and
+	// future-incompatible. internal/check claims these in the MAPPED space,
+	// beside the same claim it already makes between two user declarations
+	// ("both generate the symbol MAX_HEALTH").
+	RustConst bool
 }
 
 // registry is the whole list. Sorted by nothing in particular — callers that
@@ -60,18 +78,18 @@ type Name struct {
 // decide what a diagnostic says.
 var registry = []Name{
 	// the shared surface both backends define per unit
-	{Name: "TableReport", By: Cpp | Cs, What: "the read report — the permissive contract's ledger"},
-	{Name: "TableWriter", By: Cpp | Cs, What: "the wire writer over the caller's buffer"},
-	{Name: "TableReader", By: Cpp | Cs, What: "the wire reader over the caller's buffer"},
-	{Name: "TableTypeInfo", By: Cpp | Cs, What: "a table's reflection descriptor"},
-	{Name: "TableFieldInfo", By: Cpp | Cs, What: "a field's reflection descriptor"},
+	{Name: "TableReport", By: Cpp | Cs | Rust, What: "the read report — the permissive contract's ledger"},
+	{Name: "TableWriter", By: Cpp | Cs | Rust, What: "the wire writer over the caller's buffer"},
+	{Name: "TableReader", By: Cpp | Cs | Rust, What: "the wire reader over the caller's buffer"},
+	{Name: "TableTypeInfo", By: Cpp | Cs | Rust, What: "a table's reflection descriptor"},
+	{Name: "TableFieldInfo", By: Cpp | Cs | Rust, What: "a field's reflection descriptor"},
 	// a UNION field's shape (docs/SPEC-TABLES.md §8.1): the tag, and each arm's
-	// payload by its own descriptor. Both backends define both, and both put
-	// them at unit level beside the two descriptors above — a union field's
-	// column has to name a type, and a nested one would be reached through a
-	// descriptor a walk holds by value.
-	{Name: "TableUnionInfo", By: Cpp | Cs, What: "a union field's tag and its arms"},
-	{Name: "TableUnionArmInfo", By: Cpp | Cs, What: "one union arm's payload and descriptor"},
+	// payload by its own descriptor. Every backend defines both, and every one
+	// puts them at unit level beside the two descriptors above — a union
+	// field's column has to name a type, and a nested one would be reached
+	// through a descriptor a walk holds by value.
+	{Name: "TableUnionInfo", By: Cpp | Cs | Rust, What: "a union field's tag and its arms"},
+	{Name: "TableUnionArmInfo", By: Cpp | Cs | Rust, What: "one union arm's payload and descriptor"},
 	{Name: "TableEnumId", By: Cpp | Cs, What: "an enum value -> its table-wire variant id"},
 	{Name: "TableEnumValue", By: Cpp | Cs, What: "a table-wire variant id -> its enum value"},
 
@@ -81,7 +99,7 @@ var registry = []Name{
 	// claim is unconditional on a unit declaring a table, for the same reason
 	// the variable-length names are: adding a keyed array to an existing table
 	// must not turn a legal declaration elsewhere into a collision.
-	{Name: "TableKeyed", By: Cpp | Cs, What: "an enum-keyed array's slot storage"},
+	{Name: "TableKeyed", By: Cpp | Cs | Rust, What: "an enum-keyed array's slot storage"},
 
 	// SCOPED: a field descriptor's nested-table column. C++ spells it `table`
 	// and C# `Table`, and either way it is reached through its owner, so a
@@ -144,16 +162,16 @@ var registry = []Name{
 	{Name: "TableBlockDefaultAllocator", By: Cpp, What: "the malloc/free pair, for a caller with none of its own"},
 	{Name: "table_block_default_alloc", By: Cpp, What: "the default allocator's alloc half"},
 	{Name: "table_block_default_free", By: Cpp, What: "the default allocator's free half"},
-	{Name: "TableBlockTriple", By: Cpp | Cs, What: "one array's (offset_of, count, stride)"},
+	{Name: "TableBlockTriple", By: Cpp | Cs | Rust, What: "one array's (offset_of, count, stride)"},
 	{Name: "TableBlockRefusal", By: Cpp, What: "why Begin refused: the array, its count and its maximum"},
 	{Name: "TableBlockRows", By: Cpp | Cs, What: "one array's rows, iterated at the pitch the instance gives"},
 	{Name: "TableBlockSpan", By: Cpp, What: "one array's rows as a contiguous view (C# uses ReadOnlySpan)"},
-	{Name: "TableBlockFieldInfo", By: Cpp | Cs, What: "a block field's reflection descriptor"},
-	{Name: "TableBlockInfo", By: Cpp | Cs, What: "a block's reflection descriptor"},
-	{Name: "TableBlockMagic", By: Cpp | Cs, What: "the block prologue's magic, and the byte-order check with it"},
+	{Name: "TableBlockFieldInfo", By: Cpp | Cs | Rust, What: "a block field's reflection descriptor"},
+	{Name: "TableBlockInfo", By: Cpp | Cs | Rust, What: "a block's reflection descriptor"},
+	{Name: "TableBlockMagic", By: Cpp | Cs | Rust, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 	{Name: "TableBlockLayout", By: Cs, What: "the C# layout contract's check, run once", Scoped: true},
 	{Name: "TableBlockRead64", By: Cs, What: "the C# prologue read (a Schema member, so it claims nothing)", Scoped: true},
-	{Name: "TableBlockByteOrder", By: Cpp | Cs, What: "this build's byte order, as the prologue carries it"},
+	{Name: "TableBlockByteOrder", By: Cpp | Cs | Rust, What: "this build's byte order, as the prologue carries it", RustConst: true},
 	{Name: "table_block_byteswap64", By: Cpp, What: "the byte-order check's swap"},
 	{Name: "table_block_read64", By: Cpp, What: "the prologue read BYTEWISE"},
 	{Name: "table_block_align", By: Cpp, What: "round an offset up to an alignment"},
@@ -166,27 +184,105 @@ var registry = []Name{
 	// its closure gains and loses a pointer, and a name free today must not
 	// become a collision tomorrow.
 	{Name: "TableCookOpen", By: Cpp, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
-	{Name: "TableCookMagic", By: Cpp | Cs, What: "the cooked header's magic, and the byte-order check with it"},
-	{Name: "TableCookByteOrder", By: Cpp | Cs, What: "this build's byte order, as a cooked header records it"},
-	{Name: "TableCookMaxAlign", By: Cpp | Cs, What: "the greatest region alignment a cooked header may name"},
+	{Name: "TableCookMagic", By: Cpp | Cs | Rust, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableCookByteOrder", By: Cpp | Cs | Rust, What: "this build's byte order, as a cooked header records it", RustConst: true},
+	{Name: "TableCookMaxAlign", By: Cpp | Cs | Rust, What: "the greatest region alignment a cooked header may name", RustConst: true},
 	{Name: "table_cook_read64", By: Cpp, What: "the cooked header read BYTEWISE"},
+
+	// ---- the RUST backend's own spellings (internal/codegen/rusttable) ----
+	//
+	// Rust has no overloading, so the enum identity pair C++ and C# spell as an
+	// overload set is a TRAIT the generated code implements once per enum: one
+	// unit-level name rather than one per declaration.
+	{Name: "TableEnum", By: Rust, What: "an enum's TABLE-wire identity, as a trait (§5)"},
+
+	// The text form's three bounds, at unit level in Rust because a Rust
+	// constant has no class to hide in.
+	{Name: "TableJsonMaxDepth", By: Rust, What: "the text walk's nesting cap (§16)", RustConst: true},
+	{Name: "TableJsonMaxKey", By: Rust, What: "the longest key that can name a field", RustConst: true},
+	{Name: "TableJsonMaxNumber", By: Rust, What: "the longest numeric token the walk converts", RustConst: true},
+
+	// SCOPED, Rust: private to the shared runtime module, which does not
+	// import the crate root — so a declaration taking one of these names
+	// cannot collide with it, and the name stays the schema author's.
+	{Name: "TableJsonIn", By: Rust, What: "the text walk's read cursor", Scoped: true},
+	{Name: "TableJsonOut", By: Rust, What: "the text walk's measure-or-write sink", Scoped: true},
+	{Name: "TableJsonKey", By: Rust, What: "a scanned object key, kept on the stack", Scoped: true},
+	{Name: "TableJsonNumber", By: Rust, What: "a scanned numeric token", Scoped: true},
+	{Name: "TableJsonSink", By: Rust, What: "where a scanned string goes, or nowhere", Scoped: true},
+	{Name: "TableJsonBase64", By: Rust, What: "the base64 alphabet a bytes(N) rides under", Scoped: true},
+	{Name: "TableJsonDigits", By: Rust, What: "the float writer's stack sink, so the text form allocates nothing", Scoped: true},
+
+	// SCOPED, Rust: the runtime's snake_case CRATE ITEMS. A schema declaration
+	// produces a type (its own spelling) or a SCREAMING_SNAKE constant, and
+	// never a bare snake_case crate item — so none of these can be collided
+	// with, and claiming forty-odd of them would take forty-odd names from
+	// every schema for nothing. They are registered because the scan that
+	// holds this list honest now SEES them: its first version was C#'s regex
+	// verbatim and blind to lowercase, which is the defect class this block
+	// closes. A helper somebody adds is accounted for here rather than
+	// slipping in under a regex that could not see it.
+	{Name: "TableId", By: Rust, What: "the TableEnum trait's value -> wire id half", Scoped: true},
+	{Name: "TableValue", By: Rust, What: "the TableEnum trait's wire id -> value half", Scoped: true},
+	{Name: "TableRuntime", By: Rust, What: "the unit's shared table runtime MODULE", Scoped: true},
+	{Name: "TableRelocatable", By: Rust, What: "the relocatability assert's const fn", Scoped: true},
+	{Name: "TableBlockByteswap64", By: Rust, What: "the block magic's byte-order swap", Scoped: true},
+	{Name: "TableJsonRead", By: Rust, What: "the text form's read entry point", Scoped: true},
+	{Name: "TableJsonWrite", By: Rust, What: "the text form's write entry point", Scoped: true},
+	{Name: "TableJsonCount", By: Rust, What: "a counted field's companion, read", Scoped: true},
+	{Name: "TableJsonSetCount", By: Rust, What: "a counted field's companion, written", Scoped: true},
+	{Name: "TableJsonGetRaw", By: Rust, What: "a slot's raw bits at a width", Scoped: true},
+	{Name: "TableJsonSetRaw", By: Rust, What: "a slot's raw bits, written", Scoped: true},
+	{Name: "TableJsonGetSigned", By: Rust, What: "a slot's sign-extended value", Scoped: true},
+	{Name: "TableJsonFinite", By: Rust, What: "not a NaN, not an infinity", Scoped: true},
+	{Name: "TableJsonNamed", By: Rust, What: "a vocabulary entry the descriptor could spell", Scoped: true},
+	{Name: "TableJsonFormatG", By: Rust, What: "C's percent-star-g, digit for digit", Scoped: true},
+	{Name: "TableJsonShape", By: Rust, What: "what a field's kind expects in the text", Scoped: true},
+	{Name: "TableJsonElementShape", By: Rust, What: "the same classifier one level down", Scoped: true},
+	{Name: "TableJsonIsBytes", By: Rust, What: "a bytes(N), which rides as base64", Scoped: true},
+	{Name: "TableJsonIsEnum", By: Rust, What: "an enum field", Scoped: true},
+	{Name: "TableJsonIsFlags", By: Rust, What: "a flags field", Scoped: true},
+	{Name: "TableJsonIsKeyed", By: Rust, What: "an enum-keyed array", Scoped: true},
+	{Name: "TableJsonKeyedSlotKey", By: Rust, What: "the key a storage slot holds", Scoped: true},
+	{Name: "TableJsonKeyedSlotValid", By: Rust, What: "a slot whose key names a variant", Scoped: true},
+	{Name: "TableJsonGuardHolds", By: Rust, What: "a branch guard, evaluated over the descriptors", Scoped: true},
+	{Name: "TableJsonEncodeUtf8", By: Rust, What: "one code point, encoded", Scoped: true},
+	{Name: "TableJsonUtf8", By: Rust, What: "one UTF-8 sequence, validated", Scoped: true},
+	{Name: "TableJsonWalkNumber", By: Rust, What: "JSON's own number production, consumed", Scoped: true},
+	{Name: "TableJsonScanNumber", By: Rust, What: "the same production, kept", Scoped: true},
+	{Name: "TableJsonScanString", By: Rust, What: "one JSON string, into a caller slot", Scoped: true},
+	{Name: "TableJsonScanKey", By: Rust, What: "one object key, onto the stack", Scoped: true},
+	{Name: "TableJsonSkipValue", By: Rust, What: "one value, consumed and dropped", Scoped: true},
+	{Name: "TableJsonSkipContainer", By: Rust, What: "one object or array, consumed and dropped", Scoped: true},
+	{Name: "TableJsonReadTable", By: Rust, What: "one table object", Scoped: true},
+	{Name: "TableJsonReadField", By: Rust, What: "one field", Scoped: true},
+	{Name: "TableJsonReadScalar", By: Rust, What: "one scalar", Scoped: true},
+	{Name: "TableJsonWriteValue", By: Rust, What: "one instance, every field", Scoped: true},
+	{Name: "TableJsonWriteField", By: Rust, What: "one field", Scoped: true},
+	{Name: "TableJsonWriteScalar", By: Rust, What: "one scalar", Scoped: true},
+	{Name: "TableJsonWriteString", By: Rust, What: "one string, escaped", Scoped: true},
+	{Name: "TableJsonWriteStringBytes", By: Rust, What: "one byte run, escaped", Scoped: true},
+	{Name: "TableJsonWriteBase64", By: Rust, What: "one bytes(N), base64", Scoped: true},
+	{Name: "TableJsonWriteFloat", By: Rust, What: "one float, at its shortest round-tripping precision", Scoped: true},
+	{Name: "TableJsonWriteSigned", By: Rust, What: "one signed integer", Scoped: true},
+	{Name: "TableJsonWriteUnsigned", By: Rust, What: "one unsigned integer", Scoped: true},
 
 	// the COOK's C# half (docs/SPEC-TABLES.md §7, §19.2's road). C# has no include
 	// guard, so the read runtime is emitted ONCE per unit into the cook home's
 	// <Base>Cook.cs — and because one assembly sees every file, a declaration
 	// taking one of these names anywhere in the unit collides with it.
-	{Name: "TableCookHeaderBytes", By: Cs, What: "§7.1's 64-byte header, as a Schema member (so it claims nothing)", Scoped: true},
+	{Name: "TableCookHeaderBytes", By: Cs | Rust, What: "§7.1's 64-byte header. C# spells it a Schema member, which claims nothing; Rust puts it at module level, so the claim is the UNION and the name is claimed", RustConst: true},
 	{Name: "TableCookRead64", By: Cs, What: "the C# header read (a Schema member, so it claims nothing)", Scoped: true},
 	{Name: "TableCookLayout", By: Cs, What: "the C# cook closure's layout contract, run once (§20.3)"},
-	{Name: "TableCookInfo", By: Cs, What: "a cooked record's reflection descriptor"},
-	{Name: "TableCookFieldInfo", By: Cs, What: "a cooked field's reflection descriptor"},
-	{Name: "TableCookStorage", By: Cs, What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+	{Name: "TableCookInfo", By: Cs | Rust, What: "a cooked record's reflection descriptor"},
+	{Name: "TableCookFieldInfo", By: Cs | Rust, What: "a cooked field's reflection descriptor"},
+	{Name: "TableCookStorage", By: Cs | Rust, What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
 
 	// the unit's BUILD VERSION (docs/SPEC-TABLES.md §20): the one digest a block
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is
 	// claimed here because it is a unit-level name the generated block sources
 	// define.
-	{Name: "BuildVersion", By: Cpp, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++ puts it at namespace scope, so the claim is the union"},
+	{Name: "BuildVersion", By: Cpp | Rust, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++ puts it at namespace scope, so the claim is the union", RustConst: true},
 }
 
 // All returns the whole registry, sorted by name.
@@ -216,6 +312,21 @@ func DefinedBy(b Backend) []string {
 	var names []string
 	for _, n := range registry {
 		if n.By&b != 0 {
+			names = append(names, n.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// RustConstants is every registered name the Rust backend spells as a
+// crate-scope CONSTANT, sorted. The caller maps each through
+// ir.RustConstName to get the emitted identifier; this package does not, so
+// that it keeps depending on nothing.
+func RustConstants() []string {
+	var names []string
+	for _, n := range registry {
+		if n.RustConst && n.By&Rust != 0 {
 			names = append(names, n.Name)
 		}
 	}

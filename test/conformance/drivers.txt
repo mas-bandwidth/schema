@@ -9,5 +9,6 @@
 #
 # Registering a port is this file plus one driver. Nothing else moves.
 
-cpp test/conformance/cpp/driver
-cs  test/conformance/cs/driver
+cpp  test/conformance/cpp/driver
+cs   test/conformance/cs/driver
+rust test/conformance/rust/driver
