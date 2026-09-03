@@ -3655,13 +3655,21 @@ build-conformance-elixir: build/elixir-tables-ebin/.stamp
 # not zero and is not claimed to be — Elixir has no caller-owned buffer and no
 # mutable struct — so the gate is a PINNED BUDGET per case, re-pinned
 # deliberately the way a wire golden is.
+# THE DERIVED MANIFEST, made by an ELIXIR-ONLY harness run. The leg's own gates
+# need the materialised fixtures and the manifest, not the other four legs'
+# verdicts — and rebuilding those to read one file is a minute nobody gets back
+# every time this chain runs. `make conformance` writes the same file, so
+# whichever ran last serves.
+build/conformance/manifest.txt: build/conformance-harness build-conformance-elixir
+	./build/conformance-harness run --only elixir > /dev/null
+
 .PHONY: tables-elixir-alloc-audit
-tables-elixir-alloc-audit: conformance
+tables-elixir-alloc-audit: build/conformance/manifest.txt
 	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
 		build/conformance/manifest.txt alloc-audit
 
 .PHONY: tables-elixir-alloc-pin
-tables-elixir-alloc-pin: conformance
+tables-elixir-alloc-pin: build/conformance/manifest.txt
 	ELIXIR_ALLOC_PIN=1 BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
 		build/conformance/manifest.txt alloc-audit
 
@@ -3669,7 +3677,7 @@ tables-elixir-alloc-pin: conformance
 # than a number: one extra allocation per iteration must take every case over
 # its budget. A gate that cannot go red is not a gate.
 .PHONY: tables-elixir-alloc-negative-control
-tables-elixir-alloc-negative-control: conformance
+tables-elixir-alloc-negative-control: build/conformance/manifest.txt
 	@if SOAK_SABOTAGE=1 BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
 			build/conformance/manifest.txt alloc-audit > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the audit passed with an extra allocation per iteration"; \
@@ -3686,7 +3694,7 @@ tables-elixir-alloc-negative-control: conformance
 SOAK_SECONDS ?= 3600
 
 .PHONY: tables-elixir-soak
-tables-elixir-soak: conformance
+tables-elixir-soak: build/conformance/manifest.txt
 	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
 		build/conformance/manifest.txt soak $(SOAK_SECONDS)
 
@@ -3697,7 +3705,7 @@ tables-elixir-soak: conformance
 ELIXIR_FUZZ_N ?= 20000
 
 .PHONY: tables-elixir-fuzz
-tables-elixir-fuzz: conformance
+tables-elixir-fuzz: build/conformance/manifest.txt
 	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
 		build/conformance/manifest.txt fuzz $(ELIXIR_FUZZ_N)
 
