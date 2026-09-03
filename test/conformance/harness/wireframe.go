@@ -11,6 +11,7 @@ package main
 
 import (
 	"encoding/binary"
+	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -335,8 +336,9 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 	f := seed.frame
 	wire := seed.wire
 
-	// every truncation length: the reader must stop at each one
-	for n := 0; n < len(wire); n++ {
+	// every truncation length the framing makes distinct: the reader must
+	// stop at each one
+	for _, n := range truncations(seed) {
 		emit("truncate", append([]byte(nil), wire[:n]...))
 	}
 
@@ -433,6 +435,47 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 // ---------------------------------------------------------------------------
 // the random pass
 // ---------------------------------------------------------------------------
+
+// truncations is where a seed is cut. A wire up to truncateEvery bytes is cut
+// at every length; a longer one — the wide instances are hundreds of
+// kilobytes of payload — is cut around every number the framing carries and
+// at every field boundary, which is every length at which a reader can meet
+// a different decision, since a cut inside a payload is the same event at
+// every byte of it.
+func truncations(seed *wireSeed) []int {
+	n := len(seed.wire)
+	if n <= truncateEvery {
+		out := make([]int, n)
+		for i := range out {
+			out[i] = i
+		}
+		return out
+	}
+	set := map[int]bool{0: true, n - 1: true}
+	for _, sp := range seed.frame.spots {
+		for _, at := range []int{sp.off - 1, sp.off, sp.off + 1, sp.off + sp.width - 1, sp.off + sp.width, sp.off + sp.width + 1} {
+			if at >= 0 && at < n {
+				set[at] = true
+			}
+		}
+	}
+	for _, fld := range seed.frame.fields {
+		for _, at := range []int{fld.start, fld.end - 1, fld.end} {
+			if at >= 0 && at < n {
+				set[at] = true
+			}
+		}
+	}
+	out := make([]int, 0, len(set))
+	for at := range set {
+		out = append(out, at)
+	}
+	sort.Ints(out)
+	return out
+}
+
+// truncateEvery is the wire size up to which every length is a truncation.
+const truncateEvery = 1024
 
 // splitmix64 is the generator, written out so that a mutant is the same bytes
 // under every Go release: every mutant is a pure function of (seed, index).

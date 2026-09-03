@@ -39,6 +39,10 @@
 #include "P2Table.h"
 #include "P3Table.h"
 #include "GraphTable.h"
+#include "MessagesTable.h"
+#include "StreamTable.h"
+#include "M1Table.h"
+#include "M2Table.h"
 
 struct Reply
 {
@@ -145,8 +149,12 @@ static const Codec codecs[] = {
     FIXED( "tblv2", tblv2, Cfg ),
     FIXED( "tblp1", tblp1, Chain ),
     FIXED( "tblp3", tblp3, Chain ),
+    FIXED( "messagedemo", messagedemo, ToolMessage ),
+    FIXED( "tblm1", tblm1, Msg ),
+    FIXED( "tblm2", tblm2, Msg ),
     VARIABLE( "graphdemo", graphdemo, Scene ),
     VARIABLE( "tblp2", tblp2, Chain ),
+    VARIABLE( "streamdemo", streamdemo, Feed ),
 };
 
 static bool read_exact( void * to, size_t n )

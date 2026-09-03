@@ -154,11 +154,13 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 			return false
 		}
 		kind := r.u8()
-		if id == ir.NodeTableFieldId && r.st != nil {
+		if id == ir.NodeTableFieldId && r.st != nil && r.m.IsVariable(inst.Def.Name) {
 			// the reserved id is this reader's OWN (§3.1), read before any body
-			// and not a field of the table: it is stepped over here, and never
-			// counted unknown. A reader that cannot name it counts one per
-			// transport field, which is the case §4's counter describes.
+			// and not a field of the table: a VARIABLE-class body steps over it
+			// and never counts it unknown, as the C++ reference does. A reader
+			// that cannot name it — a fixed-class body, or a build without kind
+			// 17 — counts one per transport field, which is the case §4's
+			// counter describes.
 			if !r.skip(kind) {
 				r.report.Malformed = true
 				return false
@@ -406,9 +408,11 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 			break
 		}
 		if key == 0 {
-			r.report.Malformed = true // None keys no record
-			sub.off += elemLen
-			continue
+			// None is the null key and 0 the id no name folds to, so a body
+			// carrying one is damaged: the read stops this body and keeps what
+			// it decoded (docs/SPEC-TABLES.md §3.2)
+			r.report.Malformed = true
+			break
 		}
 		slot := tabletext.KeyedValueSlot(f, enumValueForId(f.KeyEnumRef, key))
 		if slot < 0 {

@@ -417,12 +417,12 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		reply, err := leg.receive()
 		if err != nil {
 			_ = leg.close()
-			return wireFailure(opts, mut, fmt.Sprintf("the leg died on the mutant (%v)", err), leg.stderr.String())
+			return wireFailure(opts, mut, total, fmt.Sprintf("the leg died on the mutant (%v)", err), leg.stderr.String())
 		}
 		ans, err := root.oracle(mut.data)
 		if err != nil {
 			_ = leg.close()
-			return wireFailure(opts, mut, err.Error(), "")
+			return wireFailure(opts, mut, total, err.Error(), "")
 		}
 		if verdict := wireVerdict(root, reply, ans); verdict != "" {
 			_ = leg.close()
@@ -436,7 +436,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 				}
 				detail += fmt.Sprintf("\n  region: the framing commands %s %d bytes", bound, ans.bytes)
 			}
-			return wireFailure(opts, mut, verdict, detail+"\n"+leg.stderr.String())
+			return wireFailure(opts, mut, total, verdict, detail+"\n"+leg.stderr.String())
 		}
 		total++
 		if mut.pass != "random" {
@@ -471,12 +471,12 @@ func describeBytes(b []byte, refused bool) string {
 
 // wireFailure writes the mutant where a person can pick it up and prints the
 // one command that replays it alone.
-func wireFailure(opts wireFuzzOptions, mut *wireMutant, verdict, detail string) error {
+func wireFailure(opts wireFuzzOptions, mut *wireMutant, passed int, verdict, detail string) error {
 	if err := os.MkdirAll(filepath.Dir(opts.failed), 0o755); err == nil {
 		_ = os.WriteFile(opts.failed, mut.data, 0o644)
 	}
-	msg := fmt.Sprintf("FAILED: %s\n  seed %s (%s.%s), pass %s #%d, mutant of %d bytes written to %s\n%s\n  replay: %s wire-fuzz --driver %q --replay %s --unit %s --root %s",
-		verdict, mut.seed.name, mut.seed.unit, mut.seed.root, mut.pass, mut.index, len(mut.data), opts.failed,
+	msg := fmt.Sprintf("FAILED after %d mutants: %s\n  seed %s (%s.%s), pass %s #%d, mutant of %d bytes written to %s\n%s\n  replay: %s wire-fuzz --driver %q --replay %s --unit %s --root %s",
+		passed, verdict, mut.seed.name, mut.seed.unit, mut.seed.root, mut.pass, mut.index, len(mut.data), opts.failed,
 		strings.TrimRight(detail, "\n"), os.Args[0], opts.driver, opts.failed, mut.seed.unit, mut.seed.root)
 	return fmt.Errorf("%s", msg)
 }

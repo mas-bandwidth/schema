@@ -2670,6 +2670,119 @@ only.
 | a DECLARATION renamed — a `type` or a table | silent: a declaration name is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a `type`'s FIELD renamed, where `was` is refused (SPEC.md §4.2) | `unknown` on the table wire, whose field id is the name's hash | passes in silence | **moves**, and through the protocol id as well (SPEC.md §3.1) |
 
+### 4.2 The read is the verifier: the wire fuzzer
+
+**A table read is UNTRUSTED input.** Tables come over the network — a save
+game uploaded to a server, a config a client hands back — and the posture is
+exactly the type wire's: the tolerant read of §3 must be safe on hostile bytes
+in every language, with no verifier in front of it and no "re-pack it
+server-side first". The two accelerators are the whole of the trusted class,
+and each says so where it is defined: a COOK is opened at the build version
+that wrote it and its integrity answer is a signature over the file (§7), and
+a BLOCK is both sides generated from one schema (§19). Everything the tolerant
+read does on damaged input — stop the damaged nesting level, keep what it
+decoded, count the event, read on past the length (§4) — is the verifier, and
+this subsection is the gate on that claim.
+
+**The gate is `harness wire-fuzz`**, one command over one corpus for every
+language. Every pinned wire in the conformance manifest — every `instance` and
+every `report` line — is a SEED, framed once so that a mutation can aim at a
+number rather than at a byte. The mutators are the attacks a hostile writer
+has:
+
+- **bit flips, byte overwrites, an inserted run, a deleted run**, anywhere;
+- **truncation** at every length, from the whole wire down to nothing;
+- **a length or a count past the body** — `L` set to the bytes remaining plus
+  one, plus two, and to `0x7FFFFFFF` and `0xFFFFFFFF`; `N` set to twice what
+  the body holds, and to the two values the sign bit spells;
+- **a duplicate field**, its enclosing lengths grown to fit so that the repeat
+  is the whole event, and again with the framing left one field short;
+- **a kind swap**, every kind byte to every other value, `0` and `18` included;
+- **an id renamed** to `0`, to the reserved `0xFFFF`, to a neighbor's id and
+  to a bit-flipped one; a keyed slot's key and a union's arm id likewise;
+- **in the variable class**, every node index to `0`, `1`, the last record,
+  the two past it, and the three the width can spell (`0x7FFFFFFF`,
+  `0x80000000`, `0xFFFFFFFF`); `node_count` off by one each way and at both
+  extremes; a record's type id flipped and cleared;
+- **a window spliced in** from another seed of the same unit.
+
+The enumerated passes run every mutant they name, whatever `N` is, so the
+checks each aims at are exercised on every run; the RANDOM pass stacks one to
+three of the strategies above on a seed the generator picks, `N` times, and
+every mutant of it is a pure function of `(SEED, index)` under splitmix64, so
+a failing index replays alone on any machine.
+
+**For every mutant the leg must satisfy four requirements**, and the first
+failure ends the run with the mutant written to a file and the one command
+that replays it:
+
+1. **The read returns.** No crash, no hang, and under the sanitized build no
+   finding — every buffer the leg holds is allocated at exactly its size, so
+   the redzone begins one byte past the last one a reader may touch.
+2. **The report matches an independent oracle.** The oracle is the compiler's
+   own engine, `internal/tablewire` — a third reading of §3 that no backend
+   was written from, and the one that writes `reports.txt`. The five counters
+   must agree exactly.
+3. **The decoded value matches.** The leg saves what it loaded; the oracle
+   encodes what it decoded; the bytes must be identical, or both must refuse
+   to write. A reader that reports correctly and fabricates a value from a
+   neighbor's bytes fails here.
+4. **`LoadMeasure` never asks past a stated bound.** For a variable root the
+   region it asks for is held to the framing: when the node table read whole
+   the answer is EXACT — the root's storage, each record's storage by its type
+   id, and sixteen bytes of directory per node — and when it did not, the
+   answer may not exceed the most the framing could have commanded, which is
+   one record of the largest storage per twelve wire bytes. A measure that
+   sizes a region its own `Load` then refuses fails the first requirement.
+
+**The line it prints** is the row the register carries: the seed, the seed
+count over the root count, the enumerated and random mutant counts, the wall
+and the rate — `wire-fuzz: seed 24845619678, 47 seeds over 15 roots, 138416
+enumerated + 100000 random = 238416 mutants, 0 divergences, ...`. `SEED` and
+`N` are the two knobs, on the command line and on the `make` line.
+
+**The C++ reference runs it twice**, as `make tables-wire-fuzz`: plain, which
+is the divergence oracle at speed, and under ASan and UBSan, which turns a
+one-byte over-read into a finding attributed to the mutant that caused it.
+`make test` runs both at a short `N`; `make tables-cpp-release` runs both at a
+long one, and that target is picked up by the certification workflow the way
+every `tables-<lang>-release` target is.
+
+**Two negative controls stand behind it**, because a fuzzer that has never gone
+red proves nothing about the reader it points at, and each removes ONE check
+from the EMITTER — through `go build -overlay`, so no tracked file moves —
+regenerates the corpus from the sabotaged compiler, builds the same leg
+against it, and requires the fuzzer to go red on the verdict that check
+guards:
+
+| control | what it removes | what must go red |
+|---|---|---|
+| `tables-wire-fuzz-length-negative-control` | the string read's `has( len )` in the tolerant reader | the report: the oracle says malformed and the leg does not |
+| `tables-wire-fuzz-index-negative-control` | `index - 1 >= count` in the numbering's resolve, the variable-class loader | the report: the leg counts a kind mismatch off a directory entry the region does not hold |
+
+Both go red PLAIN, without a sanitizer, which is what says the oracle and not
+the redzone is doing the work. `make tables-wire-fuzz-negative-control` runs
+the pair.
+
+**The sweep's naming, so the register can read it off the Makefile.** A port
+carries `tables-<lang>-wire-fuzz` and `tables-<lang>-wire-fuzz-negative-control`;
+the C++ reference carries the bare `tables-wire-fuzz` pair, as the reference's
+targets do throughout. A port's whole cost is the LEG — a command on a pipe
+that answers the stream `test/conformance/README.md` states, forty lines of
+`Load`, `Save` and a report copied out — because the mutators, the oracle and
+the comparison live in the harness once, for every language. A port with no
+variable class answers the roster with a `0` for every variable root and is
+fuzzed over the fixed ones, and the line says how many seeds were absent.
+
+**There is no `wire-forgery` surface, and the reason is the same one the
+block and cook fuzzers gave.** A fuzzer is a search, not a case, and a find it
+produces belongs in the corpus as a CASE every leg answers on every run: a
+mutant that once diverged is pinned as a `report` line of the manifest with
+its counters from the engine, and the `report` surface — which already loads a
+wire and compares the five counters in every language — is where it lives.
+The evolution seams and the pointer-spelling cases there are exactly that
+shape already.
+
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
 **One hash serves three vocabularies.** A field's wire id, an enum

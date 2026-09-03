@@ -85,22 +85,26 @@ func (e *encoder) appendNodeTable(body []byte, g *NodeGraph) ([]byte, error) {
 //
 // **The node table is whole or it is nothing**: numbering is positional across
 // the concatenation, so a field that cannot be read cannot be dropped without
-// renumbering every record after it. A field arriving under a kind other than
-// `12` makes the whole table malformed, every pointer in the save reads null,
-// and one event is counted — the root body still reads on past the fields, so
-// the root's own values survive.
+// renumbering every record after it. A node-table field arriving under a kind
+// other than `12`, or with a length past the root body, makes the whole table
+// malformed, every pointer in the save reads null, and one event is counted.
+// Damage to the root body ELSEWHERE — a field of another id the scan cannot
+// skip, a missing terminator — is §4's framing damage on the root body, not
+// the table's: the scan stops there and what it has found is the table, as
+// the C++ reference reads it. The root body still reads on past the fields,
+// so the root's own values survive.
 func nodeTableBytes(data []byte, report *tabletext.Report) (payload []byte, present bool, ok bool) {
 	r := &wireReader{buf: data, report: &tabletext.Report{}}
 	for {
 		if !r.has(2) {
-			return nil, present, false
+			return payload, present, true
 		}
 		id := r.u16()
 		if id == 0 {
 			return payload, present, true
 		}
 		if !r.has(1) {
-			return nil, present, false
+			return payload, present, true
 		}
 		kind := r.u8()
 		if id == ir.NodeTableFieldId {
@@ -121,7 +125,7 @@ func nodeTableBytes(data []byte, report *tabletext.Report) (payload []byte, pres
 			continue
 		}
 		if !r.skip(kind) {
-			return nil, present, false
+			return payload, present, true
 		}
 	}
 }

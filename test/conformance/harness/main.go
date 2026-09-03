@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 )
 
@@ -101,6 +102,7 @@ func main() {
 	unit := fs.String("unit", "", "the replayed mutant's unit key (wire-fuzz only)")
 	root := fs.String("root", "", "the replayed mutant's root table (wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
+	cpuprofile := fs.String("cpuprofile", "", "write a CPU profile of the run here (wire-fuzz only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
@@ -129,7 +131,18 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":
-		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, failed: *failed}); err != nil {
+		if *cpuprofile != "" {
+			pf, err := os.Create(*cpuprofile)
+			if err != nil {
+				fatalf("%v", err)
+			}
+			_ = pprof.StartCPUProfile(pf)
+		}
+		err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, failed: *failed})
+		if *cpuprofile != "" {
+			pprof.StopCPUProfile()
+		}
+		if err != nil {
 			fatalf("%v", err)
 		}
 	case "run":
