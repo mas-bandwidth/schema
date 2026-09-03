@@ -95,6 +95,9 @@ func row[T any, R any](
 	load func(*T, []byte, *R) bool,
 	measure func(*T) int64,
 	save func(*T, []byte) int64,
+	fromJson func(*T, []byte, *R) bool,
+	toJsonMeasure func(*T) int64,
+	toJson func(*T, []byte) int64,
 	snap func(*R) report,
 ) codec {
 	var storage T
@@ -109,6 +112,14 @@ func row[T any, R any](
 		},
 		measure: func(value any) int64 { return measure(value.(*T)) },
 		save:    func(value any, buffer []byte) int64 { return save(value.(*T), buffer) },
+		fromJson: func(value any, text []byte, rep *report) bool {
+			var inner R
+			ok := fromJson(value.(*T), text, &inner)
+			*rep = snap(&inner)
+			return ok
+		},
+		toJsonMeasure: func(value any) int64 { return toJsonMeasure(value.(*T)) },
+		toJson:        func(value any, buffer []byte) int64 { return toJson(value.(*T), buffer) },
 	}
 }
 
