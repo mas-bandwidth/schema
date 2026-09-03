@@ -411,8 +411,8 @@ defmodule Benchtable.BenchTableCook do
            info: {__MODULE__, :cook_info_table_entity}
          }}
 
-      :refuse ->
-        :refuse
+      :error ->
+        :error
     end
   end
 
@@ -458,8 +458,8 @@ defmodule Benchtable.BenchTableCook do
            info: {__MODULE__, :cook_info_table_stat}
          }}
 
-      :refuse ->
-        :refuse
+      :error ->
+        :error
     end
   end
 
@@ -493,8 +493,8 @@ defmodule Benchtable.BenchTableCook do
            info: {__MODULE__, :cook_info_table_hit_event}
          }}
 
-      :refuse ->
-        :refuse
+      :error ->
+        :error
     end
   end
 
@@ -530,8 +530,8 @@ defmodule Benchtable.BenchTableCook do
            info: {__MODULE__, :cook_info_table_chat_event}
          }}
 
-      :refuse ->
-        :refuse
+      :error ->
+        :error
     end
   end
 
@@ -565,8 +565,8 @@ defmodule Benchtable.BenchTableCook do
            info: {__MODULE__, :cook_info_table_pickup_event}
          }}
 
-      :refuse ->
-        :refuse
+      :error ->
+        :error
     end
   end
 

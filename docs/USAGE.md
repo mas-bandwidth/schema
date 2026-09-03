@@ -1116,8 +1116,8 @@ alias Example.ShipTable
 ship = %ShipConfig{health: 250.0, settings: %Example.Settings{}}
 #                                 ^ ?T: a value is presence, nil is absence
 
-size = ShipTable.measure_ship_config(ship)   # exact, writes nothing
-wire = ShipTable.save_ship_config(ship)      # byte_size(wire) == size, or :refused
+size = ShipTable.measure_ship_config!(ship)  # exact, writes nothing
+wire = ShipTable.save_ship_config!(ship)     # byte_size(wire) == size
 
 {loaded, report} = ShipTable.load_ship_config(wire)
 
@@ -1128,7 +1128,22 @@ end
 if not Example.TableRuntime.silent?(report) do
   # unknown, kind_mismatch, clamped: the data did not match this build exactly
 end
+
+case ShipTable.save_ship_config(ship) do  # the plain form, for a value you did not build
+  {:ok, wire} -> store(wire)
+  :error -> :unspellable                   # an enum or key outside its named variants,
+end                                        # or a storage invariant violated (§5)
 ```
+
+**ONE REFUSAL SPELLING over the whole surface.** Everything that can refuse
+answers `{:ok, result}` or `:error`, which is the packet emitter's own reader
+verdict: `measure`, `save`, `to_json` and `to_json_measure` refuse a value with
+no spelling — an enum, key or union tag outside its named variants, a storage
+invariant violated, a non-finite float in the text form — and `block_open` and
+`cook_open` refuse bytes that are not this build's. Each of the four writers has
+a bang form beside it that answers the result or raises `ArgumentError`, which
+is the packet emitter's writer contract; `_at` and `_put` raise the same way,
+because a key no slot answers is misuse rather than data.
 
 **THE REPORT IS A VALUE THE CALLER OWNS**, threaded rather than pointed at: the
 BEAM has no mutable struct, so `load` hands it back beside the instance. One
@@ -1140,11 +1155,15 @@ list whose `length` IS the count; an enum is its ordinal and a `flags` its mask.
 There is no `_length` and no `_count` companion, because there is nothing to
 keep one in step with — the value cannot disagree with itself.
 
-**An enum-keyed array's slots are a TUPLE**, one per named variant, so a slot is
-reached in constant time; `None` keys no slot and the storage shifts left, which
-is the same rule every backend follows. **The shift is never written at a call
-site** — three generated functions are the only place it appears, and they take
-the KEY:
+**An enum-keyed array's slots are a TUPLE on a `table`**, one per named variant,
+so a slot is reached in constant time. **On a `type` they are the packet
+emitter's LIST**, because a type's struct is the packet emitter's — it builds
+the array with `List.duplicate/2` — and the table wire changes nothing about a
+type's storage; `_at` is `Enum.at` there, a walk over the slots rather than a
+reach, and the generated accessor says so at its site. In both, `None` keys no
+slot and the storage shifts left, which is the same rule every backend follows.
+**The shift is never written at a call site** — three generated functions are
+the only place it appears, and they take the KEY:
 
 ```elixir
 ship  = FleetTable.fleet_ships_at(fleet, Example.ShipType.bomber())
@@ -1169,14 +1188,16 @@ the runtime shares rather than copies. Both take an optional `lead` beside the
 bytes, which is how many bytes past an aligned base the caller's buffer begins:
 §7 and §19 check the alignment of the BASE, and a BEAM binary has no address a
 caller can observe or place, so the caller states it and the check stays a real
-one.
+one — a block refuses any `lead` that is not a multiple of 64, a cook any that
+is not a multiple of its own alignment word, and `make tables-elixir-block-lead`
+holds the rule over every lead in 0..64.
 
 **And what it cannot claim: "the read path allocates nothing."** There is no
 caller-owned buffer and no mutable struct, so a decoded value IS an allocation.
 What the backend holds instead is that the COUNT does not move — the heap words
 and the reductions one iteration costs are pinned per case and re-pinned
-deliberately, with a negative control that reds every case when one extra
-allocation is added.
+deliberately, with a negative control that sabotages the emitter so every
+generated load allocates more, and reds every case on both memory columns.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every

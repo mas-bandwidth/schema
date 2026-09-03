@@ -205,14 +205,21 @@ defmodule Benchtable.BenchTableTable do
   # and what the write side elides against (docs/SPEC-TABLES.md §4).
   def defaults_table_pickup_event, do: %Benchtable.TablePickupEvent{}
 
-  # measure_table_entity is the EXACT encoded size of a value, with no writing. A value
-  # violating its storage invariants measures as -1, exactly as the write side
-  # refuses it (docs/SPEC-TABLES.md §5).
+  # measure_table_entity is the EXACT encoded size of a value, with no writing: {:ok, bytes},
+  # or :error for a value with no wire spelling — an enum, key or union tag
+  # outside its named variants, or a storage invariant violated — which save
+  # refuses for the same reason (docs/SPEC-TABLES.md §5). measure_table_entity! answers the
+  # size or raises.
   def measure_table_entity(value) do
-    try do
-      measure_body_table_entity(value)
-    catch
-      :refused -> -1
+    {:ok, measure_body_table_entity(value)}
+  catch
+    :refused -> :error
+  end
+
+  def measure_table_entity!(value) do
+    case measure_table_entity(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "measure_table_entity: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -296,12 +303,18 @@ defmodule Benchtable.BenchTableTable do
     if value.firing, do: 3 + 1, else: 0
   end
 
-  # save_table_entity writes exactly measure_table_entity(value) bytes.
+  # save_table_entity writes exactly measure_table_entity(value) bytes: {:ok, binary}, or :error for
+  # the value measure refuses. save_table_entity! answers the binary or raises.
   def save_table_entity(value) do
-    try do
-      IO.iodata_to_binary(save_body_table_entity(value))
-    catch
-      :refused -> :refused
+    {:ok, IO.iodata_to_binary(save_body_table_entity(value))}
+  catch
+    :refused -> :error
+  end
+
+  def save_table_entity!(value) do
+    case save_table_entity(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "save_table_entity: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -708,14 +721,21 @@ defmodule Benchtable.BenchTableTable do
     R.skip_mismatch(kind, rest, value, report)
   end
 
-  # measure_table_stat is the EXACT encoded size of a value, with no writing. A value
-  # violating its storage invariants measures as -1, exactly as the write side
-  # refuses it (docs/SPEC-TABLES.md §5).
+  # measure_table_stat is the EXACT encoded size of a value, with no writing: {:ok, bytes},
+  # or :error for a value with no wire spelling — an enum, key or union tag
+  # outside its named variants, or a storage invariant violated — which save
+  # refuses for the same reason (docs/SPEC-TABLES.md §5). measure_table_stat! answers the
+  # size or raises.
   def measure_table_stat(value) do
-    try do
-      measure_body_table_stat(value)
-    catch
-      :refused -> -1
+    {:ok, measure_body_table_stat(value)}
+  catch
+    :refused -> :error
+  end
+
+  def measure_table_stat!(value) do
+    case measure_table_stat(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "measure_table_stat: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -734,12 +754,18 @@ defmodule Benchtable.BenchTableTable do
     if value.delta != 0, do: 3 + 4, else: 0
   end
 
-  # save_table_stat writes exactly measure_table_stat(value) bytes.
+  # save_table_stat writes exactly measure_table_stat(value) bytes: {:ok, binary}, or :error for
+  # the value measure refuses. save_table_stat! answers the binary or raises.
   def save_table_stat(value) do
-    try do
-      IO.iodata_to_binary(save_body_table_stat(value))
-    catch
-      :refused -> :refused
+    {:ok, IO.iodata_to_binary(save_body_table_stat(value))}
+  catch
+    :refused -> :error
+  end
+
+  def save_table_stat!(value) do
+    case save_table_stat(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "save_table_stat: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -830,14 +856,21 @@ defmodule Benchtable.BenchTableTable do
     R.skip_mismatch(kind, rest, value, report)
   end
 
-  # measure_table_mixed is the EXACT encoded size of a value, with no writing. A value
-  # violating its storage invariants measures as -1, exactly as the write side
-  # refuses it (docs/SPEC-TABLES.md §5).
+  # measure_table_mixed is the EXACT encoded size of a value, with no writing: {:ok, bytes},
+  # or :error for a value with no wire spelling — an enum, key or union tag
+  # outside its named variants, or a storage invariant violated — which save
+  # refuses for the same reason (docs/SPEC-TABLES.md §5). measure_table_mixed! answers the
+  # size or raises.
   def measure_table_mixed(value) do
-    try do
-      measure_body_table_mixed(value)
-    catch
-      :refused -> -1
+    {:ok, measure_body_table_mixed(value)}
+  catch
+    :refused -> :error
+  end
+
+  def measure_table_mixed!(value) do
+    case measure_table_mixed(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "measure_table_mixed: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -1039,12 +1072,18 @@ defmodule Benchtable.BenchTableTable do
     end
   end
 
-  # save_table_mixed writes exactly measure_table_mixed(value) bytes.
+  # save_table_mixed writes exactly measure_table_mixed(value) bytes: {:ok, binary}, or :error for
+  # the value measure refuses. save_table_mixed! answers the binary or raises.
   def save_table_mixed(value) do
-    try do
-      IO.iodata_to_binary(save_body_table_mixed(value))
-    catch
-      :refused -> :refused
+    {:ok, IO.iodata_to_binary(save_body_table_mixed(value))}
+  catch
+    :refused -> :error
+  end
+
+  def save_table_mixed!(value) do
+    case save_table_mixed(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "save_table_mixed: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -2015,14 +2054,21 @@ defmodule Benchtable.BenchTableTable do
     R.skip_mismatch(kind, rest, value, report)
   end
 
-  # measure_table_hit_event is the EXACT encoded size of a value, with no writing. A value
-  # violating its storage invariants measures as -1, exactly as the write side
-  # refuses it (docs/SPEC-TABLES.md §5).
+  # measure_table_hit_event is the EXACT encoded size of a value, with no writing: {:ok, bytes},
+  # or :error for a value with no wire spelling — an enum, key or union tag
+  # outside its named variants, or a storage invariant violated — which save
+  # refuses for the same reason (docs/SPEC-TABLES.md §5). measure_table_hit_event! answers the
+  # size or raises.
   def measure_table_hit_event(value) do
-    try do
-      measure_body_table_hit_event(value)
-    catch
-      :refused -> -1
+    {:ok, measure_body_table_hit_event(value)}
+  catch
+    :refused -> :error
+  end
+
+  def measure_table_hit_event!(value) do
+    case measure_table_hit_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "measure_table_hit_event: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -2051,12 +2097,18 @@ defmodule Benchtable.BenchTableTable do
     if value.crit, do: 3 + 1, else: 0
   end
 
-  # save_table_hit_event writes exactly measure_table_hit_event(value) bytes.
+  # save_table_hit_event writes exactly measure_table_hit_event(value) bytes: {:ok, binary}, or :error for
+  # the value measure refuses. save_table_hit_event! answers the binary or raises.
   def save_table_hit_event(value) do
-    try do
-      IO.iodata_to_binary(save_body_table_hit_event(value))
-    catch
-      :refused -> :refused
+    {:ok, IO.iodata_to_binary(save_body_table_hit_event(value))}
+  catch
+    :refused -> :error
+  end
+
+  def save_table_hit_event!(value) do
+    case save_table_hit_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "save_table_hit_event: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -2199,14 +2251,21 @@ defmodule Benchtable.BenchTableTable do
     R.skip_mismatch(kind, rest, value, report)
   end
 
-  # measure_table_chat_event is the EXACT encoded size of a value, with no writing. A value
-  # violating its storage invariants measures as -1, exactly as the write side
-  # refuses it (docs/SPEC-TABLES.md §5).
+  # measure_table_chat_event is the EXACT encoded size of a value, with no writing: {:ok, bytes},
+  # or :error for a value with no wire spelling — an enum, key or union tag
+  # outside its named variants, or a storage invariant violated — which save
+  # refuses for the same reason (docs/SPEC-TABLES.md §5). measure_table_chat_event! answers the
+  # size or raises.
   def measure_table_chat_event(value) do
-    try do
-      measure_body_table_chat_event(value)
-    catch
-      :refused -> -1
+    {:ok, measure_body_table_chat_event(value)}
+  catch
+    :refused -> :error
+  end
+
+  def measure_table_chat_event!(value) do
+    case measure_table_chat_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "measure_table_chat_event: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -2225,12 +2284,18 @@ defmodule Benchtable.BenchTableTable do
     if value.speaker != 0, do: 3 + 2, else: 0
   end
 
-  # save_table_chat_event writes exactly measure_table_chat_event(value) bytes.
+  # save_table_chat_event writes exactly measure_table_chat_event(value) bytes: {:ok, binary}, or :error for
+  # the value measure refuses. save_table_chat_event! answers the binary or raises.
   def save_table_chat_event(value) do
-    try do
-      IO.iodata_to_binary(save_body_table_chat_event(value))
-    catch
-      :refused -> :refused
+    {:ok, IO.iodata_to_binary(save_body_table_chat_event(value))}
+  catch
+    :refused -> :error
+  end
+
+  def save_table_chat_event!(value) do
+    case save_table_chat_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "save_table_chat_event: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -2321,14 +2386,21 @@ defmodule Benchtable.BenchTableTable do
     R.skip_mismatch(kind, rest, value, report)
   end
 
-  # measure_table_pickup_event is the EXACT encoded size of a value, with no writing. A value
-  # violating its storage invariants measures as -1, exactly as the write side
-  # refuses it (docs/SPEC-TABLES.md §5).
+  # measure_table_pickup_event is the EXACT encoded size of a value, with no writing: {:ok, bytes},
+  # or :error for a value with no wire spelling — an enum, key or union tag
+  # outside its named variants, or a storage invariant violated — which save
+  # refuses for the same reason (docs/SPEC-TABLES.md §5). measure_table_pickup_event! answers the
+  # size or raises.
   def measure_table_pickup_event(value) do
-    try do
-      measure_body_table_pickup_event(value)
-    catch
-      :refused -> -1
+    {:ok, measure_body_table_pickup_event(value)}
+  catch
+    :refused -> :error
+  end
+
+  def measure_table_pickup_event!(value) do
+    case measure_table_pickup_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "measure_table_pickup_event: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -2347,12 +2419,18 @@ defmodule Benchtable.BenchTableTable do
     if value.amount != 0, do: 3 + 4, else: 0
   end
 
-  # save_table_pickup_event writes exactly measure_table_pickup_event(value) bytes.
+  # save_table_pickup_event writes exactly measure_table_pickup_event(value) bytes: {:ok, binary}, or :error for
+  # the value measure refuses. save_table_pickup_event! answers the binary or raises.
   def save_table_pickup_event(value) do
-    try do
-      IO.iodata_to_binary(save_body_table_pickup_event(value))
-    catch
-      :refused -> :refused
+    {:ok, IO.iodata_to_binary(save_body_table_pickup_event(value))}
+  catch
+    :refused -> :error
+  end
+
+  def save_table_pickup_event!(value) do
+    case save_table_pickup_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "save_table_pickup_event: the value has no spelling (docs/SPEC-TABLES.md §5)"
     end
   end
 
@@ -3668,18 +3746,30 @@ defmodule Benchtable.BenchTableTable do
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_entity(text), do: R.json_read(text, table_type_table_entity())
 
-  # to_json_table_entity returns the §16 text, or :refused where a value has no text
-  # spelling at all (§16.3). The canonical text ends with exactly one newline.
+  # to_json_table_entity renders the §16 text: {:ok, text}, or :error where a value has
+  # no text spelling at all (§16.3). The canonical text ends with exactly one
+  # newline. to_json_table_entity! answers the text or raises.
   def to_json_table_entity(value), do: R.json_write(value, table_type_table_entity())
+
+  def to_json_table_entity!(value) do
+    case to_json_table_entity(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_table_entity: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
+    end
+  end
 
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
   # construction rather than by a second walk (§16.1).
   def to_json_measure_table_entity(value) do
-    case to_json_table_entity(value) do
-      :refused -> -1
-      text -> byte_size(text)
+    with {:ok, text} <- to_json_table_entity(value), do: {:ok, byte_size(text)}
+  end
+
+  def to_json_measure_table_entity!(value) do
+    case to_json_measure_table_entity(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_measure_table_entity: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
     end
   end
 
@@ -3688,18 +3778,30 @@ defmodule Benchtable.BenchTableTable do
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_stat(text), do: R.json_read(text, table_type_table_stat())
 
-  # to_json_table_stat returns the §16 text, or :refused where a value has no text
-  # spelling at all (§16.3). The canonical text ends with exactly one newline.
+  # to_json_table_stat renders the §16 text: {:ok, text}, or :error where a value has
+  # no text spelling at all (§16.3). The canonical text ends with exactly one
+  # newline. to_json_table_stat! answers the text or raises.
   def to_json_table_stat(value), do: R.json_write(value, table_type_table_stat())
+
+  def to_json_table_stat!(value) do
+    case to_json_table_stat(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_table_stat: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
+    end
+  end
 
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
   # construction rather than by a second walk (§16.1).
   def to_json_measure_table_stat(value) do
-    case to_json_table_stat(value) do
-      :refused -> -1
-      text -> byte_size(text)
+    with {:ok, text} <- to_json_table_stat(value), do: {:ok, byte_size(text)}
+  end
+
+  def to_json_measure_table_stat!(value) do
+    case to_json_measure_table_stat(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_measure_table_stat: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
     end
   end
 
@@ -3708,18 +3810,30 @@ defmodule Benchtable.BenchTableTable do
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_mixed(text), do: R.json_read(text, table_type_table_mixed())
 
-  # to_json_table_mixed returns the §16 text, or :refused where a value has no text
-  # spelling at all (§16.3). The canonical text ends with exactly one newline.
+  # to_json_table_mixed renders the §16 text: {:ok, text}, or :error where a value has
+  # no text spelling at all (§16.3). The canonical text ends with exactly one
+  # newline. to_json_table_mixed! answers the text or raises.
   def to_json_table_mixed(value), do: R.json_write(value, table_type_table_mixed())
+
+  def to_json_table_mixed!(value) do
+    case to_json_table_mixed(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_table_mixed: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
+    end
+  end
 
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
   # construction rather than by a second walk (§16.1).
   def to_json_measure_table_mixed(value) do
-    case to_json_table_mixed(value) do
-      :refused -> -1
-      text -> byte_size(text)
+    with {:ok, text} <- to_json_table_mixed(value), do: {:ok, byte_size(text)}
+  end
+
+  def to_json_measure_table_mixed!(value) do
+    case to_json_measure_table_mixed(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_measure_table_mixed: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
     end
   end
 
@@ -3728,18 +3842,30 @@ defmodule Benchtable.BenchTableTable do
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_hit_event(text), do: R.json_read(text, table_type_table_hit_event())
 
-  # to_json_table_hit_event returns the §16 text, or :refused where a value has no text
-  # spelling at all (§16.3). The canonical text ends with exactly one newline.
+  # to_json_table_hit_event renders the §16 text: {:ok, text}, or :error where a value has
+  # no text spelling at all (§16.3). The canonical text ends with exactly one
+  # newline. to_json_table_hit_event! answers the text or raises.
   def to_json_table_hit_event(value), do: R.json_write(value, table_type_table_hit_event())
+
+  def to_json_table_hit_event!(value) do
+    case to_json_table_hit_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_table_hit_event: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
+    end
+  end
 
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
   # construction rather than by a second walk (§16.1).
   def to_json_measure_table_hit_event(value) do
-    case to_json_table_hit_event(value) do
-      :refused -> -1
-      text -> byte_size(text)
+    with {:ok, text} <- to_json_table_hit_event(value), do: {:ok, byte_size(text)}
+  end
+
+  def to_json_measure_table_hit_event!(value) do
+    case to_json_measure_table_hit_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_measure_table_hit_event: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
     end
   end
 
@@ -3748,18 +3874,30 @@ defmodule Benchtable.BenchTableTable do
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_chat_event(text), do: R.json_read(text, table_type_table_chat_event())
 
-  # to_json_table_chat_event returns the §16 text, or :refused where a value has no text
-  # spelling at all (§16.3). The canonical text ends with exactly one newline.
+  # to_json_table_chat_event renders the §16 text: {:ok, text}, or :error where a value has
+  # no text spelling at all (§16.3). The canonical text ends with exactly one
+  # newline. to_json_table_chat_event! answers the text or raises.
   def to_json_table_chat_event(value), do: R.json_write(value, table_type_table_chat_event())
+
+  def to_json_table_chat_event!(value) do
+    case to_json_table_chat_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_table_chat_event: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
+    end
+  end
 
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
   # construction rather than by a second walk (§16.1).
   def to_json_measure_table_chat_event(value) do
-    case to_json_table_chat_event(value) do
-      :refused -> -1
-      text -> byte_size(text)
+    with {:ok, text} <- to_json_table_chat_event(value), do: {:ok, byte_size(text)}
+  end
+
+  def to_json_measure_table_chat_event!(value) do
+    case to_json_measure_table_chat_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_measure_table_chat_event: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
     end
   end
 
@@ -3768,18 +3906,30 @@ defmodule Benchtable.BenchTableTable do
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_pickup_event(text), do: R.json_read(text, table_type_table_pickup_event())
 
-  # to_json_table_pickup_event returns the §16 text, or :refused where a value has no text
-  # spelling at all (§16.3). The canonical text ends with exactly one newline.
+  # to_json_table_pickup_event renders the §16 text: {:ok, text}, or :error where a value has
+  # no text spelling at all (§16.3). The canonical text ends with exactly one
+  # newline. to_json_table_pickup_event! answers the text or raises.
   def to_json_table_pickup_event(value), do: R.json_write(value, table_type_table_pickup_event())
+
+  def to_json_table_pickup_event!(value) do
+    case to_json_table_pickup_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_table_pickup_event: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
+    end
+  end
 
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
   # construction rather than by a second walk (§16.1).
   def to_json_measure_table_pickup_event(value) do
-    case to_json_table_pickup_event(value) do
-      :refused -> -1
-      text -> byte_size(text)
+    with {:ok, text} <- to_json_table_pickup_event(value), do: {:ok, byte_size(text)}
+  end
+
+  def to_json_measure_table_pickup_event!(value) do
+    case to_json_measure_table_pickup_event(value) do
+      {:ok, result} -> result
+      :error -> raise ArgumentError, "to_json_measure_table_pickup_event: the value has no spelling (docs/SPEC-TABLES.md §16.3)"
     end
   end
 

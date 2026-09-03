@@ -32,25 +32,30 @@ defmodule Benchtable.BenchTableBlock do
   def table_entity_block_projection_bytes, do: 88
 
   # Open checks once and POINTS, and this is the WHOLE check (§19.2): the
-  # magic, the build version, the byte order, and then, per out-of-line
-  # array, the pitch against this build's, the count against the declared
-  # maximum, and the rows inside the extent the caller passed.
+  # BASE'S ALIGNMENT, the magic, the build version, the byte order, and then,
+  # per out-of-line array, the pitch against this build's, the count against
+  # the declared maximum, and the rows inside the extent the caller passed.
   #
-  # THE BASE'S ALIGNMENT IS NOT CHECKED, and that is a fact about the BEAM
-  # rather than a gap: a binary has no address a caller places, so there is
-  # no unaligned base for this leg to refuse. Every ARRAY START is still
-  # checked against the 64-byte rule, because that one is a fact the bytes
-  # carry.
+  # lead IS THE BASE'S ALIGNMENT, and it is the same argument the cook's Open
+  # takes for the same reason: §19.1 lays a block at a 64-byte aligned base
+  # and §19.2 checks it, and a BEAM binary has no address a caller can
+  # observe or place — so the caller states how many bytes past an aligned
+  # base its buffer begins. 0 is the aligned case a file read into a fresh
+  # binary always is. Stating it makes the check a real one; the alternative
+  # is a leg that cannot refuse an unaligned base at all, which is a check
+  # four other backends make.
   #
-  # EVERY NUMBER BELOW COMES FROM THE INSTANCE. BEAM integers are
+  # EVERY OTHER NUMBER COMES FROM THE INSTANCE. BEAM integers are
   # arbitrary-precision, so no term of this arithmetic can carry past the
   # top of a type — a forged offset_of near 2^63 is simply a large number
   # that fails its bound.
-  def block_open_table_entity(data) when is_binary(data) do
+  def block_open_table_entity(data), do: block_open_table_entity(data, 0)
+
+  def block_open_table_entity(data, lead) when is_binary(data) and is_integer(lead) do
     bytes = byte_size(data)
 
-    if bytes < 88 do
-      :refuse
+    if bytes < 88 or rem(lead, B.align()) != 0 do
+      :error
     else
       case data do
         <<magic::little-unsigned-64, build::little-unsigned-64,
@@ -58,18 +63,18 @@ defmodule Benchtable.BenchTableBlock do
           # a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else
           # is not a block at all. Both refuse.
           if magic != B.magic() or build != @build_version or order != B.byte_order() do
-            :refuse
+            :error
           else
             block_extent_table_entity(data, bytes)
           end
 
         _ ->
-          :refuse
+          :error
       end
     end
   end
 
-  def block_open_table_entity(_data), do: :refuse
+  def block_open_table_entity(_data, _lead), do: :error
 
   defp block_extent_table_entity(data, bytes) do
     # this table declares no out-of-line array, so the prologue and the
@@ -83,7 +88,7 @@ defmodule Benchtable.BenchTableBlock do
     padding = rem(B.align() - rem(used, B.align()), B.align())
 
     if padding > bytes - used do
-      :refuse
+      :error
     else
       {:ok, %{name: "TableEntity", base: data, bytes: used + padding}}
     end
@@ -361,25 +366,30 @@ defmodule Benchtable.BenchTableBlock do
   def table_stat_block_projection_bytes, do: 32
 
   # Open checks once and POINTS, and this is the WHOLE check (§19.2): the
-  # magic, the build version, the byte order, and then, per out-of-line
-  # array, the pitch against this build's, the count against the declared
-  # maximum, and the rows inside the extent the caller passed.
+  # BASE'S ALIGNMENT, the magic, the build version, the byte order, and then,
+  # per out-of-line array, the pitch against this build's, the count against
+  # the declared maximum, and the rows inside the extent the caller passed.
   #
-  # THE BASE'S ALIGNMENT IS NOT CHECKED, and that is a fact about the BEAM
-  # rather than a gap: a binary has no address a caller places, so there is
-  # no unaligned base for this leg to refuse. Every ARRAY START is still
-  # checked against the 64-byte rule, because that one is a fact the bytes
-  # carry.
+  # lead IS THE BASE'S ALIGNMENT, and it is the same argument the cook's Open
+  # takes for the same reason: §19.1 lays a block at a 64-byte aligned base
+  # and §19.2 checks it, and a BEAM binary has no address a caller can
+  # observe or place — so the caller states how many bytes past an aligned
+  # base its buffer begins. 0 is the aligned case a file read into a fresh
+  # binary always is. Stating it makes the check a real one; the alternative
+  # is a leg that cannot refuse an unaligned base at all, which is a check
+  # four other backends make.
   #
-  # EVERY NUMBER BELOW COMES FROM THE INSTANCE. BEAM integers are
+  # EVERY OTHER NUMBER COMES FROM THE INSTANCE. BEAM integers are
   # arbitrary-precision, so no term of this arithmetic can carry past the
   # top of a type — a forged offset_of near 2^63 is simply a large number
   # that fails its bound.
-  def block_open_table_stat(data) when is_binary(data) do
+  def block_open_table_stat(data), do: block_open_table_stat(data, 0)
+
+  def block_open_table_stat(data, lead) when is_binary(data) and is_integer(lead) do
     bytes = byte_size(data)
 
-    if bytes < 32 do
-      :refuse
+    if bytes < 32 or rem(lead, B.align()) != 0 do
+      :error
     else
       case data do
         <<magic::little-unsigned-64, build::little-unsigned-64,
@@ -387,18 +397,18 @@ defmodule Benchtable.BenchTableBlock do
           # a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else
           # is not a block at all. Both refuse.
           if magic != B.magic() or build != @build_version or order != B.byte_order() do
-            :refuse
+            :error
           else
             block_extent_table_stat(data, bytes)
           end
 
         _ ->
-          :refuse
+          :error
       end
     end
   end
 
-  def block_open_table_stat(_data), do: :refuse
+  def block_open_table_stat(_data, _lead), do: :error
 
   defp block_extent_table_stat(data, bytes) do
     # this table declares no out-of-line array, so the prologue and the
@@ -412,7 +422,7 @@ defmodule Benchtable.BenchTableBlock do
     padding = rem(B.align() - rem(used, B.align()), B.align())
 
     if padding > bytes - used do
-      :refuse
+      :error
     else
       {:ok, %{name: "TableStat", base: data, bytes: used + padding}}
     end

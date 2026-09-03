@@ -7,7 +7,7 @@
 #
 # There is no runtime checkout — the generated table codec names none — so the
 # leg needs the pinned BEAM toolchain and nothing else. The BEAM has ONE
-# optimisation configuration and no flag to name, so BENCH_OPT records what the
+# optimization configuration and no flag to name, so BENCH_OPT records what the
 # board can honestly say about it, which is `default`.
 set -e
 

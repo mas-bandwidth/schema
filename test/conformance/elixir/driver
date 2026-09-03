@@ -18,7 +18,7 @@ PATH="$BEAM_PATH:$PATH"
 export PATH
 # The driver's own modules are COMPILED with the corpus, not compiled per run:
 # a BEAM boot is 0.26 s and compiling this script at every start was another
-# 0.4 s on top of it, eleven times over. The two-minute rule (#320) is what that
+# 0.4 s on top of it, twelve times over. The two-minute rule (#320) is what that
 # is measured against.
 # ELIXIR_TABLES_EBIN lets the negative control point the same driver at a
 # sabotaged build of the corpus (Makefile: conformance-negative-control-elixir).

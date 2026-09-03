@@ -7,7 +7,7 @@
 // application, so a second copy would be a duplicate module rather than C++'s
 // harmless re-inclusion behind a guard. `make tables-elixir-walk` is the gate —
 // the runtime's source, byte-identical across every unit of the corpus, with
-// nothing normalised away but the generated banner.
+// nothing normalized away but the generated banner.
 package elixirtable
 
 import (
@@ -313,17 +313,15 @@ const runtimeSource = `  @moduledoc """
   # ---- writing ----
 
   @doc """
-  Renders one instance as one §16 text. Returns the binary, or :refused where a
-  value has no text spelling at all — a non-finite float, an enum value or union
-  tag no variant names, a flags bit no variant names — which measure and save
+  Renders one instance as one §16 text: {:ok, binary}, or :error where a value
+  has no text spelling at all — a non-finite float, an enum value or union tag
+  no variant names, a flags bit no variant names — which measure and save
   refuse for the same reason (§5).
   """
   def json_write(value, type) do
-    try do
-      IO.iodata_to_binary([write_value(value, type, 0), ?\n])
-    catch
-      :refused -> :refused
-    end
+    {:ok, IO.iodata_to_binary([write_value(value, type, 0), ?\n])}
+  catch
+    :refused -> :error
   end
 
   defp indent(depth), do: [?\n, List.duplicate("  ", depth)]
@@ -1363,7 +1361,7 @@ const runtimeSource = `  @moduledoc """
     else
       {n, d} = if e >= 0, do: {m * pow10(e), 1}, else: {m, pow10(-e)}
       ulp = max(exponent_of(n, d) - (precision - 1), min_ulp)
-      {q, ulp} = normalise(round_half_even(n, d, ulp), ulp, precision)
+      {q, ulp} = normalize(round_half_even(n, d, ulp), ulp, precision)
 
       # q * 2^ulp >= 2^overflow_exp has no float of this width: the value
       # overflows, and no BEAM float term can hold the infinity
@@ -1434,7 +1432,7 @@ const runtimeSource = `  @moduledoc """
   end
 
   # a carry out of the top bit widens the exponent by one
-  defp normalise(q, ulp, precision) do
+  defp normalize(q, ulp, precision) do
     if q >= 1 <<< precision, do: {div(q, 2), ulp + 1}, else: {q, ulp}
   end
 

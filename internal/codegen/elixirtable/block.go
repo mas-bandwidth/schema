@@ -13,12 +13,12 @@
 //
 // THE READING TIER, and what that costs here: Elixir cannot produce a block,
 // because a BEAM term has no layout a producer could write. What it CAN do is
-// read one, and the whole of §19.2's check list is expressible — the magic
+// read one, and the whole of §19.2's check list is expressed — the magic
 // bytewise, the build version, the byte order, each array's pitch against this
-// build's own, its count against the declared maximum, and its extent inside
-// the block. The ONE check that is not is the BASE'S ALIGNMENT: a BEAM binary
-// has no address a caller places, so there is no unaligned base to refuse. The
-// forgery battery's pointer column says the same thing from the other side.
+// build's own, its count against the declared maximum, its extent inside the
+// block, and the BASE'S ALIGNMENT through the `lead` the caller states beside
+// the bytes, because a BEAM binary has no address a caller could place
+// (emitBlockOpen).
 package elixirtable
 
 import (
@@ -236,7 +236,7 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("  def block_open_%s(data, lead) when is_binary(data) and is_integer(lead) do\n", lo)
 	b.pf("    bytes = byte_size(data)\n\n")
 	b.pf("    if bytes < %d or rem(lead, B.align()) != 0 do\n", proj.Size)
-	b.pf("      :refuse\n")
+	b.pf("      :error\n")
 	b.pf("    else\n")
 	b.pf("      case data do\n")
 	b.pf("        <<magic::little-unsigned-64, build::little-unsigned-64,\n")
@@ -244,16 +244,16 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("          # a byte-swapped magic is a FOREIGN BYTE ORDER, and anything else\n")
 	b.pf("          # is not a block at all. Both refuse.\n")
 	b.pf("          if magic != B.magic() or build != @build_version or order != B.byte_order() do\n")
-	b.pf("            :refuse\n")
+	b.pf("            :error\n")
 	b.pf("          else\n")
 	b.pf("            block_extent_%s(data, bytes)\n", lo)
 	b.pf("          end\n\n")
 	b.pf("        _ ->\n")
-	b.pf("          :refuse\n")
+	b.pf("          :error\n")
 	b.pf("      end\n")
 	b.pf("    end\n")
 	b.pf("  end\n\n")
-	b.pf("  def block_open_%s(_data, _lead), do: :refuse\n\n", lo)
+	b.pf("  def block_open_%s(_data, _lead), do: :error\n\n", lo)
 
 	b.pf("  defp block_extent_%s(data, bytes) do\n", lo)
 	if len(bl.Arrays) == 0 {
@@ -268,18 +268,18 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		b.pf("        stride = B.u32(data, a.stride_offset)\n")
 		b.pf("        rows = count * stride\n\n")
 		b.pf("        cond do\n")
-		b.pf("          stride != a.stride -> {:halt, :refuse}\n")
+		b.pf("          stride != a.stride -> {:halt, :error}\n")
 		b.pf("          # past the DECLARED MAXIMUM: a consumer that sized anything by\n")
 		b.pf("          # the maximum would overflow on a count the maximum does not bound\n")
-		b.pf("          count > a.max -> {:halt, :refuse}\n")
-		b.pf("          offset_of < %d -> {:halt, :refuse}\n", proj.Size)
-		b.pf("          rem(offset_of, B.align()) != 0 -> {:halt, :refuse}\n")
-		b.pf("          offset_of > bytes -> {:halt, :refuse}\n")
-		b.pf("          rows > bytes - offset_of -> {:halt, :refuse}\n")
+		b.pf("          count > a.max -> {:halt, :error}\n")
+		b.pf("          offset_of < %d -> {:halt, :error}\n", proj.Size)
+		b.pf("          rem(offset_of, B.align()) != 0 -> {:halt, :error}\n")
+		b.pf("          offset_of > bytes -> {:halt, :error}\n")
+		b.pf("          rows > bytes - offset_of -> {:halt, :error}\n")
 		b.pf("          true -> {:cont, max(used, offset_of + rows)}\n")
 		b.pf("        end\n")
 		b.pf("      end)\n\n")
-		b.pf("    if used == :refuse, do: :refuse, else: block_used_%s(data, bytes, used)\n", lo)
+		b.pf("    if used == :error, do: :error, else: block_used_%s(data, bytes, used)\n", lo)
 	}
 	b.pf("  end\n\n")
 
@@ -288,7 +288,7 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("  defp block_used_%s(data, bytes, used) do\n", lo)
 	b.pf("    padding = rem(B.align() - rem(used, B.align()), B.align())\n\n")
 	b.pf("    if padding > bytes - used do\n")
-	b.pf("      :refuse\n")
+	b.pf("      :error\n")
 	b.pf("    else\n")
 	b.pf("      {:ok, %%{name: %q, base: data, bytes: used + padding}}\n", bl.Table.Name)
 	b.pf("    end\n")

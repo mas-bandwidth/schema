@@ -29,7 +29,7 @@
 #   * THE SINK IS A PROCESS-DICTIONARY FOLD. The BEAM's compiler cannot remove a
 #     call whose result reaches `:erlang.put/2`, and the dictionary write is a
 #     constant the arms share, so it is the barrier every arm carries equally.
-#   * OPT IS `default`: the BEAM has one optimisation configuration and no flag
+#   * OPT IS `default`: the BEAM has one optimization configuration and no flag
 #     to name.
 
 defmodule TablesBench do
@@ -100,7 +100,7 @@ defmodule TablesBench do
 
   defp bench_table(opts, name, iters, mod, verb) do
     load = String.to_atom("load_" <> verb)
-    save = String.to_atom("save_" <> verb)
+    save = String.to_atom("save_" <> verb <> "!")
     state = %{failed: false, rows: [], goldens: %{}}
 
     packed = File.read!(Path.join(opts.variants, "#{name}.variants.bin"))

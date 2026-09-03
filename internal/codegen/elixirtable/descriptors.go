@@ -227,19 +227,19 @@ func (g *gen) emitJson(members []*ir.Struct) {
 		g.pf("# wrong JSON type is skipped and counted, never coerced.\n")
 		g.pf("def %s(text), do: R.json_read(text, %s())\n\n", fn("from_json", st.Name), fn("table_type", st.Name))
 
-		g.pf("# %s returns the §16 text, or :refused where a value has no text\n", fn("to_json", st.Name))
-		g.pf("# spelling at all (§16.3). The canonical text ends with exactly one newline.\n")
+		g.pf("# %s renders the §16 text: {:ok, text}, or :error where a value has\n", fn("to_json", st.Name))
+		g.pf("# no text spelling at all (§16.3). The canonical text ends with exactly one\n")
+		g.pf("# newline. %s! answers the text or raises.\n", fn("to_json", st.Name))
 		g.pf("def %s(value), do: R.json_write(value, %s())\n\n", fn("to_json", st.Name), fn("table_type", st.Name))
+		g.emitBang(fn("to_json", st.Name), "§16.3")
 
 		g.pf("# THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text\n")
 		g.pf("# to be written into, so there is nothing for a measure pass to size. The\n")
 		g.pf("# byte length is the text's own, and measure and write agree by\n")
 		g.pf("# construction rather than by a second walk (§16.1).\n")
 		g.pf("def %s(value) do\n", fn("to_json_measure", st.Name))
-		g.pf("  case %s(value) do\n", fn("to_json", st.Name))
-		g.pf("    :refused -> -1\n")
-		g.pf("    text -> byte_size(text)\n")
-		g.pf("  end\n")
+		g.pf("  with {:ok, text} <- %s(value), do: {:ok, byte_size(text)}\n", fn("to_json", st.Name))
 		g.pf("end\n\n")
+		g.emitBang(fn("to_json_measure", st.Name), "§16.3")
 	}
 }

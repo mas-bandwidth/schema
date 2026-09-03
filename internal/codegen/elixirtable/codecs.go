@@ -288,6 +288,14 @@ func (g *gen) emitKeyedAccessors(st *ir.Struct) {
 		g.pf("# stored for None (docs/SPEC-TABLES.md §2.4). The key k lives at storage\n")
 		g.pf("# index k - 1, and these three functions are the only place that\n")
 		g.pf("# subtraction appears.\n")
+		if !g.keyedIsTuple() {
+			g.pf("#\n")
+			g.pf("# THE SLOTS ARE A LIST HERE, not the tuple a table's keyed array has, and\n")
+			g.pf("# _at is Enum.at rather than elem/2 — a walk over up to %d slots rather\n", max)
+			g.pf("# than a constant-time reach. %s is a `type`, so its struct belongs to the\n", st.Name)
+			g.pf("# packet emitter, which builds this array with List.duplicate/2; the table\n")
+			g.pf("# wire changes nothing about a type's storage.\n")
+		}
 		g.pf("def %s_%s_at(value, key) when key >= 1 and key <= %d, do: %s\n\n", lo, f.Name, max, read)
 		g.emitKeyedRefusal(fmt.Sprintf("%s_%s_at(_value, key)", lo, f.Name), st, f, max)
 
@@ -421,20 +429,43 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 	return guards
 }
 
+// ---- the refusing entry points ----
+
+// emitRefusing writes the ONE spelling every entry point that can refuse a
+// value has, in its two forms: the plain form answers {:ok, result} | :error,
+// which is the packet emitter's reader verdict, and the bang form answers the
+// result or raises ArgumentError, which is the packet emitter's writer
+// contract. expr is the body that throws :refused; cite names the section
+// that says what has no spelling.
+func (g *gen) emitRefusing(name, expr, cite string) {
+	g.pf("def %s(value) do\n", name)
+	g.pf("  {:ok, %s}\n", expr)
+	g.pf("catch\n")
+	g.pf("  :refused -> :error\n")
+	g.pf("end\n\n")
+	g.emitBang(name, cite)
+}
+
+// emitBang writes the bang form of a refusing entry point over its plain form.
+func (g *gen) emitBang(name, cite string) {
+	g.pf("def %s!(value) do\n", name)
+	g.pf("  case %s(value) do\n", name)
+	g.pf("    {:ok, result} -> result\n")
+	g.pf("    :error -> raise ArgumentError, \"%s: the value has no spelling (docs/SPEC-TABLES.md %s)\"\n", name, cite)
+	g.pf("  end\n")
+	g.pf("end\n\n")
+}
+
 // ---- measure ----
 
 func (g *gen) emitMeasure(st *ir.Struct) {
 	name := fn("measure", st.Name)
-	g.pf("# %s is the EXACT encoded size of a value, with no writing. A value\n", name)
-	g.pf("# violating its storage invariants measures as -1, exactly as the write side\n")
-	g.pf("# refuses it (docs/SPEC-TABLES.md §5).\n")
-	g.pf("def %s(value) do\n", name)
-	g.pf("  try do\n")
-	g.pf("    %s(value)\n", fn("measure_body", st.Name))
-	g.pf("  catch\n")
-	g.pf("    :refused -> -1\n")
-	g.pf("  end\n")
-	g.pf("end\n\n")
+	g.pf("# %s is the EXACT encoded size of a value, with no writing: {:ok, bytes},\n", name)
+	g.pf("# or :error for a value with no wire spelling — an enum, key or union tag\n")
+	g.pf("# outside its named variants, or a storage invariant violated — which save\n")
+	g.pf("# refuses for the same reason (docs/SPEC-TABLES.md §5). %s! answers the\n", name)
+	g.pf("# size or raises.\n")
+	g.emitRefusing(name, fn("measure_body", st.Name)+"(value)", "§5")
 
 	body := fn("measure_body", st.Name)
 	if len(st.Fields) == 0 {
@@ -633,14 +664,9 @@ func (g *gen) measureKeyed(f *ir.Field, kind, width int) {
 
 func (g *gen) emitSave(st *ir.Struct) {
 	name := fn("save", st.Name)
-	g.pf("# %s writes exactly %s(value) bytes.\n", name, fn("measure", st.Name))
-	g.pf("def %s(value) do\n", name)
-	g.pf("  try do\n")
-	g.pf("    IO.iodata_to_binary(%s(value))\n", fn("save_body", st.Name))
-	g.pf("  catch\n")
-	g.pf("    :refused -> :refused\n")
-	g.pf("  end\n")
-	g.pf("end\n\n")
+	g.pf("# %s writes exactly %s(value) bytes: {:ok, binary}, or :error for\n", name, fn("measure", st.Name))
+	g.pf("# the value measure refuses. %s! answers the binary or raises.\n", name)
+	g.emitRefusing(name, "IO.iodata_to_binary("+fn("save_body", st.Name)+"(value))", "§5")
 
 	body := fn("save_body", st.Name)
 	if len(st.Fields) == 0 {

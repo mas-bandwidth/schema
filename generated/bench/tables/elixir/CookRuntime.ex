@@ -59,7 +59,7 @@ defmodule Benchtable.CookRuntime do
     length = byte_size(data)
 
     if length < @header_bytes do
-      :refuse
+      :error
     else
       # the MAGIC, bytewise and first: it is what establishes the byte order
       # every other header word is read in, so nothing else may be read before
@@ -71,19 +71,19 @@ defmodule Benchtable.CookRuntime do
         reserved1::little-unsigned-64, _::binary>> = data
 
       cond do
-        magic != @magic -> :refuse
-        order != @byte_order -> :refuse
-        build != build_version -> :refuse
+        magic != @magic -> :error
+        order != @byte_order -> :error
+        build != build_version -> :error
         # a non-zero RESERVED word means a writer used a form this build does
         # not understand, and Open refuses rather than ignoring it
-        reserved0 != 0 -> :refuse
-        reserved1 != 0 -> :refuse
+        reserved0 != 0 -> :error
+        reserved1 != 0 -> :error
         true -> extent(data, length, lead, data_length, attribution_length, alignment, root_size, root_align)
       end
     end
   end
 
-  def open(_data, _lead, _root_size, _root_align, _build_version), do: :refuse
+  def open(_data, _lead, _root_size, _root_align, _build_version), do: :error
 
   defp extent(data, length, lead, data_length, attribution_length, alignment, root_size, root_align) do
     # THE ALIGNMENT WORD IS DATA, and it is the one header field the rest of the
@@ -91,7 +91,7 @@ defmodule Benchtable.CookRuntime do
     # checked BEFORE anything divides by it.
     if alignment < 8 or alignment > @max_align or (alignment &&& (alignment - 1)) != 0 or
          rem(alignment, root_align) != 0 do
-      :refuse
+      :error
     else
       region(data, length, lead, data_length, attribution_length, alignment, root_size)
     end
@@ -104,16 +104,16 @@ defmodule Benchtable.CookRuntime do
     data_offset = align_up(@header_bytes, alignment)
 
     cond do
-      length < data_offset -> :refuse
+      length < data_offset -> :error
       # the whole file is data_offset + data_length + attribution_length, and a
       # length that is not EXACTLY that refuses — truncation and trailing bytes
       # are one refusal
-      data_length > length - data_offset -> :refuse
-      attribution_length != length - data_offset - data_length -> :refuse
+      data_length > length - data_offset -> :error
+      attribution_length != length - data_offset - data_length -> :error
       # the ROOT sits at the region's base, so the region has to hold it
-      data_length < root_size -> :refuse
+      data_length < root_size -> :error
       # the alignment of the BASE, which the caller states (see the doc above)
-      rem(lead + data_offset, alignment) != 0 -> :refuse
+      rem(lead + data_offset, alignment) != 0 -> :error
       true -> {:ok, binary_part(data, data_offset, data_length), data_length}
     end
   end
@@ -155,6 +155,6 @@ defmodule Benchtable.CookRuntime do
   end
 
   defp inside(region, target) do
-    if target < 0 or target >= byte_size(region), do: :refuse, else: {:ok, target}
+    if target < 0 or target >= byte_size(region), do: :error, else: {:ok, target}
   end
 end
