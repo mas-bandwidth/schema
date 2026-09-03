@@ -1166,10 +1166,10 @@ slot and the storage shifts left, which is the same rule every backend follows.
 the only place it appears, and they take the KEY:
 
 ```elixir
-ship  = FleetTable.fleet_ships_at(fleet, Example.ShipType.bomber())
-fleet = FleetTable.fleet_ships_put(fleet, Example.ShipType.bomber(), ship)
+ship  = ShipTable.fleet_ships_at(fleet, Example.ShipType.bomber())
+fleet = ShipTable.fleet_ships_put(fleet, Example.ShipType.bomber(), ship)
 
-for {ship_type, ship} <- FleetTable.fleet_ships_each(fleet) do
+for {ship_type, ship} <- ShipTable.fleet_ships_each(fleet) do
   # ship_type is the KEY, never an index
 end
 ```
