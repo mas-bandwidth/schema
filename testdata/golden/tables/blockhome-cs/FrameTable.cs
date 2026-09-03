@@ -369,11 +369,12 @@ namespace Blockhome
             info.NumFields = 4;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "armor", TypeName = "ArmorConfig", Id = 0x7c9d, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorConfigTableType(); } },
-                new TableFieldInfo { Name = "gunner", TypeName = "GunnerSettings", Id = 0x2bc9, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); } },
-                new TableFieldInfo { Name = "part_id", TypeName = "uint32", Id = 0x6deb, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "slot", TypeName = "uint8", Id = 0x37e4, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "armor", Json = "armor", TypeName = "ArmorConfig", Id = 0x7c9d, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ArmorConfigTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((PartRow)o).Armor; } },
+                new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerSettings", Id = 0x2bc9, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((PartRow)o).Gunner; } },
+                new TableFieldInfo { Name = "part_id", Json = "part_id", TypeName = "uint32", Id = 0x6deb, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((PartRow)o).PartId; }, SetRaw = delegate(object o, int i, ulong r) { ((PartRow)o).PartId = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "slot", Json = "slot", TypeName = "uint8", Id = 0x37e4, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((PartRow)o).Slot; }, SetRaw = delegate(object o, int i, ulong r) { ((PartRow)o).Slot = unchecked((byte)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((PartRow)o); };
             PartRowTableInfo = info;
             return info;
         }
@@ -388,11 +389,48 @@ namespace Blockhome
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "version", TypeName = "uint64", Id = 0xe8e6, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "parts", TypeName = "PartRow", Id = 0xfc18, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PartRowTableType(); } },
+                new TableFieldInfo { Name = "version", Json = "version", TypeName = "uint64", Id = 0xe8e6, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((PartFrame)o).Version; }, SetRaw = delegate(object o, int i, ulong r) { ((PartFrame)o).Version = unchecked((ulong)r); } },
+                new TableFieldInfo { Name = "parts", Json = "parts", TypeName = "PartRow", Id = 0xfc18, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return PartRowTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((PartFrame)o).Parts[i]; }, GetCount = delegate(object o) { return ((PartFrame)o).PartsCount; }, SetCount = delegate(object o, int n) { ((PartFrame)o).PartsCount = n; } },
             };
+            info.Reset = delegate(object o) { TableReset((PartFrame)o); };
             PartFrameTableInfo = info;
             return info;
+        }
+
+        // ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
+
+        // PartRow in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool PartRowFromJson(PartRow value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, PartRowTableType(), text, report);
+        }
+
+        public static long PartRowToJsonMeasure(PartRow value)
+        {
+            return TableJson.Write(value, PartRowTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long PartRowToJson(PartRow value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, PartRowTableType(), buffer, false);
+        }
+
+        // PartFrame in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool PartFrameFromJson(PartFrame value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, PartFrameTableType(), text, report);
+        }
+
+        public static long PartFrameToJsonMeasure(PartFrame value)
+        {
+            return TableJson.Write(value, PartFrameTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long PartFrameToJson(PartFrame value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, PartFrameTableType(), buffer, false);
         }
     }
 

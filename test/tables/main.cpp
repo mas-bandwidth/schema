@@ -3927,7 +3927,9 @@ static void test_json_pinned_text()
         "      \"power\": 1.5\n"
         "    }\n"
         "  ]\n"
-        "}";
+        // the canonical text ends with exactly ONE newline (docs/SPEC-TABLES.md
+        // §16.1): every writer emits it, so the pin carries it
+        "}\n";
 
     int64_t size = tabledemo::LoadoutConfigToJsonMeasure( loadout );
     if ( size < 0 )
@@ -4605,7 +4607,7 @@ static void test_json_pinned_keyed_and_optional()
         "    \"reaction\": 0.9,\n"
         "    \"tracking\": true\n"
         "  }\n"
-        "}";
+        "}\n";
     {
         int64_t size = tabledemo::TurretConfigToJsonMeasure( turret );
         if ( size < 0 ) { printf( "FAIL json pinned optional: refused\n" ); failures++; return; }
@@ -4623,7 +4625,7 @@ static void test_json_pinned_keyed_and_optional()
         "{\n"
         "  \"damage\": 10,\n"
         "  \"cooldown\": 0.5\n"
-        "}";
+        "}\n";
     {
         tabledemo::TurretConfig plain;
         int64_t size = tabledemo::TurretConfigToJsonMeasure( plain );
@@ -4650,7 +4652,7 @@ static void test_json_pinned_keyed_and_optional()
         "    \"Blue\": 0,\n"
         "    \"Green\": 1234\n"
         "  }\n"
-        "}";
+        "}\n";
     {
         int64_t size = tabledemo::ScoreBoardToJsonMeasure( scores );
         if ( size < 0 ) { printf( "FAIL json pinned keyed: refused\n" ); failures++; return; }
@@ -4980,7 +4982,7 @@ static void test_json_keyed_duplicate_keys()
             "    \"Blue\": 0,\n"
             "    \"Green\": 9\n"
             "  }\n"
-            "}";
+            "}\n";
         int64_t size = tabledemo::ScoreBoardToJsonMeasure( value );
         if ( size < 0 ) { printf( "FAIL json keyed duplicate pinned text: refused\n" ); failures++; return; }
         std::vector<char> out( (size_t) size + 1 );

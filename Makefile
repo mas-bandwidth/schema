@@ -287,6 +287,38 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 		-Ibuild/json-sabotage test/tables/json_negative_main.cpp build/json-sabotage/TablesTable.cpp -o build/schema_test_json_negative
 	./build/schema_test_json_negative
 
+# The GENERIC-WALK GATE, C# side (docs/SPEC-TABLES.md §16). The same property
+# the C++ gate above holds, over the shape C# forces: a unit's files compile
+# into ONE assembly, so the walk is emitted ONCE PER UNIT — into the file that
+# already carries the unit's shared table runtime — rather than once per
+# translation unit behind a guard. So the gate asserts two things: exactly one
+# file per unit directory carries a walker, and every walker in the corpus is
+# the same bytes. The package name never enters the markers, so nothing is
+# normalised away here either.
+.PHONY: tables-cs-json-walk
+tables-cs-json-walk: build/tables-generated-cs/.stamp
+	@rm -rf build/json-walk-cs && mkdir -p build/json-walk-cs
+	@for d in build/tables-generated-cs/*/; do \
+		unit=$$(basename $$d); n=0; \
+		for f in $$d*Table.cs; do \
+			[ -e "$$f" ] || continue; \
+			out=build/json-walk-cs/$$unit.$$(basename $$f); \
+			awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+			if [ -s $$out ]; then n=$$((n+1)); else rm -f $$out; fi; \
+		done; \
+		if [ -n "$$(ls $$d*Table.cs 2>/dev/null)" ] && [ $$n -ne 1 ]; then \
+			echo "GENERIC-WALK GATE FAILED: unit $$unit carries $$n walkers, not one"; exit 1; \
+		fi; \
+	done
+	@if [ -z "$$(ls build/json-walk-cs 2>/dev/null)" ]; then \
+		echo "GENERIC-WALK GATE FAILED: no walker in any generated .cs"; exit 1; fi
+	@first=""; for f in build/json-walk-cs/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "tables C# generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-cs | wc -l | tr -d ' ') units"
+
 # The same corpus through the C# table backend (docs/SPEC-TABLES.md, schema#262):
 # the tables corpus plus the evolution pair, generated at build time into
 # build/ — test-only, never part of the committed generated/ tree. The full
@@ -1856,6 +1888,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-negative-control
+	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-refuses-pointers
 	cd test/cs-tables && dotnet run
@@ -1865,6 +1898,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# registers are the two this section has just built.
 	$(MAKE) conformance
 	$(MAKE) conformance-negative-control
+	$(MAKE) conformance-negative-control-cs
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-keyed-none-refusal-ndebug
@@ -2047,12 +2081,12 @@ clean:
 # The rule this target lives under is the two-minute one (#320). Measured on
 # arm64 macOS at the landing, everything already built, median of three:
 #
-#   both legs, 80 cases        3.96 s
-#   the cpp leg alone          0.36 s   (8 native execs, plus materialising)
-#   the cs leg alone           4.00 s   (10 `dotnet run` start-ups)
+#   both legs, 116 cases       5.07 s
+#   the cpp leg alone          0.41 s   (10 native execs, plus materialising)
+#   the cs leg alone           4.92 s   (12 `dotnet run` start-ups)
 #
-# The cost is per-PROCESS, not per-case: the C# leg starts a runtime eleven
-# times — `list`, four surfaces, and one per cook, because test/cs-cook's dump
+# The cost is per-PROCESS, not per-case: the C# leg starts a runtime thirteen
+# times — `list`, six surfaces, and one per cook, because test/cs-cook's dump
 # takes one root per invocation. So the budget left for seven more languages is
 # nearly the whole of it, and nine languages each starting a runtime per surface
 # lands near 20 s. Sharding per language leg, the way the type wire's nine legs
@@ -2131,4 +2165,72 @@ conformance-negative-control: build/conformance-harness build/conformance-cpp
 	@grep -m1 "cpp / json-write" build/conformance-negative/log
 	@echo "negative control: one byte off in one dump turns the harness RED on that surface alone"
 
-.PHONY: conformance conformance-generate conformance-pin conformance-negative-control build-conformance-cs
+# THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
+# different sabotage from the C++ one above on purpose. That one flips a byte of
+# a DUMP and proves the harness can see a wrong ANSWER; this one breaks the
+# WALKER and proves the harness can see a wrong WALK.
+#
+# It is sabotaged IN THE EMITTER and generated afresh, the way the block fuzz's
+# controls are (block_fuzz_sabotage above), because the walker IS emitter
+# source — one constant in internal/codegen/cstable/json.go — so patching the
+# emitter is patching the walk itself rather than an artifact of it. No tracked
+# file is written to: the sed lands in build/, a Go build overlay points the
+# compiler at it, and the csproj's TablesGeneratedDir points the leg at what
+# that compiler generated.
+#
+# THE SABOTAGE. C++ shifts a field's STORAGE OFFSET by one field width
+# (tables-json-negative-control). A C# field has no offset — the descriptor
+# carries accessors instead (§8.1) — so the twin of that arithmetic is the FIELD
+# INDEX the read path looks a descriptor up by: one key's value lands in its
+# neighbour's field. It is bounded on purpose, so a table with an odd field
+# count cannot turn the control into an exception rather than a wrong answer,
+# and it touches the READ path only.
+#
+# The second half is the point, as it is for every control here: json-read must
+# go RED and every other surface must stay GREEN. A matrix whose every cell went
+# red would be saying "something broke" rather than "the C# text form broke" —
+# and json-write staying green is what says the break is the READER's.
+CONFORMANCE_NEGATIVE_CS := build/conformance-negative-cs
+CONFORMANCE_NEGATIVE_CS_SED := s|TableFieldInfo f = info.Fields\[index\];|TableFieldInfo f = info.Fields[(index ^ 1) < info.NumFields ? (index ^ 1) : index]; // SABOTAGED|
+.PHONY: conformance-negative-control-cs
+conformance-negative-control-cs: build/conformance-harness
+	@rm -rf $(CONFORMANCE_NEGATIVE_CS) && mkdir -p $(CONFORMANCE_NEGATIVE_CS)
+	@sed '$(CONFORMANCE_NEGATIVE_CS_SED)' internal/codegen/cstable/json.go > $(CONFORMANCE_NEGATIVE_CS)/cstable-json.go.txt
+	@cmp -s internal/codegen/cstable/json.go $(CONFORMANCE_NEGATIVE_CS)/cstable-json.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C# emitter sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cstable/json.go":"%s/$(CONFORMANCE_NEGATIVE_CS)/cstable-json.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_CS)/overlay.json
+	go build -overlay $(CONFORMANCE_NEGATIVE_CS)/overlay.json -o $(CONFORMANCE_NEGATIVE_CS)/schema ./cmd/schema
+	$(CONFORMANCE_NEGATIVE_CS)/schema generate --lang cs --out $(CONFORMANCE_NEGATIVE_CS)/generated/examples tables/examples
+	$(CONFORMANCE_NEGATIVE_CS)/schema generate --lang cs --out $(CONFORMANCE_NEGATIVE_CS)/generated/block tables/block
+	$(CONFORMANCE_NEGATIVE_CS)/schema generate --lang cs --out $(CONFORMANCE_NEGATIVE_CS)/generated/v1 test/tables/V1.schema
+	$(CONFORMANCE_NEGATIVE_CS)/schema generate --lang cs --out $(CONFORMANCE_NEGATIVE_CS)/generated/v2 test/tables/V2.schema
+	$(CONFORMANCE_NEGATIVE_CS)/schema generate --lang cs --out $(CONFORMANCE_NEGATIVE_CS)/generated/p1 test/tables/P1.schema
+	$(CONFORMANCE_NEGATIVE_CS)/schema generate --lang cs --out $(CONFORMANCE_NEGATIVE_CS)/generated/p3 test/tables/P3.schema
+	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_CS)/generated/*/*Table.cs || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
+	cd test/conformance/cs && dotnet build -v q --nologo \
+		-p:TablesGeneratedDir=$(CURDIR)/$(CONFORMANCE_NEGATIVE_CS)/generated \
+		-p:BaseOutputPath=$(CURDIR)/$(CONFORMANCE_NEGATIVE_CS)/bin/ \
+		-p:BaseIntermediateOutputPath=$(CURDIR)/$(CONFORMANCE_NEGATIVE_CS)/obj/
+	@printf '#!/bin/sh\nexec dotnet %s/bin/Debug/net10.0/schemaconformance.dll "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_CS)" > $(CONFORMANCE_NEGATIVE_CS)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_CS)/driver
+	@printf 'cs %s/driver\n' "$(CONFORMANCE_NEGATIVE_CS)" > $(CONFORMANCE_NEGATIVE_CS)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_CS)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_CS)/work > $(CONFORMANCE_NEGATIVE_CS)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a sabotaged C# walker left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_CS)/log; exit 1; \
+	fi
+	@grep -q "cs / json-read" $(CONFORMANCE_NEGATIVE_CS)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
+		  cat $(CONFORMANCE_NEGATIVE_CS)/log; exit 1; }
+	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_CS)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
+		  cat $(CONFORMANCE_NEGATIVE_CS)/log; exit 1; }
+	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_CS)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_CS)/log; exit 1; }
+	@grep -m1 "cs / json-read" $(CONFORMANCE_NEGATIVE_CS)/log
+	@echo "negative control: one field index off in the C# walk turns the harness RED on json-read alone"
+
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-cs build-conformance-cs

@@ -49,7 +49,10 @@ from `build/conformance-cpp` and hands the cook's node dump to
 **Absent is not failure, and the distinction is the whole reason the matrix
 exists.** A backend with no text form is missing a FEATURE; a backend whose text
 form writes the wrong bytes is failing a TEST. A harness that printed both the
-same way would be telling a port to implement nothing in particular.
+same way would be telling a port to implement nothing in particular. The C#
+leg is the worked example: it registered with `json-read` and `json-write`
+ABSENT, and both cells moved to `pass 18/18` when the C# walk landed — nothing
+in the data or in this contract moved with them.
 
 ## The surfaces
 
@@ -96,18 +99,21 @@ compares.
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64
-macOS at the landing, everything already built, median of three:
+macOS with the C# text form registered, everything already built, median of
+three:
 
 | leg | wall |
 |---|---|
-| both, 80 cases | 3.96 s |
-| `cpp` alone | 0.36 s |
-| `cs` alone | 4.00 s |
+| both, 116 cases | 5.07 s |
+| `cpp` alone | 0.41 s |
+| `cs` alone | 4.92 s |
 
-The cost is per-PROCESS, not per-case: the C++ leg is eight native execs at
-~40 ms total, and the C# leg starts a runtime eleven times — `list`, four
+The cost is per-PROCESS, not per-case: the C++ leg is ten native execs at
+~50 ms total, and the C# leg starts a runtime thirteen times — `list`, six
 surfaces, and one per cook, because `test/cs-cook`'s dump takes one root per
-invocation.
+invocation. Registering the two text-form surfaces added 36 cases and ~1.1 s,
+and every millisecond of that is two more runtime start-ups: the cases
+themselves are free at this size.
 
 So the data can grow a great deal before it matters, and the budget left for
 seven more languages is nearly the whole two minutes. Nine languages each

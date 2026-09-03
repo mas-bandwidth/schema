@@ -72,11 +72,12 @@ written from neither backend — with `make conformance-generate`.
 
 ## json/&lt;instance&gt;.json
 
-The docs/SPEC-TABLES.md §16 text of the instance, and EXACTLY that: no trailing
-newline, because §16 fixes the text's shape and says nothing about one, and the
-byte is written by `schema unpack` (which is writing a FILE) and not by `ToJson`
-(which returns a BUFFER). A golden carries the form and nothing around it, the
-way a wire golden carries exactly the wire.
+The docs/SPEC-TABLES.md §16 text of the instance, and EXACTLY that — **which
+includes the one trailing newline the form ends with** (§16.1). Every writer
+emits it, `schema unpack` and every backend's `ToJson` alike, and every reader
+accepts a text with or without one; so the byte is part of the form rather than
+a file convention, and a golden carries the form and nothing around it, the way
+a wire golden carries exactly the wire.
 
 Generated with `make conformance-generate`, and each text is proved COMPLETE
 before it lands: it is packed back to wire bytes and must equal the golden it

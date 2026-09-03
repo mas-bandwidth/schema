@@ -104,12 +104,18 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 			return fmt.Errorf("%s: %w", inst.Name, err)
 		}
 		// A golden carries EXACTLY the §16 text and nothing around it, the way
-		// a wire golden carries exactly the wire: `schema unpack` is writing a
-		// FILE and ends one with a newline, and `ToJson` returns a BUFFER and
-		// does not. The section fixes the text's shape and says nothing about a
-		// trailing newline, so the byte that only one of the two writes is not
-		// part of the form and does not go in the data.
-		text = bytes.TrimSuffix(text, []byte("\n"))
+		// a wire golden carries exactly the wire — AND THE TEXT ENDS WITH ONE
+		// NEWLINE, which is part of the form rather than a file convention
+		// (§16.1). `schema unpack` writes it, `ToJson` writes it, this engine
+		// writes it, and every reader accepts a text with or without one; so
+		// the byte goes in the data, and a golden that lost it would put the
+		// three writers back into disagreement.
+		if !bytes.HasSuffix(text, []byte("\n")) {
+			return fmt.Errorf("%s: the engine's text does not end with the newline §16.1 requires", inst.Name)
+		}
+		if bytes.HasSuffix(text, []byte("\n\n")) {
+			return fmt.Errorf("%s: the engine's text ends with more than one newline (§16.1 says exactly one)", inst.Name)
+		}
 
 		// and the text back to wire, which is what proves the text COMPLETE:
 		// a text that lost a field cannot pack to the bytes it came from

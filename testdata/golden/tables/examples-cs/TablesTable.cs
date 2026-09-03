@@ -1705,10 +1705,11 @@ namespace Tabledemo
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "version_note", TypeName = "string", Id = 0xe726, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 16, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "weapons", TypeName = "WeaponConfig", Id = 0x91cd, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return WeaponConfigTableType(); } },
-                new TableFieldInfo { Name = "profiles", TypeName = "ProfileConfig", Id = 0x73fd, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ProfileConfigTableType(); } },
+                new TableFieldInfo { Name = "version_note", Json = "version_note", TypeName = "string", Id = 0xe726, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetBuffer = delegate(object o) { return ((RootConfig)o).VersionNote; }, GetCount = delegate(object o) { return ((RootConfig)o).VersionNoteLength; }, SetCount = delegate(object o, int n) { ((RootConfig)o).VersionNoteLength = n; } },
+                new TableFieldInfo { Name = "weapons", Json = "weapons", TypeName = "WeaponConfig", Id = 0x91cd, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 8, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return WeaponConfigTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((RootConfig)o).Weapons[i]; }, GetCount = delegate(object o) { return ((RootConfig)o).WeaponsCount; }, SetCount = delegate(object o, int n) { ((RootConfig)o).WeaponsCount = n; } },
+                new TableFieldInfo { Name = "profiles", Json = "profiles", TypeName = "ProfileConfig", Id = 0x73fd, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return ProfileConfigTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((RootConfig)o).Profiles[i]; }, GetCount = delegate(object o) { return ((RootConfig)o).ProfilesCount; }, SetCount = delegate(object o, int n) { ((RootConfig)o).ProfilesCount = n; } },
             };
+            info.Reset = delegate(object o) { TableReset((RootConfig)o); };
             RootConfigTableInfo = info;
             return info;
         }
@@ -1723,13 +1724,14 @@ namespace Tabledemo
             info.NumFields = 6;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "damage", TypeName = "float32", Id = 0x15a9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "speed", TypeName = "float32", Id = 0x2e46, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "penetration", TypeName = "int32", Id = 0x6557, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 10.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "channel", TypeName = "bits(6)", Id = 0x7366, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "homing", TypeName = "bool", Id = 0xab40, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "effect", TypeName = "Effect", Id = 0xe33a, Kind = 15, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate(ulong v) { switch (v) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, VariantId = delegate(ulong v) { switch (v) { case 0: return (ushort)0; case 1: return (ushort)0xeae6; case 2: return (ushort)0xb0d3; default: return (ushort)0; } }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "damage", Json = "damage", TypeName = "float32", Id = 0x15a9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((WeaponConfig)o).Damage); }, SetRaw = delegate(object o, int i, ulong r) { ((WeaponConfig)o).Damage = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "speed", Json = "speed", TypeName = "float32", Id = 0x2e46, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((WeaponConfig)o).Speed); }, SetRaw = delegate(object o, int i, ulong r) { ((WeaponConfig)o).Speed = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "penetration", Json = "penetration", TypeName = "int32", Id = 0x6557, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 10.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((WeaponConfig)o).Penetration; }, SetRaw = delegate(object o, int i, ulong r) { ((WeaponConfig)o).Penetration = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "channel", Json = "channel", TypeName = "bits(6)", Id = 0x7366, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 63.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((WeaponConfig)o).Channel; }, SetRaw = delegate(object o, int i, ulong r) { ((WeaponConfig)o).Channel = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "homing", Json = "homing", TypeName = "bool", Id = 0xab40, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return ((WeaponConfig)o).Homing ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((WeaponConfig)o).Homing = r != 0; } },
+                new TableFieldInfo { Name = "effect", Json = "effect", TypeName = "Effect", Id = 0xe33a, Kind = 15, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate(ulong v) { switch (v) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, VariantId = delegate(ulong v) { switch (v) { case 0: return (ushort)0; case 1: return (ushort)0xeae6; case 2: return (ushort)0xb0d3; default: return (ushort)0; } }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = new TableUnionInfo { GetTag = delegate(object o) { return (ulong)((Effect)o).Type; }, SetTag = delegate(object o, ulong t) { ((Effect)o).Type = unchecked((EffectType)t); }, Arms = new TableUnionArmInfo[] { new TableUnionArmInfo(), new TableUnionArmInfo { TableRef = delegate { return BuffTableType(); }, Payload = delegate(object o) { return ((Effect)o).Buff; } }, new TableUnionArmInfo { TableRef = delegate { return DebuffTableType(); }, Payload = delegate(object o) { return ((Effect)o).Debuff; } } } }, GetChild = delegate(object o, int i) { return ((WeaponConfig)o).Effect; } },
             };
+            info.Reset = delegate(object o) { TableReset((WeaponConfig)o); };
             WeaponConfigTableInfo = info;
             return info;
         }
@@ -1744,14 +1746,15 @@ namespace Tabledemo
             info.NumFields = 7;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "grade", TypeName = "Grade", Id = 0xd272, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameGrade(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((Grade)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "grades", TypeName = "Grade", Id = 0x301a, Kind = 7, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameGrade(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((Grade)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "podium", TypeName = "Grade", Id = 0x088a, Kind = 7, IsArray = true, Counted = false, Optional = false, ArrayBound = 3, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameGrade(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((Grade)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "perks", TypeName = "Perks", Id = 0x2fc5, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "primary", TypeName = "WeaponConfig", Id = 0x05f7, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return WeaponConfigTableType(); } },
-                new TableFieldInfo { Name = "backups", TypeName = "WeaponConfig", Id = 0x1647, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return WeaponConfigTableType(); } },
-                new TableFieldInfo { Name = "attachments", TypeName = "Attachment", Id = 0x44d5, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return AttachmentTableType(); } },
+                new TableFieldInfo { Name = "grade", Json = "grade", TypeName = "Grade", Id = 0xd272, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameGrade(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((Grade)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((LoadoutConfig)o).Grade; }, SetRaw = delegate(object o, int i, ulong r) { ((LoadoutConfig)o).Grade = unchecked((Grade)r); } },
+                new TableFieldInfo { Name = "grades", Json = "grades", TypeName = "Grade", Id = 0x301a, Kind = 7, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameGrade(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((Grade)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((LoadoutConfig)o).Grades[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((LoadoutConfig)o).Grades[i] = unchecked((Grade)r); }, GetCount = delegate(object o) { return ((LoadoutConfig)o).GradesCount; }, SetCount = delegate(object o, int n) { ((LoadoutConfig)o).GradesCount = n; } },
+                new TableFieldInfo { Name = "podium", Json = "podium", TypeName = "Grade", Id = 0x088a, Kind = 7, IsArray = true, Counted = false, Optional = false, ArrayBound = 3, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate(ulong v) { return EnumNameGrade(v); }, VariantId = delegate(ulong v) { ushort id; TableEnumId((Grade)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((LoadoutConfig)o).Podium[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((LoadoutConfig)o).Podium[i] = unchecked((Grade)r); } },
+                new TableFieldInfo { Name = "perks", Json = "perks", TypeName = "Perks", Id = 0x2fc5, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 2, EnumName = delegate(ulong v) { return FlagNamePerks((int)v); }, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return ((LoadoutConfig)o).Perks; }, SetRaw = delegate(object o, int i, ulong r) { ((LoadoutConfig)o).Perks = r; } },
+                new TableFieldInfo { Name = "primary", Json = "primary", TypeName = "WeaponConfig", Id = 0x05f7, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return WeaponConfigTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((LoadoutConfig)o).Primary; } },
+                new TableFieldInfo { Name = "backups", Json = "backups", TypeName = "WeaponConfig", Id = 0x1647, Kind = 13, IsArray = true, Counted = false, Optional = false, ArrayBound = 2, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return WeaponConfigTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((LoadoutConfig)o).Backups[i]; } },
+                new TableFieldInfo { Name = "attachments", Json = "attachments", TypeName = "Attachment", Id = 0x44d5, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayBound = 8, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return AttachmentTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((LoadoutConfig)o).Attachments[i]; }, GetCount = delegate(object o) { return ((LoadoutConfig)o).AttachmentsCount; }, SetCount = delegate(object o, int n) { ((LoadoutConfig)o).AttachmentsCount = n; } },
             };
+            info.Reset = delegate(object o) { TableReset((LoadoutConfig)o); };
             LoadoutConfigTableInfo = info;
             return info;
         }
@@ -1766,20 +1769,21 @@ namespace Tabledemo
             info.NumFields = 13;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "name", TypeName = "string", Id = 0x30df, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 32, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "icon", TypeName = "bytes", Id = 0xf3b0, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 16, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "experience", TypeName = "uint32", Id = 0x61d8, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "tilt", TypeName = "int8", Id = 0x023c, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "heading", TypeName = "int16", Id = 0x885d, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "timestamp", TypeName = "int64", Id = 0x67a0, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "badge", TypeName = "uint8", Id = 0xb71c, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "port", TypeName = "uint16", Id = 0x6942, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "epoch", TypeName = "uint64", Id = 0xf4bd, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "precision", TypeName = "float64", Id = 0x96e0, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "ratings", TypeName = "float32", Id = 0x97dd, Kind = 10, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "has_loadout", TypeName = "bool", Id = 0xb4db, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "loadout", TypeName = "LoadoutConfig", Id = 0x9f78, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "has_loadout", TableRef = delegate { return LoadoutConfigTableType(); } },
+                new TableFieldInfo { Name = "name", Json = "name", TypeName = "string", Id = 0x30df, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetBuffer = delegate(object o) { return ((ProfileConfig)o).Name; }, GetCount = delegate(object o) { return ((ProfileConfig)o).NameLength; }, SetCount = delegate(object o, int n) { ((ProfileConfig)o).NameLength = n; } },
+                new TableFieldInfo { Name = "icon", Json = "icon", TypeName = "bytes", Id = 0xf3b0, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetBuffer = delegate(object o) { return ((ProfileConfig)o).Icon; }, GetCount = delegate(object o) { return ((ProfileConfig)o).IconLength; }, SetCount = delegate(object o, int n) { ((ProfileConfig)o).IconLength = n; } },
+                new TableFieldInfo { Name = "experience", Json = "experience", TypeName = "uint32", Id = 0x61d8, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((ProfileConfig)o).Experience; }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Experience = unchecked((uint)r); } },
+                new TableFieldInfo { Name = "tilt", Json = "tilt", TypeName = "int8", Id = 0x023c, Kind = 2, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ProfileConfig)o).Tilt; }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Tilt = unchecked((sbyte)(long)r); } },
+                new TableFieldInfo { Name = "heading", Json = "heading", TypeName = "int16", Id = 0x885d, Kind = 3, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ProfileConfig)o).Heading; }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Heading = unchecked((short)(long)r); } },
+                new TableFieldInfo { Name = "timestamp", Json = "timestamp", TypeName = "int64", Id = 0x67a0, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((ProfileConfig)o).Timestamp; }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Timestamp = unchecked((long)(long)r); } },
+                new TableFieldInfo { Name = "badge", Json = "badge", TypeName = "uint8", Id = 0xb71c, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((ProfileConfig)o).Badge; }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Badge = unchecked((byte)r); } },
+                new TableFieldInfo { Name = "port", Json = "port", TypeName = "uint16", Id = 0x6942, Kind = 7, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((ProfileConfig)o).Port; }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Port = unchecked((ushort)r); } },
+                new TableFieldInfo { Name = "epoch", Json = "epoch", TypeName = "uint64", Id = 0xf4bd, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((ProfileConfig)o).Epoch; }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Epoch = unchecked((ulong)r); } },
+                new TableFieldInfo { Name = "precision", Json = "precision", TypeName = "float64", Id = 0x96e0, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return TableDoubleToBits(((ProfileConfig)o).Precision); }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Precision = TableBitsToDouble(r); } },
+                new TableFieldInfo { Name = "ratings", Json = "ratings", TypeName = "float32", Id = 0x97dd, Kind = 10, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((ProfileConfig)o).Ratings[i]); }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).Ratings[i] = TableBitsToFloat(unchecked((uint)r)); } },
+                new TableFieldInfo { Name = "has_loadout", Json = "has_loadout", TypeName = "bool", Id = 0xb4db, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return ((ProfileConfig)o).HasLoadout ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((ProfileConfig)o).HasLoadout = r != 0; } },
+                new TableFieldInfo { Name = "loadout", Json = "loadout", TypeName = "LoadoutConfig", Id = 0x9f78, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "has_loadout", TableRef = delegate { return LoadoutConfigTableType(); }, Arms = null, GetChild = delegate(object o, int i) { return ((ProfileConfig)o).Loadout; } },
             };
+            info.Reset = delegate(object o) { TableReset((ProfileConfig)o); };
             ProfileConfigTableInfo = info;
             return info;
         }
@@ -1794,9 +1798,10 @@ namespace Tabledemo
             info.NumFields = 2;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "slot", TypeName = "int32", Id = 0x37e4, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 7.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "power", TypeName = "float32", Id = 0xd609, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "slot", Json = "slot", TypeName = "int32", Id = 0x37e4, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 7.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((Attachment)o).Slot; }, SetRaw = delegate(object o, int i, ulong r) { ((Attachment)o).Slot = unchecked((int)(long)r); } },
+                new TableFieldInfo { Name = "power", Json = "power", TypeName = "float32", Id = 0xd609, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((Attachment)o).Power); }, SetRaw = delegate(object o, int i, ulong r) { ((Attachment)o).Power = TableBitsToFloat(unchecked((uint)r)); } },
             };
+            info.Reset = delegate(object o) { TableReset((Attachment)o); };
             AttachmentTableInfo = info;
             return info;
         }
@@ -1811,8 +1816,9 @@ namespace Tabledemo
             info.NumFields = 1;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "multiplier", TypeName = "float32", Id = 0x32e0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "multiplier", Json = "multiplier", TypeName = "float32", Id = 0x32e0, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)TableFloatToBits(((Buff)o).Multiplier); }, SetRaw = delegate(object o, int i, ulong r) { ((Buff)o).Multiplier = TableBitsToFloat(unchecked((uint)r)); } },
             };
+            info.Reset = delegate(object o) { TableReset((Buff)o); };
             BuffTableInfo = info;
             return info;
         }
@@ -1827,10 +1833,132 @@ namespace Tabledemo
             info.NumFields = 1;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "amount", TypeName = "int32", Id = 0x39cc, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "amount", Json = "amount", TypeName = "int32", Id = 0x39cc, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 100.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((Debuff)o).Amount; }, SetRaw = delegate(object o, int i, ulong r) { ((Debuff)o).Amount = unchecked((int)(long)r); } },
             };
+            info.Reset = delegate(object o) { TableReset((Debuff)o); };
             DebuffTableInfo = info;
             return info;
+        }
+
+        // ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
+
+        // RootConfig in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool RootConfigFromJson(RootConfig value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, RootConfigTableType(), text, report);
+        }
+
+        public static long RootConfigToJsonMeasure(RootConfig value)
+        {
+            return TableJson.Write(value, RootConfigTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long RootConfigToJson(RootConfig value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, RootConfigTableType(), buffer, false);
+        }
+
+        // WeaponConfig in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool WeaponConfigFromJson(WeaponConfig value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, WeaponConfigTableType(), text, report);
+        }
+
+        public static long WeaponConfigToJsonMeasure(WeaponConfig value)
+        {
+            return TableJson.Write(value, WeaponConfigTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long WeaponConfigToJson(WeaponConfig value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, WeaponConfigTableType(), buffer, false);
+        }
+
+        // LoadoutConfig in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool LoadoutConfigFromJson(LoadoutConfig value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, LoadoutConfigTableType(), text, report);
+        }
+
+        public static long LoadoutConfigToJsonMeasure(LoadoutConfig value)
+        {
+            return TableJson.Write(value, LoadoutConfigTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long LoadoutConfigToJson(LoadoutConfig value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, LoadoutConfigTableType(), buffer, false);
+        }
+
+        // ProfileConfig in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool ProfileConfigFromJson(ProfileConfig value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, ProfileConfigTableType(), text, report);
+        }
+
+        public static long ProfileConfigToJsonMeasure(ProfileConfig value)
+        {
+            return TableJson.Write(value, ProfileConfigTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long ProfileConfigToJson(ProfileConfig value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, ProfileConfigTableType(), buffer, false);
+        }
+
+        // Attachment in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool AttachmentFromJson(Attachment value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, AttachmentTableType(), text, report);
+        }
+
+        public static long AttachmentToJsonMeasure(Attachment value)
+        {
+            return TableJson.Write(value, AttachmentTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long AttachmentToJson(Attachment value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, AttachmentTableType(), buffer, false);
+        }
+
+        // Buff in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool BuffFromJson(Buff value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, BuffTableType(), text, report);
+        }
+
+        public static long BuffToJsonMeasure(Buff value)
+        {
+            return TableJson.Write(value, BuffTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long BuffToJson(Buff value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, BuffTableType(), buffer, false);
+        }
+
+        // Debuff in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool DebuffFromJson(Debuff value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, DebuffTableType(), text, report);
+        }
+
+        public static long DebuffToJsonMeasure(Debuff value)
+        {
+            return TableJson.Write(value, DebuffTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long DebuffToJson(Debuff value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, DebuffTableType(), buffer, false);
         }
     }
 

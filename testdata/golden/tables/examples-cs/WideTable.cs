@@ -231,12 +231,32 @@ namespace Tabledemo
             info.NumFields = 3;
             info.Fields = new TableFieldInfo[]
             {
-                new TableFieldInfo { Name = "label", TypeName = "string", Id = 0xe16a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 70000, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "payload", TypeName = "bytes", Id = 0x44aa, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
-                new TableFieldInfo { Name = "samples", TypeName = "uint16", Id = 0xaf9a, Kind = 7, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null },
+                new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0xe16a, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Label; }, GetCount = delegate(object o) { return ((WideBlob)o).LabelLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).LabelLength = n; } },
+                new TableFieldInfo { Name = "payload", Json = "payload", TypeName = "bytes", Id = 0x44aa, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetBuffer = delegate(object o) { return ((WideBlob)o).Payload; }, GetCount = delegate(object o) { return ((WideBlob)o).PayloadLength; }, SetCount = delegate(object o, int n) { ((WideBlob)o).PayloadLength = n; } },
+                new TableFieldInfo { Name = "samples", Json = "samples", TypeName = "uint16", Id = 0xaf9a, Kind = 7, IsArray = true, Counted = true, Optional = false, ArrayBound = 70000, ElemWidth = 2, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, GetRaw = delegate(object o, int i) { return (ulong)((WideBlob)o).Samples[i]; }, SetRaw = delegate(object o, int i, ulong r) { ((WideBlob)o).Samples[i] = unchecked((ushort)r); }, GetCount = delegate(object o) { return ((WideBlob)o).SamplesCount; }, SetCount = delegate(object o, int n) { ((WideBlob)o).SamplesCount = n; } },
             };
+            info.Reset = delegate(object o) { TableReset((WideBlob)o); };
             WideBlobTableInfo = info;
             return info;
+        }
+
+        // ---- the text form: JSON in and out of one table (docs/SPEC-TABLES.md §16) ----
+
+        // WideBlob in and out of a JSON text — one instance, one text, the generic
+        // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
+        public static bool WideBlobFromJson(WideBlob value, ReadOnlySpan<byte> text, TableReport report)
+        {
+            return TableJson.Read(value, WideBlobTableType(), text, report);
+        }
+
+        public static long WideBlobToJsonMeasure(WideBlob value)
+        {
+            return TableJson.Write(value, WideBlobTableType(), Span<byte>.Empty, true);
+        }
+
+        public static long WideBlobToJson(WideBlob value, Span<byte> buffer)
+        {
+            return TableJson.Write(value, WideBlobTableType(), buffer, false);
         }
     }
 
