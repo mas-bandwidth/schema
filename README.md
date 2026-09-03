@@ -3,7 +3,7 @@
 [![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-**Schema. The data schema language for games**.
+**Schema: the data schema language for games.**
 
 If you write a game in more than one language, or ship a client and server that
 have to agree on every bit, schema is a language that will help you do this
@@ -24,12 +24,12 @@ If this work helps you, please support it: **[Become a supporter](https://www.pa
 ## Features
 
 1. Define constants, enums, flags, types and tables in one language.
-2. Generate fast bit-packed serialization for struct types that don't need versioning (eg. client/server messages and state)
-3. Generate versioned for messages, data, assets, save game files and everything else!
-4. Supports recursive table definitions (pointer to table in table) for full data structure support.
-5. Cooks to fast binary formats at runtime for tool pipelines and asset loading.
+2. Generate fast bit-packed serialization for struct types that do not need versioning, such as client/server packets and state.
+3. Generate versioned tables for messages, data, assets, save game files and everything else.
+4. Tables can point at tables, so trees and graphs are tables too.
+5. Cooks tables to a binary format the game maps and points at, for tool pipelines and asset loading.
 
-Supported languages: C, C++, C#, Rust, Golang, Java, JavaScript, Dart and Elixir.
+Supported languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.
 
 ## Examples
 
