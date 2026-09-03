@@ -29,7 +29,7 @@ func pin(m *Manifest, driversPath, work, cookDir string) error {
 	}
 	reference := drivers[0]
 
-	if _, err := materialise(m, work); err != nil {
+	if err := materialise(m, work); err != nil {
 		return err
 	}
 	derived := filepath.Join(work, "manifest.txt")

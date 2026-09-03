@@ -56,13 +56,13 @@ func readDrivers(path string) ([]driver, error) {
 // materialise writes the fixtures a driver cannot be handed as committed text:
 // the cooked files, which test/cookgen produces deterministically, and the
 // forged images, which are patches over a base fixture.
-func materialise(m *Manifest, work string) (map[string]string, error) {
+func materialise(m *Manifest, work string) error {
 	fixtures := filepath.Join(work, "fixtures")
 	if err := os.RemoveAll(fixtures); err != nil {
-		return nil, err
+		return err
 	}
 	if err := os.MkdirAll(filepath.Join(fixtures, "forgery"), 0o755); err != nil {
-		return nil, err
+		return err
 	}
 
 	// bases a forgery may be patched over: the block images by name, and the
@@ -77,7 +77,7 @@ func materialise(m *Manifest, work string) (map[string]string, error) {
 		build := exec.Command("go", "build", "-o", cookgen, "./test/cookgen")
 		build.Stderr = os.Stderr
 		if err := build.Run(); err != nil {
-			return nil, fmt.Errorf("building cookgen: %w", err)
+			return fmt.Errorf("building cookgen: %w", err)
 		}
 		for i := range m.Cooks {
 			c := &m.Cooks[i]
@@ -89,7 +89,7 @@ func materialise(m *Manifest, work string) (map[string]string, error) {
 			cmd := exec.Command(cookgen, args...)
 			cmd.Stderr = os.Stderr
 			if err := cmd.Run(); err != nil {
-				return nil, fmt.Errorf("cooking %s: %w", c.Root, err)
+				return fmt.Errorf("cooking %s: %w", c.Root, err)
 			}
 			c.File = out
 			base[c.Root] = out
@@ -100,14 +100,14 @@ func materialise(m *Manifest, work string) (map[string]string, error) {
 		f := &m.Forgeries[i]
 		src, ok := base[f.Base]
 		if !ok {
-			return nil, fmt.Errorf("forgery %s: the manifest names no fixture %q", f.Name, f.Base)
+			return fmt.Errorf("forgery %s: the manifest names no fixture %q", f.Name, f.Base)
 		}
 		data, err := os.ReadFile(src)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if f.Offset < 0 || f.Offset+int64(f.Width) > int64(len(data)) {
-			return nil, fmt.Errorf("forgery %s: the patch at %d+%d does not fit %s (%d bytes)",
+			return fmt.Errorf("forgery %s: the patch at %d+%d does not fit %s (%d bytes)",
 				f.Name, f.Offset, f.Width, src, len(data))
 		}
 		var word [8]byte
@@ -115,11 +115,11 @@ func materialise(m *Manifest, work string) (map[string]string, error) {
 		copy(data[f.Offset:f.Offset+int64(f.Width)], word[:f.Width])
 		out := filepath.Join(fixtures, "forgery", f.Name+".bin")
 		if err := os.WriteFile(out, data, 0o644); err != nil {
-			return nil, err
+			return err
 		}
 		f.File = out
 	}
-	return base, nil
+	return nil
 }
 
 // cookShape carries the chain each root's fixture is generated with, which
@@ -226,7 +226,7 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 	if err != nil {
 		return false, err
 	}
-	if _, err := materialise(m, work); err != nil {
+	if err := materialise(m, work); err != nil {
 		return false, err
 	}
 	derived := filepath.Join(work, "manifest.txt")
