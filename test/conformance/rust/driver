@@ -1,0 +1,16 @@
+#!/bin/sh
+# THE RUST LEG's driver (test/conformance/README.md).
+#
+# A driver is a COMMAND, not a binary, so a leg can be assembled from what a
+# backend already has. This one is a single native binary answering every
+# surface — the cook's node dump included, because the Rust cook reader is a
+# generated module like any other and there is no second binary that already
+# owns the walk.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+set -e
+exec build/conformance-rust "$@"

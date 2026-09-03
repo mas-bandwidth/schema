@@ -255,6 +255,28 @@ tables-zero-cost: build/tables-generated/.stamp
 # name lives in the guard and the namespace, outside the markers, so this is a
 # strict byte comparison with nothing normalised away. (It moved from the
 # headers to the .cpp files with the walker itself — docs/SPEC-TABLES.md §16.1.)
+# THE RUST GENERIC-WALK GATE (docs/SPEC-TABLES.md §16), the Rust twin of the
+# one above: the text form is ONE walk over the reflection descriptors, and
+# the Rust backend emits it as ONE MODULE PER UNIT. Its bytes must therefore
+# not vary with what a unit declares — the units below disagree about
+# packages, tables, kinds, keyed arrays and pointer modes — so this is a strict
+# byte comparison of table_runtime.rs across the whole corpus, with nothing
+# normalised away except the generated banner, which names the schema file.
+.PHONY: tables-rust-walk
+tables-rust-walk: build/tables-generated-rust/.stamp
+	@rm -rf build/rust-walk && mkdir -p build/rust-walk
+	@for f in build/tables-generated-rust/*/src/table_runtime.rs; do \
+		out=build/rust-walk/$$(echo $$f | tr / _); \
+		tail -n +6 $$f > $$out; \
+		if [ ! -s $$out ]; then echo "RUST GENERIC-WALK GATE FAILED: no runtime in $$f"; exit 1; fi; \
+	done
+	@first=""; for f in build/rust-walk/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "RUST GENERIC-WALK GATE FAILED: the runtime in $$f is not the runtime in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "rust generic-walk gate: one table runtime, the same bytes in every unit"
+
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
 	@rm -rf build/json-walk && mkdir -p build/json-walk
@@ -2098,6 +2120,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	./build/schema_test_tables_asan
 	$(MAKE) tables-zero-cost
 	$(MAKE) tables-json-walk
+	$(MAKE) tables-rust-walk
 	$(MAKE) tables-json-negative-control
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
@@ -2368,9 +2391,36 @@ build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.c
 build-conformance-cs: build/tables-generated-cs/.stamp
 	cd test/conformance/cs && dotnet build -v q --nologo
 
+
+# THE RUST TABLE CORPUS: one CRATE per unit, because a unit is a Rust crate the
+# way it is a C++ namespace — its own package, its own protocol id, its own
+# table runtime. The crates carry a generated Cargo.toml each; nothing here is
+# checked in.
+RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+	blockdemo:tables/block blockhome:tables/blockhome \
+	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
+	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema
+
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+	@mkdir -p build/tables-generated-rust
+	@for unit in $(RUST_TABLE_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		rm -rf build/tables-generated-rust/$$name/src; \
+		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path || exit 1; \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
+			> build/tables-generated-rust/$$name/Cargo.toml; \
+	done
+	@touch $@
+
+build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
+	@mkdir -p build
+	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
+	cp test/conformance/rust/target/debug/conformance-rust $@
+
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook \
-		build-conformance-cs build-cs-cook
+		build-conformance-cs build-cs-cook build/conformance-rust
 	./build/conformance-harness run
 
 # The GENERATED half of the data: the JSON text of every instance and the read
