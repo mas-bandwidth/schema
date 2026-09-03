@@ -49,7 +49,7 @@ const (
 	tkKeyed = ir.TableKindKeyed
 	// a POINTER field's kind: a u32 NODE INDEX into the flat node table
 	// (docs/SPEC-TABLES.md §3.1), distinct from kind 13 so that an edit between
-	// a by-value nesting and a pointer is an ordinary kind mismatch
+	// a by-value nesting and a pointer is an ordinary kind mismatch.
 	tkNodeIndex = ir.TableKindPointer
 )
 
