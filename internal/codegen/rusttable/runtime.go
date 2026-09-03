@@ -2523,6 +2523,16 @@ pub unsafe fn table_json_write(
         if !table_json_write_value(&mut out, value, info, 0) {
             return -1;
         }
+        // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
+        // §16.1). Every writer emits it — this walk, the C++ walk, the C# walk
+        // and "schema unpack" — and every reader accepts a text with or without
+        // one, because the trailing whitespace a read already skips is what
+        // makes the two the same text. It is a byte of the FORM rather than a
+        // file convention: a text that is written to a file, pasted into a diff
+        // and handed back through a pipe has to be one text in all three
+        // places, and a buffer whose last byte is a closing brace is the one
+        // shape that is not.
+        out.put(b'\n');
         if out.overflow {
             return -1;
         }

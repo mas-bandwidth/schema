@@ -148,23 +148,44 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++, and C# for the FIXED class.** C++ carries both classes;
-C# carries the fixed class (§6.1) — optionals, enum-keyed arrays, the text form
-(§16) and all — and refuses a unit whose closure declares a pointer, naming its
-variable class as a follow-on. Every other backend refuses a unit that declares
-tables at all, by name, with this document cited. The remaining per-language backends are named
-follow-ons (§15).
+**Backend status: C++, and C# and Rust for the FIXED class.** C++ carries both
+classes; C# and Rust carry the fixed class (§6.1) — optionals, enum-keyed
+arrays, the text form (§16) and all — and each refuses a unit whose closure
+declares a pointer, naming its variable class as a follow-on. Every other
+backend refuses a unit that declares tables at all, by name, with this document
+cited. The remaining per-language backends are named follow-ons (§15).
 
-**The BLOCK FORM (§2.7, §19) is live in C++ and C#, together**, because the
-form is an ABI between two languages and one language alone cannot hold the
-gate it exists for (§12.1). C++ emits `<Base>Block.h` (the projection, the
-generated layout asserts, the fill path inline) and `<Base>Block.cpp` (the
-open path and the block descriptors); C# emits `<Base>Block.cs` per declaring
-file (the block handle with its span accessors and the table's projection
-record) beside `<Package>Block.cs`, the unit's one runtime home (§19.2), which
-carries the blittable records with their generated padding, the layout check
-and the same descriptors. The Table headers carry not one
-symbol of it, and the build fails if one appears.
+**The RUST backend's own two divergences**, both forced by the language and
+both named where they are spelled rather than discovered in the source. The
+READ REPORT is the codecs' own parameter rather than a member of the reader: a
+Rust reader holding `&mut TableReport` could not hand a sub-reader out of its
+own buffer while that borrow stood. And the COOKED and BLOCKED records are
+their own `<Name>Row` structs, as they are in C#, because SPEC §6.1's Rust
+storage column spells `string(N)` as `[u8; N]` where the layout model spells
+`char[N + 1]`; the layout contract is asserted over them AT COMPILE TIME, with
+const asserts over `core::mem::offset_of!`, where C++ has `static_assert` and
+C# has a check run at type initialization. A UNION in a cooked record is a
+named follow-on there for the same reason it is absent from the block form: a
+Rust union is a real enum with no committed payload layout, and the
+`#[repr(C)] union` twin is a pass of its own.
+
+**The BLOCK FORM (§2.7, §19) is live in C++, C# and Rust**, and it took C++ and
+C# TOGETHER to land, because the form is an ABI between two languages and one
+language alone cannot hold the gate it exists for (§12.1). C++ emits
+`<Base>Block.h` (the projection, the generated layout asserts, the fill path
+inline) and `<Base>Block.cpp` (the open path and the block descriptors); C#
+emits `<Base>Block.cs` per declaring file (the block handle with its span
+accessors and the table's projection record) beside `<Package>Block.cs`, the
+unit's one runtime home (§19.2), which carries the blittable records with their
+generated padding, the layout check and the same descriptors; Rust emits
+`<base>_block.rs` per declaring file beside `block_runtime.rs`, the unit's own
+runtime home — the `#[repr(C)]` projection with no generated padding, because
+the representation IS the layout, the const asserts that hold it, the open
+path, rows as slices over the region, and the same descriptors. **The unit's
+shared runtime is named by the PACKAGE in every port, so file order cannot
+reach it (§19.2).** The READ side is what the ported backends carry: a block is
+laid out by a producer, and the producer's half is C++'s. The Table sources
+carry not one symbol of any of it, and the build fails if one appears.
 
 **What is absent, and by absence rather than by refusal** (§2.7): a
 VARIABLE-LENGTH table has no block form — no fixed pitch anywhere in its
@@ -4650,13 +4671,27 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class, in C++ and C#.** No
+**Backend status for this section: the FIXED class, in C++, C# and Rust.** No
 backend implements the variable class's text form yet — a pointered unit
 gets no `FromJson`, refused by name with this section cited, never emitted
 with the function missing — and the second walker it needs, emitted only in
-units that declare a pointer, is tracked as schema#275. In C# that refusal
-is already made one level up: a pointered unit gets no `<Base>Table.cs` at
+units that declare a pointer, is tracked as schema#275. In C# and Rust that
+refusal is already made one level up: a pointered unit gets no table source at
 all (§11), so it has no text form for the same reason it has no wire codec.
+
+**Rust's walk is a UNIT's, on the same terms C#'s is**, and for the same
+reason: a unit is one crate, so a second copy would be a duplicate definition
+rather than C++'s harmless re-inclusion behind a guard. It lives in
+`table_runtime.rs` and `make tables-rust-walk` is the gate — the walker's
+source, byte-identical across every unit of the corpus, with nothing
+normalised away but the generated banner. Where C++ must cross the runtime's
+DECIMAL POINT twice, Rust's float formatting and parsing are locale-free and
+the walk consults no locale at all; C's `%.*g` is reproduced digit for digit
+so the goldens are the same bytes. Storage is reached the way C++ reaches it —
+an offset and a width, because a `#[repr(C)]` Rust record has both — with one
+exception: a UNION's payload address comes out of a match rather than off an
+offset, since Rust spells a union as a real enum, so the union descriptor
+carries three accessors where C++ carries a tag offset and an arm offset.
 
 - **`FromJson` fills ONE instance from ONE text.** The instance is the
   caller's; the read path allocates nothing beyond it. Fields the text does

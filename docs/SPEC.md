@@ -1390,7 +1390,18 @@ tree mirrors the schema tree a person navigates.
   packages are order-free across files, so there is no topo sort and no
   include graph to refuse.
 - **Rust:** one module per schema file (lowercased basename) plus a generated
-  `lib.rs` declaring and glob re-exporting them.
+  `lib.rs` declaring and glob re-exporting them. A unit that declares TABLES
+  grows four more module kinds, all declared by that same crate root: one
+  `<base>_table.rs` per schema file with the table wire's codecs, its
+  reflection descriptors and its TEXT FORM (SPEC-TABLES.md §16); one
+  `table_runtime.rs` per UNIT carrying the shared runtime and the text form's
+  one generic walk, emitted once because a unit is one crate and a second copy
+  would be a duplicate definition rather than C++'s harmless re-inclusion
+  behind a guard; one `<base>_cook.rs` per schema file with the cooked form's
+  blittable `<Name>Row` records and their layout contract as const asserts
+  (§7, §20.3); and the block form's `block_runtime.rs` plus one
+  `<base>_block.rs` (§19). A table-free unit grows none of them, and its
+  packet modules are byte-identical either way.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
   `namespace <Package>`. A unit that declares TABLES emits one further file
@@ -1657,8 +1668,9 @@ internal/check/        resolver, constant folding, shape checks, dominance rule,
 internal/format/       schemafmt
 internal/codegen/      c/  cpp/  csharp/  dart/  elixir/  golang/  java/  js/
                        rust/ — registered on the driver through the public
-                       generator interface; cpptable/ and cstable/ are the
-                       table emitters two of those backends carry
+                       generator interface; cpptable/, cstable/ and
+                       rusttable/ are the table emitters three of those
+                       backends carry
                        (SPEC-TABLES.md)
 internal/fuzz/         compiler fuzzing (gate 6)
 internal/publicapi/    the acceptance gate: an external module, public API only

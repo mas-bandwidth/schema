@@ -580,12 +580,25 @@ build/cook-fuzz/.stamp: $(wildcard test/cookgen/*.go) $(SCHEMAS_TABLES_POINTERS)
 #     there. It is this leg's address sanitizer, and it is the reason the
 #     region is allocated to the CLAIM rather than to the file.
 #
-# Miri is roughly two orders of magnitude slower than native, so it runs the
-# ENUMERATED passes — every slot x width x boundary value, every truncation,
-# every unaligned base, which are what cover the boundaries — with a token
-# random budget on top (MIRI_N). It needs the nightly toolchain and the miri
-# component: `rustup toolchain install nightly && rustup +nightly component add miri`.
-MIRI_N ?= 64
+# Miri INTERPRETS, so it runs the ENUMERATED passes — every slot x width x
+# boundary value, every truncation, every unaligned base, which are what cover
+# the boundaries — with a token random budget on top (MIRI_N) and only over the
+# SMALL count vectors (MIRI_MAX_SEED_BYTES). The cap is not a concession: what
+# Miri is there to prove is that a REFUSED mutant read nothing outside the
+# extent on the way to refusing, which is a property of Open and of the
+# projection, and every count vector carries both. The oracle's per-byte row
+# walk over the 7.5 MiB vector would cost hours and cover no check the small
+# vectors do not — and the native leg runs it in full.
+#
+# It needs the nightly toolchain and the miri component:
+# `rustup toolchain install nightly && rustup +nightly component add miri`.
+#
+# IT IS A BY-HAND GATE, like tables-cook-scale-1gb: 51,940 mutants at the
+# defaults measured 478 s on arm64 macOS, which is not a per-push cost. What
+# rides every push is the NATIVE leg (tables-rust-fuzz), 409,746 mutants in
+# 4.5 s at N=100000.
+MIRI_N ?= 8
+MIRI_MAX_SEED_BYTES ?= 4224
 
 .PHONY: tables-rust-fuzz
 tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
@@ -596,6 +609,7 @@ tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-ge
 tables-rust-fuzz-miri: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
 	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" \
 		MIRIFLAGS="-Zmiri-disable-isolation" SEED=$(SEED) N=$(MIRI_N) \
+		MAX_SEED_BYTES=$(MIRI_MAX_SEED_BYTES) \
 		BLOCK_SEEDS="$(CURDIR)/build/block-fuzz" COOK_FIXTURES="$(CURDIR)/build/cook-fuzz" \
 		cargo +nightly miri run --quiet
 

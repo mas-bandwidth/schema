@@ -16,11 +16,49 @@
 // a separate process to own, and one exec per surface is what keeps the leg
 // inside the two-minute rule (#320).
 
-use std::alloc::{alloc_zeroed, dealloc, Layout};
+use std::alloc::{GlobalAlloc, Layout, System, alloc_zeroed, dealloc};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::exit;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+// ---------------------------------------------------------------------------
+// the allocation counter
+// ---------------------------------------------------------------------------
+//
+// The SOAK's instrument (docs/SPEC-TABLES.md: "every read path allocates
+// nothing"). Counting bytes at the global allocator is the honest measurement
+// — RSS answers a different question, and an allocator that grew by one byte
+// per iteration would take a very long time to show up in it. The counters are
+// relaxed atomics: they are read once per interval, never on a decision.
+struct Counting;
+
+static LIVE_BYTES: AtomicI64 = AtomicI64::new(0);
+static TOTAL_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        LIVE_BYTES.fetch_add(layout.size() as i64, Ordering::Relaxed);
+        TOTAL_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        LIVE_BYTES.fetch_sub(layout.size() as i64, Ordering::Relaxed);
+        unsafe { System.dealloc(pointer, layout) }
+    }
+
+    unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        LIVE_BYTES.fetch_add(new_size as i64 - layout.size() as i64, Ordering::Relaxed);
+        TOTAL_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.realloc(pointer, layout, new_size) }
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: Counting = Counting;
 
 // ---------------------------------------------------------------------------
 // the manifest, read exactly as testdata/conformance/tables/FORMAT.md states it
@@ -709,6 +747,122 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// the soak
+// ---------------------------------------------------------------------------
+//
+// Every instance of the corpus, wire-loaded and re-saved and text-read and
+// text-written, in a loop, for as long as the caller asks — with the bytes
+// compared every iteration, so a run that drifted would stop rather than merely
+// get slower, and with LIVE ALLOCATED BYTES printed each interval, which is the
+// property the read path owes: it allocates nothing beyond the value and the
+// buffers the caller passes.
+//
+// The caller's buffers are hoisted out of the loop on purpose. What the soak is
+// watching for is an allocation the GENERATED code makes, and a Vec allocated
+// per iteration by the driver would hide one under its own noise.
+fn surface_soak(manifest: &Manifest, seconds: u64) {
+    let rows = codecs();
+    struct Case<'a> {
+        name: &'a str,
+        codec: &'a Codec,
+        wire: Vec<u8>,
+        text: Vec<u8>,
+    }
+    let mut cases = Vec::new();
+    for f in manifest.of_kind("instance") {
+        let codec = find_codec(&rows, &f[2], &f[3]);
+        cases.push(Case {
+            name: &f[1],
+            codec,
+            wire: slurp(&f[4]),
+            text: slurp(&format!("testdata/conformance/tables/json/{}.json", f[1])),
+        });
+    }
+    if cases.is_empty() {
+        fail("the manifest names no instance to soak");
+    }
+
+    // one warm pass, so every lazily-built descriptor and every buffer this
+    // driver owns exists before the baseline is taken
+    for case in cases.iter() {
+        let mut report = Report::default();
+        (case.codec.wire)(&case.wire, &mut report);
+        (case.codec.json_read)(&case.text, &mut report);
+        (case.codec.json_write)(&case.wire, &mut report);
+    }
+
+    // the baseline is taken AFTER the first print, because stdout's own line
+    // buffer is allocated on first use and is a one-time runtime cost rather
+    // than anything the generated code did
+    println!(
+        "soak: {} instances, {seconds}s, live allocated bytes are the instrument",
+        cases.len()
+    );
+    let baseline = LIVE_BYTES.load(Ordering::Relaxed);
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(seconds);
+    let mut next_report = started + Duration::from_secs(60.min(seconds));
+    let mut iterations: u64 = 0;
+
+    while Instant::now() < deadline {
+        for case in cases.iter() {
+            let mut report = Report::default();
+            match (case.codec.wire)(&case.wire, &mut report) {
+                Some(bytes) => {
+                    if bytes != case.wire {
+                        fail(&format!("{}: the wire round trip drifted", case.name));
+                    }
+                }
+                None => fail(&format!("{}: the wire round trip refused", case.name)),
+            }
+            match (case.codec.json_read)(&case.text, &mut report) {
+                Some(bytes) => {
+                    if bytes != case.wire {
+                        fail(&format!("{}: the text read no longer packs to its wire golden", case.name));
+                    }
+                }
+                None => fail(&format!("{}: the text read refused", case.name)),
+            }
+            match (case.codec.json_write)(&case.wire, &mut report) {
+                Some(text) => {
+                    if text != case.text {
+                        fail(&format!("{}: the text write drifted", case.name));
+                    }
+                }
+                None => fail(&format!("{}: the text write refused", case.name)),
+            }
+        }
+        iterations += 1;
+        let now = Instant::now();
+        if now >= next_report {
+            let live = LIVE_BYTES.load(Ordering::Relaxed);
+            let drift = live - baseline;
+            println!(
+                "soak {:>5}s  {:>8} iterations  live {:>10} bytes  drift {:>+8}  allocations {}",
+                (now - started).as_secs(),
+                iterations,
+                live,
+                drift,
+                TOTAL_ALLOCATIONS.load(Ordering::Relaxed)
+            );
+            next_report = now + Duration::from_secs(60.min(seconds));
+        }
+    }
+
+    let live = LIVE_BYTES.load(Ordering::Relaxed);
+    let drift = live - baseline;
+    println!(
+        "soak: {iterations} iterations of {} instances over {seconds}s, live {live} bytes, drift {drift:+}",
+        cases.len()
+    );
+    if drift != 0 {
+        fail(&format!(
+            "the soak's live allocated bytes moved by {drift:+} — a read path that allocates does not stay flat"
+        ));
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
@@ -735,6 +889,11 @@ fn main() {
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
         "cook" => surface_cook(&manifest, out),
+        // NOT a conformance surface: the harness never asks for it, and `list`
+        // does not name it. It is here because this binary already carries
+        // every codec of the corpus, exactly as the C++ driver carries its
+        // block-forgery pinning mode.
+        "soak" => surface_soak(&manifest, out.parse::<u64>().unwrap_or(3600)),
         "block" => surface_block(&manifest, out),
         "forgery" => surface_forgery(&manifest, out),
         _ => exit(2),

@@ -503,6 +503,13 @@ struct Options {
     seed: u64,
     random_mutants: i64,
     only: Option<(String, i64, String, i64)>,
+    // The largest seed block this run will forge. It exists for the MIRI leg
+    // and for nothing else: Miri interprets, so the oracle's per-byte row walk
+    // over the 7.5 MiB count vector would cost hours and cover no check the
+    // small vectors do not. What Miri is there to prove is that a REFUSED
+    // mutant read nothing outside the extent on the way to refusing, and that
+    // is a property of Open and of the projection, which every vector carries.
+    max_seed_bytes: i64,
 }
 
 static mut MUTANTS_RUN: i64 = 0;
@@ -594,6 +601,9 @@ fn run_unit(options: &Options, unit: &Unit, unit_index: usize, directory: &str) 
             }
         };
         let extent = seed_block.len() as i64;
+        if extent > options.max_seed_bytes {
+            continue;
+        }
 
         // the unmutated block opens, so a green run is not a fuzzer that
         // refuses everything
@@ -924,8 +934,9 @@ fn main() {
             parts[3].parse::<i64>().ok()?,
         ))
     });
+    let max_seed_bytes = env_u64("MAX_SEED_BYTES", i64::MAX as u64) as i64;
     unsafe { RUN_SEED = seed };
-    let options = Options { seed, random_mutants, only };
+    let options = Options { seed, random_mutants, only, max_seed_bytes };
 
     let block_directory =
         env::var("BLOCK_SEEDS").unwrap_or_else(|_| "build/block-fuzz".to_string());
