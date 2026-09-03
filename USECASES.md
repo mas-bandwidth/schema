@@ -245,8 +245,9 @@ reference.
   cycle refusal and the stale-leak and zero-cost gates beside it. §3.1's
   flat node encoding is the landed spec; the emitter still writes the
   nested form, and moving it over is tracked by **#251**. The variable
-  class exists in C++ only — C# refuses a pointered unit by name (§11) —
-  and the variable class's text form is a named follow-on (§15).
+  class's WIRE exists in C++ only — C# refuses that surface by name and
+  emits the pointered unit's cook and block accelerators regardless (§11)
+  — and the variable class's text form is a named follow-on (§15).
 
 ## 10. Config delivered from a backend into a running server
 

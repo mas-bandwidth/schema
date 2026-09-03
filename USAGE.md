@@ -588,7 +588,8 @@ that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
 A table lives on its own wire — evolution-tolerant TLV, carried by C++ and by
-C# (the fixed class; C#'s pointer surface and text form are follow-ons). Field
+C# (the fixed class; C#'s pointer surface ON THE WIRE and its text form are
+follow-ons — its cook and block accelerators read a pointered unit today). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
