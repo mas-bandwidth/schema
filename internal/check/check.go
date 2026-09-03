@@ -2833,7 +2833,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 // validating walk, and §7's Open is a header match with no walk in it, so the
 // name went with the design.
 var tableGeneratedVerbs = []string{
-	"Measure", "MeasureBody", "Save", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
+	"Measure", "MeasureBody", "Save", "SaveInto", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
 	"Reset", "LoadMeasure", "LoadBuilder", "TableType", "Builder",
 	"At", "Emplace", "Pack", "PackMeasure",
 	// the FLAT NODE TABLE's own spellings (docs/SPEC-TABLES.md §3.1): the

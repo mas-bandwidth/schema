@@ -21,9 +21,10 @@
 // one set of <Name>Row accessor objects, because a cooked record IS the
 // blittable row.
 //
-// A refusal is a null handle, and a reference that leaves the region resolves to
-// a refusal rather than to a read: no exception leaves this module, whatever the
-// bytes carry.
+// Bytes that are not a cook of this build are refused with a null handle; a
+// CALLER's error — no Uint8Array, a view starting at an unaligned byteOffset —
+// throws, naming the fix. A reference that leaves the region throws rather
+// than reads: that is a corrupt cook, and the message says so.
 
 import { BuildVersion } from "./BenchTableBlock.js";
 
@@ -108,6 +109,7 @@ export const TableEntityRow = (() => {
   function Health(view, at, i = 0) { return view.getInt32(at + 36 + i * 4, true); }
   function Weapon(view, at, i = 0) { return view.getUint8(at + 40 + i * 1); }
   function Damage(view, at, i = 0) { return view.getBigUint64(at + 48 + i * 8, true); }
+  function DamageHas(view, at, bit, i = 0) { return bit < 32 ? ((view.getUint32(at + 48 + i * 8, true) >>> bit) & 1) === 1 : ((view.getUint32((at + 48 + i * 8) + 4, true) >>> (bit - 32)) & 1) === 1; }
   function Moving(view, at, i = 0) { return view.getUint8(at + 56 + i * 1) !== 0; }
   function Firing(view, at, i = 0) { return view.getUint8(at + 57 + i * 1) !== 0; }
 
@@ -117,7 +119,7 @@ export const TableEntityRow = (() => {
     // shape — (bytes, view, at, index) — so a generic reader and the
     // named accessors above can be held to each other by a test.
     Fields: Object.freeze({ "entity_id": (bytes, view, at, i) => EntityId(view, at, i), "pos_x": (bytes, view, at, i) => PosX(view, at, i), "pos_y": (bytes, view, at, i) => PosY(view, at, i), "pos_z": (bytes, view, at, i) => PosZ(view, at, i), "yaw": (bytes, view, at, i) => Yaw(view, at, i), "pitch": (bytes, view, at, i) => Pitch(view, at, i), "vel_x": (bytes, view, at, i) => VelX(view, at, i), "vel_y": (bytes, view, at, i) => VelY(view, at, i), "vel_z": (bytes, view, at, i) => VelZ(view, at, i), "health": (bytes, view, at, i) => Health(view, at, i), "weapon": (bytes, view, at, i) => Weapon(view, at, i), "damage": (bytes, view, at, i) => Damage(view, at, i), "moving": (bytes, view, at, i) => Moving(view, at, i), "firing": (bytes, view, at, i) => Firing(view, at, i) }),
-    EntityId, PosX, PosY, PosZ, Yaw, Pitch, VelX, VelY, VelZ, Health, Weapon, Damage, Moving, Firing
+    EntityId, PosX, PosY, PosZ, Yaw, Pitch, VelX, VelY, VelZ, Health, Weapon, Damage, DamageHas, Moving, Firing
   });
 })();
 
@@ -172,10 +174,18 @@ export const TableEntityCook = (() => {
 
   const root = cookRecordTableEntity;
 
-  let layoutState = -1;
+  // the check runs ONCE, before the first Open points at anything, and a
+  // failure is this BUILD's defect rather than the bytes': the generated
+  // descriptors disagree with each other, so it throws and names the cook.
+  let layoutChecked = false;
   function Layout() {
-    if (layoutState < 0) { layoutState = TableCookLayout.verify(root) ? 1 : 0; }
-    return layoutState === 1;
+    if (!layoutChecked) {
+      if (!TableCookLayout.verify(root)) {
+        throw new Error("TableEntityCook: this build's generated cook descriptors disagree with each other (docs/SPEC-TABLES.md §20.3) — regenerate");
+      }
+      layoutChecked = true;
+    }
+    return true;
   }
 
   // Open checks the header and POINTS, and this is the WHOLE check
@@ -193,10 +203,20 @@ export const TableEntityCook = (() => {
   //
   // THE BASE'S ALIGNMENT IS THE VIEW'S byteOffset: JavaScript has no addresses,
   // so where a view starts inside its buffer is the one alignment fact a
-  // consumer can state, and it is what this measures.
+  // consumer can state, and it is what this measures — against the alignment
+  // the header names, once that word has been checked.
+  //
+  // NULL MEANS ONE THING: these bytes are not a cook of this build. A caller's
+  // error throws with the fix in it — no Uint8Array is a TypeError, and a view
+  // whose byteOffset is not a multiple of the region's alignment is a
+  // RangeError, because a pooled Node Buffer starts anywhere and the same
+  // bytes copied into a fresh Uint8Array open.
   function Open(bytes) {
-    if (!Layout()) { return null; }
-    if (bytes === null || bytes === undefined || bytes.length < 64) { return null; }
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("TableEntityCook.Open takes the cook's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+    }
+    Layout();
+    if (bytes.length < 64) { return null; }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
     const extent = BigInt(bytes.length);
 
@@ -250,8 +270,13 @@ export const TableEntityCook = (() => {
 
     // THE ALIGNMENT OF THE BASE. The header pads the data part to the region's
     // alignment, and the alignment divides 64, so the derived data offset
-    // carries the property from the file's base to the region's.
-    if ((BigInt(bytes.byteOffset) % alignment) !== 0n) { return null; }
+    // carries the property from the file's base to the region's. A base that
+    // is not aligned is the CALLER's placement, not the file, and throws.
+    if ((BigInt(bytes.byteOffset) % alignment) !== 0n) {
+      throw new RangeError("TableEntityCook.Open: the view starts " + bytes.byteOffset + " bytes into its ArrayBuffer, and this cook's base " +
+        "must be a multiple of " + alignment + " (docs/SPEC-TABLES.md §7.1) — a pooled Node Buffer starts anywhere; copy the bytes " +
+        "into a fresh Uint8Array first: new Uint8Array(bytes)");
+    }
 
     // `region` is the DATA part's offset inside the caller's view: the root
     // sits at region + 0, and every accessor takes an offset in these bytes.
@@ -267,11 +292,13 @@ export const TableEntityCook = (() => {
   // It takes the SLOT's own offset and not its value, because a self-relative
   // delta means nothing without the position it is relative to.
   //
-  // -1 IS NULL AND -2 IS A REFUSAL. C++ trusts the delta and adds it; a
-  // JavaScript read past a view throws, and an exception escaping a reader is
-  // the one thing this form may not do — so the target is bounded inside the
-  // region first, and a delta that leaves it is refused rather than followed.
-  // A consumer that must tell a null from a forgery has both answers.
+  // NULL IS null, AND A DELTA THAT LEAVES THE REGION THROWS. C++ trusts the
+  // delta and adds it; a JavaScript read past a view throws on its own, so the
+  // target is bounded inside the region first and a delta that leaves it is a
+  // RangeError that names the cook as corrupt — never a read, and never the
+  // DataView's own exception from somewhere inside a row. A cook is trusted
+  // input; a reference that leaves its region is a file `schema cook-check`
+  // refuses, and the throw says so.
   //
   // THE DELTA IS COMPOSED FROM TWO 32-BIT READS, not read as a BigInt.
   // Every BigInt is an object and a deref is the cook's hottest line, so
@@ -285,9 +312,11 @@ export const TableEntityCook = (() => {
     const view = cook.View;
     const low = view.getUint32(slot, true);
     const high = view.getInt32(slot + 4, true); // SIGNED: the delta is
-    if (high === 0 && low === 0) { return -1; } // null
+    if (high === 0 && low === 0) { return null; } // a null reference
     const target = slot + high * 4294967296 + low;
-    if (target < cook.Region || target >= cook.Region + cook.Length) { return -2; } // outside the region
+    if (target < cook.Region || target >= cook.Region + cook.Length) {
+      throw new RangeError("TableEntityCook.At: the reference at offset " + (slot - cook.Region) + " leaves the region — this cook is corrupt (docs/SPEC-TABLES.md §6.3); run schema cook-check");
+    }
     return target;
   }
 
@@ -321,10 +350,18 @@ export const TableStatCook = (() => {
 
   const root = cookRecordTableStat;
 
-  let layoutState = -1;
+  // the check runs ONCE, before the first Open points at anything, and a
+  // failure is this BUILD's defect rather than the bytes': the generated
+  // descriptors disagree with each other, so it throws and names the cook.
+  let layoutChecked = false;
   function Layout() {
-    if (layoutState < 0) { layoutState = TableCookLayout.verify(root) ? 1 : 0; }
-    return layoutState === 1;
+    if (!layoutChecked) {
+      if (!TableCookLayout.verify(root)) {
+        throw new Error("TableStatCook: this build's generated cook descriptors disagree with each other (docs/SPEC-TABLES.md §20.3) — regenerate");
+      }
+      layoutChecked = true;
+    }
+    return true;
   }
 
   // Open checks the header and POINTS, and this is the WHOLE check
@@ -342,10 +379,20 @@ export const TableStatCook = (() => {
   //
   // THE BASE'S ALIGNMENT IS THE VIEW'S byteOffset: JavaScript has no addresses,
   // so where a view starts inside its buffer is the one alignment fact a
-  // consumer can state, and it is what this measures.
+  // consumer can state, and it is what this measures — against the alignment
+  // the header names, once that word has been checked.
+  //
+  // NULL MEANS ONE THING: these bytes are not a cook of this build. A caller's
+  // error throws with the fix in it — no Uint8Array is a TypeError, and a view
+  // whose byteOffset is not a multiple of the region's alignment is a
+  // RangeError, because a pooled Node Buffer starts anywhere and the same
+  // bytes copied into a fresh Uint8Array open.
   function Open(bytes) {
-    if (!Layout()) { return null; }
-    if (bytes === null || bytes === undefined || bytes.length < 64) { return null; }
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("TableStatCook.Open takes the cook's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+    }
+    Layout();
+    if (bytes.length < 64) { return null; }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
     const extent = BigInt(bytes.length);
 
@@ -399,8 +446,13 @@ export const TableStatCook = (() => {
 
     // THE ALIGNMENT OF THE BASE. The header pads the data part to the region's
     // alignment, and the alignment divides 64, so the derived data offset
-    // carries the property from the file's base to the region's.
-    if ((BigInt(bytes.byteOffset) % alignment) !== 0n) { return null; }
+    // carries the property from the file's base to the region's. A base that
+    // is not aligned is the CALLER's placement, not the file, and throws.
+    if ((BigInt(bytes.byteOffset) % alignment) !== 0n) {
+      throw new RangeError("TableStatCook.Open: the view starts " + bytes.byteOffset + " bytes into its ArrayBuffer, and this cook's base " +
+        "must be a multiple of " + alignment + " (docs/SPEC-TABLES.md §7.1) — a pooled Node Buffer starts anywhere; copy the bytes " +
+        "into a fresh Uint8Array first: new Uint8Array(bytes)");
+    }
 
     // `region` is the DATA part's offset inside the caller's view: the root
     // sits at region + 0, and every accessor takes an offset in these bytes.
@@ -416,11 +468,13 @@ export const TableStatCook = (() => {
   // It takes the SLOT's own offset and not its value, because a self-relative
   // delta means nothing without the position it is relative to.
   //
-  // -1 IS NULL AND -2 IS A REFUSAL. C++ trusts the delta and adds it; a
-  // JavaScript read past a view throws, and an exception escaping a reader is
-  // the one thing this form may not do — so the target is bounded inside the
-  // region first, and a delta that leaves it is refused rather than followed.
-  // A consumer that must tell a null from a forgery has both answers.
+  // NULL IS null, AND A DELTA THAT LEAVES THE REGION THROWS. C++ trusts the
+  // delta and adds it; a JavaScript read past a view throws on its own, so the
+  // target is bounded inside the region first and a delta that leaves it is a
+  // RangeError that names the cook as corrupt — never a read, and never the
+  // DataView's own exception from somewhere inside a row. A cook is trusted
+  // input; a reference that leaves its region is a file `schema cook-check`
+  // refuses, and the throw says so.
   //
   // THE DELTA IS COMPOSED FROM TWO 32-BIT READS, not read as a BigInt.
   // Every BigInt is an object and a deref is the cook's hottest line, so
@@ -434,9 +488,11 @@ export const TableStatCook = (() => {
     const view = cook.View;
     const low = view.getUint32(slot, true);
     const high = view.getInt32(slot + 4, true); // SIGNED: the delta is
-    if (high === 0 && low === 0) { return -1; } // null
+    if (high === 0 && low === 0) { return null; } // a null reference
     const target = slot + high * 4294967296 + low;
-    if (target < cook.Region || target >= cook.Region + cook.Length) { return -2; } // outside the region
+    if (target < cook.Region || target >= cook.Region + cook.Length) {
+      throw new RangeError("TableStatCook.At: the reference at offset " + (slot - cook.Region) + " leaves the region — this cook is corrupt (docs/SPEC-TABLES.md §6.3); run schema cook-check");
+    }
     return target;
   }
 

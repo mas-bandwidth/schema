@@ -28,8 +28,16 @@
 // size against the extent of its own fields, every alignment against its size,
 // and — the one that is two independent derivations — each array's PITCH
 // CONSTANT against the size of the row type it names. That last is §19.5's
-// named negative control, and perturbing either side reds it. A failure is a
-// REFUSAL: Open returns null, and nothing throws.
+// named negative control, and perturbing either side reds it. A failure is
+// this BUILD's defect, not the bytes', so the first Open throws and names the
+// block rather than refusing bytes that may be perfectly good.
+//
+// WHAT OPEN ANSWERS. Null means one thing: these bytes are not a block of this
+// build. A caller's error is a throw with the fix in it — no Uint8Array is a
+// TypeError, and a view starting at a byteOffset that is not a multiple of
+// sixty-four is a RangeError, because a Node Buffer under 4 KiB is carved out
+// of a shared pool at an arbitrary offset and the same bytes copied into a
+// fresh Uint8Array open.
 //
 // ALLOCATION: one small handle per Open, and nothing per row. The bytes belong
 // to the consumer — a Uint8Array over an ArrayBuffer, a slice of a
@@ -188,8 +196,10 @@ func (g *blockGen) assemble() []byte {
 	h.WriteString("// <Base>Table.js carries not one symbol of it.\n")
 	h.WriteString("//\n")
 	h.WriteString("// Open takes the bytes the CONSUMER holds — a Uint8Array — and points at them.\n")
-	h.WriteString("// Nothing here copies, and nothing per row allocates. A refusal is a null\n")
-	h.WriteString("// handle: no exception leaves this module, whatever the bytes carry.\n")
+	h.WriteString("// Nothing here copies, and nothing per row allocates. Bytes that are not a\n")
+	h.WriteString("// block of this build are refused with a null handle, whatever they carry; a\n")
+	h.WriteString("// CALLER's error — no Uint8Array, or a view that starts at an unaligned\n")
+	h.WriteString("// byteOffset — throws, naming the fix.\n")
 	h.WriteString("//\n")
 	h.WriteString("// THE BASE'S ALIGNMENT IS THE VIEW'S byteOffset. JavaScript has no addresses,\n")
 	h.WriteString("// so the one alignment fact a consumer can state is where its view starts\n")
@@ -210,24 +220,35 @@ func (g *blockGen) assemble() []byte {
 		}
 		h.WriteString("\n")
 	}
-	if !g.home && len(g.imports[g.homeBase+"Block"]) > 0 {
-		// THE HOME's surface is RE-EXPORTED from every module of the unit that
-		// uses it. It is DEFINED once — an ES module is file-scoped, so a
+	if !g.home && g.homeBase != "" {
+		// THE HOME's WHOLE surface is RE-EXPORTED from every other module of
+		// the unit. It is DEFINED once — an ES module is file-scoped, so a
 		// second copy would be a second, unequal object — but a consumer that
-		// imports a table's handle needs the record objects it hands offsets
-		// into, and making it import a second module to read a row would be a
-		// papercut with no property behind it. One module, one whole surface.
-		syms := make([]string, 0, len(g.imports[g.homeBase+"Block"]))
-		for s := range g.imports[g.homeBase+"Block"] {
-			syms = append(syms, s)
-		}
-		sort.Strings(syms)
+		// imports a table's handle needs every record object a row can hand an
+		// offset into: the rows an array holds AND the `type` rows those rows
+		// nest, which is what `PositionAt` returns an offset for. Making it
+		// import a second module to read one would be a papercut with no
+		// property behind it. One module, one whole surface — and the whole of
+		// it, not the part this module's own code happened to reference.
 		h.WriteString("// The unit's shared block surface, defined once in its runtime home and\n")
-		h.WriteString("// re-exported here: one module, one whole surface.\n")
-		fmt.Fprintf(&h, "export { %s } from \"./%sBlock.js\";\n\n", strings.Join(syms, ", "), g.homeBase)
+		h.WriteString("// re-exported here whole: one module, one whole surface.\n")
+		fmt.Fprintf(&h, "export { %s } from \"./%sBlock.js\";\n\n", strings.Join(blockHomeSurface(g.blocks), ", "), g.homeBase)
 	}
 	h.WriteString(g.body.String())
 	return []byte(h.String())
+}
+
+// blockHomeSurface is every name the unit's block home exports: the shared
+// runtime, and one accessor object per record the block form lays out.
+func blockHomeSurface(blocks *ir.BlockUnit) []string {
+	names := []string{"BuildVersion", "TableBlockByteOrder", "TableBlockLayout", "TableBlockMagic"}
+	for _, name := range blocks.Order {
+		if blocks.Layout(name) != nil {
+			names = append(names, recordName(name))
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // ---- the block handle ----
@@ -287,10 +308,18 @@ func (g *blockGen) emitStrideChecks(bl *ir.BlockLayout) {
 			bl.Table.Name+"Block."+ir.GoExportName(a.Field.Name)+"Stride", a.Stride, recordName(a.ElemName))
 	}
 	g.pf("  ];\n")
-	g.pf("  let layoutState = -1;\n")
+	g.pf("  // the check runs ONCE, before the first Open points at anything, and a\n")
+	g.pf("  // failure is this BUILD's defect rather than the bytes': the generated\n")
+	g.pf("  // constants disagree with each other, so it throws and names the block.\n")
+	g.pf("  let layoutChecked = false;\n")
 	g.pf("  function Layout() {\n")
-	g.pf("    if (layoutState < 0) { layoutState = TableBlockLayout.verify(projection, strides) ? 1 : 0; }\n")
-	g.pf("    return layoutState === 1;\n")
+	g.pf("    if (!layoutChecked) {\n")
+	g.pf("      if (!TableBlockLayout.verify(projection, strides)) {\n")
+	g.pf("        throw new Error(\"%sBlock: this build's generated layout constants disagree with each other (docs/SPEC-TABLES.md §19.3) — regenerate\");\n", bl.Table.Name)
+	g.pf("      }\n")
+	g.pf("      layoutChecked = true;\n")
+	g.pf("    }\n")
+	g.pf("    return true;\n")
 	g.pf("  }\n\n")
 }
 
@@ -311,14 +340,30 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.pf("  // mismatch is a refusal; regenerate both sides. Data that must outlive the\n")
 	g.pf("  // build that wrote it takes the wire, which this same table still has.\n")
 	g.pf("  //\n")
+	g.pf("  // NULL IS ONE ANSWER AND IT MEANS ONE THING: these bytes are not a block of\n")
+	g.pf("  // this build — a foreign magic, the other byte order, another build version,\n")
+	g.pf("  // or framing the prologue's own numbers refuse. What the CALLER got wrong is\n")
+	g.pf("  // not a null, it is a throw with the fix in it: no Uint8Array at all is a\n")
+	g.pf("  // TypeError, and a view whose byteOffset is not a multiple of %d — a Node\n", ir.BlockAlign)
+	g.pf("  // Buffer under 4 KiB is carved out of a shared pool at an arbitrary offset —\n")
+	g.pf("  // is a RangeError, because that is the caller's placement and not the bytes,\n")
+	g.pf("  // and the same bytes copied into a fresh Uint8Array open.\n")
+	g.pf("  //\n")
 	g.pf("  // EVERY NUMBER OUT OF THE INSTANCE IS BIGINT ARITHMETIC, and each term is\n")
 	g.pf("  // BOUNDED BEFORE IT IS ADDED. A forged offset_of near 2^63 must refuse, and\n")
 	g.pf("  // a Number would have lost the low bits of it before the comparison ran.\n")
 	g.pf("  // The C++ and C# sides hold the same shape for the same reason.\n")
 	g.pf("  function Open(bytes) {\n")
-	g.pf("    if (!Layout()) { return null; }\n")
-	g.pf("    if (bytes === null || bytes === undefined || bytes.length < %d) { return null; }\n", bl.Projection.Size)
-	g.pf("    if ((bytes.byteOffset %% %d) !== 0) { return null; } // the base's alignment\n", ir.BlockAlign)
+	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
+	g.pf("      throw new TypeError(\"%sBlock.Open takes the block's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", bl.Table.Name)
+	g.pf("    }\n")
+	g.pf("    if ((bytes.byteOffset %% %d) !== 0) { // the base's alignment\n", ir.BlockAlign)
+	g.pf("      throw new RangeError(\"%sBlock.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and a block's base \" +\n", bl.Table.Name)
+	g.pf("        \"must be a multiple of %d (docs/SPEC-TABLES.md §19.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n", ir.BlockAlign)
+	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
+	g.pf("    }\n")
+	g.pf("    Layout();\n")
+	g.pf("    if (bytes.length < %d) { return null; }\n", bl.Projection.Size)
 	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("    if (view.getBigUint64(0, true) !== TableBlockMagic) { return null; }\n")
 	g.pf("    if (view.getBigUint64(8, true) !== BuildVersion) { return null; }\n")
@@ -419,6 +464,10 @@ func (g *blockGen) emitBlockAccessors(bl *ir.BlockLayout) {
 			}
 			g.pf("  function %s(block, index = 0) { const view = block.View; return %s; }\n", member,
 				jsScalarRead(kind, elem, fmt.Sprintf("%d + index * %d", fl.Offset, elem)))
+			if isFlagsField(f) {
+				g.pf("  function %sHas(block, bit, index = 0) { const view = block.View; return %s; }\n", member,
+					jsFlagBitRead(fmt.Sprintf("%d + index * %d", fl.Offset, elem)))
+			}
 		}
 		if facts.Counted && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes {
 			g.pf("  function %sCount(block) { return block.View.getInt32(%d, true); }\n", member, facts.CountOffset)
@@ -446,6 +495,9 @@ func (g *blockGen) blockInlineMembers(bl *ir.BlockLayout) []string {
 			out = append(out, member+"At")
 		default:
 			out = append(out, member)
+			if isFlagsField(f) {
+				out = append(out, member+"Has")
+			}
 		}
 		if facts.Counted && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes {
 			out = append(out, member+"Count")
@@ -603,9 +655,9 @@ export const TableBlockByteOrder = 1n;
 //     — the one pair here that is TWO INDEPENDENT DERIVATIONS, and §19.5's
 //     named negative control.
 //
-// A failure is a REFUSAL. Open returns null and nothing throws, because a
-// consumer of this form is a frame loop and an exception out of a frame loop
-// is a crash with extra steps.
+// A failure is THIS BUILD's defect — its own constants disagree — and the
+// first Open of the block throws, naming it. It is not a null: a null says the
+// bytes are not this build's, and these bytes were never looked at.
 export const TableBlockLayout = Object.freeze({
   verify(projection, strides) {
     const seen = new Set();

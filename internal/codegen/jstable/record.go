@@ -66,6 +66,26 @@ func jsScalarRead(kind int, elemSize int64, at string) string {
 	}
 }
 
+// isFlagsField reports a field of a `flags` type: eight bytes of mask in every
+// record, read as a BigInt by its value accessor and tested bit by bit,
+// without one, by the `<Member>Has` accessor beside it.
+func isFlagsField(f *ir.Field) bool {
+	if f.Type.Kind != ir.TNamed {
+		return false
+	}
+	_, isFlags := f.Type.Ref.(*ir.Flags)
+	return isFlags
+}
+
+// jsFlagBitRead renders a `flags` mask's ONE-BIT test over the record bytes at
+// `at`, as a Number expression that allocates nothing: the bit is the
+// variant's ordinal — the currency FlagName<Flags>(bit) takes — and the test
+// reads the one 32-bit word that holds it. A BigInt read of the whole mask
+// would be one allocation per row on the hottest path the block form has.
+func jsFlagBitRead(at string) string {
+	return fmt.Sprintf("bit < 32 ? ((view.getUint32(%s, true) >>> bit) & 1) === 1 : ((view.getUint32((%s) + 4, true) >>> (bit - 32)) & 1) === 1", at, at)
+}
+
 // recordRefs is what one record's accessors reference from elsewhere in the
 // unit — the element records it descends into.
 type recordRefs map[string]bool
@@ -134,6 +154,12 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			}
 			pf("  function %s(view, at, i = 0) { return %s; }\n", member,
 				jsScalarRead(kind, elem, fmt.Sprintf("at + %d + i * %d", fl.Offset, elem)))
+			if isFlagsField(f) {
+				// the mask's accessor answers a BigInt, one allocation per read;
+				// this one answers whether ONE bit is set and allocates nothing
+				pf("  function %sHas(view, at, bit, i = 0) { return %s; }\n", member,
+					jsFlagBitRead(fmt.Sprintf("at + %d + i * %d", fl.Offset, elem)))
+			}
 			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at, i) => %s(view, at, i)", f.Name, member))
 		}
 		if facts.Counted && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes {
@@ -169,6 +195,9 @@ func recordMembers(u *ir.Unit, ml *ir.MemberLayout) []string {
 			out = append(out, member+"At")
 		default:
 			out = append(out, member)
+			if isFlagsField(f) {
+				out = append(out, member+"Has")
+			}
 		}
 		if facts.Counted && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes {
 			out = append(out, member+"Count")

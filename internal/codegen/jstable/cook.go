@@ -19,15 +19,17 @@
 // emitted THERE and not again here.
 //
 // A REFERENCE IS EIGHT BYTES, SIGNED, SELF-RELATIVE from the slot's own
-// position, and NULL IS ZERO (§6.3). JavaScript reads it as a BigInt because
-// that is the only exact sixty-four-bit integer it has, and converts once, at
-// the resolution, after bounding the target inside the region: a delta that
-// leaves the region is a REFUSAL, where C++ simply trusts the bytes. That is
-// not a contract this port invented — it is what the contract "a read never
-// escapes the buffer" costs in a language where reading past a view throws.
+// position, and NULL IS ZERO (§6.3). JavaScript composes the delta from two
+// 32-bit reads — a Number, never a BigInt, on the cook's hottest line — and
+// bounds the target inside the region before it hands it back: a delta that
+// leaves the region THROWS, naming the cook as corrupt, where C++ simply
+// trusts the bytes. That is not a contract this port invented — it is what
+// the contract "a read never escapes the buffer" costs in a language where
+// reading past a view throws on its own.
 //
-// ALLOCATION: one handle per Open, one BigInt per reference resolved, nothing
-// per field. The bytes belong to the consumer.
+// ALLOCATION: one handle per Open and nothing per reference resolved or per
+// field; a 64-bit field reads as a BigInt, on the licence the wire has. The
+// bytes belong to the consumer.
 package jstable
 
 import (
@@ -326,9 +328,10 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// one set of <Name>Row accessor objects, because a cooked record IS the\n")
 	h.WriteString("// blittable row.\n")
 	h.WriteString("//\n")
-	h.WriteString("// A refusal is a null handle, and a reference that leaves the region resolves to\n")
-	h.WriteString("// a refusal rather than to a read: no exception leaves this module, whatever the\n")
-	h.WriteString("// bytes carry.\n\n")
+	h.WriteString("// Bytes that are not a cook of this build are refused with a null handle; a\n")
+	h.WriteString("// CALLER's error — no Uint8Array, a view starting at an unaligned byteOffset —\n")
+	h.WriteString("// throws, naming the fix. A reference that leaves the region throws rather\n")
+	h.WriteString("// than reads: that is a corrupt cook, and the message says so.\n\n")
 	if len(g.imports) > 0 {
 		bases := make([]string, 0, len(g.imports))
 		for b := range g.imports {
@@ -345,24 +348,57 @@ func (g *cookGen) assemble() []byte {
 		}
 		h.WriteString("\n")
 	}
-	if !g.home && len(g.imports[g.homeBase+"Cook"]) > 0 {
-		// THE HOME's surface is RE-EXPORTED from every module of the unit that
-		// uses it. It is DEFINED once — an ES module is file-scoped, so a
+	if !g.home {
+		// THE HOME's WHOLE surface is RE-EXPORTED from every other module of
+		// the unit. It is DEFINED once — an ES module is file-scoped, so a
 		// second copy would be a second, unequal object — but a consumer that
-		// imports a table's handle needs the record objects it hands offsets
-		// into, and making it import a second module to read a row would be a
-		// papercut with no property behind it. One module, one whole surface.
-		syms := make([]string, 0, len(g.imports[g.homeBase+"Cook"]))
-		for s := range g.imports[g.homeBase+"Cook"] {
-			syms = append(syms, s)
-		}
-		sort.Strings(syms)
+		// imports a table's handle needs every record object a row can hand an
+		// offset into, the nested `type` rows included, and making it import a
+		// second module to read one would be a papercut with no property
+		// behind it. One module, one whole surface — the whole of it, not the
+		// part this module's own code happened to reference. A record the
+		// BLOCK home emits is re-exported from there, for the same reason.
 		h.WriteString("// The unit's shared cook surface, defined once in its runtime home and\n")
-		h.WriteString("// re-exported here: one module, one whole surface.\n")
-		fmt.Fprintf(&h, "export { %s } from \"./%sCook.js\";\n\n", strings.Join(syms, ", "), g.homeBase)
+		h.WriteString("// re-exported here whole: one module, one whole surface.\n")
+		fmt.Fprintf(&h, "export { %s } from \"./%sCook.js\";\n", strings.Join(g.cookHomeSurface(), ", "), g.homeBase)
+		if fromBlock := g.blockRecordsUsed(); len(fromBlock) > 0 {
+			fmt.Fprintf(&h, "export { %s } from \"./%sBlock.js\";\n", strings.Join(fromBlock, ", "), blockHome(g.unit, g.blocks))
+		}
+		h.WriteString("\n")
 	}
 	h.WriteString(g.body.String())
 	return []byte(h.String())
+}
+
+// cookHomeSurface is every name the unit's cook home exports: the shared
+// runtime, and one accessor object per record the block form does not
+// already emit.
+func (g *cookGen) cookHomeSurface() []string {
+	names := []string{"TableCookByteOrder", "TableCookHeaderBytes", "TableCookLayout", "TableCookMagic", "TableCookMaxAlign"}
+	if !g.blockOwnsRuntime() {
+		names = append(names, "BuildVersion")
+	}
+	for _, name := range g.cook.order {
+		if !g.blockHasRecord(name) {
+			names = append(names, recordName(name))
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// blockRecordsUsed is every record of the cook closure whose accessor object
+// the BLOCK home emits, sorted — the names a cook consumer reaches through
+// this module and finds defined next door.
+func (g *cookGen) blockRecordsUsed() []string {
+	var names []string
+	for _, name := range g.cook.order {
+		if g.blockHasRecord(name) {
+			names = append(names, recordName(name))
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // ---- the cook handle ----
@@ -392,10 +428,18 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 		g.emitRecordDescriptor(r)
 	}
 	g.pf("  const root = %s;\n\n", cookInfoSymbol(st.Name))
-	g.pf("  let layoutState = -1;\n")
+	g.pf("  // the check runs ONCE, before the first Open points at anything, and a\n")
+	g.pf("  // failure is this BUILD's defect rather than the bytes': the generated\n")
+	g.pf("  // descriptors disagree with each other, so it throws and names the cook.\n")
+	g.pf("  let layoutChecked = false;\n")
 	g.pf("  function Layout() {\n")
-	g.pf("    if (layoutState < 0) { layoutState = TableCookLayout.verify(root) ? 1 : 0; }\n")
-	g.pf("    return layoutState === 1;\n")
+	g.pf("    if (!layoutChecked) {\n")
+	g.pf("      if (!TableCookLayout.verify(root)) {\n")
+	g.pf("        throw new Error(\"%sCook: this build's generated cook descriptors disagree with each other (docs/SPEC-TABLES.md §20.3) — regenerate\");\n", st.Name)
+	g.pf("      }\n")
+	g.pf("      layoutChecked = true;\n")
+	g.pf("    }\n")
+	g.pf("    return true;\n")
 	g.pf("  }\n\n")
 	g.emitOpen(st, ml, align)
 	g.emitAt(st)
@@ -425,10 +469,20 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("  //\n")
 	g.pf("  // THE BASE'S ALIGNMENT IS THE VIEW'S byteOffset: JavaScript has no addresses,\n")
 	g.pf("  // so where a view starts inside its buffer is the one alignment fact a\n")
-	g.pf("  // consumer can state, and it is what this measures.\n")
+	g.pf("  // consumer can state, and it is what this measures — against the alignment\n")
+	g.pf("  // the header names, once that word has been checked.\n")
+	g.pf("  //\n")
+	g.pf("  // NULL MEANS ONE THING: these bytes are not a cook of this build. A caller's\n")
+	g.pf("  // error throws with the fix in it — no Uint8Array is a TypeError, and a view\n")
+	g.pf("  // whose byteOffset is not a multiple of the region's alignment is a\n")
+	g.pf("  // RangeError, because a pooled Node Buffer starts anywhere and the same\n")
+	g.pf("  // bytes copied into a fresh Uint8Array open.\n")
 	g.pf("  function Open(bytes) {\n")
-	g.pf("    if (!Layout()) { return null; }\n")
-	g.pf("    if (bytes === null || bytes === undefined || bytes.length < %d) { return null; }\n", cookHeaderBytes)
+	g.pf("    if (!(bytes instanceof Uint8Array)) {\n")
+	g.pf("      throw new TypeError(\"%sCook.Open takes the cook's bytes as a Uint8Array, not \" + (bytes === null ? \"null\" : typeof bytes));\n", st.Name)
+	g.pf("    }\n")
+	g.pf("    Layout();\n")
+	g.pf("    if (bytes.length < %d) { return null; }\n", cookHeaderBytes)
 	g.pf("    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("    const extent = BigInt(bytes.length);\n\n")
 	g.pf("    // THE MAGIC, before anything else: it is what establishes the byte order\n")
@@ -476,8 +530,13 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("    if (dataLength < %dn) { return null; }\n\n", ml.Size)
 	g.pf("    // THE ALIGNMENT OF THE BASE. The header pads the data part to the region's\n")
 	g.pf("    // alignment, and the alignment divides 64, so the derived data offset\n")
-	g.pf("    // carries the property from the file's base to the region's.\n")
-	g.pf("    if ((BigInt(bytes.byteOffset) %% alignment) !== 0n) { return null; }\n\n")
+	g.pf("    // carries the property from the file's base to the region's. A base that\n")
+	g.pf("    // is not aligned is the CALLER's placement, not the file, and throws.\n")
+	g.pf("    if ((BigInt(bytes.byteOffset) %% alignment) !== 0n) {\n")
+	g.pf("      throw new RangeError(\"%sCook.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and this cook's base \" +\n", st.Name)
+	g.pf("        \"must be a multiple of \" + alignment + \" (docs/SPEC-TABLES.md §7.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n")
+	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
+	g.pf("    }\n\n")
 	g.pf("    // `region` is the DATA part's offset inside the caller's view: the root\n")
 	g.pf("    // sits at region + 0, and every accessor takes an offset in these bytes.\n")
 	g.pf("    return { Bytes: bytes, View: view, Region: Number(dataOffset), Length: Number(dataLength) };\n")
@@ -494,11 +553,13 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.pf("  // It takes the SLOT's own offset and not its value, because a self-relative\n")
 	g.pf("  // delta means nothing without the position it is relative to.\n")
 	g.pf("  //\n")
-	g.pf("  // -1 IS NULL AND -2 IS A REFUSAL. C++ trusts the delta and adds it; a\n")
-	g.pf("  // JavaScript read past a view throws, and an exception escaping a reader is\n")
-	g.pf("  // the one thing this form may not do — so the target is bounded inside the\n")
-	g.pf("  // region first, and a delta that leaves it is refused rather than followed.\n")
-	g.pf("  // A consumer that must tell a null from a forgery has both answers.\n")
+	g.pf("  // NULL IS null, AND A DELTA THAT LEAVES THE REGION THROWS. C++ trusts the\n")
+	g.pf("  // delta and adds it; a JavaScript read past a view throws on its own, so the\n")
+	g.pf("  // target is bounded inside the region first and a delta that leaves it is a\n")
+	g.pf("  // RangeError that names the cook as corrupt — never a read, and never the\n")
+	g.pf("  // DataView's own exception from somewhere inside a row. A cook is trusted\n")
+	g.pf("  // input; a reference that leaves its region is a file `schema cook-check`\n")
+	g.pf("  // refuses, and the throw says so.\n")
 	g.pf("  //\n")
 	g.pf("  // THE DELTA IS COMPOSED FROM TWO 32-BIT READS, not read as a BigInt.\n")
 	g.pf("  // Every BigInt is an object and a deref is the cook's hottest line, so\n")
@@ -512,9 +573,11 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 	g.pf("    const view = cook.View;\n")
 	g.pf("    const low = view.getUint32(slot, true);\n")
 	g.pf("    const high = view.getInt32(slot + 4, true); // SIGNED: the delta is\n")
-	g.pf("    if (high === 0 && low === 0) { return -1; } // null\n")
+	g.pf("    if (high === 0 && low === 0) { return null; } // a null reference\n")
 	g.pf("    const target = slot + high * 4294967296 + low;\n")
-	g.pf("    if (target < cook.Region || target >= cook.Region + cook.Length) { return -2; } // outside the region\n")
+	g.pf("    if (target < cook.Region || target >= cook.Region + cook.Length) {\n")
+	g.pf("      throw new RangeError(\"%sCook.At: the reference at offset \" + (slot - cook.Region) + \" leaves the region — this cook is corrupt (docs/SPEC-TABLES.md §6.3); run schema cook-check\");\n", st.Name)
+	g.pf("    }\n")
 	g.pf("    return target;\n")
 	g.pf("  }\n\n")
 }

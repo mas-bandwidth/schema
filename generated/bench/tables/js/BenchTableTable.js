@@ -10,9 +10,12 @@
 // the package and independent of file order (docs/SPEC-TABLES.md §19.2).
 //
 // Measure/Save/Load are name-first module functions: <Name>Measure gives the
-// exact wire size, <Name>Save writes exactly that many bytes into the caller's
-// Uint8Array, <Name>Load overlays a value in place and reports every tolerance
-// event. The caller owns the value, the buffer and the report.
+// exact wire size, <Name>Save hands back a Uint8Array of exactly that many
+// bytes and <Name>SaveInto writes them into the caller's, <Name>Load hands
+// back the value — the caller's own, overlaid in place, when it passes one —
+// and ledgers every tolerance event in the report. A value the wire cannot
+// carry and a buffer too small are the CALLER's errors and throw a RangeError;
+// what the DATA does is never an exception, it is the report.
 //
 // Every multi-byte read and write names its byte order explicitly — the
 // `true` at every DataView call — so the wire does not depend on the host's.
@@ -34,6 +37,19 @@ export class TableReport {
     this.Duplicate = 0;
     this.Malformed = false; // framing damage; decode stopped, partial result kept
   }
+
+  // A REPORT ACCUMULATES, exactly as the C++ one does: a Load adds to the
+  // counters it is handed and clears nothing, so one report can ledger a whole
+  // batch. A caller reusing one across reads it wants to tell apart clears it
+  // here, between them.
+  reset() {
+    this.Unknown = 0;
+    this.KindMismatch = 0;
+    this.Clamped = 0;
+    this.Duplicate = 0;
+    this.Malformed = false;
+    return this;
+  }
 }
 
 // TableWriter writes the wire into the caller's Uint8Array. Nothing here
@@ -46,6 +62,9 @@ export class TableReport {
 // machine is.
 export class TableWriter {
   constructor(buffer) {
+    if (!(buffer instanceof Uint8Array)) {
+      throw new TypeError("a TableWriter writes into a Uint8Array, not " + (buffer === null ? "null" : typeof buffer));
+    }
     this.Bytes = buffer;
     this.View = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     this.Offset = 0;
@@ -103,16 +122,23 @@ export class TableWriter {
     this.Offset += 4;
   }
 
+  // THE BIGINT GOES STRAIGHT INTO THE VIEW. setBigUint64 wraps a negative
+  // value modulo 2^64 by specification — a signed storage and an unsigned one
+  // both land as their two's-complement bytes — without building a second
+  // BigInt, where a BigInt.asUintN(64, v) in front of it would be one
+  // allocation per 64-bit field written. The allocation gate measures this
+  // line: a save allocates nothing.
   put64(v) {
     if (this.Offset + 8 > this.Bytes.length) { this.Overflow = true; return; }
-    this.View.setBigUint64(this.Offset, BigInt.asUintN(64, v), true);
+    this.View.setBigUint64(this.Offset, v, true);
     this.Offset += 8;
   }
 
   // THE FIELD HEADER and THE LENGTH PREFIX, one call each, for the reason the
   // reader's mismatch() exists: a save body emits one block per field, and the
-  // id-and-kind pair plus the open-and-patch pair were four statements of it.
-  // Both take Smis, so neither crosses a boundary anything can box.
+  // id-and-kind pair plus the open-and-patch pair are one call here rather
+  // than two statements at every site. Both take Smis, so neither crosses a
+  // boundary anything can box.
   field(id, kind) {
     this.put16(id);
     this.put8(kind);
@@ -146,6 +172,9 @@ export class TableWriter {
 // past its own framing.
 export class TableReader {
   constructor(bytes, report) {
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("a TableReader reads a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+    }
     this.Bytes = bytes;
     this.View = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     this.Offset = 0;
@@ -194,10 +223,10 @@ export class TableReader {
   // method here, and the reason is the INLINING BUDGET (docs/SPEC-TABLES.md
   // §19.5's law, which this repo already carries for clang: "a generated codec
   // must not depend on the compiler's inlining budget"). A read body emits one
-  // case per field, and every case carried five statements of counting and
-  // skipping inline. The bigger a body grows, the fewer of ITS OWN callees V8
+  // case per field, and five statements of counting and skipping in every case
+  // would grow it. The bigger a body grows, the fewer of ITS OWN callees V8
   // will inline into it — and an un-inlined callee is where a float field's
-  // sixteen bytes came from, above. Keeping the per-field bytecode small is
+  // sixteen bytes come from, above. Keeping the per-field bytecode small is
   // what keeps that headroom, so these two are hoisted out of every case.
   //
   // Both return false only for FRAMING DAMAGE, which is the caller's own
@@ -317,6 +346,11 @@ export const TableJson = (() => {
   const MaxNumber = 512;
 
   const Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  // the boundary between the language's text and the form's bytes: a string in
+  // is encoded once, and the bytes the walk wrote are decoded once on the way out
+  const Utf8Encoder = new TextEncoder();
+  const Utf8Decoder = new TextDecoder("utf-8");
 
   // The number token is ASCII by JSON's own grammar, so a byte-per-character
   // decode is exact and the walk never meets a multi-byte sequence here.
@@ -1394,7 +1428,7 @@ export const TableJson = (() => {
       } else {
         const payload = f.Arms.Arms[tag].Payload(union);
         const arm = armTableOf(f.Arms.Arms[tag]);
-        arm.reset(payload);
+        arm.Reset(payload);
         if (!readTable(text, input, payload, arm, depth + 1)) { return false; }
         f.Arms.SetTag(union, BigInt(tag));
       }
@@ -1407,7 +1441,7 @@ export const TableJson = (() => {
     if (f.Kind === 13) {
       const child = f.GetChild(owner, index);
       const info = tableOf(f);
-      info.reset(child);
+      info.Reset(child);
       return readTable(text, input, child, info, depth + 1);
     }
     if (isEnum(f)) {
@@ -1577,7 +1611,7 @@ export const TableJson = (() => {
   // refused by name (docs/SPEC-TABLES.md §11).
   function resetSlots(value, f) {
     for (let i = 0; i < f.ArrayBound; i++) {
-      if (f.Kind === 13) { tableOf(f).reset(f.GetChild(value, i)); }
+      if (f.Kind === 13) { tableOf(f).Reset(f.GetChild(value, i)); }
       else { f.SetRaw(value, i, 0n); }
     }
   }
@@ -1757,7 +1791,7 @@ export const TableJson = (() => {
           if (!literal(text, input, "null")) { return false; }
           // absent, and back at its defaults: a repeated key whose last
           // occurrence is null must not leave an earlier value standing
-          if (f.TableRef !== null) { tableOf(f).reset(f.GetChild(value, 0)); }
+          if (f.TableRef !== null) { tableOf(f).Reset(f.GetChild(value, 0)); }
           else { f.SetRaw(value, 0, 0n); }
           f.SetPresent(value, false);
         } else {
@@ -1784,6 +1818,17 @@ export const TableJson = (() => {
   // ---- the two entry points the per-table wrappers name ----
 
   function read(value, info, text, report) {
+    // THE TEXT IS A STRING OR THE BYTES OF ONE. A string is the language's
+    // currency for text and is encoded here, once, at the boundary; a
+    // Uint8Array is a text read straight off a file and is walked as it is.
+    // Anything else is the CALLER's error, not malformed data: a number, an
+    // object or a missing argument is a type the text form does not take.
+    if (typeof text === "string") {
+      text = Utf8Encoder.encode(text);
+    } else if (!(text instanceof Uint8Array)) {
+      throw new TypeError("FromJson takes the text as a string or a Uint8Array, not " +
+        (text === null ? "null" : typeof text));
+    }
     // a caller with no report is off the read path this section prices: it
     // gets one rather than a branch on every counter
     const input = {
@@ -1791,7 +1836,7 @@ export const TableJson = (() => {
       Report: report !== null && report !== undefined ? report : new TableReport(),
       bad: false,
     };
-    info.reset(value);
+    info.Reset(value);
     // C++ refuses a null pointer and a negative length here before it walks. A
     // Uint8Array is neither: an empty one is a text with no object in it,
     // which the walk below already calls malformed, so there is nothing to
@@ -1811,15 +1856,27 @@ export const TableJson = (() => {
     return true;
   }
 
-  function write(value, info, buffer, measuring) {
-    const o = new Out(buffer, measuring);
-    if (!writeValue(o, value, info, 0)) { return -1; }
+  // TWO PASSES OVER ONE CODE PATH: the walk measures first, then writes into
+  // a buffer of exactly that size, so measure and write agree byte for byte —
+  // the wire's invariant (§9) carried across — and the answer is a string,
+  // decoded once from bytes the walk itself spelled as UTF-8. A value the text
+  // form cannot spell — a non-finite float, an enum value or union tag no
+  // variant names, a count past its bound — is the CALLER's error and throws.
+  function write(value, info) {
+    const measure = new Out(null, true);
+    if (!writeValue(measure, value, info, 0)) {
+      throw new RangeError(info.Name + "ToJson: the value holds something the text form cannot spell — " +
+        "a non-finite float, an enum value or union tag no variant names, or a count past its bound");
+    }
     // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every writer
     // emits it — this one, the C++ walk and schema unpack — and every reader
     // accepts a text with or without.
+    measure.put(0x0a);
+    const bytes = new Uint8Array(measure.Offset);
+    const o = new Out(bytes, false);
+    writeValue(o, value, info, 0);
     o.put(0x0a);
-    if (o.Overflow) { return -1; }
-    return o.Offset;
+    return Utf8Decoder.decode(bytes);
   }
 
   return Object.freeze({ read, write, MaxDepth, MaxKey, MaxNumber });
@@ -1904,8 +1961,8 @@ export class TableMixed {
 // TableWeapon on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
 // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
-// -1 is "no wire identity": a value no variant names, or an id this build
-// cannot name.
+// undefined is "no wire identity": a value no variant names, or an id this
+// build cannot name.
 export function TableEnumIdTableWeapon(value) {
   switch (value) {
     case TableWeapon.None: return 0;
@@ -1924,7 +1981,7 @@ export function TableEnumIdTableWeapon(value) {
     case TableWeapon.Turret: return 0xf720;
     case TableWeapon.Drone: return 0xc67e;
     case TableWeapon.Repair: return 0x86cc;
-    default: return -1; // no variant names this value: no wire identity
+    default: return undefined; // no variant names this value: no wire identity
   }
 }
 
@@ -1946,7 +2003,7 @@ export function TableEnumValueTableWeapon(id) {
     case 0xf720: return TableWeapon.Turret;
     case 0xc67e: return TableWeapon.Drone;
     case 0x86cc: return TableWeapon.Repair;
-    default: return -1; // an id this build cannot name
+    default: return undefined; // an id this build cannot name
   }
 }
 
@@ -1982,7 +2039,7 @@ export function TableEntityMeasure(value) {
   if (value.VelZ !== 0) { bytes += 3 + 4; } // vel_z
   if (value.Health !== 0) { bytes += 3 + 4; } // health
   if (value.Weapon !== TableWeapon.None) {
-    if (TableEnumIdTableWeapon(value.Weapon) < 0) { return -1; } // no variant names this value
+    if (TableEnumIdTableWeapon(value.Weapon) === undefined) { throw new RangeError("TableEntity.weapon: " + value.Weapon + " is a value no variant names, so it has no wire identity"); }
     bytes += 3 + 2; // weapon: the variant's name hash
   }
   if (value.Damage !== 0n) { bytes += 3 + 8; } // damage
@@ -2034,7 +2091,7 @@ export function TableEntitySaveBody(w, value) {
   }
   if (value.Weapon !== TableWeapon.None) {
     const variantId = TableEnumIdTableWeapon(value.Weapon);
-    if (variantId < 0) { return false; }
+    if (variantId === undefined) { throw new RangeError("TableEntity.weapon: " + value.Weapon + " is a value no variant names, so it has no wire identity"); }
     w.field(0x4f72, 7); // weapon
     w.put16(variantId);
   }
@@ -2054,9 +2111,17 @@ export function TableEntitySaveBody(w, value) {
   return !w.Overflow;
 }
 
-export function TableEntitySave(value, buffer) {
+export function TableEntitySave(value) {
+  const buffer = new Uint8Array(TableEntityMeasure(value));
+  TableEntitySaveBody(new TableWriter(buffer), value); // cannot overflow: the buffer is measure's answer
+  return buffer;
+}
+
+export function TableEntitySaveInto(value, buffer) {
   const w = new TableWriter(buffer);
-  if (!TableEntitySaveBody(w, value)) { return -1; }
+  if (!TableEntitySaveBody(w, value)) {
+    throw new RangeError("TableEntitySaveInto: a buffer of " + buffer.length + " bytes is short of the " + TableEntityMeasure(value) + " the value measures");
+  }
   return w.Offset; // == TableEntityMeasure(value)
 }
 
@@ -2181,7 +2246,7 @@ export function TableEntityLoadBody(r, value) {
         if (!r.has(2)) { r.Report.Malformed = true; return false; }
         {
           const decodedEnum = TableEnumValueTableWeapon(r.get16());
-          if (decodedEnum < 0) {
+          if (decodedEnum === undefined) {
             r.Report.Unknown++;
             value.Weapon = TableWeapon.None;
           } else {
@@ -2216,9 +2281,11 @@ export function TableEntityLoadBody(r, value) {
   }
 }
 
-export function TableEntityLoad(value, bytes, report) {
+export function TableEntityLoad(bytes, report, value) {
+  if (value === undefined || value === null) { value = new TableEntity(); }
   const r = new TableReader(bytes, report !== null && report !== undefined ? report : new TableReport());
-  return TableEntityLoadBody(r, value);
+  TableEntityLoadBody(r, value);
+  return value;
 }
 
 // TableStatReset restores TableStat's declared defaults in place, reusing every buffer
@@ -2248,9 +2315,17 @@ export function TableStatSaveBody(w, value) {
   return !w.Overflow;
 }
 
-export function TableStatSave(value, buffer) {
+export function TableStatSave(value) {
+  const buffer = new Uint8Array(TableStatMeasure(value));
+  TableStatSaveBody(new TableWriter(buffer), value); // cannot overflow: the buffer is measure's answer
+  return buffer;
+}
+
+export function TableStatSaveInto(value, buffer) {
   const w = new TableWriter(buffer);
-  if (!TableStatSaveBody(w, value)) { return -1; }
+  if (!TableStatSaveBody(w, value)) {
+    throw new RangeError("TableStatSaveInto: a buffer of " + buffer.length + " bytes is short of the " + TableStatMeasure(value) + " the value measures");
+  }
   return w.Offset; // == TableStatMeasure(value)
 }
 
@@ -2288,9 +2363,11 @@ export function TableStatLoadBody(r, value) {
   }
 }
 
-export function TableStatLoad(value, bytes, report) {
+export function TableStatLoad(bytes, report, value) {
+  if (value === undefined || value === null) { value = new TableStat(); }
   const r = new TableReader(bytes, report !== null && report !== undefined ? report : new TableReport());
-  return TableStatLoadBody(r, value);
+  TableStatLoadBody(r, value);
+  return value;
 }
 
 // TableMixedReset restores TableMixed's declared defaults in place, reusing every buffer
@@ -2346,45 +2423,32 @@ export function TableMixedMeasure(value) {
   if (value.WorldTime !== 0n) { bytes += 3 + 8; } // world_time
   if (value.FrameTick !== 0n) { bytes += 3 + 8; } // frame_tick
   if (Math.fround(value.ServerTime) !== 0.0) { bytes += 3 + 4; } // server_time
-  if (value.EntitiesCount < 0 || value.EntitiesCount > 8) { return -1; } // storage invariant
+  if (!(value.EntitiesCount >= 0) || value.EntitiesCount > 8) { throw new RangeError("TableMixed.entities: " + value.EntitiesCount + " is a used count past the declared 8"); }
   if (value.EntitiesCount > 0) {
     bytes += 3 + 4 + 5; // entities
     for (let i = 0; i < value.EntitiesCount; i++) {
-      const elem = TableEntityMeasure(value.Entities[i]);
-      if (elem < 0) { return -1; }
-      bytes += 4 + elem;
+      bytes += 4 + TableEntityMeasure(value.Entities[i]);
     }
   }
-  if (value.StatsCount < 0 || value.StatsCount > 80) { return -1; } // storage invariant
+  if (!(value.StatsCount >= 0) || value.StatsCount > 80) { throw new RangeError("TableMixed.stats: " + value.StatsCount + " is a used count past the declared 80"); }
   if (value.StatsCount > 0) {
     bytes += 3 + 4 + 5; // stats
     for (let i = 0; i < value.StatsCount; i++) {
-      const elem = TableStatMeasure(value.Stats[i]);
-      if (elem < 0) { return -1; }
-      bytes += 4 + elem;
+      bytes += 4 + TableStatMeasure(value.Stats[i]);
     }
   }
   switch (value.GameEvent.Type) { // game_event
     case TableEventType.None: break; // None elides — TLV absence is the None
-    case TableEventType.Hit: {
-      const arm = TableHitEventMeasure(value.GameEvent.Hit);
-      if (arm < 0) { return -1; }
-      bytes += 3 + 2 + 4 + arm; // the u16 ARM ID, then the arm length-prefixed
+    case TableEventType.Hit:
+      bytes += 3 + 2 + 4 + TableHitEventMeasure(value.GameEvent.Hit); // the u16 ARM ID, then the arm length-prefixed
       break;
-    }
-    case TableEventType.Chat: {
-      const arm = TableChatEventMeasure(value.GameEvent.Chat);
-      if (arm < 0) { return -1; }
-      bytes += 3 + 2 + 4 + arm; // the u16 ARM ID, then the arm length-prefixed
+    case TableEventType.Chat:
+      bytes += 3 + 2 + 4 + TableChatEventMeasure(value.GameEvent.Chat); // the u16 ARM ID, then the arm length-prefixed
       break;
-    }
-    case TableEventType.Pickup: {
-      const arm = TablePickupEventMeasure(value.GameEvent.Pickup);
-      if (arm < 0) { return -1; }
-      bytes += 3 + 2 + 4 + arm; // the u16 ARM ID, then the arm length-prefixed
+    case TableEventType.Pickup:
+      bytes += 3 + 2 + 4 + TablePickupEventMeasure(value.GameEvent.Pickup); // the u16 ARM ID, then the arm length-prefixed
       break;
-    }
-    default: return -1; // invalid tag — the write side refuses it too
+    default: throw new RangeError("TableMixed.game_event: " + value.GameEvent.Type + " is a union tag no arm names"); // the write side refuses it too
   }
   {
     let allDefault = true;
@@ -2393,9 +2457,9 @@ export function TableMixedMeasure(value) {
       bytes += 3 + 4 + 5 + 4; // loadout
     }
   }
-  if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15) { return -1; } // storage invariant
+  if (!(value.PlayerNameLength >= 0) || value.PlayerNameLength > 15) { throw new RangeError("TableMixed.player_name: " + value.PlayerNameLength + " is a used length past the declared 15"); }
   if (value.PlayerNameLength > 0) { bytes += 3 + 4 + value.PlayerNameLength; } // player_name
-  if (value.PayloadLength < 0 || value.PayloadLength > 16) { return -1; } // storage invariant
+  if (!(value.PayloadLength >= 0) || value.PayloadLength > 16) { throw new RangeError("TableMixed.payload: " + value.PayloadLength + " is a used length past the declared 16"); }
   if (value.PayloadLength > 0) { bytes += 3 + 4 + 5 + value.PayloadLength; } // payload
   if (Math.fround(value.AimX) !== 0.0) { bytes += 3 + 4; } // aim_x
   if (Math.fround(value.AimY) !== 0.0) { bytes += 3 + 4; } // aim_y
@@ -2457,7 +2521,7 @@ export function TableMixedSaveBody(w, value) {
     w.field(0x27f9, 10); // server_time
     if (w.Offset + 4 <= w.Bytes.length) { w.View.setFloat32(w.Offset, value.ServerTime, true); w.Offset += 4; } else { w.Overflow = true; }
   }
-  if (value.EntitiesCount < 0 || value.EntitiesCount > 8) { return false; } // storage invariant
+  if (!(value.EntitiesCount >= 0) || value.EntitiesCount > 8) { throw new RangeError("TableMixed.entities: " + value.EntitiesCount + " is a used count past the declared 8"); }
   if (value.EntitiesCount > 0) {
     w.field(0x25e3, 14); // entities
     const lenAt = w.open32();
@@ -2471,7 +2535,7 @@ export function TableMixedSaveBody(w, value) {
     }
     w.close32(lenAt);
   }
-  if (value.StatsCount < 0 || value.StatsCount > 80) { return false; } // storage invariant
+  if (!(value.StatsCount >= 0) || value.StatsCount > 80) { throw new RangeError("TableMixed.stats: " + value.StatsCount + " is a used count past the declared 80"); }
   if (value.StatsCount > 0) {
     w.field(0x76dd, 14); // stats
     const lenAt = w.open32();
@@ -2493,14 +2557,14 @@ export function TableMixedSaveBody(w, value) {
       case TableEventType.Hit: w.put16(0xba78); break;
       case TableEventType.Chat: w.put16(0x5be0); break;
       case TableEventType.Pickup: w.put16(0x99dd); break;
-      default: return false; // write validates the tag before it rides
+      default: throw new RangeError("TableMixed.game_event: " + value.GameEvent.Type + " is a union tag no arm names"); // write validates the tag before it rides
     }
     const lenAt = w.open32();
     switch (value.GameEvent.Type) {
       case TableEventType.Hit: if (!TableHitEventSaveBody(w, value.GameEvent.Hit)) { return false; } break;
       case TableEventType.Chat: if (!TableChatEventSaveBody(w, value.GameEvent.Chat)) { return false; } break;
       case TableEventType.Pickup: if (!TablePickupEventSaveBody(w, value.GameEvent.Pickup)) { return false; } break;
-      default: return false; // write validates the tag before it rides
+      default: throw new RangeError("TableMixed.game_event: " + value.GameEvent.Type + " is a union tag no arm names"); // write validates the tag before it rides
     }
     w.close32(lenAt);
   }
@@ -2517,13 +2581,13 @@ export function TableMixedSaveBody(w, value) {
       w.close32(lenAt);
     }
   }
-  if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15) { return false; } // storage invariant
+  if (!(value.PlayerNameLength >= 0) || value.PlayerNameLength > 15) { throw new RangeError("TableMixed.player_name: " + value.PlayerNameLength + " is a used length past the declared 15"); }
   if (value.PlayerNameLength > 0) {
     w.field(0x2d3e, 12); // player_name
     w.put32(value.PlayerNameLength);
     w.raw(value.PlayerName, 0, value.PlayerNameLength);
   }
-  if (value.PayloadLength < 0 || value.PayloadLength > 16) { return false; } // storage invariant
+  if (!(value.PayloadLength >= 0) || value.PayloadLength > 16) { throw new RangeError("TableMixed.payload: " + value.PayloadLength + " is a used length past the declared 16"); }
   if (value.PayloadLength > 0) {
     w.field(0x44aa, 14); // payload
     w.put32(5 + value.PayloadLength);
@@ -2586,9 +2650,17 @@ export function TableMixedSaveBody(w, value) {
   return !w.Overflow;
 }
 
-export function TableMixedSave(value, buffer) {
+export function TableMixedSave(value) {
+  const buffer = new Uint8Array(TableMixedMeasure(value));
+  TableMixedSaveBody(new TableWriter(buffer), value); // cannot overflow: the buffer is measure's answer
+  return buffer;
+}
+
+export function TableMixedSaveInto(value, buffer) {
   const w = new TableWriter(buffer);
-  if (!TableMixedSaveBody(w, value)) { return -1; }
+  if (!TableMixedSaveBody(w, value)) {
+    throw new RangeError("TableMixedSaveInto: a buffer of " + buffer.length + " bytes is short of the " + TableMixedMeasure(value) + " the value measures");
+  }
   return w.Offset; // == TableMixedMeasure(value)
 }
 
@@ -3019,9 +3091,11 @@ export function TableMixedLoadBody(r, value) {
   }
 }
 
-export function TableMixedLoad(value, bytes, report) {
+export function TableMixedLoad(bytes, report, value) {
+  if (value === undefined || value === null) { value = new TableMixed(); }
   const r = new TableReader(bytes, report !== null && report !== undefined ? report : new TableReport());
-  return TableMixedLoadBody(r, value);
+  TableMixedLoadBody(r, value);
+  return value;
 }
 
 // TableHitEventReset restores TableHitEvent's declared defaults in place, reusing every buffer
@@ -3063,9 +3137,17 @@ export function TableHitEventSaveBody(w, value) {
   return !w.Overflow;
 }
 
-export function TableHitEventSave(value, buffer) {
+export function TableHitEventSave(value) {
+  const buffer = new Uint8Array(TableHitEventMeasure(value));
+  TableHitEventSaveBody(new TableWriter(buffer), value); // cannot overflow: the buffer is measure's answer
+  return buffer;
+}
+
+export function TableHitEventSaveInto(value, buffer) {
   const w = new TableWriter(buffer);
-  if (!TableHitEventSaveBody(w, value)) { return -1; }
+  if (!TableHitEventSaveBody(w, value)) {
+    throw new RangeError("TableHitEventSaveInto: a buffer of " + buffer.length + " bytes is short of the " + TableHitEventMeasure(value) + " the value measures");
+  }
   return w.Offset; // == TableHitEventMeasure(value)
 }
 
@@ -3121,9 +3203,11 @@ export function TableHitEventLoadBody(r, value) {
   }
 }
 
-export function TableHitEventLoad(value, bytes, report) {
+export function TableHitEventLoad(bytes, report, value) {
+  if (value === undefined || value === null) { value = new TableHitEvent(); }
   const r = new TableReader(bytes, report !== null && report !== undefined ? report : new TableReport());
-  return TableHitEventLoadBody(r, value);
+  TableHitEventLoadBody(r, value);
+  return value;
 }
 
 // TableChatEventReset restores TableChatEvent's declared defaults in place, reusing every buffer
@@ -3153,9 +3237,17 @@ export function TableChatEventSaveBody(w, value) {
   return !w.Overflow;
 }
 
-export function TableChatEventSave(value, buffer) {
+export function TableChatEventSave(value) {
+  const buffer = new Uint8Array(TableChatEventMeasure(value));
+  TableChatEventSaveBody(new TableWriter(buffer), value); // cannot overflow: the buffer is measure's answer
+  return buffer;
+}
+
+export function TableChatEventSaveInto(value, buffer) {
   const w = new TableWriter(buffer);
-  if (!TableChatEventSaveBody(w, value)) { return -1; }
+  if (!TableChatEventSaveBody(w, value)) {
+    throw new RangeError("TableChatEventSaveInto: a buffer of " + buffer.length + " bytes is short of the " + TableChatEventMeasure(value) + " the value measures");
+  }
   return w.Offset; // == TableChatEventMeasure(value)
 }
 
@@ -3194,9 +3286,11 @@ export function TableChatEventLoadBody(r, value) {
   }
 }
 
-export function TableChatEventLoad(value, bytes, report) {
+export function TableChatEventLoad(bytes, report, value) {
+  if (value === undefined || value === null) { value = new TableChatEvent(); }
   const r = new TableReader(bytes, report !== null && report !== undefined ? report : new TableReport());
-  return TableChatEventLoadBody(r, value);
+  TableChatEventLoadBody(r, value);
+  return value;
 }
 
 // TablePickupEventReset restores TablePickupEvent's declared defaults in place, reusing every buffer
@@ -3226,9 +3320,17 @@ export function TablePickupEventSaveBody(w, value) {
   return !w.Overflow;
 }
 
-export function TablePickupEventSave(value, buffer) {
+export function TablePickupEventSave(value) {
+  const buffer = new Uint8Array(TablePickupEventMeasure(value));
+  TablePickupEventSaveBody(new TableWriter(buffer), value); // cannot overflow: the buffer is measure's answer
+  return buffer;
+}
+
+export function TablePickupEventSaveInto(value, buffer) {
   const w = new TableWriter(buffer);
-  if (!TablePickupEventSaveBody(w, value)) { return -1; }
+  if (!TablePickupEventSaveBody(w, value)) {
+    throw new RangeError("TablePickupEventSaveInto: a buffer of " + buffer.length + " bytes is short of the " + TablePickupEventMeasure(value) + " the value measures");
+  }
   return w.Offset; // == TablePickupEventMeasure(value)
 }
 
@@ -3267,9 +3369,11 @@ export function TablePickupEventLoadBody(r, value) {
   }
 }
 
-export function TablePickupEventLoad(value, bytes, report) {
+export function TablePickupEventLoad(bytes, report, value) {
+  if (value === undefined || value === null) { value = new TablePickupEvent(); }
   const r = new TableReader(bytes, report !== null && report !== undefined ? report : new TableReport());
-  return TablePickupEventLoadBody(r, value);
+  TablePickupEventLoadBody(r, value);
+  return value;
 }
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
@@ -3291,12 +3395,12 @@ export function TableEntityTableType() {
       { Name: "vel_y", Json: "vel_y", TypeName: "int32", Id: 0x0151, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.VelY))), SetRaw: (o, i, r) => { o.VelY = Number(BigInt.asIntN(32, r)); } },
       { Name: "vel_z", Json: "vel_z", TypeName: "int32", Id: 0x0e88, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.VelZ))), SetRaw: (o, i, r) => { o.VelZ = Number(BigInt.asIntN(32, r)); } },
       { Name: "health", Json: "health", TypeName: "int32", Id: 0x8617, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.Health))), SetRaw: (o, i, r) => { o.Health = Number(BigInt.asIntN(32, r)); } },
-      { Name: "weapon", Json: "weapon", TypeName: "TableWeapon", Id: 0x4f72, Kind: 7, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 0, HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 15, EnumName: (v) => EnumNameTableWeapon(v), VariantId: (v) => { const id = TableEnumIdTableWeapon(v); return id < 0 ? 0 : id; }, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt(Math.trunc(o.Weapon) >>> 0), SetRaw: (o, i, r) => { o.Weapon = Number(BigInt.asUintN(32, r)); } },
+      { Name: "weapon", Json: "weapon", TypeName: "TableWeapon", Id: 0x4f72, Kind: 7, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 0, HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 15, EnumName: (v) => EnumNameTableWeapon(v), VariantId: (v) => { const id = TableEnumIdTableWeapon(v); return id === undefined ? 0 : id; }, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt(Math.trunc(o.Weapon) >>> 0), SetRaw: (o, i, r) => { o.Weapon = Number(BigInt.asUintN(32, r)); } },
       { Name: "damage", Json: "damage", TypeName: "TableDamage", Id: 0x15a9, Kind: 9, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 0, HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 7, EnumName: (v) => FlagNameTableDamage(v), VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, o.Damage), SetRaw: (o, i, r) => { o.Damage = BigInt.asUintN(64, r); } },
       { Name: "moving", Json: "moving", TypeName: "bool", Id: 0xa4b2, Kind: 1, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 1, HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => (o.Moving ? 1n : 0n), SetRaw: (o, i, r) => { o.Moving = r !== 0n; } },
       { Name: "firing", Json: "firing", TypeName: "bool", Id: 0x2302, Kind: 1, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 1, HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => (o.Firing ? 1n : 0n), SetRaw: (o, i, r) => { o.Firing = r !== 0n; } },
     ],
-    reset: TableEntityReset,
+    Reset: TableEntityReset,
   };
   Object.freeze(info.Fields);
   TableEntityTableInfo = Object.freeze(info);
@@ -3313,7 +3417,7 @@ export function TableStatTableType() {
       { Name: "stat_id", Json: "stat_id", TypeName: "bits(8)", Id: 0xfb6c, Kind: 6, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt(Math.trunc(o.StatId) >>> 0), SetRaw: (o, i, r) => { o.StatId = Number(BigInt.asUintN(32, r)); } },
       { Name: "delta", Json: "delta", TypeName: "int32", Id: 0x1720, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: -512.0, RangeMax: 511.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.Delta))), SetRaw: (o, i, r) => { o.Delta = Number(BigInt.asIntN(32, r)); } },
     ],
-    reset: TableStatReset,
+    Reset: TableStatReset,
   };
   Object.freeze(info.Fields);
   TableStatTableInfo = Object.freeze(info);
@@ -3356,7 +3460,7 @@ export function TableMixedTableType() {
       { Name: "extra", Json: "extra", TypeName: "int32", Id: 0xb579, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "has_extra", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.Extra))), SetRaw: (o, i, r) => { o.Extra = Number(BigInt.asIntN(32, r)); } },
       { Name: "idle_ticks", Json: "idle_ticks", TypeName: "int32", Id: 0x9555, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 15.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "!has_extra", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.IdleTicks))), SetRaw: (o, i, r) => { o.IdleTicks = Number(BigInt.asIntN(32, r)); } },
     ],
-    reset: TableMixedReset,
+    Reset: TableMixedReset,
   };
   Object.freeze(info.Fields);
   TableMixedTableInfo = Object.freeze(info);
@@ -3375,7 +3479,7 @@ export function TableHitEventTableType() {
       { Name: "hit_kind", Json: "hit_kind", TypeName: "int32", Id: 0xaf83, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 7.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.HitKind))), SetRaw: (o, i, r) => { o.HitKind = Number(BigInt.asIntN(32, r)); } },
       { Name: "crit", Json: "crit", TypeName: "bool", Id: 0x93d9, Kind: 1, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 1, HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => (o.Crit ? 1n : 0n), SetRaw: (o, i, r) => { o.Crit = r !== 0n; } },
     ],
-    reset: TableHitEventReset,
+    Reset: TableHitEventReset,
   };
   Object.freeze(info.Fields);
   TableHitEventTableInfo = Object.freeze(info);
@@ -3392,7 +3496,7 @@ export function TableChatEventTableType() {
       { Name: "channel", Json: "channel", TypeName: "int32", Id: 0x7366, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 3.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.Channel))), SetRaw: (o, i, r) => { o.Channel = Number(BigInt.asIntN(32, r)); } },
       { Name: "speaker", Json: "speaker", TypeName: "bits(12)", Id: 0xce0b, Kind: 7, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt(Math.trunc(o.Speaker) >>> 0), SetRaw: (o, i, r) => { o.Speaker = Number(BigInt.asUintN(32, r)); } },
     ],
-    reset: TableChatEventReset,
+    Reset: TableChatEventReset,
   };
   Object.freeze(info.Fields);
   TableChatEventTableInfo = Object.freeze(info);
@@ -3409,7 +3513,7 @@ export function TablePickupEventTableType() {
       { Name: "item_id", Json: "item_id", TypeName: "bits(10)", Id: 0xec67, Kind: 7, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt(Math.trunc(o.ItemId) >>> 0), SetRaw: (o, i, r) => { o.ItemId = Number(BigInt.asUintN(32, r)); } },
       { Name: "amount", Json: "amount", TypeName: "int32", Id: 0x39cc, Kind: 4, IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemWidth: 4, HasRange: true, RangeMin: 0.0, RangeMax: 255.0, EnumMax: -1, EnumName: null, VariantId: null, KeyTypeName: null, KeyName: null, KeyId: null, Guard: "", TableRef: null, Arms: null, GetRaw: (o, i) => BigInt.asUintN(64, BigInt(Math.trunc(o.Amount))), SetRaw: (o, i, r) => { o.Amount = Number(BigInt.asIntN(32, r)); } },
     ],
-    reset: TablePickupEventReset,
+    Reset: TablePickupEventReset,
   };
   Object.freeze(info.Fields);
   TablePickupEventTableInfo = Object.freeze(info);
@@ -3420,85 +3524,73 @@ export function TablePickupEventTableType() {
 
 // TableEntity in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-export function TableEntityFromJson(value, text, report) {
-  return TableJson.read(value, TableEntityTableType(), text, report);
+export function TableEntityFromJson(text, report, value) {
+  if (value === undefined || value === null) { value = new TableEntity(); }
+  TableJson.read(value, TableEntityTableType(), text, report);
+  return value;
 }
 
-export function TableEntityToJsonMeasure(value) {
-  return TableJson.write(value, TableEntityTableType(), null, true);
-}
-
-export function TableEntityToJson(value, buffer) {
-  return TableJson.write(value, TableEntityTableType(), buffer, false);
+export function TableEntityToJson(value) {
+  return TableJson.write(value, TableEntityTableType());
 }
 
 // TableStat in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-export function TableStatFromJson(value, text, report) {
-  return TableJson.read(value, TableStatTableType(), text, report);
+export function TableStatFromJson(text, report, value) {
+  if (value === undefined || value === null) { value = new TableStat(); }
+  TableJson.read(value, TableStatTableType(), text, report);
+  return value;
 }
 
-export function TableStatToJsonMeasure(value) {
-  return TableJson.write(value, TableStatTableType(), null, true);
-}
-
-export function TableStatToJson(value, buffer) {
-  return TableJson.write(value, TableStatTableType(), buffer, false);
+export function TableStatToJson(value) {
+  return TableJson.write(value, TableStatTableType());
 }
 
 // TableMixed in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-export function TableMixedFromJson(value, text, report) {
-  return TableJson.read(value, TableMixedTableType(), text, report);
+export function TableMixedFromJson(text, report, value) {
+  if (value === undefined || value === null) { value = new TableMixed(); }
+  TableJson.read(value, TableMixedTableType(), text, report);
+  return value;
 }
 
-export function TableMixedToJsonMeasure(value) {
-  return TableJson.write(value, TableMixedTableType(), null, true);
-}
-
-export function TableMixedToJson(value, buffer) {
-  return TableJson.write(value, TableMixedTableType(), buffer, false);
+export function TableMixedToJson(value) {
+  return TableJson.write(value, TableMixedTableType());
 }
 
 // TableHitEvent in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-export function TableHitEventFromJson(value, text, report) {
-  return TableJson.read(value, TableHitEventTableType(), text, report);
+export function TableHitEventFromJson(text, report, value) {
+  if (value === undefined || value === null) { value = new TableHitEvent(); }
+  TableJson.read(value, TableHitEventTableType(), text, report);
+  return value;
 }
 
-export function TableHitEventToJsonMeasure(value) {
-  return TableJson.write(value, TableHitEventTableType(), null, true);
-}
-
-export function TableHitEventToJson(value, buffer) {
-  return TableJson.write(value, TableHitEventTableType(), buffer, false);
+export function TableHitEventToJson(value) {
+  return TableJson.write(value, TableHitEventTableType());
 }
 
 // TableChatEvent in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-export function TableChatEventFromJson(value, text, report) {
-  return TableJson.read(value, TableChatEventTableType(), text, report);
+export function TableChatEventFromJson(text, report, value) {
+  if (value === undefined || value === null) { value = new TableChatEvent(); }
+  TableJson.read(value, TableChatEventTableType(), text, report);
+  return value;
 }
 
-export function TableChatEventToJsonMeasure(value) {
-  return TableJson.write(value, TableChatEventTableType(), null, true);
-}
-
-export function TableChatEventToJson(value, buffer) {
-  return TableJson.write(value, TableChatEventTableType(), buffer, false);
+export function TableChatEventToJson(value) {
+  return TableJson.write(value, TableChatEventTableType());
 }
 
 // TablePickupEvent in and out of a JSON text — one instance, one text, the generic
 // walk over this type's descriptors (docs/SPEC-TABLES.md §16).
-export function TablePickupEventFromJson(value, text, report) {
-  return TableJson.read(value, TablePickupEventTableType(), text, report);
+export function TablePickupEventFromJson(text, report, value) {
+  if (value === undefined || value === null) { value = new TablePickupEvent(); }
+  TableJson.read(value, TablePickupEventTableType(), text, report);
+  return value;
 }
 
-export function TablePickupEventToJsonMeasure(value) {
-  return TableJson.write(value, TablePickupEventTableType(), null, true);
-}
-
-export function TablePickupEventToJson(value, buffer) {
-  return TableJson.write(value, TablePickupEventTableType(), buffer, false);
+export function TablePickupEventToJson(value) {
+  return TableJson.write(value, TablePickupEventTableType());
 }
 

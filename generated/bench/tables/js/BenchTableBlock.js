@@ -12,8 +12,10 @@
 // <Base>Table.js carries not one symbol of it.
 //
 // Open takes the bytes the CONSUMER holds — a Uint8Array — and points at them.
-// Nothing here copies, and nothing per row allocates. A refusal is a null
-// handle: no exception leaves this module, whatever the bytes carry.
+// Nothing here copies, and nothing per row allocates. Bytes that are not a
+// block of this build are refused with a null handle, whatever they carry; a
+// CALLER's error — no Uint8Array, or a view that starts at an unaligned
+// byteOffset — throws, naming the fix.
 //
 // THE BASE'S ALIGNMENT IS THE VIEW'S byteOffset. JavaScript has no addresses,
 // so the one alignment fact a consumer can state is where its view starts
@@ -61,9 +63,9 @@ export const TableBlockByteOrder = 1n;
 //     — the one pair here that is TWO INDEPENDENT DERIVATIONS, and §19.5's
 //     named negative control.
 //
-// A failure is a REFUSAL. Open returns null and nothing throws, because a
-// consumer of this form is a frame loop and an exception out of a frame loop
-// is a crash with extra steps.
+// A failure is THIS BUILD's defect — its own constants disagree — and the
+// first Open of the block throws, naming it. It is not a null: a null says the
+// bytes are not this build's, and these bytes were never looked at.
 export const TableBlockLayout = Object.freeze({
   verify(projection, strides) {
     const seen = new Set();
@@ -126,10 +128,18 @@ export const TableEntityBlock = (() => {
   // generated pitch, and the row object's own size.
   const strides = [
   ];
-  let layoutState = -1;
+  // the check runs ONCE, before the first Open points at anything, and a
+  // failure is this BUILD's defect rather than the bytes': the generated
+  // constants disagree with each other, so it throws and names the block.
+  let layoutChecked = false;
   function Layout() {
-    if (layoutState < 0) { layoutState = TableBlockLayout.verify(projection, strides) ? 1 : 0; }
-    return layoutState === 1;
+    if (!layoutChecked) {
+      if (!TableBlockLayout.verify(projection, strides)) {
+        throw new Error("TableEntityBlock: this build's generated layout constants disagree with each other (docs/SPEC-TABLES.md §19.3) — regenerate");
+      }
+      layoutChecked = true;
+    }
+    return true;
   }
 
   // Open checks once and points, and this is the WHOLE check
@@ -148,14 +158,30 @@ export const TableEntityBlock = (() => {
   // mismatch is a refusal; regenerate both sides. Data that must outlive the
   // build that wrote it takes the wire, which this same table still has.
   //
+  // NULL IS ONE ANSWER AND IT MEANS ONE THING: these bytes are not a block of
+  // this build — a foreign magic, the other byte order, another build version,
+  // or framing the prologue's own numbers refuse. What the CALLER got wrong is
+  // not a null, it is a throw with the fix in it: no Uint8Array at all is a
+  // TypeError, and a view whose byteOffset is not a multiple of 64 — a Node
+  // Buffer under 4 KiB is carved out of a shared pool at an arbitrary offset —
+  // is a RangeError, because that is the caller's placement and not the bytes,
+  // and the same bytes copied into a fresh Uint8Array open.
+  //
   // EVERY NUMBER OUT OF THE INSTANCE IS BIGINT ARITHMETIC, and each term is
   // BOUNDED BEFORE IT IS ADDED. A forged offset_of near 2^63 must refuse, and
   // a Number would have lost the low bits of it before the comparison ran.
   // The C++ and C# sides hold the same shape for the same reason.
   function Open(bytes) {
-    if (!Layout()) { return null; }
-    if (bytes === null || bytes === undefined || bytes.length < 88) { return null; }
-    if ((bytes.byteOffset % 64) !== 0) { return null; } // the base's alignment
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("TableEntityBlock.Open takes the block's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+    }
+    if ((bytes.byteOffset % 64) !== 0) { // the base's alignment
+      throw new RangeError("TableEntityBlock.Open: the view starts " + bytes.byteOffset + " bytes into its ArrayBuffer, and a block's base " +
+        "must be a multiple of 64 (docs/SPEC-TABLES.md §19.1) — a pooled Node Buffer starts anywhere; copy the bytes " +
+        "into a fresh Uint8Array first: new Uint8Array(bytes)");
+    }
+    Layout();
+    if (bytes.length < 88) { return null; }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
     if (view.getBigUint64(0, true) !== TableBlockMagic) { return null; }
     if (view.getBigUint64(8, true) !== BuildVersion) { return null; }
@@ -183,6 +209,7 @@ export const TableEntityBlock = (() => {
   function Health(block, index = 0) { const view = block.View; return view.getInt32(60 + index * 4, true); }
   function Weapon(block, index = 0) { const view = block.View; return view.getUint8(64 + index * 1); }
   function Damage(block, index = 0) { const view = block.View; return view.getBigUint64(72 + index * 8, true); }
+  function DamageHas(block, bit, index = 0) { const view = block.View; return bit < 32 ? ((view.getUint32(72 + index * 8, true) >>> bit) & 1) === 1 : ((view.getUint32((72 + index * 8) + 4, true) >>> (bit - 32)) & 1) === 1; }
   function Moving(block, index = 0) { const view = block.View; return view.getUint8(80 + index * 1) !== 0; }
   function Firing(block, index = 0) { const view = block.View; return view.getUint8(81 + index * 1) !== 0; }
 
@@ -193,7 +220,7 @@ export const TableEntityBlock = (() => {
     // buffer, a recording, a scratch copy all size from the generated constant
     // rather than from a number a person wrote down beside it.
     MaxBytes: 128,
-    Open, Layout, Type: projection, EntityId, PosX, PosY, PosZ, Yaw, Pitch, VelX, VelY, VelZ, Health, Weapon, Damage, Moving, Firing,
+    Open, Layout, Type: projection, EntityId, PosX, PosY, PosZ, Yaw, Pitch, VelX, VelY, VelZ, Health, Weapon, Damage, DamageHas, Moving, Firing,
   });
 })();
 
@@ -214,10 +241,18 @@ export const TableStatBlock = (() => {
   // generated pitch, and the row object's own size.
   const strides = [
   ];
-  let layoutState = -1;
+  // the check runs ONCE, before the first Open points at anything, and a
+  // failure is this BUILD's defect rather than the bytes': the generated
+  // constants disagree with each other, so it throws and names the block.
+  let layoutChecked = false;
   function Layout() {
-    if (layoutState < 0) { layoutState = TableBlockLayout.verify(projection, strides) ? 1 : 0; }
-    return layoutState === 1;
+    if (!layoutChecked) {
+      if (!TableBlockLayout.verify(projection, strides)) {
+        throw new Error("TableStatBlock: this build's generated layout constants disagree with each other (docs/SPEC-TABLES.md §19.3) — regenerate");
+      }
+      layoutChecked = true;
+    }
+    return true;
   }
 
   // Open checks once and points, and this is the WHOLE check
@@ -236,14 +271,30 @@ export const TableStatBlock = (() => {
   // mismatch is a refusal; regenerate both sides. Data that must outlive the
   // build that wrote it takes the wire, which this same table still has.
   //
+  // NULL IS ONE ANSWER AND IT MEANS ONE THING: these bytes are not a block of
+  // this build — a foreign magic, the other byte order, another build version,
+  // or framing the prologue's own numbers refuse. What the CALLER got wrong is
+  // not a null, it is a throw with the fix in it: no Uint8Array at all is a
+  // TypeError, and a view whose byteOffset is not a multiple of 64 — a Node
+  // Buffer under 4 KiB is carved out of a shared pool at an arbitrary offset —
+  // is a RangeError, because that is the caller's placement and not the bytes,
+  // and the same bytes copied into a fresh Uint8Array open.
+  //
   // EVERY NUMBER OUT OF THE INSTANCE IS BIGINT ARITHMETIC, and each term is
   // BOUNDED BEFORE IT IS ADDED. A forged offset_of near 2^63 must refuse, and
   // a Number would have lost the low bits of it before the comparison ran.
   // The C++ and C# sides hold the same shape for the same reason.
   function Open(bytes) {
-    if (!Layout()) { return null; }
-    if (bytes === null || bytes === undefined || bytes.length < 32) { return null; }
-    if ((bytes.byteOffset % 64) !== 0) { return null; } // the base's alignment
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("TableStatBlock.Open takes the block's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+    }
+    if ((bytes.byteOffset % 64) !== 0) { // the base's alignment
+      throw new RangeError("TableStatBlock.Open: the view starts " + bytes.byteOffset + " bytes into its ArrayBuffer, and a block's base " +
+        "must be a multiple of 64 (docs/SPEC-TABLES.md §19.1) — a pooled Node Buffer starts anywhere; copy the bytes " +
+        "into a fresh Uint8Array first: new Uint8Array(bytes)");
+    }
+    Layout();
+    if (bytes.length < 32) { return null; }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
     if (view.getBigUint64(0, true) !== TableBlockMagic) { return null; }
     if (view.getBigUint64(8, true) !== BuildVersion) { return null; }

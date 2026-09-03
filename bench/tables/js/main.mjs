@@ -307,8 +307,8 @@ benchTable(
   "bench_table", "bench_table", 100000,
   () => new unit.TableMixed(),
   (v) => unit.TableMixedReset(v),
-  (v, b) => unit.TableMixedSave(v, b),
-  (v, b) => unit.TableMixedLoad(v, b, report0) && !report0.Malformed);
+  (v, b) => unit.TableMixedSaveInto(v, b),
+  (v, b) => { unit.TableMixedLoad(b, report0, v); return !report0.Malformed; });
 
 flushCsv();
 

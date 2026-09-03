@@ -18,8 +18,12 @@
 // runtime that does not have it.
 //
 // Where JavaScript forces a different spelling the reason is stated at the
-// site, and there are exactly five:
+// site, and there are exactly six:
 //
+//   - The text crosses the boundary as a STRING — the language's currency for
+//     text — encoded once on the way in and decoded once on the way out;
+//     C++ takes a buffer and a length. A Uint8Array is taken too, for a text
+//     read straight off a file, and walked as it is.
 //   - Storage is reached through the descriptor's ACCESSORS rather than an
 //     offset and a width: a JavaScript field has no address. C++'s `storage`
 //     pointer becomes the triple (owner, field, index) throughout.
@@ -39,18 +43,25 @@ package jstable
 
 import "github.com/mas-bandwidth/schema/v2/ir"
 
-// emitJsonSurface emits one closure member's text-form surface: three thin
+// emitJsonSurface emits one closure member's text-form surface: two thin
 // wrappers over the generic walk, each naming a descriptor and nothing else.
+//
+// TEXT IS A STRING HERE, which is the language's currency for it: <Name>ToJson
+// answers a string and <Name>FromJson takes one — or a Uint8Array, for a text
+// read straight off a file — where C++ measures, takes a buffer and answers a
+// count. The text form is the generic, tooling path and allocates by design
+// (docs/SPEC-TABLES.md §16), so the string costs nothing the path was not
+// already paying. FromJson hands the value back, as Load does.
 func (g *tableGen) emitJsonSurface(st *ir.Struct) {
 	g.needRuntime("TableJson")
 	g.pf("// %s in and out of a JSON text — one instance, one text, the generic\n", st.Name)
 	g.pf("// walk over this type's descriptors (docs/SPEC-TABLES.md §16).\n")
-	g.pf("export function %sFromJson(value, text, report) {\n", st.Name)
-	g.pf("  return TableJson.read(value, %sTableType(), text, report);\n}\n\n", st.Name)
-	g.pf("export function %sToJsonMeasure(value) {\n", st.Name)
-	g.pf("  return TableJson.write(value, %sTableType(), null, true);\n}\n\n", st.Name)
-	g.pf("export function %sToJson(value, buffer) {\n", st.Name)
-	g.pf("  return TableJson.write(value, %sTableType(), buffer, false);\n}\n\n", st.Name)
+	g.pf("export function %sFromJson(text, report, value) {\n", st.Name)
+	g.pf("  if (value === undefined || value === null) { value = new %s(); }\n", st.Name)
+	g.pf("  TableJson.read(value, %sTableType(), text, report);\n", st.Name)
+	g.pf("  return value;\n}\n\n")
+	g.pf("export function %sToJson(value) {\n", st.Name)
+	g.pf("  return TableJson.write(value, %sTableType());\n}\n\n", st.Name)
 }
 
 // tableJsonWalkSource is the walker. It reads and writes ONLY the columns every
@@ -85,6 +96,11 @@ export const TableJson = (() => {
   const MaxNumber = 512;
 
   const Base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  // the boundary between the language's text and the form's bytes: a string in
+  // is encoded once, and the bytes the walk wrote are decoded once on the way out
+  const Utf8Encoder = new TextEncoder();
+  const Utf8Decoder = new TextDecoder("utf-8");
 
   // The number token is ASCII by JSON's own grammar, so a byte-per-character
   // decode is exact and the walk never meets a multi-byte sequence here.
@@ -1162,7 +1178,7 @@ export const TableJson = (() => {
       } else {
         const payload = f.Arms.Arms[tag].Payload(union);
         const arm = armTableOf(f.Arms.Arms[tag]);
-        arm.reset(payload);
+        arm.Reset(payload);
         if (!readTable(text, input, payload, arm, depth + 1)) { return false; }
         f.Arms.SetTag(union, BigInt(tag));
       }
@@ -1175,7 +1191,7 @@ export const TableJson = (() => {
     if (f.Kind === 13) {
       const child = f.GetChild(owner, index);
       const info = tableOf(f);
-      info.reset(child);
+      info.Reset(child);
       return readTable(text, input, child, info, depth + 1);
     }
     if (isEnum(f)) {
@@ -1345,7 +1361,7 @@ export const TableJson = (() => {
   // refused by name (docs/SPEC-TABLES.md §11).
   function resetSlots(value, f) {
     for (let i = 0; i < f.ArrayBound; i++) {
-      if (f.Kind === 13) { tableOf(f).reset(f.GetChild(value, i)); }
+      if (f.Kind === 13) { tableOf(f).Reset(f.GetChild(value, i)); }
       else { f.SetRaw(value, i, 0n); }
     }
   }
@@ -1525,7 +1541,7 @@ export const TableJson = (() => {
           if (!literal(text, input, "null")) { return false; }
           // absent, and back at its defaults: a repeated key whose last
           // occurrence is null must not leave an earlier value standing
-          if (f.TableRef !== null) { tableOf(f).reset(f.GetChild(value, 0)); }
+          if (f.TableRef !== null) { tableOf(f).Reset(f.GetChild(value, 0)); }
           else { f.SetRaw(value, 0, 0n); }
           f.SetPresent(value, false);
         } else {
@@ -1552,6 +1568,17 @@ export const TableJson = (() => {
   // ---- the two entry points the per-table wrappers name ----
 
   function read(value, info, text, report) {
+    // THE TEXT IS A STRING OR THE BYTES OF ONE. A string is the language's
+    // currency for text and is encoded here, once, at the boundary; a
+    // Uint8Array is a text read straight off a file and is walked as it is.
+    // Anything else is the CALLER's error, not malformed data: a number, an
+    // object or a missing argument is a type the text form does not take.
+    if (typeof text === "string") {
+      text = Utf8Encoder.encode(text);
+    } else if (!(text instanceof Uint8Array)) {
+      throw new TypeError("FromJson takes the text as a string or a Uint8Array, not " +
+        (text === null ? "null" : typeof text));
+    }
     // a caller with no report is off the read path this section prices: it
     // gets one rather than a branch on every counter
     const input = {
@@ -1559,7 +1586,7 @@ export const TableJson = (() => {
       Report: report !== null && report !== undefined ? report : new TableReport(),
       bad: false,
     };
-    info.reset(value);
+    info.Reset(value);
     // C++ refuses a null pointer and a negative length here before it walks. A
     // Uint8Array is neither: an empty one is a text with no object in it,
     // which the walk below already calls malformed, so there is nothing to
@@ -1579,15 +1606,27 @@ export const TableJson = (() => {
     return true;
   }
 
-  function write(value, info, buffer, measuring) {
-    const o = new Out(buffer, measuring);
-    if (!writeValue(o, value, info, 0)) { return -1; }
+  // TWO PASSES OVER ONE CODE PATH: the walk measures first, then writes into
+  // a buffer of exactly that size, so measure and write agree byte for byte —
+  // the wire's invariant (§9) carried across — and the answer is a string,
+  // decoded once from bytes the walk itself spelled as UTF-8. A value the text
+  // form cannot spell — a non-finite float, an enum value or union tag no
+  // variant names, a count past its bound — is the CALLER's error and throws.
+  function write(value, info) {
+    const measure = new Out(null, true);
+    if (!writeValue(measure, value, info, 0)) {
+      throw new RangeError(info.Name + "ToJson: the value holds something the text form cannot spell — " +
+        "a non-finite float, an enum value or union tag no variant names, or a count past its bound");
+    }
     // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every writer
     // emits it — this one, the C++ walk and schema unpack — and every reader
     // accepts a text with or without.
+    measure.put(0x0a);
+    const bytes = new Uint8Array(measure.Offset);
+    const o = new Out(bytes, false);
+    writeValue(o, value, info, 0);
     o.put(0x0a);
-    if (o.Overflow) { return -1; }
-    return o.Offset;
+    return Utf8Decoder.decode(bytes);
   }
 
   return Object.freeze({ read, write, MaxDepth, MaxKey, MaxNumber });

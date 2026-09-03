@@ -90,27 +90,43 @@
 //     buffer with `reset`, and calls <Name>SaveBody / <Name>LoadBody — the
 //     same code the two entry points run, with the objects hoisted out of the
 //     loop.
-//   - A 64-BIT INTEGER ALLOCATES, and this is the one place the language
-//     forces it: JavaScript's only exact 64-bit integer is BigInt, and every
-//     BigInt is an object. A field declared int64/uint64/bits(N > 32), or a
-//     flags mask, therefore costs one allocation per read. The packet emitter
-//     already pays this on the type wire (SPEC §6.1's value-domain seam) and
-//     the table wire pays it for the same reason. Every narrower field —
-//     every bool, every integer of 32 bits or fewer, every float, every enum
-//     — is a Number and allocates nothing.
+//   - A 64-BIT INTEGER ALLOCATES ON READ, and this is the one place the
+//     language forces it: JavaScript's only exact 64-bit integer is BigInt,
+//     and every BigInt is an object. A field declared int64/uint64/bits(N >
+//     32), or a flags mask, therefore costs one allocation per field READ —
+//     the DataView hands back a fresh BigInt. The packet emitter already pays
+//     this on the type wire (SPEC §6.1's value-domain seam) and the table wire
+//     pays it for the same reason. Every narrower field — every bool, every
+//     integer of 32 bits or fewer, every float, every enum — is a Number and
+//     allocates nothing.
+//   - AND THE WRITE OF THAT SAME FIELD ALLOCATES NOTHING. `put64` hands the
+//     stored BigInt straight to `setBigUint64`, which wraps a negative value
+//     modulo 2^64 by specification without building a second BigInt; a
+//     `BigInt.asUintN(64, v)` in front of it would be one allocation per
+//     64-bit field WRITTEN, which is what the hoisted Load→Save loop measured
+//     before the call was removed. So the loop the pages document — one
+//     reader, one writer, LoadBody then SaveBody — pays exactly Load's
+//     BigInts and nothing on the way back out.
 //   - AND A 64-BIT NUMBER THE FORM'S OWN FRAMING CARRIES IS NOT A FIELD, so it
 //     does not get that licence: a block array's `offset_of` and a cook
 //     reference's delta are both composed from TWO 32-BIT READS instead. Those
 //     are the two hottest lines the accelerators have — once per row addressed,
-//     once per edge followed — and `getBigUint64` there allocated per row and
-//     per edge until the allocation gate measured it. Open has already bounded
-//     both, in BigInt, once, where a forgery near 2^63 must refuse; by the time
-//     a row is addressed the value fits a Number exactly.
+//     once per edge followed — and a `getBigUint64` there would allocate per
+//     row and per edge. Open has already bounded both, in BigInt, once, where a
+//     forgery near 2^63 must refuse; by the time a row is addressed the value
+//     fits a Number exactly.
+//   - A ROW'S 64-BIT FIELD reads as a BigInt through its accessor, one
+//     allocation per read, on the same licence as the wire's. A `flags` field
+//     carries `<Member>Has(view, at, bit)` beside it, which reads the one
+//     32-bit word holding the bit and allocates nothing — the accessor a
+//     per-frame consumer that only TESTS a flag reaches for.
 //
 // EVERY ONE OF THOSE IS A MEASURED NUMBER, not an intention:
-// `make tables-js-alloc` reports bytes allocated per iteration per path and
-// gates the ones that must be zero, and its negative control puts one extra
-// allocation per iteration in and requires them to go red.
+// `make tables-js-alloc` reports bytes allocated per iteration per path —
+// the three bodies alone, the hoisted Load→Save loop the pages document, a
+// cook deref, a block row walk — and gates each at the floor stated for it;
+// its negative control puts one extra allocation per iteration in and
+// requires them to go red.
 //
 // The GENERIC path is the text form (§16) and the reflection walk, and it
 // allocates by design: the ladder licenses exactly that ("more generic and
@@ -617,9 +633,12 @@ func (g *tableGen) assemble() []byte {
 		h.WriteString("// the package and independent of file order (docs/SPEC-TABLES.md §19.2).\n")
 		h.WriteString("//\n")
 		h.WriteString("// Measure/Save/Load are name-first module functions: <Name>Measure gives the\n")
-		h.WriteString("// exact wire size, <Name>Save writes exactly that many bytes into the caller's\n")
-		h.WriteString("// Uint8Array, <Name>Load overlays a value in place and reports every tolerance\n")
-		h.WriteString("// event. The caller owns the value, the buffer and the report.\n")
+		h.WriteString("// exact wire size, <Name>Save hands back a Uint8Array of exactly that many\n")
+		h.WriteString("// bytes and <Name>SaveInto writes them into the caller's, <Name>Load hands\n")
+		h.WriteString("// back the value — the caller's own, overlaid in place, when it passes one —\n")
+		h.WriteString("// and ledgers every tolerance event in the report. A value the wire cannot\n")
+		h.WriteString("// carry and a buffer too small are the CALLER's errors and throw a RangeError;\n")
+		h.WriteString("// what the DATA does is never an exception, it is the report.\n")
 		h.WriteString("//\n")
 		h.WriteString("// Every multi-byte read and write names its byte order explicitly — the\n")
 		h.WriteString("// `true` at every DataView call — so the wire does not depend on the host's.\n")
@@ -702,8 +721,9 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // of Numbers — so `hull.Turrets.get(Weapon.Missile)` is the whole call and no
 // cast appears at any site. The SHIFT is the array's, exactly as in every
 // other port: the accessor subtracts one, and no call site in any language
-// spells it (§2.4). The None refusal is a throw and stands in every build, as
-// C++'s abort does.
+// spells it (§2.4). The refusal of a key that names no slot — None below the
+// storage, anything past E.Max above it — is a throw and stands in every
+// build, as C++'s abort does.
 //
 // ITERATION carries over with the same range: the iterator yields
 // [key, element] pairs with the key 1..E.Max, the same currency the accessor
@@ -720,17 +740,20 @@ const tableKeyedStorage = `// An ENUM-KEYED array's storage: E.Max slots, ONE PE
 // Max, handed in at construction, so there is no generated constant a consumer
 // could put out of step with the enum.
 //
-// NONE IS THE NULL KEY: it names no slot, it never rides on the wire, a stored
-// key of 0 is malformed, and INDEXING BY IT IS AN ERROR — a throw from the
-// accessor, which stands in every build exactly as the C++ abort does.
+// A KEY THAT NAMES NO SLOT IS AN ERROR AT BOTH ENDS (§2.4): None below the
+// storage — the null key, which never rides on the wire and is malformed when
+// stored — and anything past E.Max above it. The guard is symmetric because the
+// storage is, and it is ONE unsigned compare: the storage index is key - 1,
+// None's is -1, which wraps above the extent unsigned. The throw stands in
+// every build exactly as the C++ abort does.
 //
 // ITERATION is the surface a consumer of the WHOLE array wants: for..of walks
 // every stored slot and yields [key, element] with the key 1..E.Max, so no
 // caller spells a bound, a lower limit or the shift.
 //
 // Slots is public and is what the generated codecs walk, by STORAGE INDEX; get
-// and set are for callers and take the KEY, and they are the one place the
-// None key can be caught.
+// and set are for callers and take the KEY, and they are the one place a key
+// that names no slot can be caught.
 export class TableKeyed {
   constructor(slotCount, make) {
     this.Slots = new Array(slotCount);
@@ -740,18 +763,19 @@ export class TableKeyed {
   }
 
   get(key) {
-    TableKeyed.refuseNone(key);
+    this.refuse(key);
     return this.Slots[key - 1];
   }
 
   set(key, value) {
-    TableKeyed.refuseNone(key);
+    this.refuse(key);
     this.Slots[key - 1] = value;
   }
 
-  static refuseNone(key) {
-    if (key === 0) {
-      throw new RangeError("None is the null key of an enum-keyed array: it keys no slot");
+  refuse(key) {
+    if (!Number.isInteger(key) || ((key - 1) >>> 0) >= this.Slots.length) {
+      throw new RangeError("an enum-keyed array has one slot per named variant, keys 1 to " +
+        this.Slots.length + ": None keys no slot, and neither does " + String(key));
     }
   }
 
@@ -828,6 +852,19 @@ export class TableReport {
     this.Duplicate = 0;
     this.Malformed = false; // framing damage; decode stopped, partial result kept
   }
+
+  // A REPORT ACCUMULATES, exactly as the C++ one does: a Load adds to the
+  // counters it is handed and clears nothing, so one report can ledger a whole
+  // batch. A caller reusing one across reads it wants to tell apart clears it
+  // here, between them.
+  reset() {
+    this.Unknown = 0;
+    this.KindMismatch = 0;
+    this.Clamped = 0;
+    this.Duplicate = 0;
+    this.Malformed = false;
+    return this;
+  }
 }
 
 // TableWriter writes the wire into the caller's Uint8Array. Nothing here
@@ -840,6 +877,9 @@ export class TableReport {
 // machine is.
 export class TableWriter {
   constructor(buffer) {
+    if (!(buffer instanceof Uint8Array)) {
+      throw new TypeError("a TableWriter writes into a Uint8Array, not " + (buffer === null ? "null" : typeof buffer));
+    }
     this.Bytes = buffer;
     this.View = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     this.Offset = 0;
@@ -897,16 +937,23 @@ export class TableWriter {
     this.Offset += 4;
   }
 
+  // THE BIGINT GOES STRAIGHT INTO THE VIEW. setBigUint64 wraps a negative
+  // value modulo 2^64 by specification — a signed storage and an unsigned one
+  // both land as their two's-complement bytes — without building a second
+  // BigInt, where a BigInt.asUintN(64, v) in front of it would be one
+  // allocation per 64-bit field written. The allocation gate measures this
+  // line: a save allocates nothing.
   put64(v) {
     if (this.Offset + 8 > this.Bytes.length) { this.Overflow = true; return; }
-    this.View.setBigUint64(this.Offset, BigInt.asUintN(64, v), true);
+    this.View.setBigUint64(this.Offset, v, true);
     this.Offset += 8;
   }
 
   // THE FIELD HEADER and THE LENGTH PREFIX, one call each, for the reason the
   // reader's mismatch() exists: a save body emits one block per field, and the
-  // id-and-kind pair plus the open-and-patch pair were four statements of it.
-  // Both take Smis, so neither crosses a boundary anything can box.
+  // id-and-kind pair plus the open-and-patch pair are one call here rather
+  // than two statements at every site. Both take Smis, so neither crosses a
+  // boundary anything can box.
   field(id, kind) {
     this.put16(id);
     this.put8(kind);
@@ -940,6 +987,9 @@ export class TableWriter {
 // past its own framing.
 export class TableReader {
   constructor(bytes, report) {
+    if (!(bytes instanceof Uint8Array)) {
+      throw new TypeError("a TableReader reads a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
+    }
     this.Bytes = bytes;
     this.View = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     this.Offset = 0;
@@ -988,10 +1038,10 @@ export class TableReader {
   // method here, and the reason is the INLINING BUDGET (docs/SPEC-TABLES.md
   // §19.5's law, which this repo already carries for clang: "a generated codec
   // must not depend on the compiler's inlining budget"). A read body emits one
-  // case per field, and every case carried five statements of counting and
-  // skipping inline. The bigger a body grows, the fewer of ITS OWN callees V8
+  // case per field, and five statements of counting and skipping in every case
+  // would grow it. The bigger a body grows, the fewer of ITS OWN callees V8
   // will inline into it — and an un-inlined callee is where a float field's
-  // sixteen bytes came from, above. Keeping the per-field bytecode small is
+  // sixteen bytes come from, above. Keeping the per-field bytecode small is
   // what keeps that headroom, so these two are hoisted out of every case.
   //
   // Both return false only for FRAMING DAMAGE, which is the caller's own

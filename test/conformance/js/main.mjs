@@ -84,23 +84,24 @@ function noText(f) {
 
 // ---- the codec table: one row per (unit, root) the corpus names
 
+// Load and FromJson hand the value back and ledger what the data did in the
+// report; framing damage is report.Malformed, never a return. The text form's
+// currency is a string, so the driver encodes it as UTF-8 to write the file the
+// harness compares — the bytes the walk spelled, decoded once and encoded once.
 function row(unit, root, m, name) {
   return {
     unit, root,
     load: (bytes, report) => {
-      const value = new m[name]();
-      const ok = m[name + "Load"](value, bytes, report);
-      return ok ? value : null;
+      const value = m[name + "Load"](bytes, report);
+      return report.Malformed ? null : value;
     },
     measure: (v) => m[name + "Measure"](v),
-    save: (v, buffer) => m[name + "Save"](v, buffer),
+    save: (v) => m[name + "Save"](v),
     fromJson: (text, report) => {
-      const value = new m[name]();
-      const ok = m[name + "FromJson"](value, text, report);
-      return ok ? value : null;
+      const value = m[name + "FromJson"](text, report);
+      return report.Malformed ? null : value;
     },
-    toJsonMeasure: (v) => m[name + "ToJsonMeasure"](v),
-    toJson: (v, buffer) => m[name + "ToJson"](v, buffer),
+    toJson: (v) => new TextEncoder().encode(m[name + "ToJson"](v)),
     Report: () => new m.TableReport(),
   };
 }
@@ -146,9 +147,8 @@ function surfaceWire(lines, outDir) {
     const report = codec.Report();
     const value = codec.load(wire, report);
     if (value === null) { fail(f[1] + " does not load"); }
-    const size = codec.measure(value);
-    const buffer = new Uint8Array(size);
-    if (codec.save(value, buffer) !== size) { fail(f[1] + " saves a size its measure did not name"); }
+    const buffer = codec.save(value);
+    if (buffer.length !== codec.measure(value)) { fail(f[1] + " saves a size its measure did not name"); }
     writeFileSync(join(outDir, f[1]), buffer);
   }
 }
@@ -167,10 +167,8 @@ function surfaceJsonRead(lines, outDir) {
     const report = codec.Report();
     const value = codec.fromJson(text, report);
     if (value === null) { fail(f[1] + " does not read as JSON"); }
-    const size = codec.measure(value);
-    if (size < 0) { fail(f[1] + " measures as unsaveable after a clean read"); }
-    const buffer = new Uint8Array(size);
-    if (codec.save(value, buffer) !== size) { fail(f[1] + " saves a size its measure did not name"); }
+    const buffer = codec.save(value);
+    if (buffer.length !== codec.measure(value)) { fail(f[1] + " saves a size its measure did not name"); }
     writeFileSync(join(outDir, f[1]), buffer);
   }
 }
@@ -189,11 +187,7 @@ function surfaceJsonWrite(lines, outDir) {
     const report = codec.Report();
     const value = codec.load(wire, report);
     if (value === null) { fail(f[1] + " does not load"); }
-    const size = codec.toJsonMeasure(value);
-    if (size < 0) { fail(f[1] + " holds a value ToJson refuses"); }
-    const text = new Uint8Array(size);
-    if (codec.toJson(value, text) !== size) { fail(f[1] + " writes a text its measure did not name"); }
-    writeFileSync(join(outDir, f[1] + ".json"), text);
+    writeFileSync(join(outDir, f[1] + ".json"), codec.toJson(value));
   }
 }
 
@@ -261,9 +255,23 @@ function blockNamed(name) {
 // given walks into memory this process owns and nothing else's — and in this
 // language it does not walk at all: a read past a view throws, so Open bounds
 // every term before it adds one.
+// A REFUSAL HAS TWO SPELLINGS in this language and the verdict has one. Bytes
+// that are not this build's are a null handle; a CALLER's error — no
+// Uint8Array, or a view at an unaligned byteOffset — is a throw with the fix in
+// it. The manifest asks whether the reader refused, and both are refusals.
+function opens(open, bytes) {
+  try {
+    return open(bytes) !== null;
+  } catch (e) {
+    if (e instanceof RangeError || e instanceof TypeError) { return false; }
+    throw e;
+  }
+}
+
 function openBlock(name, source, extent) {
   const claim = extent < 0 || extent < source.length ? source.length : extent;
-  return blockNamed(name).Open(place(source, claim, 0)) !== null ? "open\n" : "refuse\n";
+  const block = blockNamed(name);
+  return opens((b) => block.Open(b), place(source, claim, 0)) ? "open\n" : "refuse\n";
 }
 
 function surfaceBlock(lines, outDir) {
@@ -305,8 +313,8 @@ function surfaceBlockForeign(lines, outDir) {
 function surfaceCookForeign(lines, outDir) {
   for (const f of kind(lines, "cook")) {
     const source = foreign(new Uint8Array(readFileSync(f[4])));
-    const opened = cookNamed(f[3]).Open(place(source, source.length, 0));
-    writeFileSync(join(outDir, f[1]), opened !== null ? "open\n" : "refuse\n");
+    const cook = cookNamed(f[3]);
+    writeFileSync(join(outDir, f[1]), opens((b) => cook.Open(b), place(source, source.length, 0)) ? "open\n" : "refuse\n");
   }
 }
 
@@ -598,8 +606,8 @@ function surfaceCookForgery(lines, outDir) {
     const nullBuffer = f[6] === "null";
     const lead = nullBuffer ? 0 : Number(f[6]);
     const bytes = nullBuffer ? null : place(source, claim, lead);
-    const opened = cookNamed(f[3]).Open(bytes);
-    writeFileSync(join(outDir, f[1]), opened !== null ? "open\n" : "refuse\n");
+    const cook = cookNamed(f[3]);
+    writeFileSync(join(outDir, f[1]), opens((b) => cook.Open(b), bytes) ? "open\n" : "refuse\n");
   }
 }
 

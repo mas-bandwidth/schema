@@ -72,11 +72,10 @@ ELIXIRC   ?= PATH="$(BEAM_PATH):$$PATH" elixirc
 # the runtime and not only the code. The zero-allocation floor is a property of
 # what V8 OPTIMIZES: a double that crosses a call boundary is a heap number,
 # sixteen bytes, unless V8 inlined the callee — and whether it inlines one
-# differs between majors and even between processes. A real allocation hid
-# behind three CI reds that way, reading zero on the developer's node and a
-# steady fifteen bytes on CI's. So the allocation gate runs the version CI runs,
-# and it refuses to certify on any other major (test/js-tables/main.mjs,
-# PinnedNodeMajor). The default points at the repo-local unpacked runtime; CI
+# differs between majors and even between processes, so a body that reads zero
+# on one node can read a steady fifteen bytes on another. So the allocation
+# gate runs the version CI runs, and it refuses to certify on any other major
+# (test/js-tables/main.mjs, PinnedNodeMajor). The default points at the repo-local unpacked runtime; CI
 # installs the same major and overrides with NODE=node. To populate dist/
 # (gitignored):
 #   Node.js 20.20.2 (LTS, darwin-arm64)
@@ -626,6 +625,34 @@ tables-js-accessor-negative-control: bin/schema build/tables-generated-js/.stamp
 		  cat build/js-accessor-sabotage/log; exit 1; }
 	@echo "negative control: one generated accessor four bytes off turns the JavaScript leg RED on the accessor/descriptor agreement"
 
+# THE KEYED GUARD's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.4): the guard is
+# symmetric — None below the storage, anything past E.Max above it — and one
+# unsigned compare covers both ends. Put a None-only guard back and the leg
+# must go red on the upper end, or the guard is watching one end and saying
+# two.
+.PHONY: tables-js-keyed-negative-control
+tables-js-keyed-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	@rm -rf build/js-keyed-sabotage && mkdir -p build/js-keyed-sabotage
+	@sed 's|if (!Number.isInteger(key) \|\| ((key - 1) >>> 0) >= this.Slots.length) {|if (key === 0) { // SABOTAGED: None only|' \
+		internal/codegen/jstable/jstable.go > build/js-keyed-sabotage/jstable.go.txt
+	@grep -q SABOTAGED build/js-keyed-sabotage/jstable.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/jstable.go":"%s/build/js-keyed-sabotage/jstable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-keyed-sabotage/overlay.json
+	@go build -overlay=build/js-keyed-sabotage/overlay.json -o build/js-keyed-sabotage/schema ./cmd/schema
+	@./build/js-keyed-sabotage/schema generate --lang js --out build/js-keyed-sabotage/generated/examples tables/examples
+	@./build/js-keyed-sabotage/schema generate --lang js --out build/js-keyed-sabotage/generated/pointers tables/pointers
+	@./build/js-keyed-sabotage/schema generate --lang js --out build/js-keyed-sabotage/generated/block tables/block
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-keyed-sabotage/generated $(NODE) test/js-tables/main.mjs \
+			> build/js-keyed-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a keyed guard that refuses None alone left the leg green"; \
+		cat build/js-keyed-sabotage/log; exit 1; \
+	fi
+	@grep -q "accepted E.Max + 1 as a key" build/js-keyed-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the key past E.Max"; \
+		  cat build/js-keyed-sabotage/log; exit 1; }
+	@echo "negative control: a keyed guard that refuses None alone turns the JavaScript leg RED on the key past E.Max"
+
 # And the POINTER half of the same gate, which the scalar sabotage cannot reach:
 # move a pointer SLOT's own offset — the position a self-relative delta is
 # relative to (§6.3) — and the cook accessors must part company with the cook
@@ -674,11 +701,12 @@ tables-js-fuzz: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 # same wire bytes with the compiler's own Go engine — written from §16 and from
 # neither backend — and the two texts are byte-compared.
 #
-# It earned its place on its first run: a float32 holding -266744.625 exactly
-# renders as an eight-digit TIE, both candidates round-trip back to the same
-# float32 so the shortest-precision search cannot step past it, and C breaks the
-# tie to EVEN where JavaScript's own formatters break it by magnitude. Twelve of
-# forty instances differed.
+# The rule it holds that eighteen instances cannot: a float32 such as
+# -266744.625 renders as an eight-digit TIE, both candidates round-trip back to
+# the same float32 so the shortest-precision search cannot step past it, and C
+# breaks the tie to EVEN where JavaScript's own formatters break it by
+# magnitude — so the walk spells the tie-break itself, and this is where a
+# drift in it shows.
 JS_DIFFERENTIAL_N := $(if $(N),$(N),60)
 .PHONY: tables-js-json-differential
 tables-js-json-differential: bin/schema build/tables-generated-js/.stamp
@@ -741,9 +769,7 @@ tables-js-alloc: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	cd $(CURDIR) && $(NODE) --expose-gc test/js-tables/main.mjs alloc $(if $(ITERS),$(ITERS),300000)
 
 # Its NEGATIVE CONTROL: ONE extra allocation per iteration, and every gated path
-# must go red. An allocation gate that has never gone red is watching nothing —
-# and this one found two real ones when it first ran (a BigInt per row in the
-# block form's row accessor, and a BigInt per edge in the cook's deref).
+# must go red. An allocation gate that has never gone red is watching nothing.
 .PHONY: tables-js-alloc-negative-control
 tables-js-alloc-negative-control: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	@if SCHEMA_JS_ALLOC_LEAK=1 $(NODE) --expose-gc test/js-tables/main.mjs alloc 100000 \
@@ -3652,6 +3678,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-js-leg
 	$(MAKE) tables-js-accessor-negative-control
 	$(MAKE) tables-js-slot-negative-control
+	$(MAKE) tables-js-keyed-negative-control
 	$(MAKE) tables-js-fuzz
 	$(MAKE) tables-js-alloc
 	$(MAKE) tables-js-alloc-negative-control

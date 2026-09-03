@@ -319,7 +319,7 @@ function checkCookAccessors(path, cook) {
       for (const f of i.Fields) {
         if (f.IsPointer) {
           const target = cook.At(handle, at + f.Offset);
-          if (target >= 0) { walk(target - handle.Region, f.RecordRef(), depth + 1); }
+          if (target !== null) { walk(target - handle.Region, f.RecordRef(), depth + 1); }
           continue;
         }
         if (f.Storage === "Record") {
@@ -351,14 +351,21 @@ function capitalize(name) {
 function checkKeyedSurface() {
   const config = new keyed.KeyedConfig();
   const teams = config.Teams;
-  // NONE IS THE NULL KEY: it names no slot, and indexing by it is an error in
-  // every build, exactly as the C++ abort is
-  let threw = false;
-  try { teams.get(0); } catch { threw = true; }
-  check(threw, "the keyed accessor accepted None as a key");
-  threw = false;
-  try { teams.set(0, null); } catch { threw = true; }
-  check(threw, "the keyed setter accepted None as a key");
+  // A KEY THAT NAMES NO SLOT IS AN ERROR AT BOTH ENDS (§2.4): None below the
+  // storage, and anything past E.Max above it — the guard is symmetric
+  // because the storage is, and it stands in every build, exactly as the C++
+  // abort does. E.Max is 3 here, so 4 is the first key with no slot.
+  const stored = teams.Slots.length;
+  for (const [key, what] of [[0, "None"], [stored + 1, "E.Max + 1"], [-1, "-1"], [1.5, "a fraction"], [undefined, "undefined"]]) {
+    let threw = false;
+    try { teams.get(key); } catch (e) { threw = e instanceof RangeError; }
+    check(threw, "the keyed accessor accepted " + what + " as a key");
+    threw = false;
+    try { teams.set(key, null); } catch (e) { threw = e instanceof RangeError; }
+    check(threw, "the keyed setter accepted " + what + " as a key");
+  }
+  check(teams.Slots.length === stored, "a refused set grew the storage");
+  check(teams.get(stored) !== undefined, "the keyed accessor refused E.Max itself");
   // the SHIFT is the array's: the key k lives at storage index k - 1, and no
   // call site spells it
   teams.get(1).SpawnCount = 7;
@@ -465,15 +472,169 @@ function checkReuse() {
 
 function checkExactCapacity() {
   const wire = new Uint8Array(readFileSync("testdata/wire/tables/root_full.bin"));
-  const value = new tables.RootConfig();
-  check(tables.RootConfigLoad(value, wire, new tables.TableReport()), "root_full does not load");
+  const report = new tables.TableReport();
+  const value = tables.RootConfigLoad(wire, report);
+  check(value instanceof tables.RootConfig && !report.Malformed, "root_full does not load");
   const size = tables.RootConfigMeasure(value);
   check(size === wire.length, "measure answered " + size + " for a golden of " + wire.length);
-  // a buffer ONE BYTE SHORT refuses rather than writing past it
-  check(tables.RootConfigSave(value, new Uint8Array(size - 1)) === -1,
-    "Save into a buffer one byte short did not refuse");
+  // a buffer ONE BYTE SHORT is the caller's error: a RangeError, and nothing
+  // written past it
+  let threw = false;
+  try { tables.RootConfigSaveInto(value, new Uint8Array(size - 1)); } catch (e) { threw = e instanceof RangeError; }
+  check(threw, "SaveInto a buffer one byte short did not throw a RangeError");
   const exact = new Uint8Array(size);
-  check(tables.RootConfigSave(value, exact) === size, "Save into an exact buffer did not write measure's answer");
+  check(tables.RootConfigSaveInto(value, exact) === size, "SaveInto an exact buffer did not write measure's answer");
+  // and Save's own buffer IS measure's answer
+  check(tables.RootConfigSave(value).length === size, "Save's buffer is not measure's size");
+  // a caller's own value is the one handed back, overlaid in place
+  const own = new tables.RootConfig();
+  check(tables.RootConfigLoad(wire, report, own) === own, "Load did not hand back the caller's own value");
+  // a report accumulates across loads, as C++'s does, and reset() clears it
+  report.Unknown = 3;
+  tables.RootConfigLoad(wire, report);
+  check(report.Unknown === 3, "Load cleared a report it was handed");
+  check(report.reset() === report && report.Unknown === 0, "report.reset() did not clear the ledger");
+  // bytes that are not a Uint8Array are a TypeError, not a malformed read
+  threw = false;
+  try { tables.RootConfigLoad("not bytes", report); } catch (e) { threw = e instanceof TypeError; }
+  check(threw, "Load of a string did not throw a TypeError");
+  // a value the wire cannot carry is the caller's error, named by field
+  const bad = new tables.RootConfig();
+  bad.VersionNoteLength = 1000;
+  let message = "";
+  try { tables.RootConfigMeasure(bad); } catch (e) { message = e instanceof RangeError ? e.message : ""; }
+  check(message.startsWith("RootConfig.version_note:"), "measure of a length past its bound did not name the field: " + message);
+  message = "";
+  try { tables.RootConfigSave(bad); } catch (e) { message = e instanceof RangeError ? e.message : ""; }
+  check(message.startsWith("RootConfig.version_note:"), "save of a length past its bound did not name the field: " + message);
+}
+
+// ---- the text form takes a string, and refuses what is not text ----
+
+function checkTextSurface() {
+  const wire = new Uint8Array(readFileSync("testdata/wire/tables/root_full.bin"));
+  const report = new tables.TableReport();
+  const value = tables.RootConfigLoad(wire, report);
+  const text = tables.RootConfigToJson(value);
+  check(typeof text === "string" && text.endsWith("}\n"), "ToJson did not answer the canonical text as a string");
+  // the same text as bytes reads the same, and a string reads at all
+  const fromString = tables.RootConfigFromJson(text, report.reset());
+  check(!report.Malformed && sameBytes(tables.RootConfigSave(fromString), wire), "FromJson of a string did not read back the wire");
+  const fromBytes = tables.RootConfigFromJson(new TextEncoder().encode(text), report.reset());
+  check(!report.Malformed && sameBytes(tables.RootConfigSave(fromBytes), wire), "FromJson of the UTF-8 bytes did not read back the wire");
+  // a number, an object, null: a TypeError naming the argument, never a
+  // malformed report — malformed is what DATA is, and these are not data
+  for (const notText of [42, {}, null, undefined, [1, 2]]) {
+    let threw = false;
+    report.reset();
+    try { tables.RootConfigFromJson(notText, report); } catch (e) { threw = e instanceof TypeError; }
+    check(threw && !report.Malformed, "FromJson of " + String(notText) + " did not throw a TypeError");
+  }
+  // malformed TEXT is still the report's answer
+  tables.RootConfigFromJson("{ \"version_note\": ", report.reset());
+  check(report.Malformed, "a truncated text did not read as malformed");
+  // a value the text form cannot spell — a float with no JSON spelling — is
+  // the caller's error
+  const bad = new tables.RootConfig();
+  bad.WeaponsCount = 1;
+  bad.Weapons[0].Speed = NaN;
+  let threw = false;
+  try { tables.RootConfigToJson(bad); } catch (e) { threw = e instanceof RangeError; }
+  check(threw, "ToJson of a non-finite float did not throw a RangeError");
+}
+
+function sameBytes(a, b) {
+  if (a.length !== b.length) { return false; }
+  for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) { return false; } }
+  return true;
+}
+
+// ---- one module, one WHOLE surface: the nested type rows ride along ----
+//
+// A block's own module re-exports every record object of the unit, the `type`
+// rows a table row nests included: RenderShipRow.PositionAt answers an offset
+// only RenderVector3Row can read, and a consumer that imported RenderBlock.js
+// must find it there.
+
+function checkWholeSurface() {
+  const source = new Uint8Array(readFileSync("testdata/wire/tables/block_render.bin"));
+  const bytes = new Uint8Array(source);
+  const block = renderBlock.RenderFrameBlock.Open(bytes);
+  check(block !== null, "block_render does not open for the surface check");
+  if (block === null) { return; }
+  check(renderBlock.RenderVector3Row !== undefined && renderBlock.RenderQuaternionRow !== undefined,
+    "RenderBlock.js does not re-export the type rows its own row accessors hand offsets into");
+  if (renderBlock.RenderVector3Row === undefined) { return; }
+  const at = renderBlock.RenderFrameBlock.ShipsAt(block, 0);
+  const position = renderBlock.RenderShipRow.PositionAt(at);
+  check(renderBlock.RenderVector3Row.X(block.View, position) ===
+    blockdemoBlock.RenderVector3Row.X(block.View, position),
+    "the re-exported RenderVector3Row is not the home's");
+  // the same for a cook module: every record of the closure, wherever it is
+  // defined, is reachable from the module the consumer imported
+  for (const name of ["SceneRow", "ListNodeRow", "TreeNodeRow"]) {
+    check(graphCook[name] !== undefined, "GraphCook.js does not re-export " + name);
+  }
+  // and a FLAGS bit is testable without a BigInt: Has agrees with the mask
+  const count = renderBlock.RenderFrameBlock.ShipsCount(block);
+  for (let r = 0; r < count; r++) {
+    const row = renderBlock.RenderFrameBlock.ShipsAt(block, r);
+    const mask = renderBlock.RenderShipRow.Flags(block.View, row);
+    for (let bit = 0; bit < 64; bit++) {
+      const expected = ((mask >> BigInt(bit)) & 1n) === 1n;
+      if (renderBlock.RenderShipRow.FlagsHas(block.View, row, bit) !== expected) {
+        check(false, "ship " + r + " FlagsHas(" + bit + ") disagrees with the mask " + mask);
+        break;
+      }
+    }
+  }
+}
+
+// ---- what Open answers, and what it throws ----
+//
+// Null means one thing: not this build's bytes. The CALLER's errors throw with
+// the fix in the message: a view at an unaligned byteOffset — which is what a
+// pooled Node Buffer under 4 KiB is — and no Uint8Array at all.
+
+function checkOpenAnswers() {
+  const source = new Uint8Array(readFileSync("testdata/wire/tables/block_render.bin"));
+  const pooled = new Uint8Array(new ArrayBuffer(source.length + 8), 8, source.length);
+  pooled.set(source);
+  let message = "";
+  try { renderBlock.RenderFrameBlock.Open(pooled); } catch (e) { message = e instanceof RangeError ? e.message : ""; }
+  check(message.includes("new Uint8Array(bytes)"),
+    "Open of a view at byteOffset 8 did not throw a RangeError naming the fix: " + message);
+  check(renderBlock.RenderFrameBlock.Open(new Uint8Array(pooled)) !== null,
+    "the same bytes copied into a fresh Uint8Array do not open");
+  for (const notBytes of [null, undefined, "bytes", 7, new ArrayBuffer(64)]) {
+    let threw = false;
+    try { renderBlock.RenderFrameBlock.Open(notBytes); } catch (e) { threw = e instanceof TypeError; }
+    check(threw, "block Open of " + String(notBytes) + " did not throw a TypeError");
+    threw = false;
+    try { graphCook.SceneCook.Open(notBytes); } catch (e) { threw = e instanceof TypeError; }
+    check(threw, "cook Open of " + String(notBytes) + " did not throw a TypeError");
+  }
+  const cookPath = "build/js-fuzz-scene.cook";
+  if (!existsSync(cookPath)) { return; }
+  const cookSource = new Uint8Array(readFileSync(cookPath));
+  const cookPooled = new Uint8Array(new ArrayBuffer(cookSource.length + 4), 4, cookSource.length);
+  cookPooled.set(cookSource);
+  message = "";
+  try { graphCook.SceneCook.Open(cookPooled); } catch (e) { message = e instanceof RangeError ? e.message : ""; }
+  check(message.includes("new Uint8Array(bytes)"), "cook Open of an unaligned view did not throw a RangeError naming the fix: " + message);
+  // a null reference derefs to null; a reference that leaves the region throws
+  const cook = graphCook.SceneCook.Open(new Uint8Array(cookSource));
+  check(cook !== null, "the cook does not open for the At check");
+  if (cook === null) { return; }
+  const forged = new Uint8Array(cookSource);
+  const forgedCook = graphCook.SceneCook.Open(forged);
+  const slot = graphCook.SceneRow.HeadSlot(forgedCook.Region);
+  new DataView(forged.buffer).setBigInt64(slot, 0n, true);
+  check(graphCook.SceneCook.At(forgedCook, slot) === null, "a zero delta did not deref to null");
+  new DataView(forged.buffer).setBigInt64(slot, 1n << 40n, true);
+  message = "";
+  try { graphCook.SceneCook.At(forgedCook, slot); } catch (e) { message = e instanceof RangeError ? e.message : ""; }
+  check(message.includes("leaves the region"), "a delta that leaves the region did not throw a RangeError naming it: " + message);
 }
 
 // ---- the RANDOMIZED ROUND TRIP, built through the descriptors ----
@@ -556,7 +717,7 @@ function fillVocabulary(rng, owner, f, index) {
 }
 
 function fillValue(rng, value, info, depth) {
-  if (depth > 6) { info.reset(value); return; }
+  if (depth > 6) { info.Reset(value); return; }
   for (const f of info.Fields) {
     if (f.Optional) { f.SetPresent(value, rng.below(2) === 1); }
     if (f.Kind === 12 || isBytesField(f)) {
@@ -576,7 +737,7 @@ function fillValue(rng, value, info, depth) {
       if (tag !== 0) {
         const arm = f.Arms.Arms[tag].TableRef();
         const payload = f.Arms.Arms[tag].Payload(union);
-        arm.reset(payload);
+        arm.Reset(payload);
         fillValue(rng, payload, arm, depth + 1);
       }
       continue;
@@ -589,7 +750,7 @@ function fillValue(rng, value, info, depth) {
       if (f.Kind === 13) {
         const child = f.GetChild(value, s);
         const inner = f.TableRef();
-        inner.reset(child);
+        inner.Reset(child);
         fillValue(rng, child, inner, depth + 1);
       } else if (isEnumField(f) || isFlagsField(f)) {
         fillVocabulary(rng, value, f, s);
@@ -612,42 +773,32 @@ function checkRandomRoundTrip(rounds) {
     const [name, module] = roots[round % roots.length];
     const info = module[name + "TableType"]();
     const value = new module[name]();
-    info.reset(value);
+    info.Reset(value);
     fillValue(rng, value, info, 0);
 
     const size = module[name + "Measure"](value);
-    if (size < 0) { check(false, name + ": a value built through the descriptors measures as unsaveable"); return; }
-    if (module[name + "Save"](value, buffer) !== size) { check(false, name + ": save disagreed with measure"); return; }
+    if (module[name + "SaveInto"](value, buffer) !== size) { check(false, name + ": save disagreed with measure"); return; }
 
-    const loaded = new module[name]();
     const report = new module.TableReport();
-    if (!module[name + "Load"](loaded, buffer.subarray(0, size), report)) {
-      check(false, name + ": a value this build wrote did not load back"); return;
-    }
+    const loaded = module[name + "Load"](buffer.subarray(0, size), report);
     if (report.Unknown || report.KindMismatch || report.Clamped || report.Malformed) {
       check(false, name + ": a clean round trip reported " + JSON.stringify(report)); return;
     }
-    if (module[name + "Save"](loaded, twin) !== size) { check(false, name + ": the wire round trip changed length"); return; }
+    if (module[name + "SaveInto"](loaded, twin) !== size) { check(false, name + ": the wire round trip changed length"); return; }
     for (let i = 0; i < size; i++) {
       if (twin[i] !== buffer[i]) { check(false, name + ": the wire round trip differs at byte " + i); return; }
     }
 
-    const textSize = module[name + "ToJsonMeasure"](value);
-    if (textSize < 0) { check(false, name + ": ToJson refuses a value this build wrote"); return; }
-    const text = new Uint8Array(textSize);
-    if (module[name + "ToJson"](value, text) !== textSize) { check(false, name + ": ToJson disagreed with its measure"); return; }
-    if (text[textSize - 1] !== 0x0a) { check(false, name + ": the canonical text does not end with one newline"); return; }
+    const text = module[name + "ToJson"](value);
+    if (!text.endsWith("\n") || text.endsWith("\n\n")) { check(false, name + ": the canonical text does not end with one newline"); return; }
 
-    const fromText = new module[name]();
     const textReport = new module.TableReport();
-    if (!module[name + "FromJson"](fromText, text, textReport)) {
-      check(false, name + ": a text this build wrote did not read back: " + JSON.stringify(textReport)); return;
-    }
+    const fromText = module[name + "FromJson"](text, textReport);
     if (textReport.Unknown || textReport.KindMismatch || textReport.Clamped ||
         textReport.Duplicate || textReport.Malformed) {
       check(false, name + ": a clean text round trip reported " + JSON.stringify(textReport)); return;
     }
-    if (module[name + "Save"](fromText, twin) !== size) { check(false, name + ": the text round trip changed the wire length"); return; }
+    if (module[name + "SaveInto"](fromText, twin) !== size) { check(false, name + ": the text round trip changed the wire length"); return; }
     for (let i = 0; i < size; i++) {
       if (twin[i] !== buffer[i]) {
         check(false, name + ": the text round trip differs at wire byte " + i + " (round " + round + ")");
@@ -683,18 +834,10 @@ function emit(dir, rounds) {
     const [name, module] = roots[round % roots.length];
     const info = module[name + "TableType"]();
     const value = new module[name]();
-    info.reset(value);
+    info.Reset(value);
     fillValue(rng, value, info, 0);
-    const size = module[name + "Measure"](value);
-    if (size < 0) { check(false, name + ": measures as unsaveable"); return; }
-    const wire = new Uint8Array(size);
-    module[name + "Save"](value, wire);
-    const textSize = module[name + "ToJsonMeasure"](value);
-    if (textSize < 0) { check(false, name + ": ToJson refuses it"); return; }
-    const text = new Uint8Array(textSize);
-    module[name + "ToJson"](value, text);
-    writeFileSync(join(dir, round + ".bin"), wire);
-    writeFileSync(join(dir, round + ".json"), text);
+    writeFileSync(join(dir, round + ".bin"), module[name + "Save"](value));
+    writeFileSync(join(dir, round + ".json"), module[name + "ToJson"](value));
     index.push(round + " " + name);
   }
   writeFileSync(join(dir, "index.txt"), index.join("\n") + "\n");
@@ -716,23 +859,18 @@ function verifyGoTexts(dir) {
     const module = roots[name];
     const wire = new Uint8Array(readFileSync(join(dir, index + ".bin")));
     const text = new Uint8Array(readFileSync(join(dir, index + ".gojson")));
-    const value = new module[name]();
     const report = new module.TableReport();
-    if (!module[name + "FromJson"](value, text, report)) {
-      check(false, index + " (" + name + "): the Go engine's text did not read: " + JSON.stringify(report));
-      return;
-    }
+    const value = module[name + "FromJson"](text, report);
     if (report.Unknown || report.KindMismatch || report.Clamped || report.Duplicate || report.Malformed) {
       check(false, index + " (" + name + "): reading the Go engine's text reported " + JSON.stringify(report));
       return;
     }
-    const size = module[name + "Measure"](value);
+    const buffer = module[name + "Save"](value);
+    const size = buffer.length;
     if (size !== wire.length) {
       check(false, index + " (" + name + "): the Go engine's text re-saves at " + size + ", not " + wire.length);
       return;
     }
-    const buffer = new Uint8Array(size);
-    module[name + "Save"](value, buffer);
     for (let i = 0; i < size; i++) {
       if (buffer[i] !== wire[i]) {
         check(false, index + " (" + name + "): the Go engine's text re-saves to different bytes at " + i);
@@ -754,7 +892,13 @@ function mutate(state) {
   return state;
 }
 
-function fuzzOne(source, claim, lead, open, walk) {
+// A REFUSAL HAS TWO SPELLINGS: null for bytes that are not this build's, and
+// a RangeError with the fix in it for the one thing the CALLER placed — a base
+// at an unaligned byteOffset, which this fuzzer places on purpose. Any other
+// exception out of Open is a defect. A walk of an opened forgery may meet a
+// reference that leaves the region, which At refuses by name; a DataView's own
+// exception from inside a row is a read that escaped, and the defect.
+function fuzzOne(source, claim, lead, open, walk, align) {
   const buffer = new ArrayBuffer(lead + claim);
   const bytes = new Uint8Array(buffer, lead, claim);
   bytes.set(source.subarray(0, Math.min(claim, source.length)));
@@ -762,15 +906,29 @@ function fuzzOne(source, claim, lead, open, walk) {
   try {
     handle = open(bytes);
   } catch (e) {
+    if (e instanceof RangeError && lead % align !== 0 && e.message.includes("new Uint8Array(bytes)")) {
+      return null; // the caller's placement, refused with the fix named
+    }
     return "Open threw instead of refusing: " + e.message;
   }
   if (handle === null) { return null; } // a refusal is the other legal answer
   try {
     walk(handle, bytes);
   } catch (e) {
+    if (e instanceof RangeError && e.message.includes("leaves the region")) {
+      return null; // a reference the reader refused before following
+    }
     return "a walk of an OPENED forgery threw: " + e.message;
   }
   return null;
+}
+
+function opensOrRefuses(open, bytes) {
+  try {
+    return open(bytes) !== null;
+  } catch {
+    return false;
+  }
 }
 
 function walkBlock(block) {
@@ -824,7 +982,7 @@ function walkCook(cook) {
         for (const f of info.Fields) {
           if (f.IsPointer) {
             const target = cook.At(handle, at + f.Offset);
-            if (target >= 0 && f.RecordRef !== null) { walkNode(target - handle.Region, f.RecordRef(), d + 1); }
+            if (target !== null && f.RecordRef !== null) { walkNode(target - handle.Region, f.RecordRef(), d + 1); }
             continue;
           }
           if (f.Storage === "Record") {
@@ -875,7 +1033,7 @@ function fuzz(blockPath, cookPath, mutants) {
     else if (claimKind === 2) { claim = copy.length + 64; }
     state = mutate(state);
     const lead = Number(state % BigInt(subject.Align)) * (Number(state % 3n) === 0 ? 1 : 0);
-    const problem = fuzzOne(copy, claim, lead, subject.open, subject.walk);
+    const problem = fuzzOne(copy, claim, lead, subject.open, subject.walk, subject.Align);
     if (problem !== null) {
       console.log("FAILED: " + subject.Name + " mutant " + i + ": " + problem);
       failed = true;
@@ -884,14 +1042,10 @@ function fuzz(blockPath, cookPath, mutants) {
     // the verdict itself is not the property — the property is that BOTH
     // verdicts are clean — but a run where nothing ever opened would be
     // fuzzing the refusal and nothing else
-    let handle = null;
-    try {
-      const buffer = new ArrayBuffer(lead + claim);
-      const bytes = new Uint8Array(buffer, lead, claim);
-      bytes.set(copy.subarray(0, Math.min(claim, copy.length)));
-      handle = subject.open(bytes);
-    } catch { /* already reported above */ }
-    if (handle === null) { refused++; } else { opened++; }
+    const buffer = new ArrayBuffer(lead + claim);
+    const bytes = new Uint8Array(buffer, lead, claim);
+    bytes.set(copy.subarray(0, Math.min(claim, copy.length)));
+    if (opensOrRefuses(subject.open, bytes)) { opened++; } else { refused++; }
   }
   console.log("tables JS fuzz: " + mutants + " forged blocks and cooks — " + refused +
     " refused, " + opened + " opened and read entirely inside the bytes they were given; " +
@@ -1022,8 +1176,7 @@ function leak() {
 
 // The instrument is subtracted AT THE SAME INTERVAL the body was measured at:
 // an empty body sampled sparsely costs a different amount from one sampled
-// densely, and subtracting the wrong one is how the floor moved between two
-// machines the first time this ran.
+// densely, and subtracting the wrong one moves the floor between two machines.
 function alloc(iterations, body, baseline, budgetMs) {
   const measured = allocationBytes(iterations, (i) => { body(i); leak(); }, budgetMs);
   const instrument = sampleBytes(iterations, () => {}, measured.every);
@@ -1057,15 +1210,15 @@ const ZeroFloor = 8;
 function allocationPaths() {
   const rows = [];
 
-  // (1) a table with NO 64-bit field: zero, on all three paths
+  // (1) a table with NO 64-bit field: zero, on all three paths, and zero on
+  // the hoisted Load→Save loop the pages document
   {
     const wire = new Uint8Array(readFileSync("testdata/wire/tables/keyed_config.bin"));
-    const value = new keyed.KeyedConfig();
     const report = new keyed.TableReport();
+    const value = keyed.KeyedConfigLoad(wire, report);
     const reader = new keyed.TableReader(wire, report);
     const buffer = new Uint8Array(4096);
     const writer = new keyed.TableWriter(buffer);
-    keyed.KeyedConfigLoad(value, wire, report);
     rows.push(["KeyedConfig Load", ZeroFloor,
       "no field of its closure is 64 bits wide, so nothing on its read path needs a BigInt",
       () => keyed.KeyedConfigLoadBody(reader.reset(wire, report), value)]);
@@ -1073,23 +1226,40 @@ function allocationPaths() {
       () => keyed.KeyedConfigMeasure(value)]);
     rows.push(["KeyedConfig Save", ZeroFloor, "the write path fills a buffer the caller owns",
       () => keyed.KeyedConfigSaveBody(writer.reset(buffer), value)]);
+    rows.push(["KeyedConfig Load+Save", ZeroFloor, "the per-frame loop USAGE documents: one reader, one writer, hoisted",
+      () => {
+        keyed.KeyedConfigLoadBody(reader.reset(wire, report), value);
+        keyed.KeyedConfigSaveBody(writer.reset(buffer), value);
+      }]);
   }
 
-  // (2) a table WITH 64-bit Fields: one BigInt per such field read, bounded
+  // (2) a table WITH 64-bit fields: one BigInt per such field READ and none
+  // per field written, so the hoisted loop pays exactly what Load alone pays
   {
     const wire = new Uint8Array(readFileSync("testdata/wire/tables/root_full.bin"));
-    const value = new tables.RootConfig();
     const report = new tables.TableReport();
+    const value = tables.RootConfigLoad(wire, report);
     const reader = new tables.TableReader(wire, report);
-    tables.RootConfigLoad(value, wire, report);
+    const buffer = new Uint8Array(4096);
+    const writer = new tables.TableWriter(buffer);
     rows.push(["RootConfig Load", 512,
       "one BigInt per 64-bit field the instance actually carries — four or five here; a per-FIELD regression would be orders past this",
       () => tables.RootConfigLoadBody(reader.reset(wire, report), value)]);
     rows.push(["RootConfig Measure", ZeroFloor, "measure reads the storage it is handed",
       () => tables.RootConfigMeasure(value)]);
+    rows.push(["RootConfig Save", ZeroFloor,
+      "a 64-bit field's BigInt goes straight into the view: the write side allocates nothing",
+      () => tables.RootConfigSaveBody(writer.reset(buffer), value)]);
+    rows.push(["RootConfig Load+Save", 512,
+      "the per-frame loop USAGE documents pays Load's BigInts and nothing on the way back out",
+      () => {
+        tables.RootConfigLoadBody(reader.reset(wire, report), value);
+        tables.RootConfigSaveBody(writer.reset(buffer), value);
+      }]);
   }
 
-  // (3) the reading tier: a block row walk allocates nothing
+  // (3) the reading tier: a block row walk allocates nothing, a flags bit is
+  // tested without a BigInt, and a 64-bit row field reads as one BigInt
   {
     const source = new Uint8Array(readFileSync("testdata/wire/tables/block_render.bin"));
     const bytes = new Uint8Array(new ArrayBuffer(source.length));
@@ -1099,18 +1269,27 @@ function allocationPaths() {
     if (block !== null) {
       const count = renderBlock.RenderFrameBlock.ShipsCount(block);
       rows.push(["RenderFrame ships walk", ZeroFloor,
-        "a row field is read at its offset into a Number; nothing is built",
+        "a row field is read at its offset into a Number, a flags bit through one 32-bit word; nothing is built",
         () => {
           for (let r = 0; r < count; r++) {
             const at = renderBlock.RenderFrameBlock.ShipsAt(block, r);
             Sink[0] += renderBlock.RenderShipRow.ObjectId(block.View, at) +
-              renderBlock.RenderShipRow.Thrust(block.View, at);
+              renderBlock.RenderShipRow.Thrust(block.View, at) +
+              (renderBlock.RenderShipRow.FlagsHas(block.View, at, 1) ? 1 : 0);
+          }
+        }]);
+      rows.push(["RenderFrame ships flags", 64 * count,
+        "the whole mask through Flags is a BigInt per row — the licensed allocation, stated; FlagsHas beside it is the zero path",
+        () => {
+          for (let r = 0; r < count; r++) {
+            const at = renderBlock.RenderFrameBlock.ShipsAt(block, r);
+            Sink[0] += Number(renderBlock.RenderShipRow.Flags(block.View, at) & 1n);
           }
         }]);
     }
   }
 
-  // (4) and the two the ladder licenses: a cook deref, and the text form
+  // (4) a cook deref composes two 32-bit reads and allocates nothing
   if (existsSync("build/js-fuzz-scene.cook")) {
     const source = new Uint8Array(readFileSync("build/js-fuzz-scene.cook"));
     const bytes = new Uint8Array(new ArrayBuffer(source.length));
@@ -1118,24 +1297,23 @@ function allocationPaths() {
     const cook = graphCook.SceneCook.Open(bytes);
     if (cook !== null) {
       const slot = graphCook.SceneRow.HeadSlot(cook.Region);
-      rows.push(["Scene head deref", null,
-        "a self-relative delta is eight bytes wide, so following one reads a BigInt (§6.3)",
-        () => graphCook.SceneCook.At(cook, slot)]);
+      rows.push(["Scene head deref", ZeroFloor,
+        "a self-relative delta is composed from two 32-bit reads, never read as a BigInt (§6.3)",
+        () => { Sink[0] += graphCook.SceneCook.At(cook, slot); }]);
     }
   }
+
+  // (5) and the one the ladder licenses: the text form
   {
-    const value = new tables.RootConfig();
     const report = new tables.TableReport();
-    tables.RootConfigLoad(value, new Uint8Array(readFileSync("testdata/wire/tables/root_full.bin")), report);
-    const size = tables.RootConfigToJsonMeasure(value);
-    const text = new Uint8Array(size);
-    tables.RootConfigToJson(value, text);
+    const value = tables.RootConfigLoad(new Uint8Array(readFileSync("testdata/wire/tables/root_full.bin")), report);
+    const text = tables.RootConfigToJson(value);
     const back = new tables.RootConfig();
     rows.push(["RootConfig ToJson", null,
       "the generic path allocates by design — the ladder licenses it for tooling",
-      () => tables.RootConfigToJson(value, text), 16]);
+      () => tables.RootConfigToJson(value), 16]);
     rows.push(["RootConfig FromJson", null, "the same path, the other way",
-      () => tables.RootConfigFromJson(back, text, report), 16]);
+      () => tables.RootConfigFromJson(text, report, back), 16]);
   }
   return rows;
 }
@@ -1225,11 +1403,11 @@ function gateAllocation(measured, where) {
 }
 
 // THE RUNTIME THIS PROPERTY IS CLAIMED FOR, and the gate refuses to certify on
-// another. That is not fussiness: the allocation this gate exists to catch was
-// invisible on a newer V8 and steady at sixteen bytes a call on the pinned one,
-// because it was a generated body sitting over the older engine's optimization
-// threshold. Measuring it on whatever `node` a PATH lookup found is how it hid
-// for three CI reds. Pass SCHEMA_JS_ALLOC_ANY_NODE=1 to read the numbers on
+// another. That is not fussiness: an allocation a newer V8 optimizes away can
+// be steady at sixteen bytes a call on the pinned one — a generated body
+// sitting over the older engine's optimization threshold — and a number read
+// on whatever `node` a PATH lookup found says nothing about the runtime the
+// claim is for. Pass SCHEMA_JS_ALLOC_ANY_NODE=1 to read the numbers on
 // another runtime; the gate then reports and does not certify.
 const PinnedNodeMajor = "20";
 
@@ -1284,6 +1462,12 @@ function soak(seconds) {
   const report = new tables.TableReport();
   const buffer = new Uint8Array(4096);
   const keyedBuffer = new Uint8Array(4096);
+  // the steady phase runs the loop the pages document: one reader and one
+  // writer per table, hoisted, so what runs for the hour is the per-frame path
+  const reader = new tables.TableReader(wire, report);
+  const writer = new tables.TableWriter(buffer);
+  const keyedReader = new keyed.TableReader(keyedWire, report);
+  const keyedWriter = new keyed.TableWriter(keyedBuffer);
 
   // THE RATE BEFORE, after warm-up: the baseline the hour is measured against
   const before = measureAllocationSettled(200000);
@@ -1297,12 +1481,12 @@ function soak(seconds) {
   const warm = started + Math.min(5000, seconds * 200);
   while (Date.now() < deadline) {
     for (let i = 0; i < 2000; i++) {
-      tables.RootConfigLoad(value, wire, report);
-      const n = tables.RootConfigMeasure(value);
-      if (tables.RootConfigSave(value, buffer) !== n) { check(false, "soak save/measure disagreed"); return; }
-      keyed.KeyedConfigLoad(keyedValue, keyedWire, report);
-      const k = keyed.KeyedConfigMeasure(keyedValue);
-      if (keyed.KeyedConfigSave(keyedValue, keyedBuffer) !== k) { check(false, "soak keyed save/measure disagreed"); return; }
+      tables.RootConfigLoadBody(reader.reset(wire, report), value);
+      tables.RootConfigSaveBody(writer.reset(buffer), value);
+      if (writer.Offset !== tables.RootConfigMeasure(value)) { check(false, "soak save/measure disagreed"); return; }
+      keyed.KeyedConfigLoadBody(keyedReader.reset(keyedWire, report), keyedValue);
+      keyed.KeyedConfigSaveBody(keyedWriter.reset(keyedBuffer), keyedValue);
+      if (keyedWriter.Offset !== keyed.KeyedConfigMeasure(keyedValue)) { check(false, "soak keyed save/measure disagreed"); return; }
       iterations += 2;
     }
     if (Date.now() >= warm) {
@@ -1383,9 +1567,12 @@ if (mode === "fuzz") {
 } else {
   checkFieldIds();
   checkExactCapacity();
+  checkTextSurface();
   checkReuse();
   checkForeignByteOrder();
   checkKeyedSurface();
+  checkWholeSurface();
+  checkOpenAnswers();
   checkBlockAccessors("testdata/wire/tables/block_render.bin", renderBlock.RenderFrameBlock);
   checkBlockAccessors("testdata/wire/tables/block_padded.bin", paddedBlock.PaddedFrameBlock);
   checkCookAccessors("build/js-fuzz-scene.cook", graphCook.SceneCook);
@@ -1393,10 +1580,12 @@ if (mode === "fuzz") {
   if (!failed) {
     console.log("tables JS leg: the field-id hash agrees with a second implementation, measure's answer is the " +
       "buffer, a hoisted reader and writer produce the entry points' own bytes, a file of the other " +
-      "byte order is refused twice over, the keyed surface refuses None " +
-      "and iterates by key, and every block row and every cooked node reads the same through the " +
-      "generated accessors and through the descriptors — and 700 instances nobody wrote down, built " +
-      "through the descriptors, round-trip byte-identically on the wire and through the text form");
+      "byte order is refused twice over, the keyed surface refuses None and every key past E.Max " +
+      "and iterates by key, every block and cook module re-exports the unit's whole surface, Open " +
+      "throws on a caller's error and answers null to another build's bytes, the text form takes a " +
+      "string and refuses what is not text, and every block row and every cooked node reads the same " +
+      "through the generated accessors and through the descriptors — and 700 instances nobody wrote " +
+      "down, built through the descriptors, round-trip byte-identically on the wire and through the text form");
   }
 }
 

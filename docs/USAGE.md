@@ -699,46 +699,57 @@ if (report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0)
 }
 ```
 
-The JavaScript surface is the same three functions, name first, exported from
-`<Base>Table.js` beside the packet module — and it imports no runtime at all.
-Storage is a class with public fields, every buffer allocated at construction,
-so `Load` allocates nothing and overlays in place after restoring the declared
-defaults. Buffers are caller-owned `Uint8Array`s:
+The JavaScript surface is the same functions, name first, exported from
+`<Base>Table.js` beside the packet module — and it imports no runtime at all —
+in the language's own shape: a result is a return, and a caller's error is an
+exception. Storage is a class with public fields, every buffer allocated at
+construction, so `Load` allocates nothing and overlays in place after restoring
+the declared defaults. Buffers are caller-owned `Uint8Array`s:
 
 ```js
-import { ShipConfig, ShipConfigMeasure, ShipConfigSave, ShipConfigLoad, TableReport }
+import { ShipConfig, ShipConfigMeasure, ShipConfigSave, ShipConfigSaveInto, ShipConfigLoad, TableReport }
   from "./ConfigTable.js";
 
 const ship = new ShipConfig();
 ship.Health = 250.0;
 ship.SettingsPresent = true;           // ?T: presence decides whether it rides
 
+const bytes = ShipConfigSave(ship);    // a fresh Uint8Array of exactly Measure's size
 const size = ShipConfigMeasure(ship);  // exact, writes nothing
 const buffer = new Uint8Array(size);   // or any storage you own
-ShipConfigSave(ship, buffer);          // returns size, or -1
+ShipConfigSaveInto(ship, buffer);      // returns size; a buffer too small, a
+// count or length past its bound, or an enum value no variant names is YOUR
+// error and throws a RangeError naming the field — never a -1
 
 const report = new TableReport();
-const loaded = new ShipConfig();
-if (!ShipConfigLoad(loaded, buffer, report)) {
-  // framing damage: report.Malformed is set, the good prefix is kept
+const loaded = ShipConfigLoad(bytes, report);        // the value, fresh
+ShipConfigLoad(bytes, report, loaded);               // or your own, overlaid in place
+if (report.Malformed) {
+  // framing damage: the good prefix is kept — what the DATA did is always
+  // the report, never an exception
 }
 if (report.Unknown || report.KindMismatch || report.Clamped) {
   // the data came from a different schema generation — loaded is still
   // fully usable; log the counts so drift is visible
 }
+report.reset();                        // a report accumulates across loads, as C++'s does
 ```
 
 `Save` and `Load` each build one writer or reader plus its `DataView`, because
 JavaScript has no stack object where C++ and C# have one. **Nothing per field
-allocates, and that is a measured number**: a table with no 64-bit field reads,
-measures and writes at zero bytes per iteration, and a block row walk and a cook
-deref with it. A field declared `int64`, `uint64`, `bits(N > 32)` or a `flags`
-mask costs one BigInt per read — JavaScript's only exact 64-bit integer is an
-object, and that is the whole of the floor. The number is measured on the Node
+allocates, and that is a measured number** (`make tables-js-alloc`, on the Node
 major this project pins, because a managed runtime's allocation floor is a
-property of its optimizer as much as of the code. On a per-frame path, hoist the
-pair out of the loop and call the `Body` half directly — the same code, with the
-two objects reused:
+property of its optimizer as much as of the code): a table with no 64-bit field
+reads, measures and writes at zero bytes per iteration, and so does the hoisted
+Load→Save loop below over it; a block row walk and a cook deref are zero too. A
+field declared `int64`, `uint64`, `bits(N > 32)` or a `flags` mask costs one
+BigInt per field READ — JavaScript's only exact 64-bit integer is an object —
+and nothing per field written: the loop below, over the corpus's root table
+with its 64-bit fields, measures 67 bytes per iteration, which is Load's
+BigInts at sixteen bytes each and not one byte more. That is the whole of the
+floor. On a per-frame path, hoist the pair
+out of the loop and call the `Body` half directly — the same code, with the two
+objects reused:
 
 ```js
 const reader = new TableReader(buffer, report);
@@ -750,9 +761,12 @@ for (const message of stream) {
 ```
 
 A `string(N)` or a `bytes(N)` is a `Uint8Array` with a `<Name>Length` beside
-it, exactly as C++ and C# hold it — the codec never builds a JavaScript string,
-so a read allocates nothing for one. Decode at the boundary, where the
-allocation is your own choice:
+it, and a bounded array a preallocated `Array` beside a `<Name>Count`, exactly
+as C++ and C# hold them — and exactly as the packet emitter already spells them
+for the unit's `type`s, which is not a free choice: a table's closure decodes
+into those very classes, and one unit is one spelling. The codec never builds a
+JavaScript string, so a read allocates nothing for one. Decode at the boundary,
+where the allocation is your own choice:
 
 ```js
 const name = new TextDecoder().decode(loaded.Name.subarray(0, loaded.NameLength));
@@ -2117,12 +2131,13 @@ puts the two back together when you want to check one.
 ### The build version: what a cooked asset is stored under
 
 *`schema build-version [--facts]` prints the id and the projection it digests,
-both pinned as goldens; the C++, C# and C block backends emit `BuildVersion` and
-stamp it into every block's prologue and the JavaScript one emits it to compare
-against; `schema cook` stamps the same id into every cooked header, and
-`cook-check`, the C++ `<Root>Open`, the C# `<Root>Cook.Open` and the JavaScript
-`<Root>Cook.Open` each read it back and compare. What is still owed is
-SPEC-TABLES.md §20's status list.*
+both pinned as goldens; the C++, C#, C, Go, Rust and Java block backends emit
+`BuildVersion` and stamp it into every block's prologue, and the JavaScript one
+emits it to compare against; `schema cook` stamps the same id into every cooked
+header, and `cook-check`, the C++ `<Root>Open`, the C# `<Root>Cook.Open`, the
+Go `<Root>Open`, the Java `<Root>Cook.open` and the JavaScript `<Root>Cook.Open`
+each read it back and compare. What is still owed is SPEC-TABLES.md §20's
+status list.*
 
 A cook is only ever produced for one build, so something has to name which
 build. That is the **build version**: one digest over everything a cook's
@@ -2515,6 +2530,20 @@ whole, so the walk is already there. It lands in its own `<Home>TableJson.go`
 all the same, so what it costs is legible — and the LINKER drops what nothing
 calls, so a binary that never reads or writes a text carries none of it. The
 Go read and write paths allocate NOTHING at all, measured rather than asserted.
+
+In JavaScript the text is a string — the language's own currency for it — so
+there is no measure call and no buffer: `ToJson` answers the text, `FromJson`
+takes it (or the `Uint8Array` of one read straight off a file) and hands the
+value back, and anything that is not text is a `TypeError`, not a malformed
+report:
+
+```js
+import { ShipConfigFromJson, ShipConfigToJson, TableReport } from "./ConfigTable.js";
+
+const report = new TableReport();
+const ship = ShipConfigFromJson(text, report);       // one instance, from a string
+const back = ShipConfigToJson(ship);                 // the canonical text, as a string
+```
 
 Every writer ends the text with exactly one newline, and every reader accepts a
 text with or without one — so a text is the same text in a file, in a diff and
@@ -2917,25 +2946,45 @@ codecs, the reflection descriptors and the text form — plus `<Base>Block.js` a
 `<Base>Cook.js`, the READ side of the two accelerators. JavaScript controls no
 struct layout, so it reads a block and a cook rather than producing one: every
 field is read at the offset the compiler settled, through a `DataView` with an
-explicit little-endian flag at every call, and `Open` refuses by returning
-`null` — no exception leaves a reader, whatever the bytes carry.
+explicit little-endian flag at every call. `Open` answers `null` for bytes that
+are not this build's — a foreign magic, the other byte order, another build
+version, forged framing — and THROWS for what the caller got wrong, with the
+fix in the message. The one every Node program meets first: **the view's
+`byteOffset` must be a multiple of 64 for a block, and of the region's
+alignment for a cook**, because that offset is the only alignment fact a
+JavaScript consumer can state, and a `Buffer` under 4 KiB — which is what
+`readFileSync` hands back for a small file — is carved out of a shared pool at
+an arbitrary offset. Copy it into a fresh `Uint8Array` first:
 
 ```js
-import { RenderFrameBlock, RenderShipRow } from "./RenderBlock.js";
+import { readFileSync } from "node:fs";
+import { RenderFrameBlock, RenderShipRow, RenderVector3Row } from "./RenderBlock.js";
 
+const bytes = new Uint8Array(readFileSync("frame.block"));  // a COPY: byteOffset 0, never the pool's
 const block = RenderFrameBlock.Open(bytes);  // null: not this build's block
 if (block !== null) {
   for (let i = 0; i < RenderFrameBlock.ShipsCount(block); i++) {
-    const at = RenderFrameBlock.ShipsAt(block, i);   // the pitch is the INSTANCE's
+    const at = RenderFrameBlock.ShipsAt(block, i);         // the pitch is the INSTANCE's
     use(RenderShipRow.ObjectId(block.View, at));
+    const p = RenderShipRow.PositionAt(at);                // a nested type: its own offset
+    use(RenderVector3Row.X(block.View, p));                // read through ITS row, same module
+    if (RenderShipRow.FlagsHas(block.View, at, 1)) { boost(); }  // one bit, no BigInt
   }
 }
 ```
 
+Every `<Base>Block.js` and `<Base>Cook.js` re-exports the unit's whole surface
+— every `<Name>Row`, the nested `type` rows included — so one import serves. A
+64-bit row field reads as a `BigInt` through its accessor (`RenderShipRow.Flags`,
+one allocation per read); a `flags` field carries `<Member>Has(view, at, bit)`
+beside it, which reads one 32-bit word and allocates nothing — the bit is the
+variant's ordinal, the number `FlagNameShipFlags(bit)` takes.
+
 A cook reads the same way, with one addition: a reference is an eight-byte
 SIGNED SELF-RELATIVE delta, so `At` takes the SLOT's own offset and answers the
-target's — `-1` for a null and `-2` for a delta that leaves the region, which is
-a refusal rather than a read:
+target's — `null` for a null reference. A delta that leaves the region throws a
+`RangeError` naming the cook as corrupt, because a cook is trusted input and
+that is a file `schema cook-check` refuses:
 
 ```js
 import { SceneCook, SceneRow, ListNodeRow } from "./GraphCook.js";
@@ -2945,12 +2994,20 @@ if (cook !== null) {
   const root = cook.Region;                  // the root sits at the region's base
   const name = SceneRow.Name(cook.Bytes, cook.View, root);   // the used bytes, no copy
   let at = SceneCook.At(cook, SceneRow.HeadSlot(root));
-  while (at >= 0) {
+  while (at !== null) {
     use(ListNodeRow.Value(cook.View, at));
     at = SceneCook.At(cook, ListNodeRow.NextSlot(at));
   }
 }
 ```
+
+The casing you meet is one rule, the packet emitter's, because a table's
+closure decodes into the classes that emitter wrote: types, functions,
+constants and data members are UpperCamelCase (`ship.Health`, `report.Unknown`,
+`cook.Region`), and methods are lowerCamelCase (`reader.reset(bytes)`,
+`teams.get(key)`, `report.reset()`). A field's wire name, a JSON key and a
+variant's name stay the schema's own spelling — they are data in a descriptor,
+not identifiers.
 
 All nine are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is

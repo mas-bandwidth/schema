@@ -231,6 +231,50 @@ BOUNDED before it is followed (§6.3): C++ trusts the delta and adds it, where a
 JavaScript read past a view throws, so a delta that leaves the region is a
 refusal rather than an escaping exception.
 
+**THE JAVASCRIPT SURFACE is the language's own shape over the reference's
+semantics**, and where the two part the reason is stated at the site:
+
+- **A result is a return, and a caller's error is an exception.**
+  `<Name>Load(bytes, report, value?)` hands the value back — the caller's own,
+  overlaid in place, when it passes one — and `<Name>FromJson(text, report,
+  value?)` the same; `<Name>Save(value)` answers a fresh `Uint8Array` of
+  exactly `<Name>Measure`'s size and `<Name>SaveInto(value, buffer)` the bytes
+  written into the caller's; `<Name>ToJson(value)` answers a string. What the
+  DATA did is the report and never a return: framing damage sets
+  `report.Malformed` and keeps the prefix, as C++'s `false` does. What the
+  CALLER did wrong throws — a `RangeError` for a buffer short of measure's
+  answer, a count or length past its bound, an enum value or union tag no
+  variant names, a float the text form cannot spell; a `TypeError` for text
+  that is neither a string nor a `Uint8Array`, or bytes that are not a
+  `Uint8Array` — where C++ answers `-1`. A cook's `At` answers the target's
+  offset or `null` for a null reference, and throws on a delta that leaves the
+  region; `Open` answers `null` for bytes that are not this build's and throws
+  for a caller's placement (§7, §19.1). An enum's identity pair answers
+  `undefined` for a value or an id that names nothing.
+- **Text is a string.** `ToJson` answers one and `FromJson` takes one, or the
+  `Uint8Array` of a text read off a file; the text form is the generic path
+  and allocates by design (§16), so nothing here costs what the path was not
+  already paying. There is no `ToJsonMeasure`.
+- **Storage is the PACKET emitter's**, because a table's closure decodes into
+  the classes that emitter already wrote for the unit's `type`s, and one unit
+  is one spelling: a bounded array is a preallocated `Array` beside a
+  `<Name>Count`, a `string(N)` or `bytes(N)` a `Uint8Array` beside a
+  `<Name>Length`, `?T` a value beside a `<Name>Present`, and a union its tag
+  beside one preallocated arm. A JavaScript string or a live-prefix array
+  would be a second spelling of the same field one declaration over, and it
+  would allocate on a path this document prices at zero.
+- **Casing is the packet emitter's too**, for the same reason: types,
+  functions, constants and DATA MEMBERS are UpperCamelCase (`ship.Health`,
+  `report.Unknown`, `cook.Region`, a descriptor's `GetRaw`), METHODS are
+  lowerCamelCase (`reader.reset`, `teams.get`, `report.reset`), and the
+  schema's own spellings — a field's wire name, a JSON key, a variant's name —
+  are data in a descriptor and stay the schema's.
+- **A row is an accessor object over `(view, at)`**, `<Name>Row`, because a
+  language with no struct has no other honest spelling of a record another
+  language laid out; a 64-bit field's accessor answers a `BigInt`, and a
+  `flags` field carries `<Member>Has(view, at, bit)` beside its mask, which
+  reads one 32-bit word and allocates nothing.
+
 **The RUST backend's own three divergences**, each forced by the language and
 each named where it is spelled rather than discovered in the source. The
 READ REPORT is the codecs' own parameter rather than a member of the reader: a
@@ -364,6 +408,16 @@ words and `CookRuntime`'s are constants, and the host's order is never
 consulted anywhere in the port. A big-endian BEAM reads the same bytes to the
 same terms. The two FOREIGN surfaces hold the refusal, and no order gate stands
 beside them because there is no platform query for one to catch.
+
+**JAVASCRIPT's answer is Java's**: every multi-byte read and write is a
+`DataView` call with an explicit little-endian flag, so the port's byte order
+is the READER's whatever the host is, and a JavaScript build has no native
+path for a big-endian file to take. There is no big-endian JavaScript leg —
+the `big-endian` job runs C++ and Go — and the cross-order gate is the two
+FOREIGN surfaces, which every leg must refuse, plus the JavaScript leg's own
+order-word check (`test/js-tables/main.mjs`): a file whose magic is intact and
+whose order word records the other order, which is exactly the file a reader
+leaning on one check would open.
 
 **The BLOCK FORM (§2.7, §19) is live in C++, C, C#, Go, Rust, Java and Elixir,
 and READ by JavaScript**, and it took C++ and C# TOGETHER to land, because the
@@ -2249,15 +2303,16 @@ orders, over the same IR the emitters consume — and `wire → cook → wire` i
 byte-identical over the corpus, which is what proves the accelerator loses no
 fact. Every port emits the entry point for EVERY TABLE (below) — a root is any
 table — in its own idiom: the C++ backend `<Root>Open`, the C# backend
-`<Root>Cook.Open`, the Java backend `<Root>Cook.open`, and the Elixir backend
-`cook_open_<root>`, which takes a `lead` beside the bytes for the base-alignment
-check a BEAM binary cannot carry (§7.1's alignment word, and the backend status
-in §2). A game points at a cook the tooling produced, whichever language it
-reads from. The WRITE side (`Cook` and `CookMeasure`, §7.6) is emitted by the
-C++ backend for every table, fixed or pointered, and its bytes are the tool's,
-byte for byte, in both byte orders over every instance the corpus carries;
-every other language's writer is a named follow-on (§15), and until it lands
-that build runs the tool.
+`<Root>Cook.Open`, the Go backend `<Root>Open`, the Java backend
+`<Root>Cook.open`, the JavaScript backend `<Root>Cook.Open`, and the Elixir
+backend `cook_open_<root>`, which takes a `lead` beside the bytes for the
+base-alignment check a BEAM binary cannot carry (§7.1's alignment word, and the
+backend status in §2). A game points at a cook the tooling produced, whichever
+language it reads from. The WRITE side (`Cook` and `CookMeasure`, §7.6) is
+emitted by the C++ backend for every table, fixed or pointered, and its bytes
+are the tool's, byte for byte, in both byte orders over every instance the
+corpus carries; every other language's writer is a named follow-on (§15), and
+until it lands that build runs the tool.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -2479,18 +2534,18 @@ the wire, and keeps the flexibility that comes with it.
   and a cook is a region written verbatim.
 
   **THE SPELLING, PER BACKEND.** A consumer written from this page needs the
-  names, and the three ports do not spell them alike — §11 fixes the claimed
-  VERBS and leaves each language its own shape for them:
+  names, and the ports do not spell them alike — §11 fixes the claimed VERBS
+  and leaves each language its own shape for them:
 
-  | | C++ | C# | Go |
-  |---|---|---|---|
-  | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` |
-  | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` |
-  | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` |
-  | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)`, `slot *int64` |
-  | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim |
-  | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` |
-  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them
+  | | C++ | C# | Go | JavaScript |
+  |---|---|---|---|---|
+  | open | `bool XOpen( const XCook *& cook, const void * base, int64_t bytes )` | `bool XCook.Open(out XCook cook, IntPtr p, long n)` | `bool XOpen(cook *XCook, base unsafe.Pointer, length int64) bool` | `XCook.Open(bytes: Uint8Array)` — the handle, or `null` for bytes that are not this build's; a caller's error (no `Uint8Array`, a view at an unaligned `byteOffset`) throws with the fix named |
+  | the handle | the root pointer itself | `readonly struct XCook` | `type XCook struct { Region unsafe.Pointer; RegionLength int64 }` | `{ Bytes, View, Region, Length }` — the region's offset inside the caller's view, and its length |
+  | the root | the return | `cook.Root` / `cook.RootPointer` | `cook.Root() *XRow` | `cook.Region`, the byte offset the root's accessors take |
+  | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)`, `slot *int64` | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt |
+  | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record |
+  | the descriptors | `XCook::Type()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` |
+  | §7.1's facts | `XCook::RegionAlignment` etc. | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them | `XCook.RegionAlignment`, `RootSize`, `RootAlign` |
 
   **THE GENERATED STRUCT IS THE COOKED RECORD**, and the backend asserts it
   rather than assuming it: every record a unit's files declare carries
@@ -4005,13 +4060,15 @@ in build version (§20.5).
   enums are in scope on the same terms.
 - Tables under a backend that carries none (status, above) — refused with the
   follow-on named, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Go, Rust, Java and
-  Elixir backends** — every port carries the fixed class on the wire; their
-  variable class there (the arena, the builder, the region, the node-table
-  codec) is a named follow-on, and a pointered unit gets no `<Base>Table.cs`, no
-  `<Base>Table.go`, no `<base>_table.rs`, no `<Base>Table.java` and no
-  `<Base>Table.ex` at all, with the refusal NAMED in every source the unit does
-  emit rather than left as a missing symbol.
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Go, Rust, Java,
+  JavaScript and Elixir backends** — every port carries the fixed class on the
+  wire; their variable class there (the arena, the builder, the region, the
+  node-table codec) is a named follow-on, and a pointered unit gets no
+  `<Base>Table.cs`, no `<Base>Table.go`, no `<base>_table.rs`, no
+  `<Base>Table.java`, no `<Base>Table.js` and no `<Base>Table.ex` at all, with
+  the refusal NAMED in every source the unit does emit rather than left as a
+  missing symbol — in JavaScript, a banner at the head of every
+  `<Base>Block.js` and `<Base>Cook.js` the unit gets.
 
   **The refusal is of the WIRE and of nothing else, and the distinction is the
   design rather than an exception to it.** The two ACCELERATORS are POINTED AT,
@@ -4020,11 +4077,12 @@ in build version (§20.5).
   So a pointered unit's block and cook sources ARE emitted in every port —
   `<Base>Block.cs` and `<Base>Cook.cs`, `<Base>Block.go` and `<Base>Cook.go`,
   `<base>_block.rs` and `<base>_cook.rs`, Java's `<Table>Block.java`,
-  `<Table>Cook.java` and `<Name>Row.java`, and Elixir's `<Base>Block.ex` and
-  `<Base>Cook.ex`; its `<Root>Cook.Open`, its `<Root>Open`, its
-  `<Root>Cook.open` and its `cook_open_<root>` open its cooked assets in full,
-  and what a consumer cannot do in any of those languages is `Measure`, `Save`
-  and `Load` over the tolerant wire.
+  `<Table>Cook.java` and `<Name>Row.java`, `<Base>Block.js` and
+  `<Base>Cook.js`, and Elixir's `<Base>Block.ex` and `<Base>Cook.ex`; its
+  `<Root>Cook.Open`, its `<Root>Open`, its `<Root>Cook.open` and its
+  `cook_open_<root>` open its cooked assets in full, and what a consumer cannot
+  do in any of those languages is `Measure`, `Save` and `Load` over the
+  tolerant wire.
   **This is what lets §7's "a root is any table, and every table gets one" hold
   in every port**, which a whole-unit refusal made impossible to say.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
@@ -4110,13 +4168,13 @@ in build version (§20.5).
   types share one symbol table (§13.1), which is what makes the generated
   surface unprefixed and collision-free — so every name a closure member
   claims is refused to everything else. A member `X` claims `X` followed by
-  each of these **36 suffixes**, and a declaration spelling one of them is
+  each of these **37 suffixes**, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below, for **52 in all**:
+  seven follow below, for **53 in all**:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
-  Reset  LoadMeasure  LoadBuilder  TableType  Builder
+  SaveInto  Reset  LoadMeasure  LoadBuilder  TableType  Builder
   At  Emplace  Pack  PackMeasure
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
@@ -4128,9 +4186,9 @@ in build version (§20.5).
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
   free yesterday must not become a collision tomorrow. That list is the
-  checker's own, and this section is held to it: the three lists here — 32, then
+  checker's own, and this section is held to it: the three lists here — 33, then
   the block form's nine, then the C backend's seven — are `tableGeneratedVerbs`
-  entire, spelling for spelling and 48 in all, because a claim the page states
+  entire, spelling for spelling and 49 in all, because a claim the page states
   and the checker does not make is a name a user may take.
 
   **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
@@ -5529,12 +5587,13 @@ SceneFromJson( builder, text, text_bytes, &report );
 ```
 
 **Backend status for this section: the FIXED class in C++, C, C#, Go, Rust,
-Java and Elixir; the VARIABLE class in C++ (§16.7).** A pointered unit's text
-form is the C++ reference's, through the builder, and carrying it to the other
-backends is schema#349's row beside the wire. In C#, Go, Rust, Java and Elixir
-the absence is already made one level up: a pointered unit gets no table source
-at all (§11), so it has no text form for the same reason it has no wire codec;
-the C port has the wire's earlier form (§3.1) and its text form follows it.
+Java, JavaScript and Elixir; the VARIABLE class in C++ (§16.7).** A pointered
+unit's text form is the C++ reference's, through the builder, and carrying it
+to the other backends is schema#349's row beside the wire. In C#, Go, Rust,
+Java, JavaScript and Elixir the absence is already made one level up: a
+pointered unit gets no table source at all (§11), so it has no text form for
+the same reason it has no wire codec; the C port has the wire's earlier form
+(§3.1) and its text form follows it.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++
@@ -7231,7 +7290,8 @@ the projection of §20.2, both pinned as goldens over the corpus. The BLOCK
 backends emit the constant and stamp it into every block's prologue (§19.1), and
 `BlockOpen` compares it; `schema cook` stamps it into the cooked header, `schema
 cook-check` reads it back, and every port's cook entry point compares it (§7) —
-the C++ `<Root>Open`, the C# `<Root>Cook.Open`, the Java `<Root>Cook.open`. What remains owed, largest first:
+the C++ `<Root>Open`, the C# `<Root>Cook.Open`, the Go `<Root>Open`, the Java
+`<Root>Cook.open`, the JavaScript `<Root>Cook.Open`. What remains owed, largest first:
 
 1. **The constant rides in the TABLE-bearing sources only.** §20.7 asks for
    one beside `ProtocolId` in every backend; today the block backends emit
