@@ -15,11 +15,21 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring>
-#include <cstddef> // offsetof, for the layout contract
-#include <cstdlib> // the DEFAULT allocator pair, for a caller with none of its own
-#include <type_traits> // the layout contract's standard-layout asserts
+#include <stdint.h>
+#include <string.h>
+#include <stddef.h> // offsetof, for the layout contract
+
+// schema_allocate / schema_release — what "no allocator handed in" means for
+// this program. schema_allocate hands back ZEROED bytes and NULL on failure:
+// an arena segment is copied whole, padding included, so anything left
+// uninitialized here would reach a packed region. Supply both and <stdlib.h>
+// is never included; hand a TableAllocator to a builder to route one
+// structure's allocations somewhere else again.
+#ifndef schema_allocate
+#include <stdlib.h> // calloc, free
+#define schema_allocate( bytes ) calloc( (size_t) 1, (size_t) ( bytes ) )
+#define schema_release( pointer ) free( pointer )
+#endif // #ifndef schema_allocate
 
 #include "BenchTableTable.h"
 
@@ -40,7 +50,7 @@ namespace benchtable {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x4ecd277aba28ff2eull;
+static const uint64_t BuildVersion = 0x4ecd277aba28ff2eull;
 
 } // namespace benchtable
 
@@ -80,9 +90,11 @@ struct TableBlockAllocator
 };
 
 // The default pair, for a caller that has no allocator of its own to hand in.
-// Nothing in the generated surface reaches for it: a caller names it.
-inline void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return malloc( (size_t) bytes ); }
-inline void table_block_default_free( void * context, void * pointer ) { (void) context; ::free( pointer ); }
+// Nothing in the generated surface reaches for it: a caller names it. It calls
+// schema_allocate / schema_release, the same hook pair the variable class
+// defaults to, so one definition moves every default in the program.
+inline void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return schema_allocate( bytes ); }
+inline void table_block_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
 
 inline TableBlockAllocator TableBlockDefaultAllocator()
 {
@@ -98,9 +110,9 @@ inline TableBlockAllocator TableBlockDefaultAllocator()
 // big-endian fix-up path is a named obligation, not something a consumer
 // improvises row by row.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-inline constexpr uint64_t TableBlockByteOrder = 2; // big
+static const uint64_t TableBlockByteOrder = 2; // big
 #else
-inline constexpr uint64_t TableBlockByteOrder = 1; // little
+static const uint64_t TableBlockByteOrder = 1; // little
 #endif
 
 // Why Begin refused: the array, its count and its maximum (§19.1). Clamping a
@@ -218,7 +230,7 @@ struct TableBlockInfo
 // the producer's NATIVE order; a consumer that reads back the byte-swapped
 // value has found a foreign byte order, and one that reads back anything else
 // has not found a block at all.
-inline constexpr uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
+static const uint64_t TableBlockMagic = 0x4b4c42414d484353ull;
 
 inline uint64_t table_block_byteswap64( uint64_t v )
 {
@@ -266,7 +278,7 @@ struct TableEntityCounts
 // can add to more than can ever be occupied at once.
 // It is allocated ONCE, at build time, through the CALLER'S allocator, and
 // released through the same pair. The fill path allocates nothing.
-inline constexpr int64_t TableEntityBlockMaxBytes = 128;
+static const int64_t TableEntityBlockMaxBytes = 128;
 
 struct TableEntityBlockStorage
 {
@@ -350,8 +362,8 @@ struct TableEntityBlock
 static_assert( sizeof( bool ) == 1, "a bool in a block row is ONE byte: the standard leaves sizeof(bool) implementation-defined, and this two-language layout contract does not (docs/SPEC-TABLES.md §19.3)" );
 static_assert( sizeof( TableBlockTriple ) == 16, "a triple is sixteen bytes with no interior padding (docs/SPEC-TABLES.md §2.7)" );
 static_assert( offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, "a triple's members sit at 0/8/12 (docs/SPEC-TABLES.md §2.7)" );
-static_assert( std::is_standard_layout<TableEntityBlock::Projection>::value, "TableEntity's block projection must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<TableEntityBlock::Projection>::value, "TableEntity's block projection must stay relocatable" );
+static_assert( __is_standard_layout( TableEntityBlock::Projection ), "TableEntity's block projection must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( TableEntityBlock::Projection ), "TableEntity's block projection must stay relocatable" );
 static_assert( sizeof( TableEntityBlock::Projection ) == 88, "TableEntity's block projection sizeof moved: the C# side asserts 88 for the same declaration (docs/SPEC-TABLES.md §19.3)" );
 static_assert( alignof( TableEntityBlock::Projection ) == 8, "TableEntity's block projection alignof moved (docs/SPEC-TABLES.md §19.3)" );
 static_assert( offsetof( TableEntityBlock::Projection, magic ) == 0, "the block prologue's magic sits at offset 0 (docs/SPEC-TABLES.md §19.1)" );
@@ -455,7 +467,7 @@ struct TableStatCounts
 // can add to more than can ever be occupied at once.
 // It is allocated ONCE, at build time, through the CALLER'S allocator, and
 // released through the same pair. The fill path allocates nothing.
-inline constexpr int64_t TableStatBlockMaxBytes = 64;
+static const int64_t TableStatBlockMaxBytes = 64;
 
 struct TableStatBlockStorage
 {
@@ -527,8 +539,8 @@ struct TableStatBlock
 static_assert( sizeof( bool ) == 1, "a bool in a block row is ONE byte: the standard leaves sizeof(bool) implementation-defined, and this two-language layout contract does not (docs/SPEC-TABLES.md §19.3)" );
 static_assert( sizeof( TableBlockTriple ) == 16, "a triple is sixteen bytes with no interior padding (docs/SPEC-TABLES.md §2.7)" );
 static_assert( offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, "a triple's members sit at 0/8/12 (docs/SPEC-TABLES.md §2.7)" );
-static_assert( std::is_standard_layout<TableStatBlock::Projection>::value, "TableStat's block projection must stay standard-layout for offsetof" );
-static_assert( std::is_trivially_copyable<TableStatBlock::Projection>::value, "TableStat's block projection must stay relocatable" );
+static_assert( __is_standard_layout( TableStatBlock::Projection ), "TableStat's block projection must stay standard-layout for offsetof" );
+static_assert( __is_trivially_copyable( TableStatBlock::Projection ), "TableStat's block projection must stay relocatable" );
 static_assert( sizeof( TableStatBlock::Projection ) == 32, "TableStat's block projection sizeof moved: the C# side asserts 32 for the same declaration (docs/SPEC-TABLES.md §19.3)" );
 static_assert( alignof( TableStatBlock::Projection ) == 8, "TableStat's block projection alignof moved (docs/SPEC-TABLES.md §19.3)" );
 static_assert( offsetof( TableStatBlock::Projection, magic ) == 0, "the block prologue's magic sits at offset 0 (docs/SPEC-TABLES.md §19.1)" );

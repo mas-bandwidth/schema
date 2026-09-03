@@ -12,7 +12,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <iterator>
 #include <thread>
 #include <vector>
 
@@ -1829,7 +1828,7 @@ static void test_pointer_reflection()
     // BYTES AT EIGHT (docs/SPEC-TABLES.md §6.3, ruled 2026-09-03). In a region it
     // holds a SELF-RELATIVE byte delta, so its width is what bounds one
     // region's reach: at four bytes that was 2 GiB, which is a ceiling a mesh
-    // or texture catalogue is exactly the thing to meet. It is SIGNED because
+    // or texture catalog is exactly the thing to meet. It is SIGNED because
     // a shared node's later references point BACK at the one body it has.
     CHECK( sizeof( graphdemo::TableRef ) == 8 );
     CHECK( alignof( graphdemo::TableRef ) == 8 );
@@ -2412,10 +2411,18 @@ static void test_keyed_iteration()
     graphdemo::Depot depot;
     CHECK( iterate_and_check_keys( depot.banks ) == 2 );
 
-    // the iterators carry their traits typedefs, so a forward pass over one
-    // works without the range-for
-    CHECK( std::distance( cfg.teams.begin(), cfg.teams.end() ) == 3 );
-    CHECK( std::distance( const_cfg.teams.begin(), const_cfg.teams.end() ) == 3 );
+    // a forward pass over one works without the range-for. It is a HAND-WRITTEN
+    // pass, and that is the point: the iterators carry no iterator_traits
+    // typedefs, so std::distance does not compile against them and <iterator>
+    // is not in the header (schema#382).
+    {
+        int32_t walked = 0;
+        for ( auto it = cfg.teams.begin(); it != cfg.teams.end(); ++it ) { walked++; }
+        CHECK( walked == 3 );
+        int32_t const_walked = 0;
+        for ( auto it = const_cfg.teams.begin(); it != const_cfg.teams.end(); ++it ) { const_walked++; }
+        CHECK( const_walked == 3 );
+    }
 
     // a scalar element iterates as a reference too
     for ( auto [ slot, tokens ] : v2.tokens )

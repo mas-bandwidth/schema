@@ -2455,13 +2455,32 @@ tables-keyed-none-refusal-ndebug: build/tables-generated/.stamp test/tables/keye
 		test/tables/keyed_none_ndebug_main.cpp -o build/schema_test_keyed_none_ndebug
 	./build/schema_test_keyed_none_ndebug
 
+# THE HOOKS (docs/SPEC-TABLES.md §13.9, docs/USAGE.md): a consumer supplies its
+# own assert, its own fatal handler and its own allocate/free pair, and every
+# call the table runtime makes has to land in them. This unit defines all four
+# before it includes a generated header, so it observes what a consumer
+# observes.
+#
+# It carries its OWN negative control rather than a sabotage build, and that is
+# the stronger form here: the DEFAULT pair — schema_allocate / schema_release —
+# is where a bypassing malloc, calloc, realloc or free would land, and the test
+# defines it to a separate counter that must read ZERO. Put one C-library call
+# back anywhere in the arena, the pack walk, the numbering, the region or the
+# node directory and that counter fires.
+.PHONY: tables-hooks
+tables-hooks: build/tables-generated/.stamp test/tables/hooks_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/hooks_main.cpp \
+		$$(ls build/tables-generated/pointers/*Table.cpp) -o build/schema_test_hooks
+	./build/schema_test_hooks
+
 # and its NEGATIVE CONTROL: put the refusal back to a bare assert — the shape
 # the ruling replaced — and the gate above must go RED, because -DNDEBUG then
 # removes it. A gate that only ever passes proves nothing about what it checks.
 .PHONY: tables-keyed-none-refusal-negative-control
 tables-keyed-none-refusal-negative-control: bin/schema test/tables/keyed_none_ndebug_main.cpp
 	@mkdir -p build
-	@sed -e 's|            abort();|            /* SABOTAGED: a debug-only guard again */|' \
+	@sed -e 's|            schema_fatal();|            /* SABOTAGED: a debug-only guard again */|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-assert-only.gotext
 	@grep -q SABOTAGED build/cpptable-assert-only.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
@@ -3267,6 +3286,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-unpack-variable-refusal-negative-control
 	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
+	$(MAKE) tables-hooks
 	$(MAKE) tables-keyed-none-refusal-ndebug
 	$(MAKE) tables-keyed-none-refusal-negative-control
 	$(MAKE) tables-keyed-max-refusal-ndebug

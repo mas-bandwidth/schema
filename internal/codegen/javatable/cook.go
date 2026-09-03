@@ -394,7 +394,7 @@ func (g *cookGen) emitOpen(ml *ir.MemberLayout, align int64) {
 	g.f("    // so `length` can never carry a value this reader could use. The long is\n")
 	g.f("    // the seat the FOREIGN-MEMORY overload takes when the JDK floor allows\n")
 	g.f("    // one; MemorySegment is not stable before 22 and this backend compiles\n")
-	g.f("    // at --release 17. A catalogue past 2 GiB — which §7 is explicitly built\n")
+	g.f("    // at --release 17. A catalog past 2 GiB — which §7 is explicitly built\n")
 	g.f("    // for — has no Java reader until then, and that is a named follow-on\n")
 	g.f("    // rather than a silence.\n")
 	g.f("    public static %sCook open(byte[] data, int offset, long length) {\n", name)

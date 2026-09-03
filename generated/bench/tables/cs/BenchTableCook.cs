@@ -383,7 +383,7 @@ namespace Benchtable
         // pin below does not.
         //
         // A span's length is an int, so this overload reaches 2 GiB and the POINTER
-        // FORM is the one with the reach the cook is built for (§6.3): a catalogue
+        // FORM is the one with the reach the cook is built for (§6.3): a catalog
         // past that ceiling is opened through the pointer form, never through this.
         public static bool Open(out TableEntityCook cook, ReadOnlySpan<byte> bytes)
         {
@@ -578,7 +578,7 @@ namespace Benchtable
         // pin below does not.
         //
         // A span's length is an int, so this overload reaches 2 GiB and the POINTER
-        // FORM is the one with the reach the cook is built for (§6.3): a catalogue
+        // FORM is the one with the reach the cook is built for (§6.3): a catalog
         // past that ceiling is opened through the pointer form, never through this.
         public static bool Open(out TableStatCook cook, ReadOnlySpan<byte> bytes)
         {

@@ -1097,7 +1097,7 @@ read past the end — an unchecked deref in Java is an exception escaping a read
 rather than a pointer into trusted bytes, so the bound is over the record.
 
 **Both accelerators stop at 2 GiB**, because a `byte[]` does. §7 is built for
-catalogues past that, and C# answers it with a pointer form beside its span
+catalogs past that, and C# answers it with a pointer form beside its span
 overload; Java at `--release 17` has no second spelling, since `MemorySegment`
 is not stable before 22. The `long length` on both `open`s is the seat that
 overload takes when the floor moves — it is a named follow-on, not an oversight,
@@ -1221,8 +1221,10 @@ program are runtime values — an enum read out of a file, a key a tool hands
 you — so `operator[]` is the accessor every call site uses, and it ends the
 program on `None` rather than reading something. This is **not** a debug
 guard: `NDEBUG` does not remove it, so there is no configuration in which a
-`None` key reads one element before the array. C++ asserts for the message
-and then aborts; C# throws. The cost is one predictable compare.
+`None` key reads one element before the array. C++ raises `schema_assert` for
+the message and then `schema_fatal` — your own handlers if you defined them
+(see [the hooks](#the-c-runtimes-hooks-schema_assert-schema_fatal-schema_allocate)),
+`assert` and `abort` otherwise; C# throws. The cost is one predictable compare.
 
 **Iterate, and the key rule never reaches your code at all.** Iteration
 yields the KEY, `1 .. Max`, so a consumer of the whole array writes no lower
@@ -1234,8 +1236,10 @@ The entry is a **proxy handed out by value** — a key beside a reference — so
 the spelling is `for ( auto [ key, element ] : keyed )`. `auto & [ ... ]` is a
 compile error by design: a non-const lvalue reference cannot bind to the proxy.
 Write `auto [ ... ]`, or `auto && [ ... ]` if you want the reference form; the
-element is a reference to the slot in every case. The iterators carry the
-`iterator_traits` typedefs, so `std::distance` and a forward pass work.
+element is a reference to the slot in every case. `begin()`, `end()` and
+`size()` are the whole iteration surface: the iterators carry no
+`iterator_traits` typedefs, so a hand-written forward pass works and an STL
+algorithm does not — a keyed table header includes no `<iterator>`.
 
 **What changes is the wire: the slots ride by NAME.** Each
 present slot carries its variant's id, so inserting a variant in the middle,
@@ -1481,6 +1485,76 @@ neither. The spelling is C's own — this target's packet half writes
 `read_ship_config`, so its table half writes `ship_config_load`, and §11's
 `<Name>At` is `<name>_at` here for the same reason it is `<name>_at` in Rust.
 
+### The C++ runtime's hooks: `schema_assert`, `schema_fatal`, `schema_allocate`
+
+The generated C++ is the dialect of `serialize.h`: C header spellings
+(`<stdint.h>`, `<string.h>`, `<stddef.h>`), no STL, no `<type_traits>`, no
+`<iterator>`, and every call the runtime makes into the C library goes
+through a macro you can define first. A keyed table header pulls in 126
+headers and preprocesses to 172 KB — 542 and 1 MB before — and 68 headers
+and 110 KB once you define the hooks; a packet header is 36 headers. Define
+them once, before the first generated header, and every unit in the program
+picks them up:
+
+```cpp
+#define schema_assert( condition ) my_assert( condition )
+#define schema_fatal() my_fatal()                      // must not return
+#define schema_allocate( bytes ) my_calloc( bytes )    // ZEROED bytes, NULL on failure
+#define schema_release( pointer ) my_free( pointer )
+#include "SceneTable.h"
+```
+
+- **`schema_assert`** is the runtime's assert. The keyed accessor's refusal
+  raises it with its message. The default is `assert` from `<assert.h>`, and
+  `NDEBUG` removes it exactly as it removes `assert`. A program that already
+  routes the packet half's asserts writes `#define schema_assert
+  serialize_assert` and both halves land in one handler.
+- **`schema_fatal`** is what stands after the assert on a path that cannot
+  continue; `NDEBUG` does not remove it. The default is `abort` from
+  `<stdlib.h>`. Define it and a fixed-class header includes no `<stdlib.h>`.
+- **`schema_allocate` / `schema_release`** are the default allocator pair, in
+  a unit with a variable-length table and in every block header.
+  `schema_allocate` hands back ZEROED bytes — an arena segment is copied whole,
+  padding included, into the packed region — and NULL on failure. The default
+  is `calloc` and `free`. Define both and no generated header includes
+  `<stdlib.h>`.
+
+A unit with no keyed array emits no assert or fatal hook, and one with no
+pointer emits no allocator hook in its `Table.h`; the block header always
+carries the allocator hook, because `TableBlockDefaultAllocator()` lands in
+it. There is no log hook, because the runtime never logs: every outcome is a
+return value or a `TableReport` field.
+
+**Per structure, hand a `TableAllocator` to the builder.** It is the shape
+`TableBlockAllocator` already has — an alloc/free pair and a context — plus
+the zeroed-bytes contract on `alloc`:
+
+```cpp
+static void * heap_alloc( void * context, int64_t bytes ) { return ((Heap *) context)->Calloc( bytes ); }
+static void heap_free( void * context, void * pointer ) { ((Heap *) context)->Free( pointer ); }
+
+TableAllocator pair;
+pair.alloc = heap_alloc;
+pair.free = heap_free;
+pair.context = &my_heap;
+SceneBuilder builder( pair );          // TableDefaultAllocator() when you name none
+```
+
+Everything the builder ever allocates goes through it: the arena's segments,
+`Lock`'s identity map and the packed region, the numbering behind
+`SceneMeasure` and `SceneSave`, and `SceneLoadBuilder`'s node directory.
+`SceneMeasure( const Scene * )` and `SceneSave( const Scene *, ... )` over a
+REGION take the pair as an optional last argument, because the numbering walk
+is the one reading-side path that allocates. A counting allocator sees every
+byte and the default pair sees none; `test/tables/hooks_main.cpp` is the unit
+that holds both claims, and it is what a consumer's own translation unit
+looks like. `LoadMeasure`/`Load`, `Open` and `BlockOpen` allocate nothing, as
+always.
+
+What is still not the dialect in a POINTERED unit's header — `<atomic>` and
+`<new>` — and the builder's destructor are named follow-ons in
+SPEC-TABLES §15.
+
 ### Byte buffers: `bytes(N)`
 
 A blob is `bytes(N)` — N bytes of inline storage in every instance, at a
@@ -1543,7 +1617,8 @@ the counts, lay the block out once, then let N workers fill disjoint ranges:
 ```cpp
 // the storage: one extent, sized from the declared maxima, allocated ONCE
 // through YOUR allocator — an alloc/free pair and a context, malloc semantics.
-// TableBlockDefaultAllocator() is malloc/free, for a caller with none of its own.
+// TableBlockDefaultAllocator() is schema_allocate / schema_release — calloc
+// and free unless you defined the hooks — for a caller with none of its own.
 RenderFrameBlockStorage storage;
 if ( !storage.Create( TableBlockDefaultAllocator() ) )
     return;
@@ -1655,7 +1730,7 @@ protocol.** A wire crosses a boundary between builds; a cook crosses none. Your
 tools write one for one build, and that build loads it off its own disk. So
 `Open`'s checks are IDENTITY checks — is this file for this build — and not a
 trust boundary, and there is no per-node validation at load, ever: a pass over a
-catalogue-scale file is the parse the whole form exists to delete. A file that
+catalog-scale file is the parse the whole form exists to delete. A file that
 did not come from your own pipeline is `schema cook-check`'s problem, run by a
 person, once. If you want integrity, sign the file and verify the signature
 before you open it; do not ask the loader to walk anything.

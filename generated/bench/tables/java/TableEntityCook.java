@@ -72,7 +72,7 @@ public final class TableEntityCook {
     // so `length` can never carry a value this reader could use. The long is
     // the seat the FOREIGN-MEMORY overload takes when the JDK floor allows
     // one; MemorySegment is not stable before 22 and this backend compiles
-    // at --release 17. A catalogue past 2 GiB — which §7 is explicitly built
+    // at --release 17. A catalog past 2 GiB — which §7 is explicitly built
     // for — has no Java reader until then, and that is a named follow-on
     // rather than a silence.
     public static TableEntityCook open(byte[] data, int offset, long length) {
