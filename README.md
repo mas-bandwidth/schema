@@ -98,11 +98,12 @@ table BuildRequest
 }
 ```
 
-A table rides a second wire. Each field carries an id, a kind and a length,
+Tables are versioned. Each field carries an id, a kind and a length,
 so a reader that does not know a field skips it, a field that is missing
 takes its declared default, a field that was renamed is found under its old
 name, and a value out of range is clamped. Every one of those events is
-counted in a read report. Nothing is fatal in either direction.
+counted in a read report. Nothing is fatal in either direction unless
+you want it to be.
 
 _The tables feature is new in this release_.
 
