@@ -4457,9 +4457,9 @@ inspects everything in the schema built:
   compare. It is the same harness pointed at two more directories, and it
   belongs with the emitters rather than with this page, because a snapshot
   taken before the code that could move it is a snapshot of nothing.
-- **The view in a ported backend** — C++ and C# take it together (§0); every
-  other backend emits no view file until it emits the same registry against
-  the same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
+- **The view in a ported backend** — C++ and C# take it together (§8); every
+  other backend emits no view file until it emits the same registry against the
+  same pin (§8.7). Nothing is refused meanwhile, because nothing in a schema
   asks for one (§8.4): a backend without the emitter is a backend whose
   users have no registry, and the status paragraph says so.
 - **DOC STRINGS in the view.** Doc comments are deferred with their design
