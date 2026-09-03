@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xa388f75ddc741965
+// package ludicrous — protocol id 0x42050541a90eea8a
 
 package ludicrous
 
@@ -14,7 +14,7 @@ import (
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0xa388f75ddc741965
+const ProtocolId uint64 = 0x42050541a90eea8a
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string (SPEC §4.3, §4.7).
@@ -113,8 +113,17 @@ type UnsignedProbe struct {
 	Reach   serialize.Uint128 // wire [0, 2000000]
 	Ticks   uint32            // wire [0, 1000000]
 	Samples [2]uint32         // wire [0, 16]
-	Locked  uint32            // wire [3, 3]
+	Locked  uint32            // = 196608 in New* (zero value otherwise); wire [3, 3]
 	Tail    uint8
+}
+
+// NewUnsignedProbe returns a UnsignedProbe with its specified defaults applied; the plain zero
+// value is the all-zero form (SPEC §4.2: zero initialization unless a
+// specified default overrides it).
+func NewUnsignedProbe() UnsignedProbe {
+	var value UnsignedProbe
+	value.Locked = 196608
+	return value
 }
 
 // UnsignedProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -339,10 +348,21 @@ func ReadLudicrousState(stream *serialize.ReadStream, value *LudicrousState) err
 
 // type DegenerateProbe
 type DegenerateProbe struct {
-	LockedFixed int32            // wire [-3, -3]
-	LockedInt   int32            // wire [7, 7]
-	LockedWide  serialize.Int128 // wire [-12345678901234, -12345678901234]
+	LockedFixed int32            // = -196608 in New* (zero value otherwise); wire [-3, -3]
+	LockedInt   int32            // = 7 in New* (zero value otherwise); wire [7, 7]
+	LockedWide  serialize.Int128 // = serialize.Int128From64(-12345678901234) in New* (zero value otherwise); wire [-12345678901234, -12345678901234]
 	Tail        uint8
+}
+
+// NewDegenerateProbe returns a DegenerateProbe with its specified defaults applied; the plain zero
+// value is the all-zero form (SPEC §4.2: zero initialization unless a
+// specified default overrides it).
+func NewDegenerateProbe() DegenerateProbe {
+	var value DegenerateProbe
+	value.LockedFixed = -196608
+	value.LockedInt = 7
+	value.LockedWide = serialize.Int128From64(-12345678901234)
+	return value
 }
 
 // DegenerateProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).

@@ -52,7 +52,7 @@ const RotationUnits = 3000
 type ExtremeProbe {
     floor_bound   int64 | min = -9223372036854775808, max = 100
     doubled_floor int64 | min = --FloorLimit, max = 100
-    spin_rate     int32 | min = --RotationUnits, max = RotationUnits * 2
+    spin_rate     int32 = RotationUnits | min = --RotationUnits, max = RotationUnits * 2
     floor_default int64 = -9223372036854775808
 }
 `

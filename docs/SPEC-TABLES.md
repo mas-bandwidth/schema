@@ -1242,7 +1242,10 @@ tolerance is the versioning model:
 
 - **Unknown field** (newer writer): skipped by its length, counted.
 - **Absent field** (older writer): the reader's value takes the field's
-  default — the specified default, else zero.
+  default — the specified default, else zero. That fallback is always
+  inside the field's declared range: a range excluding zero requires a
+  declared default in range (SPEC §4.6), so an absent field never lands
+  out of bounds and never clamps.
 - **Unknown enum variant, union arm or KEYED SLOT** (a name this reader
   does not have): the enum value reads as `None`, the union reads as empty,
   a keyed array's slot is dropped and the rest of its slots land normally,

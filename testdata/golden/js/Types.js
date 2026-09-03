@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xdd71ce8b50d78939
+// package example — protocol id 0x91a8e85156dfe2b1
 
 import { MaxHealth, MaxInputsPerPacket, MaxObjects, MaxPositionUnits, MaxVelocityUnits, RotationUnits, ShipMaxLasers, ShipMaxMissiles } from "./Constants.js";
 import { Pending, ShipType, Team } from "./Enums.js";
@@ -830,7 +830,7 @@ export function ReadShipCreate(stream, value) {
 export class ExpressionProbe {
   constructor() {
     this.HardpointIndex = 0; // wire [0, 31]
-    this.SpinRate = 0; // wire [1024, 2048]
+    this.SpinRate = RotationUnits; // specified default at construction; Zero* gives the §5 zero form; wire [1024, 2048]
   }
 }
 
@@ -884,7 +884,7 @@ export class ExtremeProbe {
   constructor() {
     this.FloorBound = 0n; // wire [-9223372036854775808, 100]
     this.DoubledFloor = 0n; // wire [-9223372036854775808, 100]
-    this.CeilingRange = 0n; // wire [1, 18446744073709551615]
+    this.CeilingRange = 1n; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551615]
     this.FloorDefault = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
     this.CeilingDefault = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
   }
@@ -968,7 +968,7 @@ export function ReadExtremeProbe(stream, value) {
 export class ExtremeRow {
   constructor() {
     this.ClampedFloor = 0n; // wire [-9223372036854775808, 100]
-    this.ClampedCeiling = 0n; // wire [1, 18446744073709551614]
+    this.ClampedCeiling = 1n; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551614]
     this.FloorDef = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
     this.CeilingDef = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
   }

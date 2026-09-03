@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xa388f75ddc741965
+// package ludicrous — protocol id 0x42050541a90eea8a
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an interior null)
@@ -46,7 +46,7 @@ namespace Ludicrous
         public UInt128Value Reach; // wire [0, 2000000]
         public uint Ticks; // wire [0, 1000000]
         public uint[] Samples = new uint[2]; // wire [0, 16]
-        public uint Locked; // wire [3, 3]
+        public uint Locked = 196608; // specified default at construction; Zero* gives the §5 zero form; wire [3, 3]
         public byte Tail;
     }
 
@@ -78,9 +78,9 @@ namespace Ludicrous
     // type DegenerateProbe
     public sealed class DegenerateProbe
     {
-        public int LockedFixed; // wire [-3, -3]
-        public int LockedInt; // wire [7, 7]
-        public Int128Value LockedWide; // wire [-12345678901234, -12345678901234]
+        public int LockedFixed = -196608; // specified default at construction; Zero* gives the §5 zero form; wire [-3, -3]
+        public int LockedInt = 7; // specified default at construction; Zero* gives the §5 zero form; wire [7, 7]
+        public Int128Value LockedWide = -12345678901234L; // specified default at construction; Zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
         public byte Tail;
     }
 
@@ -108,7 +108,7 @@ namespace Ludicrous
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0xa388f75ddc741965;
+        public const ulong ProtocolId = 0x42050541a90eea8a;
 
         public const long MaxWorldUnits = 30000;
 

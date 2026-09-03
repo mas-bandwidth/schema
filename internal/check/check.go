@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
@@ -1188,8 +1189,52 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 	}
 
 	c.resolveDefault(f, out)
+	c.requireDefaultInRange(f, out)
 	return out
 }
+
+// requireDefaultInRange refuses a field whose declared range excludes zero and
+// that declares no default (SPEC §4.6). Zero initialization is the rule, so
+// such a field is born outside its own range: the write side refuses the fresh
+// value, and any read-side clamp substitutes a value the author never wrote.
+// A declared default is the fix, and it is range-checked in resolveDefault — a
+// field that declared one and failed that check is left alone here, no
+// cascade. An ARRAY takes no specified default (its elements zero-initialize),
+// so for an array the only fix is a range that reaches zero, and the
+// diagnostic says so.
+func (c *checker) requireDefaultInRange(f *ast.Field, out *ir.Field) {
+	if f.Default != nil {
+		return
+	}
+	var rng, fix string
+	switch {
+	case out.HasIntRange && out.IntMin != nil && out.IntMax != nil:
+		if out.IntMin.Sign() <= 0 && out.IntMax.Sign() >= 0 {
+			return // zero is in range; the implicit zero default is legal
+		}
+		rng, fix = fmt.Sprintf("[%s, %s]", out.IntMin, out.IntMax), out.IntMin.String()
+		if out.Type.Kind == ir.TFixed {
+			rng += " (whole units)"
+		}
+	case out.HasFloatRange:
+		if out.FMin <= 0 && out.FMax >= 0 {
+			return
+		}
+		fix = formatFloat(out.FMin)
+		rng = fmt.Sprintf("[%s, %s]", fix, formatFloat(out.FMax))
+	default:
+		return
+	}
+	if out.Array != ir.ArrayNone {
+		c.errf(f.Pos, "field %s: its range %s excludes zero, so every element is born outside it — an array takes no specified default, so widen the range to reach zero (SPEC §4.6)",
+			f.Name, rng)
+		return
+	}
+	c.errf(f.Pos, "field %s: its range %s excludes zero, so the implicit zero default is outside it — declare a default in range, %s = %s (SPEC §4.6)",
+		f.Name, rng, f.Name, fix)
+}
+
+func formatFloat(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
 
 // resolveDefault validates an optional specified default: zero initialization
 // for all types in all generated languages unless a specified default
@@ -1237,6 +1282,10 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 	case ir.TFloat32, ir.TFloat64:
 		v, ok := c.evalFloat(f.Default)
 		if !ok {
+			return
+		}
+		if out.HasFloatRange && (v < out.FMin || v > out.FMax) {
+			c.errf(f.Default.ExprPos(), "field %s: default %g is outside its range [%s, %s]", f.Name, v, formatFloat(out.FMin), formatFloat(out.FMax))
 			return
 		}
 		out.HasDefault = true

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xdd71ce8b50d78939
+# package example — protocol id 0x91a8e85156dfe2b1
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -34,7 +34,7 @@
 defmodule Example.Constants do
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0xDD71CE8B50D78939
+  def protocol_id, do: 0x91A8E85156DFE2B1
 
   def position_units, do: 1024
 

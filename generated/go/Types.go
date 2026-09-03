@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xdd71ce8b50d78939
+// package example — protocol id 0x91a8e85156dfe2b1
 
 package example
 
@@ -909,7 +909,16 @@ func ReadShipCreate(stream *serialize.ReadStream, value *ShipCreate) error {
 // type ExpressionProbe
 type ExpressionProbe struct {
 	HardpointIndex int32 // wire [0, 31]
-	SpinRate       int32 // wire [1024, 2048]
+	SpinRate       int32 // = RotationUnits in New* (zero value otherwise); wire [1024, 2048]
+}
+
+// NewExpressionProbe returns a ExpressionProbe with its specified defaults applied; the plain zero
+// value is the all-zero form (SPEC §4.2: zero initialization unless a
+// specified default overrides it).
+func NewExpressionProbe() ExpressionProbe {
+	var value ExpressionProbe
+	value.SpinRate = RotationUnits
+	return value
 }
 
 // ExpressionProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -963,7 +972,7 @@ const CeilingCount uint64 = 18446744073709551615
 type ExtremeProbe struct {
 	FloorBound     int64  // wire [-9223372036854775808, 100]
 	DoubledFloor   int64  // wire [-9223372036854775808, 100]
-	CeilingRange   uint64 // wire [1, 18446744073709551615]
+	CeilingRange   uint64 // = 1 in New* (zero value otherwise); wire [1, 18446744073709551615]
 	FloorDefault   int64  // = -9223372036854775808 in New* (zero value otherwise)
 	CeilingDefault uint64 // = 18446744073709551615 in New* (zero value otherwise)
 }
@@ -973,6 +982,7 @@ type ExtremeProbe struct {
 // specified default overrides it).
 func NewExtremeProbe() ExtremeProbe {
 	var value ExtremeProbe
+	value.CeilingRange = 1
 	value.FloorDefault = -9223372036854775808
 	value.CeilingDefault = 18446744073709551615
 	return value
@@ -1061,7 +1071,7 @@ func ReadExtremeProbe(stream *serialize.ReadStream, value *ExtremeProbe) error {
 // type ExtremeRow
 type ExtremeRow struct {
 	ClampedFloor   int64  // wire [-9223372036854775808, 100]
-	ClampedCeiling uint64 // wire [1, 18446744073709551614]
+	ClampedCeiling uint64 // = 1 in New* (zero value otherwise); wire [1, 18446744073709551614]
 	FloorDef       int64  // = -9223372036854775808 in New* (zero value otherwise)
 	CeilingDef     uint64 // = 18446744073709551615 in New* (zero value otherwise)
 }
@@ -1071,6 +1081,7 @@ type ExtremeRow struct {
 // specified default overrides it).
 func NewExtremeRow() ExtremeRow {
 	var value ExtremeRow
+	value.ClampedCeiling = 1
 	value.FloorDef = -9223372036854775808
 	value.CeilingDef = 18446744073709551615
 	return value

@@ -161,8 +161,8 @@ var handSeeds = []string{
 	// both must reach the compiler in their guarded spellings, the doubled
 	// minus AT the extreme folding rather than rendering symbolically.
 	"package t\nconst F = -9223372036854775808\ntype T { x int64 = -9223372036854775808 | min = --F, max = 100 }\n",
-	"package t\nconst H uint64 = 18446744073709551615\ntype T { x uint64 | min = 1, max = 18446744073709551615 }\n",
-	"package t\ntype R {\n    x int64 = -9223372036854775808 | min = -9223372036854775808, max = 100\n    y uint64 | min = 1, max = 18446744073709551614\n}\n",
+	"package t\nconst H uint64 = 18446744073709551615\ntype T { x uint64 = 1 | min = 1, max = 18446744073709551615 }\n",
+	"package t\ntype R {\n    x int64 = -9223372036854775808 | min = -9223372036854775808, max = 100\n    y uint64 = 1 | min = 1, max = 18446744073709551614\n}\n",
 	// a uint64 DEFAULT above INT64_MAX — the member-initializer
 	// path must suffix it ull like every other fold of the value (an
 	// unsuffixed decimal deduces unsigned, -Wimplicitly-unsigned-literal

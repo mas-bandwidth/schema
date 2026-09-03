@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package ludicrous — protocol id 0xa388f75ddc741965
+# package ludicrous — protocol id 0x42050541a90eea8a
 #
 # The shipped Elixir wire path (issue #167): the serialize.elixir port's
 # measured shapes — byte-granular 32-bit-group packing and 40-bit read
@@ -59,13 +59,13 @@ defmodule Ludicrous.UnsignedProbe do
   # reach: fixed point Q112.16 — the raw scaled integer; wire [0, 2000000]
   # ticks: fixed point Q32.0 — the raw scaled integer; wire [0, 1000000]
   # samples: fixed point Q16.16 — the raw scaled integer; wire [0, 16]
-  # locked: fixed point Q16.16 — the raw scaled integer; wire [3, 3]
+  # locked: fixed point Q16.16 — the raw scaled integer; specified default at construction; zero_* gives the §5 zero form; wire [3, 3]
   defstruct angle: 0,
             span: 0,
             reach: 0,
             ticks: 0,
             samples: List.duplicate(0, 2),
-            locked: 0,
+            locked: 196_608,
             tail: 0
 end
 
@@ -92,10 +92,10 @@ end
 
 # type DegenerateProbe
 defmodule Ludicrous.DegenerateProbe do
-  # locked_fixed: fixed point Q16.16 — the raw scaled integer; wire [-3, -3]
-  # locked_int: wire [7, 7]
-  # locked_wide: wire [-12345678901234, -12345678901234]
-  defstruct locked_fixed: 0, locked_int: 0, locked_wide: 0, tail: 0
+  # locked_fixed: fixed point Q16.16 — the raw scaled integer; specified default at construction; zero_* gives the §5 zero form; wire [-3, -3]
+  # locked_int: specified default at construction; zero_* gives the §5 zero form; wire [7, 7]
+  # locked_wide: specified default at construction; zero_* gives the §5 zero form; wire [-12345678901234, -12345678901234]
+  defstruct locked_fixed: -196_608, locked_int: 7, locked_wide: -12_345_678_901_234, tail: 0
 end
 
 # type FixedVec [vec3] — tags are user-chosen and inert in v1 (SPEC §4.2, Type tags)
@@ -126,7 +126,7 @@ defmodule Ludicrous.Ludicrous do
 
   # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
   # sides at the same id speak identical bits; there is no other versioning.
-  def protocol_id, do: 0xA388F75DDC741965
+  def protocol_id, do: 0x42050541A90EEA8A
 
   def max_world_units, do: 30000
 

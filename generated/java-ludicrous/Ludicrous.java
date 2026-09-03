@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xa388f75ddc741965
+// package ludicrous — protocol id 0x42050541a90eea8a
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -39,7 +39,7 @@ public final class Ludicrous {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0xa388f75ddc741965L;
+    public static final long protocolId = 0x42050541a90eea8aL;
 
     public static final int maxWorldUnits = 30000;
 
@@ -331,8 +331,8 @@ public final class Ludicrous {
         public int ticks;
         // wire [0, 16]
         public final int[] samples = new int[2];
-        // wire [3, 3]
-        public int locked;
+        // specified default at construction; zero* gives the §5 zero form; wire [3, 3]
+        public int locked = 196608;
         public byte tail;
     }
 
@@ -1843,12 +1843,12 @@ public final class Ludicrous {
 
     // type DegenerateProbe
     public static final class DegenerateProbe {
-        // wire [-3, -3]
-        public int lockedFixed;
-        // wire [7, 7]
-        public int lockedInt;
-        // wire [-12345678901234, -12345678901234]
-        public Int128 lockedWide = Int128.zero;
+        // specified default at construction; zero* gives the §5 zero form; wire [-3, -3]
+        public int lockedFixed = -196608;
+        // specified default at construction; zero* gives the §5 zero form; wire [7, 7]
+        public int lockedInt = 7;
+        // specified default at construction; zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
+        public Int128 lockedWide = new Int128(0xffffffffffffffffL, 0xfffff4c58c31d00eL);
         public byte tail;
     }
 

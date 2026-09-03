@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xa388f75ddc741965
+// package ludicrous — protocol id 0x42050541a90eea8a
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -22,7 +22,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0xa388f75ddc741965n;
+export const ProtocolId = 0x42050541a90eea8an;
 
 export const MaxWorldUnits = 30000;
 
@@ -139,7 +139,7 @@ export class UnsignedProbe {
     this.Reach = 0n; // wire [0, 2000000]
     this.Ticks = 0; // wire [0, 1000000]
     this.Samples = new Array(2).fill(0); // wire [0, 16]
-    this.Locked = 0; // wire [3, 3]
+    this.Locked = 196608; // specified default at construction; Zero* gives the §5 zero form; wire [3, 3]
     this.Tail = 0;
   }
 }
@@ -408,9 +408,9 @@ export function ReadLudicrousState(stream, value) {
 // type DegenerateProbe
 export class DegenerateProbe {
   constructor() {
-    this.LockedFixed = 0; // wire [-3, -3]
-    this.LockedInt = 0; // wire [7, 7]
-    this.LockedWide = 0n; // wire [-12345678901234, -12345678901234]
+    this.LockedFixed = -196608; // specified default at construction; Zero* gives the §5 zero form; wire [-3, -3]
+    this.LockedInt = 7; // specified default at construction; Zero* gives the §5 zero form; wire [7, 7]
+    this.LockedWide = -12345678901234n; // specified default at construction; Zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
     this.Tail = 0;
   }
 }

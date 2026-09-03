@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xdd71ce8b50d78939
+// package example — protocol id 0x91a8e85156dfe2b1
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -840,7 +840,7 @@ pub fn read_ship_create(stream: &mut ReadStream<'_>, value: &mut ShipCreate) -> 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ExpressionProbe {
     pub hardpoint_index: i32, // wire [0, 31]
-    pub spin_rate: i32, // wire [1024, 2048]
+    pub spin_rate: i32, // = ROTATION_UNITS as i32 in new() (zero value otherwise); wire [1024, 2048]
 }
 
 // The zero form (SPEC §5): specified defaults live only in new(), never here.
@@ -850,6 +850,17 @@ impl Default for ExpressionProbe {
             hardpoint_index: 0,
             spin_rate: 0,
         }
+    }
+}
+
+impl ExpressionProbe {
+    // new returns a ExpressionProbe with its specified defaults applied; the plain
+    // Default::default() is the all-zero form (SPEC §4.2: zero initialization
+    // unless a specified default overrides it).
+    pub fn new() -> Self {
+        let mut value = ExpressionProbe::default();
+        value.spin_rate = ROTATION_UNITS as i32;
+        value
     }
 }
 
@@ -898,7 +909,7 @@ pub const CEILING_COUNT: u64 = 18446744073709551615;
 pub struct ExtremeProbe {
     pub floor_bound: i64, // wire [-9223372036854775808, 100]
     pub doubled_floor: i64, // wire [-9223372036854775808, 100]
-    pub ceiling_range: u64, // wire [1, 18446744073709551615]
+    pub ceiling_range: u64, // = 1 in new() (zero value otherwise); wire [1, 18446744073709551615]
     pub floor_default: i64, // = -9223372036854775808 in new() (zero value otherwise)
     pub ceiling_default: u64, // = 18446744073709551615 in new() (zero value otherwise)
 }
@@ -922,6 +933,7 @@ impl ExtremeProbe {
     // unless a specified default overrides it).
     pub fn new() -> Self {
         let mut value = ExtremeProbe::default();
+        value.ceiling_range = 1;
         value.floor_default = -9223372036854775808;
         value.ceiling_default = 18446744073709551615;
         value
@@ -1017,7 +1029,7 @@ pub fn read_extreme_probe(stream: &mut ReadStream<'_>, value: &mut ExtremeProbe)
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ExtremeRow {
     pub clamped_floor: i64, // wire [-9223372036854775808, 100]
-    pub clamped_ceiling: u64, // wire [1, 18446744073709551614]
+    pub clamped_ceiling: u64, // = 1 in new() (zero value otherwise); wire [1, 18446744073709551614]
     pub floor_def: i64, // = -9223372036854775808 in new() (zero value otherwise)
     pub ceiling_def: u64, // = 18446744073709551615 in new() (zero value otherwise)
 }
@@ -1040,6 +1052,7 @@ impl ExtremeRow {
     // unless a specified default overrides it).
     pub fn new() -> Self {
         let mut value = ExtremeRow::default();
+        value.clamped_ceiling = 1;
         value.floor_def = -9223372036854775808;
         value.ceiling_def = 18446744073709551615;
         value

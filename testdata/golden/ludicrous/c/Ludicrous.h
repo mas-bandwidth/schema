@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package ludicrous — protocol id 0xa388f75ddc741965 */
+   package ludicrous — protocol id 0x42050541a90eea8a */
 
 #ifndef SCHEMA_LUDICROUS_LUDICROUS_H
 #define SCHEMA_LUDICROUS_LUDICROUS_H
@@ -25,7 +25,7 @@ extern "C" {
 
 /* The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
    sides at the same id speak identical bits; there is no other versioning. */
-#define LUDICROUS_PROTOCOL_ID 0xa388f75ddc741965ULL
+#define LUDICROUS_PROTOCOL_ID 0x42050541a90eea8aULL
 
 #define MAX_WORLD_UNITS (30000)
 
@@ -80,6 +80,17 @@ typedef struct UnsignedProbe {
 
 #define UNSIGNED_PROBE_MAX_BITS 196   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define UNSIGNED_PROBE_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+
+/* Returns a UnsignedProbe with its SPECIFIED defaults applied. A memset to zero is
+   the schema's own default (SPEC §4.2: zero initialization unless a
+   specified default overrides it), so only types carrying one get this. */
+static SCHEMA_UNUSED UnsignedProbe new_unsigned_probe( void )
+{
+    UnsignedProbe value;
+    memset( &value, 0, sizeof( value ) );
+    value.locked = 196608;
+    return value;
+}
 
 
 /* type WideProbe */
@@ -143,6 +154,19 @@ typedef struct DegenerateProbe {
 
 #define DEGENERATE_PROBE_MAX_BITS 8   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define DEGENERATE_PROBE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+
+/* Returns a DegenerateProbe with its SPECIFIED defaults applied. A memset to zero is
+   the schema's own default (SPEC §4.2: zero initialization unless a
+   specified default overrides it), so only types carrying one get this. */
+static SCHEMA_UNUSED DegenerateProbe new_degenerate_probe( void )
+{
+    DegenerateProbe value;
+    memset( &value, 0, sizeof( value ) );
+    value.locked_fixed = -196608;
+    value.locked_int = 7;
+    value.locked_wide = serialize_int128_from_int64( -12345678901234 );
+    return value;
+}
 
 
 /* type FixedVec */

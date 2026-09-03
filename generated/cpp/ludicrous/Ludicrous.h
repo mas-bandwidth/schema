@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xa388f75ddc741965
+// package ludicrous — protocol id 0x42050541a90eea8a
 
 #pragma once
 
@@ -14,7 +14,7 @@ namespace ludicrous {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0xa388f75ddc741965ull;
+inline constexpr uint64_t ProtocolId = 0x42050541a90eea8aull;
 
 inline constexpr int64_t MaxWorldUnits = 30000;
 // enum DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
@@ -58,7 +58,7 @@ struct UnsignedProbe {
     serialize::uint128_t reach = 0; // ufixed(112, 16) — UQ112.16, raw value scaled by 2^16; bounds in whole units; wire [0, 2000000]
     uint32_t ticks = 0; // ufixed(32, 0) — UQ32.0, raw value scaled by 2^0; bounds in whole units; wire [0, 1000000]
     uint32_t samples[2] = {}; // ufixed(16, 16) — UQ16.16, raw value scaled by 2^16; bounds in whole units; wire [0, 16]
-    uint32_t locked = 0; // ufixed(16, 16) — UQ16.16, raw value scaled by 2^16; bounds in whole units; wire [3, 3]
+    uint32_t locked = 196608; // ufixed(16, 16) — UQ16.16, raw value scaled by 2^16; bounds in whole units; wire [3, 3]
     uint8_t tail = 0;
 };
 
@@ -96,9 +96,9 @@ inline constexpr int64_t LudicrousStateMaxBytes = 152; // 8-byte write granulari
 
 // type DegenerateProbe
 struct DegenerateProbe {
-    int32_t locked_fixed = 0; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-3, -3]
-    int32_t locked_int = 0; // wire [7, 7]
-    serialize::int128_t locked_wide = 0; // wire [-12345678901234, -12345678901234]
+    int32_t locked_fixed = -196608; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-3, -3]
+    int32_t locked_int = 7; // wire [7, 7]
+    serialize::int128_t locked_wide = -12345678901234; // wire [-12345678901234, -12345678901234]
     uint8_t tail = 0;
 };
 

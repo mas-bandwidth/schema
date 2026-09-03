@@ -1560,6 +1560,42 @@ tables-clamp-limits-negative-control: bin/schema
 		  cat build/clamp-limits-negative.log; exit 1; }
 	@echo "negative control: the storage-limit clamps back turn the build red — $$(grep -c 'always false' build/clamp-limits-negative.log) comparisons that cannot fire"
 
+# THE ZERO-RANGE GATE and its NEGATIVE CONTROL (SPEC §4.6). A field whose
+# declared range excludes zero and declares no default is born outside its own
+# range: zero initialization is the language's rule, so the fresh value is one
+# the wire cannot carry. The checker refuses that shape; the refusal's corpus
+# case lives in the break-the-language suite.
+#
+# The control shows the refusal is load-bearing. It takes the gate back out
+# through `go build -overlay` (no tracked file is written), generates the
+# refused unit, and compiles it against NDEBUG — the shipping configuration,
+# where the write-side range assert is gone and the defect is silent. A
+# freshly constructed value must fail to survive its own wire.
+.PHONY: check-zero-range-negative-control
+check-zero-range-negative-control: bin/schema test/zero_range_negative_main.cpp
+	@mkdir -p build/zero-range
+	@printf 'package rangezero\n\ntype Probe\n{\n    x    uint8 | min = 1, max = 255\n    tail uint8\n}\n' > build/zero-range/RangeZero.schema
+	@if ./bin/schema check build/zero-range > build/zero-range-check.log 2>&1; then \
+		echo "GATE FAILED: the checker accepted a [1, 255] field with no declared default"; exit 1; \
+	fi
+	@grep -q "excludes zero" build/zero-range-check.log || \
+		{ echo "GATE FAILED: it was refused, but not for excluding zero"; cat build/zero-range-check.log; exit 1; }
+	@sed 's|c.requireDefaultInRange(f, out)|// SABOTAGED: the zero-range gate removed|' \
+		internal/check/check.go > build/check-no-zero-gate.gotext
+	@grep -q SABOTAGED build/check-no-zero-gate.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/check-no-zero-gate.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/check-no-zero-gate-overlay.json
+	@go build -overlay=build/check-no-zero-gate-overlay.json -o build/schema-no-zero-gate ./cmd/schema
+	@rm -rf build/zero-range-sabotage && mkdir -p build/zero-range-sabotage
+	@./build/schema-no-zero-gate generate --lang cpp --out build/zero-range-sabotage build/zero-range
+	@grep -q 'uint8_t x = 0; // wire \[1, 255\]' build/zero-range-sabotage/RangeZero.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the gateless compiler did not emit the out-of-range initializer"; exit 1; }
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -DNDEBUG \
+		-I$(SERIALIZE) -Ibuild/zero-range-sabotage \
+		test/zero_range_negative_main.cpp -o build/schema_test_zero_range_negative
+	./build/schema_test_zero_range_negative
+
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
 #
@@ -2057,6 +2093,7 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 test: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/tables-generated-cs/.stamp build/schema_test_random build/schema_test_ludicrous build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench build/schema_test_bench_c build/schema_test_bench_table generated/bench/tables/cs/.stamp generated/go/.stamp generated/rust/.stamp generated/cs/.stamp generated/js/.stamp generated/dart/.stamp generated/java/.stamp generated/elixir/.stamp generated/go-ludicrous/.stamp generated/rust-ludicrous/.stamp generated/cs-ludicrous/.stamp generated/js-ludicrous/.stamp generated/dart-ludicrous/.stamp generated/java-ludicrous/.stamp generated/elixir-ludicrous/.stamp generated/bench/go/.stamp generated/bench/rust/.stamp generated/bench/cs/.stamp generated/bench/js/.stamp generated/bench/dart/.stamp generated/bench/java/.stamp generated/bench/elixir/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	./build/schema_test
 	./build/schema_test_guard
+	$(MAKE) check-zero-range-negative-control
 	./build/schema_test_tables
 	./build/schema_test_tables_asan
 	$(MAKE) tables-zero-cost
@@ -2251,6 +2288,7 @@ check: bin/schema
 	./bin/schema check test/tables/P3.schema
 	./bin/schema check bench/corpus/Bench.schema
 	./bin/schema check bench/corpus/RealWorld.schema
+	./bin/schema check bench/corpus/BenchTable.schema
 
 id: bin/schema
 	./bin/schema id examples
@@ -2272,6 +2310,7 @@ fmt: bin/schema
 	./bin/schema fmt test/tables/P3.schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
+	./bin/schema fmt bench/corpus/BenchTable.schema
 
 # The one-benchmark rule, made mechanical: no hand-coded measurement of a
 # schema shape anywhere in this repo except what bench/SHAPE-GATE.allow names.

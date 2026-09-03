@@ -158,10 +158,10 @@ table TableMixed
     // -Wtype-limits. The emitter already elides a `bits(N)` width clamp when
     // N is the storage width and should elide a declared bound the same way;
     // that is a defect of its own, not something this corpus should carry.)
-    nonce       uint64   | min = 1, max = 9223372036854775807
-    world_time  int64    | min = -1000000000000, max = 1000000000000
+    nonce       uint64 = 1 | min = 1, max = 9223372036854775807
+    world_time  int64      | min = -1000000000000, max = 1000000000000
     frame_tick  bits(48)
-    server_time float32  | min = 0, max = 65535, resolution = 0.01
+    server_time float32    | min = 0, max = 65535, resolution = 0.01
 
     // ---- entity block: the counted array of nested tables ----
     entities [1..8]TableEntity

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xdd71ce8b50d78939
+// package example — protocol id 0x91a8e85156dfe2b1
 
 package example;
 
@@ -3090,8 +3090,8 @@ public final class Types {
     public static final class ExpressionProbe {
         // wire [0, 31]
         public int hardpointIndex;
-        // wire [1024, 2048]
-        public int spinRate;
+        // specified default at construction; zero* gives the §5 zero form; wire [1024, 2048]
+        public int spinRate = Constants.rotationUnits;
     }
 
     // expressionProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -3221,8 +3221,8 @@ public final class Types {
         public long floorBound;
         // wire [-9223372036854775808, 100]
         public long doubledFloor;
-        // wire [1, 18446744073709551615]
-        public long ceilingRange;
+        // specified default at construction; zero* gives the §5 zero form; wire [1, 18446744073709551615]
+        public long ceilingRange = 1;
         // specified default at construction; zero* gives the §5 zero form
         public long floorDefault = 0x8000000000000000L;
         // specified default at construction; zero* gives the §5 zero form
@@ -3525,8 +3525,8 @@ public final class Types {
     public static final class ExtremeRow {
         // wire [-9223372036854775808, 100]
         public long clampedFloor;
-        // wire [1, 18446744073709551614]
-        public long clampedCeiling;
+        // specified default at construction; zero* gives the §5 zero form; wire [1, 18446744073709551614]
+        public long clampedCeiling = 1;
         // specified default at construction; zero* gives the §5 zero form
         public long floorDef = 0x8000000000000000L;
         // specified default at construction; zero* gives the §5 zero form
