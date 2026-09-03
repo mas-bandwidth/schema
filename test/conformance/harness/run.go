@@ -297,6 +297,12 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	return out, nil
 }
 
+// defaultDriversPath is the committed registry, and the REFERENCE rule below
+// belongs to it alone: a run handed a substituted registry — the big-endian
+// leg writes a one-driver file for the Go port — is one leg of a port, not the
+// matrix, and its first line is not the leg the pins come from.
+const defaultDriversPath = "test/conformance/drivers.txt"
+
 func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only string) (bool, error) {
 	drivers, err := readDrivers(driversPath)
 	if err != nil {
@@ -327,12 +333,12 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 	var langs []string
 	for i, d := range drivers {
 		// THE REFERENCE LEG MAY NOT ANSWER ABSENT. It is the first driver in
-		// the registry and the one `conformance-pin` takes its pins from, so an
-		// absence there is not a port's missing feature — it is the corpus
-		// losing its own expectation, quietly, while every other leg keeps
-		// comparing against nothing. Per-case absence is safe exactly because
-		// this rule stands beside it.
-		reference := i == 0
+		// the COMMITTED registry and the one `conformance-pin` takes its pins
+		// from, so an absence there is not a port's missing feature — it is the
+		// corpus losing its own expectation, quietly, while every other leg
+		// keeps comparing against nothing. Per-case absence is safe exactly
+		// because this rule stands beside it.
+		reference := i == 0 && driversPath == defaultDriversPath
 		if only != "" && d.lang != only {
 			continue
 		}

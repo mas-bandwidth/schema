@@ -2216,6 +2216,14 @@ conformance-negative-control-absent: build/conformance-harness build/tables-gene
 	@rm -f build/conformance-cpp
 	@$(MAKE) build/conformance-cpp
 	@echo "negative control: an ABSENCE from the reference leg turns the harness red"
+# AND THE OTHER DIRECTION, which is the half a one-sided control would have
+# missed and did: the rule belongs to the COMMITTED registry alone. A run handed
+# a substituted one — the big-endian leg writes a single-driver file for the Go
+# port — is one leg of a port, so its first line is not the reference and its
+# absences are ordinary. Without this, the rule fires on every cross-endian run.
+	@printf 'go test/conformance/go/driver\n' > build/conformance-solo-drivers.txt
+	./build/conformance-harness run --drivers build/conformance-solo-drivers.txt --work build/conformance-solo-work
+	@echo "negative control: the same absences under a SUBSTITUTED registry are ordinary, and the leg passes"
 
 # UNPACK REFUSES THE VARIABLE CLASS BY NAME (schema#374, docs/SPEC-TABLES.md
 # §16.2), the way PACK always has. The decode reads a pointered root correctly;

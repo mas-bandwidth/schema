@@ -79,6 +79,15 @@ instances: a backend with no variable class still answers the wire surface over
 every FIXED instance, and a leg that failed the whole surface for them would say
 nothing about what it does carry.
 
+**THE REFERENCE LEG MAY NOT ANSWER ABSENT**, and that rule is what makes
+per-case absence safe rather than a place to hide: an absence from the first
+driver in the COMMITTED registry — the one `conformance-pin` takes its pins
+from — is the corpus losing its own expectation, not a port's missing feature.
+It belongs to that registry alone: a run handed a SUBSTITUTED one with
+`--drivers`, as the big-endian leg does for its single Go driver, is one leg of
+a port and not the matrix, so its first line is not the reference and its
+absences are ordinary.
+
 **THE MATRIX IS THE COMPLETION TRACKER.** Green cells over total cells is what
 "done" means for the tables layer, and an absence — per surface or per case — is
 the row of work that is left, named where it can be seen. The variable class's
