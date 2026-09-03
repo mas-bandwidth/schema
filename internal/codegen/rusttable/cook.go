@@ -214,7 +214,7 @@ pub unsafe fn table_cook_open(
         if alignment & (alignment - 1) != 0 {
             return None; // a power of two
         }
-        if alignment %% root_align != 0 {
+        if !alignment.is_multiple_of(root_align) {
             return None; // and an alignment THE ROOT CAN SIT AT
         }
         // The DATA part begins at align_up(64, alignment). It is DERIVED and
@@ -240,7 +240,7 @@ pub unsafe fn table_cook_open(
         }
         let base = bytes.add(data_offset as usize);
         // the alignment of the BASE.
-        if (base as usize as u64) %% alignment != 0 {
+        if !(base as usize as u64).is_multiple_of(alignment) {
             return None;
         }
         Some((base, data_length))

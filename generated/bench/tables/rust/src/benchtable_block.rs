@@ -117,7 +117,7 @@ impl TableEntityBlock {
             if base.is_null() || bytes < 88 {
                 return None;
             }
-            if (base as usize) % 64 != 0 {
+            if !(base as usize).is_multiple_of(64) {
                 return None; // the base's alignment
             }
             let magic = table_block_read64(base);
@@ -427,7 +427,7 @@ impl TableStatBlock {
             if base.is_null() || bytes < 32 {
                 return None;
             }
-            if (base as usize) % 64 != 0 {
+            if !(base as usize).is_multiple_of(64) {
                 return None; // the base's alignment
             }
             let magic = table_block_read64(base);

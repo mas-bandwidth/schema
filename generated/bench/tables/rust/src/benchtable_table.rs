@@ -14,6 +14,10 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::collapsible_else_if)]
+// a GUARDED field's test is two facts, not one: the branch guard is the wire's
+// (§4) and the inner test is the elision's, and collapsing them would put a
+// reader one step further from the declaration
+#![allow(clippy::collapsible_if)]
 #![allow(clippy::unnecessary_cast)]
 #![allow(clippy::float_cmp)]
 #![allow(clippy::excessive_precision)]
@@ -356,10 +360,10 @@ pub fn table_entity_measure(value: &TableEntity) -> i64 {
     if value.damage != 0 {
         bytes += 3 + 8; // damage
     }
-    if value.moving != false {
+    if value.moving {
         bytes += 3 + 1; // moving
     }
-    if value.firing != false {
+    if value.firing {
         bytes += 3 + 1; // firing
     }
     bytes
@@ -430,12 +434,12 @@ pub fn table_entity_save_body(w: &mut TableWriter, value: &TableEntity) -> bool 
         w.put8(9); // damage
         w.put64(value.damage);
     }
-    if value.moving != false {
+    if value.moving {
         w.put16(0xa4b2);
         w.put8(1); // moving
         w.put8(value.moving as u8);
     }
-    if value.firing != false {
+    if value.firing {
         w.put16(0x2302);
         w.put8(1); // firing
         w.put8(value.firing as u8);
@@ -1065,7 +1069,7 @@ pub fn table_mixed_measure(value: &TableMixed) -> i64 {
     if value.crc_hint != 0 {
         bytes += 3 + 4; // crc_hint
     }
-    if value.has_extra != false {
+    if value.has_extra {
         bytes += 3 + 1; // has_extra
     }
     if value.has_extra {
@@ -1291,7 +1295,7 @@ pub fn table_mixed_save_body(w: &mut TableWriter, value: &TableMixed) -> bool {
         w.put8(8); // crc_hint
         w.put32(value.crc_hint as u32);
     }
-    if value.has_extra != false {
+    if value.has_extra {
         w.put16(0xb023);
         w.put8(1); // has_extra
         w.put8(value.has_extra as u8);
@@ -2145,7 +2149,7 @@ pub fn table_hit_event_measure(value: &TableHitEvent) -> i64 {
     if value.hit_kind != 0 {
         bytes += 3 + 4; // hit_kind
     }
-    if value.crit != false {
+    if value.crit {
         bytes += 3 + 1; // crit
     }
     bytes
@@ -2167,7 +2171,7 @@ pub fn table_hit_event_save_body(w: &mut TableWriter, value: &TableHitEvent) -> 
         w.put8(4); // hit_kind
         w.put32(value.hit_kind as u32);
     }
-    if value.crit != false {
+    if value.crit {
         w.put16(0x93d9);
         w.put8(1); // crit
         w.put8(value.crit as u8);

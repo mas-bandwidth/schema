@@ -68,6 +68,10 @@ const tableModuleBanner = `//
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::manual_range_contains)]
 #![allow(clippy::collapsible_else_if)]
+// a GUARDED field's test is two facts, not one: the branch guard is the wire's
+// (§4) and the inner test is the elision's, and collapsing them would put a
+// reader one step further from the declaration
+#![allow(clippy::collapsible_if)]
 #![allow(clippy::unnecessary_cast)]
 #![allow(clippy::float_cmp)]
 #![allow(clippy::excessive_precision)]
@@ -236,18 +240,11 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			f.Name, typ, f.ArrayBound, ir.RenderExpr(f.ArrayExpr))
 		g.pf("    pub %s_count: i32,\n", f.Name)
 	default:
-		g.pf("    pub %s: %s,%s\n", f.Name, typ, optionalComment(f))
+		g.pf("    pub %s: %s,\n", f.Name, typ)
 		if f.Type.Optional {
 			g.pf("    pub %s_present: bool, // ?%s: absent until set\n", f.Name, tableFieldTypeName(f))
 		}
 	}
-}
-
-func optionalComment(f *ir.Field) string {
-	if f.Type.Optional {
-		return ""
-	}
-	return ""
 }
 
 // emitZeroInit writes one field's ZERO-form struct-literal entry. The
@@ -564,9 +561,21 @@ func (g *gen) emitMeasureField(f *ir.Field) {
 		g.pf("        if value.%s.table_id().is_none() {\n            return -1; // no variant names this value\n        }\n", f.Name)
 		g.pf("        bytes += 3 + 2; // %s: the variant's name hash\n    }\n", f.Name)
 	default:
-		g.pf("    if value.%s != %s {\n        bytes += 3 + %d; // %s\n    }\n",
-			f.Name, g.defaultValue(f), width, f.Name)
+		g.pf("    if %s {\n        bytes += 3 + %d; // %s\n    }\n", g.nonDefaultTest(f), width, f.Name)
 	}
+}
+
+// nonDefaultTest is the condition a scalar field rides under: it is not at its
+// declared default. A BOOL reads as itself rather than as a comparison against
+// a literal, which is the same test written the way the language writes it.
+func (g *gen) nonDefaultTest(f *ir.Field) string {
+	if f.Type.Kind == ir.TBool {
+		if f.HasDefault && f.DefBool {
+			return "!value." + f.Name
+		}
+		return "value." + f.Name
+	}
+	return fmt.Sprintf("value.%s != %s", f.Name, g.defaultValue(f))
 }
 
 // arrayElementDefault is the value a fixed array's slots are compared against
@@ -753,7 +762,7 @@ func (g *gen) emitSaveField(f *ir.Field) {
 		g.pf("        w.put16(0x%04x);\n        w.put8(%d); // %s\n", id, fieldKind, f.Name)
 		g.pf("        w.put16(variant_id);\n    }\n")
 	default:
-		g.pf("    if value.%s != %s {\n", f.Name, g.defaultValue(f))
+		g.pf("    if %s {\n", g.nonDefaultTest(f))
 		g.pf("        w.put16(0x%04x);\n        w.put8(%d); // %s\n", id, fieldKind, f.Name)
 		g.pf("        w.%s(%s);\n    }\n", putFn(tableKindWidth(kind)), g.scalarToWire(f, "value."+f.Name))
 	}

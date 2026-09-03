@@ -46,22 +46,19 @@ import (
 // table-wire kinds (docs/SPEC-TABLES.md §3), named locally over the one
 // target-independent definition in ir — the vocabulary is wire law.
 const (
-	tkBool   = ir.TableKindBool
-	tkI8     = ir.TableKindI8
-	tkI16    = ir.TableKindI16
-	tkI32    = ir.TableKindI32
-	tkI64    = ir.TableKindI64
-	tkU8     = ir.TableKindU8
-	tkU16    = ir.TableKindU16
-	tkU32    = ir.TableKindU32
-	tkU64    = ir.TableKindU64
-	tkF32    = ir.TableKindF32
-	tkF64    = ir.TableKindF64
-	tkString = ir.TableKindString
-	tkTable  = ir.TableKindTable
-	tkArray  = ir.TableKindArray
-	tkUnion  = ir.TableKindUnion
-	tkKeyed  = ir.TableKindKeyed
+	tkBool  = ir.TableKindBool
+	tkI8    = ir.TableKindI8
+	tkI16   = ir.TableKindI16
+	tkI32   = ir.TableKindI32
+	tkI64   = ir.TableKindI64
+	tkU8    = ir.TableKindU8
+	tkU16   = ir.TableKindU16
+	tkU32   = ir.TableKindU32
+	tkU64   = ir.TableKindU64
+	tkF32   = ir.TableKindF32
+	tkF64   = ir.TableKindF64
+	tkTable = ir.TableKindTable
+	tkUnion = ir.TableKindUnion
 )
 
 // RuntimeModule and BlockRuntimeModule are the two SHARED modules a unit with

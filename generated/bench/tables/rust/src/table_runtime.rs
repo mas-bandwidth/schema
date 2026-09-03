@@ -499,10 +499,12 @@ pub const TABLE_JSON_MAX_NUMBER: usize = 512;
 // ---- storage is the HOST's, so every load and store goes through a width
 // ---- switch rather than a copy into the low bytes of a wider word
 
-// finite: not a NaN, not an infinity.
+// finite: not a NaN, not an infinity. The C++ walk spells it out because it
+// keeps its runtime surface to the handful of functions it already names;
+// Rust has the predicate, and the predicate is the same three tests.
 #[inline]
 fn table_json_finite(v: f64) -> bool {
-    v == v && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308
+    v.is_finite()
 }
 
 // A vocabulary entry the descriptor could not spell. The generated name
@@ -1111,7 +1113,7 @@ unsafe fn table_json_write_scalar(
                 let v = f64::from_bits(table_json_get_raw(storage, 8));
                 table_json_write_float(out, v, false)
             }
-            2 | 3 | 4 | 5 => {
+            2..=5 => {
                 table_json_write_signed(out, table_json_get_signed(storage, f.elem_size));
                 true
             }

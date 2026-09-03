@@ -460,7 +460,7 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("    pub unsafe fn open(base: *const u8, bytes: i64) -> Option<%sBlock> {\n", name)
 	b.pf("        unsafe {\n")
 	b.pf("            if base.is_null() || bytes < %d {\n                return None;\n            }\n", bl.Projection.Size)
-	b.pf("            if (base as usize) %% %d != 0 {\n                return None; // the base's alignment\n            }\n", ir.BlockAlign)
+	b.pf("            if !(base as usize).is_multiple_of(%d) {\n                return None; // the base's alignment\n            }\n", ir.BlockAlign)
 	b.pf("            let magic = table_block_read64(base);\n")
 	b.pf("            if magic != TABLE_BLOCK_MAGIC {\n")
 	b.pf("                // a byte-swapped magic is a FOREIGN BYTE ORDER, and anything\n")
@@ -496,7 +496,7 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		b.pf("                    return None; // past the DECLARED MAXIMUM: a consumer that\n")
 		b.pf("                                 // sized anything by the maximum would overflow\n")
 		b.pf("                                 // on a count the maximum does not bound\n                }\n")
-		b.pf("                if offset_of < %d || offset_of %% %d != 0 {\n                    return None;\n                }\n",
+		b.pf("                if offset_of < %d || !offset_of.is_multiple_of(%d) {\n                    return None;\n                }\n",
 			bl.Projection.Size, ir.BlockAlign)
 		b.pf("                if offset_of > bytes as u64 {\n                    return None;\n                }\n")
 		b.pf("                let rows = count * stride; // both bounded above: this cannot carry\n")
