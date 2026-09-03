@@ -681,8 +681,9 @@ tables-cook-write-hooks-negative-control: bin/schema test/tables/hooks_main.cpp
 		"$(CURDIR)" "$(CURDIR)" > $(COOK_WRITE_HOOKS_SABOTAGE)/overlay.json
 	@go build -overlay=$(COOK_WRITE_HOOKS_SABOTAGE)/overlay.json -o $(COOK_WRITE_HOOKS_SABOTAGE)/schema ./cmd/schema
 	@$(COOK_WRITE_HOOKS_SABOTAGE)/schema generate --lang cpp --out $(COOK_WRITE_HOOKS_SABOTAGE)/pointers tables/pointers > /dev/null
-	@$(CXX) $(TABLES_CXXFLAGS) -I$(COOK_WRITE_HOOKS_SABOTAGE)/pointers -Itest/tables test/tables/hooks_main.cpp \
-		$$(ls $(COOK_WRITE_HOOKS_SABOTAGE)/pointers/*Table.cpp) -o $(COOK_WRITE_HOOKS_SABOTAGE)/hooks
+	@$(COOK_WRITE_HOOKS_SABOTAGE)/schema generate --lang cpp --out $(COOK_WRITE_HOOKS_SABOTAGE)/blobs tables/blobs > /dev/null
+	@$(CXX) $(TABLES_CXXFLAGS) -I$(COOK_WRITE_HOOKS_SABOTAGE)/pointers -I$(COOK_WRITE_HOOKS_SABOTAGE)/blobs -Itest/tables test/tables/hooks_main.cpp \
+		$$(ls $(COOK_WRITE_HOOKS_SABOTAGE)/pointers/*Table.cpp $(COOK_WRITE_HOOKS_SABOTAGE)/blobs/*Table.cpp) -o $(COOK_WRITE_HOOKS_SABOTAGE)/hooks
 	@if $(COOK_WRITE_HOOKS_SABOTAGE)/hooks > $(COOK_WRITE_HOOKS_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a cook through the default pair left the hooks test GREEN"; exit 1; \
 	fi
@@ -690,6 +691,33 @@ tables-cook-write-hooks-negative-control: bin/schema test/tables/hooks_main.cpp
 		{ echo "NEGATIVE CONTROL FAILED: the hooks test went red, but not on the default pair's count"; \
 		  cat $(COOK_WRITE_HOOKS_SABOTAGE)/log; exit 1; }
 	@echo "negative control: a pointered cook that ignores the builder's pair turns the hooks test red"
+
+# The BLOB READ PATH's NEGATIVE CONTROL: plant one allocation into the view —
+# the read path's only new code — through the same overlay mechanism, and the
+# hooks test's frozen counters must go red. The claim "the read path allocates
+# nothing" is held by a RUN, so its control must be a run that fails.
+BLOB_READ_SABOTAGE := build/blob-read-control
+.PHONY: tables-blob-read-hooks-negative-control
+tables-blob-read-hooks-negative-control: bin/schema test/tables/hooks_main.cpp
+	@rm -rf $(BLOB_READ_SABOTAGE) && mkdir -p $(BLOB_READ_SABOTAGE)
+	@sed -e 's|TableBytesView view = { NULL, 0 };|TableBytesView view = { NULL, 0 }; schema_release( schema_allocate( 1 ) ); /* SABOTAGED: an allocation on the read path */|' \
+		internal/codegen/cpptable/arena.go > $(BLOB_READ_SABOTAGE)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(BLOB_READ_SABOTAGE)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the read-path sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(BLOB_READ_SABOTAGE)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(BLOB_READ_SABOTAGE)/overlay.json
+	@go build -overlay=$(BLOB_READ_SABOTAGE)/overlay.json -o $(BLOB_READ_SABOTAGE)/schema ./cmd/schema
+	@$(BLOB_READ_SABOTAGE)/schema generate --lang cpp --out $(BLOB_READ_SABOTAGE)/pointers tables/pointers > /dev/null
+	@$(BLOB_READ_SABOTAGE)/schema generate --lang cpp --out $(BLOB_READ_SABOTAGE)/blobs tables/blobs > /dev/null
+	@$(CXX) $(TABLES_CXXFLAGS) -I$(BLOB_READ_SABOTAGE)/pointers -I$(BLOB_READ_SABOTAGE)/blobs -Itest/tables test/tables/hooks_main.cpp \
+		$$(ls $(BLOB_READ_SABOTAGE)/pointers/*Table.cpp $(BLOB_READ_SABOTAGE)/blobs/*Table.cpp) -o $(BLOB_READ_SABOTAGE)/hooks
+	@if $(BLOB_READ_SABOTAGE)/hooks > $(BLOB_READ_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: an allocating view left the hooks test GREEN"; exit 1; \
+	fi
+	@grep -q "fallback_before" $(BLOB_READ_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the hooks test went red, but not on the frozen read-path counter"; \
+		  cat $(BLOB_READ_SABOTAGE)/log; exit 1; }
+	@echo "negative control: one allocation inside a blob view turns the hooks test red"
 
 # THE VALUED FIXTURE, cross-checked by the ENGINE's own uncook (§7.5, §7.4).
 #
@@ -1394,7 +1422,7 @@ tables-keyed-none-refusal-ndebug: build/tables-generated/.stamp test/tables/keye
 tables-hooks: build/tables-generated/.stamp test/tables/hooks_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/hooks_main.cpp \
-		$$(ls build/tables-generated/pointers/*Table.cpp) -o build/schema_test_hooks
+		$$(ls build/tables-generated/pointers/*Table.cpp build/tables-generated/blobs/*Table.cpp) -o build/schema_test_hooks
 	./build/schema_test_hooks
 
 # and its NEGATIVE CONTROL: put the refusal back to a bare assert — the shape
@@ -2024,6 +2052,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cook-write
 	$(MAKE) tables-cook-write-negative-control
 	$(MAKE) tables-cook-write-hooks-negative-control
+	$(MAKE) tables-blob-read-hooks-negative-control
 	$(MAKE) tables-cook-valued
 	$(MAKE) tables-cook-open-lengths-negative-control
 	$(MAKE) tables-cook-open-root-negative-control

@@ -73,6 +73,10 @@ static void fallback_release( void * pointer )
 #define schema_release( pointer ) fallback_release( pointer )
 
 #include "GraphTable.h"
+// the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5), under the same hooks: its
+// builder allocates blobs through the caller's pair, and its READ path — the
+// load, the views — allocates nothing at all
+#include "AssetsTable.h"
 
 static int failures = 0;
 
@@ -206,10 +210,87 @@ static void test_allocator_sees_everything()
     CHECK( g_fallback_frees == 0 );
 }
 
+// ---- the BYTE BUFFER's two allocation claims, at run time ----
+//
+// THE BUILDER'S BLOBS GO THROUGH THE PAIR — a small blob inside a slab and a
+// blob past one slab, which takes a span of the arena's own — and THE READ
+// PATH ALLOCATES NOTHING: LoadMeasure, Load into the caller's region and the
+// views run with both counters frozen. A scan cannot hold that claim; these
+// counters can (docs/SPEC-TABLES.md §2.5, §6.5).
+
+static void test_blob_read_path_allocates_nothing()
+{
+    g_fallback_allocs = 0;
+    g_fallback_frees = 0;
+
+    Counters counters = { 0, 0, 0 };
+    blobdemo::TableAllocator pair;
+    pair.alloc = counting_alloc;
+    pair.free = counting_free;
+    pair.context = &counters;
+
+    static uint8_t wire[1 << 18];
+    int64_t wrote = 0;
+    {
+        blobdemo::CatalogBuilder builder( pair );
+        blobdemo::Catalog * root = builder.GetRoot();
+        CHECK( root != NULL );
+        blobdemo::TableBytesSlot small = builder.AllocBytes( 24 );
+        CHECK( !small.null() );
+        for ( int i = 0; i < 24; i++ ) { small.data[i] = (uint8_t) i; }
+        root->thumb = small;
+        root->alias = small; // one node, two names
+        blobdemo::TableStringSlot note = builder.AllocString( 5 );
+        CHECK( !note.null() );
+        memcpy( note.data, "blobs", 5 );
+        root->note = note;
+        blobdemo::TableSlot<blobdemo::Asset> asset = builder.Alloc<blobdemo::Asset>();
+        CHECK( !asset.null() );
+        blobdemo::TableBytesSlot big = builder.AllocBytes( 70000 ); // past a slab: a span, counted
+        CHECK( !big.null() );
+        for ( int64_t i = 0; i < 70000; i++ ) { big.data[i] = (uint8_t) ( i & 0xff ); }
+        asset->data = big;
+        root->head = asset;
+        wrote = blobdemo::CatalogSave( builder, wire, (int64_t) sizeof( wire ) );
+        CHECK( wrote > 70000 );
+    }
+    CHECK( counters.allocs > 0 );
+    CHECK( counters.allocs == counters.frees ); // the builder's whole life, released
+    CHECK( g_fallback_allocs == 0 );            // and none of it bypassed the pair
+
+    // the read path, with both counters FROZEN. The region is the CALLER'S
+    // buffer and the caller owes it alignment — the suite refuses a
+    // misaligned base by design.
+    alignas( 16 ) static uint8_t region[1 << 18];
+    const int fallback_before = g_fallback_allocs;
+    const int counted_before = counters.allocs;
+    int64_t need = blobdemo::CatalogLoadMeasure( wire, wrote );
+    CHECK( need > 0 && need <= (int64_t) sizeof( region ) );
+    blobdemo::TableReport report;
+    const blobdemo::Catalog * loaded = blobdemo::CatalogLoad( region, need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed );
+    if ( loaded == NULL ) return;
+    blobdemo::TableBytesView thumb = blobdemo::TableBytesAt( loaded->thumb );
+    blobdemo::TableBytesView alias = blobdemo::TableBytesAt( loaded->alias );
+    blobdemo::TableStringView note = blobdemo::TableStringAt( loaded->note );
+    const blobdemo::Asset * asset = blobdemo::AssetAt( blobdemo::TableRegionCtx{}, loaded->head );
+    CHECK( asset != NULL );
+    CHECK( thumb.data != NULL && thumb.length == 24 && thumb.data == alias.data );
+    CHECK( note.data != NULL && note.length == 5 && strcmp( note.data, "blobs" ) == 0 );
+    if ( asset != NULL )
+    {
+        blobdemo::TableBytesView data = blobdemo::TableBytesAt( asset->data );
+        CHECK( data.data != NULL && data.length == 70000 && data.data[1] == 1 );
+    }
+    CHECK( g_fallback_allocs == fallback_before ); // ZERO ALLOCATION ON THE READ PATH
+    CHECK( counters.allocs == counted_before );    // through either pair
+}
+
 int main()
 {
     test_refusal_reaches_the_caller();
     test_allocator_sees_everything();
+    test_blob_read_path_allocates_nothing();
     if ( failures != 0 )
     {
         printf( "hooks test FAILED: %d\n", failures );
