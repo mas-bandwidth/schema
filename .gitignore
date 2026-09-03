@@ -22,6 +22,8 @@
 /test/cs-block/obj/
 /test/cs-cook/bin/
 /test/cs-cook/obj/
+/test/conformance/cs/bin/
+/test/conformance/cs/obj/
 /bench/tools/cs-union-form/bin/
 /bench/tools/cs-union-form/obj/
 # every build stamp under generated/ — stamps order the build and are not

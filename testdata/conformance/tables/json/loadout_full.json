@@ -1,0 +1,52 @@
+{
+  "grade": "Bronze",
+  "grades": [
+    "Gold",
+    "Silver",
+    "Bronze"
+  ],
+  "podium": [
+    "None",
+    "Bronze",
+    "None"
+  ],
+  "perks": [
+    "Shielded"
+  ],
+  "primary": {
+    "damage": 12.5,
+    "speed": 500,
+    "penetration": 1,
+    "channel": 0,
+    "homing": true,
+    "effect": {
+      "buff": {
+        "multiplier": 0.5
+      }
+    }
+  },
+  "backups": [
+    {
+      "damage": 21,
+      "speed": 500,
+      "penetration": 1,
+      "channel": 0,
+      "homing": false,
+      "effect": {}
+    },
+    {
+      "damage": 21,
+      "speed": 500,
+      "penetration": 1,
+      "channel": 63,
+      "homing": false,
+      "effect": {}
+    }
+  ],
+  "attachments": [
+    {
+      "slot": 6,
+      "power": 0.25
+    }
+  ]
+}

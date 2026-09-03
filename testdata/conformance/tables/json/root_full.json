@@ -1,0 +1,102 @@
+{
+  "version_note": "golden-v1",
+  "weapons": [
+    {
+      "damage": 40.5,
+      "speed": 250,
+      "penetration": 7,
+      "channel": 45,
+      "homing": true,
+      "effect": {
+        "buff": {
+          "multiplier": 3.25
+        }
+      }
+    },
+    {
+      "damage": 21,
+      "speed": 500,
+      "penetration": 1,
+      "channel": 0,
+      "homing": false,
+      "effect": {
+        "debuff": {
+          "amount": 42
+        }
+      }
+    }
+  ],
+  "profiles": [
+    {
+      "name": "player one",
+      "icon": "AQL6",
+      "experience": 777,
+      "tilt": -12,
+      "heading": -30000,
+      "timestamp": -5000000000,
+      "badge": 200,
+      "port": 40000,
+      "epoch": 1234605616436508552,
+      "precision": 2.5,
+      "ratings": [
+        0,
+        0,
+        0.5,
+        0
+      ],
+      "has_loadout": true,
+      "loadout": {
+        "grade": "Gold",
+        "grades": [
+          "Bronze",
+          "Gold"
+        ],
+        "podium": [
+          "Gold",
+          "None",
+          "Silver"
+        ],
+        "perks": [
+          "Cloaked",
+          "Turbo"
+        ],
+        "primary": {
+          "damage": 21,
+          "speed": 500,
+          "penetration": 7,
+          "channel": 0,
+          "homing": false,
+          "effect": {}
+        },
+        "backups": [
+          {
+            "damage": 1,
+            "speed": 500,
+            "penetration": 1,
+            "channel": 0,
+            "homing": false,
+            "effect": {}
+          },
+          {
+            "damage": 21,
+            "speed": 500,
+            "penetration": 1,
+            "channel": 0,
+            "homing": false,
+            "effect": {}
+          }
+        ],
+        "attachments": [
+          {
+            "slot": 3,
+            "power": 2
+          },
+          {
+            "slot": 5,
+            "power": 1
+          }
+        ]
+      }
+    }
+  ]
+}

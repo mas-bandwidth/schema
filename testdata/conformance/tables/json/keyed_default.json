@@ -1,0 +1,79 @@
+{
+  "teams": {
+    "Red": {
+      "spawn_count": 4,
+      "banner": ""
+    },
+    "Blue": {
+      "spawn_count": 4,
+      "banner": ""
+    },
+    "Green": {
+      "spawn_count": 4,
+      "banner": ""
+    }
+  },
+  "hulls": {
+    "Interceptor": {
+      "health": 100,
+      "mass": 1,
+      "turrets": {
+        "Cannon": {
+          "damage": 10,
+          "cooldown": 0.5
+        },
+        "Missile": {
+          "damage": 10,
+          "cooldown": 0.5
+        },
+        "Mine": {
+          "damage": 10,
+          "cooldown": 0.5
+        }
+      }
+    },
+    "Gunship": {
+      "health": 100,
+      "mass": 1,
+      "turrets": {
+        "Cannon": {
+          "damage": 10,
+          "cooldown": 0.5
+        },
+        "Missile": {
+          "damage": 10,
+          "cooldown": 0.5
+        },
+        "Mine": {
+          "damage": 10,
+          "cooldown": 0.5
+        }
+      }
+    },
+    "Freighter": {
+      "health": 100,
+      "mass": 1,
+      "turrets": {
+        "Cannon": {
+          "damage": 10,
+          "cooldown": 0.5
+        },
+        "Missile": {
+          "damage": 10,
+          "cooldown": 0.5
+        },
+        "Mine": {
+          "damage": 10,
+          "cooldown": 0.5
+        }
+      }
+    }
+  },
+  "scores": {
+    "per_team": {
+      "Red": 0,
+      "Blue": 0,
+      "Green": 0
+    }
+  }
+}

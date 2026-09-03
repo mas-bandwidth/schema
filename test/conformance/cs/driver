@@ -1,0 +1,33 @@
+#!/bin/sh
+# THE C# LEG's driver (test/conformance/README.md).
+#
+# The table surfaces come from test/conformance/cs; the cook's node dump comes
+# from test/cs-cook, which already produces it and is already gated against the
+# C++ walk. A driver is a COMMAND precisely so a leg can be assembled from what
+# a backend already has.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+set -e
+
+manifest=$1
+surface=$2
+out=$3
+
+case "$surface" in
+list)
+    dotnet run --project test/conformance/cs --no-build -- "$manifest" list
+    echo cook
+    ;;
+cook)
+    grep '^cook ' "$manifest" | while read -r _ cookroot _ file; do
+        dotnet run --project test/cs-cook --no-build -- dump "$cookroot" "$file" > "$out/$cookroot"
+    done
+    ;;
+*)
+    exec dotnet run --project test/conformance/cs --no-build -- "$manifest" "$surface" "$out"
+    ;;
+esac

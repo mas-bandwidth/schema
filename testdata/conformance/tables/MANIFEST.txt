@@ -1,0 +1,114 @@
+# THE TABLES CONFORMANCE MANIFEST (SPEC-TABLES.md §3, §7, §16, §19).
+#
+# The registry every language driver reads. It is DATA: a port implements the
+# driver contract in test/conformance/README.md, points it at this file, and
+# the harness is the gate. Nothing here names a language.
+#
+# Line kinds:
+#
+#   unit     <key> <schema path>...
+#            a compilation unit, by the key the other lines use.
+#
+#   instance <name> <unit> <root> <wire file>
+#            one table instance, in TWO forms that must agree: the table wire
+#            bytes at <wire file> (§3) and the JSON text at
+#            testdata/conformance/tables/json/<name>.json (§16). The same
+#            instance both ways.
+#
+#   report   <case> <unit> <root> <wire file>
+#            bytes read by a type that did not write them — the evolution class
+#            (§4). The counters are the whole expectation, and they live in
+#            reports.txt keyed by <case>, because they are GENERATED and this
+#            file is hand-authored.
+#
+#   cook     <root> <unit> <dump file>
+#            a cooked file (§7) — materialised by test/cookgen, which is
+#            deterministic — and the canonical node dump its Open must produce,
+#            byte for byte.
+#
+#   block    <name> <unit> <block file>
+#            a block image (§19) an Open must accept.
+#
+#   forgery  <name> <kind> <subject> <base> <offset> <width> <value> <extent> <verdict> <label>
+#            one damaged fixture and the verdict every implementation owes it.
+#            A forgery is a PATCH over a base fixture, because a patch is what a
+#            person can review; the harness materialises the file, and a driver
+#            only ever meets a path and the extent its caller claims.
+#
+# Wire files are REFERENCED where they already live rather than copied: the
+# table-wire goldens are the same files test/tables/main.cpp pins.
+
+unit tabledemo tables/examples
+unit tblv1     test/tables/V1.schema
+unit tblv2     test/tables/V2.schema
+unit tblp1     test/tables/P1.schema
+unit tblp3     test/tables/P3.schema
+unit graphdemo tables/pointers
+unit blockdemo tables/block
+
+instance root_full            tabledemo RootConfig    testdata/wire/tables/root_full.bin
+instance root_default         tabledemo RootConfig    testdata/wire/tables/root_default.bin
+instance profile_elide        tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin
+instance loadout_full         tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin
+instance wide_blob            tabledemo WideBlob      testdata/wire/tables/wide_blob.bin
+instance archive              tabledemo ArchiveConfig testdata/wire/tables/archive.bin
+instance keyed_config         tabledemo KeyedConfig   testdata/wire/tables/keyed_config.bin
+instance keyed_default        tabledemo KeyedConfig   testdata/wire/tables/keyed_default.bin
+instance v1_cfg               tblv1     Cfg           testdata/wire/tables/v1_cfg.bin
+instance v1_seams             tblv1     Cfg           testdata/wire/tables/v1_seams.bin
+instance v2_cfg               tblv2     Cfg           testdata/wire/tables/v2_cfg.bin
+instance v2_seams             tblv2     Cfg           testdata/wire/tables/v2_seams.bin
+instance chain_value          tblp1     Chain         testdata/wire/tables/chain_value.bin
+instance chain_value_empty    tblp1     Chain         testdata/wire/tables/chain_value_empty.bin
+instance chain_pointer        tblp1     Chain         testdata/wire/tables/chain_pointer.bin
+instance chain_optional       tblp3     Chain         testdata/wire/tables/chain_optional.bin
+instance chain_optional_empty tblp3     Chain         testdata/wire/tables/chain_optional_empty.bin
+instance chain_pointer_empty  tblp3     Chain         testdata/wire/tables/chain_pointer_empty.bin
+
+# THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
+# other. The counters are generated into reports.txt by the Go engine and are
+# the expectation every backend must meet.
+report v1_cfg_as_v2   tblv2 Cfg   testdata/wire/tables/v1_cfg.bin
+report v1_seams_as_v2 tblv2 Cfg   testdata/wire/tables/v1_seams.bin
+report v2_cfg_as_v1   tblv1 Cfg   testdata/wire/tables/v2_cfg.bin
+report v2_seams_as_v1 tblv1 Cfg   testdata/wire/tables/v2_seams.bin
+report p1_as_p3       tblp3 Chain testdata/wire/tables/chain_value.bin
+report p3_as_p1       tblp1 Chain testdata/wire/tables/chain_optional.bin
+report p1_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_value_empty.bin
+report p3_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_optional_empty.bin
+
+block block_render blockdemo testdata/wire/tables/block_render.bin
+block block_padded blockdemo testdata/wire/tables/block_padded.bin
+
+# THE COOKED FILES (SPEC-TABLES.md §7). The fixture itself is materialised by
+# test/cookgen, which is deterministic, so what is pinned here is the canonical
+# NODE DUMP: one line per node and one per leaf, the same walk in every
+# language, byte-compared. A record laid out one byte differently INSIDE a node
+# moves no node offset, so this is the gate the directory check cannot be.
+cook Scene    graphdemo testdata/conformance/tables/cook/Scene.dump
+cook Depot    graphdemo testdata/conformance/tables/cook/Depot.dump
+cook Album    graphdemo testdata/conformance/tables/cook/Album.dump
+cook TreeNode graphdemo testdata/conformance/tables/cook/TreeNode.dump
+cook ListNode graphdemo testdata/conformance/tables/cook/ListNode.dump
+
+# THE BLOCK FORGERY BATTERY as data (SPEC-TABLES.md §19.2), pinned from
+# test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
+# word of an otherwise valid block image, resolved to a byte offset.
+#
+#   forgery <name> block <subject> <base> <offset> <width> <value> <extent> <verdict> <label>
+#
+# <base> names the block line the image comes from; <extent> is the length the
+# CALLER claims (-1: the image's own).
+# The harness applies the patch and hands a driver a path.
+# Repin with: make conformance-pin.
+forgery block_magic_foreign        block block_render block_render 0x0000 8 0x0                      -1 refuse a foreign magic
+forgery block_magic_swapped        block block_render block_render 0x0000 8 0x5343484d41424c4b       -1 refuse a block of the other byte order
+forgery block_build_version        block block_render block_render 0x0008 8 0x863a8eebc1090dc7       -1 refuse a build this one does not match
+forgery block_byte_order           block block_render block_render 0x0010 8 0x2                      -1 refuse the other byte order in the prologue's own word
+forgery block_array_unaligned      block block_render block_render 0x0030 8 0x141                    -1 refuse an array start not aligned for its element
+forgery block_array_in_prologue    block block_render block_render 0x0030 8 0x0                      -1 refuse an array start inside the projection
+forgery block_array_escapes        block block_render block_render 0x0030 8 0x783b40                 -1 refuse an array that leaves the block
+forgery block_pitch                block block_render block_render 0x003c 4 0x60                     -1 refuse a pitch that is not this build's own
+forgery block_count_past_extent    block block_render block_render 0x0038 4 0xfa0                200000 refuse a count whose rows leave the extent the caller passed
+forgery block_count_past_maximum   block block_render block_render 0x0038 4 0x1388              7879488 refuse a count past the declared maximum, inside a roomy extent
+forgery block_offset_overflow      block block_render block_render 0x0020 8 0x7fffffffffffffc0       -1 refuse an offset 64-aligned and just under 2^63 — the forgery fuzzer's find

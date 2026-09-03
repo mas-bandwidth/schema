@@ -1859,6 +1859,12 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-refuses-pointers
 	cd test/cs-tables && dotnet run
+	# THE CONFORMANCE HARNESS (test/conformance/README.md): the same corpus as
+	# data, one driver per language, and the matrix that says which surfaces a
+	# backend has. It rides here rather than at the end because the two legs it
+	# registers are the two this section has just built.
+	$(MAKE) conformance
+	$(MAKE) conformance-negative-control
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-keyed-none-refusal-ndebug
@@ -2028,3 +2034,101 @@ clean:
 	rm -rf bin build generated
 
 .PHONY: all test check id fmt clean update-goldens bench bench-variants generated-current shape-gate
+
+# ---------------------------------------------------------------------------
+# THE TABLES CONFORMANCE HARNESS (test/conformance/README.md) ----------------
+#
+# A port of the tables layer is "make the driver pass". The DATA lives under
+# testdata/conformance/tables and names no language; the CONTRACT lives in
+# test/conformance/README.md; the harness runs every registered driver over
+# every surface and prints the matrix. Registering a port is one line in
+# test/conformance/drivers.txt plus one driver.
+#
+# The rule this target lives under is the two-minute one (#320). Measured on
+# arm64 macOS at the landing, everything already built, median of three:
+#
+#   both legs, 80 cases        3.96 s
+#   the cpp leg alone          0.36 s   (8 native execs, plus materialising)
+#   the cs leg alone           4.00 s   (10 `dotnet run` start-ups)
+#
+# The cost is per-PROCESS, not per-case: the C# leg starts a runtime eleven
+# times — `list`, four surfaces, and one per cook, because test/cs-cook's dump
+# takes one root per invocation. So the budget left for seven more languages is
+# nearly the whole of it, and nine languages each starting a runtime per surface
+# lands near 20 s. Sharding per language leg, the way the type wire's nine legs
+# already are, is what the numbers say to do if that stops holding; it is not
+# needed at this size.
+CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
+	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	-Ibuild/tables-generated/block
+CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
+	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
+	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/v1/V1Table.cpp \
+	build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp \
+	build/tables-generated/p3/P3Table.cpp build/tables-generated/block/RenderBlock.cpp \
+	build/tables-generated/block/PaddedBlock.cpp
+
+build/conformance-harness: $(wildcard test/conformance/harness/*.go)
+	@mkdir -p build
+	go build -o $@ ./test/conformance/harness
+
+build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
+		$(CONFORMANCE_SOURCES) -o $@
+
+.PHONY: build-conformance-cs
+build-conformance-cs: build/tables-generated-cs/.stamp
+	cd test/conformance/cs && dotnet build -v q --nologo
+
+.PHONY: conformance
+conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook \
+		build-conformance-cs build-cs-cook
+	./build/conformance-harness run
+
+# The GENERATED half of the data: the JSON text of every instance and the read
+# report of every evolution case, both from the compiler's own engine.
+.PHONY: conformance-generate
+conformance-generate: build/conformance-harness
+	./build/conformance-harness generate
+
+# The PINNED half: the cook's canonical node dump and the block forgery battery
+# resolved to byte offsets, both from the reference leg — C++ writes the pins,
+# every other leg compares, exactly as the wire goldens work.
+.PHONY: conformance-pin
+conformance-pin: build/conformance-harness build/conformance-cpp build/schema_test_cook
+	./build/conformance-harness pin
+
+# THE NEGATIVE CONTROL, and a harness that has never gone red is watching
+# nothing. One byte of ONE dump is flipped in a COPY of the C++ driver — no
+# tracked file is written to, so an interrupt cannot leave a sabotaged working
+# tree — and the harness must go red, on that surface and on no other. The
+# second half is the point: a matrix whose every cell went red would be saying
+# "something broke" rather than "the text form broke".
+.PHONY: conformance-negative-control
+conformance-negative-control: build/conformance-harness build/conformance-cpp
+	@rm -rf build/conformance-negative && mkdir -p build/conformance-negative
+	@sed 's|if ( !spill( out, f\[1\] + ".json", text.data(), (size_t) size ) ) return 1;|text[0] = (char) ( text[0] ^ 1 ); if ( !spill( out, f[1] + ".json", text.data(), (size_t) size ) ) return 1; // SABOTAGED|' \
+		test/conformance/cpp/main.cpp > build/conformance-negative/main.cpp
+	@cmp -s build/conformance-negative/main.cpp test/conformance/cpp/main.cpp && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-negative/main.cpp \
+		$(CONFORMANCE_SOURCES) -o build/conformance-negative/driver-bin
+	@printf '#!/bin/sh\nexec build/conformance-negative/driver-bin "$$@"\n' > build/conformance-negative/driver
+	@chmod +x build/conformance-negative/driver
+	@printf 'cpp build/conformance-negative/driver\n' > build/conformance-negative/drivers.txt
+	@if ./build/conformance-harness run --drivers build/conformance-negative/drivers.txt \
+			--work build/conformance-negative/work > build/conformance-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: one byte off in a dump left the harness green"; \
+		cat build/conformance-negative/log; exit 1; \
+	fi
+	@grep -q "cpp / json-write" build/conformance-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
+		  cat build/conformance-negative/log; exit 1; }
+	@grep -q "wire          pass" build/conformance-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat build/conformance-negative/log; exit 1; }
+	@grep -m1 "cpp / json-write" build/conformance-negative/log
+	@echo "negative control: one byte off in one dump turns the harness RED on that surface alone"
+
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control build-conformance-cs
