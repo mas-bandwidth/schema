@@ -11,11 +11,48 @@
 // into a neighbour's.
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"runtime"
+	"strings"
+	"unsafe"
 
-// openBlock is not implemented yet: the Go block form lands in its own pass,
-// and until it does the `block` and `forgery` surfaces are not listed, so the
-// matrix prints ABSENT rather than a wrong verdict.
+	"blockdemo"
+)
+
+// aligned copies the image into storage whose base is 64-byte aligned, and
+// hands back that base, the extent the caller claims, and the backing
+// allocation the caller must keep live for as long as it holds the base.
+func aligned(data []byte, extent int64) (unsafe.Pointer, int64, []byte) {
+	bytes := extent
+	if bytes < 0 {
+		bytes = int64(len(data))
+	}
+	if bytes < int64(len(data)) {
+		bytes = int64(len(data))
+	}
+	raw := make([]byte, bytes+64)
+	skip := (64 - (uintptr(unsafe.Pointer(&raw[0])) % 64)) % 64
+	base := raw[skip : skip+uintptr(bytes)]
+	copy(base, data)
+	return unsafe.Pointer(&base[0]), bytes, raw
+}
+
 func openBlock(name string, data []byte, extent int64) (bool, error) {
-	return false, fmt.Errorf("no block named %s (the Go block form is not emitted yet)", name)
+	base, bytes, keep := aligned(data, extent)
+	opened := false
+	switch {
+	case strings.HasPrefix(name, "block_render"):
+		var block blockdemo.RenderFrameBlock
+		opened = blockdemo.RenderFrameBlockOpen(&block, base, bytes)
+	case strings.HasPrefix(name, "block_padded"):
+		var block blockdemo.PaddedFrameBlock
+		opened = blockdemo.PaddedFrameBlockOpen(&block, base, bytes)
+	default:
+		return false, fmt.Errorf("no block named %s", name)
+	}
+	// the block handle points into `keep`, and nothing else references it by
+	// now: hold it live across the Open above
+	runtime.KeepAlive(keep)
+	return opened, nil
 }

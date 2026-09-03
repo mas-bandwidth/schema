@@ -299,7 +299,7 @@ func surfaceForgery(lines []line, out string) error {
 		if err != nil {
 			return err
 		}
-		extent, err := strconv.ParseInt(f[8], 0, 64)
+		extent, err := strconv.ParseInt(f[5], 0, 64)
 		if err != nil {
 			return err
 		}
