@@ -694,6 +694,40 @@ tables-js-fuzz: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	cd $(CURDIR) && N=$(if $(N),$(N),20000) SEED=$(if $(SEED),$(SEED),0xc00c1e5eed) \
 		$(NODE) test/js-tables/main.mjs fuzz testdata/wire/tables/block_render.bin build/js-fuzz-scene.cook
 
+# THE FUZZ ORACLE's NEGATIVE CONTROL: a block reader with its extent bounds
+# removed must red the oracle, or the oracle has never been shown able to go
+# red. BOTH bounds come out — the rows-past-the-body check and the padding
+# check — because at the pinned seed each one alone leaves the run GREEN over
+# 20000 mutants: a forged count the row bound no longer catches still lands the
+# used extent past the buffer, where the padding check refuses it, and a forged
+# length the padding check no longer catches is still inside the row bound.
+# With both gone a walk reads past the view and the DataView throws, which is
+# exactly the exception the oracle exists to say never escapes.
+.PHONY: tables-js-fuzz-negative-control
+tables-js-fuzz-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	@rm -rf build/js-fuzz-sabotage && mkdir -p build/js-fuzz-sabotage
+	@sed -e 's|g.pf("      if (rows > extent - offsetOf) { return null; }\\n")|// SABOTAGED: no row bound|' \
+	     -e 's|g.pf("    if (padding > extent - used) { return null; }\\n")|// SABOTAGED: no padding bound|' \
+		internal/codegen/jstable/block.go > build/js-fuzz-sabotage/block.go.txt
+	@[ "$$(grep -c SABOTAGED build/js-fuzz-sabotage/block.go.txt)" = "2" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove both extent bounds"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/block.go":"%s/build/js-fuzz-sabotage/block.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-fuzz-sabotage/overlay.json
+	@go build -overlay=build/js-fuzz-sabotage/overlay.json -o build/js-fuzz-sabotage/schema ./cmd/schema
+	@./build/js-fuzz-sabotage/schema generate --lang js --out build/js-fuzz-sabotage/generated/examples tables/examples
+	@./build/js-fuzz-sabotage/schema generate --lang js --out build/js-fuzz-sabotage/generated/pointers tables/pointers
+	@./build/js-fuzz-sabotage/schema generate --lang js --out build/js-fuzz-sabotage/generated/block tables/block
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-fuzz-sabotage/generated N=$(if $(N),$(N),20000) SEED=$(if $(SEED),$(SEED),0xc00c1e5eed) \
+			$(NODE) test/js-tables/main.mjs fuzz testdata/wire/tables/block_render.bin build/js-fuzz-scene.cook \
+			> build/js-fuzz-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a block reader with no extent bound left the fuzz oracle green"; \
+		cat build/js-fuzz-sabotage/log; exit 1; \
+	fi
+	@grep -q "a walk of an OPENED forgery threw" build/js-fuzz-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the oracle went red, but not on a read that escaped the buffer"; \
+		  cat build/js-fuzz-sabotage/log; exit 1; }
+	@echo "negative control: a block reader with both extent bounds removed turns the JavaScript fuzz oracle RED on a read that escaped the buffer"
+
 # THE TEXT FORM AGAINST A THIRD IMPLEMENTATION, over instances nobody wrote
 # down (docs/SPEC-TABLES.md §16). The conformance harness holds eighteen pinned
 # texts; this holds the SPELLING RULE, which eighteen instances cannot cover: the
@@ -3680,6 +3714,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-js-slot-negative-control
 	$(MAKE) tables-js-keyed-negative-control
 	$(MAKE) tables-js-fuzz
+	$(MAKE) tables-js-fuzz-negative-control
 	$(MAKE) tables-js-alloc
 	$(MAKE) tables-js-alloc-negative-control
 	$(MAKE) tables-js-json-differential
