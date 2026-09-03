@@ -121,7 +121,11 @@ of the tree and requires the harness, the CI matrix, the bench pass and the
 Makefile to find it with no shared file edited. If a port needs to edit a file
 that lists languages, that is a defect in the registry, not a step.
 
-**Two shared edits are tolerated, and are the whole list.** A toolchain with
+**Three shared edits are tolerated, and are the whole list.** The port's
+column on [PORTING.md](PORTING.md), the techniques register, is written by
+hand — every technique carried, cited or stated impossible — and its gate
+reads the columns from the page and holds them to the discovered drivers, so
+the column is the edit and no other file lists the language; a toolchain with
 no step yet in `.github/workflows/ci.yml` (and the `test` job of
 `certify.yml`) adds one step, keyed on a new `ci.json` field; and the
 per-language prose in [SPEC.md](SPEC.md), [SPEC-TABLES.md](SPEC-TABLES.md)
