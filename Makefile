@@ -2427,6 +2427,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) conformance-negative-control
 	$(MAKE) conformance-negative-control-block-dump
 	$(MAKE) conformance-negative-control-cs
+	$(MAKE) conformance-negative-control-go
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-keyed-none-refusal-ndebug
@@ -2717,6 +2718,27 @@ build/conformance-go: build/tables-generated-go/.stamp $(wildcard test/conforman
 	@mkdir -p build
 	cd test/conformance/go && go build -o ../../../$@ .
 
+# THE GO LEG, CROSS-BUILT BIG-ENDIAN (docs/SPEC-TABLES.md §3, §19.1, §7). Go
+# cross-compiles, and the pinned emulator is already installed for the C++
+# big-endian legs above, so the table WIRE's own claim — every field id, every
+# length and every scalar rides little-endian whatever the host is — becomes a
+# gate rather than a sentence: a big-endian reader loads the goldens a
+# little-endian host wrote, writes them back and is byte-compared.
+#
+# The driver lists the byte-order-NEUTRAL surfaces and no others, and the reason
+# is in test/conformance/go/driver-be: a block and a cook are produced in the
+# order of the build that wrote them, so a big-endian reader is CORRECT to
+# refuse this corpus's fixtures and has no neutral verdict to give.
+build/conformance-go-be: build/tables-generated-go/.stamp $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
+	@mkdir -p build
+	cd test/conformance/go && GOOS=linux GOARCH=s390x go build -o ../../../$@ .
+
+.PHONY: conformance-big-endian
+conformance-big-endian: build/conformance-harness build/conformance-go-be
+	@printf 'go-be test/conformance/go/driver-be\n' > build/conformance-be-drivers.txt
+	./build/conformance-harness run --drivers build/conformance-be-drivers.txt --work build/conformance-be-work
+	@echo "big-endian leg: the Go table wire, the read report and the text form cross the byte order"
+
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook \
 		build-conformance-cs build-cs-cook build/conformance-go build/conformance-rust
@@ -2877,4 +2899,40 @@ conformance-negative-control-cs: build/conformance-harness
 	@grep -m1 "cs / json-read" $(CONFORMANCE_NEGATIVE_CS)/log
 	@echo "negative control: one field index off in the C# walk turns the harness RED on json-read alone"
 
-.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs build-conformance-cs
+# THE GO LEG's NEGATIVE CONTROL, on the same rule as the C++ one: a harness
+# that has never gone red on a leg is watching that leg. One byte of ONE wire
+# answer is flipped in a COPY of the Go driver — no tracked file is written to,
+# so an interrupt cannot leave a sabotaged working tree — and the matrix must go
+# red, on that surface and on no other.
+.PHONY: conformance-negative-control-go
+conformance-negative-control-go: build/conformance-harness build/tables-generated-go/.stamp
+	@rm -rf build/conformance-negative-go && mkdir -p build/conformance-negative-go
+	@cp test/conformance/go/*.go build/conformance-negative-go/
+	@printf 'module schemaconformance\n\ngo 1.23\n' > build/conformance-negative-go/go.mod
+	@for m in tabledemo:examples tblv1:v1 tblv2:v2 tblp1:p1 tblp3:p3 blockdemo:block graphdemo:pointers; do \
+		printf 'require %s v0.0.0\nreplace %s => $(CURDIR)/build/tables-generated-go/%s\n' \
+			"$${m%%:*}" "$${m%%:*}" "$${m##*:}" >> build/conformance-negative-go/go.mod; \
+	done
+	@printf 'require github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' >> build/conformance-negative-go/go.mod
+	@sed -i.bak 's|if err := spill(out, f\[1\], scratch); err != nil {|scratch[0] ^= 1 // SABOTAGED\n\t\tif err := spill(out, f[1], scratch); err != nil {|' build/conformance-negative-go/main.go
+	@grep -q SABOTAGED build/conformance-negative-go/main.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	cd build/conformance-negative-go && go build -o ../conformance-negative-go-bin .
+	@printf '#!/bin/sh\nexec build/conformance-negative-go-bin "$$@"\n' > build/conformance-negative-go/driver
+	@chmod +x build/conformance-negative-go/driver
+	@printf 'go build/conformance-negative-go/driver\n' > build/conformance-negative-go/drivers.txt
+	@if ./build/conformance-harness run --drivers build/conformance-negative-go/drivers.txt \
+			--work build/conformance-negative-go/work > build/conformance-negative-go/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: one byte off in a wire answer left the harness green"; \
+		cat build/conformance-negative-go/log; exit 1; \
+	fi
+	@grep -q "go / wire" build/conformance-negative-go/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
+		  cat build/conformance-negative-go/log; exit 1; }
+	@grep -q "report        pass" build/conformance-negative-go/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
+		  cat build/conformance-negative-go/log; exit 1; }
+	@grep -m1 "go / wire" build/conformance-negative-go/log
+	@echo "negative control (go): one byte off in one wire answer turns the harness RED on that surface alone"
+
+.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-go build-conformance-cs
