@@ -847,7 +847,8 @@ arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
 **An enum-keyed array in Go IS the plain `[E.Max]T` the schema means** — Go has
 neither operator overloading nor a generic array extent, so there is no wrapper
 type and the extent is the generated `E.Max` constant and no other number. The
-shift and the `None` refusal live in one helper, so no call site spells either:
+shift and BOTH refusals live in one helper, so no call site spells any of them
+— `None` keys no slot, and neither does a value past `E.Max`:
 
 ```go
 *example.TableKeyed(fleet.Ships[:], int(example.ShipTypeBomber)) = ship
