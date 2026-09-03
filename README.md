@@ -94,10 +94,7 @@ Cost to serialize a representative game packet, relative to generated C++ at
 | JavaScript | 264% |
 | Elixir | 1283% |
 
-Measured by [the benchmark](bench/): the real generated code in every
-language, over one 438-byte packet exercising every construct. Raw sweeps are
-committed under [bench/results](bench/results/); reproduce with
-`./bench/run.sh`.
+Measured by [the benchmark](bench/). One 438-byte packet exercising every construct. 
 
 ## Install and build
 
