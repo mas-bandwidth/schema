@@ -4537,9 +4537,11 @@ pre-empted here.
   A port mirrors this document and invents no contract of
   its own; where a language forces a shape — a pseudo-union for a language
   with no native union — the ladder above already says what is licensed.
-- **The C# VARIABLE class** — the arena, the region, the cooked form and the
-  pointer surface, on top of the fixed class C# carries today (§11). And the
-  C# text form (§16), whose walk C++ carries alone.
+- **The C# VARIABLE class on the WIRE** — the arena, the region, the builder
+  and the node-table codec, on top of the fixed class C# carries today (§11).
+  The cooked form is NOT in it: a cook is pointed at, not parsed, so
+  `<Base>Cook.cs` and `<Root>Cook.Open` are emitted for a pointered unit
+  already (§7, §11). And the C# text form (§16), whose walk C++ carries alone.
 - **The variable class in a ported backend** — the arena, the region, the
   cooked form and the pointer surface — after that port's fixed class.
 - **The TEXT FORM for the variable class** (§16.1) — a second walker that
