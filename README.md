@@ -9,7 +9,19 @@ If you write a game in more than one language, or ship a client and server that
 have to agree on every bit, schema is a language that will help you do this
 without ever having to hand-code definitions in each language ever again.
 
-Features:
+**schema** is meant to serve all your needs for data types across all languages used when developing a game:
+
+* The packet between a client and a server, where every bit counts and both sides ship together.
+* The message between a tool and a backend that ship months apart.
+* The save game that has to load in a build its writer never saw.
+* The asset file the tools build and cook to an efficient runtime binary format per-build version.
+* The render data C++ writes and C# reads sixty times a second.
+
+One system does all of it, so you never end up with schema for the packets and something else for everything else.
+
+If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
+
+## Features
 
 1. Define constants, enums, flags, types and tables in one language.
 2. Generate fast bit-packed serialization for struct types that don't need versioning (eg. client/server messages and state)
@@ -19,33 +31,7 @@ Features:
 
 Supported languages: C, C++, C#, Rust, Golang, Java, JavaScript, Dart and Elixir.
 
-If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
-
-## What schema is
-
-A game is written in several languages at once. The engine is C++, the
-client is C#, the tools and the backend are Go, the website is something
-else. They all pass the same data around, and every one of them needs code
-to read and write it.
-
-schema is a small language for declaring that data, and a compiler that
-generates the reading and writing code for nine languages: C, C++, C#, Dart,
-Elixir, Go, Java, JavaScript and Rust. You declare a type once. Every
-language gets code that agrees with every other language and validates 
-what it reads.
-
-It is meant to serve all your needs for data types across the languages of a
-game. The packet between a client and a server, where every bit counts and
-both sides ship together. The message between a tool and a backend that ship
-months apart. The save game that has to load in a build its writer never saw.
-The asset file the game maps and points at. The render data C++ writes and
-C# reads sixty times a second. One system does all of it, so you never end
-up with schema for the packets and something else for everything else.
-
-Each section below is one of those jobs: what you get, the declaration you
-write, and the call you make.
-
-## Serialized types with a protocol id
+## Examples
 
 Write your data types once and generate code to read and write them in nine languages.
 
