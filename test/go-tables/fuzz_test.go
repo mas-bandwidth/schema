@@ -44,10 +44,9 @@ import (
 // surface rather than off Open: the declared maximum of every out-of-line
 // array, and the projection's own size.
 type blockUnderTest struct {
-	name  string
-	path  string
-	open  func(base unsafe.Pointer, bytes int64) (bool, []arrayFacts, int64)
-	maxes []int64
+	name string
+	path string
+	open func(base unsafe.Pointer, bytes int64) (bool, []arrayFacts, int64)
 }
 
 // arrayFacts is one out-of-line array's triple as the INSTANCE carries it,
@@ -64,25 +63,33 @@ type arrayFacts struct {
 
 // factsFrom reads one opened block's arrays out of its descriptors and its
 // projection bytes. The descriptor gives WHERE each member of the triple sits;
-// the bytes give what it holds.
-func factsFrom(info *blockdemo.TableBlockInfo, view []byte, maxes []int64) []arrayFacts {
+// the bytes give what it holds; `maxes` gives the DECLARED maximum, BY FIELD
+// NAME.
+//
+// By name, and never by position: a slice of `b.CamerasMax(), b.ShipsMax(), …`
+// paired positionally with the descriptor's out-of-line fields is exactly the
+// hand-kept mirror §19.2 says the descriptors killed, and it goes wrong
+// silently the day a field moves.
+func factsFrom(info *blockdemo.TableBlockInfo, view []byte, maxes map[string]int64) []arrayFacts {
 	var out []arrayFacts
-	at := 0
 	for i := range info.Fields {
 		f := &info.Fields[i]
 		if !f.OutOfLine {
 			continue
 		}
-		facts := arrayFacts{
+		max, named := maxes[f.Name]
+		if !named {
+			panic("the fuzzer holds no declared maximum for " + f.Name +
+				" — the descriptors name an out-of-line array the caller did not")
+		}
+		out = append(out, arrayFacts{
 			name:     f.Name,
 			offsetOf: binary.LittleEndian.Uint64(view[f.OffsetOfOffset:]),
 			count:    uint64(binary.LittleEndian.Uint32(view[f.CountOffset:])),
 			stride:   uint64(binary.LittleEndian.Uint32(view[f.StrideOffset:])),
 			rowSize:  uint64(f.Element().Size),
-			max:      uint64(maxes[at]),
-		}
-		at++
-		out = append(out, facts)
+			max:      uint64(max),
+		})
 	}
 	return out
 }
@@ -98,10 +105,12 @@ func blocksUnderTest() []blockUnderTest {
 					return false, nil, 0
 				}
 				view := unsafe.Slice((*byte)(b.Base), bytes)
-				maxes := []int64{
-					b.CamerasMax(), b.ShipsMax(), b.TurretsMax(), b.MissilesMax(),
-					b.DynamicPropsMax(), b.StaticPropsMax(), b.CosmeticPropsMax(),
-					b.LasersMax(), b.ExplosionsMax(),
+				maxes := map[string]int64{
+					"cameras": b.CamerasMax(), "ships": b.ShipsMax(),
+					"turrets": b.TurretsMax(), "missiles": b.MissilesMax(),
+					"dynamic_props": b.DynamicPropsMax(), "static_props": b.StaticPropsMax(),
+					"cosmetic_props": b.CosmeticPropsMax(), "lasers": b.LasersMax(),
+					"explosions": b.ExplosionsMax(),
 				}
 				return true, factsFrom(b.Type(), view, maxes), b.Bytes
 			},
@@ -115,7 +124,7 @@ func blocksUnderTest() []blockUnderTest {
 					return false, nil, 0
 				}
 				view := unsafe.Slice((*byte)(b.Base), bytes)
-				return true, factsFrom(b.Type(), view, []int64{b.RowsMax()}), b.Bytes
+				return true, factsFrom(b.Type(), view, map[string]int64{"rows": b.RowsMax()}), b.Bytes
 			},
 		},
 	}
@@ -126,16 +135,22 @@ func blocksUnderTest() []blockUnderTest {
 // not.
 const poison = 0xa5
 
-// place copies an image into 64-byte-aligned storage of exactly `extent` bytes,
-// with poison on both sides. It hands back the base, the extent, and a checker.
-func place(image []byte, extent int64) (unsafe.Pointer, int64, func() bool) {
+// place copies an image into storage of exactly `extent` bytes whose base sits
+// `lead` bytes past a 64-byte-aligned address, with poison on both sides. It
+// hands back the base, the extent, and a checker.
+//
+// The extent is the CLAIM and not the file: a short claim copies only what fits,
+// which is what a truncation is, and a long one leaves the tail zero. The lead
+// is the BASE the caller holds — 0 is the aligned base every valid image has,
+// and 1..63 is what an allocator that promised nothing hands back.
+func place(image []byte, extent int64, lead int) (unsafe.Pointer, int64, func() bool) {
 	const guard = 256
-	raw := make([]byte, int64(guard)+extent+guard+64)
+	raw := make([]byte, int64(guard)+extent+int64(lead)+guard+64)
 	for i := range raw {
 		raw[i] = poison
 	}
 	skip := (64 - (uintptr(unsafe.Pointer(&raw[guard])) % 64)) % 64
-	start := uintptr(guard) + skip
+	start := uintptr(guard) + skip + uintptr(lead)
 	body := raw[start : start+uintptr(extent)]
 	clear(body)
 	copy(body, image)
@@ -151,6 +166,12 @@ func place(image []byte, extent int64) (unsafe.Pointer, int64, func() bool) {
 			}
 		}
 		return true
+	}
+	if extent == 0 {
+		// a claim of zero bytes still has a BASE: point at the storage rather
+		// than at nothing, so the reader meets a length it must refuse and not
+		// a nil it would refuse for the wrong reason
+		return unsafe.Pointer(&raw[start]), 0, intact
 	}
 	return unsafe.Pointer(&body[0]), extent, intact
 }
@@ -170,7 +191,7 @@ func TestBlockForgeryFuzz(t *testing.T) {
 	for _, unit := range blocksUnderTest() {
 		image := wire(t, unit.path)
 		// the unmutated image must open, or the fuzzer is mutating nothing
-		base, extent, intact := place(image, int64(len(image)))
+		base, extent, intact := place(image, int64(len(image)), 0)
 		opened, facts, used := unit.open(base, extent)
 		if !opened {
 			t.Fatalf("%s: the corpus's own image does not open", unit.name)
@@ -181,9 +202,9 @@ func TestBlockForgeryFuzz(t *testing.T) {
 		for i := 0; i < n; i++ {
 			mutant := make([]byte, len(image))
 			copy(mutant, image)
-			claim := int64(len(image))
-			describe := mutate(r, mutant, &claim)
-			base, extent, intact := place(mutant, claim)
+			claim, lead := int64(len(image)), 0
+			describe := mutate(r, mutant, &claim, &lead)
+			base, extent, intact := place(mutant, claim, lead)
 			opened, facts, used := unit.open(base, extent)
 			if !opened {
 				if !intact() {
@@ -202,8 +223,8 @@ func TestBlockForgeryFuzz(t *testing.T) {
 // mutate applies ONE deterministic mutation and names it. The passes are the
 // ones a forgery actually takes: a word of the prologue, a word of a triple, a
 // byte anywhere, and the caller's CLAIMED EXTENT, which no file can carry.
-func mutate(r *rand.Rand, image []byte, claim *int64) string {
-	switch r.IntN(4) {
+func mutate(r *rand.Rand, image []byte, claim *int64, lead *int) string {
+	switch r.IntN(5) {
 	case 0:
 		at := r.IntN(len(image)/8) * 8
 		binary.LittleEndian.PutUint64(image[at:], r.Uint64())
@@ -216,14 +237,22 @@ func mutate(r *rand.Rand, image []byte, claim *int64) string {
 		at := r.IntN(len(image))
 		image[at] ^= byte(1 << r.IntN(8))
 		return "bit at " + itoa(at)
-	default:
-		// the CLAIM, which is the one fact a file cannot carry: a caller that
-		// says the extent is larger or smaller than the bytes it has
+	case 3:
+		// THE CLAIM, which is the one fact a file cannot carry: a caller that
+		// says the extent is larger or SMALLER than the bytes it has. The short
+		// half is what a truncation is, and `place` copies only what fits — so
+		// nothing here clamps the draw back up to the file's own length, which
+		// would have named a case this fuzzer could never produce.
 		*claim = int64(r.IntN(len(image) * 2))
-		if *claim < int64(len(image)) {
-			*claim = int64(len(image))
-		}
 		return "claimed extent " + itoa(int(*claim))
+	default:
+		// THE BASE, which is the other fact a file cannot carry: the buffer the
+		// caller holds is `lead` bytes past an aligned address. 0 is the
+		// aligned base every valid image has; 1..63 is what an allocator that
+		// promised nothing hands back, and the alignment check is the only
+		// thing standing between that and a misaligned typed load.
+		*lead = r.IntN(64)
+		return "base +" + itoa(*lead)
 	}
 }
 
@@ -288,7 +317,7 @@ func TestCookForgeryFuzz(t *testing.T) {
 		return c.RootSize()
 	}()
 
-	base, extent, intact := place(image, int64(len(image)))
+	base, extent, intact := place(image, int64(len(image)), 0)
 	var clean graphdemo.SceneCook
 	if !graphdemo.SceneOpen(&clean, base, extent) {
 		t.Fatal("the corpus's own cook does not open")
@@ -301,9 +330,9 @@ func TestCookForgeryFuzz(t *testing.T) {
 	for i := 0; i < n; i++ {
 		mutant := make([]byte, len(image))
 		copy(mutant, image)
-		claim := int64(len(image))
-		describe := mutate(r, mutant, &claim)
-		base, extent, intact := place(mutant, claim)
+		claim, lead := int64(len(image)), 0
+		describe := mutate(r, mutant, &claim, &lead)
+		base, extent, intact := place(mutant, claim, lead)
 		var cook graphdemo.SceneCook
 		opened := graphdemo.SceneOpen(&cook, base, extent)
 		if !intact() {

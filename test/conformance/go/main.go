@@ -278,6 +278,17 @@ func surfaceJsonWrite(lines []line, out string) error {
 }
 
 func surfaceBlock(lines []line, out string) error {
+	return blockVerdicts(lines, out, false)
+}
+
+// surfaceBlockForeign is the cross-endian refusal: the same images with their
+// MAGIC word reversed, which is what that word looks like to a reader of the
+// other byte order. Every leg on every host must refuse.
+func surfaceBlockForeign(lines []line, out string) error {
+	return blockVerdicts(lines, out, true)
+}
+
+func blockVerdicts(lines []line, out string, swap bool) error {
 	for _, f := range lines {
 		if f[0] != "block" {
 			continue
@@ -285,6 +296,9 @@ func surfaceBlock(lines []line, out string) error {
 		data, err := os.ReadFile(f[3])
 		if err != nil {
 			return err
+		}
+		if swap {
+			data = foreign(data)
 		}
 		verdict := "refuse\n"
 		opened, err := openBlock(f[1], data, -1)
@@ -415,8 +429,12 @@ func main() {
 		run = surfaceCook
 	case "json-hostile":
 		run = surfaceJsonHostile
+	case "cook-foreign":
+		run = surfaceCookForeign
 	case "block":
 		run = surfaceBlock
+	case "block-foreign":
+		run = surfaceBlockForeign
 	case "block-dump":
 		run = surfaceBlockDump
 	case "forgery":

@@ -74,7 +74,9 @@ One process per surface, so a runtime starts once rather than once per case.
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
 | `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,c,d,m\n`, or `refused\n` | the verdict in the manifest |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
+| `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
 | `block` | `block` | Open the image, `open\n` or `refuse\n` | `open\n` |
+| `block-foreign` | `block` | byte-swap the image's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
 | `block-dump` | `block` | Open the image, the canonical ROW dump | `block/<name>.dump` |
 | `forgery` | `forgery` (`block`) | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
@@ -86,6 +88,22 @@ One process per surface, so a runtime starts once rather than once per case.
 can say which reader a backend has: a leg with a block reader and no cook reader
 prints `absent` on one and a verdict on the other, rather than one blaming the
 other.
+
+**THE TWO FOREIGN SURFACES ARE THE CROSS-ENDIAN REFUSAL, and they are the one
+answer a leg can give on ANY host.** A block and a cook are produced in the byte
+order of the build that wrote them (§19.1, §7), so a reader of the other order
+must REFUSE — and the check that does it is the magic, read first in the
+machine's own order precisely so a foreign file stops there. Every other
+accelerator surface has a host-dependent expectation and a big-endian leg can
+only mark them absent; these two do not, because THE DRIVER MAKES THE FILE
+FOREIGN TO ITSELF: it reverses the eight bytes at offset 0 — the magic — and
+opens the result. Whatever this build's order is, the magic it now reads is not
+this build's, and the verdict is `refuse` for every leg on every host.
+
+It is one word and no builder: the driver reads eight bytes, reverses them,
+writes them back, and opens. A leg that has the reader can answer it, which is
+what makes it a REFUSAL a big-endian leg reports green rather than an ABSENCE
+it reports as a missing feature.
 
 **A forgery line carries an EXTENT and a POINTER**, and neither is a fact a file
 can hold. The extent is the length the caller CLAIMS: larger than the file — two

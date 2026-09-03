@@ -608,6 +608,26 @@ static int surface_json_write( const std::string & out )
     return 0;
 }
 
+// foreign() reverses the MAGIC word — the eight bytes at offset 0 — which is
+// what that word looks like to a reader of the OTHER byte order (§19.1, §7.1).
+// It makes the file foreign to WHOEVER READS IT rather than to a particular
+// host, so the refusal lands on the magic check every Open puts first and the
+// expectation is `refuse` for every leg on every machine.
+static std::vector<uint8_t> foreign( const std::vector<uint8_t> & data )
+{
+    std::vector<uint8_t> out = data;
+    if ( out.size() >= 8 )
+    {
+        for ( int i = 0; i < 4; i++ )
+        {
+            const uint8_t t = out[i];
+            out[i] = out[7 - i];
+            out[7 - i] = t;
+        }
+    }
+    return out;
+}
+
 static int surface_block( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -665,6 +685,23 @@ static int surface_block_dump( const std::string & out )
         std::string text;
         if ( !block_dump( f[1], data, text ) ) return 1;
         if ( !spill( out, f[1], text.data(), text.size() ) ) return 1;
+    }
+    return 0;
+}
+
+// the cross-endian refusal over the block form: the same images with their
+// magic reversed, which every leg must refuse
+static int surface_block_foreign( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "block" ) continue;
+        std::vector<uint8_t> data;
+        if ( !slurp( f[3].c_str(), data ) ) { fprintf( stderr, "driver: cannot read %s\n", f[3].c_str() ); return 1; }
+        const std::vector<uint8_t> swapped = foreign( data );
+        const char * verdict = open_block( f[1], swapped, -1 ) ? "open\n" : "refuse\n";
+        if ( !spill( out, f[1], verdict, strlen( verdict ) ) ) return 1;
     }
     return 0;
 }
@@ -797,7 +834,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-dump\nforgery\n" );
+        printf( "wire\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -813,6 +850,7 @@ int main( int argc, char ** argv )
     if ( surface == "json-write" ) return surface_json_write( out );
     if ( surface == "json-hostile" ) return surface_json_hostile( out );
     if ( surface == "block" ) return surface_block( out );
+    if ( surface == "block-foreign" ) return surface_block_foreign( out );
     if ( surface == "block-dump" ) return surface_block_dump( out );
     if ( surface == "forgery" ) return surface_forgery( out );
     return 2;

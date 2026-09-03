@@ -19,6 +19,7 @@ case "$surface" in
 list)
     build/conformance-cpp "$manifest" list
     echo cook
+    echo cook-foreign
     echo cook-forgery
     ;;
 cook)
@@ -27,6 +28,10 @@ cook)
     grep '^cook ' "$manifest" | while read -r _ cookcase _ root file; do
         ./build/schema_test_cook dump "$root" "$file" > "$out/$cookcase"
     done
+    ;;
+cook-foreign)
+    # the cross-endian refusal, in ONE process over the derived manifest
+    ./build/schema_test_cook foreign "$manifest" "$out"
     ;;
 cook-forgery)
     # the whole 111-row battery in ONE process, over the derived manifest

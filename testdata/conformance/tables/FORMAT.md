@@ -58,9 +58,13 @@ forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <
   its Open must produce. Case and root are two columns because one root can have
   more than one fixture — `Scene` and `SceneValued` are the same table read two
   ways. The FILE is not committed: `test/cookgen` writes it, deterministically,
-  and the harness runs it. What is pinned is the dump.
+  and the harness runs it. What is pinned is the dump. It is also the fixture
+  `cook-foreign` makes foreign, on the same terms as `block`'s.
 - **`block`** is a block image an Open must accept, and the ROW DUMP its reader
-  must produce out of it.
+  must produce out of it. It is also the fixture the `block-foreign` surface
+  makes foreign: that surface adds no line here, because a foreign image is not
+  a different FILE — it is the same file with its magic word reversed, which
+  only the reader's own byte order gives meaning to (test/conformance/README.md).
 - **`forgery`** is one damaged fixture and the verdict every implementation owes
   it. `<kind>` is `block` or `cook`; `<subject>` names the block or the cook's
   root; `<base>` names the fixture the patch is applied over — a `block` line's
@@ -129,17 +133,28 @@ node <index> <TypeName> @<byte offset>
   <field path> = <value>
 ```
 
-- Nodes are numbered in visit order from the root at offset 0, one line each,
-  and a node is visited ONCE: sharing and a back-reference are the same fact
-  (§6.3).
+- Nodes are numbered in visit order from the root at offset 0, one `node` line
+  each, and a node is visited ONCE: sharing and a back-reference are the same
+  fact (§6.3).
+- **THE WALK IS DEPTH-FIRST AND EMITS AS IT GOES, so a node's own lines are NOT
+  contiguous.** A pointer field emits its `-> @<offset>` line and then descends
+  immediately, so the whole subtree's `node` blocks land before the parent's
+  REMAINING leaf lines. In `Scene.dump` the root's own `tree`, `settings`,
+  `alias`, `ground`, `layers` and `meta` lines sit at line 493, after node 125 —
+  they are the root's, not that node's. A reader that emitted each node's leaves
+  as one block and then descended produces a reordered dump on every fixture
+  with a pointer that is not the last field, which is three of the six.
 - Leaf lines are indented two spaces. A field path is dotted through by-value
   nesting and indexed `[n]` through array slots.
 - Values: an integer in decimal, signed by its declared kind; a bool as `true`
   or `false`; a pointer as `-> @<offset>`, or `null` for a delta of zero; a
   string or `bytes` as its USED bytes in double quotes with every byte outside
   printable ASCII (and `"` and `\`) written `\xNN`, followed by ` len=<n>`.
-- A field with a count companion emits `<path>#count = <n>` after its slots; a
-  `?T` emits `<path>#present = true|false`.
+- A field with a count companion emits `<path>#count = <n>` AFTER its slots; a
+  `?T` emits `<path>#present = true|false` AFTER its value, and **an absent
+  `?T` emits its value all the same** — the storage is there whether the
+  presence bool is set or not, and a dump of a region is a dump of its bytes.
+  Both companions follow the field they belong to and neither replaces it.
 - A float has no canonical cross-language spelling here and the corpus this
   covers has none. A dump that meets one REFUSES rather than inventing a
   spelling in passing.

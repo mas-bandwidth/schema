@@ -331,6 +331,34 @@ func cookScalar(at unsafe.Pointer, storage graphdemo.TableCookStorage, width int
 	}
 }
 
+// surfaceCookForeign is the cross-endian refusal over the cooked form: the same
+// files with their MAGIC word reversed, which the header check reads first for
+// exactly this reason (§7.1). Every leg on every host must refuse.
+func surfaceCookForeign(lines []line, out string) error {
+	for _, f := range lines {
+		if f[0] != "cook" {
+			continue
+		}
+		name, root, file := f[1], f[3], f[4]
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		opened, err := openCookForged(root, foreign(data), -1, 0, false)
+		if err != nil {
+			return err
+		}
+		verdict := "refuse\n"
+		if opened {
+			verdict = "open\n"
+		}
+		if err := spill(out, name, []byte(verdict)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func surfaceCook(lines []line, out string) error {
 	for _, f := range lines {
 		if f[0] != "cook" {

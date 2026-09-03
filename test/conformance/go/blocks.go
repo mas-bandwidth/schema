@@ -70,6 +70,26 @@ func openBlock(name string, data []byte, extent int64) (bool, error) {
 	return openBlockForged(name, data, extent, 0, false)
 }
 
+// foreign returns the image with its MAGIC word — the eight bytes at offset 0 —
+// reversed, which is what that word looks like to a reader of the other byte
+// order (docs/SPEC-TABLES.md §19.1, §7.1).
+//
+// It makes the file foreign to WHOEVER READS IT rather than to a particular
+// host: whatever this build's order is, the magic it now reads is not this
+// build's, so the refusal lands on the magic check every Open puts first. That
+// is the only shape a cross-endian expectation can take without depending on
+// the host it runs on.
+func foreign(data []byte) []byte {
+	out := make([]byte, len(data))
+	copy(out, data)
+	if len(out) >= 8 {
+		for i := 0; i < 4; i++ {
+			out[i], out[7-i] = out[7-i], out[i]
+		}
+	}
+	return out
+}
+
 // openBlockForged is openBlock over a forged placement: the buffer is exactly
 // the extent the caller claims, its base `lead` bytes past a 64-byte-aligned
 // address, or absent entirely.

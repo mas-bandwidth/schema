@@ -21,6 +21,7 @@ case "$surface" in
 list)
     dotnet run --project test/conformance/cs --no-build -- "$manifest" list
     echo cook
+    echo cook-foreign
     echo cook-forgery
     ;;
 cook)
@@ -28,6 +29,10 @@ cook)
     grep '^cook ' "$manifest" | while read -r _ cookcase _ cookroot file; do
         dotnet run --project test/cs-cook --no-build -- dump "$cookroot" "$file" > "$out/$cookcase"
     done
+    ;;
+cook-foreign)
+    # the cross-endian refusal, in ONE runtime start-up over the derived manifest
+    dotnet run --project test/cs-cook --no-build -- foreign "$manifest" "$out"
     ;;
 cook-forgery)
     # the whole 111-row battery in ONE runtime start-up, over the derived

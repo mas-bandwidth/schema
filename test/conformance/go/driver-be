@@ -8,13 +8,19 @@
 # included — have expectations a big-endian reader owes exactly as a
 # little-endian one does, and this leg meets them against the same goldens.
 #
-# The two ACCELERATORS do not, and the leg says so by not listing them rather
-# than by failing them: a block and a cook are produced in the byte order of the
-# build that wrote them (§19.1, §7), and the corpus's fixtures are this host's.
-# A big-endian reader is CORRECT to refuse them, so there is no byte-order-
-# neutral verdict for it to give here — for `cook`, `block`, `block-dump` or
-# either forgery battery — and the C++ leg's own cross-endian gate
-# (`make tables-big-endian`) is where that refusal is proven.
+# The two ACCELERATORS' own surfaces do not, and the leg says so by not listing
+# them rather than by failing them: a block and a cook are produced in the byte
+# order of the build that wrote them (§19.1, §7), and the corpus's fixtures are
+# this host's. A big-endian reader is CORRECT to refuse them, so there is no
+# byte-order-neutral verdict for it to give on `cook`, `block`, `block-dump` or
+# either forgery battery.
+#
+# BUT THE REFUSAL ITSELF IS NEUTRAL, and this leg reports it GREEN rather than
+# absent. `cook-foreign` and `block-foreign` hand the reader a file whose MAGIC
+# word is reversed — foreign to WHOEVER READS IT, whatever the host's own order
+# — so the expected verdict is `refuse` on every leg on every machine, and this
+# leg answering it is the reader being PRESENT and correct rather than missing.
+# That distinction is what the ABSENT rows could not make on their own.
 #
 # usage: driver <manifest> list
 #        driver <manifest> <surface> <outdir>
@@ -26,6 +32,8 @@ if [ "$2" = "list" ]; then
     echo json-read
     echo json-write
     echo json-hostile
+    echo cook-foreign
+    echo block-foreign
     exit 0
 fi
 

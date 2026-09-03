@@ -71,5 +71,5 @@ var codecTable = []codec{
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
 	return []string{"wire", "report", "json-read", "json-write", "json-hostile",
-		"cook", "block", "block-dump", "forgery", "cook-forgery"}
+		"cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
 }

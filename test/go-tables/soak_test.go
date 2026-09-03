@@ -22,8 +22,11 @@ package schematables
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"os"
 	"runtime"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,6 +186,15 @@ func TestSoak(t *testing.T) {
 	// looks like before it looks like anything else.
 	var before, after runtime.MemStats
 	runtime.GC()
+	// EVERY ALLOCATION IS SAMPLED, so the ones that do happen can be NAMED
+	// rather than guessed at. MemProfileRate = 1 records a stack for each, and
+	// the profile is diffed either side of the steady phase — which is what
+	// turns "two objects an hour, a forced collection or a stack move" from a
+	// plausible story into a fact the test prints.
+	oldRate := runtime.MemProfileRate
+	runtime.MemProfileRate = 1
+	defer func() { runtime.MemProfileRate = oldRate }()
+	beforeSites := memProfileByStack()
 	runtime.ReadMemStats(&before)
 
 	deadline := time.Now().Add(*soakFor)
@@ -197,26 +209,132 @@ func TestSoak(t *testing.T) {
 
 	runtime.ReadMemStats(&after)
 	grew := after.Mallocs - before.Mallocs
+	sites := grownSites(beforeSites, memProfileByStack())
 
-	// THE BOUND IS A RATE, and it is measured rather than assumed. Five
-	// minutes of this loop — 42,000 passes — moves the counter ZERO times, and
-	// an hour of it moves it TWICE: that is the runtime's own bookkeeping, a
-	// forced collection or a stack move, and not the codec's. What a LEAK
-	// looks like is one object per pass, or one per ten, or one per thousand,
-	// and every one of those buries this bound long before the hour is up.
-	//
-	// The EXACT number is held next door: the alloc gates read zero for each
-	// operation on its own, through testing.AllocsPerRun, and this is the
-	// duration half of the same claim rather than a second, looser one.
+	// WHAT ALLOCATED, NAMED. Every site is classified by whose code it is, and
+	// the two answers are not the same finding: an allocation whose stack is
+	// entirely the RUNTIME's — a background mark worker starting, an m being
+	// allocated for a thread, a forced collection's own bookkeeping — is the
+	// Go runtime running, and this loop cannot avoid it. An allocation with a
+	// frame in the generated packages or in this file is the CODEC's, and one
+	// of those is a leak whatever the count says.
+	mine := 0
+	for _, site := range sites {
+		if site.mine {
+			mine++
+		}
+		t.Logf("allocated %d at %s", site.objects, site.where)
+	}
+	if mine > 0 {
+		t.Errorf("%d of the %d allocation sites are the port's own — the read and write paths own no memory",
+			mine, len(sites))
+	}
+
+	// AND THE COUNT IS BOUNDED AS A RATE beside that, so a leak the profiler
+	// missed still fails: what a leak looks like is one object per pass, or one
+	// per ten, or one per thousand, and every one of those buries this bound
+	// long before the hour is up. The EXACT zero is held next door, by the
+	// per-operation gates in alloc_test.go.
 	allowed := iterations/10000 + 8
 	if grew > uint64(allowed) {
 		t.Errorf("the soak allocated %d objects over %d passes of the corpus, past a bound of %d — "+
 			"the read and write paths own no memory, so an allocation that SCALES with the loop is a leak",
 			grew, iterations, allowed)
 	}
-	t.Logf("%d passes of %d cases in %v, %d objects allocated (bound %d)",
-		iterations, len(corpus), *soakFor, grew, allowed)
+	t.Logf("%d passes of %d cases in %v, %d objects allocated (bound %d) across %d site(s), %d of them the port's",
+		iterations, len(corpus), *soakFor, grew, allowed, len(sites), mine)
 	if os.Getenv("VERBOSE") != "" {
 		t.Logf("heap in use: %d -> %d bytes", before.HeapAlloc, after.HeapAlloc)
 	}
+}
+
+// ---- naming what allocated ----
+
+// site is one allocation stack the steady phase grew: how many objects, where
+// its innermost non-runtime frame is, and whether any frame is the PORT's.
+type site struct {
+	objects int64
+	where   string
+	mine    bool
+}
+
+// memProfileByStack is every recorded allocation stack and its object count,
+// keyed by the stack itself so two snapshots can be diffed.
+func memProfileByStack() map[string]int64 {
+	var records []runtime.MemProfileRecord
+	for {
+		n, ok := runtime.MemProfile(records, false)
+		if ok {
+			records = records[:n]
+			break
+		}
+		records = make([]runtime.MemProfileRecord, n+64)
+	}
+	out := make(map[string]int64, len(records))
+	for i := range records {
+		out[stackKey(&records[i])] += records[i].AllocObjects
+	}
+	return out
+}
+
+func stackKey(r *runtime.MemProfileRecord) string {
+	var b strings.Builder
+	for _, pc := range r.Stack() {
+		fmt.Fprintf(&b, "%x;", pc)
+	}
+	return b.String()
+}
+
+// grownSites is the stacks whose object count rose across the steady phase,
+// symbolised. A stack whose every frame is `runtime.` is the runtime's own;
+// anything else names a package, and the port's packages are the ones that
+// matter.
+func grownSites(before, after map[string]int64) []site {
+	var out []site
+	for key, count := range after {
+		grew := count - before[key]
+		if grew <= 0 {
+			continue
+		}
+		out = append(out, symbolise(key, grew))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].where < out[j].where })
+	return out
+}
+
+func symbolise(key string, objects int64) site {
+	var pcs []uintptr
+	for _, hex := range strings.Split(key, ";") {
+		if hex == "" {
+			continue
+		}
+		var pc uint64
+		fmt.Sscanf(hex, "%x", &pc)
+		pcs = append(pcs, uintptr(pc))
+	}
+	result := site{objects: objects, where: "(unsymbolised)"}
+	if len(pcs) == 0 {
+		return result
+	}
+	frames := runtime.CallersFrames(pcs)
+	first := true
+	for {
+		frame, more := frames.Next()
+		if first && frame.Function != "" {
+			result.where = frame.Function
+			first = false
+		}
+		// the PORT is the generated packages and this test's own file; every
+		// other frame in a clean run is the runtime's
+		if strings.HasPrefix(frame.Function, "tabledemo.") || strings.HasPrefix(frame.Function, "tblv") ||
+			strings.HasPrefix(frame.Function, "tblp") || strings.HasPrefix(frame.Function, "blockdemo.") ||
+			strings.HasPrefix(frame.Function, "graphdemo.") || strings.HasPrefix(frame.Function, "schematables.") {
+			result.mine = true
+			result.where = frame.Function
+		}
+		if !more {
+			break
+		}
+	}
+	return result
 }

@@ -809,9 +809,17 @@ const tableKeyedAccessor = `// TableKeyed indexes an enum-keyed array's slots BY
 // it is the surface a CALLER writes, so no call site spells the shift:
 //
 //	*TableKeyed(hull.Turrets[:], int(WeaponMissile)) = turret
+//
+// THE GUARD IS SYMMETRIC, and §2.4's argument for the None compare is what
+// makes it so: the storage holds one slot per NAMED variant and nothing else,
+// so a key of 0 indexes the element BEFORE the array and a key past E.Max
+// indexes past its end. Both are the same program error, both are refused in
+// EVERY BUILD, and neither compare is removable — a build that dropped them
+// would read memory that is not a slot.
 func TableKeyed[T any](slots []T, key int) *T {
-	if key == 0 {
-		panic("None is the null key of an enum-keyed array: it keys no slot")
+	if key <= 0 || key > len(slots) {
+		panic("an enum-keyed array is indexed by a NAMED variant of its key enum: " +
+			"None keys no slot, and neither does a value past E.Max")
 	}
 	return &slots[key-1]
 }

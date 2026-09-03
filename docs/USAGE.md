@@ -868,6 +868,24 @@ C++ carries — including the memory ones, because `unsafe.Offsetof` and
 guess about it. That is what lets ONE generic walk drive the text form for
 every table.
 
+**Three of those columns are FUNCTIONS in Go where C++ has pointers**, and a
+walker written from the C++ example above has to know which: `Table`, `Arms`
+and a keyed field's `KeyId`/`KeyName` are called rather than dereferenced, so
+C++'s `field.table->name` is `field.Table().Name` and a scalar field's column
+is `nil` rather than `NULL`. The reason is Go's own: a descriptor graph is
+allowed to be cyclic — a table may name another that names it back — and Go
+refuses an initialization cycle among package-level variables, which a pointer
+column would be.
+
+**The two ACCELERATORS carry descriptors of their own**, and they are separate
+types because they describe a different thing: `TableBlockInfo` /
+`TableBlockFieldInfo` describe a block's projection and its rows (§19.2), and
+`TableCookInfo` / `TableCookFieldInfo` describe a cooked record (§7). Reach
+them through `block.Type()` and `cook.Type()`; every record hangs off the
+element column, so one walk reaches the whole graph from either root. The wire's
+`TableTypeInfo` is not those and does not substitute for them: it describes the
+STORAGE a codec fills, and the accelerators describe bytes another build wrote.
+
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every
 file already written says. A v1 writer elided `damage = 21.0`; a v2 reader
