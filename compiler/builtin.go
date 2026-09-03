@@ -21,7 +21,7 @@ import (
 )
 
 // refuseTables is the named refusal every target without a table backend
-// gives a unit that declares tables (docs/SPEC-TABLES.md): C++, C# and Rust
+// gives a unit that declares tables (docs/SPEC-TABLES.md): C++, C#, Go and Rust
 // carry table backends today, and each remaining per-language one is a named
 // follow-on — refused loudly here rather than silently emitting a unit with
 // the tables missing.
@@ -34,7 +34,7 @@ func refuseTables(u *ir.Unit, target string) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return fmt.Errorf("unit declares tables (%s) — tables are C++, C# and Rust only today, and the %s table backend is a named follow-on; generate with --lang cpp, --lang cs or --lang rust, or move the tables to their own unit (docs/SPEC-TABLES.md)",
+	return fmt.Errorf("unit declares tables (%s) — tables are C++, C#, Go and Rust only today, and the %s table backend is a named follow-on; generate with --lang cpp, --lang cs, --lang go or --lang rust, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), target)
 }
 

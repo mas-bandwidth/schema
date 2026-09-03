@@ -1,7 +1,7 @@
-// Tests for the tables generation surface (docs/SPEC-TABLES.md): the C++ and C#
-// targets grow table sources, every other target refuses BY NAME, non-table
-// output is byte-identical with or without tables, and the generated codecs
-// allocate nothing.
+// Tests for the tables generation surface (docs/SPEC-TABLES.md): the C++, C#
+// and Go targets grow table sources, every other target refuses BY NAME,
+// non-table output is byte-identical with or without tables, and the generated
+// codecs allocate nothing.
 package compiler
 
 import (
@@ -80,15 +80,15 @@ table Keyed
 
 // TestTablelessTargetsRefuseTables: a unit declaring tables is refused by name
 // under every target that carries no table backend — loudly, never by silently
-// dropping the tables. cpp, cs and rust carry one (docs/SPEC-TABLES.md, backend
-// status).
+// dropping the tables. cpp, cs, go and rust all carry one
+// (docs/SPEC-TABLES.md, backend status).
 func TestTablelessTargetsRefuseTables(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, tableSrc)
-	for _, target := range []string{"c", "dart", "elixir", "go", "java", "js"} {
+	for _, target := range []string{"c", "dart", "elixir", "java", "js"} {
 		if _, err := c.Generate(u, target, Options{}); err == nil {
 			t.Errorf("--lang %s accepted a unit with tables — it must refuse by name", target)
-		} else if !strings.Contains(err.Error(), "C++, C# and Rust only") || !strings.Contains(err.Error(), "Config") {
+		} else if !strings.Contains(err.Error(), "C++, C#, Go and Rust only") || !strings.Contains(err.Error(), "Config") {
 			t.Errorf("--lang %s refusal does not name the rule and the tables: %v", target, err)
 		}
 	}
@@ -312,6 +312,70 @@ func TestCsEmitsTableSources(t *testing.T) {
 			if strings.HasSuffix(name, "Table.cs") {
 				t.Errorf("--lang %s emitted %s for a table-free unit", target, name)
 			}
+		}
+	}
+}
+
+// TestGoEmitsTableSources: the go target adds <Base>Table.go beside the packet
+// sources for a unit with tables, and adds NOTHING for one without — the same
+// contract the cpp and cs targets hold.
+func TestGoEmitsTableSources(t *testing.T) {
+	c := New()
+	with, err := c.Generate(unitFromSource(t, tableSrc), "go", Options{})
+	if err != nil {
+		t.Fatalf("--lang go: %v", err)
+	}
+	if _, ok := with["ProbeTable.go"]; !ok {
+		t.Fatalf("--lang go emitted no ProbeTable.go for a unit with tables; got %d files", len(with))
+	}
+	without, err := c.Generate(unitFromSource(t, packetSrc), "go", Options{})
+	if err != nil {
+		t.Fatalf("--lang go: %v", err)
+	}
+	for name := range without {
+		if strings.HasSuffix(name, "Table.go") || strings.HasSuffix(name, "Block.go") ||
+			strings.HasSuffix(name, "Cook.go") || strings.HasSuffix(name, "TableJson.go") {
+			t.Errorf("--lang go emitted %s for a table-free unit", name)
+		}
+	}
+}
+
+// TestGoRefusesPointeredTables: the Go variable-class refusal is a refusal of
+// the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11), exactly as
+// the C# one is. The two ACCELERATORS need no codec — a block and a cook are
+// POINTED AT, not parsed — so both are emitted, the cook's <Root>Open opens
+// this unit's cooked assets in full, and every source the unit does emit opens
+// with a banner naming each refused table and the follow-on.
+func TestGoRefusesPointeredTables(t *testing.T) {
+	u := unitFromSource(t, packetSrc+`
+table Node
+{
+    value int32
+    next  *Node
+}
+`)
+	files, err := New().Generate(u, "go", Options{})
+	if err != nil {
+		t.Fatalf("--lang go refused a pointered unit outright: %v", err)
+	}
+	for name := range files {
+		if strings.HasSuffix(name, "Table.go") {
+			t.Errorf("--lang go emitted %s for a pointered unit — the wire surface is refused by name", name)
+		}
+	}
+	cook, ok := files["ProbeCook.go"]
+	if !ok {
+		t.Fatal("--lang go emitted no ProbeCook.go: the COOK needs no wire codec and must still be emitted")
+	}
+	if !strings.Contains(string(cook), "NodeOpen") {
+		t.Error("ProbeCook.go carries no NodeOpen — a root is any table, and a pointered unit's cooks open in full")
+	}
+	for name, data := range files {
+		if !strings.HasSuffix(name, "Block.go") && !strings.HasSuffix(name, "Cook.go") {
+			continue
+		}
+		if !strings.Contains(string(data), "REFUSED, BY NAME") || !strings.Contains(string(data), "Node") {
+			t.Errorf("%s does not carry the variable-class banner naming Node", name)
 		}
 	}
 }
@@ -768,6 +832,60 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 				t.Errorf("a TABLE-FREE unit must keep the name %s: %v", name, errs)
 			}
 		})
+	}
+}
+
+// TestTableRuntimeNamesAreClaimedGo is the §11 promise's GO half, and the
+// reason it is a second test rather than a parameter is that the two backends
+// define overlapping but different sets: the scan asserts both directions
+// against tablenames.Go, so a name the Go emitter defines and nobody registered
+// fails here, and a name registered for Go that nothing emits fails here too.
+//
+// The scan is the C# one's, shape-independent for the same reason: it collects
+// every Table*-prefixed identifier in the emitted text, declaration or use, and
+// requires the whole set to be registered. Line comments are stripped first —
+// prose is not an identifier.
+func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
+	files, err := New().Generate(unitFromSource(t, runtimeSrc), "go", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// BuildVersion rides in the alternation because it is the one registered
+	// name that is not a Table* spelling, and the Go backend defines it
+	// (docs/SPEC-TABLES.md §20).
+	ident := regexp.MustCompile(`\b(?:Table[A-Za-z0-9_]*|BuildVersion)\b`)
+	emitted := map[string]bool{}
+	for _, data := range files {
+		for line := range strings.SplitSeq(string(data), "\n") {
+			if i := strings.Index(line, "//"); i >= 0 {
+				line = line[:i]
+			}
+			for _, m := range ident.FindAllString(line, -1) {
+				emitted[m] = true
+			}
+		}
+	}
+	if len(emitted) == 0 {
+		t.Fatal("the scan found no Table* identifier in the emitted Go at all — the scan, not the registry, is what broke")
+	}
+	names := make([]string, 0, len(emitted))
+	for name := range emitted {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if !tablenames.Registered(name) {
+			t.Errorf("the Go table emitter emits %s and internal/tablenames does not register it — "+
+				"a schema declaring that name would generate Go that does not compile; register it "+
+				"(with the backends that define it) in internal/tablenames", name)
+		}
+	}
+	for _, name := range tablenames.DefinedBy(tablenames.Go) {
+		if !emitted[name] {
+			t.Errorf("internal/tablenames says the Go backend defines %s, but nothing in the emitted "+
+				"Go names it — drop the registration or fix the backend; a claim nothing needs takes "+
+				"a name away from every schema for free", name)
+		}
 	}
 }
 

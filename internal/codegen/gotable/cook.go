@@ -806,6 +806,13 @@ const TableCookMaxAlign int64 = %d
 // storage width (docs/SPEC-TABLES.md §7.2), where the wire rides the
 // variant-name hash. A walker reads a slot with the width ElemSize gives and
 // the signedness this names.
+//
+// Its members are FLAT package-level constants, which is what Go already does
+// with every enum a schema declares (SPEC.md §6.1's Go column) — so all eight
+// spellings are claimed in internal/tablenames, exactly as a declared enum's
+// variants are claimed by the checker. C# spells the same vocabulary as one
+// scoped enum and claims one name; the port does not get to have it both ways,
+// and the flat form is the one a Go consumer expects to write.
 type TableCookStorage uint8
 
 const (

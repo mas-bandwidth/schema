@@ -39,6 +39,8 @@ const (
 	Cs
 	// Rust is the Rust table backend (internal/codegen/rusttable).
 	Rust
+	// Go is the Go table backend (internal/codegen/gotable).
+	Go
 )
 
 // Name is one spelling the generated table runtimes carry, and the backends
@@ -78,20 +80,20 @@ type Name struct {
 // decide what a diagnostic says.
 var registry = []Name{
 	// the shared surface both backends define per unit
-	{Name: "TableReport", By: Cpp | Cs | Rust, What: "the read report — the permissive contract's ledger"},
-	{Name: "TableWriter", By: Cpp | Cs | Rust, What: "the wire writer over the caller's buffer"},
-	{Name: "TableReader", By: Cpp | Cs | Rust, What: "the wire reader over the caller's buffer"},
-	{Name: "TableTypeInfo", By: Cpp | Cs | Rust, What: "a table's reflection descriptor"},
-	{Name: "TableFieldInfo", By: Cpp | Cs | Rust, What: "a field's reflection descriptor"},
+	{Name: "TableReport", By: Cpp | Cs | Go | Rust, What: "the read report — the permissive contract's ledger"},
+	{Name: "TableWriter", By: Cpp | Cs | Go | Rust, What: "the wire writer over the caller's buffer"},
+	{Name: "TableReader", By: Cpp | Cs | Go | Rust, What: "the wire reader over the caller's buffer"},
+	{Name: "TableTypeInfo", By: Cpp | Cs | Go | Rust, What: "a table's reflection descriptor"},
+	{Name: "TableFieldInfo", By: Cpp | Cs | Go | Rust, What: "a field's reflection descriptor"},
 	// a UNION field's shape (docs/SPEC-TABLES.md §8.1): the tag, and each arm's
 	// payload by its own descriptor. Every backend defines both, and every one
 	// puts them at unit level beside the two descriptors above — a union
 	// field's column has to name a type, and a nested one would be reached
 	// through a descriptor a walk holds by value.
-	{Name: "TableUnionInfo", By: Cpp | Cs | Rust, What: "a union field's tag and its arms"},
-	{Name: "TableUnionArmInfo", By: Cpp | Cs | Rust, What: "one union arm's payload and descriptor"},
-	{Name: "TableEnumId", By: Cpp | Cs, What: "an enum value -> its table-wire variant id"},
-	{Name: "TableEnumValue", By: Cpp | Cs, What: "a table-wire variant id -> its enum value"},
+	{Name: "TableUnionInfo", By: Cpp | Cs | Go | Rust, What: "a union field's tag and its arms"},
+	{Name: "TableUnionArmInfo", By: Cpp | Cs | Go | Rust, What: "one union arm's payload and descriptor"},
+	{Name: "TableEnumId", By: Cpp | Cs | Go, What: "an enum value -> its table-wire variant id"},
+	{Name: "TableEnumValue", By: Cpp | Cs | Go, What: "a table-wire variant id -> its enum value"},
 
 	// the ENUM-KEYED array's storage type (docs/SPEC-TABLES.md §2.4). C++ spells it
 	// a class template and C# a generic class; both put it at unit level, and
@@ -99,12 +101,12 @@ var registry = []Name{
 	// claim is unconditional on a unit declaring a table, for the same reason
 	// the variable-length names are: adding a keyed array to an existing table
 	// must not turn a legal declaration elsewhere into a collision.
-	{Name: "TableKeyed", By: Cpp | Cs | Rust, What: "an enum-keyed array's slot storage"},
+	{Name: "TableKeyed", By: Cpp | Cs | Go | Rust, What: "an enum-keyed array's slot storage"},
 
 	// SCOPED: a field descriptor's nested-table column. C++ spells it `table`
 	// and C# `Table`, and either way it is reached through its owner, so a
 	// schema is free to declare the name.
-	{Name: "Table", By: Cs, What: "TableFieldInfo's nested-table column", Scoped: true},
+	{Name: "Table", By: Cs | Go, What: "TableFieldInfo's nested-table column", Scoped: true},
 
 	// C++'s float <-> IEEE-754 bit pattern helpers
 	{Name: "table_bits_to_float", By: Cpp, What: "u32 bits -> float"},
@@ -162,16 +164,16 @@ var registry = []Name{
 	{Name: "TableBlockDefaultAllocator", By: Cpp, What: "the malloc/free pair, for a caller with none of its own"},
 	{Name: "table_block_default_alloc", By: Cpp, What: "the default allocator's alloc half"},
 	{Name: "table_block_default_free", By: Cpp, What: "the default allocator's free half"},
-	{Name: "TableBlockTriple", By: Cpp | Cs | Rust, What: "one array's (offset_of, count, stride)"},
+	{Name: "TableBlockTriple", By: Cpp | Cs | Go | Rust, What: "one array's (offset_of, count, stride)"},
 	{Name: "TableBlockRefusal", By: Cpp, What: "why Begin refused: the array, its count and its maximum"},
-	{Name: "TableBlockRows", By: Cpp | Cs, What: "one array's rows, iterated at the pitch the instance gives"},
+	{Name: "TableBlockRows", By: Cpp | Cs | Go, What: "one array's rows, iterated at the pitch the instance gives"},
 	{Name: "TableBlockSpan", By: Cpp, What: "one array's rows as a contiguous view (C# uses ReadOnlySpan)"},
-	{Name: "TableBlockFieldInfo", By: Cpp | Cs | Rust, What: "a block field's reflection descriptor"},
-	{Name: "TableBlockInfo", By: Cpp | Cs | Rust, What: "a block's reflection descriptor"},
-	{Name: "TableBlockMagic", By: Cpp | Cs | Rust, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableBlockFieldInfo", By: Cpp | Cs | Go | Rust, What: "a block field's reflection descriptor"},
+	{Name: "TableBlockInfo", By: Cpp | Cs | Go | Rust, What: "a block's reflection descriptor"},
+	{Name: "TableBlockMagic", By: Cpp | Cs | Go | Rust, What: "the block prologue's magic, and the byte-order check with it", RustConst: true},
 	{Name: "TableBlockLayout", By: Cs, What: "the C# layout contract's check, run once", Scoped: true},
 	{Name: "TableBlockRead64", By: Cs, What: "the C# prologue read (a Schema member, so it claims nothing)", Scoped: true},
-	{Name: "TableBlockByteOrder", By: Cpp | Cs | Rust, What: "this build's byte order, as the prologue carries it", RustConst: true},
+	{Name: "TableBlockByteOrder", By: Cpp | Cs | Go | Rust, What: "this build's byte order, as the prologue carries it", RustConst: true},
 	{Name: "table_block_byteswap64", By: Cpp, What: "the byte-order check's swap"},
 	{Name: "table_block_read64", By: Cpp, What: "the prologue read BYTEWISE"},
 	{Name: "table_block_align", By: Cpp, What: "round an offset up to an alignment"},
@@ -184,9 +186,9 @@ var registry = []Name{
 	// its closure gains and loses a pointer, and a name free today must not
 	// become a collision tomorrow.
 	{Name: "TableCookOpen", By: Cpp, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
-	{Name: "TableCookMagic", By: Cpp | Cs | Rust, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
-	{Name: "TableCookByteOrder", By: Cpp | Cs | Rust, What: "this build's byte order, as a cooked header records it", RustConst: true},
-	{Name: "TableCookMaxAlign", By: Cpp | Cs | Rust, What: "the greatest region alignment a cooked header may name", RustConst: true},
+	{Name: "TableCookMagic", By: Cpp | Cs | Go | Rust, What: "the cooked header's magic, and the byte-order check with it", RustConst: true},
+	{Name: "TableCookByteOrder", By: Cpp | Cs | Go | Rust, What: "this build's byte order, as a cooked header records it", RustConst: true},
+	{Name: "TableCookMaxAlign", By: Cpp | Cs | Go | Rust, What: "the greatest region alignment a cooked header may name", RustConst: true},
 	{Name: "table_cook_read64", By: Cpp, What: "the cooked header read BYTEWISE"},
 
 	// ---- the RUST backend's own spellings (internal/codegen/rusttable) ----
@@ -271,18 +273,32 @@ var registry = []Name{
 	// guard, so the read runtime is emitted ONCE per unit into the cook home's
 	// <Base>Cook.cs — and because one assembly sees every file, a declaration
 	// taking one of these names anywhere in the unit collides with it.
-	{Name: "TableCookHeaderBytes", By: Cs | Rust, What: "§7.1's 64-byte header. C# spells it a Schema member, which claims nothing; Rust puts it at module level, so the claim is the UNION and the name is claimed", RustConst: true},
+	{Name: "TableCookHeaderBytes", By: Cs | Go | Rust, What: "§7.1's 64-byte header. C# spells it a Schema member, which claims nothing; Rust puts it at module level and Go at package scope, so the claim is the UNION and the name is claimed", RustConst: true},
 	{Name: "TableCookRead64", By: Cs, What: "the C# header read (a Schema member, so it claims nothing)", Scoped: true},
 	{Name: "TableCookLayout", By: Cs, What: "the C# cook closure's layout contract, run once (§20.3)"},
-	{Name: "TableCookInfo", By: Cs | Rust, What: "a cooked record's reflection descriptor"},
-	{Name: "TableCookFieldInfo", By: Cs | Rust, What: "a cooked field's reflection descriptor"},
-	{Name: "TableCookStorage", By: Cs | Rust, What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+	{Name: "TableCookInfo", By: Cs | Go | Rust, What: "a cooked record's reflection descriptor"},
+	{Name: "TableCookFieldInfo", By: Cs | Go | Rust, What: "a cooked field's reflection descriptor"},
+	{Name: "TableCookStorage", By: Cs | Go | Rust, What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
+
+	// the eight MEMBERS of that vocabulary, which C# scopes inside its enum and
+	// Rust inside its own type, and which GO flattens into the package
+	// namespace — exactly as the Go packet emitter flattens a declared enum's
+	// variants, which the checker already claims one by one. A port's spelling
+	// decides the claim, and this is Go's alone.
+	{Name: "TableCookStorageRecord", By: Go, What: "a nested record, or an array of them"},
+	{Name: "TableCookStorageReference", By: Go, What: "an eight-byte signed self-relative delta slot (§6.3)"},
+	{Name: "TableCookStorageBool", By: Go, What: "a bool slot"},
+	{Name: "TableCookStorageSigned", By: Go, What: "a signed integer slot"},
+	{Name: "TableCookStorageUnsigned", By: Go, What: "an unsigned integer, an enum ordinal, a bits(N), a flags mask"},
+	{Name: "TableCookStorageFloat", By: Go, What: "a float slot"},
+	{Name: "TableCookStorageString", By: Go, What: "char[N + 1] with an int32 used length beside it"},
+	{Name: "TableCookStorageBytes", By: Go, What: "uint8[N] with an int32 used length beside it"},
 
 	// the unit's BUILD VERSION (docs/SPEC-TABLES.md §20): the one digest a block
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is
 	// claimed here because it is a unit-level name the generated block sources
 	// define.
-	{Name: "BuildVersion", By: Cpp | Rust, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++ puts it at namespace scope, so the claim is the union", RustConst: true},
+	{Name: "BuildVersion", By: Cpp | Go | Rust, What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++ puts it at namespace scope, so the claim is the union", RustConst: true},
 }
 
 // All returns the whole registry, sorted by name.
