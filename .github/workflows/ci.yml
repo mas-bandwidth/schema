@@ -343,6 +343,22 @@ jobs:
       - name: inline gate — ${{ matrix.leg }} leg
         run: bench/tools/inline-gate.sh leg ${{ matrix.leg }}
 
+      # GATE 2's SMOKE (SPEC-TABLES.md §12.1). The gate itself is a paired
+      # measurement and its verdict belongs on a quiet box, so it is not on the
+      # PR path and its 5% band is not enforced here. What runs is the
+      # CORRECTNESS half at a small N — the generated block form and the
+      # hand-written mirror agreeing byte for byte across all nine sections,
+      # and the C# side reading the frame the C++ side wrote. Before this the
+      # gate ran nowhere at all, which is how a gate rots.
+      #
+      # ONE matrix combination, not six: this job's `make test` has already
+      # built the tree on every leg, and the smoke needs one extra C++ compile
+      # and one dotnet run. The go/ubuntu leg carries it because it is the one
+      # combination that always runs.
+      - name: gate 2 smoke — the block form still writes what the hand mirror does
+        if: matrix.os == 'ubuntu-latest' && matrix.leg == 'go'
+        run: make tables-block-gate2-smoke
+
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
     runs-on: ubuntu-latest

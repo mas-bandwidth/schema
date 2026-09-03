@@ -262,13 +262,14 @@ static class Program
         string[] argv = Environment.GetCommandLineArgs();
         foreach (string arg in argv)
         {
-            if (arg == "--gate2")
+            if (arg == "--gate2" || arg == "--gate2-smoke")
             {
                 // the REPRESENTATIVE frame §19.1 works, written by the C++
                 // gate-2 harness into build/ — a half-megabyte golden in the
                 // tree would buy the gate nothing the pinned small one does
                 // not already prove about the bytes
-                if (!Gate2.Run(Path.Combine("..", "..", "build", "block_gate2.bin")))
+                if (!Gate2.Run(Path.Combine("..", "..", "build", "block_gate2.bin"),
+                               arg == "--gate2-smoke"))
                 {
                     failed = true;
                 }

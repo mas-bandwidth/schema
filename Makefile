@@ -1239,6 +1239,19 @@ build/schema_test_block_gate2: build/tables-generated/.stamp test/tables/block_g
 tables-block-gate2: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
 	./build/schema_test_block_gate2
 	cd test/cs-block && dotnet run -c Release -- --gate2
+
+# THE SMOKE, which is what CI runs (certification legs only, never a PR).
+# The gate above is a MEASUREMENT and its verdict belongs on a quiet box; a
+# gate nothing runs anywhere is a gate that rots, which is the other failure.
+# So the correctness half — the two arms agreeing byte for byte across all
+# nine sections, and the frame the C# half reads — runs on every push to main
+# and nightly, at a small N, with the 5% band NOT enforced and both halves
+# saying so. A drift in what the generated form WRITES goes red here; a slow
+# runner does not.
+.PHONY: tables-block-gate2-smoke
+tables-block-gate2-smoke: build/schema_test_block_gate2 build/tables-generated-cs/.stamp
+	./build/schema_test_block_gate2 --smoke
+	cd test/cs-block && dotnet run -c Release -- --gate2-smoke
 # The NEGATIVE CONTROL for a KEYED object's duplicate counting
 # (SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
 # the missing count was invisible to every round-trip test — the value was
