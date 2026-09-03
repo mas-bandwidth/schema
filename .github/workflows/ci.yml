@@ -123,9 +123,9 @@ jobs:
   # precisely a dirty tree afterwards — a tracked file that changed, or a newly
   # emitted file nobody committed, which a diff-only check would miss.
   #
-  # The stamp list is DERIVED from the Makefile rather than typed here, so a
-  # port that adds generated/<lang>/.stamp is covered the moment it rebases,
-  # with no edit to this file. Locally the same check is `make
+  # The stamp list is DERIVED from the Makefile and its per-language includes
+  # rather than typed here, so a port that adds generated/<lang>/.stamp in its
+  # make/<lang>.mk is covered the moment it rebases, with no edit to this file. Locally the same check is `make
   # generated-current`, which gets there through the whole `make test` chain.
   generated:
     runs-on: ubuntu-latest
@@ -139,9 +139,9 @@ jobs:
 
       - name: regenerate every committed generated/ tree
         run: |
-          stamps=$(grep -oE '^generated/[A-Za-z0-9/_.-]*/\.stamp:' Makefile | sed 's/:$//' | sort -u)
+          stamps=$(grep -hoE '^generated/[A-Za-z0-9/_.-]*/\.stamp:' Makefile make/*.mk | sed 's/:$//' | sort -u)
           if [ -z "$stamps" ]; then
-            echo "::error::no generated/*/.stamp rules found in the Makefile — this check would pass over an empty set"
+            echo "::error::no generated/*/.stamp rules found in the Makefile or make/*.mk — this check would pass over an empty set"
             exit 1
           fi
           echo "$stamps"
