@@ -3051,7 +3051,7 @@ var dartTableMembers = []string{
 // is this spec's own canonical example); the rest are refused here, so no
 // legal schema can reach a non-compiling header through this door.
 var tableBuilderMembers = []string{
-	"Alloc", "AsConst", "GetRoot", "Lock", "Locked", "Region", "RegionBytes",
+	"Alloc", "AllocBytes", "AllocString", "AsConst", "GetRoot", "Lock", "Locked", "Region", "RegionBytes",
 	"Worker", "arena", "main", "region", "region_bytes", "root_ref",
 }
 
