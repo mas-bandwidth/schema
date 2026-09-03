@@ -1,13 +1,21 @@
 # schema
 
-**The schema language for games: your constants, enums and data types compiled to C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust.**
+[![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 If you write a game in more than one language, or ship a client and server that
 have to agree on every bit, schema is a language that will help you do this
 without ever having to hand-code definitions in each language ever again.
 
-[![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+Features:
+
+1. Define constants, enums, flags, types and tables in one language
+2. Fast bit-packed serialization for struct types that don't need versioning (eg. client/server messages and state)
+3. Fixed tables that support versioning for messages, data, assets, save game files and everything else!
+4. Recursive table definitions (pointer to table in table) for full data structure support.
+5. Cooking to fast binary formats at runtime for tool pipelines and loading assets.
+
+Supports C, C++, C#, Rust, Golang, Java, JavaScript, Dart and Elixir.
 
 If this work helps you, please support it: **[Become a supporter](https://www.patreon.com/MasBandwidth/membership)**
 
@@ -21,8 +29,8 @@ to read and write it.
 schema is a small language for declaring that data, and a compiler that
 generates the reading and writing code for nine languages: C, C++, C#, Dart,
 Elixir, Go, Java, JavaScript and Rust. You declare a type once. Every
-language gets code that agrees with every other language on every bit,
-allocates nothing, and validates what it reads.
+language gets code that agrees with every other language and validates 
+what it reads.
 
 It is meant to serve all your needs for data types across the languages of a
 game. The packet between a client and a server, where every bit counts and
