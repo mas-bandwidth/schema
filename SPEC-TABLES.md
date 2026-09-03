@@ -2136,8 +2136,8 @@ the wire, and keeps the flexibility that comes with it.
     handed back by static accessors on `<Root>Cook` named after the field — so
     reading one copies nothing and allocates nothing, and neither accelerator
     adds a member to the other's structs. **A table claims one member per field
-    on its `Cook` type**, exactly as it claims one per out-of-line array on its
-    `Block` type (§11), and a language whose accessors are members claims nothing
+    on its `Cook` type**, on the same rule that claims its `Block` type's row
+    accessors (§11), and a language whose accessors are members claims nothing
     at file scope for them.
 
   **WHERE IT IS EMITTED is §19.2's rule, for §19.2's reason**: C# has no include
