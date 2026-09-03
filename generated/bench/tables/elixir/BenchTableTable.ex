@@ -2,12 +2,21 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package benchtable — the TABLE wire (docs/SPEC-TABLES.md); protocol id 0x1a38ac487752b0ae names packets only, and a table versions by field id
+# package benchtable — the TABLE wire (docs/SPEC-TABLES.md); protocol id 0x1A38AC487752B0AE names packets only, and a table versions by field id
 
 # table TableEntity — TABLE-wire storage (docs/SPEC-TABLES.md): every field carries
 # its declared default at construction, so %Benchtable.TableEntity{} IS the value a read
 # starts from and the write side elides against.
 defmodule Benchtable.TableEntity do
+  # pos_x: wire [-16383, 16383] — a value outside it CLAMPS and counts (§4)
+  # pos_y: wire [-16383, 16383] — a value outside it CLAMPS and counts (§4)
+  # pos_z: wire [-16383, 16383] — a value outside it CLAMPS and counts (§4)
+  # vel_x: wire [-2048, 2047] — a value outside it CLAMPS and counts (§4)
+  # vel_y: wire [-2048, 2047] — a value outside it CLAMPS and counts (§4)
+  # vel_z: wire [-2048, 2047] — a value outside it CLAMPS and counts (§4)
+  # health: wire [0, 1000] — a value outside it CLAMPS and counts (§4)
+  # weapon: TableWeapon — the ORDINAL; the wire rides the variant's name hash (§5)
+  # damage: TableDamage — the raw mask; variants ride by BIT POSITION (§4)
   defstruct entity_id: 0,
             pos_x: 0,
             pos_y: 0,
@@ -28,6 +37,7 @@ end
 # its declared default at construction, so %Benchtable.TableStat{} IS the value a read
 # starts from and the write side elides against.
 defmodule Benchtable.TableStat do
+  # delta: wire [-512, 511] — a value outside it CLAMPS and counts (§4)
   defstruct stat_id: 0,
             delta: 0
 end
@@ -36,6 +46,18 @@ end
 # its declared default at construction, so %Benchtable.TableMixed{} IS the value a read
 # starts from and the write side elides against.
 defmodule Benchtable.TableMixed do
+  # ack_sequence: wire [0, 65535] — a value outside it CLAMPS and counts (§4)
+  # nonce: wire [1, 9223372036854775807] — a value outside it CLAMPS and counts (§4)
+  # world_time: wire [-1000000000000, 1000000000000] — a value outside it CLAMPS and counts (§4)
+  # entities: counted array — a list of up to 8 elements, and length IS the count
+  # stats: counted array — a list of up to 80 elements, and length IS the count
+  # game_event: union TableEvent — the tag beside one pre-allocated arm per variant
+  # loadout: fixed array — a list of exactly 4 elements
+  # player_name: string(15) — a binary whose byte_size IS the used length
+  # payload: bytes(16) — a binary whose byte_size IS the used length
+  # flux: wire [-1000000000000000000, 1000000000000000000] — a value outside it CLAMPS and counts (§4)
+  # extra: wire [0, 255] — a value outside it CLAMPS and counts (§4); under if has_extra — a field its guard excludes is elided (§3)
+  # idle_ticks: wire [0, 15] — a value outside it CLAMPS and counts (§4); under if has_extra else — a field its guard excludes is elided (§3)
   defstruct protocol_magic: 0,
             sequence: 0,
             ack_sequence: 0,
@@ -81,48 +103,48 @@ defmodule Benchtable.BenchTableTable do
   """
 
   alias Benchtable.TableRuntime, as: R
-  
+
   # TableWeapon on the TABLE wire: a value rides as the u16 hash of its VARIANT
   # NAME, so a variant may be added anywhere, removed, or reordered and old
   # data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
   def table_id_table_weapon(0), do: 0
-  def table_id_table_weapon(1), do: 0x03ed
-  def table_id_table_weapon(2), do: 0x54eb
-  def table_id_table_weapon(3), do: 0xdf27
-  def table_id_table_weapon(4), do: 0xaa64
+  def table_id_table_weapon(1), do: 0x03ED
+  def table_id_table_weapon(2), do: 0x54EB
+  def table_id_table_weapon(3), do: 0xDF27
+  def table_id_table_weapon(4), do: 0xAA64
   def table_id_table_weapon(5), do: 0x5513
-  def table_id_table_weapon(6), do: 0x138b
-  def table_id_table_weapon(7), do: 0x56fa
-  def table_id_table_weapon(8), do: 0xf3ed
-  def table_id_table_weapon(9), do: 0xa376
-  def table_id_table_weapon(10), do: 0xeff8
-  def table_id_table_weapon(11), do: 0xfa19
-  def table_id_table_weapon(12), do: 0x61bf
-  def table_id_table_weapon(13), do: 0xf720
-  def table_id_table_weapon(14), do: 0xc67e
-  def table_id_table_weapon(15), do: 0x86cc
+  def table_id_table_weapon(6), do: 0x138B
+  def table_id_table_weapon(7), do: 0x56FA
+  def table_id_table_weapon(8), do: 0xF3ED
+  def table_id_table_weapon(9), do: 0xA376
+  def table_id_table_weapon(10), do: 0xEFF8
+  def table_id_table_weapon(11), do: 0xFA19
+  def table_id_table_weapon(12), do: 0x61BF
+  def table_id_table_weapon(13), do: 0xF720
+  def table_id_table_weapon(14), do: 0xC67E
+  def table_id_table_weapon(15), do: 0x86CC
   # no variant names this value: no wire identity
   def table_id_table_weapon(_), do: nil
-  
+
   def table_value_table_weapon(0), do: 0
-  def table_value_table_weapon(0x03ed), do: 1
-  def table_value_table_weapon(0x54eb), do: 2
-  def table_value_table_weapon(0xdf27), do: 3
-  def table_value_table_weapon(0xaa64), do: 4
+  def table_value_table_weapon(0x03ED), do: 1
+  def table_value_table_weapon(0x54EB), do: 2
+  def table_value_table_weapon(0xDF27), do: 3
+  def table_value_table_weapon(0xAA64), do: 4
   def table_value_table_weapon(0x5513), do: 5
-  def table_value_table_weapon(0x138b), do: 6
-  def table_value_table_weapon(0x56fa), do: 7
-  def table_value_table_weapon(0xf3ed), do: 8
-  def table_value_table_weapon(0xa376), do: 9
-  def table_value_table_weapon(0xeff8), do: 10
-  def table_value_table_weapon(0xfa19), do: 11
-  def table_value_table_weapon(0x61bf), do: 12
-  def table_value_table_weapon(0xf720), do: 13
-  def table_value_table_weapon(0xc67e), do: 14
-  def table_value_table_weapon(0x86cc), do: 15
+  def table_value_table_weapon(0x138B), do: 6
+  def table_value_table_weapon(0x56FA), do: 7
+  def table_value_table_weapon(0xF3ED), do: 8
+  def table_value_table_weapon(0xA376), do: 9
+  def table_value_table_weapon(0xEFF8), do: 10
+  def table_value_table_weapon(0xFA19), do: 11
+  def table_value_table_weapon(0x61BF), do: 12
+  def table_value_table_weapon(0xF720), do: 13
+  def table_value_table_weapon(0xC67E), do: 14
+  def table_value_table_weapon(0x86CC), do: 15
   # an id this build cannot name
   def table_value_table_weapon(_), do: nil
-  
+
   def enum_name_table_weapon(0), do: "None"
   def enum_name_table_weapon(1), do: "Fists"
   def enum_name_table_weapon(2), do: "Pistol"
@@ -140,7 +162,7 @@ defmodule Benchtable.BenchTableTable do
   def enum_name_table_weapon(14), do: "Drone"
   def enum_name_table_weapon(15), do: "Repair"
   def enum_name_table_weapon(_), do: nil
-  
+
   def enum_value_table_weapon("None"), do: 0
   def enum_value_table_weapon("Fists"), do: 1
   def enum_value_table_weapon("Pistol"), do: 2
@@ -158,31 +180,31 @@ defmodule Benchtable.BenchTableTable do
   def enum_value_table_weapon("Drone"), do: 14
   def enum_value_table_weapon("Repair"), do: 15
   def enum_value_table_weapon(_), do: nil
-  
+
   # defaults_table_entity is TableEntity at its declared defaults — what a read overlays
   # and what the write side elides against (docs/SPEC-TABLES.md §4).
   def defaults_table_entity, do: %Benchtable.TableEntity{}
-  
+
   # defaults_table_stat is TableStat at its declared defaults — what a read overlays
   # and what the write side elides against (docs/SPEC-TABLES.md §4).
   def defaults_table_stat, do: %Benchtable.TableStat{}
-  
+
   # defaults_table_mixed is TableMixed at its declared defaults — what a read overlays
   # and what the write side elides against (docs/SPEC-TABLES.md §4).
   def defaults_table_mixed, do: %Benchtable.TableMixed{}
-  
+
   # defaults_table_hit_event is TableHitEvent at its declared defaults — what a read overlays
   # and what the write side elides against (docs/SPEC-TABLES.md §4).
   def defaults_table_hit_event, do: %Benchtable.TableHitEvent{}
-  
+
   # defaults_table_chat_event is TableChatEvent at its declared defaults — what a read overlays
   # and what the write side elides against (docs/SPEC-TABLES.md §4).
   def defaults_table_chat_event, do: %Benchtable.TableChatEvent{}
-  
+
   # defaults_table_pickup_event is TablePickupEvent at its declared defaults — what a read overlays
   # and what the write side elides against (docs/SPEC-TABLES.md §4).
   def defaults_table_pickup_event, do: %Benchtable.TablePickupEvent{}
-  
+
   # measure_table_entity is the EXACT encoded size of a value, with no writing. A value
   # violating its storage invariants measures as -1, exactly as the write side
   # refuses it (docs/SPEC-TABLES.md §5).
@@ -193,7 +215,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> -1
     end
   end
-  
+
   def measure_body_table_entity(value) do
     # 2 is the terminator
     2 +
@@ -212,47 +234,47 @@ defmodule Benchtable.BenchTableTable do
       m_table_entity_moving(value) +
       m_table_entity_firing(value)
   end
-  
+
   defp m_table_entity_entity_id(value) do
     if value.entity_id != 0, do: 3 + 2, else: 0
   end
-  
+
   defp m_table_entity_pos_x(value) do
     if value.pos_x != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_entity_pos_y(value) do
     if value.pos_y != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_entity_pos_z(value) do
     if value.pos_z != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_entity_yaw(value) do
     if value.yaw != 0, do: 3 + 2, else: 0
   end
-  
+
   defp m_table_entity_pitch(value) do
     if value.pitch != 0, do: 3 + 2, else: 0
   end
-  
+
   defp m_table_entity_vel_x(value) do
     if value.vel_x != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_entity_vel_y(value) do
     if value.vel_y != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_entity_vel_z(value) do
     if value.vel_z != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_entity_health(value) do
     if value.health != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_entity_weapon(value) do
     if value.weapon == 0 do
       0
@@ -261,19 +283,19 @@ defmodule Benchtable.BenchTableTable do
       3 + 2 # the variant's name hash
     end
   end
-  
+
   defp m_table_entity_damage(value) do
     if value.damage != 0, do: 3 + 8, else: 0
   end
-  
+
   defp m_table_entity_moving(value) do
     if value.moving, do: 3 + 1, else: 0
   end
-  
+
   defp m_table_entity_firing(value) do
     if value.firing, do: 3 + 1, else: 0
   end
-  
+
   # save_table_entity writes exactly measure_table_entity(value) bytes.
   def save_table_entity(value) do
     try do
@@ -282,7 +304,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> :refused
     end
   end
-  
+
   def save_body_table_entity(value) do
     [
       s_table_entity_entity_id(value),
@@ -302,63 +324,63 @@ defmodule Benchtable.BenchTableTable do
       <<0::little-unsigned-16>>
     ]
   end
-  
+
   defp s_table_entity_entity_id(value) do
     if value.entity_id != 0 do
-      [<<0x5a13::little-unsigned-16, 7::little-unsigned-8>>, <<value.entity_id::little-unsigned-16>>]
+      [<<0x5A13::little-unsigned-16, 7::little-unsigned-8>>, <<value.entity_id::little-unsigned-16>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_pos_x(value) do
     if value.pos_x != 0 do
-      [<<0xaaa3::little-unsigned-16, 4::little-unsigned-8>>, <<value.pos_x::little-signed-32>>]
+      [<<0xAAA3::little-unsigned-16, 4::little-unsigned-8>>, <<value.pos_x::little-signed-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_pos_y(value) do
     if value.pos_y != 0 do
-      [<<0xa5cc::little-unsigned-16, 4::little-unsigned-8>>, <<value.pos_y::little-signed-32>>]
+      [<<0xA5CC::little-unsigned-16, 4::little-unsigned-8>>, <<value.pos_y::little-signed-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_pos_z(value) do
     if value.pos_z != 0 do
-      [<<0xa985::little-unsigned-16, 4::little-unsigned-8>>, <<value.pos_z::little-signed-32>>]
+      [<<0xA985::little-unsigned-16, 4::little-unsigned-8>>, <<value.pos_z::little-signed-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_yaw(value) do
     if value.yaw != 0 do
-      [<<0x80c1::little-unsigned-16, 7::little-unsigned-8>>, <<value.yaw::little-unsigned-16>>]
+      [<<0x80C1::little-unsigned-16, 7::little-unsigned-8>>, <<value.yaw::little-unsigned-16>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_pitch(value) do
     if value.pitch != 0 do
-      [<<0xf783::little-unsigned-16, 7::little-unsigned-8>>, <<value.pitch::little-unsigned-16>>]
+      [<<0xF783::little-unsigned-16, 7::little-unsigned-8>>, <<value.pitch::little-unsigned-16>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_vel_x(value) do
     if value.vel_x != 0 do
-      [<<0x03e2::little-unsigned-16, 4::little-unsigned-8>>, <<value.vel_x::little-signed-32>>]
+      [<<0x03E2::little-unsigned-16, 4::little-unsigned-8>>, <<value.vel_x::little-signed-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_vel_y(value) do
     if value.vel_y != 0 do
       [<<0x0151::little-unsigned-16, 4::little-unsigned-8>>, <<value.vel_y::little-signed-32>>]
@@ -366,15 +388,15 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   defp s_table_entity_vel_z(value) do
     if value.vel_z != 0 do
-      [<<0x0e88::little-unsigned-16, 4::little-unsigned-8>>, <<value.vel_z::little-signed-32>>]
+      [<<0x0E88::little-unsigned-16, 4::little-unsigned-8>>, <<value.vel_z::little-signed-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_health(value) do
     if value.health != 0 do
       [<<0x8617::little-unsigned-16, 4::little-unsigned-8>>, <<value.health::little-signed-32>>]
@@ -382,33 +404,33 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   defp s_table_entity_weapon(value) do
     if value.weapon == 0 do
       []
     else
       id = table_id_table_weapon(value.weapon)
       if id == nil, do: throw(:refused)
-      [<<0x4f72::little-unsigned-16, 7::little-unsigned-8>>, <<id::little-unsigned-16>>]
+      [<<0x4F72::little-unsigned-16, 7::little-unsigned-8>>, <<id::little-unsigned-16>>]
     end
   end
-  
+
   defp s_table_entity_damage(value) do
     if value.damage != 0 do
-      [<<0x15a9::little-unsigned-16, 9::little-unsigned-8>>, <<value.damage::little-unsigned-64>>]
+      [<<0x15A9::little-unsigned-16, 9::little-unsigned-8>>, <<value.damage::little-unsigned-64>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_moving(value) do
     if value.moving do
-      [<<0xa4b2::little-unsigned-16, 1::little-unsigned-8>>, <<R.bool_bits(value.moving)::little-unsigned-8>>]
+      [<<0xA4B2::little-unsigned-16, 1::little-unsigned-8>>, <<R.bool_bits(value.moving)::little-unsigned-8>>]
     else
       []
     end
   end
-  
+
   defp s_table_entity_firing(value) do
     if value.firing do
       [<<0x2302::little-unsigned-16, 1::little-unsigned-8>>, <<R.bool_bits(value.firing)::little-unsigned-8>>]
@@ -416,210 +438,210 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   # load_table_entity overlays one value from a table body and reports every
   # tolerance event (docs/SPEC-TABLES.md §4). The report is the caller's.
   def load_table_entity(data), do: load_table_entity(data, R.report())
-  
+
   def load_table_entity(data, report), do: load_body_table_entity(data, report)
-  
+
   # the read starts from the DECLARED DEFAULTS and overlays, so a field the
   # body never mentions reads as its default and a repeated id re-establishes
   # nothing an earlier occurrence left (docs/SPEC-TABLES.md §4).
   def load_body_table_entity(data, report) do
     fields_table_entity(data, defaults_table_entity(), report)
   end
-  
+
   defp fields_table_entity(<<0::little-unsigned-16, _rest::binary>>, value, report), do: {value, report}
-  
+
   defp fields_table_entity(<<id::little-unsigned-16, kind::little-unsigned-8, rest::binary>>, value, report) do
     result =
       case id do
-        0x5a13 -> f_table_entity_entity_id(kind, rest, value, report)
-        0xaaa3 -> f_table_entity_pos_x(kind, rest, value, report)
-        0xa5cc -> f_table_entity_pos_y(kind, rest, value, report)
-        0xa985 -> f_table_entity_pos_z(kind, rest, value, report)
-        0x80c1 -> f_table_entity_yaw(kind, rest, value, report)
-        0xf783 -> f_table_entity_pitch(kind, rest, value, report)
-        0x03e2 -> f_table_entity_vel_x(kind, rest, value, report)
+        0x5A13 -> f_table_entity_entity_id(kind, rest, value, report)
+        0xAAA3 -> f_table_entity_pos_x(kind, rest, value, report)
+        0xA5CC -> f_table_entity_pos_y(kind, rest, value, report)
+        0xA985 -> f_table_entity_pos_z(kind, rest, value, report)
+        0x80C1 -> f_table_entity_yaw(kind, rest, value, report)
+        0xF783 -> f_table_entity_pitch(kind, rest, value, report)
+        0x03E2 -> f_table_entity_vel_x(kind, rest, value, report)
         0x0151 -> f_table_entity_vel_y(kind, rest, value, report)
-        0x0e88 -> f_table_entity_vel_z(kind, rest, value, report)
+        0x0E88 -> f_table_entity_vel_z(kind, rest, value, report)
         0x8617 -> f_table_entity_health(kind, rest, value, report)
-        0x4f72 -> f_table_entity_weapon(kind, rest, value, report)
-        0x15a9 -> f_table_entity_damage(kind, rest, value, report)
-        0xa4b2 -> f_table_entity_moving(kind, rest, value, report)
+        0x4F72 -> f_table_entity_weapon(kind, rest, value, report)
+        0x15A9 -> f_table_entity_damage(kind, rest, value, report)
+        0xA4B2 -> f_table_entity_moving(kind, rest, value, report)
         0x2302 -> f_table_entity_firing(kind, rest, value, report)
         _ -> R.skip_unknown(kind, rest, value, report)
       end
-  
+
     case result do
       {:ok, rest2, value2, report2} -> fields_table_entity(rest2, value2, report2)
       {:stop, value2, report2} -> {value2, R.malformed(report2)}
     end
   end
-  
+
   defp fields_table_entity(_short, value, report), do: {value, R.malformed(report)}
-  
+
   defp f_table_entity_entity_id(7, rest, value, report) do
     case rest do
       <<raw::little-unsigned-16, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | entity_id: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_entity_id(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_pos_x(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -16383, 16383, report)
         {:ok, rest2, %{value | pos_x: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_pos_x(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_pos_y(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -16383, 16383, report)
         {:ok, rest2, %{value | pos_y: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_pos_y(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_pos_z(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -16383, 16383, report)
         {:ok, rest2, %{value | pos_z: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_pos_z(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_yaw(7, rest, value, report) do
     case rest do
       <<raw::little-unsigned-16, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | yaw: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_yaw(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_pitch(7, rest, value, report) do
     case rest do
       <<raw::little-unsigned-16, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | pitch: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_pitch(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_vel_x(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -2048, 2047, report)
         {:ok, rest2, %{value | vel_x: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_vel_x(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_vel_y(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -2048, 2047, report)
         {:ok, rest2, %{value | vel_y: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_vel_y(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_vel_z(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -2048, 2047, report)
         {:ok, rest2, %{value | vel_z: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_vel_z(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_health(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 0, 1000, report)
         {:ok, rest2, %{value | health: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_health(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_weapon(7, rest, value, report) do
     case rest do
       <<variant::little-unsigned-16, rest2::binary>> ->
@@ -627,65 +649,65 @@ defmodule Benchtable.BenchTableTable do
           nil -> {:ok, rest2, %{value | weapon: 0}, R.unknown(report)}
           slot -> {:ok, rest2, %{value | weapon: slot}, report}
         end
-    
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_weapon(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_damage(9, rest, value, report) do
     case rest do
       <<raw::little-unsigned-64, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | damage: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_damage(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_moving(1, rest, value, report) do
     case rest do
       <<raw::little-unsigned-8, rest2::binary>> ->
         decoded = raw != 0
         {:ok, rest2, %{value | moving: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_moving(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_entity_firing(1, rest, value, report) do
     case rest do
       <<raw::little-unsigned-8, rest2::binary>> ->
         decoded = raw != 0
         {:ok, rest2, %{value | firing: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_entity_firing(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   # measure_table_stat is the EXACT encoded size of a value, with no writing. A value
   # violating its storage invariants measures as -1, exactly as the write side
   # refuses it (docs/SPEC-TABLES.md §5).
@@ -696,22 +718,22 @@ defmodule Benchtable.BenchTableTable do
       :refused -> -1
     end
   end
-  
+
   def measure_body_table_stat(value) do
     # 2 is the terminator
     2 +
       m_table_stat_stat_id(value) +
       m_table_stat_delta(value)
   end
-  
+
   defp m_table_stat_stat_id(value) do
     if value.stat_id != 0, do: 3 + 1, else: 0
   end
-  
+
   defp m_table_stat_delta(value) do
     if value.delta != 0, do: 3 + 4, else: 0
   end
-  
+
   # save_table_stat writes exactly measure_table_stat(value) bytes.
   def save_table_stat(value) do
     try do
@@ -720,7 +742,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> :refused
     end
   end
-  
+
   def save_body_table_stat(value) do
     [
       s_table_stat_stat_id(value),
@@ -728,15 +750,15 @@ defmodule Benchtable.BenchTableTable do
       <<0::little-unsigned-16>>
     ]
   end
-  
+
   defp s_table_stat_stat_id(value) do
     if value.stat_id != 0 do
-      [<<0xfb6c::little-unsigned-16, 6::little-unsigned-8>>, <<value.stat_id::little-unsigned-8>>]
+      [<<0xFB6C::little-unsigned-16, 6::little-unsigned-8>>, <<value.stat_id::little-unsigned-8>>]
     else
       []
     end
   end
-  
+
   defp s_table_stat_delta(value) do
     if value.delta != 0 do
       [<<0x1720::little-unsigned-16, 4::little-unsigned-8>>, <<value.delta::little-signed-32>>]
@@ -744,70 +766,70 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   # load_table_stat overlays one value from a table body and reports every
   # tolerance event (docs/SPEC-TABLES.md §4). The report is the caller's.
   def load_table_stat(data), do: load_table_stat(data, R.report())
-  
+
   def load_table_stat(data, report), do: load_body_table_stat(data, report)
-  
+
   # the read starts from the DECLARED DEFAULTS and overlays, so a field the
   # body never mentions reads as its default and a repeated id re-establishes
   # nothing an earlier occurrence left (docs/SPEC-TABLES.md §4).
   def load_body_table_stat(data, report) do
     fields_table_stat(data, defaults_table_stat(), report)
   end
-  
+
   defp fields_table_stat(<<0::little-unsigned-16, _rest::binary>>, value, report), do: {value, report}
-  
+
   defp fields_table_stat(<<id::little-unsigned-16, kind::little-unsigned-8, rest::binary>>, value, report) do
     result =
       case id do
-        0xfb6c -> f_table_stat_stat_id(kind, rest, value, report)
+        0xFB6C -> f_table_stat_stat_id(kind, rest, value, report)
         0x1720 -> f_table_stat_delta(kind, rest, value, report)
         _ -> R.skip_unknown(kind, rest, value, report)
       end
-  
+
     case result do
       {:ok, rest2, value2, report2} -> fields_table_stat(rest2, value2, report2)
       {:stop, value2, report2} -> {value2, R.malformed(report2)}
     end
   end
-  
+
   defp fields_table_stat(_short, value, report), do: {value, R.malformed(report)}
-  
+
   defp f_table_stat_stat_id(6, rest, value, report) do
     case rest do
       <<raw::little-unsigned-8, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | stat_id: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_stat_stat_id(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_stat_delta(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -512, 511, report)
         {:ok, rest2, %{value | delta: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_stat_delta(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   # measure_table_mixed is the EXACT encoded size of a value, with no writing. A value
   # violating its storage invariants measures as -1, exactly as the write side
   # refuses it (docs/SPEC-TABLES.md §5).
@@ -818,7 +840,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> -1
     end
   end
-  
+
   def measure_body_table_mixed(value) do
     # 2 is the terminator
     2 +
@@ -851,47 +873,47 @@ defmodule Benchtable.BenchTableTable do
       m_table_mixed_extra(value) +
       m_table_mixed_idle_ticks(value)
   end
-  
+
   defp m_table_mixed_protocol_magic(value) do
     if value.protocol_magic != 0, do: 3 + 2, else: 0
   end
-  
+
   defp m_table_mixed_sequence(value) do
     if value.sequence != 0, do: 3 + 2, else: 0
   end
-  
+
   defp m_table_mixed_ack_sequence(value) do
     if value.ack_sequence != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_ack_bits(value) do
     if value.ack_bits != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_session_id(value) do
     if value.session_id != 0, do: 3 + 8, else: 0
   end
-  
+
   defp m_table_mixed_client_id(value) do
     if value.client_id != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_nonce(value) do
     if value.nonce != 1, do: 3 + 8, else: 0
   end
-  
+
   defp m_table_mixed_world_time(value) do
     if value.world_time != 0, do: 3 + 8, else: 0
   end
-  
+
   defp m_table_mixed_frame_tick(value) do
     if value.frame_tick != 0, do: 3 + 8, else: 0
   end
-  
+
   defp m_table_mixed_server_time(value) do
     if value.server_time != 0.0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_entities(value) do
     count = length(value.entities)
     if count > 8, do: throw(:refused) # storage invariant
@@ -903,7 +925,7 @@ defmodule Benchtable.BenchTableTable do
       end)
     end
   end
-  
+
   defp m_table_mixed_stats(value) do
     count = length(value.stats)
     if count > 80, do: throw(:refused) # storage invariant
@@ -915,29 +937,29 @@ defmodule Benchtable.BenchTableTable do
       end)
     end
   end
-  
+
   defp m_table_mixed_game_event(value) do
     case value.game_event.type do
       0 ->
         0 # None elides — TLV absence is the None
-    
+
       1 ->
         # the u16 ARM ID, then the arm length-prefixed
         3 + 2 + 4 + measure_body_table_hit_event(value.game_event.hit)
-    
+
       2 ->
         # the u16 ARM ID, then the arm length-prefixed
         3 + 2 + 4 + measure_body_table_chat_event(value.game_event.chat)
-    
+
       3 ->
         # the u16 ARM ID, then the arm length-prefixed
         3 + 2 + 4 + measure_body_table_pickup_event(value.game_event.pickup)
-    
+
       _ ->
         throw(:refused) # a tag no arm names
     end
   end
-  
+
   defp m_table_mixed_loadout(value) do
     if length(value.loadout) != 4, do: throw(:refused) # storage invariant
     if Enum.all?(value.loadout, &(&1 == 0)) do
@@ -946,59 +968,59 @@ defmodule Benchtable.BenchTableTable do
       3 + 4 + 5 + 4 * 1
     end
   end
-  
+
   defp m_table_mixed_player_name(value) do
     used = byte_size(value.player_name)
     if used > 15, do: throw(:refused) # storage invariant
     if used > 0, do: 3 + 4 + used, else: 0
   end
-  
+
   defp m_table_mixed_payload(value) do
     used = byte_size(value.payload)
     if used > 16, do: throw(:refused) # storage invariant
     if used > 0, do: 3 + 4 + 5 + used, else: 0
   end
-  
+
   defp m_table_mixed_aim_x(value) do
     if value.aim_x != 0.0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_aim_y(value) do
     if value.aim_y != 0.0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_aim_z(value) do
     if value.aim_z != 0.0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_recoil(value) do
     if value.recoil != 0.0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_drift(value) do
     if value.drift != 0.0, do: 3 + 8, else: 0
   end
-  
+
   defp m_table_mixed_wide_key(value) do
     if value.wide_key != 0, do: 3 + 8, else: 0
   end
-  
+
   defp m_table_mixed_flux(value) do
     if value.flux != 0, do: 3 + 8, else: 0
   end
-  
+
   defp m_table_mixed_ping(value) do
     if value.ping != 0.0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_crc_hint(value) do
     if value.crc_hint != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_mixed_has_extra(value) do
     if value.has_extra, do: 3 + 1, else: 0
   end
-  
+
   defp m_table_mixed_extra(value) do
     # value.has_extra — a field under a false guard is elided whatever its storage holds
     if value.has_extra do
@@ -1007,7 +1029,7 @@ defmodule Benchtable.BenchTableTable do
       0
     end
   end
-  
+
   defp m_table_mixed_idle_ticks(value) do
     # !value.has_extra — a field under a false guard is elided whatever its storage holds
     if !value.has_extra do
@@ -1016,7 +1038,7 @@ defmodule Benchtable.BenchTableTable do
       0
     end
   end
-  
+
   # save_table_mixed writes exactly measure_table_mixed(value) bytes.
   def save_table_mixed(value) do
     try do
@@ -1025,7 +1047,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> :refused
     end
   end
-  
+
   def save_body_table_mixed(value) do
     [
       s_table_mixed_protocol_magic(value),
@@ -1059,23 +1081,23 @@ defmodule Benchtable.BenchTableTable do
       <<0::little-unsigned-16>>
     ]
   end
-  
+
   defp s_table_mixed_protocol_magic(value) do
     if value.protocol_magic != 0 do
-      [<<0xae30::little-unsigned-16, 7::little-unsigned-8>>, <<value.protocol_magic::little-unsigned-16>>]
+      [<<0xAE30::little-unsigned-16, 7::little-unsigned-8>>, <<value.protocol_magic::little-unsigned-16>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_sequence(value) do
     if value.sequence != 0 do
-      [<<0xd32b::little-unsigned-16, 7::little-unsigned-8>>, <<value.sequence::little-unsigned-16>>]
+      [<<0xD32B::little-unsigned-16, 7::little-unsigned-8>>, <<value.sequence::little-unsigned-16>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_ack_sequence(value) do
     if value.ack_sequence != 0 do
       [<<0x3363::little-unsigned-16, 4::little-unsigned-8>>, <<value.ack_sequence::little-signed-32>>]
@@ -1083,15 +1105,15 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   defp s_table_mixed_ack_bits(value) do
     if value.ack_bits != 0 do
-      [<<0xebb9::little-unsigned-16, 8::little-unsigned-8>>, <<value.ack_bits::little-unsigned-32>>]
+      [<<0xEBB9::little-unsigned-16, 8::little-unsigned-8>>, <<value.ack_bits::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_session_id(value) do
     if value.session_id != 0 do
       [<<0x8790::little-unsigned-16, 9::little-unsigned-8>>, <<value.session_id::little-unsigned-64>>]
@@ -1099,47 +1121,47 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   defp s_table_mixed_client_id(value) do
     if value.client_id != 0 do
-      [<<0xd443::little-unsigned-16, 8::little-unsigned-8>>, <<value.client_id::little-unsigned-32>>]
+      [<<0xD443::little-unsigned-16, 8::little-unsigned-8>>, <<value.client_id::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_nonce(value) do
     if value.nonce != 1 do
-      [<<0x80f0::little-unsigned-16, 9::little-unsigned-8>>, <<value.nonce::little-unsigned-64>>]
+      [<<0x80F0::little-unsigned-16, 9::little-unsigned-8>>, <<value.nonce::little-unsigned-64>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_world_time(value) do
     if value.world_time != 0 do
-      [<<0x77f2::little-unsigned-16, 5::little-unsigned-8>>, <<value.world_time::little-signed-64>>]
+      [<<0x77F2::little-unsigned-16, 5::little-unsigned-8>>, <<value.world_time::little-signed-64>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_frame_tick(value) do
     if value.frame_tick != 0 do
-      [<<0xcbc2::little-unsigned-16, 9::little-unsigned-8>>, <<value.frame_tick::little-unsigned-64>>]
+      [<<0xCBC2::little-unsigned-16, 9::little-unsigned-8>>, <<value.frame_tick::little-unsigned-64>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_server_time(value) do
     if value.server_time != 0.0 do
-      [<<0x27f9::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.server_time)::little-unsigned-32>>]
+      [<<0x27F9::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.server_time)::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_entities(value) do
     count = length(value.entities)
     if count > 8, do: throw(:refused) # storage invariant
@@ -1150,16 +1172,16 @@ defmodule Benchtable.BenchTableTable do
         Enum.map(value.entities, fn element ->
           [<<measure_body_table_entity(element)::little-unsigned-32>>, save_body_table_entity(element)]
         end)
-      
+
       body = IO.iodata_to_binary(elements)
       [
-        <<0x25e3::little-unsigned-16, 14::little-unsigned-8>>,
+        <<0x25E3::little-unsigned-16, 14::little-unsigned-8>>,
         <<5 + byte_size(body)::little-unsigned-32, 13::little-unsigned-8, count::little-unsigned-32>>,
         body
       ]
     end
   end
-  
+
   defp s_table_mixed_stats(value) do
     count = length(value.stats)
     if count > 80, do: throw(:refused) # storage invariant
@@ -1170,55 +1192,55 @@ defmodule Benchtable.BenchTableTable do
         Enum.map(value.stats, fn element ->
           [<<measure_body_table_stat(element)::little-unsigned-32>>, save_body_table_stat(element)]
         end)
-      
+
       body = IO.iodata_to_binary(elements)
       [
-        <<0x76dd::little-unsigned-16, 14::little-unsigned-8>>,
+        <<0x76DD::little-unsigned-16, 14::little-unsigned-8>>,
         <<5 + byte_size(body)::little-unsigned-32, 13::little-unsigned-8, count::little-unsigned-32>>,
         body
       ]
     end
   end
-  
+
   defp s_table_mixed_game_event(value) do
     # the ARM ID is the hash of the arm's NAME (docs/SPEC-TABLES.md §5), so
     # arms may be added anywhere, removed and reordered
     case value.game_event.type do
       0 ->
         []
-    
+
       1 ->
         arm = value.game_event.hit
         body = measure_body_table_hit_event(arm)
         [
-          <<0xa17e::little-unsigned-16, 15::little-unsigned-8>>,
-          <<0xba78::little-unsigned-16, body::little-unsigned-32>>,
+          <<0xA17E::little-unsigned-16, 15::little-unsigned-8>>,
+          <<0xBA78::little-unsigned-16, body::little-unsigned-32>>,
           save_body_table_hit_event(arm)
         ]
-    
+
       2 ->
         arm = value.game_event.chat
         body = measure_body_table_chat_event(arm)
         [
-          <<0xa17e::little-unsigned-16, 15::little-unsigned-8>>,
-          <<0x5be0::little-unsigned-16, body::little-unsigned-32>>,
+          <<0xA17E::little-unsigned-16, 15::little-unsigned-8>>,
+          <<0x5BE0::little-unsigned-16, body::little-unsigned-32>>,
           save_body_table_chat_event(arm)
         ]
-    
+
       3 ->
         arm = value.game_event.pickup
         body = measure_body_table_pickup_event(arm)
         [
-          <<0xa17e::little-unsigned-16, 15::little-unsigned-8>>,
-          <<0x99dd::little-unsigned-16, body::little-unsigned-32>>,
+          <<0xA17E::little-unsigned-16, 15::little-unsigned-8>>,
+          <<0x99DD::little-unsigned-16, body::little-unsigned-32>>,
           save_body_table_pickup_event(arm)
         ]
-    
+
       _ ->
         throw(:refused)
     end
   end
-  
+
   defp s_table_mixed_loadout(value) do
     if length(value.loadout) != 4, do: throw(:refused) # storage invariant
     if Enum.all?(value.loadout, &(&1 == 0)) do
@@ -1226,25 +1248,25 @@ defmodule Benchtable.BenchTableTable do
     else
       elements =
         Enum.map(value.loadout, fn element -> <<element::little-unsigned-8>> end)
-      
+
       [
-        <<0x9f78::little-unsigned-16, 14::little-unsigned-8>>,
+        <<0x9F78::little-unsigned-16, 14::little-unsigned-8>>,
         <<5 + 4 * 1::little-unsigned-32, 6::little-unsigned-8, 4::little-unsigned-32>>,
         elements
       ]
     end
   end
-  
+
   defp s_table_mixed_player_name(value) do
     used = byte_size(value.player_name)
     if used > 15, do: throw(:refused) # storage invariant
     if used == 0 do
       []
     else
-      [<<0x2d3e::little-unsigned-16, 12::little-unsigned-8>>, <<used::little-unsigned-32>>, value.player_name]
+      [<<0x2D3E::little-unsigned-16, 12::little-unsigned-8>>, <<used::little-unsigned-32>>, value.player_name]
     end
   end
-  
+
   defp s_table_mixed_payload(value) do
     used = byte_size(value.payload)
     if used > 16, do: throw(:refused) # storage invariant
@@ -1252,97 +1274,97 @@ defmodule Benchtable.BenchTableTable do
       []
     else
       [
-        <<0x44aa::little-unsigned-16, 14::little-unsigned-8>>,
+        <<0x44AA::little-unsigned-16, 14::little-unsigned-8>>,
         <<5 + used::little-unsigned-32, 6::little-unsigned-8, used::little-unsigned-32>>,
         value.payload
       ]
     end
   end
-  
+
   defp s_table_mixed_aim_x(value) do
     if value.aim_x != 0.0 do
-      [<<0x84e9::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.aim_x)::little-unsigned-32>>]
+      [<<0x84E9::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.aim_x)::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_aim_y(value) do
     if value.aim_y != 0.0 do
-      [<<0x8d96::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.aim_y)::little-unsigned-32>>]
+      [<<0x8D96::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.aim_y)::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_aim_z(value) do
     if value.aim_z != 0.0 do
-      [<<0x8e03::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.aim_z)::little-unsigned-32>>]
+      [<<0x8E03::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.aim_z)::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_recoil(value) do
     if value.recoil != 0.0 do
-      [<<0x2d04::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.recoil)::little-unsigned-32>>]
+      [<<0x2D04::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.recoil)::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_drift(value) do
     if value.drift != 0.0 do
-      [<<0xc023::little-unsigned-16, 11::little-unsigned-8>>, <<R.f64_bits(value.drift)::little-unsigned-64>>]
+      [<<0xC023::little-unsigned-16, 11::little-unsigned-8>>, <<R.f64_bits(value.drift)::little-unsigned-64>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_wide_key(value) do
     if value.wide_key != 0 do
-      [<<0x272f::little-unsigned-16, 9::little-unsigned-8>>, <<value.wide_key::little-unsigned-64>>]
+      [<<0x272F::little-unsigned-16, 9::little-unsigned-8>>, <<value.wide_key::little-unsigned-64>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_flux(value) do
     if value.flux != 0 do
-      [<<0x196a::little-unsigned-16, 5::little-unsigned-8>>, <<value.flux::little-signed-64>>]
+      [<<0x196A::little-unsigned-16, 5::little-unsigned-8>>, <<value.flux::little-signed-64>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_ping(value) do
     if value.ping != 0.0 do
-      [<<0xe6d4::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.ping)::little-unsigned-32>>]
+      [<<0xE6D4::little-unsigned-16, 10::little-unsigned-8>>, <<R.f32_bits(value.ping)::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_crc_hint(value) do
     if value.crc_hint != 0 do
-      [<<0xd3dc::little-unsigned-16, 8::little-unsigned-8>>, <<value.crc_hint::little-unsigned-32>>]
+      [<<0xD3DC::little-unsigned-16, 8::little-unsigned-8>>, <<value.crc_hint::little-unsigned-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_has_extra(value) do
     if value.has_extra do
-      [<<0xb023::little-unsigned-16, 1::little-unsigned-8>>, <<R.bool_bits(value.has_extra)::little-unsigned-8>>]
+      [<<0xB023::little-unsigned-16, 1::little-unsigned-8>>, <<R.bool_bits(value.has_extra)::little-unsigned-8>>]
     else
       []
     end
   end
-  
+
   defp s_table_mixed_extra(value) do
     if value.has_extra do
       if value.extra != 0 do
-        [<<0xb579::little-unsigned-16, 4::little-unsigned-8>>, <<value.extra::little-signed-32>>]
+        [<<0xB579::little-unsigned-16, 4::little-unsigned-8>>, <<value.extra::little-signed-32>>]
       else
         []
       end
@@ -1350,7 +1372,7 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   defp s_table_mixed_idle_ticks(value) do
     if !value.has_extra do
       if value.idle_ticks != 0 do
@@ -1362,224 +1384,224 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   # load_table_mixed overlays one value from a table body and reports every
   # tolerance event (docs/SPEC-TABLES.md §4). The report is the caller's.
   def load_table_mixed(data), do: load_table_mixed(data, R.report())
-  
+
   def load_table_mixed(data, report), do: load_body_table_mixed(data, report)
-  
+
   # the read starts from the DECLARED DEFAULTS and overlays, so a field the
   # body never mentions reads as its default and a repeated id re-establishes
   # nothing an earlier occurrence left (docs/SPEC-TABLES.md §4).
   def load_body_table_mixed(data, report) do
     fields_table_mixed(data, defaults_table_mixed(), report)
   end
-  
+
   defp fields_table_mixed(<<0::little-unsigned-16, _rest::binary>>, value, report), do: {value, report}
-  
+
   defp fields_table_mixed(<<id::little-unsigned-16, kind::little-unsigned-8, rest::binary>>, value, report) do
     result =
       case id do
-        0xae30 -> f_table_mixed_protocol_magic(kind, rest, value, report)
-        0xd32b -> f_table_mixed_sequence(kind, rest, value, report)
+        0xAE30 -> f_table_mixed_protocol_magic(kind, rest, value, report)
+        0xD32B -> f_table_mixed_sequence(kind, rest, value, report)
         0x3363 -> f_table_mixed_ack_sequence(kind, rest, value, report)
-        0xebb9 -> f_table_mixed_ack_bits(kind, rest, value, report)
+        0xEBB9 -> f_table_mixed_ack_bits(kind, rest, value, report)
         0x8790 -> f_table_mixed_session_id(kind, rest, value, report)
-        0xd443 -> f_table_mixed_client_id(kind, rest, value, report)
-        0x80f0 -> f_table_mixed_nonce(kind, rest, value, report)
-        0x77f2 -> f_table_mixed_world_time(kind, rest, value, report)
-        0xcbc2 -> f_table_mixed_frame_tick(kind, rest, value, report)
-        0x27f9 -> f_table_mixed_server_time(kind, rest, value, report)
-        0x25e3 -> f_table_mixed_entities(kind, rest, value, report)
-        0x76dd -> f_table_mixed_stats(kind, rest, value, report)
-        0xa17e -> f_table_mixed_game_event(kind, rest, value, report)
-        0x9f78 -> f_table_mixed_loadout(kind, rest, value, report)
-        0x2d3e -> f_table_mixed_player_name(kind, rest, value, report)
-        0x44aa -> f_table_mixed_payload(kind, rest, value, report)
-        0x84e9 -> f_table_mixed_aim_x(kind, rest, value, report)
-        0x8d96 -> f_table_mixed_aim_y(kind, rest, value, report)
-        0x8e03 -> f_table_mixed_aim_z(kind, rest, value, report)
-        0x2d04 -> f_table_mixed_recoil(kind, rest, value, report)
-        0xc023 -> f_table_mixed_drift(kind, rest, value, report)
-        0x272f -> f_table_mixed_wide_key(kind, rest, value, report)
-        0x196a -> f_table_mixed_flux(kind, rest, value, report)
-        0xe6d4 -> f_table_mixed_ping(kind, rest, value, report)
-        0xd3dc -> f_table_mixed_crc_hint(kind, rest, value, report)
-        0xb023 -> f_table_mixed_has_extra(kind, rest, value, report)
-        0xb579 -> f_table_mixed_extra(kind, rest, value, report)
+        0xD443 -> f_table_mixed_client_id(kind, rest, value, report)
+        0x80F0 -> f_table_mixed_nonce(kind, rest, value, report)
+        0x77F2 -> f_table_mixed_world_time(kind, rest, value, report)
+        0xCBC2 -> f_table_mixed_frame_tick(kind, rest, value, report)
+        0x27F9 -> f_table_mixed_server_time(kind, rest, value, report)
+        0x25E3 -> f_table_mixed_entities(kind, rest, value, report)
+        0x76DD -> f_table_mixed_stats(kind, rest, value, report)
+        0xA17E -> f_table_mixed_game_event(kind, rest, value, report)
+        0x9F78 -> f_table_mixed_loadout(kind, rest, value, report)
+        0x2D3E -> f_table_mixed_player_name(kind, rest, value, report)
+        0x44AA -> f_table_mixed_payload(kind, rest, value, report)
+        0x84E9 -> f_table_mixed_aim_x(kind, rest, value, report)
+        0x8D96 -> f_table_mixed_aim_y(kind, rest, value, report)
+        0x8E03 -> f_table_mixed_aim_z(kind, rest, value, report)
+        0x2D04 -> f_table_mixed_recoil(kind, rest, value, report)
+        0xC023 -> f_table_mixed_drift(kind, rest, value, report)
+        0x272F -> f_table_mixed_wide_key(kind, rest, value, report)
+        0x196A -> f_table_mixed_flux(kind, rest, value, report)
+        0xE6D4 -> f_table_mixed_ping(kind, rest, value, report)
+        0xD3DC -> f_table_mixed_crc_hint(kind, rest, value, report)
+        0xB023 -> f_table_mixed_has_extra(kind, rest, value, report)
+        0xB579 -> f_table_mixed_extra(kind, rest, value, report)
         0x9555 -> f_table_mixed_idle_ticks(kind, rest, value, report)
         _ -> R.skip_unknown(kind, rest, value, report)
       end
-  
+
     case result do
       {:ok, rest2, value2, report2} -> fields_table_mixed(rest2, value2, report2)
       {:stop, value2, report2} -> {value2, R.malformed(report2)}
     end
   end
-  
+
   defp fields_table_mixed(_short, value, report), do: {value, R.malformed(report)}
-  
+
   defp f_table_mixed_protocol_magic(7, rest, value, report) do
     case rest do
       <<raw::little-unsigned-16, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | protocol_magic: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_protocol_magic(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_sequence(7, rest, value, report) do
     case rest do
       <<raw::little-unsigned-16, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | sequence: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_sequence(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_ack_sequence(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 0, 65535, report)
         {:ok, rest2, %{value | ack_sequence: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_ack_sequence(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_ack_bits(8, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | ack_bits: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_ack_bits(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_session_id(9, rest, value, report) do
     case rest do
       <<raw::little-unsigned-64, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | session_id: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_session_id(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_client_id(8, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | client_id: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_client_id(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_nonce(9, rest, value, report) do
     case rest do
       <<raw::little-unsigned-64, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 1, 9223372036854775807, report)
         {:ok, rest2, %{value | nonce: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_nonce(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_world_time(5, rest, value, report) do
     case rest do
       <<raw::little-signed-64, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -1000000000000, 1000000000000, report)
         {:ok, rest2, %{value | world_time: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_world_time(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_frame_tick(9, rest, value, report) do
     case rest do
       <<raw::little-unsigned-64, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | frame_tick: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_frame_tick(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_server_time(10, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = R.f32_value(raw)
         {:ok, rest2, %{value | server_time: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_server_time(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_entities(14, rest, value, report) do
     case rest do
       <<len::little-unsigned-32, body::binary-size(len), rest2::binary>> ->
@@ -1591,37 +1613,37 @@ defmodule Benchtable.BenchTableTable do
               {:ok, rest2, value, R.kind_mismatch(report)}
             else
               {keep, report} = R.clamp_count(count, 8, report)
-              
+
               {list, report} =
                 R.take(elements, keep, report, fn element_body, report ->
                   case element_body do
                     <<len::little-unsigned-32, body::binary-size(len), tail::binary>> ->
                       {element, report} = load_body_table_entity(body, report)
                       {:ok, element, tail, report}
-                  
+
                     _ ->
                       :short
                   end
                 end)
-              
+
               {:ok, rest2, %{value | entities: list}, report}
             end
-        
+
           _ ->
             # a body too short to carry an element kind and a count at all
             {:ok, rest2, value, report}
         end
-    
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_entities(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_stats(14, rest, value, report) do
     case rest do
       <<len::little-unsigned-32, body::binary-size(len), rest2::binary>> ->
@@ -1633,57 +1655,57 @@ defmodule Benchtable.BenchTableTable do
               {:ok, rest2, value, R.kind_mismatch(report)}
             else
               {keep, report} = R.clamp_count(count, 80, report)
-              
+
               {list, report} =
                 R.take(elements, keep, report, fn element_body, report ->
                   case element_body do
                     <<len::little-unsigned-32, body::binary-size(len), tail::binary>> ->
                       {element, report} = load_body_table_stat(body, report)
                       {:ok, element, tail, report}
-                  
+
                     _ ->
                       :short
                   end
                 end)
-              
+
               {:ok, rest2, %{value | stats: list}, report}
             end
-        
+
           _ ->
             # a body too short to carry an element kind and a count at all
             {:ok, rest2, value, report}
         end
-    
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_stats(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_game_event(15, rest, value, report) do
     case rest do
       <<0::little-unsigned-16, rest2::binary>> ->
         # empty: the arm id is the whole payload
         {:ok, rest2, %{value | game_event: %Benchtable.TableEvent{}}, report}
-    
+
       <<arm::little-unsigned-16, len::little-unsigned-32, body::binary-size(len), rest2::binary>> ->
         case arm do
-          0xba78 ->
+          0xBA78 ->
             {payload, report} = load_body_table_hit_event(body, report)
             {:ok, rest2, %{value | game_event: %Benchtable.TableEvent{type: 1, hit: payload}}, report}
-        
-          0x5be0 ->
+
+          0x5BE0 ->
             {payload, report} = load_body_table_chat_event(body, report)
             {:ok, rest2, %{value | game_event: %Benchtable.TableEvent{type: 2, chat: payload}}, report}
-        
-          0x99dd ->
+
+          0x99DD ->
             {payload, report} = load_body_table_pickup_event(body, report)
             {:ok, rest2, %{value | game_event: %Benchtable.TableEvent{type: 3, pickup: payload}}, report}
-        
+
           _ ->
             # an arm this reader cannot name: the value reads EMPTY and the body
             # is skipped by its length, never misdecoded. Re-establishing is
@@ -1691,17 +1713,17 @@ defmodule Benchtable.BenchTableTable do
             # earlier occurrence standing (§4).
             {:ok, rest2, %{value | game_event: %Benchtable.TableEvent{}}, R.unknown(report)}
         end
-    
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_game_event(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_loadout(14, rest, value, report) do
     case rest do
       <<len::little-unsigned-32, body::binary-size(len), rest2::binary>> ->
@@ -1713,56 +1735,56 @@ defmodule Benchtable.BenchTableTable do
               {:ok, rest2, value, R.kind_mismatch(report)}
             else
               {keep, report} = R.clamp_count(count, 4, report)
-              
+
               {list, report} =
                 R.take(elements, keep, report, fn element_body, report ->
                   case element_body do
                     <<raw::little-unsigned-8, tail::binary>> ->
                       decoded = raw
                       {:ok, decoded, tail, report}
-                      
+
                     _ ->
                       :short
                   end
                 end)
-              
+
               # a fixed array keeps every slot: the tail stays at its declared
               # defaults, exactly as a short wire count leaves it (§4)
               filled = list ++ Enum.drop(List.duplicate(0, 4), length(list))
               {:ok, rest2, %{value | loadout: filled}, report}
             end
-        
+
           _ ->
             # a body too short to carry an element kind and a count at all
             {:ok, rest2, value, report}
         end
-    
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_loadout(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_player_name(12, rest, value, report) do
     case rest do
       <<len::little-unsigned-32, body::binary-size(len), rest2::binary>> ->
         {text, report} = R.clamp_bytes(body, 15, report)
         {:ok, rest2, %{value | player_name: text}, report}
-    
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_player_name(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_payload(14, rest, value, report) do
     case rest do
       <<len::little-unsigned-32, body::binary-size(len), rest2::binary>> ->
@@ -1774,225 +1796,225 @@ defmodule Benchtable.BenchTableTable do
               {:ok, rest2, value, R.kind_mismatch(report)}
             else
               {keep, report} = R.clamp_count(count, 16, report)
-              
+
               case elements do
                 <<taken::binary-size(^keep), _::binary>> ->
                   {:ok, rest2, %{value | payload: taken}, report}
-              
+
                 _ ->
                   # a count the body cannot cover: the decoded prefix stands and
                   # the parent reads on past the length (§4)
                   {:ok, rest2, %{value | payload: elements}, R.malformed(report)}
               end
             end
-        
+
           _ ->
             # a body too short to carry an element kind and a count at all
             {:ok, rest2, value, report}
         end
-    
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_payload(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_aim_x(10, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = R.f32_value(raw)
         {:ok, rest2, %{value | aim_x: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_aim_x(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_aim_y(10, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = R.f32_value(raw)
         {:ok, rest2, %{value | aim_y: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_aim_y(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_aim_z(10, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = R.f32_value(raw)
         {:ok, rest2, %{value | aim_z: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_aim_z(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_recoil(10, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = R.f32_value(raw)
         {:ok, rest2, %{value | recoil: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_recoil(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_drift(11, rest, value, report) do
     case rest do
       <<raw::little-unsigned-64, rest2::binary>> ->
         decoded = R.f64_value(raw)
         {:ok, rest2, %{value | drift: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_drift(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_wide_key(9, rest, value, report) do
     case rest do
       <<raw::little-unsigned-64, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | wide_key: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_wide_key(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_flux(5, rest, value, report) do
     case rest do
       <<raw::little-signed-64, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, -1000000000000000000, 1000000000000000000, report)
         {:ok, rest2, %{value | flux: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_flux(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_ping(10, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = R.f32_value(raw)
         {:ok, rest2, %{value | ping: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_ping(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_crc_hint(8, rest, value, report) do
     case rest do
       <<raw::little-unsigned-32, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | crc_hint: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_crc_hint(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_has_extra(1, rest, value, report) do
     case rest do
       <<raw::little-unsigned-8, rest2::binary>> ->
         decoded = raw != 0
         {:ok, rest2, %{value | has_extra: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_has_extra(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_extra(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 0, 255, report)
         {:ok, rest2, %{value | extra: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_extra(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_mixed_idle_ticks(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 0, 15, report)
         {:ok, rest2, %{value | idle_ticks: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_mixed_idle_ticks(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   # measure_table_hit_event is the EXACT encoded size of a value, with no writing. A value
   # violating its storage invariants measures as -1, exactly as the write side
   # refuses it (docs/SPEC-TABLES.md §5).
@@ -2003,7 +2025,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> -1
     end
   end
-  
+
   def measure_body_table_hit_event(value) do
     # 2 is the terminator
     2 +
@@ -2012,23 +2034,23 @@ defmodule Benchtable.BenchTableTable do
       m_table_hit_event_hit_kind(value) +
       m_table_hit_event_crit(value)
   end
-  
+
   defp m_table_hit_event_target_id(value) do
     if value.target_id != 0, do: 3 + 2, else: 0
   end
-  
+
   defp m_table_hit_event_damage(value) do
     if value.damage != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_hit_event_hit_kind(value) do
     if value.hit_kind != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_hit_event_crit(value) do
     if value.crit, do: 3 + 1, else: 0
   end
-  
+
   # save_table_hit_event writes exactly measure_table_hit_event(value) bytes.
   def save_table_hit_event(value) do
     try do
@@ -2037,7 +2059,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> :refused
     end
   end
-  
+
   def save_body_table_hit_event(value) do
     [
       s_table_hit_event_target_id(value),
@@ -2047,136 +2069,136 @@ defmodule Benchtable.BenchTableTable do
       <<0::little-unsigned-16>>
     ]
   end
-  
+
   defp s_table_hit_event_target_id(value) do
     if value.target_id != 0 do
-      [<<0xdf6a::little-unsigned-16, 7::little-unsigned-8>>, <<value.target_id::little-unsigned-16>>]
+      [<<0xDF6A::little-unsigned-16, 7::little-unsigned-8>>, <<value.target_id::little-unsigned-16>>]
     else
       []
     end
   end
-  
+
   defp s_table_hit_event_damage(value) do
     if value.damage != 0 do
-      [<<0x15a9::little-unsigned-16, 4::little-unsigned-8>>, <<value.damage::little-signed-32>>]
+      [<<0x15A9::little-unsigned-16, 4::little-unsigned-8>>, <<value.damage::little-signed-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_hit_event_hit_kind(value) do
     if value.hit_kind != 0 do
-      [<<0xaf83::little-unsigned-16, 4::little-unsigned-8>>, <<value.hit_kind::little-signed-32>>]
+      [<<0xAF83::little-unsigned-16, 4::little-unsigned-8>>, <<value.hit_kind::little-signed-32>>]
     else
       []
     end
   end
-  
+
   defp s_table_hit_event_crit(value) do
     if value.crit do
-      [<<0x93d9::little-unsigned-16, 1::little-unsigned-8>>, <<R.bool_bits(value.crit)::little-unsigned-8>>]
+      [<<0x93D9::little-unsigned-16, 1::little-unsigned-8>>, <<R.bool_bits(value.crit)::little-unsigned-8>>]
     else
       []
     end
   end
-  
+
   # load_table_hit_event overlays one value from a table body and reports every
   # tolerance event (docs/SPEC-TABLES.md §4). The report is the caller's.
   def load_table_hit_event(data), do: load_table_hit_event(data, R.report())
-  
+
   def load_table_hit_event(data, report), do: load_body_table_hit_event(data, report)
-  
+
   # the read starts from the DECLARED DEFAULTS and overlays, so a field the
   # body never mentions reads as its default and a repeated id re-establishes
   # nothing an earlier occurrence left (docs/SPEC-TABLES.md §4).
   def load_body_table_hit_event(data, report) do
     fields_table_hit_event(data, defaults_table_hit_event(), report)
   end
-  
+
   defp fields_table_hit_event(<<0::little-unsigned-16, _rest::binary>>, value, report), do: {value, report}
-  
+
   defp fields_table_hit_event(<<id::little-unsigned-16, kind::little-unsigned-8, rest::binary>>, value, report) do
     result =
       case id do
-        0xdf6a -> f_table_hit_event_target_id(kind, rest, value, report)
-        0x15a9 -> f_table_hit_event_damage(kind, rest, value, report)
-        0xaf83 -> f_table_hit_event_hit_kind(kind, rest, value, report)
-        0x93d9 -> f_table_hit_event_crit(kind, rest, value, report)
+        0xDF6A -> f_table_hit_event_target_id(kind, rest, value, report)
+        0x15A9 -> f_table_hit_event_damage(kind, rest, value, report)
+        0xAF83 -> f_table_hit_event_hit_kind(kind, rest, value, report)
+        0x93D9 -> f_table_hit_event_crit(kind, rest, value, report)
         _ -> R.skip_unknown(kind, rest, value, report)
       end
-  
+
     case result do
       {:ok, rest2, value2, report2} -> fields_table_hit_event(rest2, value2, report2)
       {:stop, value2, report2} -> {value2, R.malformed(report2)}
     end
   end
-  
+
   defp fields_table_hit_event(_short, value, report), do: {value, R.malformed(report)}
-  
+
   defp f_table_hit_event_target_id(7, rest, value, report) do
     case rest do
       <<raw::little-unsigned-16, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | target_id: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_hit_event_target_id(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_hit_event_damage(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 0, 4095, report)
         {:ok, rest2, %{value | damage: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_hit_event_damage(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_hit_event_hit_kind(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 0, 7, report)
         {:ok, rest2, %{value | hit_kind: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_hit_event_hit_kind(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_hit_event_crit(1, rest, value, report) do
     case rest do
       <<raw::little-unsigned-8, rest2::binary>> ->
         decoded = raw != 0
         {:ok, rest2, %{value | crit: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_hit_event_crit(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   # measure_table_chat_event is the EXACT encoded size of a value, with no writing. A value
   # violating its storage invariants measures as -1, exactly as the write side
   # refuses it (docs/SPEC-TABLES.md §5).
@@ -2187,22 +2209,22 @@ defmodule Benchtable.BenchTableTable do
       :refused -> -1
     end
   end
-  
+
   def measure_body_table_chat_event(value) do
     # 2 is the terminator
     2 +
       m_table_chat_event_channel(value) +
       m_table_chat_event_speaker(value)
   end
-  
+
   defp m_table_chat_event_channel(value) do
     if value.channel != 0, do: 3 + 4, else: 0
   end
-  
+
   defp m_table_chat_event_speaker(value) do
     if value.speaker != 0, do: 3 + 2, else: 0
   end
-  
+
   # save_table_chat_event writes exactly measure_table_chat_event(value) bytes.
   def save_table_chat_event(value) do
     try do
@@ -2211,7 +2233,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> :refused
     end
   end
-  
+
   def save_body_table_chat_event(value) do
     [
       s_table_chat_event_channel(value),
@@ -2219,7 +2241,7 @@ defmodule Benchtable.BenchTableTable do
       <<0::little-unsigned-16>>
     ]
   end
-  
+
   defp s_table_chat_event_channel(value) do
     if value.channel != 0 do
       [<<0x7366::little-unsigned-16, 4::little-unsigned-8>>, <<value.channel::little-signed-32>>]
@@ -2227,78 +2249,78 @@ defmodule Benchtable.BenchTableTable do
       []
     end
   end
-  
+
   defp s_table_chat_event_speaker(value) do
     if value.speaker != 0 do
-      [<<0xce0b::little-unsigned-16, 7::little-unsigned-8>>, <<value.speaker::little-unsigned-16>>]
+      [<<0xCE0B::little-unsigned-16, 7::little-unsigned-8>>, <<value.speaker::little-unsigned-16>>]
     else
       []
     end
   end
-  
+
   # load_table_chat_event overlays one value from a table body and reports every
   # tolerance event (docs/SPEC-TABLES.md §4). The report is the caller's.
   def load_table_chat_event(data), do: load_table_chat_event(data, R.report())
-  
+
   def load_table_chat_event(data, report), do: load_body_table_chat_event(data, report)
-  
+
   # the read starts from the DECLARED DEFAULTS and overlays, so a field the
   # body never mentions reads as its default and a repeated id re-establishes
   # nothing an earlier occurrence left (docs/SPEC-TABLES.md §4).
   def load_body_table_chat_event(data, report) do
     fields_table_chat_event(data, defaults_table_chat_event(), report)
   end
-  
+
   defp fields_table_chat_event(<<0::little-unsigned-16, _rest::binary>>, value, report), do: {value, report}
-  
+
   defp fields_table_chat_event(<<id::little-unsigned-16, kind::little-unsigned-8, rest::binary>>, value, report) do
     result =
       case id do
         0x7366 -> f_table_chat_event_channel(kind, rest, value, report)
-        0xce0b -> f_table_chat_event_speaker(kind, rest, value, report)
+        0xCE0B -> f_table_chat_event_speaker(kind, rest, value, report)
         _ -> R.skip_unknown(kind, rest, value, report)
       end
-  
+
     case result do
       {:ok, rest2, value2, report2} -> fields_table_chat_event(rest2, value2, report2)
       {:stop, value2, report2} -> {value2, R.malformed(report2)}
     end
   end
-  
+
   defp fields_table_chat_event(_short, value, report), do: {value, R.malformed(report)}
-  
+
   defp f_table_chat_event_channel(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 0, 3, report)
         {:ok, rest2, %{value | channel: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_chat_event_channel(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_chat_event_speaker(7, rest, value, report) do
     case rest do
       <<raw::little-unsigned-16, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | speaker: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_chat_event_speaker(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   # measure_table_pickup_event is the EXACT encoded size of a value, with no writing. A value
   # violating its storage invariants measures as -1, exactly as the write side
   # refuses it (docs/SPEC-TABLES.md §5).
@@ -2309,22 +2331,22 @@ defmodule Benchtable.BenchTableTable do
       :refused -> -1
     end
   end
-  
+
   def measure_body_table_pickup_event(value) do
     # 2 is the terminator
     2 +
       m_table_pickup_event_item_id(value) +
       m_table_pickup_event_amount(value)
   end
-  
+
   defp m_table_pickup_event_item_id(value) do
     if value.item_id != 0, do: 3 + 2, else: 0
   end
-  
+
   defp m_table_pickup_event_amount(value) do
     if value.amount != 0, do: 3 + 4, else: 0
   end
-  
+
   # save_table_pickup_event writes exactly measure_table_pickup_event(value) bytes.
   def save_table_pickup_event(value) do
     try do
@@ -2333,7 +2355,7 @@ defmodule Benchtable.BenchTableTable do
       :refused -> :refused
     end
   end
-  
+
   def save_body_table_pickup_event(value) do
     [
       s_table_pickup_event_item_id(value),
@@ -2341,86 +2363,86 @@ defmodule Benchtable.BenchTableTable do
       <<0::little-unsigned-16>>
     ]
   end
-  
+
   defp s_table_pickup_event_item_id(value) do
     if value.item_id != 0 do
-      [<<0xec67::little-unsigned-16, 7::little-unsigned-8>>, <<value.item_id::little-unsigned-16>>]
+      [<<0xEC67::little-unsigned-16, 7::little-unsigned-8>>, <<value.item_id::little-unsigned-16>>]
     else
       []
     end
   end
-  
+
   defp s_table_pickup_event_amount(value) do
     if value.amount != 0 do
-      [<<0x39cc::little-unsigned-16, 4::little-unsigned-8>>, <<value.amount::little-signed-32>>]
+      [<<0x39CC::little-unsigned-16, 4::little-unsigned-8>>, <<value.amount::little-signed-32>>]
     else
       []
     end
   end
-  
+
   # load_table_pickup_event overlays one value from a table body and reports every
   # tolerance event (docs/SPEC-TABLES.md §4). The report is the caller's.
   def load_table_pickup_event(data), do: load_table_pickup_event(data, R.report())
-  
+
   def load_table_pickup_event(data, report), do: load_body_table_pickup_event(data, report)
-  
+
   # the read starts from the DECLARED DEFAULTS and overlays, so a field the
   # body never mentions reads as its default and a repeated id re-establishes
   # nothing an earlier occurrence left (docs/SPEC-TABLES.md §4).
   def load_body_table_pickup_event(data, report) do
     fields_table_pickup_event(data, defaults_table_pickup_event(), report)
   end
-  
+
   defp fields_table_pickup_event(<<0::little-unsigned-16, _rest::binary>>, value, report), do: {value, report}
-  
+
   defp fields_table_pickup_event(<<id::little-unsigned-16, kind::little-unsigned-8, rest::binary>>, value, report) do
     result =
       case id do
-        0xec67 -> f_table_pickup_event_item_id(kind, rest, value, report)
-        0x39cc -> f_table_pickup_event_amount(kind, rest, value, report)
+        0xEC67 -> f_table_pickup_event_item_id(kind, rest, value, report)
+        0x39CC -> f_table_pickup_event_amount(kind, rest, value, report)
         _ -> R.skip_unknown(kind, rest, value, report)
       end
-  
+
     case result do
       {:ok, rest2, value2, report2} -> fields_table_pickup_event(rest2, value2, report2)
       {:stop, value2, report2} -> {value2, R.malformed(report2)}
     end
   end
-  
+
   defp fields_table_pickup_event(_short, value, report), do: {value, R.malformed(report)}
-  
+
   defp f_table_pickup_event_item_id(7, rest, value, report) do
     case rest do
       <<raw::little-unsigned-16, rest2::binary>> ->
         decoded = raw
         {:ok, rest2, %{value | item_id: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_pickup_event_item_id(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   defp f_table_pickup_event_amount(4, rest, value, report) do
     case rest do
       <<raw::little-signed-32, rest2::binary>> ->
         {decoded, report} = R.clamp(raw, 0, 255, report)
         {:ok, rest2, %{value | amount: decoded}, report}
-        
+
       _ ->
         {:stop, value, report}
     end
   end
-  
+
   defp f_table_pickup_event_amount(kind, rest, value, report) do
     # a field that changed KIND between builds: skipped, never misdecoded
     R.skip_mismatch(kind, rest, value, report)
   end
-  
+
   # TableEvent's arms, for the generic walk: position 0 is None, so a tag
   # indexes this list directly (docs/SPEC-TABLES.md §8).
   @table_union_table_event [
@@ -2430,9 +2452,9 @@ defmodule Benchtable.BenchTableTable do
     %{name: "pickup", key: :pickup, table: {Benchtable.BenchTableTable, :table_type_table_pickup_event}},
   ]
   def table_union_table_event, do: @table_union_table_event
-  
+
   def union_defaults_table_event, do: %Benchtable.TableEvent{}
-  
+
   # ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
   #
   # Field descriptors for every type in the table closure: name, wire id and
@@ -2441,7 +2463,7 @@ defmodule Benchtable.BenchTableTable do
   # diff or bind any table value at runtime with no schema files on hand.
   # They are module attributes, so this costs a literal read rather than a
   # parse, and they are immutable, so any process may read them.
-  
+
   @table_type_table_entity %{
     name: "TableEntity",
     new: {Benchtable.BenchTableTable, :defaults_table_entity},
@@ -2451,7 +2473,7 @@ defmodule Benchtable.BenchTableTable do
         json: "entity_id",
         type_name: "bits(12)",
         key: :entity_id,
-        id: 0x5a13,
+        id: 0x5A13,
         kind: 7,
         array: :none,
         bound: 0,
@@ -2473,7 +2495,7 @@ defmodule Benchtable.BenchTableTable do
         json: "pos_x",
         type_name: "int32",
         key: :pos_x,
-        id: 0xaaa3,
+        id: 0xAAA3,
         kind: 4,
         array: :none,
         bound: 0,
@@ -2495,7 +2517,7 @@ defmodule Benchtable.BenchTableTable do
         json: "pos_y",
         type_name: "int32",
         key: :pos_y,
-        id: 0xa5cc,
+        id: 0xA5CC,
         kind: 4,
         array: :none,
         bound: 0,
@@ -2517,7 +2539,7 @@ defmodule Benchtable.BenchTableTable do
         json: "pos_z",
         type_name: "int32",
         key: :pos_z,
-        id: 0xa985,
+        id: 0xA985,
         kind: 4,
         array: :none,
         bound: 0,
@@ -2539,7 +2561,7 @@ defmodule Benchtable.BenchTableTable do
         json: "yaw",
         type_name: "bits(9)",
         key: :yaw,
-        id: 0x80c1,
+        id: 0x80C1,
         kind: 7,
         array: :none,
         bound: 0,
@@ -2561,7 +2583,7 @@ defmodule Benchtable.BenchTableTable do
         json: "pitch",
         type_name: "bits(9)",
         key: :pitch,
-        id: 0xf783,
+        id: 0xF783,
         kind: 7,
         array: :none,
         bound: 0,
@@ -2583,7 +2605,7 @@ defmodule Benchtable.BenchTableTable do
         json: "vel_x",
         type_name: "int32",
         key: :vel_x,
-        id: 0x03e2,
+        id: 0x03E2,
         kind: 4,
         array: :none,
         bound: 0,
@@ -2627,7 +2649,7 @@ defmodule Benchtable.BenchTableTable do
         json: "vel_z",
         type_name: "int32",
         key: :vel_z,
-        id: 0x0e88,
+        id: 0x0E88,
         kind: 4,
         array: :none,
         bound: 0,
@@ -2671,7 +2693,7 @@ defmodule Benchtable.BenchTableTable do
         json: "weapon",
         type_name: "TableWeapon",
         key: :weapon,
-        id: 0x4f72,
+        id: 0x4F72,
         kind: 7,
         array: :none,
         bound: 0,
@@ -2693,7 +2715,7 @@ defmodule Benchtable.BenchTableTable do
         json: "damage",
         type_name: "TableDamage",
         key: :damage,
-        id: 0x15a9,
+        id: 0x15A9,
         kind: 9,
         array: :none,
         bound: 0,
@@ -2715,7 +2737,7 @@ defmodule Benchtable.BenchTableTable do
         json: "moving",
         type_name: "bool",
         key: :moving,
-        id: 0xa4b2,
+        id: 0xA4B2,
         kind: 1,
         array: :none,
         bound: 0,
@@ -2757,7 +2779,7 @@ defmodule Benchtable.BenchTableTable do
     ]
   }
   def table_type_table_entity, do: @table_type_table_entity
-  
+
   @table_type_table_stat %{
     name: "TableStat",
     new: {Benchtable.BenchTableTable, :defaults_table_stat},
@@ -2767,7 +2789,7 @@ defmodule Benchtable.BenchTableTable do
         json: "stat_id",
         type_name: "bits(8)",
         key: :stat_id,
-        id: 0xfb6c,
+        id: 0xFB6C,
         kind: 6,
         array: :none,
         bound: 0,
@@ -2809,7 +2831,7 @@ defmodule Benchtable.BenchTableTable do
     ]
   }
   def table_type_table_stat, do: @table_type_table_stat
-  
+
   @table_type_table_mixed %{
     name: "TableMixed",
     new: {Benchtable.BenchTableTable, :defaults_table_mixed},
@@ -2819,7 +2841,7 @@ defmodule Benchtable.BenchTableTable do
         json: "protocol_magic",
         type_name: "uint16",
         key: :protocol_magic,
-        id: 0xae30,
+        id: 0xAE30,
         kind: 7,
         array: :none,
         bound: 0,
@@ -2841,7 +2863,7 @@ defmodule Benchtable.BenchTableTable do
         json: "sequence",
         type_name: "bits(16)",
         key: :sequence,
-        id: 0xd32b,
+        id: 0xD32B,
         kind: 7,
         array: :none,
         bound: 0,
@@ -2885,7 +2907,7 @@ defmodule Benchtable.BenchTableTable do
         json: "ack_bits",
         type_name: "bits(32)",
         key: :ack_bits,
-        id: 0xebb9,
+        id: 0xEBB9,
         kind: 8,
         array: :none,
         bound: 0,
@@ -2929,7 +2951,7 @@ defmodule Benchtable.BenchTableTable do
         json: "client_id",
         type_name: "uint32",
         key: :client_id,
-        id: 0xd443,
+        id: 0xD443,
         kind: 8,
         array: :none,
         bound: 0,
@@ -2951,7 +2973,7 @@ defmodule Benchtable.BenchTableTable do
         json: "nonce",
         type_name: "uint64",
         key: :nonce,
-        id: 0x80f0,
+        id: 0x80F0,
         kind: 9,
         array: :none,
         bound: 0,
@@ -2973,7 +2995,7 @@ defmodule Benchtable.BenchTableTable do
         json: "world_time",
         type_name: "int64",
         key: :world_time,
-        id: 0x77f2,
+        id: 0x77F2,
         kind: 5,
         array: :none,
         bound: 0,
@@ -2995,7 +3017,7 @@ defmodule Benchtable.BenchTableTable do
         json: "frame_tick",
         type_name: "bits(48)",
         key: :frame_tick,
-        id: 0xcbc2,
+        id: 0xCBC2,
         kind: 9,
         array: :none,
         bound: 0,
@@ -3017,7 +3039,7 @@ defmodule Benchtable.BenchTableTable do
         json: "server_time",
         type_name: "float32",
         key: :server_time,
-        id: 0x27f9,
+        id: 0x27F9,
         kind: 10,
         array: :none,
         bound: 0,
@@ -3039,7 +3061,7 @@ defmodule Benchtable.BenchTableTable do
         json: "entities",
         type_name: "TableEntity",
         key: :entities,
-        id: 0x25e3,
+        id: 0x25E3,
         kind: 13,
         array: :counted,
         bound: 8,
@@ -3061,7 +3083,7 @@ defmodule Benchtable.BenchTableTable do
         json: "stats",
         type_name: "TableStat",
         key: :stats,
-        id: 0x76dd,
+        id: 0x76DD,
         kind: 13,
         array: :counted,
         bound: 80,
@@ -3083,7 +3105,7 @@ defmodule Benchtable.BenchTableTable do
         json: "game_event",
         type_name: "TableEvent",
         key: :game_event,
-        id: 0xa17e,
+        id: 0xA17E,
         kind: 15,
         array: :none,
         bound: 0,
@@ -3105,7 +3127,7 @@ defmodule Benchtable.BenchTableTable do
         json: "loadout",
         type_name: "uint8",
         key: :loadout,
-        id: 0x9f78,
+        id: 0x9F78,
         kind: 6,
         array: :fixed,
         bound: 4,
@@ -3127,7 +3149,7 @@ defmodule Benchtable.BenchTableTable do
         json: "player_name",
         type_name: "string",
         key: :player_name,
-        id: 0x2d3e,
+        id: 0x2D3E,
         kind: 12,
         array: :string,
         bound: 15,
@@ -3149,7 +3171,7 @@ defmodule Benchtable.BenchTableTable do
         json: "payload",
         type_name: "bytes",
         key: :payload,
-        id: 0x44aa,
+        id: 0x44AA,
         kind: 6,
         array: :bytes,
         bound: 16,
@@ -3171,7 +3193,7 @@ defmodule Benchtable.BenchTableTable do
         json: "aim_x",
         type_name: "float32",
         key: :aim_x,
-        id: 0x84e9,
+        id: 0x84E9,
         kind: 10,
         array: :none,
         bound: 0,
@@ -3193,7 +3215,7 @@ defmodule Benchtable.BenchTableTable do
         json: "aim_y",
         type_name: "float32",
         key: :aim_y,
-        id: 0x8d96,
+        id: 0x8D96,
         kind: 10,
         array: :none,
         bound: 0,
@@ -3215,7 +3237,7 @@ defmodule Benchtable.BenchTableTable do
         json: "aim_z",
         type_name: "float32",
         key: :aim_z,
-        id: 0x8e03,
+        id: 0x8E03,
         kind: 10,
         array: :none,
         bound: 0,
@@ -3237,7 +3259,7 @@ defmodule Benchtable.BenchTableTable do
         json: "recoil",
         type_name: "float32",
         key: :recoil,
-        id: 0x2d04,
+        id: 0x2D04,
         kind: 10,
         array: :none,
         bound: 0,
@@ -3259,7 +3281,7 @@ defmodule Benchtable.BenchTableTable do
         json: "drift",
         type_name: "float64",
         key: :drift,
-        id: 0xc023,
+        id: 0xC023,
         kind: 11,
         array: :none,
         bound: 0,
@@ -3281,7 +3303,7 @@ defmodule Benchtable.BenchTableTable do
         json: "wide_key",
         type_name: "uint64",
         key: :wide_key,
-        id: 0x272f,
+        id: 0x272F,
         kind: 9,
         array: :none,
         bound: 0,
@@ -3303,7 +3325,7 @@ defmodule Benchtable.BenchTableTable do
         json: "flux",
         type_name: "int64",
         key: :flux,
-        id: 0x196a,
+        id: 0x196A,
         kind: 5,
         array: :none,
         bound: 0,
@@ -3325,7 +3347,7 @@ defmodule Benchtable.BenchTableTable do
         json: "ping",
         type_name: "float32",
         key: :ping,
-        id: 0xe6d4,
+        id: 0xE6D4,
         kind: 10,
         array: :none,
         bound: 0,
@@ -3347,7 +3369,7 @@ defmodule Benchtable.BenchTableTable do
         json: "crc_hint",
         type_name: "bits(24)",
         key: :crc_hint,
-        id: 0xd3dc,
+        id: 0xD3DC,
         kind: 8,
         array: :none,
         bound: 0,
@@ -3369,7 +3391,7 @@ defmodule Benchtable.BenchTableTable do
         json: "has_extra",
         type_name: "bool",
         key: :has_extra,
-        id: 0xb023,
+        id: 0xB023,
         kind: 1,
         array: :none,
         bound: 0,
@@ -3391,7 +3413,7 @@ defmodule Benchtable.BenchTableTable do
         json: "extra",
         type_name: "int32",
         key: :extra,
-        id: 0xb579,
+        id: 0xB579,
         kind: 4,
         array: :none,
         bound: 0,
@@ -3433,7 +3455,7 @@ defmodule Benchtable.BenchTableTable do
     ]
   }
   def table_type_table_mixed, do: @table_type_table_mixed
-  
+
   @table_type_table_hit_event %{
     name: "TableHitEvent",
     new: {Benchtable.BenchTableTable, :defaults_table_hit_event},
@@ -3443,7 +3465,7 @@ defmodule Benchtable.BenchTableTable do
         json: "target_id",
         type_name: "bits(12)",
         key: :target_id,
-        id: 0xdf6a,
+        id: 0xDF6A,
         kind: 7,
         array: :none,
         bound: 0,
@@ -3465,7 +3487,7 @@ defmodule Benchtable.BenchTableTable do
         json: "damage",
         type_name: "int32",
         key: :damage,
-        id: 0x15a9,
+        id: 0x15A9,
         kind: 4,
         array: :none,
         bound: 0,
@@ -3487,7 +3509,7 @@ defmodule Benchtable.BenchTableTable do
         json: "hit_kind",
         type_name: "int32",
         key: :hit_kind,
-        id: 0xaf83,
+        id: 0xAF83,
         kind: 4,
         array: :none,
         bound: 0,
@@ -3509,7 +3531,7 @@ defmodule Benchtable.BenchTableTable do
         json: "crit",
         type_name: "bool",
         key: :crit,
-        id: 0x93d9,
+        id: 0x93D9,
         kind: 1,
         array: :none,
         bound: 0,
@@ -3529,7 +3551,7 @@ defmodule Benchtable.BenchTableTable do
     ]
   }
   def table_type_table_hit_event, do: @table_type_table_hit_event
-  
+
   @table_type_table_chat_event %{
     name: "TableChatEvent",
     new: {Benchtable.BenchTableTable, :defaults_table_chat_event},
@@ -3561,7 +3583,7 @@ defmodule Benchtable.BenchTableTable do
         json: "speaker",
         type_name: "bits(12)",
         key: :speaker,
-        id: 0xce0b,
+        id: 0xCE0B,
         kind: 7,
         array: :none,
         bound: 0,
@@ -3581,7 +3603,7 @@ defmodule Benchtable.BenchTableTable do
     ]
   }
   def table_type_table_chat_event, do: @table_type_table_chat_event
-  
+
   @table_type_table_pickup_event %{
     name: "TablePickupEvent",
     new: {Benchtable.BenchTableTable, :defaults_table_pickup_event},
@@ -3591,7 +3613,7 @@ defmodule Benchtable.BenchTableTable do
         json: "item_id",
         type_name: "bits(10)",
         key: :item_id,
-        id: 0xec67,
+        id: 0xEC67,
         kind: 7,
         array: :none,
         bound: 0,
@@ -3613,7 +3635,7 @@ defmodule Benchtable.BenchTableTable do
         json: "amount",
         type_name: "int32",
         key: :amount,
-        id: 0x39cc,
+        id: 0x39CC,
         kind: 4,
         array: :none,
         bound: 0,
@@ -3633,23 +3655,23 @@ defmodule Benchtable.BenchTableTable do
     ]
   }
   def table_type_table_pickup_event, do: @table_type_table_pickup_event
-  
+
   # ---- the text form (docs/SPEC-TABLES.md §16) ----
   #
   # One table, one text, one walk over the reflection descriptors. These are
   # the per-table entry points; the walk itself lives once in the shared
   # runtime, which is what makes the text form schema's rather than a
   # packer's (§16.1).
-  
+
   # from_json_table_entity fills one TableEntity from the §16 text, reporting every tolerance
   # event. Unknown keys skip, a duplicate key is last-wins, a key with the
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_entity(text), do: R.json_read(text, table_type_table_entity())
-  
+
   # to_json_table_entity returns the §16 text, or :refused where a value has no text
   # spelling at all (§16.3). The canonical text ends with exactly one newline.
   def to_json_table_entity(value), do: R.json_write(value, table_type_table_entity())
-  
+
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
@@ -3660,16 +3682,16 @@ defmodule Benchtable.BenchTableTable do
       text -> byte_size(text)
     end
   end
-  
+
   # from_json_table_stat fills one TableStat from the §16 text, reporting every tolerance
   # event. Unknown keys skip, a duplicate key is last-wins, a key with the
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_stat(text), do: R.json_read(text, table_type_table_stat())
-  
+
   # to_json_table_stat returns the §16 text, or :refused where a value has no text
   # spelling at all (§16.3). The canonical text ends with exactly one newline.
   def to_json_table_stat(value), do: R.json_write(value, table_type_table_stat())
-  
+
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
@@ -3680,16 +3702,16 @@ defmodule Benchtable.BenchTableTable do
       text -> byte_size(text)
     end
   end
-  
+
   # from_json_table_mixed fills one TableMixed from the §16 text, reporting every tolerance
   # event. Unknown keys skip, a duplicate key is last-wins, a key with the
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_mixed(text), do: R.json_read(text, table_type_table_mixed())
-  
+
   # to_json_table_mixed returns the §16 text, or :refused where a value has no text
   # spelling at all (§16.3). The canonical text ends with exactly one newline.
   def to_json_table_mixed(value), do: R.json_write(value, table_type_table_mixed())
-  
+
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
@@ -3700,16 +3722,16 @@ defmodule Benchtable.BenchTableTable do
       text -> byte_size(text)
     end
   end
-  
+
   # from_json_table_hit_event fills one TableHitEvent from the §16 text, reporting every tolerance
   # event. Unknown keys skip, a duplicate key is last-wins, a key with the
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_hit_event(text), do: R.json_read(text, table_type_table_hit_event())
-  
+
   # to_json_table_hit_event returns the §16 text, or :refused where a value has no text
   # spelling at all (§16.3). The canonical text ends with exactly one newline.
   def to_json_table_hit_event(value), do: R.json_write(value, table_type_table_hit_event())
-  
+
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
@@ -3720,16 +3742,16 @@ defmodule Benchtable.BenchTableTable do
       text -> byte_size(text)
     end
   end
-  
+
   # from_json_table_chat_event fills one TableChatEvent from the §16 text, reporting every tolerance
   # event. Unknown keys skip, a duplicate key is last-wins, a key with the
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_chat_event(text), do: R.json_read(text, table_type_table_chat_event())
-  
+
   # to_json_table_chat_event returns the §16 text, or :refused where a value has no text
   # spelling at all (§16.3). The canonical text ends with exactly one newline.
   def to_json_table_chat_event(value), do: R.json_write(value, table_type_table_chat_event())
-  
+
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
@@ -3740,16 +3762,16 @@ defmodule Benchtable.BenchTableTable do
       text -> byte_size(text)
     end
   end
-  
+
   # from_json_table_pickup_event fills one TablePickupEvent from the §16 text, reporting every tolerance
   # event. Unknown keys skip, a duplicate key is last-wins, a key with the
   # wrong JSON type is skipped and counted, never coerced.
   def from_json_table_pickup_event(text), do: R.json_read(text, table_type_table_pickup_event())
-  
+
   # to_json_table_pickup_event returns the §16 text, or :refused where a value has no text
   # spelling at all (§16.3). The canonical text ends with exactly one newline.
   def to_json_table_pickup_event(value), do: R.json_write(value, table_type_table_pickup_event())
-  
+
   # THE MEASURE DEVIATION, named: a BEAM caller owns no buffer for the text
   # to be written into, so there is nothing for a measure pass to size. The
   # byte length is the text's own, and measure and write agree by
@@ -3760,5 +3782,5 @@ defmodule Benchtable.BenchTableTable do
       text -> byte_size(text)
     end
   end
-  
+
 end

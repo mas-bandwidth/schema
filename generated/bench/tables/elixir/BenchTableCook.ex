@@ -391,9 +391,9 @@ defmodule Benchtable.BenchTableCook do
   #
   # §7.1's constants, so a consumer reading this file has the facts and not
   # a description of them.
-  def table_entity_region_alignment, do: 8
-  def table_entity_root_size, do: 64
-  def table_entity_root_align, do: 8
+  def table_entity_cook_region_alignment, do: 8
+  def table_entity_cook_root_size, do: 64
+  def table_entity_cook_root_align, do: 8
 
   def cook_open_table_entity(data), do: cook_open_table_entity(data, 0)
 
@@ -418,29 +418,29 @@ defmodule Benchtable.BenchTableCook do
 
   # the TYPED slot accessors: each field of a TableEntity node, read at its own
   # offset from the node's base within the region.
-  def table_entity_entity_id(region, node), do: C.uint(region, node + 0, 4)
-  def table_entity_pos_x(region, node), do: C.int(region, node + 4, 4)
-  def table_entity_pos_y(region, node), do: C.int(region, node + 8, 4)
-  def table_entity_pos_z(region, node), do: C.int(region, node + 12, 4)
-  def table_entity_yaw(region, node), do: C.uint(region, node + 16, 4)
-  def table_entity_pitch(region, node), do: C.uint(region, node + 20, 4)
-  def table_entity_vel_x(region, node), do: C.int(region, node + 24, 4)
-  def table_entity_vel_y(region, node), do: C.int(region, node + 28, 4)
-  def table_entity_vel_z(region, node), do: C.int(region, node + 32, 4)
-  def table_entity_health(region, node), do: C.int(region, node + 36, 4)
-  def table_entity_weapon(region, node), do: C.uint(region, node + 40, 1)
-  def table_entity_damage(region, node), do: C.uint(region, node + 48, 8)
-  def table_entity_moving(region, node), do: C.bool(region, node + 56)
-  def table_entity_firing(region, node), do: C.bool(region, node + 57)
+  def table_entity_node_entity_id(region, node), do: C.uint(region, node + 0, 4)
+  def table_entity_node_pos_x(region, node), do: C.int(region, node + 4, 4)
+  def table_entity_node_pos_y(region, node), do: C.int(region, node + 8, 4)
+  def table_entity_node_pos_z(region, node), do: C.int(region, node + 12, 4)
+  def table_entity_node_yaw(region, node), do: C.uint(region, node + 16, 4)
+  def table_entity_node_pitch(region, node), do: C.uint(region, node + 20, 4)
+  def table_entity_node_vel_x(region, node), do: C.int(region, node + 24, 4)
+  def table_entity_node_vel_y(region, node), do: C.int(region, node + 28, 4)
+  def table_entity_node_vel_z(region, node), do: C.int(region, node + 32, 4)
+  def table_entity_node_health(region, node), do: C.int(region, node + 36, 4)
+  def table_entity_node_weapon(region, node), do: C.uint(region, node + 40, 1)
+  def table_entity_node_damage(region, node), do: C.uint(region, node + 48, 8)
+  def table_entity_node_moving(region, node), do: C.bool(region, node + 56)
+  def table_entity_node_firing(region, node), do: C.bool(region, node + 57)
 
   # TableStat's cook: a region and a length, and then the root where it lies.
   # Opening one is a HEADER MATCH and no copy (docs/SPEC-TABLES.md §7).
   #
   # §7.1's constants, so a consumer reading this file has the facts and not
   # a description of them.
-  def table_stat_region_alignment, do: 8
-  def table_stat_root_size, do: 8
-  def table_stat_root_align, do: 4
+  def table_stat_cook_region_alignment, do: 8
+  def table_stat_cook_root_size, do: 8
+  def table_stat_cook_root_align, do: 4
 
   def cook_open_table_stat(data), do: cook_open_table_stat(data, 0)
 
@@ -465,17 +465,17 @@ defmodule Benchtable.BenchTableCook do
 
   # the TYPED slot accessors: each field of a TableStat node, read at its own
   # offset from the node's base within the region.
-  def table_stat_stat_id(region, node), do: C.uint(region, node + 0, 4)
-  def table_stat_delta(region, node), do: C.int(region, node + 4, 4)
+  def table_stat_node_stat_id(region, node), do: C.uint(region, node + 0, 4)
+  def table_stat_node_delta(region, node), do: C.int(region, node + 4, 4)
 
   # TableHitEvent's cook: a region and a length, and then the root where it lies.
   # Opening one is a HEADER MATCH and no copy (docs/SPEC-TABLES.md §7).
   #
   # §7.1's constants, so a consumer reading this file has the facts and not
   # a description of them.
-  def table_hit_event_region_alignment, do: 8
-  def table_hit_event_root_size, do: 16
-  def table_hit_event_root_align, do: 4
+  def table_hit_event_cook_region_alignment, do: 8
+  def table_hit_event_cook_root_size, do: 16
+  def table_hit_event_cook_root_align, do: 4
 
   def cook_open_table_hit_event(data), do: cook_open_table_hit_event(data, 0)
 
@@ -500,19 +500,19 @@ defmodule Benchtable.BenchTableCook do
 
   # the TYPED slot accessors: each field of a TableHitEvent node, read at its own
   # offset from the node's base within the region.
-  def table_hit_event_target_id(region, node), do: C.uint(region, node + 0, 4)
-  def table_hit_event_damage(region, node), do: C.int(region, node + 4, 4)
-  def table_hit_event_hit_kind(region, node), do: C.int(region, node + 8, 4)
-  def table_hit_event_crit(region, node), do: C.bool(region, node + 12)
+  def table_hit_event_node_target_id(region, node), do: C.uint(region, node + 0, 4)
+  def table_hit_event_node_damage(region, node), do: C.int(region, node + 4, 4)
+  def table_hit_event_node_hit_kind(region, node), do: C.int(region, node + 8, 4)
+  def table_hit_event_node_crit(region, node), do: C.bool(region, node + 12)
 
   # TableChatEvent's cook: a region and a length, and then the root where it lies.
   # Opening one is a HEADER MATCH and no copy (docs/SPEC-TABLES.md §7).
   #
   # §7.1's constants, so a consumer reading this file has the facts and not
   # a description of them.
-  def table_chat_event_region_alignment, do: 8
-  def table_chat_event_root_size, do: 8
-  def table_chat_event_root_align, do: 4
+  def table_chat_event_cook_region_alignment, do: 8
+  def table_chat_event_cook_root_size, do: 8
+  def table_chat_event_cook_root_align, do: 4
 
   def cook_open_table_chat_event(data), do: cook_open_table_chat_event(data, 0)
 
@@ -537,17 +537,17 @@ defmodule Benchtable.BenchTableCook do
 
   # the TYPED slot accessors: each field of a TableChatEvent node, read at its own
   # offset from the node's base within the region.
-  def table_chat_event_channel(region, node), do: C.int(region, node + 0, 4)
-  def table_chat_event_speaker(region, node), do: C.uint(region, node + 4, 4)
+  def table_chat_event_node_channel(region, node), do: C.int(region, node + 0, 4)
+  def table_chat_event_node_speaker(region, node), do: C.uint(region, node + 4, 4)
 
   # TablePickupEvent's cook: a region and a length, and then the root where it lies.
   # Opening one is a HEADER MATCH and no copy (docs/SPEC-TABLES.md §7).
   #
   # §7.1's constants, so a consumer reading this file has the facts and not
   # a description of them.
-  def table_pickup_event_region_alignment, do: 8
-  def table_pickup_event_root_size, do: 8
-  def table_pickup_event_root_align, do: 4
+  def table_pickup_event_cook_region_alignment, do: 8
+  def table_pickup_event_cook_root_size, do: 8
+  def table_pickup_event_cook_root_align, do: 4
 
   def cook_open_table_pickup_event(data), do: cook_open_table_pickup_event(data, 0)
 
@@ -572,7 +572,7 @@ defmodule Benchtable.BenchTableCook do
 
   # the TYPED slot accessors: each field of a TablePickupEvent node, read at its own
   # offset from the node's base within the region.
-  def table_pickup_event_item_id(region, node), do: C.uint(region, node + 0, 4)
-  def table_pickup_event_amount(region, node), do: C.int(region, node + 4, 4)
+  def table_pickup_event_node_item_id(region, node), do: C.uint(region, node + 0, 4)
+  def table_pickup_event_node_amount(region, node), do: C.int(region, node + 4, 4)
 
 end

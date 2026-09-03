@@ -3709,6 +3709,39 @@ tables-elixir-fuzz: build/conformance/manifest.txt
 	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
 		build/conformance/manifest.txt fuzz $(ELIXIR_FUZZ_N)
 
+# THE ELIXIR LEG's BENCH GATE: the leg builds, and its GOLDEN GATE answers
+# before any clock does — variant 0 is byte-compared to the pinned instance and
+# every one of the 64 variants must load, re-save at the same length and come
+# back byte-identical, so a leg that fails refuses to produce numbers. It is a
+# correctness check wearing a bench's clothes, which is why it belongs on a
+# gate at all.
+.PHONY: tables-elixir-bench-gate
+tables-elixir-bench-gate: generated/bench/tables/elixir/.stamp
+	bench/tables/elixir/leg build
+	bench/tables/elixir/leg run --round 0 > /dev/null
+
+# THE ELIXIR RELEASE GATE (certify.yml's release-gates job finds it BY NAME, so
+# landing it is this target and nothing else — no edit to that file).
+#
+# It is the leg's expensive half, and the split is the one the CI files draw: an
+# ITERATION gate answers "is this diff right" and rides the pull request; this
+# answers "does the runtime still hold under load", which is measured in minutes
+# and fires on a toolchain change as readily as on a code one.
+#
+# The soak here is BOUNDED at five minutes, and `make tables-elixir-soak` is the
+# hour. The two answer the same question at two costs, and a certification job
+# sharing a runner with every other port's gate is not where an hour belongs.
+ELIXIR_RELEASE_SOAK_SECONDS ?= 300
+ELIXIR_RELEASE_FUZZ_N ?= 200000
+
+.PHONY: tables-elixir-release
+tables-elixir-release:
+	$(MAKE) tables-elixir-fuzz ELIXIR_FUZZ_N=$(ELIXIR_RELEASE_FUZZ_N)
+	$(MAKE) tables-elixir-alloc-audit
+	$(MAKE) tables-elixir-alloc-negative-control
+	$(MAKE) tables-elixir-soak SOAK_SECONDS=$(ELIXIR_RELEASE_SOAK_SECONDS)
+	$(MAKE) tables-elixir-bench-gate
+
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
 	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet

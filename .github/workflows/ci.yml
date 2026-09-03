@@ -199,6 +199,8 @@ jobs:
             targets: build/conformance-harness build-conformance-java
           - lang: c
             targets: build/conformance-harness build/conformance-c
+          - lang: elixir
+            targets: build/conformance-harness build-conformance-elixir
 
     steps:
       - uses: actions/checkout@v7
@@ -218,6 +220,7 @@ jobs:
           cpp)  echo "the C++ leg names no runtime: a generated table header includes none" ;;
           java) echo "the Java leg names no runtime: a generated table source stands alone on the JDK" ;;
           c)    echo "the C leg names no runtime: a generated table header includes none, and the driver is one cc invocation" ;;
+          elixir) echo "the Elixir leg names none either: the generated code is self-contained on the BEAM" ;;
           esac
 
       # bin/schema and the generated table units come out of Go in every leg.
@@ -241,6 +244,17 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+
+      # The BEAM toolchain, the same versions as the Makefile's dist/ pins. The
+      # generated Elixir is self-contained, so this is the leg's ONLY dependency.
+      # No ELIXIRC override is needed below: the Makefile's default prefixes the
+      # repo-local dist/ onto PATH and falls through to the toolchain this step
+      # installed, which is the same mechanism ELIXIR and MIX already use.
+      - uses: erlef/setup-beam@v1
+        if: matrix.lang == 'elixir'
+        with:
+          otp-version: '29.0.5'
+          elixir-version: '1.20.4'
 
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
