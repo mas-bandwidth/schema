@@ -1469,7 +1469,9 @@ reader that lacks it reads the union empty, skips the body by its length and
 counts `unknown`; arms may be removed and reordered freely. Unlike a
 `type`-only payload, a message may carry a nested table or a whole
 collection. A union declared for the packet wire still takes `type` payloads
-only — types stay value semantics.
+only — types stay value semantics. C++ carries the form today; every other
+backend refuses a unit that declares one, by name, and the ports are named
+follow-ons.
 
 ### Pointers: `next *Node`
 

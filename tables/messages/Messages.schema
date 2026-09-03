@@ -1,0 +1,110 @@
+// Messages.schema — the MESSAGE corpus (docs/SPEC-TABLES.md §2.6): a union whose
+// arms are tables, which is what makes a tool message set evolve by name. A
+// message may carry a nested table, a collection, or a union of tables of its
+// own, and this unit holds the form at THREE DEPTHS — ToolBody in the root,
+// EditBody inside a transaction's edits, Origin inside an insert — so every
+// walk (wire, text, cook) descends a table arm that holds a table arm.
+//
+// Every table here is FIXED-SIZE: a union of fixed table arms leaves its
+// holder fixed, and the zero-cost gate holds over this unit as it does over
+// tables/examples.
+package messagedemo
+
+const MaxPath = 64
+
+enum Mode { Read, Write }
+
+// a type beside the tables: a type arm and a table arm are one framing
+type Cursor
+{
+    line   uint32
+    column uint32
+}
+
+type Ping
+{
+    nonce uint32
+}
+
+// depth three: the origin of an insert
+table User
+{
+    name string(16)
+}
+
+table Script
+{
+    path string(MaxPath)
+    line uint32
+}
+
+union Origin
+{
+    user   User
+    script Script
+}
+
+// depth two: an edit's body
+table Selection
+{
+    start Cursor
+    end   Cursor
+}
+
+table InsertText
+{
+    at     Cursor
+    text   string(32)
+    origin Origin
+}
+
+table RemoveText
+{
+    span Selection
+}
+
+union EditBody
+{
+    insert InsertText
+    remove RemoveText
+}
+
+table Edit
+{
+    revision uint32
+    body     EditBody
+}
+
+// depth one: the message set
+table OpenDocument
+{
+    path   string(MaxPath)
+    mode   Mode = Read
+    cursor Cursor
+}
+
+table SaveDocument
+{
+    path  string(MaxPath)
+    force bool
+}
+
+table Transaction
+{
+    reason string(16)
+    edits  [..3]Edit
+}
+
+union ToolBody
+{
+    open     OpenDocument
+    save     SaveDocument
+    transact Transaction
+    ping     Ping
+}
+
+table ToolMessage
+{
+    sequence uint32
+    body     ToolBody
+}

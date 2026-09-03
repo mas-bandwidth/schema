@@ -72,8 +72,17 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab {\n    reserved(4)\n    x int32\n}\n"},
 		{name: "align in a table body", want: "align is a packet-wire construct",
 			src: "package t\ntable Tab {\n    align\n    x int32\n}\n"},
-		{name: "a table is not a union payload", want: "not a union payload",
+		// a TABLE arm is legal inside a table closure (docs/SPEC-TABLES.md §2.6) and
+		// refused outside one, by name, from both sides: the type body that
+		// holds such a union, and the union no table reaches
+		{name: "a table-armed union in a type body", want: "a union in a `type` body takes `type` payloads only",
+			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { u U }\n"},
+		{name: "a table-armed union no table reaches", want: "no table reaches U",
 			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\n"},
+		{name: "a table-armed union in a type a table reaches", want: "a union in a `type` body takes `type` payloads only",
+			src: "package t\ntable Tab { x int32 }\nunion U\n{\n    tab Tab\n}\ntype P { u U }\ntable Holder { p P }\n"},
+		{name: "a table arm holding its own union by value is a cycle", want: "type composition cycle",
+			src: "package t\ntable Tab { u U }\nunion U\n{\n    tab Tab\n}\ntable Holder { u U }\n"},
 		{name: "fixed(I, F) has no table-wire kind", want: "has no table-wire kind",
 			src: "package t\ntable Tab { x fixed(16, 16) | min = 0, max = 5 }\n"},
 		{name: "fixed in a type pulled into a closure", want: "has no table-wire kind",
@@ -808,5 +817,73 @@ func TestSpecSection11EqualsTheChecker(t *testing.T) {
 	}
 	if len(stated) != len(held) {
 		t.Errorf("§11 states %d suffixes and the checker holds %d", len(stated), len(held))
+	}
+}
+
+// TestTableArmsMoveNoProtocolId is §2.6's independence requirement: a union
+// with a TABLE arm has no packet wire, so declaring one — or adding a table arm
+// to a union — moves neither the wire projection nor the protocol id.
+func TestTableArmsMoveNoProtocolId(t *testing.T) {
+	withTables := tablelessSrc + `
+table Open { path string(16) }
+table Save { path string(16) }
+union Body
+{
+    open Open
+}
+table Msg { body Body }
+`
+	moreArms := tablelessSrc + `
+table Open { path string(16) }
+table Save { path string(16) }
+union Body
+{
+    open Open
+    save Save
+}
+table Msg { body Body }
+`
+	base := buildUnit(t, tablelessSrc)
+	one := buildUnit(t, withTables)
+	two := buildUnit(t, moreArms)
+	if ir.WireProjection(base) != ir.WireProjection(one) || ir.WireProjection(one) != ir.WireProjection(two) {
+		t.Fatalf("a table-armed union changed the wire projection:\n--- without ---\n%s\n--- one arm ---\n%s\n--- two arms ---\n%s",
+			ir.WireProjection(base), ir.WireProjection(one), ir.WireProjection(two))
+	}
+	if base.ProtocolId != one.ProtocolId || one.ProtocolId != two.ProtocolId {
+		t.Fatalf("a table-armed union moved the protocol id %#x -> %#x -> %#x", base.ProtocolId, one.ProtocolId, two.ProtocolId)
+	}
+	un := two.TableUnions["Body"]
+	if un == nil || !un.HasTableArm() || len(un.Variants) != 2 || !un.Variants[1].Ref.IsTable {
+		t.Fatalf("Body did not resolve its table arms: %+v", un)
+	}
+}
+
+// TestTableArmModeRunsThroughArms is §2.2's rule for §2.6: a union of FIXED
+// table arms leaves its holder fixed, and one VARIABLE arm makes it variable.
+func TestTableArmModeRunsThroughArms(t *testing.T) {
+	fixed := buildUnit(t, `package t
+table Open { path string(16) }
+union Body
+{
+    open Open
+}
+table Msg { body Body }
+`)
+	if v := ir.VariableTables(fixed); v["Msg"] {
+		t.Fatalf("a union of fixed table arms made its holder variable: %v", v)
+	}
+	variable := buildUnit(t, `package t
+table Chunk { next *Chunk }
+table Open { path string(16) }
+union Body
+{
+    open  Open
+    chunk Chunk
+}
+table Msg { body Body }
+`)
+	if v := ir.VariableTables(variable); !v["Msg"] || !v["Chunk"] || v["Open"] {
+		t.Fatalf("a variable arm did not run the mode through the union: %v", v)
 	}
 }

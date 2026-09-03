@@ -1,0 +1,28 @@
+// Stream.schema — a union whose arm is a VARIABLE-LENGTH table
+// (docs/SPEC-TABLES.md §2.2, §2.6): the mode runs through arms, so Feed is
+// variable-length because Frame's chunk arm is, and the set arm is a by-value
+// edge every pointer walk descends — the numbering, the pack and the cook.
+package streamdemo
+
+table Header
+{
+    name string(16)
+}
+
+table Chunk
+{
+    data bytes(8)
+    next *Chunk
+}
+
+union Frame
+{
+    header Header
+    chunk  Chunk
+}
+
+table Feed
+{
+    id    uint32
+    frame Frame
+}

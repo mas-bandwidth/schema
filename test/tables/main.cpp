@@ -31,6 +31,10 @@
 #include "P2Table.h"
 #include "P3Table.h"
 #include "JsonKeysTable.h"
+#include "MessagesTable.h"
+#include "StreamTable.h"
+#include "M1Table.h"
+#include "M2Table.h"
 
 static int failures = 0;
 
@@ -5662,6 +5666,469 @@ static void test_json_keyed_duplicate_keys()
     }
 }
 
+// ---- MESSAGES: a union whose arms are tables (docs/SPEC-TABLES.md §2.6) ----
+//
+// tables/messages holds the form at three depths (ToolBody in the root,
+// EditBody inside a transaction's edits, Origin inside an insert); tables/stream
+// holds a union with a VARIABLE arm; M1/M2 are the message evolution pair.
+// Every table arm below crosses the wire, the text and the cook.
+
+static void build_golden_message_open( messagedemo::ToolMessage & m )
+{
+    m.sequence = 7;
+    m.body.type = messagedemo::ToolBodyType::Open;
+    m.body.open = messagedemo::OpenDocument{};
+    set_string( m.body.open.path, m.body.open.path_length, "docs/a.md" );
+    m.body.open.mode = messagedemo::Mode::Write;
+    m.body.open.cursor.line = 3;
+    m.body.open.cursor.column = 4;
+}
+
+static void build_golden_message_transaction( messagedemo::ToolMessage & m )
+{
+    m.sequence = 8;
+    m.body.type = messagedemo::ToolBodyType::Transact;
+    m.body.transact = messagedemo::Transaction{};
+    set_string( m.body.transact.reason, m.body.transact.reason_length, "refactor" );
+    m.body.transact.edits_count = 3;
+    messagedemo::Edit & a = m.body.transact.edits[0];
+    a.revision = 1;
+    a.body.type = messagedemo::EditBodyType::Insert;
+    a.body.insert = messagedemo::InsertText{};
+    a.body.insert.at.line = 1;
+    a.body.insert.at.column = 2;
+    set_string( a.body.insert.text, a.body.insert.text_length, "hi" );
+    a.body.insert.origin.type = messagedemo::OriginType::User;
+    a.body.insert.origin.user = messagedemo::User{};
+    set_string( a.body.insert.origin.user.name, a.body.insert.origin.user.name_length, "rowan" );
+    messagedemo::Edit & b = m.body.transact.edits[1];
+    b.revision = 2;
+    b.body.type = messagedemo::EditBodyType::Remove;
+    b.body.remove = messagedemo::RemoveText{};
+    b.body.remove.span.start.line = 1;
+    b.body.remove.span.end.line = 2;
+    b.body.remove.span.end.column = 2;
+    messagedemo::Edit & c = m.body.transact.edits[2];
+    c.revision = 3;
+    c.body.type = messagedemo::EditBodyType::Insert;
+    c.body.insert = messagedemo::InsertText{};
+    c.body.insert.at.line = 5;
+    c.body.insert.at.column = 5;
+    c.body.insert.origin.type = messagedemo::OriginType::Script;
+    c.body.insert.origin.script = messagedemo::Script{};
+    set_string( c.body.insert.origin.script.path, c.body.insert.origin.script.path_length, "gen.lua" );
+    c.body.insert.origin.script.line = 12;
+}
+
+// the stream's chunk arm: a chain of three, the first BY VALUE inside the arm
+static void build_stream_chain( streamdemo::FeedBuilder & builder )
+{
+    streamdemo::Feed * root = builder.GetRoot();
+    root->id = 3;
+    root->frame.type = streamdemo::FrameType::Chunk;
+    root->frame.chunk = streamdemo::Chunk{};
+    root->frame.chunk.data[0] = 1;
+    root->frame.chunk.data_length = 1;
+    streamdemo::TableSlot<streamdemo::Chunk> a = builder.Alloc<streamdemo::Chunk>();
+    streamdemo::TableSlot<streamdemo::Chunk> b = builder.Alloc<streamdemo::Chunk>();
+    a->data[0] = 2;
+    a->data_length = 1;
+    b->data[0] = 3;
+    b->data_length = 1;
+    a->next = b;
+    root->frame.chunk.next = a;
+}
+
+template <typename T>
+static void pin_fixed_golden( const char * name, const T & value,
+                              int64_t ( *measure )( const T & ), int64_t ( *save )( const T &, uint8_t *, int64_t ) )
+{
+    static uint8_t buffer[1u << 16];
+    int64_t wrote = save( value, buffer, sizeof( buffer ) );
+    CHECK( wrote > 0 && wrote == measure( value ) );
+    pin_table_golden( name, buffer, wrote );
+}
+
+static void test_message_golden_wire()
+{
+    {
+        messagedemo::ToolMessage m;
+        build_golden_message_open( m );
+        pin_fixed_golden( "message_open", m, messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
+    }
+    {
+        messagedemo::ToolMessage m;
+        build_golden_message_transaction( m );
+        pin_fixed_golden( "message_transaction", m, messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
+    }
+    {
+        // a SET arm rides even when its body is entirely default — a type arm
+        // and a table arm alike (§2.6, §3): otherwise "empty" and "set to
+        // nothing" would be one value on the wire
+        messagedemo::ToolMessage ping;
+        ping.sequence = 9;
+        ping.body.type = messagedemo::ToolBodyType::Ping;
+        ping.body.ping = messagedemo::Ping{};
+        pin_fixed_golden( "message_ping", ping, messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
+        messagedemo::ToolMessage save;
+        save.sequence = 10;
+        save.body.type = messagedemo::ToolBodyType::Save;
+        save.body.save = messagedemo::SaveDocument{};
+        pin_fixed_golden( "message_save", save, messagedemo::ToolMessageMeasure, messagedemo::ToolMessageSave );
+    }
+    {
+        messagedemo::ToolMessage empty; // None elides: the whole message is the terminator
+        static uint8_t buffer[16];
+        CHECK( messagedemo::ToolMessageSave( empty, buffer, sizeof( buffer ) ) == 2 );
+        pin_table_golden( "message_empty", buffer, 2 );
+    }
+    {
+        tblm1::Msg open;
+        open.seq = 1;
+        open.body.type = tblm1::BodyType::Open;
+        open.body.open = tblm1::Open{};
+        set_string( open.body.open.path, open.body.open.path_length, "a.md" );
+        pin_fixed_golden( "m1_open", open, tblm1::MsgMeasure, tblm1::MsgSave );
+        tblm1::Msg save;
+        save.seq = 2;
+        save.body.type = tblm1::BodyType::Save;
+        save.body.save = tblm1::Save{};
+        set_string( save.body.save.path, save.body.save.path_length, "b.md" );
+        save.body.save.force = true;
+        pin_fixed_golden( "m1_save", save, tblm1::MsgMeasure, tblm1::MsgSave );
+        tblm2::Msg close;
+        close.seq = 3;
+        close.body.type = tblm2::BodyType::Close;
+        close.body.close = tblm2::Close{};
+        set_string( close.body.close.path, close.body.close.path_length, "c.md" );
+        pin_fixed_golden( "m2_close", close, tblm2::MsgMeasure, tblm2::MsgSave );
+        tblm2::Msg grown;
+        grown.seq = 4;
+        grown.body.type = tblm2::BodyType::Open; // tag 2 in M2, tag 1 in M1; Open grew `line`
+        grown.body.open = tblm2::Open{};
+        set_string( grown.body.open.path, grown.body.open.path_length, "d.md" );
+        grown.body.open.line = 9;
+        pin_fixed_golden( "m2_open", grown, tblm2::MsgMeasure, tblm2::MsgSave );
+    }
+    {
+        static uint8_t buffer[4096];
+        streamdemo::FeedBuilder builder;
+        build_stream_chain( builder );
+        int64_t wrote = streamdemo::FeedSave( builder, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == streamdemo::FeedMeasure( builder ) );
+        pin_table_golden( "stream_chain", buffer, wrote );
+        streamdemo::FeedBuilder header;
+        header.GetRoot()->id = 4;
+        header.GetRoot()->frame.type = streamdemo::FrameType::Header;
+        header.GetRoot()->frame.header = streamdemo::Header{};
+        set_string( header.GetRoot()->frame.header.name, header.GetRoot()->frame.header.name_length, "hdr" );
+        wrote = streamdemo::FeedSave( header, buffer, sizeof( buffer ) );
+        CHECK( wrote > 0 && wrote == streamdemo::FeedMeasure( header ) );
+        pin_table_golden( "stream_header", buffer, wrote );
+    }
+}
+
+static void reload_stream_golden( const char * name )
+{
+    const int64_t pinned = read_table_golden( name );
+    if ( pinned < 0 ) return;
+    const int64_t need = streamdemo::FeedLoadMeasure( golden_pinned, pinned );
+    uint8_t * region = (uint8_t *) malloc( (size_t) need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * root = streamdemo::FeedLoad( region, need, golden_pinned, pinned, &report );
+    if ( root == NULL || report.malformed )
+    {
+        printf( "FAIL table wire golden %s does not load\n", name );
+        failures++;
+        free( region );
+        return;
+    }
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 );
+    const int64_t wrote = streamdemo::FeedSave( root, golden_again, sizeof( golden_again ) );
+    if ( wrote != pinned || memcmp( golden_again, golden_pinned, (size_t) pinned ) != 0 )
+    {
+        printf( "FAIL table wire golden %s re-saves differently: %lld bytes out, %lld pinned\n",
+                name, (long long) wrote, (long long) pinned );
+        failures++;
+    }
+    free( region );
+}
+
+static void test_message_golden_reload()
+{
+    reload_table_golden( "message_open", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+    reload_table_golden( "message_transaction", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+    reload_table_golden( "message_ping", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+    reload_table_golden( "message_save", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+    reload_table_golden( "message_empty", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
+    reload_table_golden( "m1_open", tblm1::MsgLoad, tblm1::MsgSave );
+    reload_table_golden( "m1_save", tblm1::MsgLoad, tblm1::MsgSave );
+    reload_table_golden( "m2_close", tblm2::MsgLoad, tblm2::MsgSave );
+    reload_table_golden( "m2_open", tblm2::MsgLoad, tblm2::MsgSave );
+    reload_stream_golden( "stream_chain" );
+    reload_stream_golden( "stream_header" );
+}
+
+// a cook is written for the build that opens it (§7): the host's own order,
+// so the round trip below holds on the big-endian leg too
+template <typename Order>
+static Order host_byte_order( Order little, Order big )
+{
+    const uint16_t probe = 1;
+    return *(const uint8_t *) &probe == 1 ? little : big;
+}
+
+// the three depths, through the wire, the text and the cook: what goes in at
+// every depth comes back at every depth, in every form
+static void test_message_three_depths()
+{
+    messagedemo::ToolMessage m;
+    build_golden_message_transaction( m );
+    static uint8_t wire[4096];
+    int64_t wrote = messagedemo::ToolMessageSave( m, wire, sizeof( wire ) );
+    CHECK( wrote > 0 );
+
+    messagedemo::ToolMessage back;
+    messagedemo::TableReport report;
+    CHECK( messagedemo::ToolMessageLoad( back, wire, wrote, &report ) );
+    CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
+    CHECK( back.body.type == messagedemo::ToolBodyType::Transact );
+    CHECK( back.body.transact.edits_count == 3 );
+    CHECK( back.body.transact.edits[0].body.type == messagedemo::EditBodyType::Insert );
+    CHECK( back.body.transact.edits[0].body.insert.origin.type == messagedemo::OriginType::User );
+    CHECK( strcmp( back.body.transact.edits[0].body.insert.origin.user.name, "rowan" ) == 0 );
+    CHECK( back.body.transact.edits[1].body.type == messagedemo::EditBodyType::Remove );
+    CHECK( back.body.transact.edits[1].body.remove.span.end.column == 2 );
+    CHECK( back.body.transact.edits[2].body.insert.origin.type == messagedemo::OriginType::Script );
+    CHECK( back.body.transact.edits[2].body.insert.origin.script.line == 12 );
+
+    // the text: out and back, to the same bytes
+    int64_t size = messagedemo::ToolMessageToJsonMeasure( m );
+    CHECK( size > 0 );
+    std::vector<char> text( (size_t) size );
+    CHECK( messagedemo::ToolMessageToJson( m, text.data(), size ) == size );
+    messagedemo::ToolMessage from_text;
+    messagedemo::TableReport text_report;
+    CHECK( messagedemo::ToolMessageFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && text_report.kind_mismatch == 0 && !text_report.malformed );
+    static uint8_t again[4096];
+    CHECK( messagedemo::ToolMessageSave( from_text, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the cook: pointed at, every depth in place
+    int64_t cook_bytes = messagedemo::ToolMessageCookMeasure( m );
+    CHECK( cook_bytes > 0 );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( messagedemo::ToolMessageCook( m, cook, (uint64_t) cook_bytes, host_byte_order( messagedemo::TableByteOrder::Little, messagedemo::TableByteOrder::Big ) ) );
+    const messagedemo::ToolMessage * opened = messagedemo::ToolMessageOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        CHECK( opened->body.type == messagedemo::ToolBodyType::Transact );
+        CHECK( opened->body.transact.edits[2].body.insert.origin.script.line == 12 );
+        CHECK( strcmp( opened->body.transact.edits[0].body.insert.origin.user.name, "rowan" ) == 0 );
+        // and it re-saves to the same wire: a cook is the value, not a copy of it
+        CHECK( messagedemo::ToolMessageSave( *opened, again, sizeof( again ) ) == wrote );
+        CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+    }
+    free( cook );
+}
+
+// the evolution pair, both directions, one fresh report per read
+static void test_message_evolution()
+{
+    static uint8_t wire[1024];
+    {
+        // an arm whose TAG moved (open: 1 in M1, 2 in M2) lands by name
+        tblm1::Msg m1;
+        m1.body.type = tblm1::BodyType::Open;
+        m1.body.open = tblm1::Open{};
+        set_string( m1.body.open.path, m1.body.open.path_length, "a.md" );
+        int64_t wrote = tblm1::MsgSave( m1, wire, sizeof( wire ) );
+        tblm2::Msg out;
+        tblm2::TableReport report;
+        CHECK( tblm2::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( report.unknown == 0 && !report.malformed );
+        CHECK( out.body.type == tblm2::BodyType::Open && strcmp( out.body.open.path, "a.md" ) == 0 );
+        CHECK( out.body.open.line == 0 ); // the grown field takes its default
+    }
+    {
+        // an arm M2 REMOVED: empty, counted, never a neighbour's arm
+        tblm1::Msg m1;
+        m1.body.type = tblm1::BodyType::Save;
+        m1.body.save = tblm1::Save{};
+        m1.body.save.force = true;
+        int64_t wrote = tblm1::MsgSave( m1, wire, sizeof( wire ) );
+        tblm2::Msg out;
+        tblm2::TableReport report;
+        CHECK( tblm2::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( report.unknown == 1 && !report.malformed );
+        CHECK( out.body.type == tblm2::BodyType::None );
+    }
+    {
+        // an arm M2 INSERTED first: M1 cannot name it
+        tblm2::Msg m2;
+        m2.body.type = tblm2::BodyType::Close;
+        m2.body.close = tblm2::Close{};
+        int64_t wrote = tblm2::MsgSave( m2, wire, sizeof( wire ) );
+        tblm1::Msg out;
+        tblm1::TableReport report;
+        CHECK( tblm1::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( report.unknown == 1 && !report.malformed );
+        CHECK( out.body.type == tblm1::BodyType::None );
+    }
+    {
+        // the grown arm read by the old side: the arm lands, and the field it
+        // cannot name is counted INSIDE the arm's body
+        tblm2::Msg m2;
+        m2.body.type = tblm2::BodyType::Open;
+        m2.body.open = tblm2::Open{};
+        set_string( m2.body.open.path, m2.body.open.path_length, "d.md" );
+        m2.body.open.line = 9;
+        int64_t wrote = tblm2::MsgSave( m2, wire, sizeof( wire ) );
+        tblm1::Msg out;
+        tblm1::TableReport report;
+        CHECK( tblm1::MsgLoad( out, wire, wrote, &report ) );
+        CHECK( report.unknown == 1 && !report.malformed );
+        CHECK( out.body.type == tblm1::BodyType::Open && strcmp( out.body.open.path, "d.md" ) == 0 );
+    }
+}
+
+// the descriptors: a table arm's column points at the TABLE's descriptor, the
+// same column a type arm gets
+static void test_message_reflection()
+{
+    const messagedemo::TableTypeInfo * type = messagedemo::ToolMessageTableType();
+    const messagedemo::TableFieldInfo * body = NULL;
+    for ( int32_t i = 0; i < type->num_fields; i++ )
+    {
+        if ( strcmp( type->fields[i].name, "body" ) == 0 ) body = &type->fields[i];
+    }
+    CHECK( body != NULL );
+    if ( body == NULL ) return;
+    CHECK( body->kind == 15 && body->enum_max == 4 );
+    CHECK( body->variant_id != NULL && body->variant_id( 1 ) == field_id( "open" ) );
+    CHECK( body->variant_id( 3 ) == field_id( "transact" ) );
+    CHECK( body->enum_name != NULL && strcmp( body->enum_name( 2 ), "save" ) == 0 );
+    CHECK( body->arms != NULL );
+    const messagedemo::TableUnionInfo * arms = body->arms();
+    CHECK( arms->arms[1].table == messagedemo::OpenDocumentTableType() );
+    CHECK( arms->arms[3].table == messagedemo::TransactionTableType() );
+    CHECK( arms->arms[4].table == messagedemo::PingTableType() ); // the type arm, the same column
+    CHECK( arms->arms[1].offset == offsetof( messagedemo::ToolBody, open ) );
+    CHECK( arms->tag_offset == offsetof( messagedemo::ToolBody, type ) );
+}
+
+// the text form's refusals over a table arm: the union rules, unchanged
+static void test_message_json_hostile()
+{
+    messagedemo::ToolMessage value;
+
+    // an arm this build cannot name reads as None and counts
+    messagedemo::TableReport unknown_arm;
+    const char * strange = "{ \"body\": { \"rename\": { \"path\": \"x\" } } }";
+    CHECK( messagedemo::ToolMessageFromJson( value, strange, (int64_t) strlen( strange ), &unknown_arm ) );
+    CHECK( value.body.type == messagedemo::ToolBodyType::None && unknown_arm.unknown == 1 );
+
+    // TWO keys is not a one-of
+    messagedemo::TableReport two;
+    const char * both = "{ \"body\": { \"open\": { \"path\": \"a\" }, \"save\": { \"path\": \"b\" } } }";
+    CHECK( !messagedemo::ToolMessageFromJson( value, both, (int64_t) strlen( both ), &two ) );
+    CHECK( two.malformed );
+
+    // a table arm given a scalar is REFUSED, exactly as a nested table is: an
+    // arm's body is an object, and the walk will not guess at anything else
+    messagedemo::TableReport shape;
+    const char * wrong = "{ \"body\": { \"open\": 5 } }";
+    CHECK( !messagedemo::ToolMessageFromJson( value, wrong, (int64_t) strlen( wrong ), &shape ) );
+    CHECK( shape.malformed );
+
+    // an unknown arm at DEPTH THREE counts once and the rest lands
+    messagedemo::TableReport deep;
+    const char * nested = "{ \"body\": { \"transact\": { \"edits\": [ { \"revision\": 1, \"body\": { \"insert\": { \"text\": \"t\", \"origin\": { \"robot\": { \"id\": 4 } } } } } ] } } }";
+    CHECK( messagedemo::ToolMessageFromJson( value, nested, (int64_t) strlen( nested ), &deep ) );
+    CHECK( deep.unknown == 1 && !deep.malformed );
+    CHECK( value.body.type == messagedemo::ToolBodyType::Transact && value.body.transact.edits_count == 1 );
+    CHECK( value.body.transact.edits[0].body.insert.origin.type == messagedemo::OriginType::None );
+    CHECK( strcmp( value.body.transact.edits[0].body.insert.text, "t" ) == 0 );
+}
+
+// a VARIABLE arm: the mode runs through the union (§2.2), so Feed is a
+// builder and a region, and the set arm is a by-value edge every walk descends
+static void test_message_variable_arm()
+{
+    static uint8_t wire[4096];
+    streamdemo::FeedBuilder builder;
+    build_stream_chain( builder );
+    int64_t need = streamdemo::FeedMeasure( builder );
+    int64_t wrote = streamdemo::FeedSave( builder, wire, sizeof( wire ) );
+    CHECK( need > 0 && need == wrote );
+
+    CHECK( builder.Lock() );
+    const streamdemo::Feed * locked = builder.AsConst();
+    CHECK( locked != NULL && locked->frame.type == streamdemo::FrameType::Chunk );
+    const streamdemo::Chunk * first = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, locked->frame.chunk.next );
+    CHECK( first != NULL && first->data[0] == 2 );
+    static uint8_t after_lock[4096];
+    CHECK( streamdemo::FeedSave( locked, after_lock, sizeof( after_lock ) ) == wrote );
+    CHECK( memcmp( wire, after_lock, (size_t) wrote ) == 0 );
+
+    int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
+    std::vector<uint8_t> region( (size_t) region_need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 );
+    if ( loaded == NULL ) return;
+    const streamdemo::Chunk * c1 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->frame.chunk.next );
+    CHECK( c1 != NULL && c1->data[0] == 2 );
+    const streamdemo::Chunk * c2 = c1 != NULL ? streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, c1->next ) : NULL;
+    CHECK( c2 != NULL && c2->data[0] == 3 && c2->next.null() );
+    static uint8_t again[4096];
+    CHECK( streamdemo::FeedSave( loaded, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the text: the chunk arm nests its chain as every pointer does (§16.7)
+    int64_t size = streamdemo::FeedToJsonMeasure( loaded );
+    CHECK( size > 0 );
+    std::vector<char> text( (size_t) size );
+    CHECK( streamdemo::FeedToJson( loaded, text.data(), size ) == size );
+    streamdemo::FeedBuilder from_text;
+    streamdemo::TableReport text_report;
+    CHECK( streamdemo::FeedFromJson( from_text, text.data(), size, &text_report ) );
+    CHECK( text_report.unknown == 0 && !text_report.malformed );
+    CHECK( streamdemo::FeedSave( from_text, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // the cook: the chain behind the root, numbered through the arm
+    int64_t cook_bytes = streamdemo::FeedCookMeasure( loaded );
+    CHECK( cook_bytes > 0 );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( streamdemo::FeedCook( loaded, cook, (uint64_t) cook_bytes, host_byte_order( streamdemo::TableByteOrder::Little, streamdemo::TableByteOrder::Big ) ) );
+    const streamdemo::Feed * opened = streamdemo::FeedOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        const streamdemo::Chunk * o1 = streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, opened->frame.chunk.next );
+        CHECK( o1 != NULL && o1->data[0] == 2 );
+        CHECK( streamdemo::FeedSave( opened, again, sizeof( again ) ) == wrote );
+        CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+    }
+    free( cook );
+
+    // a data cycle THROUGH the arm is refused at save, as through any edge
+    streamdemo::FeedBuilder cyclic;
+    streamdemo::Feed * root = cyclic.GetRoot();
+    root->frame.type = streamdemo::FrameType::Chunk;
+    root->frame.chunk = streamdemo::Chunk{};
+    streamdemo::TableSlot<streamdemo::Chunk> a = cyclic.Alloc<streamdemo::Chunk>();
+    streamdemo::TableSlot<streamdemo::Chunk> b = cyclic.Alloc<streamdemo::Chunk>();
+    a->next = b;
+    b->next = a;
+    root->frame.chunk.next = a;
+    CHECK( streamdemo::FeedMeasure( cyclic ) < 0 );
+    CHECK( !cyclic.Lock() );
+}
+
 int main()
 {
     test_golden_wire();
@@ -5746,6 +6213,13 @@ int main()
     test_json_pinned_keyed_and_optional();
     test_json_pinned_text();
     test_json_variable_class();
+    test_message_golden_wire();
+    test_message_golden_reload();
+    test_message_three_depths();
+    test_message_evolution();
+    test_message_reflection();
+    test_message_json_hostile();
+    test_message_variable_arm();
     test_json_fuzz_tokenizer();
 
     if ( failures > 0 )

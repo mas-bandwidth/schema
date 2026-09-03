@@ -44,6 +44,13 @@ type Unit struct {
 	// from the wire projection, so the packet backends and the protocol id
 	// never see them — packets and tables version independently.
 	Tables map[string]*Struct
+
+	// TableUnions holds the unions with a TABLE arm (docs/SPEC-TABLES.md §2.6),
+	// keyed by name. Such a union is a table-closure construct with no packet
+	// wire: it lives beside Unions exactly as Tables lives beside Structs —
+	// absent from Unions, from File.Decls and from the wire projection — so
+	// the packet backends and the protocol id never see one.
+	TableUnions map[string]*Union
 }
 
 // File is one schema file's declarations, in declaration order.
@@ -56,6 +63,10 @@ type File struct {
 	// beside Decls, not inside, so the packet backends' traversals never
 	// meet one (docs/SPEC-TABLES.md).
 	Tables []*Struct
+
+	// TableUnions is the file's unions with a table arm in declaration order,
+	// beside Decls for the reason Tables is (docs/SPEC-TABLES.md §2.6).
+	TableUnions []*Union
 }
 
 // Decl is one top-level declaration.
@@ -104,7 +115,20 @@ type Union struct {
 type UnionVariant struct {
 	Name string  // declared, field-style lower_snake
 	Type string  // the payload type's name
-	Ref  *Struct // the payload
+	Ref  *Struct // the payload: a `type`, or inside a table closure a `table`
+}
+
+// HasTableArm reports whether any arm names a `table` (docs/SPEC-TABLES.md
+// §2.6). Such a union is a table-closure construct: it has no packet wire, it
+// is refused in a `type` body, and its shape is emitted beside the tables
+// rather than among the packet declarations.
+func (u *Union) HasTableArm() bool {
+	for _, v := range u.Variants {
+		if v.Ref != nil && v.Ref.IsTable {
+			return true
+		}
+	}
+	return false
 }
 
 // Struct is a `type` declaration — or, when IsTable is set, a `table`

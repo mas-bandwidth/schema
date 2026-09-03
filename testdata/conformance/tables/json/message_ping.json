@@ -1,0 +1,8 @@
+{
+  "sequence": 9,
+  "body": {
+    "ping": {
+      "nonce": 0
+    }
+  }
+}

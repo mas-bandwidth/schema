@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"sort"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
@@ -23,6 +24,23 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// refuseTableArms is the named refusal every target but C++ gives a unit whose
+// union has a TABLE arm (docs/SPEC-TABLES.md §2.6, §11): the C++ reference
+// carries the form, and each port's is a named follow-on — refused loudly here
+// rather than emitted as a union naming a type the port never declares.
+func refuseTableArms(u *ir.Unit, target string) error {
+	names := make([]string, 0)
+	for name := range u.TableUnions {
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	return fmt.Errorf("unit declares a union whose arm is a table (%s) — a union with table arms is C++ only today, and the %s form is a named follow-on; generate with --lang cpp, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)",
+		englishList(names), target)
+}
 
 // builtins is the set [New] registers. The per-language emitters stay
 // internal — they are implementations, not API, and freezing nine emitter
@@ -50,6 +68,9 @@ type dartTarget struct{}
 func (dartTarget) Names() []string { return []string{"dart"} }
 
 func (dartTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTableArms(u, "dart"); err != nil {
+		return nil, err
+	}
 	files, err := dart.Generate(u)
 	if err != nil {
 		return nil, err
@@ -77,6 +98,9 @@ type elixirTarget struct{}
 func (elixirTarget) Names() []string { return []string{"elixir"} }
 
 func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTableArms(u, "elixir"); err != nil {
+		return nil, err
+	}
 	files, err := elixir.Generate(u)
 	if err != nil {
 		return nil, err
@@ -104,6 +128,9 @@ type cTarget struct{}
 func (cTarget) Names() []string { return []string{"c"} }
 
 func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTableArms(u, "c"); err != nil {
+		return nil, err
+	}
 	files, err := cgen.Generate(u)
 	if err != nil {
 		return nil, err
@@ -156,6 +183,9 @@ type csTarget struct{}
 func (csTarget) Names() []string { return []string{"cs", "csharp"} }
 
 func (csTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTableArms(u, "cs"); err != nil {
+		return nil, err
+	}
 	files, err := csharp.Generate(u)
 	if err != nil {
 		return nil, err
@@ -182,6 +212,9 @@ type goTarget struct{}
 func (goTarget) Names() []string { return []string{"go"} }
 
 func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTableArms(u, "go"); err != nil {
+		return nil, err
+	}
 	files, err := golang.Generate(u)
 	if err != nil {
 		return nil, err
@@ -209,6 +242,9 @@ type javaTarget struct{}
 func (javaTarget) Names() []string { return []string{"java"} }
 
 func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTableArms(u, "java"); err != nil {
+		return nil, err
+	}
 	files, err := java.Generate(u)
 	if err != nil {
 		return nil, err
@@ -236,6 +272,9 @@ type jsTarget struct{}
 func (jsTarget) Names() []string { return []string{"js", "javascript"} }
 
 func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTableArms(u, "js"); err != nil {
+		return nil, err
+	}
 	files, err := js.Generate(u)
 	if err != nil {
 		return nil, err
@@ -264,6 +303,9 @@ type rustTarget struct{}
 func (rustTarget) Names() []string { return []string{"rust"} }
 
 func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+	if err := refuseTableArms(u, "rust"); err != nil {
+		return nil, err
+	}
 	files, err := rust.Generate(u)
 	if err != nil {
 		return nil, err

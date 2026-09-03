@@ -98,6 +98,8 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 			Structs:  map[string]*ir.Struct{},
 			Unions:   map[string]*ir.Union{},
 			Tables:   map[string]*ir.Struct{},
+
+			TableUnions: map[string]*ir.Union{},
 		},
 	}
 
@@ -856,7 +858,12 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 		case *ast.TypeDecl:
 			un.Variants = append(un.Variants, ir.UnionVariant{Name: v.Name, Type: v.Type, Ref: c.structs[v.Type]})
 		case *ast.TableDecl:
-			c.errf(v.TypePos, "%s is a table, not a union payload — a payload is a declared `type`; tables nest in tables directly (docs/SPEC-TABLES.md)", v.Type)
+			// a TABLE arm (docs/SPEC-TABLES.md §2.6): legal inside a table
+			// closure, where it is what makes an evolvable message set
+			// expressible. The two refusals — a type body holding such a
+			// union, and a table arm no table closure reaches — are the
+			// field's and the closure's, below.
+			un.Variants = append(un.Variants, ir.UnionVariant{Name: v.Name, Type: v.Type, Ref: c.tables[v.Type]})
 		case *ast.EnumDecl, *ast.FlagsDecl:
 			c.errf(v.TypePos, "%s is not a union payload — a payload is a declared type; wrap the value in a type (SPEC §4.8)", v.Type)
 		case *ast.UnionDecl:
@@ -1081,7 +1088,17 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		case *ast.FlagsDecl:
 			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.flagsD[f.Type.Name]}
 		case *ast.UnionDecl:
-			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: c.unions[f.Type.Name]}
+			un := c.unions[f.Type.Name]
+			if !inTable && un.HasTableArm() {
+				// a union declared for the TYPE wire takes `type` payloads
+				// only: types are value semantics and their wire is
+				// positional, and a table arm is a table-closure construct
+				// (docs/SPEC-TABLES.md §2.6, §11)
+				c.errf(f.Type.Pos, "%s has a table arm (%s), and a union in a `type` body takes `type` payloads only — types are value semantics; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11)",
+					f.Type.Name, tableArmName(un))
+				return nil
+			}
+			out.Type = ir.FieldType{Kind: ir.TNamed, Name: f.Type.Name, Ref: un}
 		default:
 			c.errf(f.Type.Pos, "%s is not a type", f.Type.Name)
 			return nil
@@ -1778,6 +1795,7 @@ func (c *checker) checkTables() {
 		walk(name)
 	}
 	c.tableClosure = closure
+	c.checkTableArmsReached(closure)
 
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -2965,6 +2983,15 @@ func (c *checker) assemble() {
 				u.Tables[d.Name] = tbl
 			case *ast.UnionDecl:
 				un := c.unions[d.Name]
+				if un.HasTableArm() {
+					// a union with a TABLE arm assembles BESIDE the decl stream,
+					// as a table does (docs/SPEC-TABLES.md §2.6): it has no packet
+					// wire, so the packet backends and the projection never meet
+					// it, and adding a table arm moves no protocol id
+					irf.TableUnions = append(irf.TableUnions, un)
+					u.TableUnions[d.Name] = un
+					continue
+				}
 				irf.Decls = append(irf.Decls, un)
 				u.Unions[d.Name] = un
 			}
@@ -3077,4 +3104,50 @@ func (c *checker) reserveCPrefix(name string, pos ast.Pos) {
 			"macro is a SILENT REWRITE rather than a redeclaration error — the generator's #ifndef sees "+
 			"yours and skips its own. Rename at the source", name)
 	}
+}
+
+// checkTableArmsReached refuses a union with a TABLE arm that no table closure
+// reaches (docs/SPEC-TABLES.md §2.6, §11): a table arm is a table-closure
+// construct, and a union outside one is declared for the type wire, where a
+// payload is a `type`. Sorted, so the diagnostics never shuffle run to run.
+func (c *checker) checkTableArmsReached(closure map[string]bool) {
+	reached := map[string]bool{}
+	for name := range closure {
+		st := c.closureMember(name)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if un, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed {
+				reached[un.Name] = true
+			}
+		}
+	}
+	names := make([]string, 0, len(c.unions))
+	for name := range c.unions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		un := c.unions[name]
+		if !un.HasTableArm() || reached[name] {
+			continue
+		}
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[name]; ok {
+			pos = d.DeclPos()
+		}
+		c.errf(pos, "union %s: arm %s names a table, and no table reaches %s — a table arm is a table-closure construct, and a union outside one takes `type` payloads only; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11)",
+			name, tableArmName(un), name)
+	}
+}
+
+// tableArmName names a union's first table arm for a diagnostic.
+func tableArmName(un *ir.Union) string {
+	for _, v := range un.Variants {
+		if v.Ref != nil && v.Ref.IsTable {
+			return v.Name + " " + v.Type
+		}
+	}
+	return ""
 }

@@ -47,6 +47,10 @@ unit tblp3     test/tables/P3.schema
 unit tblp2     test/tables/P2.schema
 unit graphdemo tables/pointers
 unit blockdemo tables/block
+unit messagedemo tables/messages
+unit streamdemo tables/stream
+unit tblm1     test/tables/M1.schema
+unit tblm2     test/tables/M2.schema
 
 instance root_full            tabledemo RootConfig    testdata/wire/tables/root_full.bin
 instance root_default         tabledemo RootConfig    testdata/wire/tables/root_default.bin
@@ -81,6 +85,25 @@ instance graph_shared         graphdemo Scene         testdata/wire/tables/graph
 instance graph_empty          graphdemo Scene         testdata/wire/tables/graph_empty.bin
 instance graph_deep           graphdemo Scene         testdata/wire/tables/graph_deep.bin   no-text
 
+# THE MESSAGE CLASS (§2.6): a union whose arms are tables, at three depths in
+# messagedemo — ToolBody in the root, EditBody inside a transaction's edits,
+# Origin inside an insert. message_ping and message_save pin the rule that a SET
+# arm rides even when its body is entirely default, for a type arm and a table
+# arm alike; message_empty is the elided None. streamdemo's Frame has a VARIABLE
+# arm, so Feed is a region and a root pointer, and its chunk arm's chain is
+# numbered through the union.
+instance message_open         messagedemo ToolMessage testdata/wire/tables/message_open.bin
+instance message_transaction  messagedemo ToolMessage testdata/wire/tables/message_transaction.bin
+instance message_ping         messagedemo ToolMessage testdata/wire/tables/message_ping.bin
+instance message_save         messagedemo ToolMessage testdata/wire/tables/message_save.bin
+instance message_empty        messagedemo ToolMessage testdata/wire/tables/message_empty.bin
+instance m1_open              tblm1       Msg         testdata/wire/tables/m1_open.bin
+instance m1_save              tblm1       Msg         testdata/wire/tables/m1_save.bin
+instance m2_close             tblm2       Msg         testdata/wire/tables/m2_close.bin
+instance m2_open              tblm2       Msg         testdata/wire/tables/m2_open.bin
+instance stream_chain         streamdemo  Feed        testdata/wire/tables/stream_chain.bin
+instance stream_header        streamdemo  Feed        testdata/wire/tables/stream_header.bin
+
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
 # the expectation every backend must meet.
@@ -108,6 +131,12 @@ report p2_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_pointer_empty.bin
 report p1_as_p2       tblp2 Chain testdata/wire/tables/chain_value.bin
 report p3_as_p2       tblp2 Chain testdata/wire/tables/chain_optional.bin
 report p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
+# the message pair (§2.6, §4): M2 inserted `close` first, removed `save` and
+# grew Open, so open's tag moved and both sides meet an arm they cannot name
+report m1_open_as_m2  tblm2 Msg testdata/wire/tables/m1_open.bin
+report m1_save_as_m2  tblm2 Msg testdata/wire/tables/m1_save.bin
+report m2_close_as_m1 tblm1 Msg testdata/wire/tables/m2_close.bin
+report m2_open_as_m1  tblm1 Msg testdata/wire/tables/m2_open.bin
 
 block block_render blockdemo testdata/wire/tables/block_render.bin testdata/conformance/tables/block/block_render.dump
 block block_padded blockdemo testdata/wire/tables/block_padded.bin testdata/conformance/tables/block/block_padded.dump
@@ -164,6 +193,15 @@ cook-write graph_tree             testdata/conformance/tables/cook-write/graph_t
 cook-write graph_shared           testdata/conformance/tables/cook-write/graph_shared.cook testdata/conformance/tables/cook-write/graph_shared-be.cook
 cook-write graph_empty            testdata/conformance/tables/cook-write/graph_empty.cook testdata/conformance/tables/cook-write/graph_empty-be.cook
 cook-write graph_deep             testdata/conformance/tables/cook-write/graph_deep.cook testdata/conformance/tables/cook-write/graph_deep-be.cook
+cook-write message_open           testdata/conformance/tables/cook-write/message_open.cook testdata/conformance/tables/cook-write/message_open-be.cook
+cook-write message_transaction    testdata/conformance/tables/cook-write/message_transaction.cook testdata/conformance/tables/cook-write/message_transaction-be.cook
+cook-write message_ping           testdata/conformance/tables/cook-write/message_ping.cook testdata/conformance/tables/cook-write/message_ping-be.cook
+cook-write message_save           testdata/conformance/tables/cook-write/message_save.cook testdata/conformance/tables/cook-write/message_save-be.cook
+cook-write message_empty          testdata/conformance/tables/cook-write/message_empty.cook testdata/conformance/tables/cook-write/message_empty-be.cook
+cook-write m1_open                testdata/conformance/tables/cook-write/m1_open.cook testdata/conformance/tables/cook-write/m1_open-be.cook
+cook-write m2_open                testdata/conformance/tables/cook-write/m2_open.cook testdata/conformance/tables/cook-write/m2_open-be.cook
+cook-write stream_chain           testdata/conformance/tables/cook-write/stream_chain.cook testdata/conformance/tables/cook-write/stream_chain-be.cook
+cook-write stream_header          testdata/conformance/tables/cook-write/stream_header.cook testdata/conformance/tables/cook-write/stream_header-be.cook
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
@@ -398,6 +436,10 @@ json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conform
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,false
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,false
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,false
+json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,false
+json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
+json-hostile union-table-arm-wrong-shape    messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape    refused
+json-hostile union-table-arm-nested-unknown messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-nested-unknown 1,0,0,0,false
 json-hostile trailing-commas              tabledemo RootConfig  testdata/conformance/tables/json-hostile/trailing-commas              0,0,0,0,false
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
 json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,false

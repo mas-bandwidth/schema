@@ -485,7 +485,7 @@ func guardWalk(st *ir.Struct, prefix string) map[string]string {
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("template <typename Ctx>\ninline int64_t %sMeasureBody( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
-		if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+		if g.noVariableEdges(st) {
 			g.pf("    (void) ctx;\n")
 		}
 	} else {
@@ -684,7 +684,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 		// the wrapper below for a nested body, and the wire surface for a root
 		// that still owes its node table (docs/SPEC-TABLES.md §3.1).
 		g.pf("template <typename Ctx>\ninline bool %sSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, const %s & value )\n{\n", st.Name, st.Name)
-		if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+		if g.noVariableEdges(st) {
 			g.pf("    (void) ctx; (void) numbering;\n")
 		}
 	} else {
@@ -941,7 +941,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("inline bool %sLoadBody( TableReader & r, const TableNodeMap & nodes, %s & value )\n{\n", st.Name, st.Name)
-		if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+		if g.noVariableEdges(st) {
 			g.pf("    (void) nodes;\n")
 		}
 	} else {
