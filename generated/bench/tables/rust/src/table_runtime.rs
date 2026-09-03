@@ -338,7 +338,9 @@ impl<'a> TableReader<'a> {
                 self.offset += 2;
                 true
             }
-            4 | 8 | 10 => {
+            // 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1): four bytes, so it costs
+            // one row here and a reader without the kind still skips a pointer field
+            4 | 8 | 10 | 17 => {
                 if !self.has(4) {
                     return false;
                 }

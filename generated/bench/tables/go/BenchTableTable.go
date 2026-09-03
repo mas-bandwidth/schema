@@ -336,7 +336,9 @@ func (r *TableReader) Skip(kind uint8) bool {
 		}
 		r.Offset += 2
 		return true
-	case 4, 8, 10:
+	// 17 is a NODE INDEX (docs/SPEC-TABLES.md §3.1): four bytes, so it costs one
+	// row here and a reader without the kind still skips a pointer field
+	case 4, 8, 10, 17:
 		if !r.Has(4) {
 			return false
 		}
