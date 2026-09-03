@@ -78,20 +78,54 @@ type ReportCase struct {
 	Wire string
 }
 
+// Hostile is one tree of the hostile-value battery (docs/SPEC-TABLES.md §16.2,
+// §16.3, §17.5) and the verdict every implementation owes it: `refused`, or the
+// §4 report the read produces. Tree is the directory `schema pack` reads, so
+// the text is <Tree>/<Root>.json (§17).
+type Hostile struct {
+	Name    string
+	Unit    string
+	Root    string
+	Tree    string
+	Refused bool
+	Counts  Counts
+}
+
+// Verdict is the answer a driver writes for one hostile case.
+func (h Hostile) Verdict() string {
+	if h.Refused {
+		return "refused"
+	}
+	return h.Counts.String()
+}
+
 // Cook is a cooked file (docs/SPEC-TABLES.md §7) and the canonical node dump its
-// Open must produce.
+// Open must produce. The CASE and the ROOT are two columns because one root can
+// have more than one fixture: the valued chain and the value-initialised one
+// are the same table read two ways.
 type Cook struct {
+	Case string
 	Root string
 	Unit string
 	Dump string
 	File string // filled in by the harness once test/cookgen has written it
 }
 
-// Block is a block image (docs/SPEC-TABLES.md §19) an Open must accept.
+// Block is a block image (docs/SPEC-TABLES.md §19) an Open must accept, and the
+// canonical ROW DUMP its reader must produce out of it (§19.2). Open alone says
+// a reader checked the prologue; the dump is the value-for-value read.
 type Block struct {
 	Name string
 	Unit string
 	File string
+	Dump string
+}
+
+// Patch is one word a forgery writes: little-endian, `width` bytes at `offset`.
+type Patch struct {
+	Offset int64
+	Width  int
+	Value  uint64
 }
 
 // Forgery is one damaged fixture and the verdict every implementation owes it.
@@ -103,16 +137,58 @@ type Forgery struct {
 	Kind    string // "cook" or "block"
 	Subject string // the cook's root, or the block's name
 	Base    string // the fixture key the patch is applied to
-	Offset  int64
-	Width   int
-	Value   uint64
+	// Pointer is what the caller's BUFFER looks like, which is not a fact a
+	// file can hold: 0 is an aligned base, 1..63 is a base that many bytes past
+	// one, and -1 is a NULL buffer. The cook battery's unaligned-base arm is
+	// the whole reason the column exists.
+	Pointer int
+	// Patches are the words this forgery writes, in order. Most rows carry one
+	// and some carry none — a truncation damages nothing and claims less.
+	Patches []Patch
 	// Extent is the length the CALLER claims, which a forgery may set past the
-	// bytes the image carries — a fact a file alone cannot hold. -1 is "the
-	// file's own length".
+	// bytes the image carries or short of them — a fact a file alone cannot
+	// hold. -1 is "the file's own length".
 	Extent  int64
 	Verdict string // "refuse" or "open"
 	Label   string
 	File    string // filled in by the harness once materialised
+}
+
+// parsePatches reads the three PARALLEL columns a forgery's patch is spelled
+// as: comma-separated offsets, widths and values of equal length. One word is
+// the ordinary case and reads as one number in each column; an offset of -1 is
+// a forgery that damages nothing, which is what a truncation is.
+func parsePatches(offsets, widths, values string) ([]Patch, error) {
+	off := strings.Split(offsets, ",")
+	wid := strings.Split(widths, ",")
+	val := strings.Split(values, ",")
+	if len(off) != len(wid) || len(off) != len(val) {
+		return nil, fmt.Errorf("a patch's offset, width and value columns name %d, %d and %d words",
+			len(off), len(wid), len(val))
+	}
+	var out []Patch
+	for i := range off {
+		o, err := strconv.ParseInt(off[i], 0, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not an offset", off[i])
+		}
+		w, err := strconv.Atoi(wid[i])
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a width", wid[i])
+		}
+		v, err := strconv.ParseUint(val[i], 0, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a value", val[i])
+		}
+		if o < 0 {
+			continue // no patch: the forgery is the extent or the pointer alone
+		}
+		if w < 1 || w > 8 {
+			return nil, fmt.Errorf("%d is not a word width", w)
+		}
+		out = append(out, Patch{Offset: o, Width: w, Value: v})
+	}
+	return out, nil
 }
 
 // Manifest is the whole registry.
@@ -120,6 +196,7 @@ type Manifest struct {
 	Units     []Unit
 	Instances []Instance
 	Reports   []ReportCase
+	Hostiles  []Hostile
 	Cooks     []Cook
 	Blocks    []Block
 	Forgeries []Forgery
@@ -177,44 +254,61 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)
 			}
 			m.Reports = append(m.Reports, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]})
+		case "json-hostile":
+			if len(f) != 6 {
+				return nil, fmt.Errorf("%s: json-hostile takes case, unit, root, tree, verdict", where)
+			}
+			h := Hostile{Name: f[1], Unit: f[2], Root: f[3], Tree: f[4]}
+			if f[5] == "refused" {
+				h.Refused = true
+			} else {
+				c, err := ParseCounts(f[5])
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", where, err)
+				}
+				h.Counts = c
+			}
+			m.Hostiles = append(m.Hostiles, h)
 		case "cook":
-			if len(f) != 4 {
-				return nil, fmt.Errorf("%s: cook takes root, unit, dump", where)
+			if len(f) != 5 {
+				return nil, fmt.Errorf("%s: cook takes case, unit, root, dump", where)
 			}
-			m.Cooks = append(m.Cooks, Cook{Root: f[1], Unit: f[2], Dump: f[3]})
+			m.Cooks = append(m.Cooks, Cook{Case: f[1], Unit: f[2], Root: f[3], Dump: f[4]})
 		case "block":
-			if len(f) != 4 {
-				return nil, fmt.Errorf("%s: block takes name, unit, file", where)
+			if len(f) != 5 {
+				return nil, fmt.Errorf("%s: block takes name, unit, file, dump", where)
 			}
-			m.Blocks = append(m.Blocks, Block{Name: f[1], Unit: f[2], File: f[3]})
+			m.Blocks = append(m.Blocks, Block{Name: f[1], Unit: f[2], File: f[3], Dump: f[4]})
 		case "forgery":
-			// forgery <name> <kind> <subject> <base> <offset> <width> <value> <extent> <verdict> <label...>
-			if len(f) < 11 {
-				return nil, fmt.Errorf("%s: forgery takes name, kind, subject, base, offset, width, value, extent, verdict, label", where)
+			// forgery <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label...>
+			if len(f) < 12 {
+				return nil, fmt.Errorf("%s: forgery takes name, kind, subject, base, pointer, offset, width, value, extent, verdict, label", where)
 			}
-			offset, err := strconv.ParseInt(f[5], 0, 64)
+			pointer := 0
+			if f[5] == "null" {
+				pointer = -1
+			} else {
+				n, err := strconv.Atoi(f[5])
+				if err != nil || n < 0 {
+					return nil, fmt.Errorf("%s: %q is not a lead, and is not null", where, f[5])
+				}
+				pointer = n
+			}
+			patches, err := parsePatches(f[6], f[7], f[8])
 			if err != nil {
-				return nil, fmt.Errorf("%s: %q is not an offset", where, f[5])
+				return nil, fmt.Errorf("%s: %w", where, err)
 			}
-			width, err := strconv.Atoi(f[6])
+			extent, err := strconv.ParseInt(f[9], 0, 64)
 			if err != nil {
-				return nil, fmt.Errorf("%s: %q is not a width", where, f[6])
+				return nil, fmt.Errorf("%s: %q is not an extent", where, f[9])
 			}
-			value, err := strconv.ParseUint(f[7], 0, 64)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %q is not a value", where, f[7])
-			}
-			extent, err := strconv.ParseInt(f[8], 0, 64)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %q is not an extent", where, f[8])
-			}
-			if f[9] != "refuse" && f[9] != "open" {
-				return nil, fmt.Errorf("%s: %q is not a verdict", where, f[9])
+			if f[10] != "refuse" && f[10] != "open" {
+				return nil, fmt.Errorf("%s: %q is not a verdict", where, f[10])
 			}
 			m.Forgeries = append(m.Forgeries, Forgery{
 				Name: f[1], Kind: f[2], Subject: f[3], Base: f[4],
-				Offset: offset, Width: width, Value: value, Extent: extent,
-				Verdict: f[9], Label: strings.Join(f[10:], " "),
+				Pointer: pointer, Patches: patches, Extent: extent,
+				Verdict: f[10], Label: strings.Join(f[11:], " "),
 			})
 		default:
 			return nil, fmt.Errorf("%s: %q is not a manifest line kind", where, f[0])

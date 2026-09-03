@@ -646,13 +646,17 @@ func (g *blockGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 		f := fl.Field
 		kind := tableScalarKind(f)
 		if f.Type.Kind == ir.TBytes {
-			kind = tkArray
+			// the ELEMENT kind, exactly as TableFieldInfo carries it (§8.1):
+			// `bytes` is an array of u8, and the two backends' descriptors are
+			// byte-compared through the block dump, so they spell it once.
+			kind = tkU8
 		}
+		facts := ir.BlockFieldOf(g.unit, f, fl.Offset, bl != nil)
 		if bl != nil {
 			if a := bl.ArrayByName(f.Name); a != nil {
-				g.hf("            new TableBlockFieldInfo { Name = %q, Offset = %d, Size = %d, Kind = %d, OutOfLine = true, OffsetOfOffset = %d, CountOffset = %d, StrideOffset = %d, Stride = %d, ElementRef = delegate { return %s; } },\n",
+				g.hf("            new TableBlockFieldInfo { Name = %q, Offset = %d, Size = %d, Kind = %d, OutOfLine = true, OffsetOfOffset = %d, CountOffset = %d, StrideOffset = %d, Stride = %d, IsArray = true, Counted = true, Optional = false, ArrayBound = %d, ElemSize = 0, PresentOffset = -1, ElementRef = delegate { return %s; } },\n",
 					f.Name, fl.Offset, fl.Size, kind, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride,
-					blockInfoSymbol(owner, a.ElemName))
+					a.Max, blockInfoSymbol(owner, a.ElemName))
 				continue
 			}
 		}
@@ -666,8 +670,10 @@ func (g *blockGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 				element = fmt.Sprintf("delegate { return %s; }", blockInfoSymbol(owner, ref.Name))
 			}
 		}
-		g.hf("            new TableBlockFieldInfo { Name = %q, Offset = %d, Size = %d, Kind = %d, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = %s },\n",
-			f.Name, fl.Offset, fl.Size, kind, element)
+		g.hf("            new TableBlockFieldInfo { Name = %q, Offset = %d, Size = %d, Kind = %d, OutOfLine = false, OffsetOfOffset = -1, CountOffset = %d, StrideOffset = -1, Stride = 0, IsArray = %t, Counted = %t, Optional = %t, ArrayBound = %d, ElemSize = %d, PresentOffset = %d, ElementRef = %s },\n",
+			f.Name, fl.Offset, fl.Size, kind, facts.CountOffset,
+			facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.ElemSize,
+			facts.PresentOffset, element)
 	}
 	g.hf("        },\n    };\n\n")
 }
@@ -802,11 +808,24 @@ public sealed class TableBlockFieldInfo
     public int Offset;      // the field's offset in the record this descriptor describes
     public int Size;        // its size there
     public byte Kind;       // the table-wire kind, as TableFieldInfo carries it
-    public bool OutOfLine;  // an out-of-line array: the three members below are live
+    public bool OutOfLine;  // an out-of-line array: the triple's three members are live
     public int OffsetOfOffset; // the triple's OffsetOf member, or -1
-    public int CountOffset;    // its Count member, or -1
-    public int StrideOffset;   // its Stride member, or -1
+    // The COUNT COMPANION, and it is one column doing one job in both
+    // spellings: the triple's Count member for an out-of-line array, the int32
+    // used length of a string or a bytes inline, -1 when the field has none.
+    public int CountOffset;
+    public int StrideOffset;   // the triple's Stride member, or -1
     public int Stride;         // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
+    // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node
+    // and a block row without learning a second one. Where the field starts is
+    // the pair above; this is everything after it.
+    public bool IsArray;      // inline storage of ArrayBound slots at ElemSize (bytes included)
+    public bool Counted;      // CountOffset names a used-length companion
+    public bool Optional;     // PresentOffset names a bool presence companion
+    public int ArrayBound;    // inline slots, or a string's declared maximum; 0 for a plain scalar
+    public int ElemSize;      // ONE slot's size; the field's own when it holds one value
+    public int PresentOffset; // the presence companion, or -1
     // the ELEMENT's or the nested record's own layout, behind a delegate so
     // the table stays constructible in any order. null when the field is a
     // scalar. Following it is how a walker DESCENDS: an out-of-line array's

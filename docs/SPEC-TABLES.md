@@ -2892,11 +2892,24 @@ table uses. Every other field carries its projection offset too, because the
 projection is a different struct from the by-value one (§19.3) and a walker
 over a block needs the positions that struct actually has.
 
+**A block field carries the SAME row-walk columns a table field does**, and
+in the same vocabulary, so ONE generic walker reads a cooked node and a block
+row without learning a second one. Where the field starts is the offset
+above; these are everything after it — whether the storage holds an ARRAY and
+how many SLOTS at what ELEMENT SIZE, the COUNT COMPANION of a `string` or a
+`bytes`, and the PRESENCE COMPANION of a `?T`. The count column does one job
+in both spellings: for an out-of-line array it is the triple's `count`
+member, and for an inline string or `bytes` it is the int32 used length.
+Without them the descriptors name a `string(15)` as twenty bytes at an offset
+and no reader can tell where the sixteen-byte buffer stops and the length
+begins — which is exactly the gap that kept a block's rows unreadable by
+reflection while the triples alone were readable.
+
 That is the whole mechanism behind the block form's read side: a consumer
-with the descriptors reads the triples out of an instance and points at rows,
-with no hand-written struct per table and no knowledge of the spelling that
-produced any of it. The descriptors are constant data, so this costs a
-lookup, not a parse.
+with the descriptors reads the triples out of an instance, points at rows and
+reads every field of one, with no hand-written struct per table and no
+knowledge of the spelling that produced any of it. The descriptors are
+constant data, so this costs a lookup, not a parse.
 
 These columns exist in every unit, whatever its mode — they describe the
 LANGUAGE, and a fixed-size table can declare all of them. Only the two
@@ -5516,11 +5529,22 @@ shape: 152, 168 and 176 all round to 192.
 **The descriptors are the mechanism, and they are what retires a hand-kept
 mirror.** §8's reflection carries, for a block-form table, the projection
 offset of every field and of the three members inside each triple, with the
-element's own descriptor beside them. A consumer holding the descriptors
-reads the facts out of an instance and points at rows — no hand-written
-struct per table, no knowledge of the spelling that produced any of it, and
-nothing to maintain when a field is added. The mirror died because the layout
-became data, not because someone generated a replacement for it.
+element's own descriptor beside them — and, for every field of a projection or
+a row, the row-walk columns §8.1 states: the array class, the slot count and
+element size, the count companion and the presence companion. A consumer
+holding the descriptors reads the facts out of an instance, points at rows and
+reads every field of one — no hand-written struct per table, no knowledge of
+the spelling that produced any of it, and nothing to maintain when a field is
+added. The mirror died because the layout became data, not because someone
+generated a replacement for it.
+
+**That claim is gated value for value, not merely exercised.** The tables
+conformance harness's `block-dump` surface walks a block image through the
+descriptors alone and writes the canonical ROW DUMP
+(testdata/conformance/tables/FORMAT.md), pinned from the C++ leg and
+byte-compared by every other. A reader that opens an image and reads a row
+wrong passes `block` — which reads the prologue and the triples and stops — and
+fails this.
 
 **The typed fast path is generated beside them, and it is what a per-frame
 job uses.** For a consumer that wants named fields rather than a generic

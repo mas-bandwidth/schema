@@ -32,6 +32,15 @@
       accept <root> <cook>        the byte-order leg: a cook of THIS build's
       refuse <root> <cook>        order opens, one of the other order refuses
 
+    and two modes that serve the conformance harness rather than this gate,
+    so `forge`'s 111 rows become data every backend runs
+    (testdata/conformance/tables/FORMAT.md):
+
+      emit-forgeries <root> <cook>      the battery resolved to byte offsets,
+                                        printed as manifest lines
+      conformance <manifest> <outdir>   the `cook-forgery` surface: every row of
+                                        the derived manifest, one verdict each
+
     A COOK IS TRUSTED INPUT, LOADED FROM DISK (§7), so nothing here is a threat
     model. The battery and the fuzzer HARDEN THE REFUSAL PATH: `Open` runs on
     whatever bytes a disk hands back — corrupt, truncated, or from a build that
@@ -1111,6 +1120,280 @@ static void mode_forge( const Root * root, const char * path )
 }
 
 // ---------------------------------------------------------------------------
+// the forge battery AS DATA (testdata/conformance/tables/FORMAT.md)
+// ---------------------------------------------------------------------------
+//
+// The battery above names the words it damages through this file's own header
+// constants and this build's own numbers, none of which another language can
+// read out of a manifest. These two modes are the bridge: `emit-forgeries`
+// resolves all 111 rows to byte offsets and prints the manifest lines, and
+// `conformance` answers the harness's `cook-forgery` surface over them. Both
+// legs then run the SAME battery through the SAME path, the C++ one included.
+//
+// Three rows carry the verdict `open` and they are the ones §7 hands to
+// `schema cook-check`: Open reads the header and points, so a forged reference
+// and a forged directory entry are not its refusals. Carrying them as data
+// rather than dropping them is what keeps a port from "passing" by refusing
+// everything.
+
+static void emit_cook_row( const char * root_name, const char * name, int pointer,
+                           const uint64_t * off, const int * width, const uint64_t * value, int words,
+                           int64_t claim, const char * verdict, const char * label )
+{
+    char offs[80], wids[40], vals[120], ptr[16];
+    if ( words == 0 )
+    {
+        snprintf( offs, sizeof( offs ), "-1" );
+        snprintf( wids, sizeof( wids ), "0" );
+        snprintf( vals, sizeof( vals ), "0" );
+    }
+    else
+    {
+        size_t a = 0, b = 0, c = 0;
+        offs[0] = wids[0] = vals[0] = 0;
+        for ( int i = 0; i < words; i++ )
+        {
+            a += (size_t) snprintf( offs + a, sizeof( offs ) - a, "%s0x%llx", i > 0 ? "," : "",
+                                    (unsigned long long) off[i] );
+            b += (size_t) snprintf( wids + b, sizeof( wids ) - b, "%s%d", i > 0 ? "," : "", width[i] );
+            c += (size_t) snprintf( vals + c, sizeof( vals ) - c, "%s0x%llx", i > 0 ? "," : "",
+                                    (unsigned long long) value[i] );
+        }
+    }
+    if ( pointer < 0 )
+        snprintf( ptr, sizeof( ptr ), "null" );
+    else
+        snprintf( ptr, sizeof( ptr ), "%d", pointer );
+    printf( "forgery %-30s cook %s %s %-4s %-12s %-5s %-22s %10lld %-6s %s\n",
+            name, root_name, root_name, ptr, offs, wids, vals, (long long) claim, verdict, label );
+}
+
+// one word, the ordinary case
+static void emit_word( const char * root_name, const char * name, uint64_t at, int width, uint64_t value,
+                       const char * label )
+{
+    const uint64_t off[1] = { at };
+    const int wid[1] = { width };
+    const uint64_t val[1] = { value };
+    emit_cook_row( root_name, name, 0, off, wid, val, 1, -1, "refuse", label );
+}
+
+// no word at all: the forgery is the EXTENT the caller claims, or the POINTER
+// it holds, and neither is a byte of the file
+static void emit_claim( const char * root_name, const char * name, int pointer, int64_t claim,
+                        const char * label )
+{
+    emit_cook_row( root_name, name, pointer, NULL, NULL, NULL, 0, claim, "refuse", label );
+}
+
+static void mode_emit_forgeries( const Root * root, const char * path )
+{
+    uint64_t length = 0;
+    uint8_t * source = whole_file( path, &length );
+    const uint64_t alignment = read64( source + WordAlignment );
+    const uint64_t data_length = read64( source + WordDataLength );
+    const uint64_t attribution = read64( source + WordAttributionLength );
+    const uint64_t offset = data_offset_of( alignment );
+    const uint64_t order = read64( source + WordByteOrder );
+    const char * r = root->name;
+    char name[128];
+
+    printf( "# THE COOK FORGERY BATTERY as data (docs/SPEC-TABLES.md §7, §7.4), pinned\n" );
+    printf( "# from test/tables/cook_main.cpp's 111 by that binary's emit-forgeries mode:\n" );
+    printf( "# every row is one edit to an otherwise valid cook, resolved to byte offsets\n" );
+    printf( "# over the fixture test/cookgen writes for this root.\n" );
+    printf( "#\n" );
+    printf( "#   forgery <name> cook <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>\n" );
+    printf( "#\n" );
+    printf( "# <pointer> is the BUFFER the caller holds — 0 an aligned base, 1..63 that\n" );
+    printf( "# many bytes past one, `null` no buffer at all — because an unaligned base is\n" );
+    printf( "# a pointer fact and not a file fact. <extent> is the length the caller\n" );
+    printf( "# claims (-1: the file's own), and a claim SHORT of the file is a truncation.\n" );
+    printf( "# The three rows whose verdict is `open` are §7's own ruling written down:\n" );
+    printf( "# Open reads the header and points, and those three are cook-check's.\n" );
+    printf( "# Repin with: make conformance-pin.\n" );
+
+    // THE MAGIC, bytewise, then byte-reversed, then a BLOCK's magic
+    for ( int b = 0; b < 8; b++ )
+    {
+        uint8_t bytes8[8];
+        memcpy( bytes8, source, 8 );
+        bytes8[b] = (uint8_t) ( bytes8[b] ^ 0xff );
+        uint64_t forgedMagic = 0;
+        memcpy( &forgedMagic, bytes8, 8 );
+        snprintf( name, sizeof( name ), "cook_magic_byte%d", b );
+        emit_word( r, name, WordMagic, 8, forgedMagic, "one byte of the magic" );
+    }
+    {
+        uint8_t rev[8];
+        for ( int i = 0; i < 8; i++ ) rev[i] = source[7 - i];
+        uint64_t swapped = 0;
+        memcpy( &swapped, rev, 8 );
+        emit_word( r, "cook_magic_reversed", WordMagic, 8, swapped,
+                   "the magic byte-reversed: a cook of the other byte order" );
+    }
+    emit_word( r, "cook_magic_block", WordMagic, 8, 0x4b4c42414d484353ull,
+               "the BLOCK form's magic: a block where a cook was written" );
+
+    // THE BYTE ORDER word, which the magic has already agreed with
+    for ( uint64_t v = 0; v < 4; v++ )
+    {
+        if ( v == order ) continue;
+        snprintf( name, sizeof( name ), "cook_byte_order_%llu", (unsigned long long) v );
+        emit_word( r, name, WordByteOrder, 8, v, "the byte-order word" );
+    }
+
+    // THE BUILD VERSION: the sole guard between a runtime and a foreign region
+    emit_word( r, "cook_build_zero", WordBuildVersion, 8, 0, "a zero build version" );
+    emit_word( r, "cook_build_one_bit", WordBuildVersion, 8, graphdemo::BuildVersion ^ 1ull,
+               "a build version one bit away from this build's" );
+    emit_word( r, "cook_build_saturated", WordBuildVersion, 8, UINT64_MAX, "a saturated build version" );
+
+    // THE RESERVED WORDS: a non-zero one means a form this build does not know
+    emit_word( r, "cook_reserved0_one", WordReserved0, 8, 1, "the first reserved word non-zero" );
+    emit_word( r, "cook_reserved1_one", WordReserved1, 8, 1, "the second reserved word non-zero" );
+    emit_word( r, "cook_reserved0_saturated", WordReserved0, 8, UINT64_MAX, "the first reserved word saturated" );
+
+    // THE ALIGNMENT WORD, which the rest of the check does arithmetic with
+    static const uint64_t bad_alignments[] = { 0, 1, 2, 3, 4, 5, 6, 7, 12, 24, 128, 1ull << 63, UINT64_MAX };
+    static const char * const alignment_names[] = {
+        "cook_alignment_0", "cook_alignment_1", "cook_alignment_2", "cook_alignment_3",
+        "cook_alignment_4", "cook_alignment_5", "cook_alignment_6", "cook_alignment_7",
+        "cook_alignment_12", "cook_alignment_24", "cook_alignment_128",
+        "cook_alignment_pow63", "cook_alignment_saturated",
+    };
+    for ( size_t i = 0; i < sizeof( bad_alignments ) / sizeof( bad_alignments[0] ); i++ )
+        emit_word( r, alignment_names[i], WordAlignment, 8, bad_alignments[i],
+                   "an alignment word that is not a region's alignment" );
+
+    // THE TWO PART LENGTHS, against the length the caller passed
+    emit_word( r, "cook_data_length_long", WordDataLength, 8, data_length + 1, "a data length one byte long" );
+    emit_word( r, "cook_data_length_short", WordDataLength, 8, data_length - 1, "a data length one byte short" );
+    emit_word( r, "cook_data_length_saturated", WordDataLength, 8, UINT64_MAX, "a saturated data length" );
+    emit_word( r, "cook_data_length_under_root", WordDataLength, 8, root->size - 1,
+               "a data part too short to hold the root, and one byte off the total too" );
+    {
+        // TWO WORDS: a data part of eight bytes with the attribution length
+        // made up so the file's TOTAL still matches, so nothing but the
+        // root-fits check can refuse it
+        const uint64_t off[2] = { WordDataLength, WordAttributionLength };
+        const int wid[2] = { 8, 8 };
+        const uint64_t val[2] = { 8, length - offset - 8 };
+        emit_cook_row( r, "cook_data_length_eight_bytes", 0, off, wid, val, 2, -1, "refuse",
+                       "a data part of eight bytes, with the attribution length made up so the total still matches" );
+    }
+    emit_word( r, "cook_data_length_empty", WordDataLength, 8, 0, "an empty data part" );
+    emit_word( r, "cook_attribution_long", WordAttributionLength, 8, attribution + 1,
+               "an attribution length one byte long" );
+    emit_word( r, "cook_attribution_short", WordAttributionLength, 8, attribution - 1,
+               "an attribution length one byte short" );
+    emit_word( r, "cook_attribution_saturated", WordAttributionLength, 8, UINT64_MAX,
+               "a saturated attribution length" );
+
+    // TRUNCATION AND EXTENSION are one refusal: the whole file is
+    // data_offset + data_length + attribution_length, and a size that is not
+    // exactly that refuses
+    static const uint64_t claims[] = { 0, 1, 8, 63, 64, 65 };
+    for ( size_t i = 0; i < sizeof( claims ) / sizeof( claims[0] ); i++ )
+    {
+        snprintf( name, sizeof( name ), "cook_claim_%llu", (unsigned long long) claims[i] );
+        emit_claim( r, name, 0, (int64_t) claims[i], "a truncated file" );
+    }
+    emit_claim( r, "cook_claim_one_short", 0, (int64_t) length - 1, "one byte short" );
+    emit_claim( r, "cook_claim_one_long", 0, (int64_t) length + 1, "one trailing byte" );
+    emit_claim( r, "cook_claim_header_only", 0, (int64_t) offset, "the header alone" );
+    emit_claim( r, "cook_claim_no_attribution", 0, (int64_t) ( offset + data_length ),
+                "the data part with the attribution cut off, and the header still claiming it" );
+
+    // AN UNALIGNED BASE — a POINTER fact, which is why the column exists
+    for ( int lead = 1; lead < 64; lead++ )
+    {
+        if ( ( (uint64_t) lead % alignment ) == 0 ) continue;
+        snprintf( name, sizeof( name ), "cook_lead_%d", lead );
+        emit_claim( r, name, lead, -1, "an unaligned base" );
+    }
+
+    // A NULL POINTER, which is the caller's own error
+    emit_claim( r, "cook_null_buffer", -1, -1, "a NULL buffer" );
+
+    // AND THE OTHER HALF: what §7 says Open does NOT check. Each of these
+    // OPENS, and each is a refusal `schema cook-check` owns instead (§7.4).
+    {
+        const uint64_t at_slot = offset + root->size - 8;
+        const uint64_t off[1] = { at_slot };
+        const int wid[1] = { 8 };
+        uint64_t val[1] = { UINT64_MAX / 2 };
+        emit_cook_row( r, "cook_open_forward_delta", 0, off, wid, val, 1, -1, "open",
+                       "a reference slot with an enormous forward delta — cook-check's refusal, not Open's" );
+        val[0] = (uint64_t) - ( (int64_t) offset + 4096 );
+        emit_cook_row( r, "cook_open_negative_delta", 0, off, wid, val, 1, -1, "open",
+                       "a negative delta past the base — cook-check's refusal, not Open's" );
+        const uint64_t at_dir[1] = { offset + data_length };
+        val[0] = UINT64_MAX;
+        emit_cook_row( r, "cook_open_directory_entry", 0, at_dir, wid, val, 1, -1, "open",
+                       "a directory entry naming an offset outside the region — the attribution is not read at open" );
+    }
+    free( source );
+}
+
+// mode: conformance — the harness's `cook-forgery` surface
+//
+// One process for the whole battery, over the DERIVED manifest, which carries
+// the patch already applied and nothing but what a driver may know:
+//
+//   forgery <name> cook <subject> <file> <extent> <pointer>
+
+static int mode_conformance( const char * manifest_path, const char * outdir )
+{
+    FILE * manifest = fopen( manifest_path, "r" );
+    if ( manifest == NULL )
+    {
+        fprintf( stderr, "cook: cannot open %s\n", manifest_path );
+        return 1;
+    }
+    char line[2048];
+    while ( fgets( line, sizeof( line ), manifest ) != NULL )
+    {
+        if ( line[0] == '#' || line[0] == '\n' ) continue;
+        char tag[32], forgery_name[256], forgery_kind[32], forgery_subject[128];
+        char forgery_file[1024], forgery_pointer[32];
+        long long claim = 0;
+        if ( sscanf( line, "%31s %255s %31s %127s %1023s %lld %31s", tag, forgery_name, forgery_kind,
+                     forgery_subject, forgery_file, &claim, forgery_pointer ) != 7 )
+            continue;
+        if ( strcmp( tag, "forgery" ) != 0 || strcmp( forgery_kind, "cook" ) != 0 ) continue;
+
+        const Root * root = root_named( forgery_subject );
+        uint64_t length = 0;
+        uint8_t * source = whole_file( forgery_file, &length );
+        const uint64_t want = claim < 0 ? length : (uint64_t) claim;
+        const bool null_buffer = strcmp( forgery_pointer, "null" ) == 0;
+        const int lead = null_buffer ? 0 : (int) strtol( forgery_pointer, NULL, 10 );
+        File placed = place( source, length, want, lead );
+        const void * opened = null_buffer ? root->open( NULL, want )
+                                          : root->open( placed.base, placed.length );
+        const char * verdict = opened != NULL ? "open\n" : "refuse\n";
+        char path[2048];
+        snprintf( path, sizeof( path ), "%s/%s", outdir, forgery_name );
+        FILE * out = fopen( path, "wb" );
+        if ( out == NULL )
+        {
+            fprintf( stderr, "cook: cannot write %s\n", path );
+            placed.destroy();
+            free( source );
+            fclose( manifest );
+            return 1;
+        }
+        fwrite( verdict, 1, strlen( verdict ), out );
+        fclose( out );
+        placed.destroy();
+        free( source );
+    }
+    fclose( manifest );
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
 // mode: fuzz — the seeded forgery fuzzer
 // ---------------------------------------------------------------------------
 
@@ -1372,9 +1655,15 @@ int main( int argc, char ** argv )
     if ( argc < 4 )
     {
         printf( "usage: %s golden|dump|write|fixedvalues|usage|forge|fuzz|time|accept|refuse <root> <file> [file]\n", argv[0] );
+        printf( "       %s emit-forgeries <root> <cook>\n", argv[0] );
+        printf( "       %s conformance <manifest> <outdir>\n", argv[0] );
         return 1;
     }
     const char * mode = argv[1];
+    // the harness's `cook-forgery` surface: its second argument is a MANIFEST
+    // and not a root, so it is dispatched before the root lookup
+    if ( strcmp( mode, "conformance" ) == 0 )
+        return mode_conformance( argv[2], argv[3] );
     const Root * root = root_named( argv[2] );
 
     if ( strcmp( mode, "golden" ) == 0 )
@@ -1400,6 +1689,10 @@ int main( int argc, char ** argv )
     else if ( strcmp( mode, "forge" ) == 0 )
     {
         mode_forge( root, argv[3] );
+    }
+    else if ( strcmp( mode, "emit-forgeries" ) == 0 )
+    {
+        mode_emit_forgeries( root, argv[3] );
     }
     else if ( strcmp( mode, "fuzz" ) == 0 )
     {
@@ -1432,7 +1725,7 @@ int main( int argc, char ** argv )
 
     // the DUMP is the one mode whose stdout IS the artifact: it is byte-compared
     // against the C# leg's, so nothing else may ride on it
-    if ( strcmp( mode, "dump" ) != 0 )
+    if ( strcmp( mode, "dump" ) != 0 && strcmp( mode, "emit-forgeries" ) != 0 )
         printf( "OK\n" );
     return 0;
 }

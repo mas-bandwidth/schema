@@ -27,6 +27,12 @@
       accept <root> <cook>      the byte-order leg: a cook of THIS build's
       refuse <root> <cook>      order opens, one of the other order refuses
 
+    and one mode that serves the conformance harness rather than this gate:
+
+      conformance <manifest> <outdir>
+                                the `cook-forgery` surface — the same 111 rows
+                                as DATA, one verdict per row
+
     A COOK IS TRUSTED INPUT, LOADED FROM DISK (§7), so nothing here is a threat
     model. The battery and the fuzzer HARDEN THE REFUSAL PATH: Open runs on
     whatever bytes a disk hands back, and what these hold is that refusing is
@@ -39,6 +45,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Graphdemo;
@@ -934,6 +941,55 @@ static unsafe class Program
                           "compiler's model in this runtime (docs/SPEC-TABLES.md §19.3, §20.3)");
     }
 
+    // ---- the harness's `cook-forgery` surface (test/conformance/README.md)
+    //
+    // The 111-row battery as DATA, answered in ONE process over the derived
+    // manifest, whose lines carry the patch already applied and nothing but
+    // what a driver may know:
+    //
+    //   forgery <name> cook <subject> <file> <extent> <pointer>
+    //
+    // <pointer> is the BUFFER the caller holds — 0 an aligned base, 1..63 that
+    // many bytes past one, `null` no buffer at all. An unaligned base is a
+    // pointer fact rather than a file fact, which is why it is a column.
+    static unsafe int ModeConformance(string manifestPath, string outDir)
+    {
+        foreach (string raw in File.ReadAllLines(manifestPath))
+        {
+            string text = raw.Trim();
+            if (text.Length == 0 || text[0] == '#')
+            {
+                continue;
+            }
+            string[] f = text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (f.Length < 7 || f[0] != "forgery" || f[2] != "cook")
+            {
+                continue;
+            }
+            Root root = RootNamed(f[3]);
+            byte[] source = WholeFile(f[4]);
+            long claim = long.Parse(f[5], CultureInfo.InvariantCulture);
+            if (claim < 0)
+            {
+                claim = source.Length;
+            }
+            bool nullBuffer = f[6] == "null";
+            int lead = nullBuffer ? 0 : int.Parse(f[6], CultureInfo.InvariantCulture);
+            Native.File file = Native.Place(source, claim, lead, AlignmentOf(source));
+            try
+            {
+                IntPtr opened = nullBuffer ? root.Open(IntPtr.Zero, claim)
+                                           : root.Open((IntPtr)file.Base, file.Length);
+                File.WriteAllText(Path.Combine(outDir, f[1]), opened != IntPtr.Zero ? "open\n" : "refuse\n");
+            }
+            finally
+            {
+                file.Destroy();
+            }
+        }
+        return 0;
+    }
+
     static int Main(string[] args)
     {
         if (args.Length < 1)
@@ -946,6 +1002,17 @@ static unsafe class Program
         {
             ModeLayout();
             return 0;
+        }
+        // the harness's `cook-forgery` surface: its second argument is a
+        // MANIFEST and not a root, so it is dispatched before the root lookup
+        if (mode == "conformance")
+        {
+            if (args.Length < 3)
+            {
+                Console.WriteLine("usage: schemacooktest conformance <manifest> <outdir>");
+                return 1;
+            }
+            return ModeConformance(args[1], args[2]);
         }
         if (args.Length < 3)
         {

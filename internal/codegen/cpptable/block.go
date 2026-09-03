@@ -167,11 +167,25 @@ struct TableBlockFieldInfo
     uint32_t offset;  // the field's offset in the record this descriptor describes
     uint32_t size;    // its size there
     uint8_t kind;     // the table-wire kind, as TableFieldInfo carries it
-    bool out_of_line; // an out-of-line array: the three members below are live
+    bool out_of_line; // an out-of-line array: the triple's three members are live
     uint32_t offset_of_offset; // the triple's offset_of member, or 0xffffffff
-    uint32_t count_offset;     // its count member, or 0xffffffff
-    uint32_t stride_offset;    // its stride member, or 0xffffffff
+    // The COUNT COMPANION, and it is one column doing one job in both
+    // spellings: the triple's count member for an out-of-line array, the int32
+    // used length of a string or a bytes inline, 0xffffffff when the field has
+    // none.
+    uint32_t count_offset;
+    uint32_t stride_offset;    // the triple's stride member, or 0xffffffff
     uint32_t stride;           // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
+    // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node
+    // and a block row without learning a second one. Where the field starts is
+    // the pair above; this is everything after it.
+    bool is_array;           // inline storage of array_bound slots at elem_size (bytes included)
+    bool counted;            // count_offset names a used-length companion
+    bool optional;           // present_offset names a bool presence companion
+    int32_t array_bound;     // inline slots, or a string's declared maximum; 0 for a plain scalar
+    uint32_t elem_size;      // ONE slot's size; the field's own when it holds one value
+    uint32_t present_offset; // the presence companion, or 0xffffffff
     // the ELEMENT's or the nested record's own layout, behind a function so the
     // whole table stays constant-initialised. NULL when the field is a scalar.
     // Following it is how a walker DESCENDS: an out-of-line array's rows, and a
@@ -742,11 +756,12 @@ func (g *tableGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 		if f.Type.Kind == ir.TBytes {
 			kind = tkU8
 		}
+		facts := ir.BlockFieldOf(g.unit, f, fl.Offset, bl != nil)
 		if bl != nil {
 			if a := bl.ArrayByName(f.Name); a != nil {
-				g.pf("    { \"%s\", %du, %du, %d, true, %du, %du, %du, %du, +[]() { return &%s; } },\n",
+				g.pf("    { \"%s\", %du, %du, %d, true, %du, %du, %du, %du, true, true, false, %d, 0u, 0xffffffffu, +[]() { return &%s; } },\n",
 					f.Name, fl.Offset, fl.Size, kind, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride,
-					blockInfoSymbol(owner, a.ElemName))
+					a.Max, blockInfoSymbol(owner, a.ElemName))
 				continue
 			}
 		}
@@ -760,12 +775,23 @@ func (g *tableGen) emitBlockRecordDescriptor(owner, record string, ml *ir.Member
 				element = fmt.Sprintf("+[]() { return &%s; }", blockInfoSymbol(owner, ref.Name))
 			}
 		}
-		g.pf("    { \"%s\", %du, %du, %d, false, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, %s },\n",
-			f.Name, fl.Offset, fl.Size, kind, element)
+		g.pf("    { \"%s\", %du, %du, %d, false, 0xffffffffu, %s, 0xffffffffu, 0u, %t, %t, %t, %d, %du, %s, %s },\n",
+			f.Name, fl.Offset, fl.Size, kind, blockCppOffset(facts.CountOffset),
+			facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.ElemSize,
+			blockCppOffset(facts.PresentOffset), element)
 	}
 	g.pf("};\n\n")
 	g.pf("const TableBlockInfo %s = { \"%s\", BuildVersion, %du, %du, %d, %s_fields };\n\n",
 		symbol, name, ml.Size, ml.Align, len(ml.Fields), symbol)
+}
+
+// blockCppOffset spells a companion's offset, or the absent marker every other
+// 32-bit offset column in the descriptors uses.
+func blockCppOffset(offset int64) string {
+	if offset < 0 {
+		return "0xffffffffu"
+	}
+	return fmt.Sprintf("%du", offset)
 }
 
 // blockDescriptorRecords is every record one block's descriptors reach, sorted.

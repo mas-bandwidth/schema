@@ -16,7 +16,9 @@ section is cited rather than restated.
 MANIFEST.txt          the registry: every case, by kind
 reports.txt           the read report of every evolution case  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
-cook/<root>.dump      the canonical node dump of every cook    (pinned)
+json-hostile/<case>/  one tree per rule the text form states
+cook/<case>.dump      the canonical node dump of every cook    (pinned)
+block/<name>.dump     the canonical row dump of every block    (pinned)
 FORMAT.md             this page
 ```
 
@@ -31,12 +33,13 @@ separated by runs of spaces or tabs; the last field of a `forgery` line runs to
 the end of the line.
 
 ```
-unit     <key> <schema path>...
-instance <name> <unit> <root> <wire file>
-report   <case> <unit> <root> <wire file>
-cook     <root> <unit> <dump file>
-block    <name> <unit> <block file>
-forgery  <name> <kind> <subject> <base> <offset> <width> <value> <extent> <verdict> <label>
+unit         <key> <schema path>...
+instance     <name> <unit> <root> <wire file>
+report       <case> <unit> <root> <wire file>
+json-hostile <case> <unit> <root> <tree> <verdict>
+cook         <case> <unit> <root> <dump file>
+block        <name> <unit> <block file> <dump file>
+forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 ```
 
 - **`unit`** names a compilation unit by the key every other line uses.
@@ -45,20 +48,41 @@ forgery  <name> <kind> <subject> <base> <offset> <width> <value> <extent> <verdi
   both ways.
 - **`report`** is bytes read by a type that did not write them — the evolution
   class. The counters live in `reports.txt`, keyed by `<case>`.
-- **`cook`** names a cooked file's root and the dump its Open must produce. The
-  FILE is not committed: `test/cookgen` writes it, deterministically, and the
-  harness runs it. What is pinned is the dump.
-- **`block`** is a block image an Open must accept.
+- **`json-hostile`** is one tree per rule the text form states (§16.2, §16.3,
+  §17.5), and the verdict is `refused` or the §4 report the read produces,
+  `<unknown>,<kind_mismatch>,<clamped>,<duplicate>,<malformed>`. `<tree>` is the
+  directory `schema pack` reads, so the text is `<tree>/<root>.json` (§17). The
+  verdict is HAND-AUTHORED, which is what makes it an expectation rather than a
+  restatement of what one engine happens to do.
+- **`cook`** names a cooked file's CASE, the root it is opened at, and the dump
+  its Open must produce. Case and root are two columns because one root can have
+  more than one fixture — `Scene` and `SceneValued` are the same table read two
+  ways. The FILE is not committed: `test/cookgen` writes it, deterministically,
+  and the harness runs it. What is pinned is the dump.
+- **`block`** is a block image an Open must accept, and the ROW DUMP its reader
+  must produce out of it.
 - **`forgery`** is one damaged fixture and the verdict every implementation owes
   it. `<kind>` is `block` or `cook`; `<subject>` names the block or the cook's
   root; `<base>` names the fixture the patch is applied over — a `block` line's
-  name, or a `cook` line's root. `<offset>` and `<width>` locate the word,
-  `<value>` is written little-endian, `<extent>` is the length the CALLER claims
-  (`-1`: the image's own), and `<verdict>` is `refuse` or `open`.
+  name, or a `cook` line's case. `<pointer>` is the BUFFER the caller holds —
+  `0` an aligned base, `1`..`63` that many bytes past one, `null` no buffer at
+  all. `<offset>` and `<width>` locate the word and `<value>` is written
+  little-endian; all three are COMMA-SEPARATED lists of equal length, because a
+  forgery may damage more than one word, and an `<offset>` of `-1` is a forgery
+  that damages none. `<extent>` is the length the CALLER claims (`-1`: the
+  file's own), and `<verdict>` is `refuse` or `open`.
 
 A forgery is carried as a PATCH rather than as a whole file because a patch is
 what a person can review. The harness materialises the file and hands a driver a
 path, so no driver implements a patcher.
+
+**Three of the forgery columns are not file facts and that is why they are
+columns.** `<extent>` is the length the caller CLAIMS, which may run past the
+bytes the file carries — two rows of the block battery are about exactly that —
+or short of them, which is what a truncation is. `<pointer>` is the buffer that
+caller holds, and an unaligned base is a pointer fact no file can hold. A driver
+allocates EXACTLY the claim, places the base as the pointer column says, copies
+what fits and zeroes the rest.
 
 ## reports.txt
 
@@ -83,7 +107,16 @@ Generated with `make conformance-generate`, and each text is proved COMPLETE
 before it lands: it is packed back to wire bytes and must equal the golden it
 came from, byte for byte. A text that lost a field cannot pass that.
 
-## cook/&lt;root&gt;.dump
+## json-hostile/&lt;case&gt;/&lt;root&gt;.json
+
+One tree per rule the text form states, in `schema pack`'s own directory shape
+(§17). The corpus lives here rather than beside the packer because it was always
+DATA: the harness's `json-hostile` surface and `test/tables/hostile_main.cpp`
+read the same `json-hostile` rows of MANIFEST.txt, and so does the engine's own
+test. One corpus, one set of expectations, three gates asking different things
+of it.
+
+## cook/&lt;case&gt;.dump
 
 The canonical node dump of a cooked file (docs/SPEC-TABLES.md §7.5): the walk every
 reader makes through its OWN derefs, written as text, so two implementations'
@@ -114,12 +147,55 @@ node <index> <TypeName> @<byte offset>
 Pinned from the reference leg with `make conformance-pin`. C++ writes the pins
 and every other leg byte-compares them, exactly as the wire goldens work.
 
+**A value-initialised chain locks structure and almost no VALUES**, because
+there are almost none in it: `SceneValued` is the same chain with every
+non-pointer leaf filled (`test/cookgen --values`), so its dump locks what a
+reader READS out of a node as well as where the node is.
+
+## block/&lt;name&gt;.dump
+
+The canonical ROW DUMP of a block image (docs/SPEC-TABLES.md §19.2). The `block`
+surface says only that an image OPENS, which a reader passes by checking the
+prologue and stopping; this is the value-for-value read, so two implementations'
+reads of the same bytes are byte-compared. It is produced from §8's DESCRIPTORS
+and nothing else — no generated row struct — because that is the claim §19.2
+makes for them.
+
+```
+projection <TableName> @0
+  <field path> = <value>
+array <field> <RowTypeName> @<byte offset> count=<n> stride=<n>
+row <index> @<byte offset>
+  <field path> = <value>
+```
+
+- The `projection` line comes first and carries the table's own inline fields,
+  in descriptor order. The generated prologue — magic, build version, byte
+  order — is not in the descriptors and is not dumped; it is the block forgery
+  battery's subject instead.
+- Then one `array` section per out-of-line array, in declaration order, with the
+  offset, count and stride read OUT OF THE INSTANCE. Rows are numbered from 0
+  within their array and their offsets are block-relative.
+- Leaf lines are indented two spaces, and every convention is the cook node
+  dump's: dotted paths through by-value nesting, `[n]` through inline array
+  slots, `<path>#present` for a `?T`, quoted USED bytes with ` len=<n>` for a
+  string or a `bytes`.
+- **A FLOAT is its IEEE-754 BIT PATTERN**, `0x` and eight or sixteen hex digits.
+  A block row is a byte-identical projection, so its bits are the fact; a
+  decimal spelling would be a rounding rule two languages have to agree on for
+  no gain. The cook's dump refuses a float rather than inventing a spelling, and
+  this is the same refusal to invent, answered by not spelling it as a number.
+
+Pinned from the reference leg with `make conformance-pin`, like the cook's.
+
 ## What moves a golden
 
 The same rule the wire goldens have: a byte that moves under an UNCHANGED schema
 is stop-the-line, never a quiet repin. `make conformance-generate` and `make
 conformance-pin` rewrite the two halves deliberately, and the diff is the review.
 
-The block forgery battery's `<value>` column includes a build version, so a
-change to `tables/block` moves it. It moves LOUDLY: a stale row stops naming a
-build the reader disagrees with, the forgery opens, and the harness goes red.
+Both forgery batteries carry a BUILD VERSION in their `<value>` column, so a
+change to `tables/block` or to `tables/pointers` moves one. It moves LOUDLY: a
+stale row stops naming a build the reader disagrees with, the forgery opens, and
+the harness goes red. The cook battery's rows carry this build's own part
+lengths and root sizeof beside it, and move for the same reason.

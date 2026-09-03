@@ -21,11 +21,19 @@ case "$surface" in
 list)
     dotnet run --project test/conformance/cs --no-build -- "$manifest" list
     echo cook
+    echo cook-forgery
     ;;
 cook)
-    grep '^cook ' "$manifest" | while read -r _ cookroot _ file; do
-        dotnet run --project test/cs-cook --no-build -- dump "$cookroot" "$file" > "$out/$cookroot"
+    # cook <case> <unit> <root> <file>
+    grep '^cook ' "$manifest" | while read -r _ cookcase _ cookroot file; do
+        dotnet run --project test/cs-cook --no-build -- dump "$cookroot" "$file" > "$out/$cookcase"
     done
+    ;;
+cook-forgery)
+    # the whole 111-row battery in ONE runtime start-up, over the derived
+    # manifest — the cook dump above is the one surface that cannot be
+    # (its walk takes one root per invocation)
+    dotnet run --project test/cs-cook --no-build -- conformance "$manifest" "$out"
     ;;
 *)
     exec dotnet run --project test/conformance/cs --no-build -- "$manifest" "$surface" "$out"

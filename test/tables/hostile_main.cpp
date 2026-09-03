@@ -20,7 +20,14 @@
 //
 // A case the manifest says is REFUSED must be refused by both.
 //
-// usage: schema_test_hostile <cases.txt> <tree-dir> <bin-dir>
+// THE MANIFEST IS THE CONFORMANCE HARNESS's (testdata/conformance/tables/
+// MANIFEST.txt), and the trees live beside it: the battery was always data, so
+// it moved there whole rather than keeping a registry of its own. The rows this
+// gate reads are the `json-hostile` ones, and the harness's own surface of that
+// name reads the same rows — one corpus, one set of expectations, two gates
+// asking different things of it.
+//
+// usage: schema_test_hostile <manifest> <bin-dir>
 
 #include <cstdio>
 #include <cstdlib>
@@ -191,9 +198,9 @@ static void check_case( const char * name, const char * text, long text_size,
 
 int main( int argc, char ** argv )
 {
-    if ( argc < 4 )
+    if ( argc < 3 )
     {
-        printf( "usage: %s <cases.txt> <tree-dir> <bin-dir>\n", argv[0] );
+        printf( "usage: %s <manifest> <bin-dir>\n", argv[0] );
         return 2;
     }
     FILE * manifest = fopen( argv[1], "r" );
@@ -202,24 +209,28 @@ int main( int argc, char ** argv )
         printf( "FAIL: cannot open %s\n", argv[1] );
         return 1;
     }
-    char line[512];
+    char line[1024];
     while ( fgets( line, sizeof( line ), manifest ) != NULL )
     {
-        char name[128], root[64], outcome[32], counts[64] = {};
+        // json-hostile <case> <unit> <root> <tree> <verdict>
+        char kind[32], name[128], unit[64], root[64], tree[512], verdict[64];
         if ( line[0] == '#' || line[0] == '\n' ) { continue; }
-        int fields = sscanf( line, "%127s %63s %31s %63s", name, root, outcome, counts );
-        if ( fields < 3 ) { continue; }
-        bool refused = strcmp( outcome, "refused" ) == 0;
+        if ( sscanf( line, "%31s %127s %63s %63s %511s %63s", kind, name, unit, root, tree, verdict ) != 6 )
+        {
+            continue;
+        }
+        if ( strcmp( kind, "json-hostile" ) != 0 ) { continue; }
+        bool refused = strcmp( verdict, "refused" ) == 0;
         Expected want = {};
-        if ( !refused && ( fields < 4 || !parse_expected( counts, want ) ) )
+        if ( !refused && !parse_expected( verdict, want ) )
         {
             printf( "FAIL %s: the manifest names no outcome this gate knows\n", name );
             failures++;
             continue;
         }
 
-        char path[512];
-        snprintf( path, sizeof( path ), "%s/%s/%s.json", argv[2], name, root );
+        char path[640];
+        snprintf( path, sizeof( path ), "%s/%s.json", tree, root );
         long text_size = 0;
         uint8_t * text = slurp( path, text_size );
         if ( text == NULL )
@@ -232,7 +243,7 @@ int main( int argc, char ** argv )
         uint8_t * packed = NULL;
         if ( !refused )
         {
-            snprintf( path, sizeof( path ), "%s/%s.bin", argv[3], name );
+            snprintf( path, sizeof( path ), "%s/%s.bin", argv[2], name );
             packed = slurp( path, size );
             if ( packed == NULL )
             {

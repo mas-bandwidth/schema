@@ -14,13 +14,21 @@ make conformance-pin                 rewrite the half the reference leg writes
 make conformance-negative-control    prove the harness can go red
 ```
 
+Three negative controls stand behind it, and each localises a different thing:
+`conformance-negative-control` flips a byte of a C++ dump (a wrong ANSWER),
+`conformance-negative-control-cs` breaks the C# walker in the emitter (a wrong
+WALK), and `conformance-negative-control-block-dump` flips a byte INSIDE A ROW
+of the block image — which `Open` cannot see, so `block` stays green while
+`block-dump` goes red. That last one is the whole reason `block-dump` exists.
+
 ## The shape
 
 A driver is a **command**, not a binary — so a leg can be assembled from what a
 backend already has rather than from a second copy of it. Both registered
-drivers are shell scripts that dispatch: the C++ one answers the table surfaces
-from `build/conformance-cpp` and hands the cook's node dump to
-`build/schema_test_cook`, which already produces it.
+drivers are shell scripts that dispatch: the C++ one answers the table and block
+surfaces from `build/conformance-cpp` and hands the two COOK surfaces to
+`build/schema_test_cook`, which already opens that unit and already runs that
+battery.
 
 ```
 <command> <manifest> list
@@ -64,17 +72,28 @@ One process per surface, so a runtime starts once rather than once per case.
 | `report` | `report` | Load the wire file, the report as `u,k,c,d,m\n` | `reports.txt` |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
-| `cook` | `cook` | Open the cook, the canonical node dump | `cook/<root>.dump` |
+| `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,c,d,m\n`, or `refused\n` | the verdict in the manifest |
+| `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
 | `block` | `block` | Open the image, `open\n` or `refuse\n` | `open\n` |
-| `forgery` | `forgery` | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
+| `block-dump` | `block` | Open the image, the canonical ROW dump | `block/<name>.dump` |
+| `forgery` | `forgery` (`block`) | Open the forged file at the claimed extent, `open\n` or `refuse\n` | the verdict in the manifest |
+| `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
 
-**A forgery line carries an EXTENT**, which is the length the caller claims and
-may be larger than the file: two rows of the block battery are about exactly
-that, and a file alone cannot hold it. `-1` means the file's own length. A
-driver allocates the claim and copies the file into it.
+**The two forgery surfaces are one shape and two KINDS**, split so the matrix
+can say which reader a backend has: a leg with a block reader and no cook reader
+prints `absent` on one and a verdict on the other, rather than one blaming the
+other.
+
+**A forgery line carries an EXTENT and a POINTER**, and neither is a fact a file
+can hold. The extent is the length the caller CLAIMS: larger than the file — two
+rows of the block battery are about exactly that — or shorter, which is what a
+truncation is. The pointer is the buffer that caller holds: `0` an aligned base,
+`1`..`63` that many bytes past one, `null` no buffer at all. A driver allocates
+EXACTLY the claim, places the base as the pointer column says, copies what fits
+and zeroes the rest. `-1` as the extent means the file's own length.
 
 ### Why there is no `dump-read`
 
@@ -92,28 +111,31 @@ gap is real and the matrix says so rather than a parser papering over it.
 3. `make conformance`.
 
 The first driver in the registry is the **reference leg**: `make conformance-pin`
-takes the cook dumps and the block forgery offsets from it. That is C++ and it
-is the repo's standing convention — C++ writes the pins, every other leg
-compares.
+takes the cook dumps, the block row dumps and both forgery batteries' offsets
+from it. That is C++ and it is the repo's standing convention — C++ writes the
+pins, every other leg compares. The two batteries print their manifest rows on
+stdout rather than editing the manifest: a manifest that rewrites itself is a
+manifest nobody reviews.
 
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64
-macOS with the C# text form registered, everything already built, median of
-three:
+macOS, everything already built, median of three:
 
 | leg | wall |
 |---|---|
-| both, 116 cases | 5.07 s |
-| `cpp` alone | 0.41 s |
-| `cs` alone | 4.92 s |
+| both, 260 cases per leg | 7.24 s |
+| `cpp` alone | 0.48 s |
+| `cs` alone | 7.36 s |
 
-The cost is per-PROCESS, not per-case: the C++ leg is ten native execs at
-~50 ms total, and the C# leg starts a runtime thirteen times — `list`, six
-surfaces, and one per cook, because `test/cs-cook`'s dump takes one root per
-invocation. Registering the two text-form surfaces added 36 cases and ~1.1 s,
-and every millisecond of that is two more runtime start-ups: the cases
-themselves are free at this size.
+The cost is per-PROCESS, not per-case, and the numbers say so plainly. The
+battery grew from 80 cases per leg to 260 — the cook's 111 forgeries, the 66
+hostile trees, a sixth cook, two block row dumps — and the wall went from about
+5 s to about 7 s. The C++ leg is a handful of native execs and answers all 260
+in under half a second; the C# leg starts a runtime once per surface plus once
+per cook, because `test/cs-cook`'s dump takes one root per invocation, and that
+is where nearly the whole wall is. Everything this round added rides inside a
+process that was already starting.
 
 So the data can grow a great deal before it matters, and the budget left for
 seven more languages is nearly the whole two minutes. Nine languages each
@@ -125,27 +147,11 @@ that stops holding; it is not needed at this size.
 
 Named, with the reason, so a port knows what it is not being asked for:
 
-- **The cook forgery battery as data.** `test/tables/cook_main.cpp` runs 111
-  forgeries and `test/cs-cook` runs the same 111; the block battery's eleven are
-  extracted here and the cook's are not. Most of them are patches this format
-  already carries; the arm that is not is the one placing the file at an
-  UNALIGNED base, which is a pointer fact rather than a file fact and needs a
-  column of its own. It rides with the first port that has a cook reader.
-- **The block ROW dump.** A block's rows are read through the typed accessors in
-  each leg, and a generic row dump needs projection offsets in the descriptors,
-  which no backend emits today (docs/SPEC-TABLES.md §19.2 describes them). It is an
-  emitter change and this harness does not own the emitters.
-- **The JSON hostile battery.** 67 cases already live as data at
-  `tables/pack/hostile-values/`, with a manifest carrying the expected report of
-  each, and `test/tables/hostile_main.cpp` is already a data-driven driver over
-  them. Folding that battery into this harness's surfaces is a move, not a
-  build.
-- **The FIXED-root cooks** (`Settings`, `Stamp`), and this one is a REAL gap
-  rather than a convenience. `test/cookgen`'s fixtures are chains of
-  value-initialised nodes, so the five pinned dumps lock every node offset,
-  every deref and every visit order — and almost no VALUES, because there are
-  almost none in them. The fixtures that do carry values are written by the C++
-  leg's own builder, which the harness cannot run without coupling itself to one
-  backend. Until a fixture generator writes values, `cook` is a structure gate
-  and the value half stays where it is, in `test/tables/cook_main.cpp`'s
-  `fixedvalues` mode and its C# twin.
+- **The FIXED-root cooks** (`Settings`, `Stamp`). `test/cookgen` writes a root
+  followed by a chain, so a root nothing points from has no fixture here, and
+  the two fixed roots' value crossing stays where it is — in
+  `test/tables/cook_main.cpp`'s `fixedvalues` mode and its C# twin, which read a
+  cook the C++ side wrote the wire for.
+- **The block form's fuzzers** (`test/tables/block_fuzz_main.cpp` and its C#
+  twin) and the cook's. A fuzzer is a search, not a case, and the finds it
+  produces land here as forgery rows — `block_offset_overflow` is one.

@@ -19,12 +19,18 @@ case "$surface" in
 list)
     build/conformance-cpp "$manifest" list
     echo cook
+    echo cook-forgery
     ;;
 cook)
-    # one line per cook, from the derived manifest: cook <root> <unit> <file>
-    grep '^cook ' "$manifest" | while read -r _ root _ file; do
-        ./build/schema_test_cook dump "$root" "$file" > "$out/$root"
+    # one line per cook, from the derived manifest:
+    #   cook <case> <unit> <root> <file>
+    grep '^cook ' "$manifest" | while read -r _ cookcase _ root file; do
+        ./build/schema_test_cook dump "$root" "$file" > "$out/$cookcase"
     done
+    ;;
+cook-forgery)
+    # the whole 111-row battery in ONE process, over the derived manifest
+    ./build/schema_test_cook conformance "$manifest" "$out"
     ;;
 *)
     exec build/conformance-cpp "$manifest" "$surface" "$out"

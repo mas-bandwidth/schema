@@ -40,6 +40,7 @@ func main() {
 	refField := flag.String("ref", "head", "the root's field that names the chain's first node")
 	nextField := flag.String("next", "next", "the chain table's own forward reference")
 	byteOrder := flag.String("byte-order", "little", "little or big")
+	values := flag.Bool("values", false, "fill every non-pointer leaf with deterministic values (docs/SPEC-TABLES.md §7.5)")
 	flag.Parse()
 	if *out == "" {
 		fatal("cookgen needs --out <file>")
@@ -110,6 +111,12 @@ func main() {
 	// writes is one `schema cook-check` passes rather than merely one that
 	// opens.
 	rootRec := make([]byte, rootLayout.Size)
+	fill := &filler{unit: u, ord: ord}
+	if *values {
+		if err := fill.fillRecord(rootRec, root); err != nil {
+			fatal("%s: %v", root.Name, err)
+		}
+	}
 	// the root's reference names the first chain node: the SELF-RELATIVE delta
 	// from the slot's own address (§6.3)
 	ord.PutUint64(rootRec[rootRef.Offset:], uint64(chainBase-rootRef.Offset))
@@ -120,13 +127,28 @@ func main() {
 	// the pitch is constant, so the forward delta is the SAME NUMBER in every
 	// record: one node on, less the slot's own position inside the record
 	forward := chainLayout.Size - chainRef.Offset
-	ord.PutUint64(chainRec[chainRef.Offset:], uint64(forward))
-	for range nodes - 1 {
+	// One reused buffer, whatever the size — a gigabyte is generable on a
+	// laptop because nothing here holds a graph. With --values the buffer is
+	// refilled per node from that node's own seed, so no two nodes carry the
+	// same values and the memory is still one record.
+	writeChain := func(i int64, delta uint64) {
+		if *values {
+			for b := range chainRec {
+				chainRec[b] = 0
+			}
+			fill.seed, fill.leaf = uint64(i)+1, 0
+			if err := fill.fillRecord(chainRec, chain); err != nil {
+				fatal("%s: %v", chain.Name, err)
+			}
+		}
+		ord.PutUint64(chainRec[chainRef.Offset:], delta)
 		must(w.Write(chainRec))
 	}
+	for i := range nodes - 1 {
+		writeChain(i, uint64(forward))
+	}
 	// the last node's reference is NULL, which in a region is a delta of zero
-	ord.PutUint64(chainRec[chainRef.Offset:], 0)
-	must(w.Write(chainRec))
+	writeChain(nodes-1, 0)
 	must(w.Write(make([]byte, dataLength-(chainBase+nodes*chainLayout.Size))))
 
 	// ---- the attribution: one entry per node, in index order ----

@@ -101,11 +101,24 @@ namespace Benchtable
         public int Offset;      // the field's offset in the record this descriptor describes
         public int Size;        // its size there
         public byte Kind;       // the table-wire kind, as TableFieldInfo carries it
-        public bool OutOfLine;  // an out-of-line array: the three members below are live
+        public bool OutOfLine;  // an out-of-line array: the triple's three members are live
         public int OffsetOfOffset; // the triple's OffsetOf member, or -1
-        public int CountOffset;    // its Count member, or -1
-        public int StrideOffset;   // its Stride member, or -1
+        // The COUNT COMPANION, and it is one column doing one job in both
+        // spellings: the triple's Count member for an out-of-line array, the int32
+        // used length of a string or a bytes inline, -1 when the field has none.
+        public int CountOffset;
+        public int StrideOffset;   // the triple's Stride member, or -1
         public int Stride;         // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+        // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
+        // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node
+        // and a block row without learning a second one. Where the field starts is
+        // the pair above; this is everything after it.
+        public bool IsArray;      // inline storage of ArrayBound slots at ElemSize (bytes included)
+        public bool Counted;      // CountOffset names a used-length companion
+        public bool Optional;     // PresentOffset names a bool presence companion
+        public int ArrayBound;    // inline slots, or a string's declared maximum; 0 for a plain scalar
+        public int ElemSize;      // ONE slot's size; the field's own when it holds one value
+        public int PresentOffset; // the presence companion, or -1
         // the ELEMENT's or the nested record's own layout, behind a delegate so
         // the table stays constructible in any order. null when the field is a
         // scalar. Following it is how a walker DESCENDS: an out-of-line array's
@@ -388,20 +401,20 @@ namespace Benchtable
             Name = "TableEntity", BuildVersion = Schema.BuildVersion, Size = 88, Align = 8, NumFields = 14,
             Fields = new TableBlockFieldInfo[]
             {
-                new TableBlockFieldInfo { Name = "entity_id", Offset = 24, Size = 4, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "pos_x", Offset = 28, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "pos_y", Offset = 32, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "pos_z", Offset = 36, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "yaw", Offset = 40, Size = 4, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "pitch", Offset = 44, Size = 4, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "vel_x", Offset = 48, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "vel_y", Offset = 52, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "vel_z", Offset = 56, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "health", Offset = 60, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "weapon", Offset = 64, Size = 1, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "damage", Offset = 72, Size = 8, Kind = 9, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "moving", Offset = 80, Size = 1, Kind = 1, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "firing", Offset = 81, Size = 1, Kind = 1, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
+                new TableBlockFieldInfo { Name = "entity_id", Offset = 24, Size = 4, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "pos_x", Offset = 28, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "pos_y", Offset = 32, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "pos_z", Offset = 36, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "yaw", Offset = 40, Size = 4, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "pitch", Offset = 44, Size = 4, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "vel_x", Offset = 48, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "vel_y", Offset = 52, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "vel_z", Offset = 56, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "health", Offset = 60, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "weapon", Offset = 64, Size = 1, Kind = 7, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 1, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "damage", Offset = 72, Size = 8, Kind = 9, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 8, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "moving", Offset = 80, Size = 1, Kind = 1, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 1, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "firing", Offset = 81, Size = 1, Kind = 1, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 1, PresentOffset = -1, ElementRef = null },
             },
         };
 
@@ -489,8 +502,8 @@ namespace Benchtable
             Name = "TableStat", BuildVersion = Schema.BuildVersion, Size = 32, Align = 8, NumFields = 2,
             Fields = new TableBlockFieldInfo[]
             {
-                new TableBlockFieldInfo { Name = "stat_id", Offset = 24, Size = 4, Kind = 6, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
-                new TableBlockFieldInfo { Name = "delta", Offset = 28, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, ElementRef = null },
+                new TableBlockFieldInfo { Name = "stat_id", Offset = 24, Size = 4, Kind = 6, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
+                new TableBlockFieldInfo { Name = "delta", Offset = 28, Size = 4, Kind = 4, OutOfLine = false, OffsetOfOffset = -1, CountOffset = -1, StrideOffset = -1, Stride = 0, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemSize = 4, PresentOffset = -1, ElementRef = null },
             },
         };
 
