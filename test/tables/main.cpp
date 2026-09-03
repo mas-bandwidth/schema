@@ -5097,6 +5097,115 @@ static void test_golden_seams()
     }
 }
 
+// ---- THE VARIABLE CLASS's conformance instances (docs/SPEC-TABLES.md §3.1) ----
+//
+// The corpus had no pointered instance at all, so the matrix could not see the
+// variable class in any language (schema#357). These four are the shapes the
+// numbering has to get right, and each is pinned here for the same reason every
+// other wire golden is: C++ writes the pins and every other leg compares.
+//
+// A save from a LOCKED region and a save from the BUILDER are the same bytes —
+// the numbering is re-derived from the graph either way — so each is pinned
+// through the region and checked against the builder.
+
+static void pin_graph_golden( const char * name, graphdemo::SceneBuilder & builder )
+{
+    static uint8_t wire[16384];
+    const int64_t from_builder = graphdemo::SceneSave( builder, wire, sizeof( wire ) );
+    CHECK( from_builder > 0 && from_builder == graphdemo::SceneMeasure( builder ) );
+    CHECK( builder.Lock() );
+    static uint8_t locked[16384];
+    const int64_t from_region = graphdemo::SceneSave( builder.AsConst(), locked, sizeof( locked ) );
+    CHECK( from_region == from_builder );
+    CHECK( memcmp( wire, locked, (size_t) from_builder ) == 0 );
+    pin_table_golden( name, locked, from_region );
+}
+
+static void pin_graph_goldens()
+{
+    // A TREE: a chain of list nodes and a binary tree of tree nodes, every
+    // reference naming a node nothing else names.
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        set_string( root->name, root->name_length, "tree" );
+        root->version = 2;
+        graphdemo::TableSlot<graphdemo::ListNode> a = builder.Alloc<graphdemo::ListNode>();
+        graphdemo::TableSlot<graphdemo::ListNode> b = builder.Alloc<graphdemo::ListNode>();
+        a->value = 1;
+        set_string( a->name, a->name_length, "a" );
+        b->value = 2;
+        a->next = b;
+        root->head = a;
+        graphdemo::TableSlot<graphdemo::TreeNode> top = builder.Alloc<graphdemo::TreeNode>();
+        graphdemo::TableSlot<graphdemo::TreeNode> left = builder.Alloc<graphdemo::TreeNode>();
+        graphdemo::TableSlot<graphdemo::TreeNode> right = builder.Alloc<graphdemo::TreeNode>();
+        set_string( top->label, top->label_length, "top" );
+        set_string( left->label, left->label_length, "left" );
+        set_string( right->label, right->label_length, "right" );
+        top->left = left;
+        top->right = right;
+        root->tree = top;
+        graphdemo::TableSlot<graphdemo::Settings> settings = builder.Alloc<graphdemo::Settings>();
+        settings->quality = 3;
+        set_string( settings->label, settings->label_length, "mid" );
+        root->settings = settings;
+        pin_graph_golden( "graph_tree", builder );
+    }
+
+    // A SHARED NODE, twice over: one list node named from `head` and from
+    // `alias`, and a DIAMOND in the tree whose closing reference names a node
+    // already numbered. One index, one record, both times.
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        set_string( root->name, root->name_length, "shared" );
+        graphdemo::TableSlot<graphdemo::ListNode> shared = builder.Alloc<graphdemo::ListNode>();
+        shared->value = 7;
+        set_string( shared->name, shared->name_length, "one" );
+        root->head = shared;
+        root->alias = shared;
+        graphdemo::TableSlot<graphdemo::TreeNode> top = builder.Alloc<graphdemo::TreeNode>();
+        graphdemo::TableSlot<graphdemo::TreeNode> left = builder.Alloc<graphdemo::TreeNode>();
+        graphdemo::TableSlot<graphdemo::TreeNode> leaf = builder.Alloc<graphdemo::TreeNode>();
+        set_string( leaf->label, leaf->label_length, "leaf" );
+        top->left = left;
+        top->right = leaf;
+        left->left = leaf;
+        root->tree = top;
+        root->ground.depth = 1;
+        root->ground.head = shared; // and again, from a by-value nesting
+        pin_graph_golden( "graph_shared", builder );
+    }
+
+    // AN EMPTY ROOT: every pointer null and every value at its default, so
+    // nothing rides at all and the save is the terminator alone.
+    {
+        graphdemo::SceneBuilder builder;
+        pin_graph_golden( "graph_empty", builder );
+    }
+
+    // MAXIMAL DEPTH: a chain far past anything a nesting-based form could
+    // carry, which under the flat table is a flat list of records.
+    {
+        graphdemo::SceneBuilder builder;
+        graphdemo::Scene * root = builder.GetRoot();
+        set_string( root->name, root->name_length, "deep" );
+        graphdemo::TableSlot<graphdemo::ListNode> head = builder.Alloc<graphdemo::ListNode>();
+        head->value = 0;
+        root->head = head;
+        graphdemo::ListNode * tail = head;
+        for ( int i = 1; i < 260; i++ )
+        {
+            graphdemo::TableSlot<graphdemo::ListNode> node = builder.Alloc<graphdemo::ListNode>();
+            node->value = i;
+            tail->next = node;
+            tail = node;
+        }
+        pin_graph_golden( "graph_deep", builder );
+    }
+}
+
 // ---- a keyed object's keys ARE keys (docs/SPEC-TABLES.md §16.2) ---------------
 //
 // Last-wins inside a keyed object was always true — each placement
@@ -5224,6 +5333,7 @@ int main()
 {
     test_golden_wire();
     test_golden_seams();
+    pin_graph_goldens();
     test_golden_reload();
     test_round_trip();
     test_exact_capacity();

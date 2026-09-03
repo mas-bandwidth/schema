@@ -50,6 +50,26 @@ func UnpackOneFile(m *tabletext.Model, root string, wire []byte, dir string) (ta
 	return unpack(m, root, wire, dir, true)
 }
 
+// ReadReport decodes one wire as one root and answers the §4 report. It writes
+// nothing, so it takes the VARIABLE class the text form refuses: the decode
+// reads a pointered root correctly — the node table and all — and it is only
+// the TEXT that has no spelling for a reference yet (§16.2, schema#374).
+func ReadReport(m *tabletext.Model, root string, wire []byte) (tabletext.Report, error) {
+	st := m.Unit.Tables[root]
+	if st == nil {
+		return tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", root, strings.Join(m.Roots(), ", "))
+	}
+	var report tabletext.Report
+	ok, err := tablewire.Decode(m, m.New(st), wire, &report)
+	if err != nil {
+		return report, err
+	}
+	if !ok {
+		return report, fmt.Errorf("the bytes are not a %s body — the framing is damaged past the point the walk could continue (docs/SPEC-TABLES.md §4)", root)
+	}
+	return report, nil
+}
+
 func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bool) (tabletext.Report, error) {
 	st := m.Unit.Tables[root]
 	if st == nil {

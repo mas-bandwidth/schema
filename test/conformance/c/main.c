@@ -114,6 +114,19 @@ static uint8_t * slurp( const char * path, size_t * bytes )
     return out;
 }
 
+/* spill_absent says this backend cannot answer THIS CASE — a feature it lacks,
+   not a test it failed. The harness counts it and the matrix prints it beside
+   what the leg did answer (test/conformance/README.md). */
+static int spill_absent( const char * dir, const char * name );
+
+/* no_text marks an instance the corpus carries on the WIRE only: the variable
+   class has no text form yet (docs/SPEC-TABLES.md 16.2), so the TEXT surfaces
+   skip it rather than reporting a form nobody has. */
+static int no_text( const Line * f )
+{
+    return f->count > 5 && strcmp( f->field[5], "no-text" ) == 0;
+}
+
 static int spill( const char * dir, const char * name, const void * data, size_t bytes )
 {
     char path[1024];
@@ -193,7 +206,10 @@ static int surface_wire( const char * out )
         ConformanceReport report;
         if ( strcmp( f->field[0], "instance" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f->field[2], f->field[3] ); return 1; }
+        /* the C backend writes the earlier NESTED wire for a pointered unit
+           (SPEC-TABLES 3.1's backend status), so it has no codec here and says
+           so per case rather than failing the surface */
+        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
         wire = slurp( f->field[4], &bytes );
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
@@ -203,6 +219,13 @@ static int surface_wire( const char * out )
         if ( !save_into( codec, value, out, f->field[1] ) ) { return 1; }
     }
     return 0;
+}
+
+static int spill_absent( const char * dir, const char * name )
+{
+    char marker[1024];
+    snprintf( marker, sizeof( marker ), "%s.absent", name );
+    return spill( dir, marker, "", 0 );
 }
 
 static int surface_report( const char * out )
@@ -220,7 +243,7 @@ static int surface_report( const char * out )
         int n, ok;
         if ( strcmp( f->field[0], "report" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f->field[2], f->field[3] ); return 1; }
+        if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
         wire = slurp( f->field[4], &bytes );
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
@@ -247,7 +270,7 @@ static int surface_json_read( const char * out )
         size_t bytes = 0;
         void * value;
         ConformanceReport report;
-        if ( strcmp( f->field[0], "instance" ) != 0 ) { continue; }
+        if ( strcmp( f->field[0], "instance" ) != 0 || no_text( f ) ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         if ( codec == NULL ) { return 1; }
         snprintf( path, sizeof( path ), "testdata/conformance/tables/json/%s.json", f->field[1] );
@@ -277,7 +300,7 @@ static int surface_json_write( const char * out )
         char * text;
         char name[512];
         int ok;
-        if ( strcmp( f->field[0], "instance" ) != 0 ) { continue; }
+        if ( strcmp( f->field[0], "instance" ) != 0 || no_text( f ) ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         if ( codec == NULL ) { return 1; }
         wire = slurp( f->field[4], &bytes );

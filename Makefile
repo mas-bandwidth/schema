@@ -2186,6 +2186,37 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
+# THE NEGATIVE CONTROL FOR PER-CASE ABSENCE (test/conformance/README.md).
+#
+# An absence is a driver's own claim, so the mechanism could hide a real hole:
+# a leg that went absent on a case it should answer would print a smaller pass
+# and no failure at all. What stops that is the rule beside it — THE REFERENCE
+# LEG MAY NOT ANSWER ABSENT — and this is the control that shows the rule is
+# load-bearing rather than decorative.
+#
+# It sabotages the C++ driver into claiming absence for every instance whose
+# unit is pointered, which is exactly what a port legitimately does, and
+# requires the harness to go RED on the reference leg.
+.PHONY: conformance-negative-control-absent
+conformance-negative-control-absent: build/conformance-harness build/tables-generated/.stamp
+	@mkdir -p build
+	@sed -e 's|if ( variable != NULL )$$|if ( variable != NULL \&\& !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|' \
+		test/conformance/cpp/main.cpp > build/conformance-cpp-absent.cpp
+	@cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/main.cpp && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-cpp-absent.cpp \
+		$(CONFORMANCE_SOURCES) -o build/conformance-cpp
+	@if ./build/conformance-harness run --only cpp > build/conformance-absent.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the REFERENCE leg answered ABSENT and the harness stayed green"; \
+		$(MAKE) build/conformance-cpp; exit 1; \
+	fi
+	@grep -q "REFERENCE leg answered ABSENT" build/conformance-absent.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the reference rule"; \
+		  cat build/conformance-absent.log; $(MAKE) build/conformance-cpp; exit 1; }
+	@rm -f build/conformance-cpp
+	@$(MAKE) build/conformance-cpp
+	@echo "negative control: an ABSENCE from the reference leg turns the harness red"
+
 # UNPACK REFUSES THE VARIABLE CLASS BY NAME (schema#374, docs/SPEC-TABLES.md
 # §16.2), the way PACK always has. The decode reads a pointered root correctly;
 # what has no spelling yet is a REFERENCE in the text, so a text written anyway
@@ -3119,6 +3150,7 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	# registers are the two this section has just built.
 	$(MAKE) conformance
 	$(MAKE) conformance-negative-control
+	$(MAKE) conformance-negative-control-absent
 	$(MAKE) conformance-negative-control-block-dump
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) conformance-negative-control-go
@@ -3397,13 +3429,15 @@ clean:
 # it is not needed at this size.
 CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	-Ibuild/tables-generated/block
+	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
+	-Ibuild/tables-generated/p2 -Itest/tables
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
 	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp \
 	build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp \
 	build/tables-generated/p3/P3Table.cpp build/tables-generated/block/RenderBlock.cpp \
-	build/tables-generated/block/PaddedBlock.cpp
+	build/tables-generated/block/PaddedBlock.cpp build/tables-generated/pointers/GraphTable.cpp \
+	build/tables-generated/pointers/MarksTable.cpp build/tables-generated/pointers/PartsTable.cpp
 
 build/conformance-harness: $(wildcard test/conformance/harness/*.go)
 	@mkdir -p build

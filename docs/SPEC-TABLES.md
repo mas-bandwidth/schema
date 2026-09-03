@@ -1059,6 +1059,17 @@ requires byte identity, and it checks the SIZES too, because the region and
 attribution bytes C++ derives from the framing alone are the two parts the
 tool's cook writes.
 
+**And the CONFORMANCE CORPUS carries the class now** (schema#357), which is
+what makes the matrix able to see it at all: four instances over a pointered
+root — a tree, a graph whose shared node is named three times and whose tree
+closes a diamond, an empty root, and a chain of 260 nodes — pinned by the
+reference and read by the tool. They ride the `wire` and `report` surfaces;
+they are marked `no-text` because §16 has no spelling for a reference yet
+(§16.2); and every backend that refuses a pointered unit's wire answers ABSENT
+for them, per case, so its FIXED-class pass is untouched and the gap is a
+number in the matrix rather than a paragraph somewhere. That is the row
+schema#349 fills, one language at a time.
+
 **The C port is the one backend that carries a pointered unit and does not
 carry this form yet**, because it was mirrored from the C++ backend while that
 backend still wrote the earlier NESTED one: a pointee inline as a body under

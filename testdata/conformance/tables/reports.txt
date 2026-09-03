@@ -6,13 +6,16 @@
 # Regenerate with: make conformance-generate. A counter that MOVES under an
 # unchanged schema is stop-the-line, exactly as a wire golden is.
 
+p1_as_p2           0,1,0,0,false
 p1_as_p3           0,0,0,0,false
+p1_empty_as_p2     0,0,0,0,false
 p1_empty_as_p3     0,0,0,0,false
 p2_as_p1           1,1,0,0,false
 p2_as_p3           1,1,0,0,false
 p2_empty_as_p1     1,1,0,0,false
 p2_empty_as_p3     1,1,0,0,false
 p3_as_p1           0,0,0,0,false
+p3_as_p2           0,1,0,0,false
 p3_empty_as_p1     0,0,0,0,false
 v1_cfg_as_v2       1,1,1,0,false
 v1_seams_as_v2     2,2,0,0,false

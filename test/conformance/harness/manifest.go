@@ -28,6 +28,13 @@ type Instance struct {
 	Root string
 	Wire string
 	JSON string
+	// NoText marks an instance the corpus carries on the WIRE and not yet as
+	// TEXT (docs/SPEC-TABLES.md §16.2): the variable class has no text form in
+	// any implementation, the tool refuses a variable root in both directions,
+	// and a JSON golden nothing can write is a golden nothing holds. The
+	// marker is the corpus saying which half it owes, and schema#275 removes
+	// it rather than the harness quietly tolerating a missing file.
+	NoText bool
 }
 
 // Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole expectation
@@ -242,13 +249,20 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			}
 			m.Units = append(m.Units, Unit{Key: f[1], Paths: f[2:]})
 		case "instance":
-			if len(f) != 5 {
-				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire", where)
+			if len(f) != 5 && len(f) != 6 {
+				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire, and optionally no-text", where)
 			}
-			m.Instances = append(m.Instances, Instance{
+			inst := Instance{
 				Name: f[1], Unit: f[2], Root: f[3], Wire: f[4],
 				JSON: jsonDir + "/" + f[1] + ".json",
-			})
+			}
+			if len(f) == 6 {
+				if f[5] != "no-text" {
+					return nil, fmt.Errorf("%s: %q is not an instance marker; the only one is no-text", where, f[5])
+				}
+				inst.NoText = true
+			}
+			m.Instances = append(m.Instances, inst)
 		case "report":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)

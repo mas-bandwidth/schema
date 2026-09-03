@@ -34,7 +34,7 @@ the end of the line.
 
 ```
 unit         <key> <schema path>...
-instance     <name> <unit> <root> <wire file>
+instance     <name> <unit> <root> <wire file> [no-text]
 report       <case> <unit> <root> <wire file>
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -46,6 +46,14 @@ forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <
 - **`instance`** is one table instance in TWO forms that must agree: the wire
   bytes at `<wire file>` and the text at `json/<name>.json`. The same instance,
   both ways.
+
+  **`no-text` says the corpus carries this one on the WIRE alone**, and it is
+  the data saying which half it still owes: the VARIABLE class has no text form
+  in any implementation, and the tool refuses a variable root in both directions
+  (docs/SPEC-TABLES.md §16.2, schema#374), so a `json/<name>.json` here would be
+  a golden nothing can write and nothing holds. `harness generate` writes none,
+  the harness asks no leg for one, and schema#275 removes the marker — which is
+  a smaller and louder edit than a missing file quietly tolerated.
 - **`report`** is bytes read by a type that did not write them — the evolution
   class. The counters live in `reports.txt`, keyed by `<case>`.
 - **`json-hostile`** is one tree per rule the text form states (§16.2, §16.3,

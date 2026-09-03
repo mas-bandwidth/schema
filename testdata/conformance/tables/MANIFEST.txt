@@ -44,6 +44,7 @@ unit tblv1     test/tables/V1.schema
 unit tblv2     test/tables/V2.schema
 unit tblp1     test/tables/P1.schema
 unit tblp3     test/tables/P3.schema
+unit tblp2     test/tables/P2.schema
 unit graphdemo tables/pointers
 unit blockdemo tables/block
 
@@ -63,6 +64,20 @@ instance chain_value          tblp1     Chain         testdata/wire/tables/chain
 instance chain_value_empty    tblp1     Chain         testdata/wire/tables/chain_value_empty.bin
 instance chain_optional       tblp3     Chain         testdata/wire/tables/chain_optional.bin
 instance chain_optional_empty tblp3     Chain         testdata/wire/tables/chain_optional_empty.bin
+
+# THE VARIABLE CLASS (§3.1), and the four shapes the numbering has to get right.
+# Marked `no-text` because §16 has no spelling for a reference yet and the tool
+# refuses a variable root in both directions (§16.2, schema#374, schema#275) —
+# so the corpus carries these on the WIRE and says which half it still owes.
+#
+# graph_shared is the one a tree-shaped form cannot represent: one list node
+# named from `head`, from `alias` and from a by-value nesting, and a diamond
+# whose closing reference names a node already numbered. Five nodes for eight
+# references, and the tool's own cook of these bytes agrees.
+instance graph_tree           graphdemo Scene         testdata/wire/tables/graph_tree.bin   no-text
+instance graph_shared         graphdemo Scene         testdata/wire/tables/graph_shared.bin no-text
+instance graph_empty          graphdemo Scene         testdata/wire/tables/graph_empty.bin  no-text
+instance graph_deep           graphdemo Scene         testdata/wire/tables/graph_deep.bin   no-text
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -85,6 +100,12 @@ report p2_as_p1       tblp1 Chain testdata/wire/tables/chain_pointer.bin
 report p2_as_p3       tblp3 Chain testdata/wire/tables/chain_pointer.bin
 report p2_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_pointer_empty.bin
 report p2_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_pointer_empty.bin
+
+# and the VARIABLE reader's own side of the same seam: P2 reads what P1 and P3
+# wrote, meets a BODY where it declares an index, and counts it.
+report p1_as_p2       tblp2 Chain testdata/wire/tables/chain_value.bin
+report p3_as_p2       tblp2 Chain testdata/wire/tables/chain_optional.bin
+report p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
 
 block block_render blockdemo testdata/wire/tables/block_render.bin testdata/conformance/tables/block/block_render.dump
 block block_padded blockdemo testdata/wire/tables/block_padded.bin testdata/conformance/tables/block/block_padded.dump
