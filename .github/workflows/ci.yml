@@ -244,6 +244,15 @@ jobs:
       # the harness's own goldens become the gate: a big-endian reader loads
       # what a little-endian host wrote, writes it back, and is byte-compared
       # over the wire, the read report and the text form.
+      #
+      # It needs the Go RUNTIME checkout, even though the table codec names no
+      # runtime at all: a generated unit's PACKET sources sit in the same
+      # package as its table sources, and those import it.
+      - name: Check out the Go serialize runtime (pinned release)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
       - name: the Go table leg, big-endian
         run: make conformance-big-endian
 
