@@ -129,8 +129,8 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 			continue
 		}
 		g.pf("inline int64_t %sMeasure( const %s & value );\n", st.Name, st.Name)
-		g.pf("inline bool %sSaveBody( TableWriter & w, const %s & value );\n", st.Name, st.Name)
-		g.pf("inline bool %sLoadBody( TableReader & r, %s & value );\n", st.Name, st.Name)
+		g.pf("%s bool %sSaveBody( TableWriter & w, const %s & value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
+		g.pf("%s bool %sLoadBody( TableReader & r, %s & value );\n", tableInlineMacro(g.unit.Package), st.Name, st.Name)
 	}
 	g.pf("\n")
 	if vars := g.varMembers(members); len(vars) > 0 {

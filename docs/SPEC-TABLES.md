@@ -94,6 +94,18 @@ the three fast paths do not spend. That is the trade this document exists to
 make, and it is why the fast paths are accelerators BESIDE the wire rather
 than replacements for it.
 
+**How much slower is a BYTE COUNT, and the count is measured.** The tables
+bench's one shape, `TableMixed`, mirrors the type corpus's `BenchMixed` field
+for field, so the two wires carry the same declared content and the ratio
+between them is the price of tolerance and nothing else
+(`bench/tables/README.md`). A record rides in **2391 bytes against the type
+wire's 438**, and **1487 of those 2391 — 62% — are framing**: field ids, kind
+bytes, lengths, element counts and body terminators, not values. That count is
+the trade, and it is where the per-MESSAGE factor comes from. What it does not
+license is a codec slower than those bytes require: the fixed-table rung above
+holds the per-BYTE cost to the bench, so a per-byte gap is a defect to explain
+or close and never the wire's price.
+
 **And one path is generic on purpose and may allocate** — the reflection
 surface (§8): the field walk, the text form (§16), the packer (§17), a
 viewer. In the owner's words: *"we also have the flexibility of the

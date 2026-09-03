@@ -18,6 +18,22 @@
 #ifndef BENCHTABLE_SCHEMA_TABLE_PRIMITIVES
 #define BENCHTABLE_SCHEMA_TABLE_PRIMITIVES
 
+// THE CODEC DOES NOT DEPEND ON THE COMPILER'S INLINING BUDGET. A table of a
+// realistic field count emits one large body per type, and the cursor a body
+// writes through lives in the caller's `TableWriter`: across a call boundary
+// that cursor round-trips through memory, and a `uint8_t *` store may alias the
+// writer itself, so every put reloads it. When a budget runs out mid-body the
+// codec silently degrades to that shape. Forcing the primitives and the
+// fixed-class bodies inline is what keeps the cursor in registers and lets
+// adjacent constant framing bytes merge into one store.
+#if defined( _MSC_VER )
+#define BENCHTABLE_TABLE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define BENCHTABLE_TABLE_INLINE inline __attribute__(( always_inline ))
+#else
+#define BENCHTABLE_TABLE_INLINE inline
+#endif
+
 namespace benchtable {
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -138,17 +154,17 @@ struct TableWriter
     // is a header a consumer compiles under its OWN flags
     TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
-    void raw( const void * data, int64_t bytes )
+    BENCHTABLE_TABLE_INLINE void raw( const void * data, int64_t bytes )
     {
         if ( offset + bytes > capacity ) { overflow = true; return; }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    void put8( uint8_t v )   { raw( &v, 1 ); }
-    void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
-    void patch32( int64_t at, uint32_t v )
+    BENCHTABLE_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
+    BENCHTABLE_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
+    BENCHTABLE_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    BENCHTABLE_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    BENCHTABLE_TABLE_INLINE void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
         buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
@@ -166,11 +182,11 @@ struct TableReader
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
-    bool has( int64_t bytes ) const { return offset + bytes <= size; }
-    uint8_t get8()   { return buffer[offset++]; }
-    uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    BENCHTABLE_TABLE_INLINE bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    BENCHTABLE_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
+    BENCHTABLE_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
+    BENCHTABLE_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
+    BENCHTABLE_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
@@ -593,23 +609,23 @@ inline void TablePickupEventReset( TablePickupEvent & value ) { value = TablePic
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t TableEntityMeasure( const TableEntity & value );
-inline bool TableEntitySaveBody( TableWriter & w, const TableEntity & value );
-inline bool TableEntityLoadBody( TableReader & r, TableEntity & value );
+BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, const TableEntity & value );
+BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity & value );
 inline int64_t TableStatMeasure( const TableStat & value );
-inline bool TableStatSaveBody( TableWriter & w, const TableStat & value );
-inline bool TableStatLoadBody( TableReader & r, TableStat & value );
+BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, const TableStat & value );
+BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & value );
 inline int64_t TableMixedMeasure( const TableMixed & value );
-inline bool TableMixedSaveBody( TableWriter & w, const TableMixed & value );
-inline bool TableMixedLoadBody( TableReader & r, TableMixed & value );
+BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, const TableMixed & value );
+BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & value );
 inline int64_t TableHitEventMeasure( const TableHitEvent & value );
-inline bool TableHitEventSaveBody( TableWriter & w, const TableHitEvent & value );
-inline bool TableHitEventLoadBody( TableReader & r, TableHitEvent & value );
+BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, const TableHitEvent & value );
+BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEvent & value );
 inline int64_t TableChatEventMeasure( const TableChatEvent & value );
-inline bool TableChatEventSaveBody( TableWriter & w, const TableChatEvent & value );
-inline bool TableChatEventLoadBody( TableReader & r, TableChatEvent & value );
+BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, const TableChatEvent & value );
+BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatEvent & value );
 inline int64_t TablePickupEventMeasure( const TablePickupEvent & value );
-inline bool TablePickupEventSaveBody( TableWriter & w, const TablePickupEvent & value );
-inline bool TablePickupEventLoadBody( TableReader & r, TablePickupEvent & value );
+BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, const TablePickupEvent & value );
+BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePickupEvent & value );
 
 inline int64_t TableEntityMeasure( const TableEntity & value )
 {
@@ -636,7 +652,7 @@ inline int64_t TableEntityMeasure( const TableEntity & value )
     return bytes;
 }
 
-inline bool TableEntitySaveBody( TableWriter & w, const TableEntity & value )
+BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, const TableEntity & value )
 {
     if ( value.entity_id != 0 )
     {
@@ -721,7 +737,7 @@ inline int64_t TableEntitySave( const TableEntity & value, uint8_t * buffer, int
     return w.offset; // == TableEntityMeasure( value )
 }
 
-inline bool TableEntityLoadBody( TableReader & r, TableEntity & value )
+BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity & value )
 {
     TableEntityReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -961,7 +977,7 @@ inline int64_t TableStatMeasure( const TableStat & value )
     return bytes;
 }
 
-inline bool TableStatSaveBody( TableWriter & w, const TableStat & value )
+BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, const TableStat & value )
 {
     if ( value.stat_id != 0 )
     {
@@ -984,7 +1000,7 @@ inline int64_t TableStatSave( const TableStat & value, uint8_t * buffer, int64_t
     return w.offset; // == TableStatMeasure( value )
 }
 
-inline bool TableStatLoadBody( TableReader & r, TableStat & value )
+BENCHTABLE_TABLE_INLINE bool TableStatLoadBody( TableReader & r, TableStat & value )
 {
     TableStatReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1135,7 +1151,7 @@ inline int64_t TableMixedMeasure( const TableMixed & value )
     return bytes;
 }
 
-inline bool TableMixedSaveBody( TableWriter & w, const TableMixed & value )
+BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, const TableMixed & value )
 {
     if ( value.protocol_magic != 0 )
     {
@@ -1348,7 +1364,7 @@ inline int64_t TableMixedSave( const TableMixed & value, uint8_t * buffer, int64
     return w.offset; // == TableMixedMeasure( value )
 }
 
-inline bool TableMixedLoadBody( TableReader & r, TableMixed & value )
+BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & value )
 {
     TableMixedReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1912,7 +1928,7 @@ inline int64_t TableHitEventMeasure( const TableHitEvent & value )
     return bytes;
 }
 
-inline bool TableHitEventSaveBody( TableWriter & w, const TableHitEvent & value )
+BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, const TableHitEvent & value )
 {
     if ( value.target_id != 0 )
     {
@@ -1945,7 +1961,7 @@ inline int64_t TableHitEventSave( const TableHitEvent & value, uint8_t * buffer,
     return w.offset; // == TableHitEventMeasure( value )
 }
 
-inline bool TableHitEventLoadBody( TableReader & r, TableHitEvent & value )
+BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEvent & value )
 {
     TableHitEventReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2038,7 +2054,7 @@ inline int64_t TableChatEventMeasure( const TableChatEvent & value )
     return bytes;
 }
 
-inline bool TableChatEventSaveBody( TableWriter & w, const TableChatEvent & value )
+BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, const TableChatEvent & value )
 {
     if ( value.channel != 0 )
     {
@@ -2061,7 +2077,7 @@ inline int64_t TableChatEventSave( const TableChatEvent & value, uint8_t * buffe
     return w.offset; // == TableChatEventMeasure( value )
 }
 
-inline bool TableChatEventLoadBody( TableReader & r, TableChatEvent & value )
+BENCHTABLE_TABLE_INLINE bool TableChatEventLoadBody( TableReader & r, TableChatEvent & value )
 {
     TableChatEventReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2127,7 +2143,7 @@ inline int64_t TablePickupEventMeasure( const TablePickupEvent & value )
     return bytes;
 }
 
-inline bool TablePickupEventSaveBody( TableWriter & w, const TablePickupEvent & value )
+BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, const TablePickupEvent & value )
 {
     if ( value.item_id != 0 )
     {
@@ -2150,7 +2166,7 @@ inline int64_t TablePickupEventSave( const TablePickupEvent & value, uint8_t * b
     return w.offset; // == TablePickupEventMeasure( value )
 }
 
-inline bool TablePickupEventLoadBody( TableReader & r, TablePickupEvent & value )
+BENCHTABLE_TABLE_INLINE bool TablePickupEventLoadBody( TableReader & r, TablePickupEvent & value )
 {
     TablePickupEventReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )

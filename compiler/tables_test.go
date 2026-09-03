@@ -403,11 +403,15 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 			t.Errorf("a value-only table in a pointered unit grew %q", absent)
 		}
 	}
-	// its codecs are the by-value ones, character for character
+	// its codecs are the by-value ones, character for character — including
+	// the force-inline qualifier the FIXED class carries and the
+	// variable-length templates do not (schema#343): the two classes differ in
+	// what the compiler is allowed to leave out of line, and that difference is
+	// per table, exactly as the parameter list is.
 	for _, want := range []string{
 		"inline int64_t PlainMeasure( const Plain & value )",
-		"inline bool PlainSaveBody( TableWriter & w, const Plain & value )",
-		"inline bool PlainLoadBody( TableReader & r, Plain & value )",
+		"PROBE_TABLE_INLINE bool PlainSaveBody( TableWriter & w, const Plain & value )",
+		"PROBE_TABLE_INLINE bool PlainLoadBody( TableReader & r, Plain & value )",
 		"inline bool PlainLoad( Plain & value, const uint8_t * buffer, int64_t bytes, TableReport * report )",
 	} {
 		if !strings.Contains(header, want) {
@@ -425,6 +429,23 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	// a variable-length table is never held by value: no by-value Load
 	if strings.Contains(header, "inline bool RootLoad( Root & value") {
 		t.Error("a pointer-bearing table emitted a by-value Load")
+	}
+	// THE RECURSION GUARD (schema#343). The force-inline qualifier stops at the
+	// fixed class because that is the class whose save/load call graph cannot
+	// hold a cycle: a fixed table nests by value, and a by-value cycle is an
+	// infinite `sizeof`. The variable-length form reaches its pointee through
+	// the depth-carrying template, which a self-referential declaration makes
+	// directly recursive — and a recursive always_inline does not compile under
+	// gcc. Every line carrying the qualifier must therefore be a non-template
+	// one, or the emitter has emitted source no gcc build can compile.
+	for _, line := range strings.Split(header, "\n") {
+		if strings.Contains(line, "PROBE_TABLE_INLINE") && strings.Contains(line, "template") {
+			t.Errorf("the force-inline qualifier reached a template — recursion is possible there: %q", line)
+		}
+	}
+	if strings.Contains(header, "PROBE_TABLE_INLINE bool RootSaveBody") ||
+		strings.Contains(header, "PROBE_TABLE_INLINE bool NodeSaveBody") {
+		t.Error("a variable-length table's body was force-inlined; its pointer walk can recurse")
 	}
 }
 

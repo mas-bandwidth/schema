@@ -267,12 +267,19 @@ struct TableKeyed
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
+// tableInlineMacro names the unit's force-inline macro. It is package-scoped
+// for the same reason the primitives guard is: a consumer compiles several
+// packages' Table.h files in one TU, and a macro every one of them spelled the
+// same way would be a redefinition.
+func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
+
 func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 	keyedStorage := ""
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
 	}
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
+	forceInline := tableInlineMacro(pkg)
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
 	// always emitted, to the byte (docs/SPEC-TABLES.md §2, the zero-cost gate)
@@ -286,6 +293,22 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 	}
 	return `#ifndef ` + guard + `
 #define ` + guard + `
+
+// THE CODEC DOES NOT DEPEND ON THE COMPILER'S INLINING BUDGET. A table of a
+// realistic field count emits one large body per type, and the cursor a body
+// writes through lives in the caller's ` + "`TableWriter`" + `: across a call boundary
+// that cursor round-trips through memory, and a ` + "`uint8_t *`" + ` store may alias the
+// writer itself, so every put reloads it. When a budget runs out mid-body the
+// codec silently degrades to that shape. Forcing the primitives and the
+// fixed-class bodies inline is what keeps the cursor in registers and lets
+// adjacent constant framing bytes merge into one store.
+#if defined( _MSC_VER )
+#define ` + forceInline + ` __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define ` + forceInline + ` inline __attribute__(( always_inline ))
+#else
+#define ` + forceInline + ` inline
+#endif
 
 namespace ` + pkg + ` {
 
@@ -407,17 +430,17 @@ struct TableWriter
     // is a header a consumer compiles under its OWN flags
     TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
-    void raw( const void * data, int64_t bytes )
+    ` + forceInline + ` void raw( const void * data, int64_t bytes )
     {
         if ( offset + bytes > capacity ) { overflow = true; return; }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    void put8( uint8_t v )   { raw( &v, 1 ); }
-    void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
-    void patch32( int64_t at, uint32_t v )
+    ` + forceInline + ` void put8( uint8_t v )   { raw( &v, 1 ); }
+    ` + forceInline + ` void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
+    ` + forceInline + ` void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    ` + forceInline + ` void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    ` + forceInline + ` void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
         buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
@@ -435,11 +458,11 @@ struct TableReader
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
-    bool has( int64_t bytes ) const { return offset + bytes <= size; }
-    uint8_t get8()   { return buffer[offset++]; }
-    uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    ` + forceInline + ` bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    ` + forceInline + ` uint8_t get8()   { return buffer[offset++]; }
+    ` + forceInline + ` uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
+    ` + forceInline + ` uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
+    ` + forceInline + ` uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )

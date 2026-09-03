@@ -21,6 +21,22 @@
 #ifndef TABLEDEMO_SCHEMA_TABLE_PRIMITIVES
 #define TABLEDEMO_SCHEMA_TABLE_PRIMITIVES
 
+// THE CODEC DOES NOT DEPEND ON THE COMPILER'S INLINING BUDGET. A table of a
+// realistic field count emits one large body per type, and the cursor a body
+// writes through lives in the caller's `TableWriter`: across a call boundary
+// that cursor round-trips through memory, and a `uint8_t *` store may alias the
+// writer itself, so every put reloads it. When a budget runs out mid-body the
+// codec silently degrades to that shape. Forcing the primitives and the
+// fixed-class bodies inline is what keeps the cursor in registers and lets
+// adjacent constant framing bytes merge into one store.
+#if defined( _MSC_VER )
+#define TABLEDEMO_TABLE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define TABLEDEMO_TABLE_INLINE inline __attribute__(( always_inline ))
+#else
+#define TABLEDEMO_TABLE_INLINE inline
+#endif
+
 namespace tabledemo {
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -141,17 +157,17 @@ struct TableWriter
     // is a header a consumer compiles under its OWN flags
     TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
-    void raw( const void * data, int64_t bytes )
+    TABLEDEMO_TABLE_INLINE void raw( const void * data, int64_t bytes )
     {
         if ( offset + bytes > capacity ) { overflow = true; return; }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    void put8( uint8_t v )   { raw( &v, 1 ); }
-    void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
-    void patch32( int64_t at, uint32_t v )
+    TABLEDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
+    TABLEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
+    TABLEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    TABLEDEMO_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    TABLEDEMO_TABLE_INLINE void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
         buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
@@ -169,11 +185,11 @@ struct TableReader
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
-    bool has( int64_t bytes ) const { return offset + bytes <= size; }
-    uint8_t get8()   { return buffer[offset++]; }
-    uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    TABLEDEMO_TABLE_INLINE bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    TABLEDEMO_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
+    TABLEDEMO_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
+    TABLEDEMO_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
+    TABLEDEMO_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
@@ -662,26 +678,26 @@ inline void DebuffReset( Debuff & value ) { value = Debuff(); }
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t WeaponConfigMeasure( const WeaponConfig & value );
-inline bool WeaponConfigSaveBody( TableWriter & w, const WeaponConfig & value );
-inline bool WeaponConfigLoadBody( TableReader & r, WeaponConfig & value );
+TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, const WeaponConfig & value );
+TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBody( TableReader & r, WeaponConfig & value );
 inline int64_t LoadoutConfigMeasure( const LoadoutConfig & value );
-inline bool LoadoutConfigSaveBody( TableWriter & w, const LoadoutConfig & value );
-inline bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfig & value );
+TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, const LoadoutConfig & value );
+TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfig & value );
 inline int64_t ProfileConfigMeasure( const ProfileConfig & value );
-inline bool ProfileConfigSaveBody( TableWriter & w, const ProfileConfig & value );
-inline bool ProfileConfigLoadBody( TableReader & r, ProfileConfig & value );
+TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, const ProfileConfig & value );
+TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfig & value );
 inline int64_t RootConfigMeasure( const RootConfig & value );
-inline bool RootConfigSaveBody( TableWriter & w, const RootConfig & value );
-inline bool RootConfigLoadBody( TableReader & r, RootConfig & value );
+TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, const RootConfig & value );
+TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & value );
 inline int64_t AttachmentMeasure( const Attachment & value );
-inline bool AttachmentSaveBody( TableWriter & w, const Attachment & value );
-inline bool AttachmentLoadBody( TableReader & r, Attachment & value );
+TABLEDEMO_TABLE_INLINE bool AttachmentSaveBody( TableWriter & w, const Attachment & value );
+TABLEDEMO_TABLE_INLINE bool AttachmentLoadBody( TableReader & r, Attachment & value );
 inline int64_t BuffMeasure( const Buff & value );
-inline bool BuffSaveBody( TableWriter & w, const Buff & value );
-inline bool BuffLoadBody( TableReader & r, Buff & value );
+TABLEDEMO_TABLE_INLINE bool BuffSaveBody( TableWriter & w, const Buff & value );
+TABLEDEMO_TABLE_INLINE bool BuffLoadBody( TableReader & r, Buff & value );
 inline int64_t DebuffMeasure( const Debuff & value );
-inline bool DebuffSaveBody( TableWriter & w, const Debuff & value );
-inline bool DebuffLoadBody( TableReader & r, Debuff & value );
+TABLEDEMO_TABLE_INLINE bool DebuffSaveBody( TableWriter & w, const Debuff & value );
+TABLEDEMO_TABLE_INLINE bool DebuffLoadBody( TableReader & r, Debuff & value );
 
 inline int64_t WeaponConfigMeasure( const WeaponConfig & value )
 {
@@ -713,7 +729,7 @@ inline int64_t WeaponConfigMeasure( const WeaponConfig & value )
     return bytes;
 }
 
-inline bool WeaponConfigSaveBody( TableWriter & w, const WeaponConfig & value )
+TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, const WeaponConfig & value )
 {
     if ( value.damage != 21.0f )
     {
@@ -771,7 +787,7 @@ inline int64_t WeaponConfigSave( const WeaponConfig & value, uint8_t * buffer, i
     return w.offset; // == WeaponConfigMeasure( value )
 }
 
-inline bool WeaponConfigLoadBody( TableReader & r, WeaponConfig & value )
+TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBody( TableReader & r, WeaponConfig & value )
 {
     WeaponConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -966,7 +982,7 @@ inline int64_t LoadoutConfigMeasure( const LoadoutConfig & value )
     return bytes;
 }
 
-inline bool LoadoutConfigSaveBody( TableWriter & w, const LoadoutConfig & value )
+TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, const LoadoutConfig & value )
 {
     if ( value.grade != Grade::Silver )
     {
@@ -1066,7 +1082,7 @@ inline int64_t LoadoutConfigSave( const LoadoutConfig & value, uint8_t * buffer,
     return w.offset; // == LoadoutConfigMeasure( value )
 }
 
-inline bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfig & value )
+TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfig & value )
 {
     LoadoutConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1344,7 +1360,7 @@ inline int64_t ProfileConfigMeasure( const ProfileConfig & value )
     return bytes;
 }
 
-inline bool ProfileConfigSaveBody( TableWriter & w, const ProfileConfig & value )
+TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, const ProfileConfig & value )
 {
     if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
@@ -1445,7 +1461,7 @@ inline int64_t ProfileConfigSave( const ProfileConfig & value, uint8_t * buffer,
     return w.offset; // == ProfileConfigMeasure( value )
 }
 
-inline bool ProfileConfigLoadBody( TableReader & r, ProfileConfig & value )
+TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfig & value )
 {
     ProfileConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1726,7 +1742,7 @@ inline int64_t RootConfigMeasure( const RootConfig & value )
     return bytes;
 }
 
-inline bool RootConfigSaveBody( TableWriter & w, const RootConfig & value )
+TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, const RootConfig & value )
 {
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
     if ( value.version_note_length > 0 )
@@ -1778,7 +1794,7 @@ inline int64_t RootConfigSave( const RootConfig & value, uint8_t * buffer, int64
     return w.offset; // == RootConfigMeasure( value )
 }
 
-inline bool RootConfigLoadBody( TableReader & r, RootConfig & value )
+TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & value )
 {
     RootConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -1918,7 +1934,7 @@ inline int64_t AttachmentMeasure( const Attachment & value )
     return bytes;
 }
 
-inline bool AttachmentSaveBody( TableWriter & w, const Attachment & value )
+TABLEDEMO_TABLE_INLINE bool AttachmentSaveBody( TableWriter & w, const Attachment & value )
 {
     if ( value.slot != 0 )
     {
@@ -1941,7 +1957,7 @@ inline int64_t AttachmentSave( const Attachment & value, uint8_t * buffer, int64
     return w.offset; // == AttachmentMeasure( value )
 }
 
-inline bool AttachmentLoadBody( TableReader & r, Attachment & value )
+TABLEDEMO_TABLE_INLINE bool AttachmentLoadBody( TableReader & r, Attachment & value )
 {
     AttachmentReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2004,7 +2020,7 @@ inline int64_t BuffMeasure( const Buff & value )
     return bytes;
 }
 
-inline bool BuffSaveBody( TableWriter & w, const Buff & value )
+TABLEDEMO_TABLE_INLINE bool BuffSaveBody( TableWriter & w, const Buff & value )
 {
     if ( value.multiplier != 1.0f )
     {
@@ -2022,7 +2038,7 @@ inline int64_t BuffSave( const Buff & value, uint8_t * buffer, int64_t capacity 
     return w.offset; // == BuffMeasure( value )
 }
 
-inline bool BuffLoadBody( TableReader & r, Buff & value )
+TABLEDEMO_TABLE_INLINE bool BuffLoadBody( TableReader & r, Buff & value )
 {
     BuffReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -2070,7 +2086,7 @@ inline int64_t DebuffMeasure( const Debuff & value )
     return bytes;
 }
 
-inline bool DebuffSaveBody( TableWriter & w, const Debuff & value )
+TABLEDEMO_TABLE_INLINE bool DebuffSaveBody( TableWriter & w, const Debuff & value )
 {
     if ( value.amount != 0 )
     {
@@ -2088,7 +2104,7 @@ inline int64_t DebuffSave( const Debuff & value, uint8_t * buffer, int64_t capac
     return w.offset; // == DebuffMeasure( value )
 }
 
-inline bool DebuffLoadBody( TableReader & r, Debuff & value )
+TABLEDEMO_TABLE_INLINE bool DebuffLoadBody( TableReader & r, Debuff & value )
 {
     DebuffReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )

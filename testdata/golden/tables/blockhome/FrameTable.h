@@ -19,6 +19,22 @@
 #ifndef BLOCKHOME_SCHEMA_TABLE_PRIMITIVES
 #define BLOCKHOME_SCHEMA_TABLE_PRIMITIVES
 
+// THE CODEC DOES NOT DEPEND ON THE COMPILER'S INLINING BUDGET. A table of a
+// realistic field count emits one large body per type, and the cursor a body
+// writes through lives in the caller's `TableWriter`: across a call boundary
+// that cursor round-trips through memory, and a `uint8_t *` store may alias the
+// writer itself, so every put reloads it. When a budget runs out mid-body the
+// codec silently degrades to that shape. Forcing the primitives and the
+// fixed-class bodies inline is what keeps the cursor in registers and lets
+// adjacent constant framing bytes merge into one store.
+#if defined( _MSC_VER )
+#define BLOCKHOME_TABLE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define BLOCKHOME_TABLE_INLINE inline __attribute__(( always_inline ))
+#else
+#define BLOCKHOME_TABLE_INLINE inline
+#endif
+
 namespace blockhome {
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -139,17 +155,17 @@ struct TableWriter
     // is a header a consumer compiles under its OWN flags
     TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
-    void raw( const void * data, int64_t bytes )
+    BLOCKHOME_TABLE_INLINE void raw( const void * data, int64_t bytes )
     {
         if ( offset + bytes > capacity ) { overflow = true; return; }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    void put8( uint8_t v )   { raw( &v, 1 ); }
-    void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
-    void patch32( int64_t at, uint32_t v )
+    BLOCKHOME_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
+    BLOCKHOME_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
+    BLOCKHOME_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    BLOCKHOME_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    BLOCKHOME_TABLE_INLINE void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
         buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
@@ -167,11 +183,11 @@ struct TableReader
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
-    bool has( int64_t bytes ) const { return offset + bytes <= size; }
-    uint8_t get8()   { return buffer[offset++]; }
-    uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    BLOCKHOME_TABLE_INLINE bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    BLOCKHOME_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
+    BLOCKHOME_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
+    BLOCKHOME_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
+    BLOCKHOME_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
@@ -433,11 +449,11 @@ inline void PartFrameReset( PartFrame & value )
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t PartRowMeasure( const PartRow & value );
-inline bool PartRowSaveBody( TableWriter & w, const PartRow & value );
-inline bool PartRowLoadBody( TableReader & r, PartRow & value );
+BLOCKHOME_TABLE_INLINE bool PartRowSaveBody( TableWriter & w, const PartRow & value );
+BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value );
 inline int64_t PartFrameMeasure( const PartFrame & value );
-inline bool PartFrameSaveBody( TableWriter & w, const PartFrame & value );
-inline bool PartFrameLoadBody( TableReader & r, PartFrame & value );
+BLOCKHOME_TABLE_INLINE bool PartFrameSaveBody( TableWriter & w, const PartFrame & value );
+BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & value );
 
 inline int64_t PartRowMeasure( const PartRow & value )
 {
@@ -457,7 +473,7 @@ inline int64_t PartRowMeasure( const PartRow & value )
     return bytes;
 }
 
-inline bool PartRowSaveBody( TableWriter & w, const PartRow & value )
+BLOCKHOME_TABLE_INLINE bool PartRowSaveBody( TableWriter & w, const PartRow & value )
 {
     {
         int64_t body_armor = ArmorConfigMeasure( value.armor );
@@ -500,7 +516,7 @@ inline int64_t PartRowSave( const PartRow & value, uint8_t * buffer, int64_t cap
     return w.offset; // == PartRowMeasure( value )
 }
 
-inline bool PartRowLoadBody( TableReader & r, PartRow & value )
+BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
 {
     PartRowReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -609,7 +625,7 @@ inline int64_t PartFrameMeasure( const PartFrame & value )
     return bytes;
 }
 
-inline bool PartFrameSaveBody( TableWriter & w, const PartFrame & value )
+BLOCKHOME_TABLE_INLINE bool PartFrameSaveBody( TableWriter & w, const PartFrame & value )
 {
     if ( value.version != 0 )
     {
@@ -643,7 +659,7 @@ inline int64_t PartFrameSave( const PartFrame & value, uint8_t * buffer, int64_t
     return w.offset; // == PartFrameMeasure( value )
 }
 
-inline bool PartFrameLoadBody( TableReader & r, PartFrame & value )
+BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & value )
 {
     PartFrameReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )

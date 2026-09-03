@@ -18,6 +18,22 @@
 #ifndef BLOCKHOME_SCHEMA_TABLE_PRIMITIVES
 #define BLOCKHOME_SCHEMA_TABLE_PRIMITIVES
 
+// THE CODEC DOES NOT DEPEND ON THE COMPILER'S INLINING BUDGET. A table of a
+// realistic field count emits one large body per type, and the cursor a body
+// writes through lives in the caller's `TableWriter`: across a call boundary
+// that cursor round-trips through memory, and a `uint8_t *` store may alias the
+// writer itself, so every put reloads it. When a budget runs out mid-body the
+// codec silently degrades to that shape. Forcing the primitives and the
+// fixed-class bodies inline is what keeps the cursor in registers and lets
+// adjacent constant framing bytes merge into one store.
+#if defined( _MSC_VER )
+#define BLOCKHOME_TABLE_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define BLOCKHOME_TABLE_INLINE inline __attribute__(( always_inline ))
+#else
+#define BLOCKHOME_TABLE_INLINE inline
+#endif
+
 namespace blockhome {
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -138,17 +154,17 @@ struct TableWriter
     // is a header a consumer compiles under its OWN flags
     TableWriter( uint8_t * to_buffer, int64_t to_capacity ) : buffer( to_buffer ), capacity( to_capacity ) {}
 
-    void raw( const void * data, int64_t bytes )
+    BLOCKHOME_TABLE_INLINE void raw( const void * data, int64_t bytes )
     {
         if ( offset + bytes > capacity ) { overflow = true; return; }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    void put8( uint8_t v )   { raw( &v, 1 ); }
-    void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
-    void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
-    void patch32( int64_t at, uint32_t v )
+    BLOCKHOME_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
+    BLOCKHOME_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
+    BLOCKHOME_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    BLOCKHOME_TABLE_INLINE void put64( uint64_t v ) { put32( uint32_t( v ) ); put32( uint32_t( v >> 32 ) ); }
+    BLOCKHOME_TABLE_INLINE void patch32( int64_t at, uint32_t v )
     {
         if ( at + 4 > capacity ) { overflow = true; return; }
         buffer[at] = uint8_t( v ); buffer[at+1] = uint8_t( v >> 8 );
@@ -166,11 +182,11 @@ struct TableReader
     TableReader( const uint8_t * from_buffer, int64_t from_size, TableReport * to_report )
         : buffer( from_buffer ), size( from_size ), report( to_report ) {}
 
-    bool has( int64_t bytes ) const { return offset + bytes <= size; }
-    uint8_t get8()   { return buffer[offset++]; }
-    uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
+    BLOCKHOME_TABLE_INLINE bool has( int64_t bytes ) const { return offset + bytes <= size; }
+    BLOCKHOME_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
+    BLOCKHOME_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
+    BLOCKHOME_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
+    BLOCKHOME_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
 
     // skip one payload by kind; false = framing damage
     bool skip( uint8_t kind )
@@ -409,17 +425,17 @@ inline void GunnerSettingsReset( GunnerSettings & value ) { value = GunnerSettin
 // ---- codecs: measure/save/load per closure member ----
 
 inline int64_t ArmorPlateMeasure( const ArmorPlate & value );
-inline bool ArmorPlateSaveBody( TableWriter & w, const ArmorPlate & value );
-inline bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & value );
+BLOCKHOME_TABLE_INLINE bool ArmorPlateSaveBody( TableWriter & w, const ArmorPlate & value );
+BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & value );
 inline int64_t ArmorConfigMeasure( const ArmorConfig & value );
-inline bool ArmorConfigSaveBody( TableWriter & w, const ArmorConfig & value );
-inline bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & value );
+BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, const ArmorConfig & value );
+BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & value );
 inline int64_t FiringGroupMeasure( const FiringGroup & value );
-inline bool FiringGroupSaveBody( TableWriter & w, const FiringGroup & value );
-inline bool FiringGroupLoadBody( TableReader & r, FiringGroup & value );
+BLOCKHOME_TABLE_INLINE bool FiringGroupSaveBody( TableWriter & w, const FiringGroup & value );
+BLOCKHOME_TABLE_INLINE bool FiringGroupLoadBody( TableReader & r, FiringGroup & value );
 inline int64_t GunnerSettingsMeasure( const GunnerSettings & value );
-inline bool GunnerSettingsSaveBody( TableWriter & w, const GunnerSettings & value );
-inline bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value );
+BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, const GunnerSettings & value );
+BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value );
 
 inline int64_t ArmorPlateMeasure( const ArmorPlate & value )
 {
@@ -430,7 +446,7 @@ inline int64_t ArmorPlateMeasure( const ArmorPlate & value )
     return bytes;
 }
 
-inline bool ArmorPlateSaveBody( TableWriter & w, const ArmorPlate & value )
+BLOCKHOME_TABLE_INLINE bool ArmorPlateSaveBody( TableWriter & w, const ArmorPlate & value )
 {
     if ( value.thickness != 0.0 )
     {
@@ -458,7 +474,7 @@ inline int64_t ArmorPlateSave( const ArmorPlate & value, uint8_t * buffer, int64
     return w.offset; // == ArmorPlateMeasure( value )
 }
 
-inline bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & value )
+BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & value )
 {
     ArmorPlateReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -543,7 +559,7 @@ inline int64_t ArmorConfigMeasure( const ArmorConfig & value )
     return bytes;
 }
 
-inline bool ArmorConfigSaveBody( TableWriter & w, const ArmorConfig & value )
+BLOCKHOME_TABLE_INLINE bool ArmorConfigSaveBody( TableWriter & w, const ArmorConfig & value )
 {
     {
         int64_t body_front = ArmorPlateMeasure( value.front );
@@ -586,7 +602,7 @@ inline int64_t ArmorConfigSave( const ArmorConfig & value, uint8_t * buffer, int
     return w.offset; // == ArmorConfigMeasure( value )
 }
 
-inline bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & value )
+BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & value )
 {
     ArmorConfigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -684,7 +700,7 @@ inline int64_t FiringGroupMeasure( const FiringGroup & value )
     return bytes;
 }
 
-inline bool FiringGroupSaveBody( TableWriter & w, const FiringGroup & value )
+BLOCKHOME_TABLE_INLINE bool FiringGroupSaveBody( TableWriter & w, const FiringGroup & value )
 {
     if ( value.barrel != 0 )
     {
@@ -707,7 +723,7 @@ inline int64_t FiringGroupSave( const FiringGroup & value, uint8_t * buffer, int
     return w.offset; // == FiringGroupMeasure( value )
 }
 
-inline bool FiringGroupLoadBody( TableReader & r, FiringGroup & value )
+BLOCKHOME_TABLE_INLINE bool FiringGroupLoadBody( TableReader & r, FiringGroup & value )
 {
     FiringGroupReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -791,7 +807,7 @@ inline int64_t GunnerSettingsMeasure( const GunnerSettings & value )
     return bytes;
 }
 
-inline bool GunnerSettingsSaveBody( TableWriter & w, const GunnerSettings & value )
+BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, const GunnerSettings & value )
 {
     if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return false; } // storage invariant
     if ( value.firing_groups_count > 0 )
@@ -846,7 +862,7 @@ inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffe
     return w.offset; // == GunnerSettingsMeasure( value )
 }
 
-inline bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value )
+BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSettings & value )
 {
     GunnerSettingsReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
