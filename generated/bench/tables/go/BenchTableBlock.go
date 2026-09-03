@@ -93,17 +93,33 @@ func (r TableBlockRows[T]) At(i int32) *T {
 // them.
 
 // TableBlockFieldInfo is one field's position in the record this descriptor
-// describes.
+// describes, and everything a GENERIC ROW WALK needs after that.
 type TableBlockFieldInfo struct {
 	Name           string
 	Offset         uint32 // the field's offset in the record this descriptor describes
 	Size           uint32 // its size there
 	Kind           uint8  // the table-wire kind, as TableFieldInfo carries it
-	OutOfLine      bool   // an out-of-line array: the three members below are live
+	OutOfLine      bool   // an out-of-line array: the triple's three members are live
 	OffsetOfOffset uint32 // the triple's OffsetOf member, or 0xffffffff
-	CountOffset    uint32 // its Count member, or 0xffffffff
-	StrideOffset   uint32 // its Stride member, or 0xffffffff
-	Stride         uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+	// The COUNT COMPANION, and it is one column doing one job in both
+	// spellings: the triple's Count member for an out-of-line array, the int32
+	// used length of a string or a bytes inline, 0xffffffff when the field has
+	// none.
+	CountOffset  uint32
+	StrideOffset uint32 // the triple's Stride member, or 0xffffffff
+	Stride       uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+
+	// ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
+	// already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
+	// node and a block row without learning a second one. Where the field
+	// starts is the pair above; this is everything after it.
+	IsArray       bool   // inline storage of ArrayBound slots at ElemSize (bytes included)
+	Counted       bool   // CountOffset names a used-length companion
+	Optional      bool   // PresentOffset names a bool presence companion
+	ArrayBound    int32  // inline slots, or a string's declared maximum; 0 for a plain scalar
+	ElemSize      uint32 // ONE slot's size; the field's own when it holds one value
+	PresentOffset uint32 // the presence companion, or 0xffffffff
+
 	// Element is the ELEMENT's or the nested record's own layout, behind a
 	// function so a descriptor graph needs no initialisation order. nil when
 	// the field is a scalar. Following it is how a walker DESCENDS: an
@@ -306,20 +322,34 @@ func TableEntityBlockOpen(block *TableEntityBlock, base unsafe.Pointer, bytes in
 var blockInfoTableEntity = TableBlockInfo{
 	Name: "TableEntity", BuildVersion: BuildVersion, Size: 88, Align: 8, NumFields: 14,
 	Fields: []TableBlockFieldInfo{
-		{Name: "entity_id", Offset: 24, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "pos_x", Offset: 28, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "pos_y", Offset: 32, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "pos_z", Offset: 36, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "yaw", Offset: 40, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "pitch", Offset: 44, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "vel_x", Offset: 48, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "vel_y", Offset: 52, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "vel_z", Offset: 56, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "health", Offset: 60, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "weapon", Offset: 64, Size: 1, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "damage", Offset: 72, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "moving", Offset: 80, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "firing", Offset: 81, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
+		{Name: "entity_id", Offset: 24, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "pos_x", Offset: 28, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "pos_y", Offset: 32, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "pos_z", Offset: 36, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "yaw", Offset: 40, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "pitch", Offset: 44, Size: 4, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "vel_x", Offset: 48, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "vel_y", Offset: 52, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "vel_z", Offset: 56, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "health", Offset: 60, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "weapon", Offset: 64, Size: 1, Kind: 7, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "damage", Offset: 72, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "moving", Offset: 80, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "firing", Offset: 81, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
 	},
 }
 
@@ -403,8 +433,10 @@ func TableStatBlockOpen(block *TableStatBlock, base unsafe.Pointer, bytes int64)
 var blockInfoTableStat = TableBlockInfo{
 	Name: "TableStat", BuildVersion: BuildVersion, Size: 32, Align: 8, NumFields: 2,
 	Fields: []TableBlockFieldInfo{
-		{Name: "stat_id", Offset: 24, Size: 4, Kind: 6, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
-		{Name: "delta", Offset: 28, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0, Element: nil},
+		{Name: "stat_id", Offset: 24, Size: 4, Kind: 6, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		{Name: "delta", Offset: 28, Size: 4, Kind: 4, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
 	},
 }
 
