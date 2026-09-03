@@ -1402,6 +1402,13 @@ tree mirrors the schema tree a person navigates.
   call site reads the same in C as in C++. Two units still cannot be included
   into ONE translation unit, which is the C target's standing limit and
   unchanged by tables.
+  **The C target reserves `SCHEMA_` and `schema_`**, and it is the one place a
+  generated name and a declared name meet with no compiler between them:
+  constants, enum variants and flag masks are all `#define`s here, so a
+  collision with a generated macro is a SILENT REWRITE rather than a
+  redeclaration error — the generator's `#ifndef` sees the user's definition
+  standing and skips its own. The front end refuses a declaration whose C
+  spelling is one of the macros the generated sources define.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
   packages are order-free across files, so there is no topo sort and no
   include graph to refuse.

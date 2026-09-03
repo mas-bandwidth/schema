@@ -208,6 +208,19 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   per-package macro (`__forceinline` / `always_inline` / `inline`) and stops at
   the class whose call graph cannot cycle. Read the emitted assembly for `bl` to
   a primitive before believing a header-only codec is inlined.
+- **C has a namespace the other backends do not: the PREPROCESSOR.** A schema's
+  constants, enum variants and flag masks are `#define`s in the C target, and the
+  generated sources define macros beside them. A collision there is not a
+  redeclaration error — it is a SILENT REWRITE: the generator's `#ifndef` sees
+  the user's definition standing, skips its own, and every later use expands to
+  something else with nothing in the build saying so. The C target therefore
+  reserves `SCHEMA_`/`schema_` and the front end refuses a declaration that
+  spells one (`internal/check`'s `cReservedMacros`). The set is ENUMERATED, not a
+  bare prefix test: `enum SchemaKind` folds to `SCHEMA_KIND_ALPHA`, which
+  collides with nothing, and refusing it would take a name from every schema for
+  free. `compiler`'s `TestCGeneratorMacrosAreOwned` holds the two halves
+  together by naming every declaration with one prefix and looking at what is
+  left — a scan that recognises no spelling and no family.
 - **Instrument honesty**: harness defects crowned the wrong winner once (v1's "C# beats
   C++ batch read" was a per-iteration alloc in every OTHER runner) — the harness is code
   and rots too. Relative tables move when the DENOMINATOR moves (v4's widening was C++
