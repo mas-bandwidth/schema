@@ -1840,15 +1840,16 @@ SceneCook( builder, buffer, data, attribution );   // write it
 const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 ```
 
-**Backend status: the TOOL and the C++ READ SIDE are built; the C++ WRITE side
-is not (schema#251).** `schema cook`, `schema cook-check` and `schema uncook`
-produce, validate and read back the form below, in both byte orders, over the
-same IR the emitters consume — and `wire → cook → wire` is byte-identical over
-the corpus, which is what proves the accelerator loses no fact. The C++ table
-backend emits `<Root>Open` for EVERY TABLE (below) — a root is any table — so a
-game points at a cook the tooling produced. What no generated runtime carries
-yet is `Cook` and `CookMeasure`: a build that wants to WRITE a cook runs the
-tool, and those two spellings stay claimed ahead of their emitter (§11).
+**Backend status: the TOOL and BOTH READ SIDES are built; no WRITE side is
+(schema#251).** `schema cook`, `schema cook-check` and `schema uncook` produce,
+validate and read back the form below, in both byte orders, over the same IR the
+emitters consume — and `wire → cook → wire` is byte-identical over the corpus,
+which is what proves the accelerator loses no fact. The C++ table backend emits
+`<Root>Open` and the C# table backend emits `<Root>Cook.Open` for EVERY TABLE
+(below) — a root is any table — so a game points at a cook the tooling produced
+from either language. What no generated runtime carries yet is `Cook` and
+`CookMeasure`: a build that wants to WRITE a cook runs the tool, and those two
+spellings stay claimed ahead of their emitter (§11).
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -2084,6 +2085,104 @@ the wire, and keeps the flexibility that comes with it.
   against the numbers the compiler folded into the build version, so a compiler
   that lays a record out differently fails to BUILD, naming the record and the
   field (§20.3).
+- **THE C# SURFACE, for the same reason the C++ one is here**: a consumer
+  written from this page needs the spelling, and §19.2 already sets the shape a
+  C# accelerator takes. **C# has no free functions**, so the claimed verbs are
+  MEMBERS of a claimed type — which is the rule §11 already gives the block
+  form's accessors — and the type is `<Root>Cook`, a name §11's list has claimed
+  on every closure member all along:
+
+  ```csharp
+  if ( !SceneCook.Open( out SceneCook cook, pointer, length ) )
+      return;                       // wrong build, corrupt, truncated, foreign order
+
+  SceneRow * scene = cook.RootPointer;          // the root, where it lies
+  ```
+
+  **`Open` TAKES A POINTER AND A LENGTH, and the generated source is `unsafe`** —
+  §19.2's contract, for §19.2's reason: a cook is memory the tooling wrote and
+  the consumer mapped, and pointing at it without a copy is the whole point. A
+  `ReadOnlySpan<byte>` overload sits beside it for a consumer that already holds
+  the bytes; it is the same contract in a different spelling, and its length is
+  an `int`, so **the pointer form is the one with the reach the cook is built
+  for** (§6.3) and a catalogue past 2 GiB is opened through it.
+
+  **THE LENGTH IS SIGNED HERE, and that is a decision and not a drift from the
+  C++ rule above.** C# has no unsigned-length idiom — `Span.Length`, `Array.Length`
+  and a file size all arrive signed — so an unsigned parameter would move a cast
+  to every call site instead of removing one. The check converts ONCE, at the
+  top, after refusing a negative, and every comparison below it is unsigned with
+  each term bounded before it is added, which is the property the C++ rule was
+  protecting.
+
+  **THE MEMORY IS THE CONSUMER'S, and the contract is the block form's**: the
+  region must stay put and stay aligned for as long as the handle, or anything
+  reached through it, is used — an mmap, a native allocation, or an array the
+  consumer pinned. A span handed back over the region has the REGION's lifetime
+  and not the call's, and a `fixed` block that ends before the handle does is the
+  one way to hold this wrong.
+
+  **A REFERENCE IS DEREFERENCED THROUGH `<T>Cook.At`**, which takes the SLOT and
+  not its value, because a self-relative delta means nothing without the address
+  it is relative to:
+
+  ```csharp
+  ListNodeRow * next = ListNodeCook.At( &node->Next );   // one add; null when the delta is zero
+  ```
+
+  **A COOKED RECORD IS THE BLITTABLE ROW** — the same `<Name>Row` struct §19.2
+  and §19.3 already define, from the same layout model, with generated padding
+  fields and a `Size` that pins the trailing padding. The two accelerators SHARE
+  one set of records rather than growing a second ABI, and a record the block
+  form already emits is emitted there and not again. Two consequences the block
+  form never had to state, because a block-form table has no pointer by
+  construction:
+
+  - **A `*T` SLOT IS A PLAIN `long`**, never a managed reference and never a
+    typed pointer field: it holds the signed self-relative delta of §6.3, and
+    `<T>Cook.At` is what turns one into an address.
+  - **A string, a `bytes` and an array are read as SPANS over the region**,
+    handed back by static accessors on `<Root>Cook` named after the field — so
+    reading one copies nothing and allocates nothing, and neither accelerator
+    adds a member to the other's structs. **A table claims one member per field
+    on its `Cook` type**, exactly as it claims one per out-of-line array on its
+    `Block` type (§11), and a language whose accessors are members claims nothing
+    at file scope for them.
+
+  **WHERE IT IS EMITTED is §19.2's rule, for §19.2's reason**: C# has no include
+  guard and one assembly sees every file, so the unit's shared cook runtime —
+  the descriptors, the layout check and the constants — is emitted ONCE, into the
+  `<Base>Cook.cs` of the first file that declares a table this backend can open,
+  and every blittable record the block form does not already carry is emitted
+  there too. The unit's BUILD VERSION constant is defined by whichever
+  accelerator's runtime the unit has: the block form's when it has one, the
+  cook's otherwise. `Schema` is one partial class across a unit's files, so
+  exactly one definition of each constant is the whole requirement.
+
+  **THE LAYOUT CONTRACT IS §20.3's, over the COOK CLOSURE**, and C# has no
+  `static_assert`: `TableCookLayout.Verify()` runs once, before any cook opens,
+  and THROWS naming the record, the field, the offset it found and the offset the
+  compiler's model gives. Loud and early, but a first-use failure and not a
+  compile-time one — the honest exception §19.3 already records, now covering
+  every record a cooked region is laid out from and not only a block's rows.
+
+  **ONE ABSENCE, STATED RATHER THAN HIDDEN: a table whose closure carries a
+  UNION gets no C# `Open`.** §19.3 pins a blittable C# record to `Sequential`
+  with generated padding, and `Sequential` cannot overlay arms — which is the
+  same sentence that keeps a union out of the block form. The generated file
+  says which table and why, the table's cook and its wire are untouched, and a
+  C# reader for a union-bearing cook is a named follow-on (§15). C++ has no such
+  absence: its cooked record is the ordinary generated struct, tagged union and
+  all.
+
+  **AND THE C# WIRE HALF IS STILL REFUSED FOR A POINTERED UNIT** (§11), which is
+  not a contradiction but the point: the variable class C# lacks is the WIRE
+  codec — the arena, the builder, the region, the node table — and an
+  accelerator needs none of it. A cook is POINTED AT, not parsed. So a pointered
+  unit's C# cooks open in full while its `Measure`, `Save` and `Load` do not
+  exist, and the refusal is named in every source the unit does emit rather than
+  left as a missing symbol.
+
 - **Validating an untrusted cook is a TOOL, not a runtime surface**:
   `schema cook-check`, over the same reflection descriptors
   (§8) the runtime already carries, checking the DATA against the ATTRIBUTION.
@@ -2485,25 +2584,39 @@ every clause above by construction.
   what has to be O(1), and a tool that walks a directory is measuring its own
   scan. It is held over the C++ `Open`, below.
 
-- **THE CROSS-IMPLEMENTATION LOCK, and it is what makes two implementations of
-  one page worth having.** The tool writes a cook in Go and the C++ `Open`
-  points at it, and neither was written from the other. The lock is the
-  ATTRIBUTION part: every node the C++ side reaches by following its OWN
-  derefs, through its own record layouts, must be a node the directory names,
-  at that offset, with that type id — and the two SETS must be equal, so an
-  edge the reader stops following is as loud as one it invents. A record laid
-  out one byte differently on either side lands a deref off a directory entry
-  and the gate says which node and which type. It runs over SEVEN roots, which
-  is the shapes a region has: a pointer chain, a tree, a keyed array of
-  variable tables beside an optional, a cross-file graph through a by-value
-  variable table, a chain node as its own root, and TWO FIXED ROOTS — one region
-  of one node — of which one is pointed at and one is declared in a file with no
-  variable table of its own.
+- **THE CROSS-IMPLEMENTATION LOCK, and it is what makes THREE implementations
+  of one page worth having.** The tool writes a cook in Go, the C++ `Open`
+  points at it and the C# `Open` points at the very same bytes, and none of the
+  three was written from either of the others. The lock is the ATTRIBUTION part:
+  every node a reader reaches by following its OWN derefs, through its own
+  record layouts, must be a node the directory names, at that offset, with that
+  type id — and the two SETS must be equal, so an edge the reader stops
+  following is as loud as one it invents. A record laid out one byte differently
+  on either side lands a deref off a directory entry and the gate says which
+  node and which type. It runs over SEVEN roots, which is the shapes a region
+  has: a pointer chain, a tree, a keyed array of variable tables beside an
+  optional, a cross-file graph through a by-value variable table, a chain node
+  as its own root, and TWO FIXED ROOTS — one region of one node — of which one
+  is pointed at and one is declared in a file with no variable table of its own.
+  Each reader holds it independently, over the same fixtures.
 
   Beside it, and from the same walk: **every byte no field covers is ZERO**
   (§7.2), checked over the slack the directory frames; and every COUNT
   COMPANION inside its declared bound, which is pass two's own reading (§7.4)
   done by the other implementation.
+
+  **AND THE DUMP, which is what the directory lock cannot do.** The lock proves
+  the readers agree on WHERE every node is and WHAT it is; it says nothing about
+  the bytes inside one, and a record laid out one byte differently INSIDE a node
+  moves no node offset and no directory entry. So both readers write their walk
+  out as CANONICAL TEXT — one line per leaf, with a dotted path and the value
+  read at that offset, a reference as its target offset, a string as its used
+  bytes with the tail dropped, a counted array with its companion, an optional
+  with its presence — and the two files are BYTE-COMPARED, over all seven roots.
+  It is the value crossing the variable class could not otherwise have, and it
+  costs one mode in each harness. A FLOAT has no canonical cross-language
+  spelling this gate is willing to fix in passing, so meeting one is a failure
+  rather than a drift.
 
 - **THE VALUE CROSSING, and the FIXED class is where it lives today.** A fixed
   table has no pointer, so it has no node table and no kind `17`, so this
@@ -2584,6 +2697,74 @@ every clause above by construction.
   - **AND `cl /W4 /WX` COMPILES IT**: the msvc leg generates the pointered unit
     and compiles its header, so the cook runtime meets the estate's hard
     requirement on every pull request (SPEC.md's Visual C++ rule).
+
+- **THE C# `Open`'s OWN GATES**, which are the C++ leg's list held by a runtime
+  that has neither a sanitizer nor a `static_assert`. What each one gives up and
+  what stands in for it is stated rather than implied, because a gate whose
+  instrument is weaker and whose wording is not is the kind of green nobody
+  should trust.
+
+  - **THE DIRECTED BATTERY, the same one**: one forgery per fact the
+    enumeration names, each refused; and one per fact it does not — an enormous
+    forward delta, a negative delta past the base, a directory entry outside the
+    region — each of which must OPEN, because those are `cook-check`'s refusals
+    and not the runtime's (§7.4). It runs over the pointered roots and over both
+    FIXED roots, whose regions are too small to carry the reference forgeries and
+    which therefore run two fewer.
+  - **ITS INSTRUMENT IS A GUARD PAGE, and its granularity is stated.** C# has
+    no ASan, so the buffer is placed in an `mmap`'d region with a `PROT_NONE`
+    page immediately after it: a read past the end faults, and the site line the
+    harness flushes before every attempt is what names the forgery, exactly as
+    the C++ leg's death callback does. A guard page is PAGE-granular, so placing
+    the buffer's last byte against it and placing its base at a chosen ALIGNMENT
+    are one knob; the harness spends it on the alignment and takes the slack that
+    leaves — at most `alignment - 1` bytes, and EXACTLY ZERO for a valid cook,
+    whose total is the header plus a data part rounded to `alignment` plus a
+    whole number of sixteen-byte entries. **The byte-exact proof is the C++
+    leg's**, and this one is what a runtime without a sanitizer can hold.
+  - **THE FUZZER**, seeded, with the same oracle: a mutation inside the HEADER
+    is refused or opens onto a data part that still agrees with the directory; a
+    mutation inside the DATA PART does not change the answer at all, which is
+    the O(1) promise as a property rather than a timing; and an opened cook's
+    ROOT STORAGE is read whole. Its N is set by MEASUREMENT under the budget
+    rather than inherited: this leg runs without a sanitizer under it, so it
+    buys about ten times the shared count in the same time.
+  - **ITS TWO NEGATIVE CONTROLS**, the C++ leg's two, for the same reason —
+    they are the two clauses that decide whether `Open` can hand back storage the
+    caller never gave it. Each removes ONE from the EMITTER through a build
+    overlay, regenerates the unit and requires the battery to go RED: the
+    part-length equation, which is what refuses a truncated file, and the
+    root-fits clause, which is what refuses a data part too short to hold the
+    root. A sabotage must leave every local IN USE, because generated C# with an
+    unused local does not compile under `TreatWarningsAsErrors` and a control
+    that fails to BUILD is not a control that went red.
+  - **THE O(1) GATE**, the same paired medians over the same two fixtures. A
+    tiered runtime is warmed before it is measured, because a first pass measures
+    tier-up and not codegen.
+  - **THE BYTE-ORDER LEG IS HALF A LEG HERE, and the page says so.** A cook
+    written `--byte-order big` is REFUSED by the magic, read bytewise, which is
+    the half this leg can hold. The other half — a big-endian consumer opening a
+    big-endian cook NATIVELY — is **UNPROVEN in C# and stays unproven until a
+    big-endian .NET exists**; there is no such runtime to run it on. The C++ leg
+    proves that half on s390x, and nothing about a C# consumer's big-endian
+    behaviour may be inferred from it.
+  - **THE LAYOUT CONTRACT AT START-UP**: `TableCookLayout.Verify()` run as its
+    own mode, before any cook is opened, so §20.3's C# half is a gate on every
+    run rather than a throw the first time somebody opens a cook in a game.
+  - **THE ZERO-COST HALF, unchanged and re-measured**: the C# `<Base>Table.cs`
+    sources stay BYTE-IDENTICAL to their pins with the cook's read side emitted,
+    and none of them carries the build version — it is their accelerator file's
+    (§2.2, §20.7).
+  - **THE WHOLE-ASSEMBLY COMPILE**: every corpus unit's C# — the cook sources
+    included, the pointered unit's among them — compiled into one assembly with
+    `TreatWarningsAsErrors`. Compiling IS half the gate: C# has one namespace
+    across a unit's files, so a blittable record emitted twice, a record emitted
+    into a file that gets no Cook source, or a shared constant defined by both
+    accelerators produces a unit that does not compile at all, and this is where
+    that is caught.
+  - **THE DOCUMENTED SURFACE RUNS**: USAGE's C# cook example is a mode of the
+    gate and it runs against a real cook, so the day the surface moves the
+    documentation goes red with the code rather than a release later.
 
 ## 8. Reflection: the view
 
@@ -3187,10 +3368,21 @@ in build version (§20.5).
   enums are in scope on the same terms.
 - Tables under a backend that carries none (status, above) — refused with the
   follow-on named, never silently ignored.
-- **A VARIABLE-LENGTH table under the C# backend** — the C# port carries the
-  fixed class; its variable class (pointers, arena, region, cooked) is a named
-  follow-on, and a pointered unit is refused naming the tables, never emitted
-  with them missing.
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C# backend** — the C# port
+  carries the fixed class on the wire; its variable class there (the arena, the
+  builder, the region, the node-table codec) is a named follow-on, and a
+  pointered unit gets no `<Base>Table.cs` at all, with the refusal NAMED in every
+  source the unit does emit rather than left as a missing symbol.
+
+  **The refusal is of the WIRE and of nothing else, and the distinction is the
+  design rather than an exception to it.** The two ACCELERATORS are POINTED AT,
+  not parsed: a block (§19) and a cook (§7) are blittable records plus a header
+  match, and neither needs one line of the codec the variable class is missing.
+  So a pointered unit's `<Base>Block.cs` and `<Base>Cook.cs` ARE emitted, its
+  `<Root>Cook.Open` opens its cooked assets in full, and what a consumer cannot
+  do in C# is `Measure`, `Save` and `Load` over the tolerant wire. **This is what
+  lets §7's "a root is any table, and every table gets one" hold in C# too**,
+  which a whole-unit refusal made impossible to say.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
   outside a table body; a specified default on a pointer field; and an
@@ -3289,12 +3481,27 @@ in build version (§20.5).
   here equal `tableGeneratedVerbs` exactly, because a claim the page states
   and the checker does not make is a name a user may take.
 
-  **`Open` IS EMITTED; two of the twenty-four are still claimed AHEAD of their
-  emitter, and `OpenWalk` was RETIRED.** The C++ table backend emits `<X>Open`
-  for every TABLE (§7) — a root is any table — so that spelling is a definition
-  now and not only a claim, and it is claimed for every closure member all the
-  same, on this list's own rule. `Cook` and `CookMeasure` are the WRITE side
-  and no backend emits one: a build that writes a cook runs the tool (§7).
+  **`Open` AND `Cook` ARE BOTH EMITTED NOW — in different languages, and that is
+  what the C# rule below is for. `OpenWalk` was RETIRED.** The C++ table backend
+  emits `<X>Open` for every TABLE (§7) — a root is any table — so that spelling
+  is a definition and not only a claim, and it is claimed for every closure
+  member all the same, on this list's own rule.
+
+  **C# HAS NO FREE FUNCTIONS, so its claimed verbs are MEMBERS of a claimed
+  TYPE** — the rule this list already gives the block form's accessors, applied
+  to the cook. The C# table backend emits `<X>Cook`, a `readonly struct` over an
+  opened region, carrying `Open` and `At` as members and one accessor per field
+  named after that field. So `Cook` names the READ handle in C# and the
+  unemitted WRITE function in C++, one claimed name in two backends — and a C#
+  cook WRITER, if one is ever emitted, is `<X>Cook`'s members too and claims
+  nothing further. A table also **claims one member per field on its `Cook`
+  type**, exactly as it claims two per out-of-line array on its `Block` type,
+  and a language whose accessors are members claims nothing at file scope for
+  them.
+
+  **`CookMeasure` is still claimed AHEAD of its emitter, and so is the write
+  half of `Cook`**: no backend writes a cook, and a build that wants to runs the
+  tool (§7).
   **`OpenWalk` LEFT THIS LIST**, and it is the one entry ever removed: it named
   wire v1's validating walk, and §7's `Open` is a header match with no walk in
   it, so the name went with the design rather than being held for an emitter
@@ -3353,8 +3560,11 @@ in build version (§20.5).
     `TableRef`, `TableReport`, `TableWriter`, `TableReader`, `TableEnumId`,
     `TableEnumValue`, the COOKED form's read runtime (`TableCookOpen`,
     `TableCookMagic`, `TableCookByteOrder`, `TableCookMaxAlign`,
-    `table_cook_read64` — §7), `BuildVersion` (§20, which both accelerators
-    carry) and the rest of that list. §8.2 has a table-free unit's
+    `table_cook_read64` — §7 — and the C# half's `TableCookLayout`,
+    `TableCookInfo`, `TableCookFieldInfo` and `TableCookStorage`, with
+    `TableCookHeaderBytes` and `TableCookRead64` riding as members of `Schema`
+    and so claiming nothing at file scope), `BuildVersion` (§20, which both
+    accelerators carry) and the rest of that list. §8.2 has a table-free unit's
     view file DEFINING those primitives, so a unit that declares no table
     can no longer be allowed to declare their names.
 
@@ -5444,7 +5654,11 @@ where §11's claim reaches.
 answer is not "beside the declaration".** A unit's shared block runtime — the
 triple, the row view, the descriptors, the layout check and the constants — is
 emitted ONCE, into the Block file of the first file that declares a table WITH
-a block form, and every blittable record of the unit is emitted there too. It
+a block form, and every blittable record the FORM TOUCHES is emitted there too.
+The COOK's C# reader follows the same rule in its own home and for its own
+closure (§7), taking the records the block form already carries rather than
+spelling them again — a cooked record IS the blittable row, and one declaration
+cannot be two types. It
 is deliberately NOT the protocol id's home, which in an ordinary unit is a
 constants file that declares no table and therefore gets no Block file at all;
 and a record is deliberately NOT emitted beside its declaration, because a
@@ -5732,34 +5946,47 @@ and not yet emitted, which §20.3 states in full.
 the projection of §20.2, both pinned as goldens over the corpus. The C++ and
 C# BLOCK backends emit the constant and stamp it into every block's prologue
 (§19.1), and `BlockOpen` compares it; `schema cook` stamps it into the cooked
-header, `schema cook-check` reads it back, and the C++ `<Root>Open` compares
-it (§7). What remains owed, largest first:
+header, `schema cook-check` reads it back, and the C++ `<Root>Open` and the C#
+`<Root>Cook.Open` each compare it (§7). What remains owed, largest first:
 
 1. **The constant rides in the BLOCK and COOK sources only.** §20.7 asks for
    one beside `ProtocolId` in every backend; today the two block backends emit
    it into `<Base>Block.h` / `<Base>Block.cs`, the C++ table backend emits it
    into the `<Base>Table.h` of a unit that has a variable-length table — where
-   the cook's reader is — and the seven backends that carry no table emit none.
-   A VALUE-ONLY unit's Table sources carry no constant, which is the zero-cost
-   gate (§2.2) rather than an omission: nothing in one reads a cook.
-2. **The layout asserts cover the BLOCK CLOSURE and the COOK closure of a
-   POINTERED unit, not every cookable record.** C++ `static_assert`s each block
+   the cook's reader is — the C# cook emits it into `<Base>Cook.cs` when the
+   unit has no block form to carry it already, and the seven backends that carry
+   no table emit none. A VALUE-ONLY unit's Table sources carry no constant, which
+   is the zero-cost gate (§2.2) rather than an omission: nothing in one reads a
+   cook. **In C# exactly one accelerator defines it** — `Schema` is one partial
+   class across a unit's files, so a second definition is a compile error rather
+   than C++'s harmless re-inclusion behind a guard.
+2. **The layout asserts cover the BLOCK CLOSURE and the COOK CLOSURE on BOTH
+   backends, but not a record in a unit with no accelerator reader in it.**
+   C++ `static_assert`s each block
    projection's and each row type's `sizeof`, `alignof` and every field
    `offsetof`, and does the same for every record declared by a file of a unit
-   that has a variable-length table; C# asserts the block facts under the
-   managed model in a once-run check. What neither side asserts is a record in
-   a unit with NO pointer anywhere — which is exactly the unit whose header the
-   zero-cost gate holds byte-identical, so closing it and §20.3's commitment
-   are one question, and it is OPEN.
+   that has a variable-length table. C# asserts the block facts under the
+   managed model in one once-run check and, in `TableCookLayout`, every record of
+   the unit's COOK closure — each `<Name>Row`'s size and each field's offset — in
+   another. What neither side asserts is a record in a unit with NO pointer
+   anywhere, which is exactly the unit whose sources the zero-cost gate holds
+   byte-identical, so closing it and §20.3's commitment are one question, and it
+   is OPEN.
 3. **The C# check is a THROW at first use, not a build error.** §20.3 asks
    for a build error on the side that disagrees; C# has no `static_assert`,
    so the generated check runs once at type initialization and throws naming
-   the type, the field, the offset it found and the offset the C++ side
-   asserts. Loud and early, but not at compile time.
+   the type, the field, the offset it found and the offset the compiler's model
+   gives. Loud and early, but not at compile time. The gate runs both `Verify()`
+   halves as their own start-up mode rather than waiting for a first open, which
+   is the most a runtime with no compile-time assert can do.
 4. **The COOK's WRITE side is the TOOL's alone.** `schema cook` produces a
-   cooked file and no generated runtime does: `Cook` and `CookMeasure` stay
-   claimed ahead of their emitter (§7, §11, schema#251). The read side is
-   emitted and gated.
+   cooked file and no generated runtime does: `CookMeasure` and the write half
+   of `Cook` stay claimed ahead of their emitter (§7, §11, schema#251). BOTH
+   read sides are emitted and gated.
+5. **A UNION-BEARING closure has no C# cook reader**, for the reason it has no
+   block form: §19.3 pins a blittable C# record to `Sequential`, which cannot
+   overlay arms. The generated file names the table and the reason, the table's
+   cook and its wire are untouched, and C++ reads one. A named follow-on (§15).
 
 ### 20.1 What it digests
 

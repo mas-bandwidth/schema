@@ -1187,11 +1187,11 @@ this side allocates: the bytes are yours, from wherever you got them.
 
 ### The cooked form: point at a file instead of parsing it
 
-*The TOOL and the C++ READ side are built; the C++ WRITE side is not
-(SPEC-TABLES.md §7, schema#251). `schema cook`, `schema cook-check` and
-`schema uncook` produce, validate and read back cooked files today, in either
-byte order, and the C++ backend emits `<Root>Open` for every table.
-`SceneCook` and `SceneCookMeasure` are the design you will get; today your
+*The TOOL and BOTH READ sides are built; no WRITE side is (SPEC-TABLES.md §7,
+schema#251). `schema cook`, `schema cook-check` and `schema uncook` produce,
+validate and read back cooked files today, in either byte order; the C++ backend
+emits `<Root>Open` and the C# backend emits `<Root>Cook.Open`, for every table.
+`SceneCook` and `SceneCookMeasure` are the write design you will get; today your
 tools write the cook with `schema cook` and your game opens it.*
 
 **A cook is not a wire protocol — it is a load-trusted-data-from-tools
@@ -1243,6 +1243,50 @@ for ( const ListNode * n = graphdemo::ListNodeAt( scene->head ); n != NULL;
 `const Scene *` or `NULL`. The length is unsigned because every number the
 check compares comes out of the file, so all of its arithmetic is unsigned; a
 caller holding an `int64_t` from a `stat` casts once, at the call site.
+
+**The same cook, from C#.** The bytes are memory your engine already holds — an
+mmap, a native allocation, or an array you pinned — and this side takes a pointer
+and a length and points at it, so the generated source is `unsafe` and your
+project sets `AllowUnsafeBlocks`:
+
+```csharp
+using Graphdemo;
+
+// the region must stay put and stay ALIGNED for as long as you use the handle
+// or anything you reach through it: nothing here copies, and nothing here pins
+if ( !SceneCook.Open( out SceneCook cook, pointer, length ) )
+{
+    // wrong build, corrupt, truncated, or a foreign byte order:
+    // fall back to a wire load, which is the path that carries every version
+    return LoadFromWire();
+}
+
+SceneRow * scene = cook.RootPointer;
+
+// a string is a SPAN over the region — no copy, no allocation — and a reference
+// is one add through <T>Cook.At, which takes the SLOT because the delta is
+// relative to the slot's own address
+Console.WriteLine( Encoding.UTF8.GetString( SceneCook.Name( scene ) ) + " v" + scene->Version );
+for ( ListNodeRow * n = ListNodeCook.At( &scene->Head ); n != null; n = ListNodeCook.At( &n->Next ) )
+{
+    Console.WriteLine( "  " + Encoding.UTF8.GetString( ListNodeCook.Name( n ) ) + " = " + n->Value );
+}
+```
+
+There is a `ReadOnlySpan<byte>` overload beside the pointer form for a consumer
+that already holds the bytes — the same contract, spelled differently. Its length
+is an `int`, so a cook past 2 GiB is opened through the pointer form, which is
+the one with the reach the cook is built for.
+
+Two things about the C# side worth knowing before you reach for it. **A cooked
+record is the same blittable `<Name>Row` struct the block form uses**, from the
+same layout model, so the two accelerators share one set of records; the layout
+is checked once, at start-up, and throws naming the record and the field if your
+runtime disagrees. And **a pointered unit's C# WIRE surface is refused by name**:
+you get `<Base>Cook.cs` and `<Base>Block.cs` and no `<Base>Table.cs`, because the
+codec for the variable class is a named follow-on and neither accelerator needs
+one. Your cooked assets open in full; `Measure`, `Save` and `Load` for those
+tables are C++'s or the tool's for now.
 
 A cooked file is an ACCELERATOR, not an archive: it is build-locked by a
 build version that covers the schema's layout, its meaning facts and your
