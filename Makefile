@@ -2757,7 +2757,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 .PHONY: tables-block-build-version
 tables-block-build-version: bin/schema build/tables-generated/.stamp build/tables-generated-cs/.stamp
 	@v=$$(./bin/schema build-version tables/block); \
-		grep -q "inline constexpr uint64_t BuildVersion = $${v}ull;" build/tables-generated/block/RenderBlock.h || \
+		grep -q "static const uint64_t BuildVersion = $${v}ull;" build/tables-generated/block/RenderBlock.h || \
 			{ echo "BUILD VERSION GATE FAILED: the C++ constant is not $$v"; exit 1; }; \
 		grep -q "public const ulong BuildVersion = $${v}UL;" build/tables-generated-cs/block/*Block.cs || \
 			{ echo "BUILD VERSION GATE FAILED: the C# constant is not $$v"; exit 1; }; \

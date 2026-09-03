@@ -145,17 +145,16 @@ func soakCorpus(t *testing.T) []soakCase {
 			tblv2.CfgFromJson, tblv2.CfgToJsonMeasure, tblv2.CfgToJson),
 		soakRow(t, "v2_seams", g+"v2_seams.bin", tblv2.CfgReset, tblv2.CfgLoad, tblv2.CfgMeasure, tblv2.CfgSave,
 			tblv2.CfgFromJson, tblv2.CfgToJsonMeasure, tblv2.CfgToJson),
+		// the pointered spellings (chain_pointer, chain_pointer_empty) have no Go
+		// codec and no text: Go refuses the pointered unit by name (§11), and
+		// their goldens are the C++ reference's
 		soakRow(t, "chain_value", g+"chain_value.bin", tblp1.ChainReset, tblp1.ChainLoad, tblp1.ChainMeasure,
 			tblp1.ChainSave, tblp1.ChainFromJson, tblp1.ChainToJsonMeasure, tblp1.ChainToJson),
 		soakRow(t, "chain_value_empty", g+"chain_value_empty.bin", tblp1.ChainReset, tblp1.ChainLoad,
 			tblp1.ChainMeasure, tblp1.ChainSave, tblp1.ChainFromJson, tblp1.ChainToJsonMeasure, tblp1.ChainToJson),
-		soakRow(t, "chain_pointer", g+"chain_pointer.bin", tblp1.ChainReset, tblp1.ChainLoad, tblp1.ChainMeasure,
-			tblp1.ChainSave, tblp1.ChainFromJson, tblp1.ChainToJsonMeasure, tblp1.ChainToJson),
 		soakRow(t, "chain_optional", g+"chain_optional.bin", tblp3.ChainReset, tblp3.ChainLoad, tblp3.ChainMeasure,
 			tblp3.ChainSave, tblp3.ChainFromJson, tblp3.ChainToJsonMeasure, tblp3.ChainToJson),
 		soakRow(t, "chain_optional_empty", g+"chain_optional_empty.bin", tblp3.ChainReset, tblp3.ChainLoad,
-			tblp3.ChainMeasure, tblp3.ChainSave, tblp3.ChainFromJson, tblp3.ChainToJsonMeasure, tblp3.ChainToJson),
-		soakRow(t, "chain_pointer_empty", g+"chain_pointer_empty.bin", tblp3.ChainReset, tblp3.ChainLoad,
 			tblp3.ChainMeasure, tblp3.ChainSave, tblp3.ChainFromJson, tblp3.ChainToJsonMeasure, tblp3.ChainToJson),
 	}
 }
