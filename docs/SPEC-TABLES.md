@@ -3859,11 +3859,12 @@ in build version (§20.5).
   enums are in scope on the same terms.
 - Tables under a backend that carries none (status, above) — refused with the
   follow-on named, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Go and Java backends** —
-  the ports carry the fixed class on the wire; their variable class there (the
-  arena, the builder, the region, the node-table codec) is a named follow-on, and
-  a pointered unit gets no `<Base>Table.cs`, no `<Base>Table.go` and no
-  `<Base>Table.java` at all, with the refusal NAMED in every source the unit does
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Go, Rust, Java and
+  Elixir backends** — every port carries the fixed class on the wire; their
+  variable class there (the arena, the builder, the region, the node-table
+  codec) is a named follow-on, and a pointered unit gets no `<Base>Table.cs`, no
+  `<Base>Table.go`, no `<base>_table.rs`, no `<Base>Table.java` and no
+  `<Base>Table.ex` at all, with the refusal NAMED in every source the unit does
   emit rather than left as a missing symbol.
 
   **The refusal is of the WIRE and of nothing else, and the distinction is the
@@ -3872,12 +3873,14 @@ in build version (§20.5).
   match, and neither needs one line of the codec the variable class is missing.
   So a pointered unit's block and cook sources ARE emitted in every port —
   `<Base>Block.cs` and `<Base>Cook.cs`, `<Base>Block.go` and `<Base>Cook.go`,
-  Java's `<Table>Block.java`, `<Table>Cook.java` and `<Name>Row.java`; its
-  `<Root>Cook.Open`, its `<Root>Open` and its `<Root>Cook.open` open its cooked
-  assets in full, and what a consumer cannot do in any of those languages is
-  `Measure`, `Save` and `Load` over the tolerant wire.
+  `<base>_block.rs` and `<base>_cook.rs`, Java's `<Table>Block.java`,
+  `<Table>Cook.java` and `<Name>Row.java`, and Elixir's `<Base>Block.ex` and
+  `<Base>Cook.ex`; its `<Root>Cook.Open`, its `<Root>Open`, its
+  `<Root>Cook.open` and its `cook_open_<root>` open its cooked assets in full,
+  and what a consumer cannot do in any of those languages is `Measure`, `Save`
+  and `Load` over the tolerant wire.
   **This is what lets §7's "a root is any table, and every table gets one" hold
-  in C# and Go too**, which a whole-unit refusal made impossible to say.
+  in every port**, which a whole-unit refusal made impossible to say.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
   outside a table body; a specified default on a pointer field; and an
@@ -4142,6 +4145,22 @@ in build version (§20.5).
     text walk claims nothing**, for C#'s reason in Go's spelling: every function
     the walk defines is unexported, and a schema declaration always generates an
     exported name, so the two sets cannot meet.
+
+    **ELIXIR UNSCOPES ONE AND ADDS TWO, and the collision class is the
+    language's own.** A declaration lowers to a MODULE under the unit's
+    namespace, so what a schema can collide with is exactly the set of
+    unit-level module segments the emitter defines — not a `Table*` prefix,
+    which would have been blind to three of the four this backend spells.
+    `TableRuntime` is a private crate module in Rust, which no declaration can
+    reach, and a `<Package>.TableRuntime` module in Elixir, which one lowers to
+    exactly: the claim is the UNION, so the name is claimed for every target.
+    The two additions are `BlockRuntime` and `CookRuntime`, the two
+    accelerators' shared runtimes, which are their own modules because a
+    VARIABLE unit gets no table runtime at all (above) and still has both
+    accelerators. **Elixir's own text walk claims nothing beyond
+    `TableRuntime`**: every function it spells is a function of that module,
+    reached through its owner, and a declaration lowers to a module rather than
+    to a function of one.
 
   **The view's own unit-scope spellings are refused as declaration names in
   every unit, always** (§8.3): `UnitView`, `UnitViewInfo`, `ViewType`,
