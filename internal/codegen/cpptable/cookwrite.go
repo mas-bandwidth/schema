@@ -237,7 +237,7 @@ func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 			g.pf("    (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
 		}
 	}
-	if variable && len(ml.Fields) > 0 && len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+	if variable && len(ml.Fields) > 0 && g.noVariableEdges(st) {
 		g.pf("    (void) ctx; (void) region; // no reference below this node: the class was decided by a pointer elsewhere in its closure\n")
 	}
 	for i := range ml.Fields {

@@ -257,7 +257,7 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 	g.pf("// A reference to an entry whose descent is still OPEN is a data cycle,\n")
 	g.pf("// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).\n")
 	g.pf("template <typename Ctx>\ninline bool %sNumber( const Ctx & ctx, TableNumbering & numbering, const %s & value )\n{\n", st.Name, st.Name)
-	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+	if g.noVariableEdges(st) {
 		g.pf("    (void) ctx; (void) numbering; (void) value; // no pointers below this node\n")
 	}
 	for _, f := range pointerFields(st) {
@@ -289,6 +289,11 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("        if ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", f.Type.Name, expr)
 		})
 	}
+	for _, f := range g.byValueVariableUnionFields(st) {
+		g.emitVariableUnionWalk(f, "value", func(armType, armName string) {
+			g.pf("            if ( !%sNumber( ctx, numbering, value.%s.%s ) ) { return false; }\n", armType, f.Name, armName)
+		})
+	}
 	g.pf("    return true;\n}\n\n")
 }
 
@@ -301,7 +306,7 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 	g.pf("// reference to a node whose descent is still open is a data cycle, refused.\n")
 	g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    int64_t bytes = 0;\n")
-	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+	if g.noVariableEdges(st) {
 		g.pf("    (void) ctx; (void) seen; (void) value; // no pointers below this node\n")
 	}
 	for _, f := range pointerFields(st) {
@@ -330,6 +335,13 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 			g.pf("        int64_t inner = %sPackMeasure( ctx, seen, %s );\n", f.Type.Name, expr)
 			g.pf("        if ( inner < 0 ) { return -1; }\n")
 			g.pf("        bytes += inner;\n")
+		})
+	}
+	for _, f := range g.byValueVariableUnionFields(st) {
+		g.emitVariableUnionWalk(f, "value", func(armType, armName string) {
+			g.pf("            int64_t inner = %sPackMeasure( ctx, seen, value.%s.%s );\n", armType, f.Name, armName)
+			g.pf("            if ( inner < 0 ) { return -1; }\n")
+			g.pf("            bytes += inner;\n")
 		})
 	}
 	g.pf("    return bytes;\n}\n\n")
@@ -370,7 +382,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 	g.pf("// refuses it rather than packing one.\n")
 	g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used )\n{\n", st.Name, st.Name, st.Name)
 	g.pf("    memcpy( (void *) &dst, (const void *) &src, sizeof( %s ) ); // trivially copyable, by construction\n", st.Name)
-	if len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 {
+	if g.noVariableEdges(st) {
 		g.pf("    (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;\n")
 	}
 	for _, f := range pointerFields(st) {
@@ -399,6 +411,11 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 	}
 	for _, f := range g.byValueVariableFields(st) {
 		g.emitVariableByValueWalkPack(f)
+	}
+	for _, f := range g.byValueVariableUnionFields(st) {
+		g.emitVariableUnionWalk(f, "src", func(armType, armName string) {
+			g.pf("            if ( !%sPack( ctx, seen, src.%s.%s, dst.%s.%s, base, capacity, used ) ) { return false; }\n", armType, f.Name, armName, f.Name, armName)
+		})
 	}
 	g.pf("    return true;\n}\n\n")
 }
@@ -845,6 +862,16 @@ func (g *tableGen) pointerReachable(root *ir.Struct) []*ir.Struct {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
+			if un, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+				// a union's arms are by-value edges (docs/SPEC-TABLES.md §2.6):
+				// the pointers inside a table arm are this root's to name
+				for _, v := range un.Variants {
+					if v.Ref != nil {
+						descend(v.Ref)
+					}
+				}
+				continue
+			}
 			ref, ok := f.Type.Ref.(*ir.Struct)
 			if !ok {
 				continue
@@ -888,4 +915,50 @@ func (g *tableGen) modeColumn(st *ir.Struct) string {
 		return ""
 	}
 	return fmt.Sprintf(", %v", g.isVar(st.Name))
+}
+
+// byValueVariableUnionFields returns the union fields with at least one
+// VARIABLE table arm (docs/SPEC-TABLES.md §2.6): the mode runs through arms, so
+// the set arm is a by-value edge every pointer walk descends.
+func (g *tableGen) byValueVariableUnionFields(st *ir.Struct) []*ir.Field {
+	var out []*ir.Field
+	for _, f := range st.Fields {
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		un, ok := f.Type.Ref.(*ir.Union)
+		if !ok {
+			continue
+		}
+		for _, v := range un.Variants {
+			if g.isVar(v.Type) {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// noVariableEdges reports a member with no pointer below it: no pointer
+// field, no by-value variable nesting and no union with a variable arm.
+func (g *tableGen) noVariableEdges(st *ir.Struct) bool {
+	return len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 && len(g.byValueVariableUnionFields(st)) == 0
+}
+
+// emitVariableUnionWalk emits the switch over a union field's SET arm and calls
+// body once per variable arm with the arm's table name and member name; an arm
+// that is fixed, or a type, holds no pointer and takes no case.
+func (g *tableGen) emitVariableUnionWalk(f *ir.Field, subject string, body func(armType, armName string)) {
+	un := f.Type.Ref.(*ir.Union)
+	g.pf("    switch ( %s.%s.type ) // %s: the set arm is the by-value edge\n    {\n", subject, f.Name, f.Name)
+	for _, v := range un.Variants {
+		if !g.isVar(v.Type) {
+			continue
+		}
+		g.pf("        case %sType::%s:\n        {\n", un.Name, ir.GoExportName(v.Name))
+		body(v.Type, v.Name)
+		g.pf("            break;\n        }\n")
+	}
+	g.pf("        default: break;\n    }\n")
 }

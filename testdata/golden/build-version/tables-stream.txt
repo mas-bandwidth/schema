@@ -1,0 +1,16 @@
+0xbdbae7f5d8e3c67b
+schema-build-version 1
+protocol bf90766c51a5100c
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record Chunk sizeof=24 alignof=8
+    field 3ad7 kind=14 offset=0 size=12 bound=8
+    field d15e kind=17 offset=16 size=8 type=Chunk
+record Feed sizeof=40 alignof=8
+    field 5dd8 kind=8 offset=0 size=4
+    field a3ac kind=15 offset=8 size=32 union=Frame
+record Header sizeof=24 alignof=4
+    field 30df kind=12 offset=0 size=24 bound=16
+union Frame
+    arm 1 header payload=Header
+    arm 2 chunk payload=Chunk

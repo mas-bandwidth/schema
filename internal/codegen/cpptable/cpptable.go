@@ -591,10 +591,28 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				members = append(members, st)
 			}
 		}
+		unions := tableUnionsOf(f)
 		if len(members) > 0 {
+			// a table-armed union is emitted before the first table that holds
+			// it and after its same-file arms, which orderTables placed ahead
+			// of that holder; one no same-file table holds follows the structs
+			emittedUnion := map[string]bool{}
 			for _, st := range members {
-				if st.IsTable {
-					g.emitTableStruct(st)
+				if !st.IsTable {
+					continue
+				}
+				for _, un := range tableUnionsHeldBy(st, unions) {
+					if !emittedUnion[un.Name] {
+						emittedUnion[un.Name] = true
+						g.emitTableUnion(un)
+					}
+				}
+				g.emitTableStruct(st)
+			}
+			for _, un := range unions {
+				if !emittedUnion[un.Name] {
+					emittedUnion[un.Name] = true
+					g.emitTableUnion(un)
 				}
 			}
 			for _, e := range tableEnums(members) {
@@ -652,6 +670,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitJsonDeclarations(st)
 			}
 		} else {
+			for _, un := range unions {
+				g.emitTableUnion(un) // its arms are all cross-file: nothing here precedes it
+			}
 			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
 		}
@@ -771,10 +792,24 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-				if j, ok := byName[ref.Name]; ok && j != i {
+			edge := func(name string) {
+				if j, ok := byName[name]; ok && j != i {
 					adj[j] = append(adj[j], i)
 					indeg[i]++
+				}
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				if ref.IsTable {
+					edge(ref.Name)
+				}
+			case *ir.Union:
+				// a table-armed union is emitted just before its holder, so the
+				// holder follows every same-file table an arm names (§2.6)
+				for _, v := range ref.Variants {
+					if v.Ref != nil && v.Ref.IsTable {
+						edge(v.Type)
+					}
 				}
 			}
 		}

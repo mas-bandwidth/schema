@@ -1101,14 +1101,23 @@ carry a nested table, a collection, or anything else a table body holds —
 which is what a message set of documents needs and what a `type`-only
 payload could never express.
 
-**Backend status for this section: no backend, and no declaration reaches
-it.** A union arm naming a `table` is refused by the checker, before any
-emitter sees it — `<Name> is a table, not a union payload` — so a unit
-declaring the form above does not compile today and no generated code
-carries an arm that is a table. The construct is stated here rather than
-withheld because the framing it lands under is already the framing a `type`
-arm rides (below), so what lands is the checker's refusal lifting, not a
-second decision about the wire; it is tracked as schema#258.
+**Backend status for this section: the C++ REFERENCE and the TOOL carry it;
+every other backend refuses a unit that declares one, by name** (§11), and
+the ports are a named follow-on (§15). The corpus holds the form at THREE
+DEPTHS — `tables/messages` nests a union of tables inside a table arm inside a
+union of tables — and a union with a VARIABLE arm (`tables/stream`), and every
+instance crosses the wire, the text and the cook in the harness; the message
+evolution pair (`test/tables/M1.schema`, `M2.schema`) inserts an arm first,
+removes one and grows a third, both directions. Every leg that lacks the form
+answers ABSENT for those cases, so its fixed-class pass is untouched.
+
+**A union with a table arm is a TABLE-CLOSURE construct, and it has no packet
+wire.** It is emitted beside the tables — in C++, in the Table header after the
+tables its arms name, never in the packet header — it projects nothing into the
+protocol id (adding a table arm moves no packet byte), and a `type` body that
+holds one is refused by name, as is a union with a table arm that no table
+reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
+for every union in a block closure.
 
 - **A union declared for the TYPE wire keeps refusing table arms.** Types
   are value semantics and their wire is positional; a table arm is a
@@ -4872,9 +4881,13 @@ in build version (§20.5).
   spelling left to refuse. What the view does add to this section is the two
   name claims below — which are refusals of a NAME, not of a construct — and
   one file-name collision, and nothing else.
-- **A `table` union arm outside a table closure** (§2.6) — a union declared
-  for the type wire takes `type` payloads only, because types are value
-  semantics.
+- **A `table` union arm outside a table closure** (§2.6), from both sides: a
+  `type` body holding a union with a table arm, and a union with a table arm
+  that no table reaches — a union declared for the type wire takes `type`
+  payloads only, because types are value semantics. And **a union with a
+  table arm under every backend but C++**, refused naming the union and the
+  target: the ports are a named follow-on (§15), and a port that emitted the
+  union would name a table it never declares.
 - **The text form's key** (§16): `json = "..."` on a field no table closure
   reaches — keys are a table-wire construct; two fields of one table whose
   JSON keys collide, naming both, as wire ids do (§5); and a key beginning
@@ -6242,6 +6255,19 @@ inspects everything in the schema built:
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - Arrays of unions in table bodies.
+- **A UNION WITH TABLE ARMS in every ported backend** (§2.6): C++ carries it
+  and every other backend refuses the unit by name (§11). What a port needs is
+  what the C++ one needed — the union's shape emitted beside the tables rather
+  than among the packet declarations, the arm descriptor naming the table's,
+  and the pointer walks descending a variable arm — held to the same
+  instances the harness carries, and §6.5's carve-out for a language with no
+  native union.
+- **A POINTER ARM — `*T` inside a union.** An arm names a declared `type` or
+  `table` and is framed as a body; a pointer is framed as a node index (§3.1),
+  so an arm that is a pointer would be the one arm whose framing is not a
+  body, and nothing here decides whether it rides under the arm's length as a
+  kind `17` field would, or as an index in the length's place. A table arm
+  that HOLDS a pointer serves today (`tables/stream`).
 - `fixed` and 128-bit table-wire kinds, if a need ever materializes.
 - **THE REST OF THE C++ DIALECT** (§13.9), four pieces, each its own change:
   `<atomic>` out of a pointered unit's header, behind a `__atomic_*` /
@@ -6516,12 +6542,11 @@ Per kind:
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class |
 | `map[K]V` | object keyed by the KEY | a string key is the string; an integer key is its decimal spelling, quoted, and any other spelling under an integer key is `malformed`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7) |
 
-**One entry above describes a construct no declaration reaches yet**: the
-`table` union arm named in the union row lands with its own (schema#258). It
-is stated here rather than added later because a text mapping is a property
-of the KIND — it lands as its declaration lands, not as a second decision
-about text. The `*T` pointer row is the variable class's, covered by the
-status in §16.1.
+**A `table` arm takes the union row's form because a text mapping is a
+property of the KIND**: an arm is a body whether it names a type or a table
+(§2.6), so the one-key object is its text in every walk, and the corpus holds
+it at three depths (`tables/messages`). The `*T` pointer row is the variable
+class's, covered by the status in §16.1.
 
 **The text form writes a graph as a tree, and `&node` is what keeps identity
 across the seam** (§16.7). A pointee is written in place, so without the

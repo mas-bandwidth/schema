@@ -126,6 +126,13 @@ func WireProjection(u *Unit) string {
 	sort.Strings(names)
 	for _, n := range names {
 		un := u.Unions[n]
+		if un.HasTableArm() {
+			// a union with a TABLE arm has no packet wire — a `type` body
+			// refuses it (docs/SPEC-TABLES.md §2.6) — so it is a table-closure
+			// fact and projects nothing, exactly as a table does: adding a
+			// table arm moves no protocol id
+			continue
+		}
 		fmt.Fprintf(&b, "union %s max=%d\n", un.Name, un.Max)
 		for i, v := range un.Variants {
 			fmt.Fprintf(&b, "  variant %d payload=%s\n", i+1, v.Type)

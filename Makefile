@@ -98,6 +98,9 @@ SCHEMAS_BENCH := $(wildcard bench/corpus/*.schema)
 SCHEMAS_TABLES := $(wildcard tables/examples/*.schema)
 SCHEMAS_TABLES_POINTERS := $(wildcard tables/pointers/*.schema)
 SCHEMAS_TABLES_BLOCK := $(wildcard tables/block/*.schema) $(wildcard tables/blockhome/*.schema)
+# the MESSAGE corpora (docs/SPEC-TABLES.md §2.6): a union whose arms are tables,
+# fixed in tables/messages and with a variable arm in tables/stream
+SCHEMAS_TABLES_MESSAGES := $(wildcard tables/messages/*.schema) $(wildcard tables/stream/*.schema)
 
 all: bin/schema
 
@@ -237,18 +240,23 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/pointers tables/pointers
 	$(1) generate --lang cpp --out $(2)/block tables/block
 	$(1) generate --lang cpp --out $(2)/blockhome tables/blockhome
+	$(1) generate --lang cpp --out $(2)/messages tables/messages
+	$(1) generate --lang cpp --out $(2)/stream tables/stream
 	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
 	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema
 	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema
+	$(1) generate --lang cpp --out $(2)/m1 test/tables/M1.schema
+	$(1) generate --lang cpp --out $(2)/m2 test/tables/M2.schema
 endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
-	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys
+	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
+	-I$(1)/messages -I$(1)/stream -I$(1)/m1 -I$(1)/m2
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -263,7 +271,9 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 tables-zero-cost: build/tables-generated/.stamp
 	@for f in build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
 	          build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
-	          build/tables-generated/p3/*Table.h; do \
+	          build/tables-generated/p3/*Table.h \
+	          build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
+	          build/tables-generated/m2/*Table.h; do \
 		if grep -nE "TableArena|TableSlot|TableWorker|TableRef|TableRegion|kTableSegment|kTableSlab|TablePack|TableNode|is_pointer|Builder|PackMeasure|LoadMeasure" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
@@ -2701,7 +2711,8 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	@echo "block zero-cost gate: no Dart Table library carries one symbol of either accelerator"
 	@n=0; d=0; \
 	for f in testdata/golden/tables/examples/*Table.* testdata/golden/tables/pointers/*Table.* \
-	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* ; do \
+	         testdata/golden/tables/block/*Table.* testdata/golden/tables/blockhome/*Table.* \
+	         testdata/golden/tables/messages/*Table.* testdata/golden/tables/stream/*Table.* ; do \
 		dir=$$(basename $$(dirname $$f)); \
 		n=$$(( n + 1 )); \
 		cmp -s $$f build/tables-generated/$$dir/$$(basename $$f) || \
@@ -2731,7 +2742,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 			{ echo "ZERO-COST GATE FAILED: $$f moved"; d=$$(( d + 1 )); }; \
 	done; \
 	if [ "$$d" != "0" ]; then exit 1; fi; \
-	if [ "$$n" -lt 68 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 68 — the glob, not the property, is what broke"; exit 1; fi; \
+	if [ "$$n" -lt 72 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 72 — the glob, not the property, is what broke"; exit 1; fi; \
 	echo "block zero-cost gate: $$n Table sources byte-identical to their pins"
 
 # THE BUILD VERSION IS ONE NUMBER (docs/SPEC-TABLES.md §20.7): the constant each
@@ -4266,7 +4277,7 @@ update-goldens: build/schema_test build/schema_test_ludicrous build/schema_test_
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
-	@for d in examples pointers block blockhome; do \
+	@for d in examples pointers block blockhome messages stream; do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done
@@ -4355,11 +4366,15 @@ check: bin/schema
 	./bin/schema check tables/pointers
 	./bin/schema check tables/block
 	./bin/schema check tables/blockhome
+	./bin/schema check tables/messages
+	./bin/schema check tables/stream
 	./bin/schema check test/tables/V1.schema
 	./bin/schema check test/tables/V2.schema
 	./bin/schema check test/tables/P1.schema
 	./bin/schema check test/tables/P2.schema
 	./bin/schema check test/tables/P3.schema
+	./bin/schema check test/tables/M1.schema
+	./bin/schema check test/tables/M2.schema
 	./bin/schema check bench/corpus/Bench.schema
 	./bin/schema check bench/corpus/RealWorld.schema
 	./bin/schema check bench/corpus/BenchTable.schema
@@ -4377,11 +4392,15 @@ fmt: bin/schema
 	./bin/schema fmt tables/pointers
 	./bin/schema fmt tables/block
 	./bin/schema fmt tables/blockhome
+	./bin/schema fmt tables/messages
+	./bin/schema fmt tables/stream
 	./bin/schema fmt test/tables/V1.schema
 	./bin/schema fmt test/tables/V2.schema
 	./bin/schema fmt test/tables/P1.schema
 	./bin/schema fmt test/tables/P2.schema
 	./bin/schema fmt test/tables/P3.schema
+	./bin/schema fmt test/tables/M1.schema
+	./bin/schema fmt test/tables/M2.schema
 	./bin/schema fmt bench/corpus/Bench.schema
 	./bin/schema fmt bench/corpus/RealWorld.schema
 	./bin/schema fmt bench/corpus/BenchTable.schema
@@ -4425,14 +4444,17 @@ clean:
 CONFORMANCE_INCLUDES := -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
-	-Ibuild/tables-generated/p2 -Itest/tables
+	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Itest/tables
 CONFORMANCE_SOURCES = build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
 	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp \
 	build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp \
 	build/tables-generated/p2/P2Table.cpp build/tables-generated/p3/P3Table.cpp build/tables-generated/block/RenderBlock.cpp \
 	build/tables-generated/block/PaddedBlock.cpp build/tables-generated/pointers/GraphTable.cpp \
-	build/tables-generated/pointers/MarksTable.cpp build/tables-generated/pointers/PartsTable.cpp
+	build/tables-generated/pointers/MarksTable.cpp build/tables-generated/pointers/PartsTable.cpp \
+	build/tables-generated/messages/MessagesTable.cpp build/tables-generated/stream/StreamTable.cpp \
+	build/tables-generated/m1/M1Table.cpp build/tables-generated/m2/M2Table.cpp
 
 build/conformance-harness: $(wildcard test/conformance/harness/*.go)
 	@mkdir -p build

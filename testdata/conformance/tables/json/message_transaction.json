@@ -1,0 +1,62 @@
+{
+  "sequence": 8,
+  "body": {
+    "transact": {
+      "reason": "refactor",
+      "edits": [
+        {
+          "revision": 1,
+          "body": {
+            "insert": {
+              "at": {
+                "line": 1,
+                "column": 2
+              },
+              "text": "hi",
+              "origin": {
+                "user": {
+                  "name": "rowan"
+                }
+              }
+            }
+          }
+        },
+        {
+          "revision": 2,
+          "body": {
+            "remove": {
+              "span": {
+                "start": {
+                  "line": 1,
+                  "column": 0
+                },
+                "end": {
+                  "line": 2,
+                  "column": 2
+                }
+              }
+            }
+          }
+        },
+        {
+          "revision": 3,
+          "body": {
+            "insert": {
+              "at": {
+                "line": 5,
+                "column": 5
+              },
+              "text": "",
+              "origin": {
+                "script": {
+                  "path": "gen.lua",
+                  "line": 12
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
