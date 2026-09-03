@@ -186,7 +186,7 @@ func WideBytes(raw *big.Int, kind int) []byte {
 func WideFromBytes(b []byte, kind int) *big.Int {
 	width := ir.TableKindWidth(kind)
 	be := make([]byte, width)
-	for i := 0; i < width; i++ {
+	for i := range width {
 		be[width-1-i] = b[i]
 	}
 	v := new(big.Int).SetBytes(be)

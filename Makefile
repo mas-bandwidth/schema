@@ -105,7 +105,7 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/m1 -I$(1)/m2 -I$(1)/scalars -I$(1)/scalars2
+	-I$(1)/messages -I$(1)/stream -I$(1)/m1 -I$(1)/m2 -I$(1)/scalars -I$(1)/scalars2 -I$(SERIALIZE)
 
 build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/Scalars2.schema
 	@mkdir -p build/tables-generated
@@ -1594,7 +1594,7 @@ check-zero-range-negative-control: bin/schema test/zero_range_negative_main.cpp
 #
 # TABLES_INCLUDES is shared with the sanitized twin below, so the two builds
 # can never drift into covering different code.
-TABLES_INCLUDES := $(call tables_includes,build/tables-generated) -I$(SERIALIZE)
+TABLES_INCLUDES := $(call tables_includes,build/tables-generated)
 TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
 
 # The text form's runtime is a generated TRANSLATION UNIT now, not header
