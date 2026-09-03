@@ -143,10 +143,21 @@ var registry = []Name{
 	// its closure gains and loses a pointer, and a name free today must not
 	// become a collision tomorrow.
 	{Name: "TableCookOpen", By: Cpp, What: "the cooked header's WHOLE check, shared by every <Name>Open"},
-	{Name: "TableCookMagic", By: Cpp, What: "the cooked header's magic, and the byte-order check with it"},
-	{Name: "TableCookByteOrder", By: Cpp, What: "this build's byte order, as a cooked header records it"},
-	{Name: "TableCookMaxAlign", By: Cpp, What: "the greatest region alignment a cooked header may name"},
+	{Name: "TableCookMagic", By: Cpp | Cs, What: "the cooked header's magic, and the byte-order check with it"},
+	{Name: "TableCookByteOrder", By: Cpp | Cs, What: "this build's byte order, as a cooked header records it"},
+	{Name: "TableCookMaxAlign", By: Cpp | Cs, What: "the greatest region alignment a cooked header may name"},
 	{Name: "table_cook_read64", By: Cpp, What: "the cooked header read BYTEWISE"},
+
+	// the COOK's C# half (SPEC-TABLES.md §7, §19.2's road). C# has no include
+	// guard, so the read runtime is emitted ONCE per unit into the cook home's
+	// <Base>Cook.cs — and because one assembly sees every file, a declaration
+	// taking one of these names anywhere in the unit collides with it.
+	{Name: "TableCookHeaderBytes", By: Cs, What: "§7.1's 64-byte header, as a Schema member (so it claims nothing)", Scoped: true},
+	{Name: "TableCookRead64", By: Cs, What: "the C# header read (a Schema member, so it claims nothing)", Scoped: true},
+	{Name: "TableCookLayout", By: Cs, What: "the C# cook closure's layout contract, run once (§20.3)"},
+	{Name: "TableCookInfo", By: Cs, What: "a cooked record's reflection descriptor"},
+	{Name: "TableCookFieldInfo", By: Cs, What: "a cooked field's reflection descriptor"},
+	{Name: "TableCookStorage", By: Cs, What: "what a cooked slot HOLDS, which is not always what the wire carries (§7.2)"},
 
 	// the unit's BUILD VERSION (SPEC-TABLES.md §20): the one digest a block
 	// carries and BlockOpen compares. It is not a Table* spelling, and it is

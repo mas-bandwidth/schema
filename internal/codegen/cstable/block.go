@@ -323,7 +323,12 @@ func csFixedBufferPrimitive(typ string) bool {
 // blittableType maps a field's declared type to its C# blittable spelling. A
 // bool is ONE byte under the managed model, which is what this form asserts
 // (SPEC-TABLES.md §19.3).
-func (g *blockGen) blittableType(t ir.FieldType) string {
+func (g *blockGen) blittableType(t ir.FieldType) string { return csBlittableType(g.unit, t) }
+
+// csBlittableType maps a field's declared type to its C# blittable spelling,
+// for both accelerators: a cooked record and a block row are one set of structs
+// from one layout model, so they are spelled by one function (§7).
+func csBlittableType(u *ir.Unit, t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TBool:
 		return "bool"
@@ -365,7 +370,7 @@ func (g *blockGen) blittableType(t ir.FieldType) string {
 			// the enum lives in the unit's own namespace, beside the table
 			// wire's storage classes; the blittable records live one namespace
 			// in, so the reference is qualified
-			return capitalize(g.unit.Package) + "." + t.Name
+			return capitalize(u.Package) + "." + t.Name
 		case *ir.Flags:
 			return "ulong"
 		case *ir.Struct:

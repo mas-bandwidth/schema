@@ -361,8 +361,106 @@ static int64_t field_slots( const graphdemo::TableFieldInfo & f )
     return f.array_bound;
 }
 
+// ---------------------------------------------------------------------------
+// the DUMP: the same walk, written as canonical text
+// ---------------------------------------------------------------------------
+//
+// The golden lock above proves the two implementations agree on WHERE every
+// node is and WHAT it is; it says nothing about the bytes inside one. This
+// writes the walk out as text — one line per leaf, with a dotted path and the
+// value read at that offset — so the C++ leg's dump and the C# leg's are
+// BYTE-COMPARED. A record laid out one byte differently inside a node, which
+// moves no node offset and no directory entry, is exactly what this catches and
+// the directory lock does not.
+//
+// The format is deliberately dull, because it is a byte comparison and nothing
+// else has to read it:
+//
+//     node <index> <TypeName> @<region offset>
+//       <path> = <value>
+//
+// A reference is `-> @<offset>` or `null`, a string is its USED bytes quoted
+// with every unprintable escaped, a counted array adds a `<path>#count` line
+// and an optional a `<path>#present` line. Floats have no canonical
+// cross-language spelling this gate is willing to fix in passing, so meeting
+// one is a failure rather than a drift.
+
+static bool dumping = false;
+
+static void dump_line( const char * path, const char * value )
+{
+    if ( dumping )
+        printf( "  %s = %s\n", path, value );
+}
+
+static void dump_join( char * out, size_t size, const char * prefix, const char * name )
+{
+    if ( prefix[0] == 0 )
+        snprintf( out, size, "%s", name );
+    else
+        snprintf( out, size, "%s.%s", prefix, name );
+}
+
+static void dump_text( char * out, size_t size, const uint8_t * at, int32_t used )
+{
+    if ( used < 0 )
+        used = 0;
+    size_t w = 0;
+    out[w++] = '"';
+    for ( int32_t i = 0; i < used && w + 8 < size; i++ )
+    {
+        const uint8_t c = at[i];
+        if ( c >= 0x20 && c < 0x7f && c != '"' && c != '\\' )
+            out[w++] = (char) c;
+        else
+            w += (size_t) snprintf( out + w, size - w, "\\x%02x", (unsigned) c );
+    }
+    out[w++] = '"';
+    out[w] = 0;
+    snprintf( out + w, size - w, " len=%d", (int) used );
+}
+
+// What a cooked SLOT holds, at `elem_size` bytes. The table wire's kind is what
+// the descriptors carry, and it is what says the signedness; the WIDTH comes
+// from elem_size, because an enum's slot holds its ORDINAL at the enum's own
+// derived storage width and not the u16 hash the wire rides (§7.2).
+static void dump_scalar( char * out, size_t size, const uint8_t * at, uint8_t kind, uint32_t width )
+{
+    switch ( kind )
+    {
+        case 10:
+        case 11:
+            fail( "the dump met a float, whose canonical cross-language spelling this gate does not fix" );
+            return;
+        case 1: // bool
+            snprintf( out, size, "%s", *at != 0 ? "true" : "false" );
+            return;
+        case 2: case 3: case 4: case 5: // the SIGNED integers
+        {
+            int64_t v = 0;
+            if ( width == 1 ) { int8_t t; memcpy( &t, at, 1 ); v = t; }
+            else if ( width == 2 ) { int16_t t; memcpy( &t, at, 2 ); v = t; }
+            else if ( width == 4 ) { int32_t t; memcpy( &t, at, 4 ); v = t; }
+            else { memcpy( &v, at, 8 ); }
+            snprintf( out, size, "%lld", (long long) v );
+            return;
+        }
+        default: // bool aside, everything else in a cooked slot is unsigned
+        {
+            uint64_t v = 0;
+            if ( width == 1 ) { v = *at; }
+            else if ( width == 2 ) { uint16_t t; memcpy( &t, at, 2 ); v = t; }
+            else if ( width == 4 ) { uint32_t t; memcpy( &t, at, 4 ); v = t; }
+            else { memcpy( &v, at, 8 ); }
+            snprintf( out, size, "%llu", (unsigned long long) v );
+            return;
+        }
+    }
+}
+
 static void walk_storage( const uint8_t * storage, const graphdemo::TableTypeInfo * type,
-                          const uint8_t * region, uint64_t data_length, int depth );
+                          const uint8_t * region, uint64_t data_length, int depth,
+                          const char * path );
 
 static void walk_node( uint64_t offset, const graphdemo::TableTypeInfo * type,
                        const uint8_t * region, uint64_t data_length, int depth )
@@ -384,23 +482,31 @@ static void walk_node( uint64_t offset, const graphdemo::TableTypeInfo * type,
               (unsigned long long) offset, type->name, type->size, (unsigned long long) data_length );
     reached[num_reached].offset = offset;
     reached[num_reached].type = type;
+    const int index = num_reached;
     num_reached++;
-    walk_storage( region + offset, type, region, data_length, depth );
+    if ( dumping )
+        printf( "node %d %s @%llu\n", index, type->name, (unsigned long long) offset );
+    walk_storage( region + offset, type, region, data_length, depth, "" );
 }
 
 static void walk_storage( const uint8_t * storage, const graphdemo::TableTypeInfo * type,
-                          const uint8_t * region, uint64_t data_length, int depth )
+                          const uint8_t * region, uint64_t data_length, int depth,
+                          const char * path )
 {
     for ( int i = 0; i < type->num_fields; i++ )
     {
         const graphdemo::TableFieldInfo & f = type->fields[i];
+        char name[512];
+        dump_join( name, sizeof( name ), path, f.name );
+        char slot_path[576];
+        char value[1024];
 
         // every COUNT COMPANION, against its declared bound, and a negative one
         // refuses too — an extent is never negative, and a walker handed one
         // indexes backwards out of the region (§7.4's pass two).
+        int32_t used = -1;
         if ( f.counted && f.count_offset != 0xffffffffu )
         {
-            int32_t used = 0;
             memcpy( &used, storage + f.count_offset, sizeof( used ) );
             if ( used < 0 || used > f.array_bound )
                 fail( "%s.%s carries a count companion of %d, outside [ 0, %d ]",
@@ -412,7 +518,10 @@ static void walk_storage( const uint8_t * storage, const graphdemo::TableTypeInf
             int64_t delta = 0;
             memcpy( &delta, storage + f.offset, sizeof( delta ) );
             if ( delta == 0 )
-                continue; // NULL IN A REGION IS A DELTA OF ZERO (§6.3)
+            {
+                dump_line( name, "null" ); // NULL IN A REGION IS A DELTA OF ZERO (§6.3)
+                continue;
+            }
             const uint8_t * slot = storage + f.offset;
             const uint8_t * target = slot + delta;
             if ( target < region || target >= region + data_length )
@@ -420,19 +529,70 @@ static void walk_storage( const uint8_t * storage, const graphdemo::TableTypeInf
                       type->name, f.name, (long long) delta, (long long) ( slot - region ) );
             if ( f.table == NULL )
                 fail( "%s.%s is a pointer whose descriptor names no table", type->name, f.name );
-            walk_node( (uint64_t) ( target - region ), f.table, region, data_length, depth + 1 );
+            const uint64_t target_offset = (uint64_t) ( target - region );
+            snprintf( value, sizeof( value ), "-> @%llu", (unsigned long long) target_offset );
+            dump_line( name, value );
+            walk_node( target_offset, f.table, region, data_length, depth + 1 );
             continue;
         }
 
-        if ( f.table == NULL )
-            continue; // a scalar, a string, a `bytes`: no edge and nothing to descend
+        const bool is_bytes = f.table == NULL && f.is_array && f.counted &&
+                              strncmp( f.type_name, "bytes", 5 ) == 0;
+        if ( f.kind == 12 || is_bytes )
+        {
+            // a string's or a `bytes`' USED bytes, without the zero tail (§7.2)
+            dump_text( value, sizeof( value ), storage + f.offset, used );
+            dump_line( name, value );
+        }
+        else if ( f.table != NULL )
+        {
+            // a nested record — by value, or every slot of an array of them. A
+            // COUNTED array writes all N slots (§7.2), and a slot past the live
+            // count holds the value-initialized element, whose pointer slots are
+            // zero: walking all of them is what the check does too.
+            const int64_t slots = field_slots( f );
+            for ( int64_t sl = 0; sl < slots; sl++ )
+            {
+                if ( f.is_array )
+                    snprintf( slot_path, sizeof( slot_path ), "%s[%lld]", name, (long long) sl );
+                else
+                    snprintf( slot_path, sizeof( slot_path ), "%s", name );
+                walk_storage( storage + f.offset + sl * (int64_t) f.elem_size, f.table,
+                              region, data_length, depth, slot_path );
+            }
+        }
+        else
+        {
+            const int64_t slots = field_slots( f );
+            for ( int64_t sl = 0; sl < slots; sl++ )
+            {
+                if ( f.is_array )
+                    snprintf( slot_path, sizeof( slot_path ), "%s[%lld]", name, (long long) sl );
+                else
+                    snprintf( slot_path, sizeof( slot_path ), "%s", name );
+                if ( dumping )
+                {
+                    dump_scalar( value, sizeof( value ), storage + f.offset + sl * (int64_t) f.elem_size,
+                                 f.kind, f.elem_size );
+                    dump_line( slot_path, value );
+                }
+            }
+        }
 
-        // a nested record — by value, or every slot of an array of them
-        const int64_t slots = field_slots( f );
-        for ( int64_t s = 0; s < slots; s++ )
-            walk_storage( storage + f.offset + s * (int64_t) f.elem_size, f.table, region, data_length, depth );
+        if ( dumping && f.counted && f.count_offset != 0xffffffffu && f.kind != 12 && !is_bytes )
+        {
+            snprintf( slot_path, sizeof( slot_path ), "%s#count", name );
+            snprintf( value, sizeof( value ), "%d", (int) used );
+            dump_line( slot_path, value );
+        }
+        if ( dumping && f.optional && f.present_offset != 0xffffffffu )
+        {
+            snprintf( slot_path, sizeof( slot_path ), "%s#present", name );
+            dump_line( slot_path, storage[f.present_offset] != 0 ? "true" : "false" );
+        }
     }
 }
+
 
 // ---------------------------------------------------------------------------
 // the directory — the ORACLE (SPEC-TABLES.md §7.1)
@@ -479,8 +639,9 @@ static void run_walk( const Root * root, const uint8_t * region, uint64_t data_l
     walk_node( 0, root->type(), region, data_length, 0 );
 }
 
-static void mode_golden( const Root * root, const char * path )
+static void mode_golden( const Root * root, const char * path, bool as_dump )
 {
+    dumping = as_dump;
     uint64_t length = 0;
     uint8_t * source = whole_file( path, &length );
     describe( "golden %s over %s", root->name, path );
@@ -582,9 +743,11 @@ static void mode_golden( const Root * root, const char * path )
         }
     }
 
-    printf( "cook golden lock: %s over %s — %d nodes, every one at the offset and type the tool's directory names, "
-            "every byte no field covers zero\n",
-            root->name, path, num_reached );
+    if ( !as_dump )
+        printf( "cook golden lock: %s over %s — %d nodes, every one at the offset and type the tool's directory names, "
+                "every byte no field covers zero\n",
+                root->name, path, num_reached );
+    dumping = false;
     file.destroy();
     free( source );
 }
@@ -1208,7 +1371,7 @@ int main( int argc, char ** argv )
 
     if ( argc < 4 )
     {
-        printf( "usage: %s golden|write|fixedvalues|usage|forge|fuzz|time|accept|refuse <root> <file> [file]\n", argv[0] );
+        printf( "usage: %s golden|dump|write|fixedvalues|usage|forge|fuzz|time|accept|refuse <root> <file> [file]\n", argv[0] );
         return 1;
     }
     const char * mode = argv[1];
@@ -1216,7 +1379,11 @@ int main( int argc, char ** argv )
 
     if ( strcmp( mode, "golden" ) == 0 )
     {
-        mode_golden( root, argv[3] );
+        mode_golden( root, argv[3], false );
+    }
+    else if ( strcmp( mode, "dump" ) == 0 )
+    {
+        mode_golden( root, argv[3], true );
     }
     else if ( strcmp( mode, "write" ) == 0 )
     {
@@ -1263,6 +1430,9 @@ int main( int argc, char ** argv )
         return 1;
     }
 
-    printf( "OK\n" );
+    // the DUMP is the one mode whose stdout IS the artifact: it is byte-compared
+    // against the C# leg's, so nothing else may ride on it
+    if ( strcmp( mode, "dump" ) != 0 )
+        printf( "OK\n" );
     return 0;
 }

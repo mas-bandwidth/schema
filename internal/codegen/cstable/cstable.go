@@ -1,9 +1,17 @@
-// Package cstable emits <Base>Table.cs — the TABLE-wire C# codecs
-// (SPEC-TABLES.md), the FIXED class only. One file per unit file, emitted
-// only when the unit declares tables: storage classes for the `table`
+// Package cstable emits a unit's C# table surface (SPEC-TABLES.md): the
+// TABLE-wire codecs in <Base>Table.cs, and the two ACCELERATORS on the side in
+// <Base>Block.cs (§19) and <Base>Cook.cs (§7). One file per unit file, emitted
+// only when the unit declares tables.
+//
+// The WIRE half is the FIXED class only: storage classes for the `table`
 // declarations, then measure/save/load codecs and reflection descriptors for
 // the whole TABLE CLOSURE (every table plus everything one references,
 // transitively).
+//
+// The two ACCELERATORS reach further, because neither needs a codec: a block
+// and a cook are POINTED AT, not parsed. They are blittable records plus a
+// header match, so they cover the VARIABLE class too — a pointered unit's cooks
+// open in full while its wire codecs do not exist.
 //
 // The C++ backend (internal/codegen/cpptable) is the REFERENCE: this port
 // mirrors its framing, its elision decisions, its clamps and its report
@@ -23,12 +31,15 @@
 // the caller owns the wire span and the report, and Load overlays a value in
 // place after restoring its declared defaults.
 //
-// The VARIABLE class (pointers, arena, region, cooked) is a named follow-on:
-// a unit whose closure declares a pointer is refused by name.
+// The VARIABLE class ON THE WIRE — the arena, the builder, the region and the
+// node-table codec — is a named follow-on: a unit whose closure declares a
+// pointer gets no <Base>Table.cs, and the refusal is NAMED in every source the
+// unit does emit rather than left as a missing symbol (§11).
 package cstable
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -206,8 +217,34 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := refusePointers(u); err != nil {
+	// The two ACCELERATORS are emitted ON THE SIDE and neither needs a wire
+	// codec: the BLOCK form (§19) points at bytes a producer wrote, and the
+	// COOK (§7) points at a region the tooling wrote. Both are pure readers
+	// over blittable records, so both reach further than this backend's wire
+	// half does — a unit whose variable class the wire cannot spell still gets
+	// its cooks opened.
+	blocks := ir.Blocks(u)
+	out, err := generateBlockFiles(u, blocks)
+	if err != nil {
 		return nil, err
+	}
+	cooks, err := generateCookFiles(u, blocks)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, cooks)
+	// The VARIABLE-CLASS refusal (SPEC-TABLES.md §2.2, §11) is a refusal of the
+	// WIRE SURFACE, which is the half the variable class is missing: no arena,
+	// no builder, no region and no node-table codec. It is named rather than
+	// silent — every generated Cook file of the unit opens with the banner
+	// below, naming each table and the follow-on — and no <Base>Table.cs is
+	// emitted, so a consumer that reaches for Save or Load gets a missing name
+	// from its own compiler beside a file that says why.
+	if names := variableTableNames(u); len(names) > 0 {
+		for name, data := range out {
+			out[name] = append([]byte(variableClassBanner(names)), data...)
+		}
+		return out, nil
 	}
 	closure := ir.TableClosure(u)
 	home := ir.ProtocolIdHome(u)
@@ -217,14 +254,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// second definition is a compile error rather than C++'s harmless
 	// re-inclusion behind a guard
 	usedEnums := closureEnums(u, closure)
-	// The BLOCK FORM (SPEC-TABLES.md §19) is emitted ON THE SIDE, into
-	// <Base>Block.cs: nothing declares it, every fixed table has one, and a
-	// consumer compiles it only if it reads a block. The Table source below
-	// carries not one symbol of it.
-	out, err := generateBlockFiles(u, ir.Blocks(u))
-	if err != nil {
-		return nil, err
-	}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed}
 		var members []*ir.Struct
@@ -267,11 +296,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
-// refusePointers is the VARIABLE-class refusal (SPEC-TABLES.md §2.2): the C#
-// backend implements the fixed class, and a unit whose closure declares a
-// pointer anywhere is refused by name rather than emitted with the pointered
-// tables silently missing.
-func refusePointers(u *ir.Unit) error {
+// variableTableNames is the unit's variable-length tables, sorted — the tables
+// whose WIRE surface this backend does not emit.
+func variableTableNames(u *ir.Unit) []string {
 	variable := ir.VariableTables(u)
 	if len(variable) == 0 {
 		return nil
@@ -281,8 +308,28 @@ func refusePointers(u *ir.Unit) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return fmt.Errorf("unit declares variable-length tables (%s) — the C# table backend's variable class is a named follow-on; the fixed class (no pointer in the by-value closure) is what this backend emits today (SPEC-TABLES.md §2.2, §15)",
-		englishList(names))
+	return names
+}
+
+// variableClassBanner is the VARIABLE-class refusal, written where a consumer
+// meets it (SPEC-TABLES.md §2.2, §11). The refusal is of the WIRE half and of
+// nothing else: the accelerators below are pure readers over blittable records
+// and need no codec, so they are emitted. What is absent is Measure, Save,
+// Load, the arena and the builder — named here rather than left as a missing
+// symbol with no explanation.
+func variableClassBanner(names []string) string {
+	return "// THE C# WIRE SURFACE OF THIS UNIT IS REFUSED, BY NAME (SPEC-TABLES.md §11).\n" +
+		"//\n" +
+		"// It declares variable-length tables (" + englishList(names) + "), and the C# table\n" +
+		"// backend's VARIABLE CLASS — the arena, the builder, the region and the node-table\n" +
+		"// codec — is a named follow-on (§15). No <Base>Table.cs is emitted for this unit,\n" +
+		"// so a consumer reaching for Measure, Save or Load gets a missing name from its own\n" +
+		"// compiler, beside this file, which says why.\n" +
+		"//\n" +
+		"// What IS emitted is the two ACCELERATORS, because neither needs a codec: a block\n" +
+		"// (§19) and a cook (§7) are pointed at, not parsed. A build that loads this unit's\n" +
+		"// cooked assets is served in full; one that wants the tolerant wire is not, and\n" +
+		"// runs the tool or the C++ backend for it.\n\n"
 }
 
 func englishList(names []string) string {
