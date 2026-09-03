@@ -3,7 +3,7 @@
 [![CI](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml/badge.svg)](https://github.com/mas-bandwidth/schema/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-**Schema: the data schema language for games.**
+**Schema: the data language for games.**
 
 If you write a game in more than one language, or ship a client and server that
 have to agree on every bit, schema is a language that will help you do this
