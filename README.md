@@ -14,7 +14,7 @@ without ever having to hand-code definitions in each language ever again.
 **schema** is meant to serve all your needs for data types across all languages used when developing a game:
 
 * The packet between a client and a server, where every bit counts and both sides ship together.
-* The message between the server and a backend that ship weeks apart.
+* The message between the server and a backend that needs versioning.
 * The save game that has to load in a build its writer never saw.
 * The render data C++ writes and C# reads sixty times a second.
 * The asset that tools build and cook to an efficient runtime binary format.
