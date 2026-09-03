@@ -147,13 +147,13 @@ sixty times a second or better.
   version refuses and both sides regenerate. The block carries no field ids,
   no lengths, no elision and no read report — §4's counters do not exist here,
   because none of the events they count can occur.
-- **Proof** — designed, not yet built, and the layout asserts above are the
-  largest missing piece: the tree carries no `sizeof`/`offsetof`
-  `static_assert` and the C# fixed class is not blittable yet (§20.3). §12.1
-  states the gate: both sides generated, the multi-threaded fill held by a
-  refuser, and the speed of the hand-written scatter it replaces.
-  **#288** tracks the gate; **#287** tracks the C# blittable struct form the
-  consumer needs.
+- **Proof** — both sides are generated and the layout contract is asserted:
+  C++ `static_assert`s every `sizeof`, `alignof` and `offsetof` of each block
+  projection and row, and the C# rows are blittable
+  `StructLayout(Sequential, Pack = 1, Size = N)` with a generated padding and a
+  once-run `TableBlockLayout.Verify()` (§20.3). §12.1 states the rest of the
+  gate: the multi-threaded fill held by a refuser, and the speed of the
+  hand-written scatter it replaces.
 
 ## 6. JSON parsed and packed into tables
 
@@ -285,5 +285,5 @@ layout.
 
 The claim is held to this page's own standard: where an entry says
 **designed, not yet proven**, that capability is not being claimed. Today
-those are the message set (#258), the cook key (#292), the block form (#288,
-#287), and the flat node encoding's emitter (#251).
+those are the message set (#258), the cook key (#292), and the flat node
+encoding's emitter (#251).
