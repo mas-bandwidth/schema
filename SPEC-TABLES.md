@@ -5519,10 +5519,6 @@ would be the quiet one. The declared maximum is a contract the producer keeps
 and `Begin` checks; it is not a policy `Begin` applies. A gather buffer sized
 larger than the bound is the ordinary case and clamping it is one line, and the
 page says so here rather than leaving a caller to find it at sixty hertz.
-Clamping a count to its maximum before `Begin` is the PRODUCER's job, and the
-page says so rather than leaving a caller to discover it: `Begin` is a
-contract check, not a policy. The `Counts` value is filled before `Begin` and
-`Begin` is single-threaded, so nothing about counting is concurrent.
 
 **Then the fill, and the fill is the requirement:**
 
