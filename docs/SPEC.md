@@ -1452,6 +1452,22 @@ tree mirrors the schema tree a person navigates.
   emitted once per unit rather than once per translation unit behind a
   guard. Every unit emits one further file per unit, `<Package>View.cs`, on
   the same terms as the C++ pair above.
+- **Dart:** one library per schema file, cross-file `import`s derived from
+  actual references, with `show` clauses naming exactly the symbols used. A
+  unit that declares TABLES grows three further libraries per schema file —
+  `<Base>Table.dart` (the table wire's codecs, its reflection descriptors and
+  its TEXT FORM, SPEC-TABLES.md §16), `<Base>Block.dart` and
+  `<Base>Cook.dart` (the two accelerators, §19 and §7) — plus one RUNTIME HOME
+  per unit and per surface, `<Package>Table.dart`, `<Package>Block.dart` and
+  `<Package>Cook.dart`, which the per-file libraries import. **A Dart library
+  IS a file**, so a runtime shared across a unit's files must be public, and
+  the home is named for the PACKAGE on §19.2's rule for every port: a runtime
+  that lived in whichever file sorted first would relocate whole the day a
+  corpus file sorted earlier. The backend spells **no private library-scope
+  name at all** — a schema identifier may begin with an underscore, so a
+  generated `_foo` at top level would be a collision no registry covers
+  (SPEC-TABLES.md §11). A table-free unit grows none of it, and its packet
+  libraries are byte-identical either way.
 - **Elixir:** one `.ex` file per schema file, carrying one `defmodule` per
   declaration under the unit's own namespace plus the file-scope module
   `<Ns>.<Base>` for constants, flags masks and the file's codecs. A unit that

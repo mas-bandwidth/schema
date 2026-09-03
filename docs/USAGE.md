@@ -2817,6 +2817,70 @@ if (!ok) {
 }
 ```
 
+Dart also carries the **TABLE wire** (docs/SPEC-TABLES.md): a unit that
+declares tables grows `<Base>Table.dart` beside its packet library, plus
+`<Base>Block.dart` and `<Base>Cook.dart` for the two accelerators, and one
+runtime home per unit and per surface. The verbs are **methods on the value**
+— `measure()`, `save(out)`, `load(bytes, report)`, `fromJson`, `toJson` — on
+a table's own class, and as extension methods on a `type`'s packet class —
+and the caller owns everything: the value, the bytes, the report. The example
+below is the conformance corpus's own `RootConfig` (`tables/examples`), and
+`make tables-dart-usage` runs it verbatim off this page.
+
+```dart
+import 'TablesTable.dart';      // the file's own table library
+import 'TabledemoTable.dart';   // the unit's runtime home, named for the package
+
+final config = RootConfig();
+final report = TableReport();
+
+// read some bytes another build wrote
+if (!config.load(wire, report)) {
+  // framing damage; the instance holds what was placed before the stop
+}
+if (report.unknown > 0) {
+  // newer data: fields this build does not know, skipped and counted
+}
+
+// and write it back
+final size = config.measure(); // exact bytes, writes nothing
+final out = Uint8List(size);
+config.save(out); // returns size; -1 = refused
+```
+
+**A hot loop owns its reader and writer.** `config.load` allocates exactly one
+`TableReader`; a caller that reads thousands of records a frame attaches its
+own instead, and then the read path allocates NOTHING — no per-field object,
+no sub-view, no temporary. The reader's one currency is the `Uint8List`: a
+multi-byte scalar is assembled from bytes rather than read through a
+`ByteData`, so there is no second object describing the same memory to lend,
+to check, or to allocate:
+
+```dart
+final reader = TableReader(wire, report); // once
+
+for (final record in records) {
+  report.clear();
+  reader.attach(record.bytes, report);
+  config.loadBody(reader);
+  // ... use config ...
+}
+```
+
+That property is MEASURED rather than claimed: `make tables-dart-alloc` counts
+the VM's own new-space scavenges over a steady phase of that loop — load,
+measure and save through a caller-owned reader, writer and report, over the
+conformance corpus — and holds the count at zero under `dart compile`'s AOT
+snapshot, the configuration a shipping consumer runs; a planted allocation per
+record turns it red (`make tables-dart-alloc-negative-control`). Under the
+JIT the same instrument prints its count and does not gate on it: a `double`
+crossing a conversion call the JIT's inlining budget left out of line is
+boxed, and where that budget runs out is the optimizer's decision rather than
+the codec's — one boxed double per pass of the eight-record corpus on the wire
+phase, as measured. Two further costs are the JIT's and never AOT's: a
+`float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
+integer field holding a value outside ±2⁶² costs one boxed integer per read.
+
 **Go** — accessors avoid allocation; reads and writes run on caller-owned
 buffers.
 
