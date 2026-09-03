@@ -226,9 +226,9 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit, variable, targets map[
 			continue
 		}
 		g := &tableGen{unit: u, file: f, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+			includes: map[string]bool{}}
 		c := &tableGen{unit: u, file: f, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+			includes: map[string]bool{}}
 
 		var formed []*ir.BlockLayout
 		for _, st := range f.Tables {

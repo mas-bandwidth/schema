@@ -111,14 +111,13 @@ type tableGen struct {
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
-	blocks         *ir.BlockUnit
-	owner          *ir.Struct      // the closure member whose codec is being emitted
-	variable       map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
-	targets        map[string]bool // tables some pointer targets (ir.PointerTargets)
-	body           strings.Builder
-	includes       map[string]bool // referenced files -> #include "<base>Table.h"
-	nativeIncludes map[string]bool // c_include headers of mapped types
-	indent         string          // extra per-line indent while emitting inside a branch guard
+	blocks   *ir.BlockUnit
+	owner    *ir.Struct      // the closure member whose codec is being emitted
+	variable map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
+	targets  map[string]bool // tables some pointer targets (ir.PointerTargets)
+	body     strings.Builder
+	includes map[string]bool // referenced files -> #include "<base>Table.h"
+	indent   string          // extra per-line indent while emitting inside a branch guard
 }
 
 func (g *tableGen) pf(format string, args ...any) {
@@ -582,7 +581,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := generateBlockFiles(u, blocks, variable, targets)
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+			includes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {
@@ -591,7 +590,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 		}
 		cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}}
+			includes: map[string]bool{}}
 		if len(members) > 0 {
 			for _, st := range members {
 				if st.IsTable {
@@ -688,14 +687,6 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	sort.Strings(names)
 	for _, n := range names {
 		fmt.Fprintf(&h, "#include \"%sTable.h\"\n", n)
-	}
-	native := make([]string, 0, len(g.nativeIncludes))
-	for n := range g.nativeIncludes {
-		native = append(native, n)
-	}
-	sort.Strings(native)
-	for _, n := range native {
-		fmt.Fprintf(&h, "#include \"%s\"\n", n)
 	}
 	// SCHEMA_UNUSED with the packet emitter's own guard: every function in
 	// this header is `static`, so a translation unit that uses one and not
