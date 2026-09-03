@@ -4,8 +4,8 @@
 // describe is a RUNTIME's read rather than a file's content: the cook's
 // canonical node dump (docs/SPEC-TABLES.md §7.5) and the block forgery battery
 // resolved to byte offsets (§19.2). Both are pinned from the REFERENCE leg —
-// the first driver in the registry, which is C++, exactly as the wire goldens
-// are — and every other language byte-compares them.
+// the first driver in the registry, which is C++ by the registry's own order,
+// exactly as the wire goldens are — and every other language byte-compares them.
 //
 // This is deliberate and it is the repo's standing convention: C++ writes the
 // pins, every other leg compares. A pin that MOVES under an unchanged schema is
@@ -20,7 +20,7 @@ import (
 )
 
 func pin(m *Manifest, driversPath, work, cookDir string) error {
-	drivers, err := readDrivers(driversPath)
+	drivers, _, err := loadDrivers(driversPath)
 	if err != nil {
 		return err
 	}

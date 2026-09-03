@@ -176,8 +176,9 @@ jobs:
   # instrument by construction: it is measured in minutes and it answers a
   # question about the runtime under load, not about the diff.
   #
-  # The target list is DERIVED from the Makefile rather than typed here, so a
-  # port lands its release gate by adding the target and nothing else — no
+  # The target list is DERIVED from the Makefile and its per-language includes
+  # rather than typed here, so a port lands its release gate by adding the
+  # target to its make/<lang>.mk and nothing else — no
   # edit to this file, and no chance of a target that exists but runs nowhere,
   # which is what `tables-java-release` was before this job. On a tree that
   # carries none the job says so and passes.
@@ -226,11 +227,11 @@ jobs:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
 
-      - name: every tables-<lang>-release target the Makefile carries
+      - name: every tables-<lang>-release target the Makefile and make/*.mk carry
         run: |
-          targets=$(grep -oE '^tables-[a-z0-9]+-release:' Makefile | sed 's/:$//' | sort -u)
+          targets=$(grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//' | sort -u)
           if [ -z "$targets" ]; then
-            echo "no tables-<lang>-release target in the Makefile yet — nothing to certify here"
+            echo "no tables-<lang>-release target in the Makefile or make/*.mk yet — nothing to certify here"
             exit 0
           fi
           echo "$targets"

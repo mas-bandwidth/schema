@@ -211,13 +211,15 @@ func TestGoldenLudicrousId(t *testing.T) {
 }
 
 // TestGoldenLudicrousSource pins the fixed-point + 128-bit unit's generated
-// source byte-for-byte for ALL NINE targets. Every serialize port carries the
-// phase-1 surface — a backend erroring here is a loud failure — and the unit
-// rides the same cross-language wire gates as the main corpus
+// source byte-for-byte for EVERY registered target — the list is the
+// compiler's own, so a tenth language pins its goldens without an edit here.
+// Every serialize port carries the phase-1 surface — a backend erroring here
+// is a loud failure — and the unit rides the same cross-language wire gates as
+// the main corpus
 // (test/{c,go,rust,cs}-ludicrous).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
-	for _, target := range []string{"cpp", "go", "rust", "cs", "c", "js", "dart", "java", "elixir"} {
+	for _, target := range compiler.New().Targets() {
 		pinDir(t, filepath.Join(goldenDir, "ludicrous", target), generate(t, u, target, nil))
 	}
 }

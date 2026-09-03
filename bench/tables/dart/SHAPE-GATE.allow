@@ -1,0 +1,6 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
+# Paths are repository-relative.
+
+names bench/tables/dart/table_main.dart 2 shape-blind leg: `TableMixed` as the benchTable type argument and its constructor tear-off — its reset/save/load are METHODS on the value, taken as closures the corpus vocabulary does not spell (callsite)
+timing test/dart-tables/soak.dart 1 the Dart port's soak: one Stopwatch BOUNDS the run, and what is watched is a BYTE COMPARISON of every round trip; no time is reported and no shape is measured

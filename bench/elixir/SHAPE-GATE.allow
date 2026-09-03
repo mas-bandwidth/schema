@@ -1,0 +1,6 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
+# Paths are repository-relative.
+
+names bench/elixir/main.exs 1 shape-blind leg: the header comment naming the shape this leg measures (comment)
+names bench/elixir/runner.exs 2 shape-blind leg: 1 header comment (comment) + `sequence` in "replaying one sequence the branch predictor could memorize" (prose)

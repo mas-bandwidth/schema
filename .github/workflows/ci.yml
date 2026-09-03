@@ -123,9 +123,9 @@ jobs:
   # precisely a dirty tree afterwards — a tracked file that changed, or a newly
   # emitted file nobody committed, which a diff-only check would miss.
   #
-  # The stamp list is DERIVED from the Makefile rather than typed here, so a
-  # port that adds generated/<lang>/.stamp is covered the moment it rebases,
-  # with no edit to this file. Locally the same check is `make
+  # The stamp list is DERIVED from the Makefile and its per-language includes
+  # rather than typed here, so a port that adds generated/<lang>/.stamp in its
+  # make/<lang>.mk is covered the moment it rebases, with no edit to this file. Locally the same check is `make
   # generated-current`, which gets there through the whole `make test` chain.
   generated:
     runs-on: ubuntu-latest
@@ -139,9 +139,9 @@ jobs:
 
       - name: regenerate every committed generated/ tree
         run: |
-          stamps=$(grep -oE '^generated/[A-Za-z0-9/_.-]*/\.stamp:' Makefile | sed 's/:$//' | sort -u)
+          stamps=$(grep -hoE '^generated/[A-Za-z0-9/_.-]*/\.stamp:' Makefile make/*.mk | sed 's/:$//' | sort -u)
           if [ -z "$stamps" ]; then
-            echo "::error::no generated/*/.stamp rules found in the Makefile — this check would pass over an empty set"
+            echo "::error::no generated/*/.stamp rules found in the Makefile or make/*.mk — this check would pass over an empty set"
             exit 1
           fi
           echo "$stamps"
@@ -174,37 +174,41 @@ jobs:
   # each leg's cost stays visible — a leg that stops fitting is named by the
   # job that missed, not buried in a total.
   #
-  # Each leg installs only the toolchain and clones only the sibling runtime it
-  # needs; the C++ leg needs neither, because a generated table header includes
-  # no runtime at all. Registering a port is one line in
-  # test/conformance/drivers.txt, one driver, and one entry here naming the
-  # make targets that build it.
+  # THE MATRIX IS DISCOVERED, NOT TYPED. `conformance-matrix` runs the harness's
+  # `matrix` command, which reads every test/conformance/<lang>/ci.json beside a
+  # driver and prints one row per leg; `conformance` fans out over that. A row
+  # names the make targets that build the leg, the sibling runtime it clones,
+  # the toolchain step it needs and the make overrides CI passes, and every
+  # step below is conditioned on a row's field rather than on a language.
+  # Registering a port is its driver and its ci.json, and no edit here — unless
+  # its toolchain has no step yet, in which case it adds one step keyed on a
+  # new field, which is the one edit this file still takes.
+  conformance-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: false
+      - id: discover
+        name: the registry, as a matrix
+        run: |
+          matrix=$(go run ./test/conformance/harness matrix)
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   conformance:
     name: conformance (${{ matrix.lang }})
+    needs: conformance-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - lang: cpp
-            targets: build/conformance-harness build/conformance-cpp build/schema_test_cook
-          - lang: cs
-            targets: build/conformance-harness build-conformance-cs build-cs-cook
-          - lang: dart
-            targets: build/conformance-harness build/conformance-dart
-          - lang: go
-            targets: build/conformance-harness build/conformance-go
-          - lang: js
-            targets: build/conformance-harness build/tables-generated-js/.stamp
-          - lang: rust
-            targets: build/conformance-harness build/conformance-rust
-          - lang: java
-            targets: build/conformance-harness build-conformance-java
-          - lang: c
-            targets: build/conformance-harness build/conformance-c
-          - lang: elixir
-            targets: build/conformance-harness build-conformance-elixir
+      matrix: ${{ fromJSON(needs.conformance-matrix.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v7
@@ -213,21 +217,14 @@ jobs:
       # CI exercises the documented path rather than a special one. The
       # Makefile's SERIALIZE* defaults already point here, and the generated
       # go.mod / Cargo.toml and the C# driver's project embed relative paths
-      # that only resolve under this layout.
+      # that only resolve under this layout. The row names the checkout and
+      # the workflow variable that pins it; a leg whose generated code names no
+      # runtime leaves both empty and clones nothing.
       - name: Check out the sibling runtime this leg needs (pinned release)
+        if: matrix.runtime != ''
         run: |
-          cd ..
-          case "${{ matrix.lang }}" in
-          cs)   git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
-          go)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
-          rust) git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
-          js)   echo "the JavaScript leg names no runtime: generated JS never imports one" ;;
-          cpp)  echo "the C++ leg names no runtime: a generated table header includes none" ;;
-          dart) echo "the Dart leg names no runtime: a generated table library imports dart:typed_data and its siblings, nothing else" ;;
-          java) echo "the Java leg names no runtime: a generated table source stands alone on the JDK" ;;
-          c)    echo "the C leg names no runtime: a generated table header includes none, and the driver is one cc invocation" ;;
-          elixir) echo "the Elixir leg names none either: the generated code is self-contained on the BEAM" ;;
-          esac
+          tag=$(printenv "${{ matrix.runtime_tag }}")
+          git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
 
       # bin/schema and the generated table units come out of Go in every leg.
       - uses: actions/setup-go@v7
@@ -235,50 +232,51 @@ jobs:
           go-version: '1.26'
           cache: false
 
+      # One step per toolchain, each keyed on the row's field for it. The
+      # version is the leg's to name, and it is the same pin the leg's
+      # make/<lang>.mk documents for the repo-local dist/.
       - uses: actions/setup-dotnet@v6
-        if: matrix.lang == 'cs'
+        if: matrix.dotnet != ''
         with:
-          dotnet-version: '8.0'
+          dotnet-version: ${{ matrix.dotnet }}
 
       - uses: actions/setup-node@v7
-        if: matrix.lang == 'js'
+        if: matrix.node != ''
         with:
-          node-version: '20'
-      - uses: dart-lang/setup-dart@v1
-        if: matrix.lang == 'dart'
-        with:
-          sdk: '3.13.2'
+          node-version: ${{ matrix.node }}
 
       - uses: dtolnay/rust-toolchain@stable
-        if: matrix.lang == 'rust'
+        if: matrix.rust != ''
 
-      # The JDK, same major as the Makefile's dist/ pin. JAVA/JAVAC below point
-      # the driver at the installed one rather than the repo-local unpack.
+      - uses: dart-lang/setup-dart@v1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+
       - uses: actions/setup-java@v5
-        if: matrix.lang == 'java'
+        if: matrix.java != ''
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: ${{ matrix.java }}
 
-      # The BEAM toolchain, the same versions as the Makefile's dist/ pins. The
-      # generated Elixir is self-contained, so this is the leg's ONLY dependency.
-      # No ELIXIRC override is needed: the Makefile's default prefixes the
-      # repo-local dist/ onto PATH and falls through to the toolchain this step
-      # installed, which is the same mechanism ELIXIR and MIX already use.
+      # The BEAM is two versions and one step. No ELIXIRC override is needed:
+      # make/elixir.mk's default prefixes the repo-local dist/ onto PATH and
+      # falls through to the toolchain this step installed.
       - uses: erlef/setup-beam@v1
-        if: matrix.lang == 'elixir'
+        if: matrix.otp != ''
         with:
-          otp-version: '29.0.5'
-          elixir-version: '1.20.4'
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
 
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
-      # stops fitting.
+      # stops fitting. The row's env is the make overrides CI needs: a JDK on
+      # PATH rather than in dist/, cargo not in a homebrew keg.
       - name: build the harness and the ${{ matrix.lang }} driver
-        run: make ${{ matrix.targets }} RUSTUP_BIN=/usr/bin JAVA=java JAVAC=javac DART=dart
+        run: make ${{ matrix.targets }} ${{ matrix.env }}
 
       - name: the ${{ matrix.lang }} leg over every surface
-        run: JAVA=java ./build/conformance-harness run --only ${{ matrix.lang }}
+        run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }}
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
@@ -409,7 +407,7 @@ jobs:
           out=$(./bench/run.sh --render "$csv" 2>&1)
           echo "$out"
           echo "$out" | grep -q "language        %" || { echo "::error::render printed no table header"; exit 1; }
-          rows=$(echo "$out" | grep -cE "^  (c|cpp|go|rust|cs|js|java|dart|elixir) ")
+          rows=$(echo "$out" | grep -cE "^  [a-z]+ ")
           [ "$rows" -ge 1 ] || { echo "::error::render printed zero language rows"; exit 1; }
 
   # A new CVE lands with no commit, so govulncheck is the one gate whose
@@ -616,7 +614,8 @@ jobs:
   # sanctioned benchmark — this repo's data-driven bench — and shape knowledge
   # belongs in bench/corpus and the generated code. This job refuses a commit
   # that hand-codes measurement of a schema shape anywhere else. Every current
-  # exception is named in bench/SHAPE-GATE.allow with an exact count that can
+  # exception is named in a SHAPE-GATE.allow — bench/SHAPE-GATE.allow for shared
+  # tooling, one beside each leg for its own — with an exact count that can
   # only shrink.
   shape-gate:
     runs-on: ubuntu-latest

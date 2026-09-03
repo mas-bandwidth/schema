@@ -42,26 +42,6 @@ type result struct {
 	failures []string
 }
 
-func readDrivers(path string) ([]driver, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var out []driver
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		f := strings.Fields(line)
-		if len(f) < 2 {
-			return nil, fmt.Errorf("%s: %q names no command", path, line)
-		}
-		out = append(out, driver{lang: f[0], argv: f[1:]})
-	}
-	return out, nil
-}
-
 // materialise writes the fixtures a driver cannot be handed as committed text:
 // the cooked files, which test/cookgen produces deterministically, and the
 // forged images, which are patches over a base fixture.
@@ -320,14 +300,8 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	return out, nil
 }
 
-// defaultDriversPath is the committed registry, and the REFERENCE rule below
-// belongs to it alone: a run handed a substituted registry — the big-endian
-// leg writes a one-driver file for the Go port — is one leg of a port, not the
-// matrix, and its first line is not the leg the pins come from.
-const defaultDriversPath = "test/conformance/drivers.txt"
-
 func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only string) (bool, error) {
-	drivers, err := readDrivers(driversPath)
+	drivers, discovered, err := loadDrivers(driversPath)
 	if err != nil {
 		return false, err
 	}
@@ -356,12 +330,14 @@ func run(m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, onl
 	var langs []string
 	for i, d := range drivers {
 		// THE REFERENCE LEG MAY NOT ANSWER ABSENT. It is the first driver in
-		// the COMMITTED registry and the one `conformance-pin` takes its pins
-		// from, so an absence there is not a port's missing feature — it is the
-		// corpus losing its own expectation, quietly, while every other leg
-		// keeps comparing against nothing. Per-case absence is safe exactly
-		// because this rule stands beside it.
-		reference := i == 0 && driversPath == defaultDriversPath
+		// the COMMITTED registry — the discovered one, where the reference
+		// sorts first — and the one `conformance-pin` takes its pins from, so
+		// an absence there is not a port's missing feature: it is the corpus
+		// losing its own expectation, quietly, while every other leg keeps
+		// comparing against nothing. Per-case absence is safe exactly because
+		// this rule stands beside it, and a SUBSTITUTED registry is one leg of
+		// a port rather than the matrix, so the rule does not reach it.
+		reference := i == 0 && discovered
 		if only != "" && d.lang != only {
 			continue
 		}
