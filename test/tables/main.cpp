@@ -5942,6 +5942,7 @@ static void test_message_golden_reload()
     reload_stream_golden( "stream_chain" );
     reload_stream_golden( "stream_header" );
     reload_stream_golden( "stream_parts" );
+    reload_stream_golden( "stream_arm_first" );
 }
 
 // a cook is written for the build that opens it (§7): the host's own order,
@@ -6335,6 +6336,133 @@ static void test_pointer_arrays()
     }
 }
 
+// ---- THE WALK ORDER (docs/SPEC-TABLES.md §3.1, §6.3): one declaration-order walk ----
+//
+// The numbering is ONE depth-first walk over the fields in declaration order
+// that descends every by-value edge IN PLACE, and Feed declares its union arm
+// before its pointer fields — so the arm's nodes take their indices before
+// `parts` is read. This value makes the two orders tell: the arm reaches a, b
+// and c first, and parts names the same three in REVERSE, [c, b, a], with pair
+// naming b again. The page's walk numbers a, b, c as 2, 3, 4; a walk that
+// takes the pointer fields before the arm numbers c, b, a as 2, 3, 4 and writes
+// different bytes from the same value. Every other value in this file
+// coincides under both orders, which is exactly what a pin must not rely on.
+//
+// The golden is the TOOL's — `schema pack` of the conformance text — and the
+// numbering, the region's layout and the cook are each held to it here.
+static void build_stream_arm_first( streamdemo::FeedBuilder & builder )
+{
+    streamdemo::Feed * root = builder.GetRoot();
+    root->id = 5;
+    root->frame.type = streamdemo::FrameType::Chunk;
+    root->frame.chunk = streamdemo::Chunk{};
+    root->frame.chunk.data[0] = 1;
+    root->frame.chunk.data_length = 1;
+    streamdemo::TableSlot<streamdemo::Chunk> a = builder.Alloc<streamdemo::Chunk>();
+    streamdemo::TableSlot<streamdemo::Chunk> b = builder.Alloc<streamdemo::Chunk>();
+    streamdemo::TableSlot<streamdemo::Chunk> c = builder.Alloc<streamdemo::Chunk>();
+    a->data[0] = 2;
+    a->data_length = 1;
+    b->data[0] = 3;
+    b->data_length = 1;
+    c->data[0] = 9;
+    c->data_length = 1;
+    a->next = b;
+    root->frame.chunk.next = a;        // the arm reaches a first, and b through it
+    root->frame.chunk.links_count = 1;
+    root->frame.chunk.links[0] = c;    // then c
+    root->parts_count = 3;
+    root->parts[0] = c;                // the pointer fields name the three in reverse
+    root->parts[1] = b;
+    root->parts[2] = a;
+    root->pair[0] = b;
+}
+
+// the same graph, read back from any of the three forms: one node per letter,
+// every slot naming the node the builder gave it
+static void check_stream_arm_first( const streamdemo::Feed * feed )
+{
+    const streamdemo::TableRegionCtx ctx{};
+    const streamdemo::Chunk * a = streamdemo::ChunkAt( ctx, feed->frame.chunk.next );
+    CHECK( a != NULL && a->data[0] == 2 );
+    if ( a == NULL ) return;
+    const streamdemo::Chunk * b = streamdemo::ChunkAt( ctx, a->next );
+    CHECK( b != NULL && b->data[0] == 3 );
+    CHECK( feed->frame.chunk.links_count == 1 );
+    const streamdemo::Chunk * c = streamdemo::ChunkAt( ctx, feed->frame.chunk.links[0] );
+    CHECK( c != NULL && c->data[0] == 9 );
+    CHECK( feed->parts_count == 3 );
+    CHECK( streamdemo::ChunkAt( ctx, feed->parts[0] ) == c );
+    CHECK( streamdemo::ChunkAt( ctx, feed->parts[1] ) == b );
+    CHECK( streamdemo::ChunkAt( ctx, feed->parts[2] ) == a );
+    CHECK( streamdemo::ChunkAt( ctx, feed->pair[0] ) == b );
+    CHECK( streamdemo::ChunkAt( ctx, feed->pair[1] ) == NULL );
+}
+
+// a region's nodes land in the walk's order (§6.3): a, then b, then c, whatever
+// order the pointer fields name them in
+static void check_stream_arm_first_layout( const streamdemo::Feed * feed )
+{
+    const streamdemo::TableRegionCtx ctx{};
+    const uint8_t * base = (const uint8_t *) feed;
+    const streamdemo::Chunk * a = streamdemo::ChunkAt( ctx, feed->frame.chunk.next );
+    if ( a == NULL ) return; // reported above
+    const streamdemo::Chunk * b = streamdemo::ChunkAt( ctx, a->next );
+    const streamdemo::Chunk * c = streamdemo::ChunkAt( ctx, feed->frame.chunk.links[0] );
+    if ( b == NULL || c == NULL ) return;
+    const int64_t at_a = (const uint8_t *) a - base;
+    const int64_t at_b = (const uint8_t *) b - base;
+    const int64_t at_c = (const uint8_t *) c - base;
+    CHECK( at_a > 0 && at_a < at_b && at_b < at_c );
+}
+
+static void test_pointer_walk_order()
+{
+    static uint8_t wire[4096];
+    static uint8_t again[4096];
+    streamdemo::FeedBuilder builder;
+    build_stream_arm_first( builder );
+    const int64_t wrote = streamdemo::FeedSave( builder, wire, sizeof( wire ) );
+    CHECK( wrote > 0 && wrote == streamdemo::FeedMeasure( builder ) );
+    pin_table_golden( "stream_arm_first", wire, wrote );
+
+    // the pack is the same walk (§6.3), and a save from the packed form
+    // re-derives the same numbering
+    CHECK( builder.Lock() );
+    check_stream_arm_first( builder.AsConst() );
+    check_stream_arm_first_layout( builder.AsConst() );
+    CHECK( streamdemo::FeedSave( builder.AsConst(), again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // a load places the nodes in the wire's order, which is the same order
+    const int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
+    std::vector<uint8_t> region( (size_t) region_need );
+    streamdemo::TableReport report;
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
+    if ( loaded == NULL ) return;
+    check_stream_arm_first( loaded );
+    check_stream_arm_first_layout( loaded );
+    CHECK( streamdemo::FeedSave( loaded, again, sizeof( again ) ) == wrote );
+    CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+
+    // and the cook lays its nodes out in the numbering's order (§7.6)
+    const int64_t cook_bytes = streamdemo::FeedCookMeasure( loaded );
+    CHECK( cook_bytes > 0 );
+    void * cook = malloc( (size_t) cook_bytes );
+    CHECK( streamdemo::FeedCook( loaded, cook, (uint64_t) cook_bytes, host_byte_order( streamdemo::TableByteOrder::Little, streamdemo::TableByteOrder::Big ) ) );
+    const streamdemo::Feed * opened = streamdemo::FeedOpen( cook, (uint64_t) cook_bytes );
+    CHECK( opened != NULL );
+    if ( opened != NULL )
+    {
+        check_stream_arm_first( opened );
+        check_stream_arm_first_layout( opened );
+        CHECK( streamdemo::FeedSave( opened, again, sizeof( again ) ) == wrote );
+        CHECK( memcmp( wire, again, (size_t) wrote ) == 0 );
+    }
+    free( cook );
+}
+
 // the elision rules at the empty end (§3.1): an empty counted array and an
 // all-null fixed array write nothing, so a Feed with neither is byte-identical
 // to one declared before the arrays existed; a counted array of null slots is
@@ -6712,6 +6840,7 @@ int main()
     test_pointer_arrays();
     test_pointer_arrays_elision();
     test_pointer_arrays_element_kind_mismatch();
+    test_pointer_walk_order();
     test_union_arrays();
     test_union_arrays_elision();
     test_union_arrays_element_kind_mismatch();

@@ -143,6 +143,133 @@ inline int64_t TableJsonGetSigned( const void * storage, uint32_t width )
     return (int64_t) raw;
 }
 
+// ---- the WIDE kinds (docs/SPEC-TABLES.md §3, §16.2) ----
+//
+// The 128-bit integers and the fixed-point family convert EXACTLY, over two
+// 64-bit lanes: a 128-bit integer is a decimal integer, a fixed value a
+// decimal in WHOLE UNITS (1.0, -0.25, 3.0000152587890625) and nothing
+// on either path passes through a double. Nothing here needs a 128-bit type
+// either, which is what keeps this walk one text for every unit.
+struct TableJsonWide
+{
+    uint64_t lo;
+    uint64_t hi;
+};
+
+inline bool TableJsonKindWide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
+inline bool TableJsonKindWideSigned( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
+inline bool TableJsonKindFixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+
+inline bool TableJsonWideZero( TableJsonWide v ) { return v.lo == 0 && v.hi == 0; }
+inline bool TableJsonWideNegative( TableJsonWide v ) { return ( v.hi >> 63 ) != 0; }
+
+inline int TableJsonWideCompare( TableJsonWide a, TableJsonWide b, bool is_signed )
+{
+    if ( is_signed && TableJsonWideNegative( a ) != TableJsonWideNegative( b ) ) { return TableJsonWideNegative( a ) ? -1 : 1; }
+    if ( a.hi != b.hi ) { return a.hi < b.hi ? -1 : 1; }
+    if ( a.lo != b.lo ) { return a.lo < b.lo ? -1 : 1; }
+    return 0;
+}
+
+inline TableJsonWide TableJsonWideShl( TableJsonWide v, int n )
+{
+    TableJsonWide r = { 0, 0 };
+    if ( n <= 0 ) { return v; }
+    if ( n >= 128 ) { return r; }
+    if ( n >= 64 ) { r.hi = v.lo << ( n - 64 ); return r; }
+    r.hi = ( v.hi << n ) | ( v.lo >> ( 64 - n ) );
+    r.lo = v.lo << n;
+    return r;
+}
+
+inline TableJsonWide TableJsonWideShr( TableJsonWide v, int n )
+{
+    TableJsonWide r = { 0, 0 };
+    if ( n <= 0 ) { return v; }
+    if ( n >= 128 ) { return r; }
+    if ( n >= 64 ) { r.lo = v.hi >> ( n - 64 ); return r; }
+    r.lo = ( v.lo >> n ) | ( v.hi << ( 64 - n ) );
+    r.hi = v.hi >> n;
+    return r;
+}
+
+inline TableJsonWide TableJsonWideNeg( TableJsonWide v )
+{
+    TableJsonWide r;
+    r.lo = ~v.lo + 1;
+    r.hi = ~v.hi + ( r.lo == 0 ? 1 : 0 );
+    return r;
+}
+
+// v = v * m + a; the return is the carry out of 128 bits
+inline uint32_t TableJsonWideMulAdd( TableJsonWide * v, uint32_t m, uint32_t a )
+{
+    uint64_t limb[4] = { v->lo & 0xffffffffull, v->lo >> 32, v->hi & 0xffffffffull, v->hi >> 32 };
+    uint64_t carry = a;
+    for ( int i = 0; i < 4; i++ )
+    {
+        uint64_t p = limb[i] * m + carry;
+        limb[i] = p & 0xffffffffull;
+        carry = p >> 32;
+    }
+    v->lo = limb[0] | ( limb[1] << 32 );
+    v->hi = limb[2] | ( limb[3] << 32 );
+    return (uint32_t) carry;
+}
+
+// v = v / d; the return is the remainder
+inline uint32_t TableJsonWideDiv( TableJsonWide * v, uint32_t d )
+{
+    uint64_t limb[4] = { v->lo & 0xffffffffull, v->lo >> 32, v->hi & 0xffffffffull, v->hi >> 32 };
+    uint64_t rem = 0;
+    for ( int i = 3; i >= 0; i-- )
+    {
+        uint64_t cur = ( rem << 32 ) | limb[i];
+        limb[i] = cur / d;
+        rem = cur % d;
+    }
+    v->lo = limb[0] | ( limb[1] << 32 );
+    v->hi = limb[2] | ( limb[3] << 32 );
+    return (uint32_t) rem;
+}
+
+// The storage of a wide kind, as lanes. A sixteen-byte storage is serialize's
+// pair — native __int128 in the host's byte order, or the emulated struct with
+// its low lane first — so the lanes are read in the host's order; a narrower
+// storage is one lane, sign-extended for a signed kind.
+inline TableJsonWide TableJsonWideLoad( const void * storage, uint32_t width, bool is_signed )
+{
+    TableJsonWide v = { 0, 0 };
+    if ( width == 16 )
+    {
+        uint64_t half[2];
+        memcpy( half, storage, 16 );
+        uint16_t probe = 1;
+        bool little = *(const uint8_t *) &probe == 1;
+        v.lo = little ? half[0] : half[1];
+        v.hi = little ? half[1] : half[0];
+        return v;
+    }
+    v.lo = is_signed ? (uint64_t) TableJsonGetSigned( storage, width ) : TableJsonGetRaw( storage, width );
+    v.hi = ( is_signed && ( v.lo >> 63 ) != 0 ) ? ~uint64_t( 0 ) : 0;
+    return v;
+}
+
+inline void TableJsonWideStore( void * storage, uint32_t width, TableJsonWide v )
+{
+    if ( width == 16 )
+    {
+        uint16_t probe = 1;
+        bool little = *(const uint8_t *) &probe == 1;
+        uint64_t half[2];
+        half[0] = little ? v.lo : v.hi;
+        half[1] = little ? v.hi : v.lo;
+        memcpy( storage, half, 16 );
+        return;
+    }
+    TableJsonSetRaw( storage, width, v.lo );
+}
+
 // a counted field's companion: a string's length, a bytes' length, a counted
 // array's count. Bounded by the declared extent on the way out, so a storage
 // invariant a caller broke cannot walk off the end of the array.
@@ -239,6 +366,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
 // the ELEMENT shape of an array field — the same classifier one level down
 inline char TableJsonElementShape( const TableFieldInfo * f )
 {
+    if ( f->arms != NULL ) return 'o';        // an element of an array of unions: one key, the arm (§2.6)
     if ( f->kind == 13 ) return 'o';
     if ( TableJsonIsEnum( f ) ) return 's';
     if ( TableJsonIsFlags( f ) ) return 'a';
@@ -446,6 +574,56 @@ inline void TableJsonWriteSigned( TableJsonOut & out, int64_t value )
     TableJsonWriteUnsigned( out, (uint64_t) value );
 }
 
+// A wide kind writes its raw storage as §16.2's text: a 128-bit integer as a
+// decimal integer; a fixed value in WHOLE UNITS as the shortest exact decimal
+// with at least one fractional digit (1.0, -0.25), the spelling the schema text
+// gives a fixed default. The fraction terminates because a dyadic fraction has
+// a finite decimal expansion — at most F digits.
+inline void TableJsonWriteWide( TableJsonOut & out, const void * storage, const TableFieldInfo * f )
+{
+    bool is_signed = TableJsonKindWideSigned( f->kind );
+    TableJsonWide v = TableJsonWideLoad( storage, f->elem_size, is_signed );
+    if ( is_signed && TableJsonWideNegative( v ) )
+    {
+        out.put( '-' );
+        v = TableJsonWideNeg( v );
+    }
+    int frac = f->frac_bits;
+    TableJsonWide whole = TableJsonWideShr( v, frac );
+    char digits[40];
+    int32_t n = 0;
+    do
+    {
+        digits[n++] = (char) ( '0' + (int) TableJsonWideDiv( &whole, 10 ) );
+    } while ( !TableJsonWideZero( whole ) );
+    char text[40];
+    for ( int32_t i = 0; i < n; i++ ) { text[i] = digits[n - 1 - i]; }
+    out.raw( text, n );
+    if ( !TableJsonKindFixed( f->kind ) ) { return; }
+    out.put( '.' );
+    // the fraction bits alone: v with everything at and above bit F cleared
+    TableJsonWide fraction = v;
+    if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( uint64_t( 1 ) << frac ) - 1; }
+    else { fraction.hi &= ( uint64_t( 1 ) << ( frac - 64 ) ) - 1; }
+    if ( frac == 0 ) { fraction.lo = 0; }
+    if ( TableJsonWideZero( fraction ) )
+    {
+        out.put( '0' );
+        return;
+    }
+    while ( !TableJsonWideZero( fraction ) )
+    {
+        // ×10: the digit is what lands at and above bit F, including the
+        // carry out of 128 bits when F leaves no room for it below
+        uint32_t carry = TableJsonWideMulAdd( &fraction, 10, 0 );
+        uint64_t digit = TableJsonWideShr( fraction, frac ).lo;
+        if ( frac > 64 ) { digit |= uint64_t( carry ) << ( 128 - frac ); }
+        out.put( (char) ( '0' + (int) digit ) );
+        if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( uint64_t( 1 ) << frac ) - 1; }
+        else { fraction.hi &= ( uint64_t( 1 ) << ( frac - 64 ) ) - 1; }
+    }
+}
+
 // A float writes at the SHORTEST precision that reads back as the same value
 // at the field's own width, so a round trip is exact and a text stays
 // readable. Non-finite values have no JSON spelling at all, and the writer
@@ -590,6 +768,11 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
             TableJsonWriteSigned( out, TableJsonGetSigned( storage, f->elem_size ) );
             return true;
         default:
+            if ( TableJsonKindWide( f->kind ) )
+            {
+                TableJsonWriteWide( out, storage, f );
+                return true;
+            }
             TableJsonWriteUnsigned( out, TableJsonGetRaw( storage, f->elem_size ) );
             return true;
     }
@@ -1068,6 +1251,151 @@ inline int64_t TableJsonTokenInteger( const char * token, int32_t length, bool i
     return (int64_t) magnitude;
 }
 
+// A number token into a wide kind's raw storage (docs/SPEC-TABLES.md §16.2). A
+// 128-bit integer takes any token whose VALUE is integral; a fixed field any
+// token whose value is EXACTLY representable in its Q I.F — a finer fraction
+// is the wrong shape for the field, counted as a kind mismatch and never
+// rounded, the rule SPEC.md §4.6 gives a fixed default. A magnitude past 128
+// bits saturates and counts as a clamp, as an int64 field saturates at
+// INT64_MAX; the declared range clamps after it, on the RAW scale, as it does
+// for every bounded scalar.
+//
+// The token is normalized to its digits with the decimal point after "point"
+// of them. An integer part past 40 digits is above 2^128 whatever the digits
+// are, and a value below 10^-40 is finer than 2^-127, the finest fraction any
+// F can spell — so outside that band the answer is known without the
+// arithmetic, and a token spelling 1e999999999 costs nothing to refuse.
+inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t length, void * storage, const TableFieldInfo * f )
+{
+    bool is_signed = TableJsonKindWideSigned( f->kind );
+    int frac = f->frac_bits;
+    int32_t i = 0;
+    bool negative = false;
+    if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
+    const char * int_digits = token + i;
+    int32_t int_len = 0;
+    while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
+    const char * frac_digits = token + i;
+    int32_t frac_len = 0;
+    if ( i < length && token[i] == '.' )
+    {
+        i++;
+        frac_digits = token + i;
+        while ( i < length && token[i] >= '0' && token[i] <= '9' ) { frac_len++; i++; }
+    }
+    int64_t exp = 0;
+    if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
+    {
+        i++;
+        bool exp_negative = false;
+        if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
+        while ( i < length && token[i] >= '0' && token[i] <= '9' )
+        {
+            if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
+            i++;
+        }
+        if ( exp_negative ) { exp = -exp; }
+    }
+    // the digits, with the point after "point" of them; leading and trailing
+    // zeros stripped. digit( k ) reads the k-th of the int and frac runs.
+    int32_t start = 0, end = int_len + frac_len;
+    int64_t point = int_len + exp;
+    while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
+    while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
+
+    TableJsonWide raw = { 0, 0 };
+    bool saturated = false;
+    TableJsonWide signed_max = { ~uint64_t( 0 ), ~uint64_t( 0 ) >> 1 };
+    TableJsonWide signed_min = { 0, uint64_t( 1 ) << 63 };
+    TableJsonWide unsigned_max = { ~uint64_t( 0 ), ~uint64_t( 0 ) };
+    if ( start == end )
+    {
+        // zero, and -0 IS zero
+    }
+    else if ( point > 40 )
+    {
+        saturated = true;
+        if ( !negative ) { raw = is_signed ? signed_max : unsigned_max; }
+        else if ( is_signed ) { raw = signed_min; }
+    }
+    else if ( point < -40 )
+    {
+        in.report->kind_mismatch++; // finer than any F can spell
+        return true;
+    }
+    else
+    {
+        // the fraction FIRST, so an inexact value is the wrong shape whatever
+        // its magnitude: its digits, with the zeros a negative point puts in
+        // front, doubled F times; each doubling's carry is the next bit, and
+        // the value is exact iff nothing is left after the last one
+        char fd[kTableJsonMaxNumber + 48];
+        int32_t fn = 0;
+        for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
+        for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
+        {
+            fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+        }
+        TableJsonWide fraction = { 0, 0 };
+        for ( int b = 0; b < frac; b++ )
+        {
+            int carry = 0;
+            for ( int32_t k = fn - 1; k >= 0; k-- )
+            {
+                int d = fd[k] * 2 + carry;
+                fd[k] = (char) ( d % 10 );
+                carry = d / 10;
+            }
+            fraction = TableJsonWideShl( fraction, 1 );
+            fraction.lo |= (uint64_t) carry;
+        }
+        for ( int32_t k = 0; k < fn; k++ )
+        {
+            if ( fd[k] != 0 )
+            {
+                in.report->kind_mismatch++;
+                return true;
+            }
+        }
+        // then the whole part, saturating past 128 bits
+        TableJsonWide whole = { 0, 0 };
+        for ( int64_t k = start; k < start + point && !saturated; k++ )
+        {
+            uint32_t digit = k < end ? (uint32_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' ) : 0;
+            if ( TableJsonWideMulAdd( &whole, 10, digit ) != 0 ) { saturated = true; }
+        }
+        if ( !saturated && frac > 0 && !TableJsonWideZero( TableJsonWideShr( whole, 128 - frac ) ) ) { saturated = true; }
+        if ( !saturated )
+        {
+            raw = TableJsonWideShl( whole, frac );
+            raw.lo |= fraction.lo;
+            raw.hi |= fraction.hi;
+        }
+        if ( is_signed )
+        {
+            if ( !saturated && !negative && TableJsonWideNegative( raw ) ) { saturated = true; }
+            if ( !saturated && negative && TableJsonWideCompare( raw, signed_min, false ) > 0 ) { saturated = true; }
+            if ( saturated ) { raw = negative ? signed_min : signed_max; }
+            else if ( negative ) { raw = TableJsonWideNeg( raw ); }
+        }
+        else
+        {
+            if ( saturated ) { raw = unsigned_max; }
+            if ( negative && !TableJsonWideZero( raw ) ) { raw.lo = 0; raw.hi = 0; saturated = true; }
+        }
+    }
+    if ( saturated ) { in.report->clamped++; }
+    if ( f->wide != NULL )
+    {
+        TableJsonWide lo = { f->wide->lo[0], f->wide->lo[1] };
+        TableJsonWide hi = { f->wide->hi[0], f->wide->hi[1] };
+        if ( TableJsonWideCompare( raw, lo, is_signed ) < 0 ) { raw = lo; in.report->clamped++; }
+        else if ( TableJsonWideCompare( raw, hi, is_signed ) > 0 ) { raw = hi; in.report->clamped++; }
+    }
+    TableJsonWideStore( storage, f->elem_size, raw );
+    return true;
+}
+
 inline bool TableJsonSkipValue( TableJsonIn & in, int32_t depth );
 
 inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth )
@@ -1265,6 +1593,10 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     {
         in.bad = true;
         return false;
+    }
+    if ( TableJsonKindWide( f->kind ) )
+    {
+        return TableJsonReadWide( in, token, length, storage, f );
     }
     if ( f->kind == 10 || f->kind == 11 )
     {

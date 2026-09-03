@@ -1763,7 +1763,8 @@ inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker 
     }
 }
 
-// TallyNumber: number everything Tally POINTS AT, in first-visit order.
+// TallyNumber: number everything Tally POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>
@@ -1802,7 +1803,8 @@ inline bool TallyPack( const Ctx & ctx, TablePackMap & seen, const Tally & src, 
     return true;
 }
 
-// MarkerNumber: number everything Marker POINTS AT, in first-visit order.
+// MarkerNumber: number everything Marker POINTS AT, in first-visit order —
+// the fields in declaration order, a by-value edge descended in place.
 // A reference to an entry whose descent is still OPEN is a data cycle,
 // named here rather than recursed away (docs/SPEC-TABLES.md §3.1).
 template <typename Ctx>

@@ -108,6 +108,17 @@ instance m2_open              tblm2       Msg         testdata/wire/tables/m2_op
 instance stream_chain         streamdemo  Feed        testdata/wire/tables/stream_chain.bin
 instance stream_header        streamdemo  Feed        testdata/wire/tables/stream_header.bin
 instance stream_parts         streamdemo  Feed        testdata/wire/tables/stream_parts.bin
+# THE WALK ORDER (§3.1), told apart: the numbering is ONE declaration-order walk
+# that descends a by-value edge IN PLACE, and Feed declares its union arm before
+# its pointer fields. Here the arm reaches every node first — frame.chunk.next
+# is a, a.next is b, frame.chunk.links names c — and parts names the same three
+# in the REVERSE order, [c, b, a], with pair naming b again. The page's walk
+# numbers a, b, c as 2, 3, 4; a walk that takes the pointer fields first numbers
+# c, b, a as 2, 3, 4 and writes different bytes from the same value. Every other
+# seed coincides under both orders, which is exactly what a seed must not rely
+# on. The wire is the TOOL's (`schema pack` of the text), and the reference is
+# held to it.
+instance stream_arm_first     streamdemo  Feed        testdata/wire/tables/stream_arm_first.bin
 
 # THE EVOLUTION SEAMS (§4): every instance of one generation, read by the
 # other. The counters are generated into reports.txt by the Go engine and are
@@ -226,6 +237,7 @@ cook-write m2_open                testdata/conformance/tables/cook-write/m2_open
 cook-write stream_chain           testdata/conformance/tables/cook-write/stream_chain.cook testdata/conformance/tables/cook-write/stream_chain-be.cook
 cook-write stream_header          testdata/conformance/tables/cook-write/stream_header.cook testdata/conformance/tables/cook-write/stream_header-be.cook
 cook-write stream_parts           testdata/conformance/tables/cook-write/stream_parts.cook testdata/conformance/tables/cook-write/stream_parts-be.cook
+cook-write stream_arm_first       testdata/conformance/tables/cook-write/stream_arm_first.cook testdata/conformance/tables/cook-write/stream_arm_first-be.cook
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one

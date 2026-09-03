@@ -518,6 +518,47 @@ adapters; `tables-json-graph-walk`.
 |---|---|---|---|---|---|---|---|---|
 | ✅ `tables-json-graph-walk` | ❌ #408 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
 
+### M15 — One walk for the numbering, the pack measure and the pack
+
+**Method.** The three pointer-graph walkers — the numbering (docs/SPEC-TABLES.md
+§3.1), Lock's sizing and Lock's pack (§6.3) — are ONE depth-first walk over a
+member's fields in DECLARATION ORDER that descends every by-value edge in place
+(a nested variable table, an element of a bounded or keyed array of them, a
+union's set arm) to reach the pointer fields inside it. The three emitters
+share the walk's skeleton and differ only in what they do at an edge, so a
+node's first visit is the same in all three by construction and the region a
+Lock lays out is in the order the wire numbers. The shape to refuse is the
+grouped one — every pointer field, then every by-value nesting, then every
+union arm — because it is self-consistent: the backend re-reads its own bytes,
+the wire surface is green, and every corpus seed numbers the same under both
+orders until a by-value edge declared before a pointer field reaches a shared
+node first. Then the same value has two wires, and the tool's is the page's.
+
+**Reference.** `internal/codegen/cpptable/pointers.go:150` (`emitEdgeWalk`,
+with `edgeVisitor` at `:95` and the per-field classification at `:116`),
+shared by `emitNumber`, `emitPackMeasure` and `emitPack`; the tool's walk is
+`internal/tablewire/nodes.go:112` (`visitEdges`).
+
+**Proven in.** C++ (#433 — found by #429's wire fuzzer at the `stream_parts`
+seed's id pass, where dropping one field separated the two orders).
+
+**Measured effect.** Structural: on `stream_arm_first`, the corpus value whose
+numbering differs between the two orders, the numbering, the region layout and
+the cook's node order agree with the tool byte for byte.
+
+**Negative control.** The corpus row itself: under the grouped walk
+`stream_arm_first` is red on every surface a numbering reaches — `wire`,
+`json-read` and `cook-write` in the harness, the golden pin and the
+region-layout check in `test/tables/main.cpp` — and green under the one walk.
+`tables-flat-wire-negative-control` reds the cross-implementation lock on a
+post-order numbering the same way.
+
+**Targets:** none
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ❌ #433 (its `pack_measure` and `pack` take every pointer field before every by-value nesting, `internal/codegen/ctable/pointers.go:220`, `:280`) | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 | ❌ #349 |
+
 ### I1 — The independent allocation gate
 
 **Method.** The read path's "allocates nothing" is MEASURED, with an

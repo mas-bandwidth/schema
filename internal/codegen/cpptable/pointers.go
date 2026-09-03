@@ -72,31 +72,112 @@ func (g *tableGen) varMembers(members []*ir.Struct) []*ir.Struct {
 	return out
 }
 
-// pointerFields returns a member's pointer fields, in declaration order.
-func pointerFields(st *ir.Struct) []*ir.Field {
-	var out []*ir.Field
-	for _, f := range st.Fields {
-		if f.Type.Pointer {
-			out = append(out, f)
-		}
-	}
-	return out
+// ---- THE WALK (docs/SPEC-TABLES.md §3.1): one shape, three emitters ----
+//
+// The numbering, the pack measure and the pack are ONE depth-first walk over a
+// member's fields in DECLARATION ORDER that descends every by-value edge IN
+// PLACE — a nested variable table, an element of a bounded or keyed array of
+// them, a union's set arm — to reach the pointer fields inside it. The three
+// emitters differ only in what they do at an edge, so they share the walk
+// rather than each spelling its own: a node's first visit is then the same in
+// all three by construction, and the region Lock lays out is in the order the
+// wire numbers (§6.3).
+//
+// A walk that GROUPS the edges — every pointer field, then every nesting, then
+// every arm — is a different order whenever a by-value edge declared before a
+// pointer field reaches a shared node first, and the tool (internal/tablewire)
+// numbers by the page; the corpus's stream_arm_first is the value that tells
+// the two apart.
+
+// edgeVisitor is what one emitter does at the two kinds of edge the walk
+// reaches. subject is the expression the fields hang off — `value`, or `src`
+// for the pack, which derives its `dst` from it.
+type edgeVisitor struct {
+	subject string
+	// pointer is one live pointer slot: the field itself, or one element of an
+	// array of pointers, in index order (§2.1)
+	pointer func(f *ir.Field, slot string)
+	// descend is one by-value edge into a VARIABLE table — a nested field, an
+	// array element, a keyed slot, or a union's set arm — given the table's
+	// name, the element expression and the indent the call sits at
+	descend func(table, expr, indent string)
 }
 
-// byValueVariableFields returns the fields that nest a VARIABLE table by
-// value — directly or as a bounded array. Their pointer slots live inside the
-// owner's storage, so every walk has to descend into them.
-func (g *tableGen) byValueVariableFields(st *ir.Struct) []*ir.Field {
-	var out []*ir.Field
-	for _, f := range st.Fields {
-		if f.Type.Pointer || f.Type.Kind != ir.TNamed {
-			continue
+// edgeKind is what one field is to the walk.
+type edgeKind int
+
+const (
+	edgeNone    edgeKind = iota
+	edgePointer          // *T, [N]*T, [..N]*T
+	edgeNested           // a VARIABLE table by value, alone or as an array
+	edgeArm              // a union with at least one VARIABLE table arm (§2.6)
+)
+
+func (g *tableGen) edgeOf(f *ir.Field) edgeKind {
+	if f.Type.Pointer {
+		return edgePointer
+	}
+	if f.Type.Kind != ir.TNamed {
+		return edgeNone
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if g.isVar(ref.Name) {
+			return edgeNested
 		}
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && g.isVar(ref.Name) {
-			out = append(out, f)
+	case *ir.Union:
+		for _, v := range ref.Variants {
+			if g.isVar(v.Type) {
+				return edgeArm
+			}
 		}
 	}
-	return out
+	return edgeNone
+}
+
+// noVariableEdges reports a member with no pointer below it: no pointer
+// field, no by-value variable nesting and no union with a variable arm.
+func (g *tableGen) noVariableEdges(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if g.edgeOf(f) != edgeNone {
+			return false
+		}
+	}
+	return true
+}
+
+// emitEdgeWalk emits the walk over one member for one emitter.
+func (g *tableGen) emitEdgeWalk(st *ir.Struct, v edgeVisitor) {
+	for _, f := range st.Fields {
+		switch g.edgeOf(f) {
+		case edgePointer:
+			g.emitPointerSlots(f, v.subject, func(slot string) { v.pointer(f, slot) })
+		case edgeNested:
+			g.emitVariableByValueWalk(f, v.subject, func(expr string) { v.descend(f.Type.Name, expr, "        ") })
+		case edgeArm:
+			g.emitVariableUnionWalk(f, v.subject, func(armType, arm string) { v.descend(armType, arm, "            ") })
+		}
+	}
+}
+
+// emitVariableByValueWalk emits the loop shape for descending into a by-value
+// nested variable table — a field, a bounded array or a keyed one — under the
+// given subject, and calls body with the element expression.
+func (g *tableGen) emitVariableByValueWalk(f *ir.Field, subject string, body func(expr string)) {
+	switch f.Array {
+	case ir.ArrayNone:
+		g.pf("    { // %s (nested by value)\n", f.Name)
+		body(subject + "." + f.Name)
+		g.pf("    }\n")
+	case ir.ArrayCounted:
+		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s\n    {\n", subject, f.Name, f.ArrayBound, f.Name)
+		body(fmt.Sprintf("%s.%s[i]", subject, f.Name))
+		g.pf("    }\n")
+	default:
+		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
+		body(g.arrayBase(subject+".", f) + "[i]")
+		g.pf("    }\n")
+	}
 }
 
 // ---- declarations ----
@@ -244,27 +325,29 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 // emitNumber emits the NUMBERING WALK (docs/SPEC-TABLES.md §3.1): the
 // first-visit order of a depth-first pre-order walk from the root over POINTER
 // EDGES ONLY — fields in declaration order, array elements in index order, and
-// descending through every by-value edge there is to reach the pointer fields
-// inside them. A node takes its index the first time it is reached and never
-// again.
+// descending through every by-value edge there is, in place, to reach the
+// pointer fields inside them. A node takes its index the first time it is
+// reached and never again.
 //
 // The numbering is DETERMINISTIC AND RE-DERIVED, NEVER CARRIED: measure derives
 // it from the graph and save derives the same one from the same graph, and
 // nothing passes between them. That is what makes measure == save hold across a
 // pointer graph.
 func (g *tableGen) emitNumber(st *ir.Struct) {
-	g.pf("// %sNumber: number everything %s POINTS AT, in first-visit order.\n", st.Name, st.Name)
+	g.pf("// %sNumber: number everything %s POINTS AT, in first-visit order —\n", st.Name, st.Name)
+	g.pf("// the fields in declaration order, a by-value edge descended in place.\n")
 	g.pf("// A reference to an entry whose descent is still OPEN is a data cycle,\n")
 	g.pf("// named here rather than recursed away (docs/SPEC-TABLES.md §3.1).\n")
 	g.pf("template <typename Ctx>\ninline bool %sNumber( const Ctx & ctx, TableNumbering & numbering, const %s & value )\n{\n", st.Name, st.Name)
 	if g.noVariableEdges(st) {
 		g.pf("    (void) ctx; (void) numbering; (void) value; // no pointers below this node\n")
 	}
-	for _, f := range pointerFields(st) {
-		t := f.Type.Name
-		g.emitPointerSlots(f, "value", func(slotExpr string) {
+	g.emitEdgeWalk(st, edgeVisitor{
+		subject: "value",
+		pointer: func(f *ir.Field, slot string) {
+			t := f.Type.Name
 			g.pf("    {\n")
-			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slotExpr, f.Name)
+			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot, f.Name)
 			g.pf("        if ( pointee != NULL )\n        {\n")
 			g.pf("            bool taken = false;\n")
 			g.pf("            int64_t slot = 0;\n")
@@ -284,18 +367,11 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("                TablePackMapClose( numbering.seen, (const void *) pointee, slot );\n")
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
-		})
-	}
-	for _, f := range g.byValueVariableFields(st) {
-		g.emitVariableByValueWalk(f, func(expr string) {
-			g.pf("        if ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", f.Type.Name, expr)
-		})
-	}
-	for _, f := range g.byValueVariableUnionFields(st) {
-		g.emitVariableUnionWalk(f, "value", func(armType, arm string) {
-			g.pf("            if ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", armType, arm)
-		})
-	}
+		},
+		descend: func(table, expr, indent string) {
+			g.pf("%sif ( !%sNumber( ctx, numbering, %s ) ) { return false; }\n", indent, table, expr)
+		},
+	})
 	g.pf("    return true;\n}\n\n")
 }
 
@@ -311,11 +387,12 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 	if g.noVariableEdges(st) {
 		g.pf("    (void) ctx; (void) seen; (void) value; // no pointers below this node\n")
 	}
-	for _, f := range pointerFields(st) {
-		t := f.Type.Name
-		g.emitPointerSlots(f, "value", func(slotExpr string) {
+	g.emitEdgeWalk(st, edgeVisitor{
+		subject: "value",
+		pointer: func(f *ir.Field, slot string) {
+			t := f.Type.Name
 			g.pf("    {\n")
-			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slotExpr, f.Name)
+			g.pf("        const %s * pointee = %sAt( ctx, %s ); // %s\n", t, t, slot, f.Name)
 			g.pf("        if ( pointee != NULL )\n        {\n")
 			// a pointer TARGET always has walkers (ir.PointerTargets feeds them), so
 			// there is no walker-less arm to write here
@@ -332,43 +409,14 @@ func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 			g.pf("                bytes += TableAlignUp64( (int64_t) sizeof( %s ) ) + inner;\n", t)
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
-		})
-	}
-	for _, f := range g.byValueVariableFields(st) {
-		g.emitVariableByValueWalk(f, func(expr string) {
-			g.pf("        int64_t inner = %sPackMeasure( ctx, seen, %s );\n", f.Type.Name, expr)
-			g.pf("        if ( inner < 0 ) { return -1; }\n")
-			g.pf("        bytes += inner;\n")
-		})
-	}
-	for _, f := range g.byValueVariableUnionFields(st) {
-		g.emitVariableUnionWalk(f, "value", func(armType, arm string) {
-			g.pf("            int64_t inner = %sPackMeasure( ctx, seen, %s );\n", armType, arm)
-			g.pf("            if ( inner < 0 ) { return -1; }\n")
-			g.pf("            bytes += inner;\n")
-		})
-	}
+		},
+		descend: func(table, expr, indent string) {
+			g.pf("%sint64_t inner = %sPackMeasure( ctx, seen, %s );\n", indent, table, expr)
+			g.pf("%sif ( inner < 0 ) { return -1; }\n", indent)
+			g.pf("%sbytes += inner;\n", indent)
+		},
+	})
 	g.pf("    return bytes;\n}\n\n")
-}
-
-// emitVariableByValueWalk emits the loop shape for descending into a by-value
-// nested variable table, scalar or array, and calls body with the element
-// expression.
-func (g *tableGen) emitVariableByValueWalk(f *ir.Field, body func(expr string)) {
-	switch f.Array {
-	case ir.ArrayNone:
-		g.pf("    { // %s (nested by value)\n", f.Name)
-		body("value." + f.Name)
-		g.pf("    }\n")
-	case ir.ArrayCounted:
-		g.pf("    for ( int32_t i = 0; i < value.%s_count && i < %d; i++ ) // %s\n    {\n", f.Name, f.ArrayBound, f.Name)
-		body(fmt.Sprintf("value.%s[i]", f.Name))
-		g.pf("    }\n")
-	default:
-		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
-		body(g.arrayBase("value.", f) + "[i]")
-		g.pf("    }\n")
-	}
 }
 
 // emitPack copies one node into the packed region and lays its pointees out
@@ -389,10 +437,14 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 	if g.noVariableEdges(st) {
 		g.pf("    (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;\n")
 	}
-	for _, f := range pointerFields(st) {
-		t := f.Type.Name
-		g.emitPointerSlots(f, "src", func(srcSlot string) {
-			dstSlot := "dst" + srcSlot[len("src"):]
+	// every expression the walk hands over hangs off `src`; the slot or element
+	// it is copied to is the same expression under `dst`
+	dstOf := func(src string) string { return "dst" + src[len("src"):] }
+	g.emitEdgeWalk(st, edgeVisitor{
+		subject: "src",
+		pointer: func(f *ir.Field, srcSlot string) {
+			t := f.Type.Name
+			dstSlot := dstOf(srcSlot)
 			g.pf("    {\n")
 			g.pf("        %s.value = 0; // %s\n", dstSlot, f.Name)
 			g.pf("        const %s * pointee = %sAt( ctx, %s );\n", t, t, srcSlot)
@@ -414,38 +466,12 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 			g.pf("                TablePackMapClose( seen, (const void *) pointee, slot );\n")
 			g.pf("            }\n")
 			g.pf("        }\n    }\n")
-		})
-	}
-	for _, f := range g.byValueVariableFields(st) {
-		g.emitVariableByValueWalkPack(f)
-	}
-	for _, f := range g.byValueVariableUnionFields(st) {
-		g.emitVariableUnionWalk(f, "src", func(armType, arm string) {
-			g.pf("            if ( !%sPack( ctx, seen, %s, dst%s, base, capacity, used ) ) { return false; }\n", armType, arm, arm[len("src"):])
-		})
-	}
+		},
+		descend: func(table, expr, indent string) {
+			g.pf("%sif ( !%sPack( ctx, seen, %s, %s, base, capacity, used ) ) { return false; }\n", indent, table, expr, dstOf(expr))
+		},
+	})
 	g.pf("    return true;\n}\n\n")
-}
-
-func (g *tableGen) emitVariableByValueWalkPack(f *ir.Field) {
-	t := f.Type.Name
-	call := func(srcExpr, dstExpr string) {
-		g.pf("        if ( !%sPack( ctx, seen, %s, %s, base, capacity, used ) ) { return false; }\n", t, srcExpr, dstExpr)
-	}
-	switch f.Array {
-	case ir.ArrayNone:
-		g.pf("    { // %s (nested by value)\n", f.Name)
-		call("src."+f.Name, "dst."+f.Name)
-		g.pf("    }\n")
-	case ir.ArrayCounted:
-		g.pf("    for ( int32_t i = 0; i < src.%s_count && i < %d; i++ ) // %s\n    {\n", f.Name, f.ArrayBound, f.Name)
-		call(fmt.Sprintf("src.%s[i]", f.Name), fmt.Sprintf("dst.%s[i]", f.Name))
-		g.pf("    }\n")
-	default:
-		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s\n    {\n", f.ArrayBound, f.Name)
-		call(g.arrayBase("src.", f)+"[i]", g.arrayBase("dst.", f)+"[i]")
-		g.pf("    }\n")
-	}
 }
 
 // ---- the builder and the public surface ----
@@ -922,35 +948,6 @@ func (g *tableGen) modeColumn(st *ir.Struct) string {
 		return ""
 	}
 	return fmt.Sprintf(", %v", g.isVar(st.Name))
-}
-
-// byValueVariableUnionFields returns the union fields with at least one
-// VARIABLE table arm (docs/SPEC-TABLES.md §2.6): the mode runs through arms, so
-// the set arm is a by-value edge every pointer walk descends.
-func (g *tableGen) byValueVariableUnionFields(st *ir.Struct) []*ir.Field {
-	var out []*ir.Field
-	for _, f := range st.Fields {
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		un, ok := f.Type.Ref.(*ir.Union)
-		if !ok {
-			continue
-		}
-		for _, v := range un.Variants {
-			if g.isVar(v.Type) {
-				out = append(out, f)
-				break
-			}
-		}
-	}
-	return out
-}
-
-// noVariableEdges reports a member with no pointer below it: no pointer
-// field, no by-value variable nesting and no union with a variable arm.
-func (g *tableGen) noVariableEdges(st *ir.Struct) bool {
-	return len(pointerFields(st)) == 0 && len(g.byValueVariableFields(st)) == 0 && len(g.byValueVariableUnionFields(st)) == 0
 }
 
 // emitVariableUnionWalk emits the switch over a union field's SET arm and calls
