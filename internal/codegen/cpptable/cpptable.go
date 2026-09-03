@@ -51,13 +51,10 @@ const (
 	// (docs/SPEC-TABLES.md §3.1), distinct from kind 13 so that an edit between
 	// a by-value nesting and a pointer is an ordinary kind mismatch.
 	tkNodeIndex = ir.TableKindPointer
-	// the scalars the TYPE wire carries (docs/SPEC-TABLES.md §3): the 128-bit
-	// integers and the fixed-point family, one kind per storage width and
-	// signedness, riding as the RAW scaled integer at the storage width
-	tkI128      = ir.TableKindI128
-	tkU128      = ir.TableKindU128
-	tkFixed128  = ir.TableKindFixed128
-	tkUFixed128 = ir.TableKindUFixed128
+	// the scalars the TYPE wire carries — the 128-bit integers and the
+	// fixed-point family, kinds 18-29 (docs/SPEC-TABLES.md §3) — are reached
+	// through ir.TableScalarKind and ir.TableKindWidth and never named here:
+	// every path that handles them dispatches on the kind's WIDTH.
 )
 
 func tableScalarKind(f *ir.Field) int { return ir.TableScalarKind(f) }
