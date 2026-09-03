@@ -15,11 +15,7 @@
 // array at the same index.
 package ctable
 
-import (
-	"strings"
-
-	"github.com/mas-bandwidth/schema/v2/ir"
-)
+import "github.com/mas-bandwidth/schema/v2/ir"
 
 // tableJsonWalk wraps the walker for one generated source. The package name
 // appears NOWHERE inside the markers, so the gate between them is a strict
@@ -1757,5 +1753,3 @@ static SCHEMA_UNUSED int64_t TableJsonWrite( const void * value, const TableType
 
 /* ---- json walk: end ---- */
 `
-
-var _ = strings.ToUpper

@@ -2997,7 +2997,6 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	cd test/go-tables && go test -count 1 .
 	$(MAKE) tables-go-fuzz-extent-negative-control
 	$(MAKE) tables-go-fuzz-maximum-negative-control
-<<<<<<< HEAD
 	# THE JAVA PORT's own instruments (docs/SPEC-TABLES.md). ONE conformance
 	# negative control rides here, the C# and Go legs' twin; the second one,
 	# the fuzz oracle's control and the SOAK are `make tables-java-release`,
@@ -3013,9 +3012,6 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-java-fuzz
 	$(MAKE) tables-java-order
 	$(MAKE) tables-java-cook-extent
-=======
-	$(MAKE) conformance-negative-control-c
->>>>>>> 6f4ed8f (the c bench leg, the negative control, the big-endian leg, and the pages' C rows)
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-shared-node-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
@@ -3157,11 +3153,7 @@ bench-table-check: build/schema_test_bench_table
 # estate's bench rules — core 15, server stopped, not live, blessed per run;
 # a run on a shared interactive machine is a pairing check and the board says
 # which one it is.
-<<<<<<< HEAD
-bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp generated/bench/tables/java/.stamp bench-table-check
-=======
-bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/c/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp bench-table-check
->>>>>>> 6f4ed8f (the c bench leg, the negative control, the big-endian leg, and the pages' C rows)
+bench-tables: generated/bench/tables/cpp/.stamp generated/bench/tables/cs/.stamp generated/bench/tables/c/.stamp generated/bench/tables/go/.stamp generated/bench/tables/rust/.stamp generated/bench/tables/java/.stamp bench-table-check
 	bench/tables/run.sh
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
@@ -3622,7 +3614,6 @@ conformance-negative-control-go-walk: build/conformance-harness
 	@grep -m1 "go / json-read" $(CONFORMANCE_NEGATIVE_GOWALK)/log
 	@echo "negative control: one field offset off in the Go walk turns the harness RED on json-read alone"
 
-<<<<<<< HEAD
 # THE JAVA LEG's NEGATIVE CONTROL, and it is the C# one's twin because the two
 # ports have the same shape: the walk is EMITTER SOURCE — one constant in
 # internal/codegen/javatable/json.go — so the sabotage lands in the emitter and
@@ -3730,11 +3721,6 @@ conformance-negative-control-java-block: build/conformance-harness
 	@echo "negative control: one missing pitch check in the Java block Open turns the harness RED on forgery alone"
 
 .PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-go conformance-negative-control-go-walk conformance-negative-control-java conformance-negative-control-java-block conformance-negative-control-c conformance-negative-control-c-foreign build-conformance-cs build-conformance-java
-=======
-.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-go conformance-negative-control-go-walk build-conformance-cs
-.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs build-conformance-cs
-.PHONY: conformance conformance-generate conformance-pin conformance-negative-control conformance-negative-control-block-dump conformance-negative-control-cs conformance-negative-control-c build-conformance-cs
->>>>>>> 6f4ed8f (the c bench leg, the negative control, the big-endian leg, and the pages' C rows)
 
 # THE C TABLES LEG (docs/SPEC-TABLES.md, test/conformance/README.md) ----------
 #

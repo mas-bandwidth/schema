@@ -347,31 +347,6 @@ func enumRef(f *ir.Field) *ir.Enum {
 	return e
 }
 
-// tableEnums collects, in first-use order, every enum whose values ride in the
-// members this file emits codecs for.
-func tableEnums(members []*ir.Struct) []*ir.Enum {
-	seen := map[string]bool{}
-	var out []*ir.Enum
-	add := func(e *ir.Enum) {
-		if e != nil && !seen[e.Name] {
-			seen[e.Name] = true
-			out = append(out, e)
-		}
-	}
-	for _, st := range members {
-		for _, f := range st.Fields {
-			add(f.KeyEnumRef)
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if e, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
-				add(e)
-			}
-		}
-	}
-	return out
-}
-
 // ---- guards ----
 
 // tableGuardExprs composes each guarded field's branch condition from the
@@ -1497,8 +1472,6 @@ func boolC(v bool) string {
 	}
 	return "0"
 }
-
-var _ = strings.ToUpper
 
 // THE FORCE-INLINE LINE, and why it falls where it does (schema#343).
 //
