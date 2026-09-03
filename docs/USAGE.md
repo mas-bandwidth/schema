@@ -587,10 +587,10 @@ allocates, a fixed table WITH a union may allocate for the arm in a language
 that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
-A table lives on its own wire — evolution-tolerant TLV, carried by C++, by C#,
-by Go, by Rust and by Java (every port carries the fixed class, wire and text
-form both; the pointer surface ON THE WIRE is a follow-on in every one of them —
-their cook and block accelerators read a pointered unit today). Field
+A table lives on its own wire — evolution-tolerant TLV, carried by C++ and C
+(both classes) and by C#, Go, Rust and Java (the fixed class, wire and text
+form both; the pointer surface ON THE WIRE is a follow-on in those four — their
+cook and block accelerators read a pointered unit today). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
@@ -699,9 +699,10 @@ if (report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0)
 }
 ```
 
+
 The bytes are the same bytes: a shared golden corpus pins C++'s encoding of a
-set of instances and the C# leg byte-compares its own `Save` against it, then
-loads those very files. `string(N)` and `bytes(N)` are a `byte[N]` beside an
+set of instances and the C# and C legs byte-compare their own `Save` against
+it, then load those very files. `string(N)` and `bytes(N)` are a `byte[N]` beside an
 `int` used length, arrays a `T[N]` beside an `int` used count, `?T` a value
 beside a `<Name>Present` bool, and a union is its tag beside one pre-allocated
 arm — the same spelling the packet backend uses, because a table's closure
@@ -743,6 +744,83 @@ an enum-keyed array's `KeyTypeName`/`KeyName`/`KeyId`, which are functions of
 the KEY — `KeyId(0)` is `0`, the reserved id that says `None` names no slot.
 `ArrayBound` is the storage extent, `E.Max`, and the key at index `i` is
 `i + 1`.
+
+**The C surface is the same three functions, name first, over buffers the
+caller owns** — the same spelling as C++ with a pointer where C++ takes a
+reference:
+
+```c
+#include "ConfigTable.h"
+
+ShipConfig ship;
+ship_config_reset( &ship );          /* C has no member initializers: this IS
+                                      where the declared defaults live */
+ship.health = 250.0f;
+
+int64_t size = ship_config_measure( &ship );      /* exact, writes nothing */
+uint8_t * buffer = malloc( (size_t) size );      /* or any storage you own */
+ship_config_save( &ship, buffer, size );           /* returns size, or -1 */
+
+TableReport report;
+ShipConfig loaded;
+memset( &report, 0, sizeof( report ) );
+if ( !ship_config_load( &loaded, buffer, size, &report ) )
+{
+    /* framing damage: report.malformed is set, the good prefix is kept */
+}
+if ( report.unknown || report.kind_mismatch || report.clamped )
+{
+    /* the data came from a different schema generation — loaded is still
+       fully usable; log the counts so drift is visible */
+}
+```
+
+Generation produces `<Base>Table.h` and `<Base>Table.c`. **The header is the
+whole wire** — the storage structs, `Reset`, `Measure`, `Save`, `Load` and
+`<Name>Open`, all `static` and inlinable, with no serialize dependency and no
+object file to link. **The `.c` carries the reflection descriptors and the
+text form**, so a translation unit that only reads and writes the wire
+compiles neither; compile it when you call `<Name>TableType`,
+`<Name>FromJson` or `<Name>ToJson`.
+
+Two schema units LINK together — every external the table backend emits
+carries the package, `schema_<package>_<type>_<what>_` — so a program may hold
+two generations of one schema, which is what the conformance driver does with
+`tblv1::Cfg` and `tblv2::Cfg`. Two units cannot be INCLUDED into one
+translation unit: C has no namespace, and that limit is the C target's
+standing one rather than anything tables added.
+
+An enum-keyed array is a plain `T slots[E_MAX]` — one slot per named variant,
+nothing for `None`, the key `k` at index `k - 1`. **Index it by the ENUM
+VALUE through `TableKeyedAt`**, which is where the left shift and the `None`
+refusal live; the refusal is an assert plus an abort and it stands in every
+build, exactly as C++'s accessor refuses:
+
+```c
+SCHEMA_TABLE_KEYED_AT( fleet.ships, SHIP_TYPE_BOMBER ).health *= 2.0f;
+
+/* walking every slot: the key is 1 .. E_MAX, never a storage index */
+int32_t key;
+for ( key = 1; key <= SHIP_TYPE_MAX; key++ )
+{
+    ShipConfig * ship = &SCHEMA_TABLE_KEYED_AT( fleet.ships, key );
+    ship->health *= 2.0f;
+}
+```
+
+A `?T` is the value beside a `<name>_present` byte, a `string(N)` a
+`char[N + 1]` beside an `int32_t <name>_length`, a `bytes(N)` a `uint8_t[N]`
+beside its length, and a union its tag beside `as.<arm>` — the same spelling
+the packet backend uses, because a table's closure decodes into the packet
+backend's own structs.
+
+`<Name>TableType()` returns the reflection descriptor. Its vocabulary columns
+are TABLES rather than functions: `variants` is indexed by the enum's value
+and `keys` by an enum-keyed array's KEY, each entry a `(name, id)` pair, with
+a NULL name for a value the declared set does not name. C has no captureless
+lambda, and a named function per enum would claim a name per enum, so the
+same facts ride as constant data — every question the descriptors answer
+elsewhere has an answer here, asked of an array instead of a call.
 
 The Rust surface is the same three functions, name first, as free functions in
 the generated crate, over slices the caller owns. Storage is a `#[repr(C)]`
@@ -1324,6 +1402,65 @@ differ: a by-value `T` at its defaults elides, a non-null pointer does not).
 Null pointers are simply absent. **Wire v1 is a tree**: two pointers to one
 node write two bodies and load as two nodes.
 
+**In C, the same shape without member functions.** C++'s builder methods are
+free functions under the root's name, and the two things C++ distinguishes by
+TYPE — which sink a node comes from, which encoding a walk is reading — are
+distinguished by a nullable member:
+
+```c
+SceneBuilder builder;
+TableSink sink;
+TableCtx ctx;
+Scene * root;
+int64_t wire_bytes, region_bytes;
+
+scene_builder_init( &builder );            /* the arena, and the root node */
+root = scene_builder_root( &builder );     /* NULL once locked */
+
+sink.region = NULL;                      /* allocate in the ARENA */
+sink.worker = &builder.main;             /* one worker per thread (§6.4) */
+ListNode * head = list_node_emplace( &sink, &root->head );
+head->value = 1;
+
+/* the wire, straight out of the MUTABLE form: the ctx names the arena */
+ctx.arena = &builder.arena;
+wire_bytes = scene_measure( &ctx, root );
+scene_save( &ctx, root, buffer, wire_bytes );
+
+scene_builder_lock( &builder );            /* one way; there is no unlock */
+/* the const form is builder.region, builder.region_bytes bytes of it, and a
+   NULL context is what says "a packed region" to every walk */
+{
+    const Scene * packed = (const Scene *) builder.region;
+    const ListNode * first = list_node_at( NULL, &packed->head );
+    (void) first;
+}
+scene_builder_shutdown( &builder );
+```
+
+Reading from the wire is the same three steps, and the caller owns the region:
+
+```c
+region_bytes = scene_load_measure( wire, wire_size );   /* exact, reads no values */
+uint8_t * region = your_allocator( region_bytes );
+TableReport report;
+memset( &report, 0, sizeof( report ) );
+const Scene * scene = scene_load( region, region_bytes, wire, wire_size, &report );
+const ListNode * node = list_node_at( NULL, &scene->head );  /* one add */
+```
+
+**The builder's members ARE its accessors.** C++ has `AsConst`, `Region`,
+`RegionBytes` and `Locked`; C has `builder.region` — the packed const form,
+NULL until `Lock` succeeds — `builder.region_bytes`, and
+`builder.arena.locked`. `scene_builder_root` returns NULL once locked, which is
+what sends you to `builder.region`.
+
+**`<name>_at` and `<name>_emplace` exist only for a table something POINTS
+AT**, which is the same rule C++ follows: a table nobody points at needs
+neither. The spelling is C's own — this target's packet half writes
+`read_ship_config`, so its table half writes `ship_config_load`, and §11's
+`<Name>At` is `<name>_at` here for the same reason it is `<name>_at` in Rust.
+
 ### Byte buffers: `bytes(N)`
 
 A blob is `bytes(N)` — N bytes of inline storage in every instance, at a
@@ -1679,7 +1816,7 @@ puts the two back together when you want to check one.
 ### The build version: what a cooked asset is stored under
 
 *`schema build-version [--facts]` prints the id and the projection it digests,
-both pinned as goldens; the C++ and C# block backends emit `BuildVersion` and
+both pinned as goldens; the C++, C# and C block backends emit `BuildVersion` and
 stamp it into every block's prologue; `schema cook` stamps the same id into
 every cooked header, and `cook-check`, the C++ `<Root>Open` and the C#
 `<Root>Cook.Open` each read it back and compare. What is still owed is

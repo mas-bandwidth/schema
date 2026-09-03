@@ -9,6 +9,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cstable"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
@@ -22,8 +23,8 @@ import (
 )
 
 // refuseTables is the named refusal every target without a table backend
-// gives a unit that declares tables (docs/SPEC-TABLES.md): C++, C#, Go, Rust and
-// Java carry table backends today, and each remaining per-language one is a
+// gives a unit that declares tables (docs/SPEC-TABLES.md): C, C++, C#, Go, Rust
+// and Java carry table backends today, and each remaining per-language one is a
 // named follow-on — refused loudly here rather than silently emitting a unit
 // with the tables missing.
 func refuseTables(u *ir.Unit, target string) error {
@@ -35,7 +36,7 @@ func refuseTables(u *ir.Unit, target string) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return fmt.Errorf("unit declares tables (%s) — tables are C++, C#, Go, Rust and Java only today, and the %s table backend is a named follow-on; generate with --lang cpp, --lang cs, --lang go, --lang rust or --lang java, or move the tables to their own unit (docs/SPEC-TABLES.md)",
+	return fmt.Errorf("unit declares tables (%s) — tables are C, C++, C#, Go, Rust and Java only today, and the %s table backend is a named follow-on; generate with --lang c, --lang cpp, --lang cs, --lang go, --lang rust or --lang java, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), target)
 }
 
@@ -89,10 +90,24 @@ type cTarget struct{}
 func (cTarget) Names() []string { return []string{"c"} }
 
 func (cTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTables(u, "c"); err != nil {
+	files, err := cgen.Generate(u)
+	if err != nil {
 		return nil, err
 	}
-	return cgen.Generate(u)
+	// units that declare tables ALSO get <Base>Table.h / <Base>Table.c per
+	// file — the TABLE-wire codecs (docs/SPEC-TABLES.md); a table-free unit's
+	// output is byte-identical to what the packet emitter alone produces
+	tables, err := ctable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table header; rename one file (docs/SPEC-TABLES.md)", name)
+		}
+		files[name] = data
+	}
+	return files, nil
 }
 
 // cppTarget emits C++17.

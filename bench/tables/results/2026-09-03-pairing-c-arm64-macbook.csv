@@ -1,0 +1,40 @@
+# schema TABLES bench results (bench/tables/README.md)
+# date: 2026-09-03T08:22:47Z
+# host: macbook  arch: arm64  os: Darwin 25.6.0
+# cpu: Apple M2
+# build: Release
+# corpus: bench/corpus/BenchTable.schema (one fixed table on the tolerant wire, docs/SPEC-TABLES.md §3)
+# c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
+# rounds: 7 (interleaved cpp/c per round, §2.4)
+# pinning: none (macOS has no taskset)
+# noise: PAIRING CHECK — MacBook Air (M2), interactive desktop, no core reservation, sibling port workers on the machine. Not a certification sitting.
+# schema commit: 3af203a (port-c-tables)
+cpp,bench_table,write,400000,2391,1,2428176,2428176,2428176,5536.81,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,821630,821630,821630,1873.51,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2418263,2418263,2418263,5514.21,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,858089,858089,858089,1956.65,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2405501,2405501,2405501,5485.11,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,815268,815268,815268,1859.00,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2413841,2413841,2413841,5504.13,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,855880,855880,855880,1951.61,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2386565,2386565,2386565,5441.93,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,819949,819949,819949,1869.68,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2441108,2441108,2441108,5566.30,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,851080,851080,851080,1940.66,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2405517,2405517,2405517,5485.14,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,815152,815152,815152,1858.74,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2420092,2420092,2420092,5518.38,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,851435,851435,851435,1941.47,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2399007,2399007,2399007,5470.30,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,819928,819928,819928,1869.63,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2421865,2421865,2421865,5522.42,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,849796,849796,849796,1937.74,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2421909,2421909,2421909,5522.52,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,819897,819897,819897,1869.56,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2411760,2411760,2411760,5499.38,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,836276,836276,836276,1906.91,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,write,400000,2391,1,2408246,2408246,2408246,5491.37,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+cpp,bench_table,round_trip,400000,2391,1,817042,817042,817042,1863.05,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,write,400000,2391,1,2416145,2416145,2416145,5509.38,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown
+c,bench_table,round_trip,400000,2391,1,855566,855566,855566,1950.89,0.00,2f7567e1e25ba918,table,hdr,contract,O3,unknown

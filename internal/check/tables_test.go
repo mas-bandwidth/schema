@@ -3,6 +3,8 @@
 package check
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -702,4 +704,70 @@ func TestTableFileDag(t *testing.T) {
 			t.Fatalf("a table-free unit must not be graphed: %v", errs)
 		}
 	})
+}
+
+// TestSpecSection11EqualsTheChecker holds docs/SPEC-TABLES.md §11's suffix
+// lists to `tableGeneratedVerbs`, in both directions and spelling for
+// spelling.
+//
+// THE PAGE CLAIMS THIS OF ITSELF — "the three lists here are
+// `tableGeneratedVerbs` entire" — and a claim a page makes about the code is
+// exactly the claim that rots quietly. It did: a blind reader counted 33
+// spellings on the page against the checker's 40, because the C backend's
+// seven were added to the checker and never written down. A name the page
+// states and the checker does not claim is a name a user may take and then
+// find their generated code will not compile; a name the checker claims and
+// the page does not state is a name taken from every schema with no notice.
+//
+// The page is parsed rather than restated here: the three fenced blocks are
+// its own text, so a list edited on one side and not the other fails.
+func TestSpecSection11EqualsTheChecker(t *testing.T) {
+	page, err := os.ReadFile(filepath.Join("..", "..", "docs", "SPEC-TABLES.md"))
+	if err != nil {
+		t.Fatalf("SPEC-TABLES.md: %v", err)
+	}
+	// the three suffix blocks: the base set, the block form's, and the C
+	// backend's. Each opens with a line naming its first spelling, which is
+	// what anchors the scan to the right fences.
+	stated := map[string]bool{}
+	lines := strings.Split(string(page), "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "Measure  MeasureBody  Save  SaveBody  Load  LoadBody  Reset" &&
+			trimmed != "Block  BlockStorage  BlockBegin  BlockBytes  BlockMaxBytes  BlockOpen" &&
+			trimmed != "BuilderInit  BuilderShutdown  BuilderLock  BuilderRoot" {
+			continue
+		}
+		for _, body := range lines[i:] {
+			if strings.Contains(body, "```") {
+				break
+			}
+			for word := range strings.FieldsSeq(body) {
+				stated[word] = true
+			}
+		}
+	}
+	if len(stated) == 0 {
+		t.Fatal("§11's suffix blocks were not found in the page at all — the scan, not the page, is what broke")
+	}
+
+	held := map[string]bool{}
+	for _, verb := range tableGeneratedVerbs {
+		held[verb] = true
+	}
+	for verb := range held {
+		if !stated[verb] {
+			t.Errorf("the checker claims the suffix %q and §11 does not state it — a name taken from every "+
+				"schema with no notice on the page; add it to the section's lists", verb)
+		}
+	}
+	for verb := range stated {
+		if !held[verb] {
+			t.Errorf("§11 states the suffix %q and the checker does not claim it — a user may declare that "+
+				"name and find the generated code will not compile; add it to tableGeneratedVerbs", verb)
+		}
+	}
+	if len(stated) != len(held) {
+		t.Errorf("§11 states %d suffixes and the checker holds %d", len(stated), len(held))
+	}
 }

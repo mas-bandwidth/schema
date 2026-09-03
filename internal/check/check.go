@@ -44,6 +44,10 @@ type checker struct {
 	unions   map[string]*ir.Union
 	tables   map[string]*ir.Struct // `table` declarations (docs/SPEC-TABLES.md)
 
+	// the UPPERCASE macros the generated C defines for this unit, computed
+	// once by cReservedMacros (SPEC §6.1's C column)
+	cReserved map[string]bool
+
 	// the table closure — tables plus every struct one reaches — computed by
 	// checkTables and consumed by checkClaimedNames (closure members grow
 	// generated Table* symbols)
@@ -2584,14 +2588,25 @@ func (c *checker) checkClaimedNames() {
 		for _, gen := range tablenames.Claimed() {
 			what := "the generated TABLE-wire runtime (docs/SPEC-TABLES.md)"
 			if gen[0] >= 'a' && gen[0] <= 'z' {
-				// UNEXPORTED IS NOT PRIVATE. A Go package is one namespace, so
-				// a lowercase runtime name is a package-scope name a
+				// UNEXPORTED IS NOT PRIVATE, AND NEITHER IS snake_case. A
+				// lowercase runtime name is still a unit-scope name a
 				// declaration collides with exactly as a PascalCase one does —
-				// `const tableJsonMaxDepth = 5` beside a table is a
-				// redeclaration and the unit does not compile. The diagnostic
-				// says which half, because a reader meeting it will otherwise
-				// wonder why an unexported name was reserved (§11).
-				what = "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
+				// `const tableJsonMaxDepth = 5` beside a table is a Go
+				// redeclaration, and `int table_json_count;` beside one is a C
+				// redeclaration. The diagnostic says WHICH BACKEND, because a
+				// reader meeting it will otherwise wonder why a lowercase name
+				// was reserved (§11) — and the answer differs by language, so
+				// it is read from the registry rather than guessed from the
+				// spelling.
+				by := tablenames.By(gen)
+				switch {
+				case by&tablenames.Go != 0 && by&tablenames.C == 0:
+					what = "the generated TABLE-wire runtime's Go half, which puts unexported names at package scope where a Go package is one namespace (docs/SPEC-TABLES.md §11)"
+				case by&tablenames.C != 0 && by&tablenames.Go == 0:
+					what = "the generated TABLE-wire runtime's C half, which spells its functions snake_case — the packet emitter's convention in that language — with no namespace to put them in (docs/SPEC-TABLES.md §11)"
+				default:
+					what = "the generated TABLE-wire runtime's Go and C halves, which both put lowercase names at unit scope (docs/SPEC-TABLES.md §11)"
+				}
 			}
 			add(gen, what, unitPos)
 		}
@@ -2628,11 +2643,13 @@ func (c *checker) checkClaimedNames() {
 		if slices.Contains(siblings, name) {
 			return
 		}
+		c.reserveCPrefix(name, pos)
 		add(name, what, pos)
 	}
 
 	for _, name := range declNames {
 		d := c.astDecls[name]
+		c.reserveCPrefix(name, d.DeclPos())
 		add(name, fmt.Sprintf("declaration %s", name), d.DeclPos())
 		switch d := d.(type) {
 		case *ast.ConstDecl:
@@ -2797,6 +2814,14 @@ var tableGeneratedVerbs = []string{
 	"Cook", "CookMeasure", "Open", "TableFields", "TableInfo",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
+	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
+	// and C# put these on a class — a builder's Lock, a storage's Create, a
+	// block type's Type — and a member function claims nothing. C has no
+	// members, so each is a free function under its owner's name, and the
+	// comment above this list is the rule they are added under: a port that
+	// spells the surface otherwise adds its spellings here.
+	"BuilderInit", "BuilderShutdown", "BuilderLock", "BuilderRoot",
+	"BlockStorageCreate", "BlockStorageDestroy", "BlockType",
 	// the C# BLITTABLE records take claimed suffixes in the package namespace
 	// rather than a nested namespace of their own: a generated namespace named
 	// by a common noun is a collision class no refusal can close, because it
@@ -2901,4 +2926,87 @@ func protocolIdFromProjection(u *ir.Unit) uint64 {
 	h.Write([]byte(ir.WireProjection(u)))
 	sum := h.Sum(nil)
 	return binary.BigEndian.Uint64(sum[24:32])
+}
+
+// ---- what the C target reserves in the PREPROCESSOR namespace ----
+//
+// C's preprocessor is the one place a generated name and a DECLARED name meet
+// with no compiler between them. In the C target a schema's constants, enum
+// variants and flag masks are all `#define`s (SPEC §6.1's C column, by ruling:
+// a macro carries no storage and works in every context C has), and the
+// generated sources define macros of their own beside them — the include
+// guards, the packet emitter's SCHEMA_UNUSED and its inlining demand, the table
+// backend's per-package guards and its force-inline qualifier.
+//
+// A collision between the two is NOT a redeclaration error the way two typedefs
+// would be. It is a SILENT REWRITE: the generator's `#ifndef` sees the user's
+// definition already standing, skips its own, and every later use expands to
+// something else entirely. Nothing in the build says so.
+//
+// So the set is enumerated and refused. It is a SET rather than a prefix on
+// purpose: `enum SchemaKind` folds to SCHEMA_KIND_ALPHA, which collides with
+// nothing, and refusing it would take a name away from every schema for free.
+// What is refused is what the generator actually defines.
+//
+// The lowercase half is a prefix, and that one is honest as a prefix: a C
+// declaration keeps its schema spelling verbatim, the emitters' own helpers all
+// carry `schema_` with a trailing underscore (schema_utf8_valid_, and the table
+// backend's schema_<package>_..._ externals), and those are derived from
+// declaration names so no finite list can cover them.
+
+// cReservedMacros is every UPPERCASE macro the C target defines for this unit:
+// the fixed ones the two emitters carry, the per-package ones, and the include
+// guard of every file. It is computed rather than listed because the last two
+// families embed the package and the file base.
+func (c *checker) cReservedMacros() map[string]bool {
+	out := map[string]bool{}
+	for _, fixed := range []string{
+		// the packet emitter's own (internal/codegen/c)
+		"SCHEMA_UNUSED", "SCHEMA_C_READ_INLINE", "SCHEMA_C_WRITE_INLINE",
+		"SCHEMA_C_SPINE_INLINE_DEFINED", "SCHEMA_UTF8_VALID_DEFINED", "SCHEMA_FLAG_APPEND_DEFINED",
+		// the table backend's (internal/codegen/ctable)
+		"SCHEMA_TABLE_ALIGNOF", "SCHEMA_TABLE_ATOMIC", "SCHEMA_TABLE_STATIC_ASSERT",
+		"SCHEMA_TABLE_KEYED_AT",
+	} {
+		out[fixed] = true
+	}
+	pkg := strings.ToUpper(c.unit.Package)
+	if pkg == "" {
+		return out
+	}
+	for _, per := range []string{
+		"_TABLE_PRIMITIVES", "_TABLE_ARENA", "_TABLE_COOK", "_BLOCK_PRIMITIVES",
+		"_BUILD_VERSION", "_BUILD_VERSION_VALUE", "_TABLE_INLINE",
+	} {
+		out["SCHEMA_"+pkg+per] = true
+	}
+	for _, f := range c.files {
+		base := strings.ToUpper(f.Base)
+		for _, suffix := range []string{"_H", "WIRE_H", "TABLE_H", "BLOCK_H"} {
+			out["SCHEMA_"+pkg+"_"+base+suffix] = true
+		}
+	}
+	return out
+}
+
+// reserveCPrefix refuses one generated C spelling that the generator already
+// owns. It is called with the DECLARED name and with every derived C spelling
+// beside it, because either can be the one that collides: `type schema_thing`
+// emits that typedef verbatim, and `enum Schema { Unused }` emits
+// `#define SCHEMA_UNUSED`, which is the packet emitter's own macro.
+func (c *checker) reserveCPrefix(name string, pos ast.Pos) {
+	if strings.HasPrefix(name, "schema_") {
+		c.errf(pos, "%s carries the schema_ prefix, which the C target reserves for the names the "+
+			"generator emits itself (SPEC §6.1) — rename at the source", name)
+		return
+	}
+	if c.cReserved == nil {
+		c.cReserved = c.cReservedMacros()
+	}
+	if c.cReserved[name] {
+		c.errf(pos, "%s is a macro the generated C defines (SPEC §6.1's C column). A schema's constants, "+
+			"enum variants and flag masks are #defines in that target, and a collision with a generated "+
+			"macro is a SILENT REWRITE rather than a redeclaration error — the generator's #ifndef sees "+
+			"yours and skips its own. Rename at the source", name)
+	}
 }

@@ -1385,7 +1385,36 @@ tree mirrors the schema tree a person navigates.
   inherits no serialize runtime — and a project that never walks them never
   includes the header or compiles the source.
 - **C:** the same data/wire header pair per schema file (`<Base>.h` /
-  `<Base>Wire.h`), mirroring the C++ split in C's own types.
+  `<Base>Wire.h`), mirroring the C++ split in C's own types. A unit that
+  declares TABLES emits one further pair per schema file — `<Base>Table.h`
+  and `<Base>Table.c` — on the C++ pair's terms and for the C++ pair's
+  reason, plus `<Base>Block.h` / `<Base>Block.c` for the block form
+  (SPEC-TABLES.md §19). The split is WIDER here than in C++: C has no inline
+  variables, so the reflection descriptors and the text form's generic walk
+  are DEFINED in the `.c` and only declared in the header, and a translation
+  unit that includes the header for the wire codecs pays for neither.
+  **Every external the table backend emits carries the package** —
+  `schema_<package>_<type>_<what>_` — because C has no namespace and two
+  units whose type names collide have to LINK together, which is what the
+  conformance driver itself does. The name-first surface SPEC-TABLES.md §11
+  states is `static` in the header and forwards to them, and it is **spelled in
+  the convention this target's PACKET half already uses** — types PascalCase,
+  functions and file-scope constants snake_case, macros SCREAMING_SNAKE under
+  `SCHEMA_` — so §11's `<Name>Load` is `<name>_load` here, `<name>_from_json`,
+  `<name>_table_type`, `<name>_block_open`. §11 names the SUFFIX SET a
+  declaration may not collide with; each target spells that set in its own
+  language, exactly as Rust spells it `<name>_load` and Go, C# and C++ spell it
+  `<Name>Load`. A table half that spelled C++'s casing in C would be the only
+  place in this compiler where two halves of one target disagree. Two units
+  still cannot be included into ONE translation unit, which is the C target's
+  standing limit and unchanged by tables.
+  **The C target reserves `SCHEMA_` and `schema_`**, and it is the one place a
+  generated name and a declared name meet with no compiler between them:
+  constants, enum variants and flag masks are all `#define`s here, so a
+  collision with a generated macro is a SILENT REWRITE rather than a
+  redeclaration error — the generator's `#ifndef` sees the user's definition
+  standing and skips its own. The front end refuses a declaration whose C
+  spelling is one of the macros the generated sources define.
 - **Go:** one `.go` file per schema file, all in `package <package>` — Go
   packages are order-free across files, so there is no topo sort and no
   include graph to refuse.

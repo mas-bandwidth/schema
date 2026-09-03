@@ -445,6 +445,25 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a table spelling the Go cook's descriptor graph",
 			src:  "package probe\n\ntable tableCookRecords\n{\n    n int32\n}\n",
 			want: "tableCookRecords"},
+
+		// ---- the C target's PREPROCESSOR namespace (SPEC §6.1's C column) ----
+		//
+		// A schema's constants, enum variants and flag masks are #defines in the
+		// C target, and the generated sources define macros of their own beside
+		// them. A collision is a SILENT REWRITE, not a redeclaration error: the
+		// generator's #ifndef sees the user's definition standing and skips its
+		// own, so every later use expands to something else and nothing in the
+		// build says so. These are the shapes that reach one.
+		{name: "an enum variant folding to the packet emitter's own macro", want: "SILENT REWRITE",
+			src: "package t\nenum Schema { Unused }\ntype H { g Schema }\n"},
+		{name: "an enum variant folding to the table backend's alignof macro", want: "SILENT REWRITE",
+			src: "package t\nenum SchemaTable { Alignof }\ntype H { g SchemaTable }\n"},
+		{name: "a constant folding to the table backend's force-inline macro", want: "SILENT REWRITE",
+			src: "package t\nconst SchemaTTableInline = 1\ntype H { x uint8 }\n"},
+		{name: "a declaration spelling a generated include guard", want: "SILENT REWRITE",
+			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_H { x uint8 }\n"}},
+		{name: "a declaration carrying the reserved lowercase prefix", want: "reserves for the names the",
+			src: "package t\ntype schema_thing { x uint8 }\n"},
 	}
 
 	for _, tc := range cases {
@@ -606,6 +625,31 @@ func TestPackageNameNeighborsAccepted(t *testing.T) {
 		errs := runUnit(t, map[string]string{"a.schema": "package " + pkg + "\ntype A { x uint8 }\n"})
 		if len(errs) > 0 {
 			t.Fatalf("package %s must stay legal, got %v", pkg, errs)
+		}
+	}
+}
+
+// THE NEGATIVE CONTROL for the C preprocessor reservation: a refusal that
+// cannot be shown to LEAVE NEIGHBOURS ALONE is a refusal nobody can size.
+//
+// The set is enumerated rather than a bare prefix test, and this is what that
+// buys: `enum SchemaKind` folds to SCHEMA_KIND_ALPHA, `const SchemaVersion` to
+// SCHEMA_VERSION, and neither is a macro the generated C defines — so both stay
+// legal. A prefix test would have taken all of them, which is a claim nothing
+// needs taking a name away from every schema for free.
+func TestCReservedMacroNeighborsAccepted(t *testing.T) {
+	for _, src := range []string{
+		"package t\nenum SchemaKind { Alpha, Beta }\ntype H { g SchemaKind }\n",
+		"package t\nconst SchemaVersion = 3\ntype H { x uint8 }\n",
+		"package t\ntype SchemaPoint { x float32 }\n",
+		"package t\nflags SchemaPerks { Fast, Slow }\ntype H { p SchemaPerks }\n",
+		// and the one that only LOOKS like the lowercase reservation: the
+		// prefix is `schema_`, so a name that merely starts with `schema` and
+		// carries no underscore is untouched
+		"package t\ntype schematic { x uint8 }\n",
+	} {
+		if errs := runUnit(t, map[string]string{"a.schema": src}); len(errs) > 0 {
+			t.Errorf("a declaration that collides with no generated macro must stay legal: %v\n%s", errs, src)
 		}
 	}
 }

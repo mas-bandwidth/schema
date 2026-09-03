@@ -1,0 +1,41 @@
+#!/bin/sh
+# THE C LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        compile bench/tables/c/table_main.c
+#   leg run [args]   run it
+#
+# Flags are the type wire's C leg's plus the Release bench configuration
+# (bench/README.md): -O3 -DNDEBUG, and -ffp-contract=off because this repo pins
+# wire determinism. There is no serialize runtime in this build and no
+# generated .c either — the table codec is static-inline in its header, and the
+# descriptors and the text form live in the .c beside it, which this runner
+# does not compile.
+set -e
+
+BIN=build/schema_tables_bench_c
+SRC=bench/tables/c/table_main.c
+GEN=generated/bench/tables/c
+: "${CC:=cc}"
+: "${BENCH_OPT_LEVEL:=O3}"
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.h" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    mkdir -p build
+    $CC -std=c99 -Wall -Wextra -Werror -ffp-contract=off \
+        "-$BENCH_OPT_LEVEL" -DNDEBUG "-DBENCH_OPT=\"$BENCH_OPT_LEVEL\"" \
+        -I"$GEN" "$SRC" -o "$BIN" -lm
+    ;;
+run)
+    shift
+    exec "./$BIN" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

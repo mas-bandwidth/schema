@@ -163,6 +163,7 @@ names bench/tables/go/table_main.go 2 shape-blind leg: `benchtable.TableMixed` a
 names bench/tables/rust/src/main.rs 1 shape-blind leg: `TableMixed` as the bench_table type argument, once — its reset/save/load are snake_case free functions the corpus vocabulary does not spell, so the Rust leg names the shape in exactly one place (callsite)
 names bench/tables/java/src/Main.java 2 shape-blind leg: `benchtable.BenchTableTable.TableMixed` as the benchTable type argument and its constructor reference (callsite)
 consts bench/tables/java/src/Main.java 1 the round-robin variant mask `(i & (NUM_VARIANTS - 1))` folds to a literal the numeric check reads as a corpus bit total. A pure false positive, kept visible rather than special-cased (prose)
+names bench/tables/c/table_main.c 3 shape-blind leg: C has no template to pass the type through, so `TableMixed` is named where the storage is declared and at its Reset/Save/Load call sites — no field, no pinned value, no wire size (callsite)
 
 # The tables corpus's golden pinner and oracle: correctness code, no clock.
 # It is the ONE place that names a field of BenchTable.schema, which is what
