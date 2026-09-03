@@ -346,6 +346,39 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 # build/ — test-only, never part of the committed generated/ tree. The full
 # unit is generated (packet .cs + <Base>Table.cs), because a table's closure
 # decodes into the packet emitter's own classes.
+# THE GO TABLE LEG's generated packages. Each unit is its own MODULE, because
+# a generated package names its schema's `package` and Go resolves an import by
+# module path — so the conformance leg's go.mod replaces one path per unit,
+# exactly as test/go/go.mod already does for the packet corpus.
+build/tables-generated-go/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
+	@mkdir -p build/tables-generated-go
+	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
+	# the POINTERED unit: its Go WIRE surface is refused by name (§11) and its
+	# two ACCELERATORS are emitted all the same, because neither needs a codec
+	# (§7, §19). This is where the cook's Go read side comes from.
+	./bin/schema generate --lang go --out build/tables-generated-go/pointers tables/pointers
+	./bin/schema generate --lang go --out build/tables-generated-go/block tables/block
+	./bin/schema generate --lang go --out build/tables-generated-go/blockhome tables/blockhome
+	./bin/schema generate --lang go --out build/tables-generated-go/v1 test/tables/V1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
+	$(call go_table_module,examples,tabledemo)
+	$(call go_table_module,pointers,graphdemo)
+	$(call go_table_module,block,blockdemo)
+	$(call go_table_module,blockhome,blockhomedemo)
+	$(call go_table_module,v1,tblv1)
+	$(call go_table_module,v2,tblv2)
+	$(call go_table_module,p1,tblp1)
+	$(call go_table_module,p3,tblp3)
+	@touch $@
+
+# one generated unit's module wiring (build wiring, not schema output — the
+# emitter writes only .go files)
+define go_table_module
+@printf 'module %s\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' $(2) > build/tables-generated-go/$(1)/go.mod
+endef
+
 build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
@@ -2680,9 +2713,13 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
+build/conformance-go: build/tables-generated-go/.stamp $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
+	@mkdir -p build
+	cd test/conformance/go && go build -o ../../../$@ .
+
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook \
-		build-conformance-cs build-cs-cook build/conformance-rust
+		build-conformance-cs build-cs-cook build/conformance-go build/conformance-rust
 	./build/conformance-harness run
 
 # The GENERATED half of the data: the JSON text of every instance and the read

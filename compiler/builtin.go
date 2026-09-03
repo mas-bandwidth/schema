@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
@@ -151,10 +152,25 @@ type goTarget struct{}
 func (goTarget) Names() []string { return []string{"go"} }
 
 func (goTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTables(u, "go"); err != nil {
+	files, err := golang.Generate(u)
+	if err != nil {
 		return nil, err
 	}
-	return golang.Generate(u)
+	// units that declare tables ALSO get <Base>Table.go per file — the
+	// TABLE-wire codecs and the reflection descriptors (SPEC-TABLES.md); a
+	// table-free unit's output is byte-identical to what the packet emitter
+	// alone produces
+	tables, err := gotable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table source; rename one file (SPEC-TABLES.md)", name)
+		}
+		files[name] = data
+	}
+	return files, nil
 }
 
 // javaTarget emits Java 17.
