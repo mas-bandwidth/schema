@@ -587,11 +587,10 @@ allocates, a fixed table WITH a union may allocate for the arm in a language
 that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
-A table lives on its own wire — evolution-tolerant TLV, carried by C++, by C#
-and by Rust (the fixed class, wire and text form both; the pointer surface ON
-THE WIRE is a follow-on in both ports — their cook and block accelerators read
-a pointered unit today).
-Field
+A table lives on its own wire — evolution-tolerant TLV, carried by C++, by C#,
+by Go and by Rust (all three ports carry the fixed class, wire and text form
+both; the pointer surface ON THE WIRE is a follow-on in every one of them —
+their cook and block accelerators read a pointered unit today). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
 defaults, a field whose type changed is skipped rather than misdecoded,
@@ -768,6 +767,31 @@ if !ship_config_load(&mut loaded, &buffer, &mut report) {
     // framing damage: report.malformed is set, the good prefix is kept
 }
 if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
+
+**The Go surface is the same three functions again**, name first at package
+scope over a `*T` the caller owns. Storage is a plain struct — the Go packet
+emitter's own spelling, because a table's closure decodes into the structs that
+emitter already wrote — so a value costs one declaration and `Load` overlays it
+in place after restoring the declared defaults:
+
+```go
+import "example"
+
+var ship example.ShipConfig
+example.ShipConfigReset(&ship)        // the declared defaults, in place
+ship.Health = 250.0
+ship.SettingsPresent = true           // ?T: presence decides whether it rides
+
+size := example.ShipConfigMeasure(&ship)   // exact, writes nothing
+buffer := make([]byte, size)               // or any storage you own
+example.ShipConfigSave(&ship, buffer)      // returns size, or -1
+
+var report example.TableReport
+var loaded example.ShipConfig
+if !example.ShipConfigLoad(&loaded, buffer, &report) {
+    // framing damage: report.Malformed is set, the good prefix is kept
+}
+if report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 {
     // the data came from a different schema generation — loaded is still
     // fully usable; log the counts so drift is visible
 }
@@ -809,6 +833,40 @@ which are functions of the KEY — `key_id(0)` is `0`, the reserved id that says
 `None` names no slot. `array_bound` is the storage extent, `E.Max`, and the key
 at index `i` is `i + 1`. It is `static` data, so any thread may read it and it
 costs a lookup rather than a parse.
+
+**Nothing on that path allocates**, and in Go that is measured rather than
+asserted: `Load`, `Measure`, `Save`, `FromJson`, `ToJsonMeasure` and `ToJson`
+each read zero under `testing.AllocsPerRun`, and a soak over the whole corpus
+holds the allocation counter at zero. A nil `*TableReport` is allowed and every
+tolerance event still decides the same way.
+
+`string(N)` and `bytes(N)` are an `[N]byte` beside an `int32` used length,
+arrays an `[N]T` beside an `int32` used count, `?T` a value beside a
+`<Name>Present` bool, and a union its tag beside one arm per variant.
+
+**An enum-keyed array in Go IS the plain `[E.Max]T` the schema means** — Go has
+neither operator overloading nor a generic array extent, so there is no wrapper
+type and the extent is the generated `E.Max` constant and no other number. The
+shift and the `None` refusal live in one helper, so no call site spells either:
+
+```go
+*example.TableKeyed(fleet.Ships[:], int(example.ShipTypeBomber)) = ship
+```
+
+Iterating is the language's own `for i, ship := range fleet.Ships`, where the
+KEY is `ShipType(i + 1)` — and `TableKeyed` is what a caller reaches for when it
+holds a key rather than an index.
+
+**An enum's wire identity is a METHOD** in Go, for the same reason: Go has no
+overloading, and a free pair would have to mint a per-enum unit-level name §11
+does not claim. `grade.TableEnumId()` gives the variant's hash and whether any
+variant names the value; `(&grade).TableEnumValue(id)` resolves one back.
+
+`<Name>TableType()` returns the reflection descriptor, with the same columns
+C++ carries — including the memory ones, because `unsafe.Offsetof` and
+`unsafe.Sizeof` are constant expressions of Go's own layout model rather than a
+guess about it. That is what lets ONE generic walk drive the text form for
+every table.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every
@@ -1843,6 +1901,24 @@ in [Per-language notes](#per-language-notes) — and it **allocates nothing**:
 numbers format through a stack sink, strings and keys land in the field's own
 storage, and `make tables-rust-alloc-audit` counts zero on every read and write
 path of every instance in the corpus.
+
+And the same three in Go, package-level over a `*T` and a `[]byte`:
+
+```go
+var report example.TableReport
+var ship example.ShipConfig
+example.ShipConfigFromJson(&ship, text, &report)     // fills ONE instance
+
+size := example.ShipConfigToJsonMeasure(&ship)       // exact, writes nothing
+buffer := make([]byte, size)
+example.ShipConfigToJson(&ship, buffer)
+```
+
+Nothing to add to a Go build either, for C#'s reason: a package compiles as a
+whole, so the walk is already there. It lands in its own `<Home>TableJson.go`
+all the same, so what it costs is legible — and the LINKER drops what nothing
+calls, so a binary that never reads or writes a text carries none of it. The
+Go read and write paths allocate NOTHING at all, measured rather than asserted.
 
 Every writer ends the text with exactly one newline, and every reader accepts a
 text with or without one — so a text is the same text in a file, in a diff and

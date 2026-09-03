@@ -148,10 +148,10 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++, and C# and Rust for the FIXED class.** C++ carries both
-classes; C# and Rust carry the fixed class (§6.1) — optionals, enum-keyed
-arrays, the text form (§16) and all — and each refuses a unit whose closure
-declares a pointer, naming its variable class as a follow-on. Every other
+**Backend status: C++, and C#, Go and Rust for the FIXED class.** C++ carries
+both classes; C#, Go and Rust carry the fixed class (§6.1) — optionals,
+enum-keyed arrays, the text form (§16) and all — and each refuses a unit whose
+closure declares a pointer, naming its variable class as a follow-on. Every other
 backend refuses a unit that declares tables at all, by name, with this document
 cited. The remaining per-language backends are named follow-ons (§15).
 
@@ -181,6 +181,19 @@ blittable `<Name>Row` records, because a cooked record IS the blittable row
 (§7.2, §19.3) and a block-only build wants the same structs a cook-only build
 does.
 
+**GO emits four sources per unit file**: `<Base>Table.go` (the storage structs,
+the codecs, the reflection descriptors), `<Base>Block.go` and `<Base>Cook.go`
+(the two accelerators, §19 and §7), and one `<Home>TableJson.go` per unit (the
+generic text walk). Two spellings are Go's own and the reason is at each site:
+an enum's identity pair (`TableEnumId` / `TableEnumValue`) is a METHOD on the
+enum type, because Go has no overloading and a free pair would have to mint a
+per-enum unit-level name §11 does not claim; and an enum-keyed array's storage
+IS the plain `[E.Max]T` the schema means, with the shift and both refusals in
+one `TableKeyed` helper, because Go has neither operator overloading nor a
+generic array extent. Its layout contract is a generated `init()` that REFUSES,
+naming the record, the field and both numbers, where C++ has `static_assert`,
+Rust has a const assert and C# a check at type initialization.
+
 **BIG-ENDIAN, per backend.** The C++ leg proves the wire, the block form and
 the cooked form crossing the byte order on a real big-endian target under an
 emulator. The Rust surface is CHECKED for that same target — the pinned
@@ -189,9 +202,13 @@ record's and every block projection's layout contract is a const assert over
 `size_of` and `offset_of`, so the check EVALUATES the whole layout model for
 big-endian. The RUN-time half is a named follow-on: the codecs are
 order-neutral by construction, and a cross-and-emulate Rust leg would turn that
-from a construction into a proof.
+from a construction into a proof. **The GO leg RUNS**, like C++'s: the driver
+cross-builds for s390x and answers the wire, the report and both text surfaces
+under the same pinned emulator, plus the two FOREIGN surfaces (§7, §19.1) —
+a cook and a block whose magic word is byte-reversed, which every leg on every
+host must refuse.
 
-**The BLOCK FORM (§2.7, §19) is live in C++, C# and Rust**, and it took C++ and
+**The BLOCK FORM (§2.7, §19) is live in C++, C#, Go and Rust**, and it took C++ and
 C# TOGETHER to land, because the form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path
@@ -203,7 +220,10 @@ generated padding, the layout check and the same descriptors; Rust emits
 `<base>_block.rs` per declaring file beside `block_runtime.rs`, the unit's own
 runtime home — the `#[repr(C)]` projection with no generated padding, because
 the representation IS the layout, the const asserts that hold it, the open
-path, rows as slices over the region, and the same descriptors. **The unit's
+path, rows as slices over the region, and the same descriptors; Go emits
+`<Base>Block.go`, the same shape again, with the blittable records carrying
+generated padding as C#'s do and the layout contract as the refusing `init()`
+above. **The unit's
 shared runtime is named by the PACKAGE in every port, so file order cannot
 reach it (§19.2).** The READ side is what the ported backends carry: a block is
 laid out by a producer, and the producer's half is C++'s. The Table sources
@@ -3482,21 +3502,23 @@ in build version (§20.5).
   enums are in scope on the same terms.
 - Tables under a backend that carries none (status, above) — refused with the
   follow-on named, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C# backend** — the C# port
-  carries the fixed class on the wire; its variable class there (the arena, the
-  builder, the region, the node-table codec) is a named follow-on, and a
-  pointered unit gets no `<Base>Table.cs` at all, with the refusal NAMED in every
-  source the unit does emit rather than left as a missing symbol.
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C# and Go backends** — both
+  ports carry the fixed class on the wire; their variable class there (the arena,
+  the builder, the region, the node-table codec) is a named follow-on, and a
+  pointered unit gets no `<Base>Table.cs` and no `<Base>Table.go` at all, with
+  the refusal NAMED in every source the unit does emit rather than left as a
+  missing symbol.
 
   **The refusal is of the WIRE and of nothing else, and the distinction is the
   design rather than an exception to it.** The two ACCELERATORS are POINTED AT,
   not parsed: a block (§19) and a cook (§7) are blittable records plus a header
   match, and neither needs one line of the codec the variable class is missing.
-  So a pointered unit's `<Base>Block.cs` and `<Base>Cook.cs` ARE emitted, its
-  `<Root>Cook.Open` opens its cooked assets in full, and what a consumer cannot
-  do in C# is `Measure`, `Save` and `Load` over the tolerant wire. **This is what
-  lets §7's "a root is any table, and every table gets one" hold in C# too**,
-  which a whole-unit refusal made impossible to say.
+  So a pointered unit's `<Base>Block.cs` and `<Base>Cook.cs` ARE emitted, and so
+  are its `<Base>Block.go` and `<Base>Cook.go`; its `<Root>Cook.Open` and its
+  `<Root>Open` open its cooked assets in full, and what a consumer cannot do in
+  either language is `Measure`, `Save` and `Load` over the tolerant wire.
+  **This is what lets §7's "a root is any table, and every table gets one" hold
+  in C# and Go too**, which a whole-unit refusal made impossible to say.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
   value-semantics data has no identity to point at; a pointer declared
   outside a table body; a specified default on a pointer field; and an
@@ -3601,6 +3623,13 @@ in build version (§20.5).
   is a definition and not only a claim, and it is claimed for every closure
   member all the same, on this list's own rule.
 
+  **GO SPELLS THE SAME VERBS AS FREE FUNCTIONS, because Go has them**:
+  `<X>Open` and `<X>At` are package-level, exactly as C++'s are, and `<X>Cook`
+  names the READ HANDLE — a struct of a region pointer and a length. What Go
+  makes a MEMBER is only what this list already leaves a language free to make
+  one: a block's row accessors and its per-array constants, and a cook's `Type`,
+  `Root` and the three §7.1 facts. A member claims nothing at file scope.
+
   **C# HAS NO FREE FUNCTIONS, so its claimed verbs are MEMBERS of a claimed
   TYPE** — the rule this list already gives the block form's accessors, applied
   to the cook. The C# table backend emits `<X>Cook`, a `readonly struct` over an
@@ -3694,6 +3723,19 @@ in build version (§20.5).
     names. §8.2 has a table-free unit's
     view file DEFINING those primitives, so a unit that declares no table
     can no longer be allowed to declare their names.
+
+    **GO WIDENS TWO OF THESE AND ADDS EIGHT, and both moves are the port's
+    spelling rather than a new construct.** `TableCookHeaderBytes` is a member
+    of `Schema` in C# and a package-level constant in Go, so the claim is the
+    union and the name is claimed; and `TableCookStorage`'s eight MEMBERS —
+    `TableCookStorageRecord`, `…Reference`, `…Bool`, `…Signed`, `…Unsigned`,
+    `…Float`, `…String`, `…Bytes` — are scoped inside a C# enum and FLAT
+    package-level constants in Go, which is exactly what the Go packet emitter
+    already does with a declared enum's variants and exactly what the checker
+    already claims for those. A port's spelling decides the claim. **Go's own
+    text walk claims nothing**, for C#'s reason in Go's spelling: every function
+    the walk defines is unexported, and a schema declaration always generates an
+    exported name, so the two sets cannot meet.
 
   **The view's own unit-scope spellings are refused as declaration names in
   every unit, always** (§8.3): `UnitView`, `UnitViewInfo`, `ViewType`,

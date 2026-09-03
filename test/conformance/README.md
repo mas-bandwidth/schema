@@ -117,6 +117,12 @@ pins, every other leg compares. The two batteries print their manifest rows on
 stdout rather than editing the manifest: a manifest that rewrites itself is a
 manifest nobody reviews.
 
+**A leg may be assembled from more than one binary, and it may be one.** The
+C++ and C# drivers dispatch the cook's dump to a binary each backend already
+had; the Go driver is a single binary that answers every surface in process,
+which is why its `cook` surface costs one exec rather than five. Both shapes
+satisfy the contract, because the contract is a COMMAND.
+
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64

@@ -2516,6 +2516,13 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) conformance-negative-control-block-dump
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) conformance-negative-control-go
+	# THE GO PORT's own instruments (docs/SPEC-TABLES.md): the allocation gate
+	# and its negative control, the forgery fuzzer plain and under -race, and
+	# two seconds of the soak. The hour is `make tables-go-soak`.
+	$(MAKE) tables-go-fuzz
+	cd test/go-tables && go test -count 1 .
+	$(MAKE) tables-go-fuzz-extent-negative-control
+	$(MAKE) tables-go-fuzz-maximum-negative-control
 	$(MAKE) tables-json-keyed-dup-negative-control
 	$(MAKE) tables-keyed-iteration-negative-control
 	$(MAKE) tables-keyed-none-refusal-ndebug
