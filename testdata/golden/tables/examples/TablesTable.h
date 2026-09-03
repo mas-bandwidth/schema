@@ -334,7 +334,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-inline constexpr uint64_t BuildVersion = 0x89c17e3f4a1f6255ull;
+inline constexpr uint64_t BuildVersion = 0x734b26e1a4d11cadull;
 
 } // namespace tabledemo
 

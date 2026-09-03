@@ -118,6 +118,33 @@ func csIntLit(v *big.Int, signed bool, widthBytes int) string {
 	return s + "L"
 }
 
+// tableStorageRange is the inclusive range an integer storage of the given
+// width can hold.
+func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
+	one := big.NewInt(1)
+	if signed {
+		hi := new(big.Int).Lsh(one, uint(bits-1))
+		return new(big.Int).Neg(hi), new(big.Int).Sub(hi, one)
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits)), one)
+}
+
+// tableClampEnds answers which ends of a declared min/max range a read can
+// actually clamp at. The decode local is the wire kind's own width, so a
+// bound sitting ON that width's limit is a comparison no decoded value can
+// satisfy and the emitter drops it — the same "this check cannot fire" test
+// the bits(N) width clamp already applies when N is the storage width.
+// docs/SPEC-TABLES.md §4's semantics are untouched: an elided end is one
+// that could never have clamped or counted. C# raises no diagnostic for a
+// comparison that cannot fire the way the C++ compilers do (issue #342);
+// the emitted shape mirrors C++'s all the same, because one table codec in
+// two languages is the point.
+func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
+	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	lo, hi := tableStorageRange(signed, widthBytes*8)
+	return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0
+}
+
 // fieldDefaultExpr renders the C# expression a field's default compares
 // against on the write side (elision) — identical values to the storage
 // initializers, so measure, save and the reader's prefill agree.
@@ -1073,10 +1100,19 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 		storage := csKindStorage(kind)
 		g.pf("%s{\n%s    %s decodedV = unchecked((%s)%s.%s());\n", ind, ind, storage, storage, rdr, tableGet(width))
 		if f.HasIntRange {
-			lo := csIntLit(f.IntMin, signed, width)
-			hi := csIntLit(f.IntMax, signed, width)
-			g.pf("%s    if (decodedV < %s) { decodedV = %s; r.Report.Clamped++; }\n", ind, lo, lo)
-			g.pf("%s    else if (decodedV > %s) { decodedV = %s; r.Report.Clamped++; }\n", ind, hi, hi)
+			low, high := tableClampEnds(f, width)
+			if low {
+				lo := csIntLit(f.IntMin, signed, width)
+				g.pf("%s    if (decodedV < %s) { decodedV = %s; r.Report.Clamped++; }\n", ind, lo, lo)
+			}
+			if high {
+				hi := csIntLit(f.IntMax, signed, width)
+				lead := "if"
+				if low {
+					lead = "else if"
+				}
+				g.pf("%s    %s (decodedV > %s) { decodedV = %s; r.Report.Clamped++; }\n", ind, lead, hi, hi)
+			}
 		}
 		if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 			maxv := (uint64(1) << f.Type.Width) - 1

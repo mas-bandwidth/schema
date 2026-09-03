@@ -1415,6 +1415,64 @@ tables-keyed-shift-negative-control: bin/schema
 	fi
 	@echo "negative control: the None slot back turns the BLOCK LAYOUT GATE and the tables suite red"
 
+# THE CLAMP-AT-STORAGE-LIMITS GATE (docs/SPEC-TABLES.md §4). A read clamps a
+# value to the field's declared range; a bound sitting ON its storage type's
+# own limit describes a check with no false case, and the emitter does not
+# write it — the same test that already drops a bits(N) width clamp when N is
+# the storage width.
+#
+# That rule is a BUILD rule and not only a shape: a tautological comparison is
+# an ERROR under the repo's own flags, and the two compilers split the work.
+# gcc reds the unsigned half — `decoded_v < 0ull`, "comparison of unsigned
+# expression in '< 0' is always false", -Wtype-limits, which -Wextra implies
+# and this names anyway. clang reds the signed half — `decoded_v < -128`,
+# -Wtautological-type-limit-compare. So a tree carrying such a field can read
+# clean on one platform and fail on the other, which is how it stayed
+# invisible until the tables bench corpus met it.
+#
+# tables/examples/Ranges.schema declares every integer width four ways — both
+# bounds at the limits, each limit alone, and one value off each end — so all
+# four emission shapes are compiled here under both diagnostics.
+CLAMP_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wtype-limits -ffp-contract=off
+
+.PHONY: tables-clamp-limits
+tables-clamp-limits: build/tables-generated/.stamp
+	@mkdir -p build
+	@printf '#include "RangesTable.h"\n' > build/clamp-limits-tu.cpp
+	$(CXX) $(CLAMP_CXXFLAGS) -Ibuild/tables-generated/examples -fsyntax-only build/clamp-limits-tu.cpp
+	@echo "clamp-at-storage-limits gate: the bounded corpus carries no comparison that cannot fire"
+
+# The negative control puts the PRE-FIX emission back through `go build
+# -overlay`, so no tracked file is written: the two comparisons that decide
+# which ends are live become non-strict, which is always true given the
+# checker already refuses a bound outside its storage — every declared end
+# written, storage limit or not.
+.PHONY: tables-clamp-limits-negative-control
+tables-clamp-limits-negative-control: bin/schema
+	@mkdir -p build
+	@sed 's|return f.IntMin.Cmp(lo) > 0, f.IntMax.Cmp(hi) < 0|return f.IntMin.Cmp(lo) >= 0, f.IntMax.Cmp(hi) <= 0 // SABOTAGED: both ends always written|' \
+		internal/codegen/cpptable/codecs.go > build/cpptable-always-clamp.gotext
+	@grep -q SABOTAGED build/cpptable-always-clamp.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/codecs.go":"%s/build/cpptable-always-clamp.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-always-clamp-overlay.json
+	@go build -overlay=build/cpptable-always-clamp-overlay.json -o build/schema-always-clamp ./cmd/schema
+	@rm -rf build/clamp-sabotage && mkdir -p build/clamp-sabotage
+	@./build/schema-always-clamp generate --lang cpp --out build/clamp-sabotage tables/examples
+	@# the rest of the corpus is UNMOVED by the sabotage — no other declared
+	@# bound in it sits on a storage limit, which is why the defect survived
+	@cmp -s build/clamp-sabotage/TablesTable.h build/tables-generated/examples/TablesTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage moved a file it has no business moving"; exit 1; }
+	@printf '#include "RangesTable.h"\n' > build/clamp-limits-tu.cpp
+	@if $(CXX) $(CLAMP_CXXFLAGS) -Ibuild/clamp-sabotage -fsyntax-only build/clamp-limits-tu.cpp \
+			> build/clamp-limits-negative.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the pre-fix emission compiled clean — this compiler diagnoses neither half"; exit 1; \
+	fi
+	@grep -q "always false" build/clamp-limits-negative.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the build went red, but not on a comparison that cannot fire"; \
+		  cat build/clamp-limits-negative.log; exit 1; }
+	@echo "negative control: the storage-limit clamps back turn the build red — $$(grep -c 'always false' build/clamp-limits-negative.log) comparisons that cannot fire"
+
 # Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
 # carry no serialize dependency, and this build proves it stays that way.
 #
@@ -1928,6 +1986,8 @@ test: build/schema_test build/schema_test_guard build/schema_test_tables build/s
 	$(MAKE) tables-keyed-none-refusal-ndebug
 	$(MAKE) tables-keyed-none-refusal-negative-control
 	$(MAKE) tables-keyed-shift-negative-control
+	$(MAKE) tables-clamp-limits
+	$(MAKE) tables-clamp-limits-negative-control
 	$(MAKE) tables-block
 	$(MAKE) tables-block-fuzz
 	$(MAKE) tables-block-fuzz-extent-negative-control

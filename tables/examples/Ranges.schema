@@ -1,0 +1,97 @@
+// Ranges.schema — declared bounds AT the storage limits (docs/SPEC-TABLES.md §4).
+//
+// A read clamps a value to the field's declared range and counts it. A bound
+// that sits ON its storage type's own limit describes a value the decode
+// local cannot hold, so the check can never fire and the emitter does not
+// write it — the same "this check cannot fire" test that already drops a
+// bits(N) width clamp when N is the storage width. Nothing about §4's
+// semantics changes: an elided end is one that could never have clamped.
+//
+// The emission is a BUILD rule and not only a shape: a comparison that
+// cannot fire is an ERROR under the repo's own flags, and the two compilers
+// split the work. gcc reds the unsigned half — `decoded_v < 0ull`,
+// -Wtype-limits. clang reds the signed half — `decoded_v < -128`,
+// -Wtautological-type-limit-compare. Neither catches the other's, so a tree
+// carrying such a field can read clean on one platform and fail on the
+// other.
+//
+// Every integer width appears here four ways — both bounds at the limits,
+// each limit alone, and one value off each end — so all four emission shapes
+// (no clamp, upper only, lower only, both) are compiled under both
+// diagnostics by `make tables-clamp-limits`.
+package tabledemo
+
+// The signed widths. int8's storage is [-128, 127], int64's is
+// [-9223372036854775808, 9223372036854775807], and a bound landing on either
+// end of either is a comparison with no false case.
+table RangedSigned
+{
+    i8_span   int8 | min = -128, max = 127
+    i8_low    int8 | min = -128, max = 126
+    i8_high   int8 | min = -127, max = 127
+    i8_inside int8 | min = -127, max = 126
+
+    i16_span   int16 | min = -32768, max = 32767
+    i16_low    int16 | min = -32768, max = 32766
+    i16_high   int16 | min = -32767, max = 32767
+    i16_inside int16 | min = -32767, max = 32766
+
+    i32_span   int32 | min = -2147483648, max = 2147483647
+    i32_low    int32 | min = -2147483648, max = 2147483646
+    i32_high   int32 | min = -2147483647, max = 2147483647
+    i32_inside int32 | min = -2147483647, max = 2147483646
+
+    i64_span   int64 | min = -9223372036854775808, max = 9223372036854775807
+    i64_low    int64 | min = -9223372036854775808, max = 9223372036854775806
+    i64_high   int64 | min = -9223372036854775807, max = 9223372036854775807
+    i64_inside int64 | min = -9223372036854775807, max = 9223372036854775806
+
+    // ELEMENTS take the same path as scalars: an array of a fully spanned
+    // int16 must emit no clamp inside the element loop either.
+    edges [..4]int16 | min = -32768, max = 32767
+}
+
+// The unsigned widths. `min = 0` is the storage minimum at every one of them,
+// which is the spelling g++ reds — `decoded_v < 0ull` is always false.
+//
+// The rows whose range starts at 1 carry `= 1`: a field whose range excludes
+// zero must declare a default inside it, or the value's own zero form is out
+// of range and every read of it clamps.
+table RangedUnsigned
+{
+    u8_span   uint8     | min = 0, max = 255
+    u8_low    uint8     | min = 0, max = 254
+    u8_high   uint8 = 1 | min = 1, max = 255
+    u8_inside uint8 = 1 | min = 1, max = 254
+
+    u16_span   uint16     | min = 0, max = 65535
+    u16_low    uint16     | min = 0, max = 65534
+    u16_high   uint16 = 1 | min = 1, max = 65535
+    u16_inside uint16 = 1 | min = 1, max = 65534
+
+    u32_span   uint32     | min = 0, max = 4294967295
+    u32_low    uint32     | min = 0, max = 4294967294
+    u32_high   uint32 = 1 | min = 1, max = 4294967295
+    u32_inside uint32 = 1 | min = 1, max = 4294967294
+
+    u64_span   uint64     | min = 0, max = 18446744073709551615
+    u64_low    uint64     | min = 0, max = 18446744073709551614
+    u64_high   uint64 = 1 | min = 1, max = 18446744073709551615
+    u64_inside uint64 = 1 | min = 1, max = 18446744073709551614
+
+    counts [..4]uint64 | min = 0, max = 18446744073709551615
+}
+
+// bits(N) declares its range by its WIDTH, and the width clamp is the older
+// half of the same rule: it is written only when N is narrower than the
+// storage the wire kind gives it. The four widths that fill their storage
+// exactly emit nothing; the two that do not emit one clamp each.
+table RangedWidths
+{
+    b8  bits(8)
+    b16 bits(16)
+    b32 bits(32)
+    b64 bits(64)
+    b12 bits(12)
+    b48 bits(48)
+}
