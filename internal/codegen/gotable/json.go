@@ -44,7 +44,8 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 	b.WriteString("// exists for carry them) and never written; comments are not JSON and are\n")
 	b.WriteString("// refused; unknown keys are skipped and counted; a duplicate key is last-wins\n")
 	b.WriteString("// and counted; a key present with the wrong JSON type is skipped and counted,\n")
-	b.WriteString("// never coerced.\n\n")
+	b.WriteString("// never coerced. The canonical text ends with exactly ONE newline, which the\n")
+	b.WriteString("// writer emits and the reader accepts with or without (§16.1).\n\n")
 	fmt.Fprintf(&b, "package %s\n\n", u.Package)
 	b.WriteString("import (\n\t\"math\"\n\t\"strconv\"\n\t\"strings\"\n\t\"unsafe\"\n)\n\n")
 	b.WriteString(tableJsonWalkSource)
@@ -1825,9 +1826,12 @@ func tableJsonRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	info.Reset(value)
 	ok := tableJsonReadTable(&in, value, info, 0)
 	if ok {
+		// the canonical text ends with ONE newline and a text without one is
+		// the same text: whitespace after the object is skipped either way,
+		// and anything else is trailing rubbish rather than one text
 		in.space()
 		if in.pos != len(in.text) {
-			in.bad = true // trailing rubbish is not one text
+			in.bad = true
 		}
 	}
 	if in.bad || !ok {
@@ -1842,6 +1846,10 @@ func tableJsonWrite(value unsafe.Pointer, info *TableTypeInfo, buffer []byte) in
 	if !tableJsonWriteValue(&out, value, info, 0) {
 		return -1
 	}
+	// THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every writer
+	// emits it — this one, the C++ walk, the C# walk and schema unpack — and
+	// every reader accepts a text with or without.
+	out.put('\n')
 	if out.overflow {
 		return -1
 	}
