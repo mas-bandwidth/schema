@@ -118,6 +118,7 @@ timing internal/baseline/file.go 1 the history entry's calendar date — a day w
 
 timing test/tables/block_gate2_main.cpp 6 gate 2's C++ half (§12.1): the per-frame write, generated against the hand-written scatter
 timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame read, generated against the hand mirror
+timing test/conformance/harness/wirefuzz.go 1 the wire fuzzer's throughput line (SPEC-TABLES §4.2): mutants per second so N can be sized to the budget — no schema shape measured
 
 # THE COOK's OPEN-COST GATE (docs/SPEC-TABLES.md §7, §7.5) measures the ABSENCE of
 # work, which is why it needs a clock and why it is not a bench. `Open` is

@@ -30,8 +30,6 @@ const (
 	spotRecordType                     // a node record's u64 type id
 )
 
-var spotNames = [...]string{"id", "kind", "length", "count", "index", "key", "arm", "node-count", "record-type"}
-
 type wireSpot struct {
 	kind  wireSpotKind
 	off   int

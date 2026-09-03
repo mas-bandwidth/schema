@@ -131,7 +131,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	var rep tabletext.Report
 	ok, derr := tablewire.Decode(r.model, inst, data, &rep)
 	if derr != nil {
-		return ans, fmt.Errorf("the oracle refused the root itself: %v", derr)
+		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
 	}
 	ans.report = Counts{Unknown: rep.Unknown, KindMismatch: rep.KindMismatch, Clamped: rep.Clamped, Duplicate: rep.Duplicate, Malformed: rep.Malformed || !ok}
 	encoded, eerr := tablewire.Encode(r.model, inst)
@@ -204,7 +204,7 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 	for i := range roots {
 		b, err := leg.stdout.ReadByte()
 		if err != nil {
-			return nil, fmt.Errorf("the leg did not answer the roster: %v\n%s", err, leg.stderr.String())
+			return nil, fmt.Errorf("the leg did not answer the roster: %w\n%s", err, leg.stderr.String())
 		}
 		leg.known[i] = b != 0
 	}
@@ -378,8 +378,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	// the stream: a producer that both the writer and the comparator follow,
 	// so a mutant is generated once and never held past its comparison
 	type item struct {
-		m    *wireMutant
-		last bool
+		m *wireMutant
 	}
 	produced := make(chan item, 256)
 	go func() {
@@ -455,7 +454,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if err := <-writeErr; err != nil {
 		stderr := leg.stderr.String()
 		leg.kill()
-		return fmt.Errorf("FAILED: the leg closed its input mid-stream: %v\n%s", err, stderr)
+		return fmt.Errorf("FAILED: the leg closed its input mid-stream: %w\n%s", err, stderr)
 	}
 	if err := leg.close(); err != nil {
 		return fmt.Errorf("FAILED: the leg exited with an error after the last mutant: %v\n%s", err, leg.stderr.String())
