@@ -30,6 +30,7 @@ int main( void )
     check( SceneBuilderInit( &builder ), "builder init" );
     root = SceneBuilderRoot( &builder );
     check( root != NULL, "the builder has a root" );
+    if ( root == NULL ) { return 1; } /* everything below writes through it */
 
     memcpy( root->name, "world", 5 );
     root->name_length = 5;
