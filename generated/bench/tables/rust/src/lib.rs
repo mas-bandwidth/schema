@@ -24,5 +24,7 @@ mod benchtable_table;
 pub use benchtable_table::*;
 mod block_runtime;
 pub use block_runtime::*;
+mod cook_runtime;
+pub use cook_runtime::*;
 mod table_runtime;
 pub use table_runtime::*;

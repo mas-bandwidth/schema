@@ -1391,17 +1391,20 @@ tree mirrors the schema tree a person navigates.
   include graph to refuse.
 - **Rust:** one module per schema file (lowercased basename) plus a generated
   `lib.rs` declaring and glob re-exporting them. A unit that declares TABLES
-  grows four more module kinds, all declared by that same crate root: one
-  `<base>_table.rs` per schema file with the table wire's codecs, its
-  reflection descriptors and its TEXT FORM (SPEC-TABLES.md §16); one
-  `table_runtime.rs` per UNIT carrying the shared runtime and the text form's
-  one generic walk, emitted once because a unit is one crate and a second copy
-  would be a duplicate definition rather than C++'s harmless re-inclusion
-  behind a guard; one `<base>_cook.rs` per schema file with the cooked form's
-  blittable `<Name>Row` records and their layout contract as const asserts
-  (§7, §20.3); and the block form's `block_runtime.rs` plus one
-  `<base>_block.rs` (§19). A table-free unit grows none of them, and its
-  packet modules are byte-identical either way.
+  grows three per-file modules and three per-UNIT runtimes, all declared by
+  that same crate root: `<base>_table.rs` with the table wire's codecs, its
+  reflection descriptors and its TEXT FORM (SPEC-TABLES.md §16);
+  `<base>_cook.rs` with the cooked form's blittable `<Name>Row` records and
+  their layout contract as const asserts (§7, §20.3); `<base>_block.rs` with
+  the block form's projection and open path (§19); and beside them
+  `table_runtime.rs`, `cook_runtime.rs` and `block_runtime.rs`, which carry
+  each surface's shared runtime and the text form's one generic walk. **The
+  three runtimes are named by the PACKAGE and not by a file**, on the rule
+  §19.2 states for every port: a unit is one crate, so a second copy would be
+  a duplicate definition rather than C++'s harmless re-inclusion behind a
+  guard, and a runtime that lived in whichever file sorted first would
+  relocate whole whenever a corpus file sorted earlier. A table-free unit
+  grows none of them, and its packet modules are byte-identical either way.
 - **C#:** one `.cs` file per schema file, types at namespace level and every
   function and constant on `public static partial class Schema`, in
   `namespace <Package>`. A unit that declares TABLES emits one further file

@@ -67,6 +67,7 @@ const (
 const (
 	RuntimeModule      = "table_runtime"
 	BlockRuntimeModule = "block_runtime"
+	CookRuntimeModule  = "cook_runtime"
 )
 
 // Generate returns module filename -> file contents for the unit's table
@@ -103,6 +104,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 
 	if len(refused) == 0 {
 		out[RuntimeModule+".rs"] = runtimeModule(u, closure)
+	}
+	if anyCookable(u, closure) {
+		out[CookRuntimeModule+".rs"] = append([]byte(banner), cookRuntimeModule(u)...)
 	}
 
 	for _, f := range u.Files {

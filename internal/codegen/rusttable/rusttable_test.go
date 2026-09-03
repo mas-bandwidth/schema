@@ -200,11 +200,81 @@ func TestValueOnlyUnitCarriesTheWholeSurface(t *testing.T) {
 			t.Errorf("the generated table module contains %q — it must stand alone", banned)
 		}
 	}
-	for _, want := range []string{"probe_cook.rs", "probe_block.rs", "block_runtime.rs", RuntimeModule + ".rs"} {
+	for _, want := range []string{"probe_cook.rs", "probe_block.rs", "block_runtime.rs",
+		CookRuntimeModule + ".rs", RuntimeModule + ".rs"} {
 		if _, ok := out[want]; !ok {
 			t.Errorf("a fixed-class unit emitted no %s", want)
 		}
 	}
+}
+
+// TestSharedRuntimesAreFileOrderIndependent is #347/#351's rule, held for
+// Rust: the unit's THREE shared runtimes are named by the PACKAGE, so a corpus
+// file that sorts earlier cannot relocate one of them. Before the cook runtime
+// moved out of "the first file that declares a table", adding a file named
+// earlier in the alphabet moved two thousand lines between modules — correct
+// output, and a diff nobody can read.
+func TestSharedRuntimesAreFileOrderIndependent(t *testing.T) {
+	one := generate(t, valueOnly)
+	two, err := Generate(unitWithExtraFile(t, valueOnly))
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	for _, name := range []string{RuntimeModule + ".rs", CookRuntimeModule + ".rs", BlockRuntimeModule + ".rs"} {
+		a, ok := one[name]
+		if !ok {
+			t.Fatalf("no %s", name)
+		}
+		b, ok := two[name]
+		if !ok {
+			t.Fatalf("%s disappeared when a file was added ahead of the first one", name)
+		}
+		if string(a) != string(b) {
+			t.Errorf("%s moved when a file sorted ahead of the first: a shared runtime is named by the PACKAGE, so file order must not reach it (docs/SPEC-TABLES.md §19.2)", name)
+		}
+	}
+	// and the per-file modules of the ORIGINAL file are untouched too
+	for _, name := range []string{"probe_table.rs", "probe_cook.rs", "probe_block.rs"} {
+		if string(one[name]) != string(two[name]) {
+			t.Errorf("%s moved when an unrelated file was added ahead of it", name)
+		}
+	}
+}
+
+// A DOCUMENTATION-ONLY file, on purpose. It must declare nothing: adding a
+// `type` would move the unit's protocol id, and the protocol id is in every
+// generated banner and folded into the build version — so a moved runtime
+// would then be correct rather than a defect, and the test would be measuring
+// the wrong thing. What this file changes is the FILE ORDER and nothing else.
+const extraFileSrc = `package probe
+
+// a file that declares nothing, so the only thing it changes is which
+// basename sorts first
+`
+
+// unitWithExtraFile is the same unit with one more schema file whose basename
+// sorts BEFORE the original's — the exact edit that used to relocate a runtime.
+func unitWithExtraFile(t *testing.T, src string) *ir.Unit {
+	t.Helper()
+	files := []check.SourceFile{}
+	for _, f := range []struct{ base, text string }{
+		{"Alpha", extraFileSrc},
+		{"Probe", src},
+	} {
+		ast, perrs := parser.Parse(f.base+".schema", []byte(f.text))
+		if len(perrs) > 0 {
+			t.Fatalf("parse %s: %v", f.base, perrs[0])
+		}
+		files = append(files, check.SourceFile{
+			Path: f.base + ".schema", Name: f.base + ".schema", Base: f.base,
+			Bytes: []byte(f.text), AST: ast,
+		})
+	}
+	u, cerrs := check.Unit(files)
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	return u
 }
 
 // TestRelocatableStorageIsAsserted: every closure member is #[repr(C)] and

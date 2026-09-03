@@ -36,21 +36,15 @@ func (g *gen) cookModule() []byte {
 	if !any {
 		return nil
 	}
-	first := g.isCookHome()
-
 	var b strings.Builder
 	b.WriteString(g.banner)
 	b.WriteString(header(g.file.Base, g.unit.Package, "the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half"))
 	b.WriteString(cookModuleBanner)
 	b.WriteString("use crate::*;\n\n")
-	if first {
-		fmt.Fprintf(&b, cookRuntime, ir.BuildVersion(g.unit))
-		b.WriteString(cookDescriptorRuntime)
-	}
 
 	g.body.Reset()
 	g.emitCookRows(roots)
-	g.emitCookLayout(roots, first)
+	g.emitCookLayout(roots, false)
 	g.emitCookDescriptors(roots)
 	for _, st := range roots {
 		g.emitCookHandle(st)
@@ -72,24 +66,22 @@ func (g *gen) cookRoots() []*ir.Struct {
 	return out
 }
 
-// isCookHome reports whether this file is the one that carries the unit's
-// shared cook runtime — the first file, by basename, that declares a table.
-func (g *gen) isCookHome() bool {
-	for _, f := range g.unit.Files {
-		if len(f.Tables) > 0 || g.fileHasClosureType(f) {
-			return f.Base == g.file.Base
-		}
-	}
-	return false
-}
-
-func (g *gen) fileHasClosureType(f *ir.File) bool {
-	for _, d := range f.Decls {
-		if st, ok := d.(*ir.Struct); ok && g.closure[st.Name] {
-			return true
-		}
-	}
-	return false
+// cookRuntimeModule is the unit's ONE cook runtime home: the §7 read runtime,
+// the descriptor family a cooked walk reads, and the one assert every record
+// shares. It is named by the PACKAGE and not by a file, so file order cannot
+// reach it (§19.2's rule, and the same one the table and block runtimes
+// already follow here) — a corpus file that sorted earlier used to relocate
+// the whole runtime, which is correct output and a diff nobody can read.
+func cookRuntimeModule(u *ir.Unit) []byte {
+	var b strings.Builder
+	b.WriteString(header(runtimeSourceName(u), u.Package,
+		"the COOKED FORM's shared runtime (docs/SPEC-TABLES.md §7)"))
+	b.WriteString(cookModuleBanner)
+	fmt.Fprintf(&b, cookRuntime, ir.BuildVersion(u))
+	b.WriteString(cookDescriptorRuntime)
+	b.WriteString("// a bool in a cooked record is ONE byte, in this runtime as in the model\n")
+	b.WriteString("const _: () = assert!(core::mem::size_of::<bool>() == 1);\n")
+	return []byte(b.String())
 }
 
 const cookModuleBanner = `//
@@ -398,15 +390,12 @@ func cookElemType(f *ir.Field) string {
 // runtime that laid one of these records out differently would read a cook at
 // the wrong offsets and never know. C++ says this with static_assert; Rust
 // says it with a const block, which fails the BUILD rather than a test.
-func (g *gen) emitCookLayout(members []*ir.Struct, first bool) {
+func (g *gen) emitCookLayout(members []*ir.Struct, _ bool) {
 	g.pf("// THE LAYOUT CONTRACT (docs/SPEC-TABLES.md §20.3), checked at COMPILE\n")
 	g.pf("// TIME: every size and every offset below is the number the compiler\n")
 	g.pf("// derived from the declaration, and this build agreeing with it is what\n")
 	g.pf("// makes a cook's bytes readable here. Neither side's layout is inferred\n")
 	g.pf("// from the other's.\n")
-	if first {
-		g.pf("const _: () = assert!(core::mem::size_of::<bool>() == 1, \"a bool in a cooked record is ONE byte\");\n")
-	}
 	for _, st := range members {
 		if !g.cookable(st.Name) {
 			continue
@@ -695,4 +684,17 @@ func cookStorageOf(u *ir.Unit, f *ir.Field) (string, int64) {
 		}
 	}
 	return "TableCookStorage::Unsigned", 1
+}
+
+// anyCookable reports whether the unit has a cooked form at all: a record
+// whose by-value closure reaches a union has none, and a unit of only those
+// gets no cook runtime rather than a runtime nothing calls.
+func anyCookable(u *ir.Unit, closure map[string]bool) bool {
+	g := &gen{unit: u, closure: closure}
+	for name := range closure {
+		if g.cookable(name) {
+			return true
+		}
+	}
+	return false
 }
