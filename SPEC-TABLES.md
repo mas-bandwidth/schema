@@ -3555,8 +3555,8 @@ in build version (§20.5).
 
   - **The three per-declaration spellings the descriptors emit** —
     `<Name>TableFields`, `<Name>TableInfo` and `<Name>TableType` — claimed
-    for every declaration in every unit. All three are in the 25 above and
-    are claimed today only for closure members; the descriptor emission
+    for every declaration in every unit. All three are in the suffix list
+    above and are claimed today only for closure members; the descriptor emission
     spells all three per declaration, so widening one of them would leave
     two open.
   - **The unit-level TABLE-RUNTIME names**, claimed in every unit rather

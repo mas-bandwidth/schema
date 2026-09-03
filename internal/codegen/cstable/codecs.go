@@ -379,8 +379,8 @@ func guardWalk(st *ir.Struct, csharp bool) map[string]string {
 // allocation.
 //
 // The name is VERB-FIRST and overloaded on the value's type, deliberately:
-// SPEC-TABLES.md §11 freezes the 23 name-first suffixes a closure member
-// claims, and a port must not quietly mint a 24th. TableReset joins
+// SPEC-TABLES.md §11 freezes the name-first suffixes a closure member
+// claims, and a port must not quietly mint another. TableReset joins
 // TableEnumId/TableEnumValue in the verb-first family instead, which claims
 // nothing from a declaration's name.
 func (g *tableGen) emitTableReset(st *ir.Struct) {

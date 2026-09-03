@@ -476,7 +476,7 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 	// Every Table*-prefixed identifier, whatever surrounds it. The word
 	// boundary is what keeps the name-first spellings out: RootConfigTableType
 	// has no boundary before its Table, and is claimed by suffix instead
-	// (SPEC-TABLES.md §11's 23). Line comments are stripped first — prose is
+	// (SPEC-TABLES.md §11). Line comments are stripped first — prose is
 	// not an identifier, and scanning it would make the gate a spelling
 	// police for the runtime's own documentation.
 	ident := regexp.MustCompile(`\bTable[A-Za-z0-9_]*\b`)
