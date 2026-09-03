@@ -3767,3 +3767,107 @@ C_CONFORMANCE_INCLUDES := -Itest/conformance/c -Ibuild/tables-generated-c/exampl
 build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $@ -lm
+
+# THE ZERO-COST GATE, C side (docs/SPEC-TABLES.md §2.2). A table with no pointer
+# in its by-value closure must pay NOTHING for the pointer machinery — no
+# builder, no arena, no reference slot, no lifecycle surface, no extra
+# descriptor column. The pointer-free corpus's generated headers must not
+# contain one symbol of it.
+.PHONY: tables-c-zero-cost
+tables-c-zero-cost: build/tables-generated-c/.stamp
+	@for f in build/tables-generated-c/examples/*Table.h build/tables-generated-c/v1/*Table.h \
+	          build/tables-generated-c/v2/*Table.h build/tables-generated-c/p1/*Table.h \
+	          build/tables-generated-c/p3/*Table.h; do \
+		if grep -nE "TableArena|TableWorker|TableRef|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
+			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
+		fi; \
+	done
+	@echo "tables C zero-cost gate: value-only tables carry no pointer machinery"
+
+# THE GENERIC-WALK GATE, C side (docs/SPEC-TABLES.md §16). The text form is ONE
+# walk over the reflection descriptors, not a per-table codec — that is the
+# property which makes it schema's rather than a packer's. The walker's source
+# must therefore be the SAME BYTES in every generated .c of the corpus, whose
+# units disagree about packages, tables, kinds and pointer modes. Nothing
+# outside the markers is compared and nothing inside them is normalised away:
+# the C walk names no package at all, because its entry points are reached
+# through the prefixed wrappers rather than through a namespace.
+.PHONY: tables-c-json-walk
+tables-c-json-walk: build/tables-generated-c/.stamp
+	@rm -rf build/json-walk-c && mkdir -p build/json-walk-c
+	@for f in build/tables-generated-c/*/*Table.c; do \
+		out=build/json-walk-c/$$(echo $$f | tr / _); \
+		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+		if [ ! -s $$out ]; then \
+			if grep -q "VARIABLE-LENGTH. Its text form reads through the builder" $${f%.c}.h; then rm -f $$out; continue; fi; \
+			echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; \
+		fi; \
+	done
+	@first=""; for f in build/json-walk-c/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
+		fi; \
+	done
+	@echo "tables C generic-walk gate: one walker, byte-identical in $$(ls build/json-walk-c | wc -l | tr -d ' ') generated .c files"
+
+# THE C LEG's SANITIZED BUILD (docs/SPEC-TABLES.md §19.5, §7.5): the same driver,
+# under ASan and UBSan with no recovery, so a forged block or a forged cook that
+# walked one byte past its extent is a crash rather than a silent pass. The
+# forgery batteries allocate EXACTLY the extent their caller claims, so an
+# over-read lands in a redzone.
+C_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+
+build/conformance-c-asan: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O1 -ffp-contract=off $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $@ -lm
+
+# THE FORGERY FUZZER, C side. The conformance batteries are the PINNED damage —
+# 11 block rows and 111 cook rows a person reviewed; this is the unpinned half:
+# random single-word damage over the same two forms, under the sanitizers, with
+# the one invariant an Open owes an untrusted file. It never CRASHES and it
+# never reads past the extent its caller claimed, whatever it answers.
+build/schema_test_c_fuzz: build/tables-generated-c/.stamp test/c-tables/fuzz_main.c $(wildcard test/conformance/c/*.h)
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O1 -ffp-contract=off $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) \
+		test/c-tables/fuzz_main.c test/conformance/c/unit_blockdemo.c test/conformance/c/unit_graphdemo.c \
+		build/tables-generated-c/block/RenderBlock.c build/tables-generated-c/block/RenderTable.c \
+		build/tables-generated-c/block/PaddedBlock.c build/tables-generated-c/block/PaddedTable.c \
+		build/tables-generated-c/pointers/GraphTable.c build/tables-generated-c/pointers/MarksTable.c \
+		build/tables-generated-c/pointers/PartsTable.c -o $@ -lm
+
+# THE SOAK, C side (docs/SPEC-TABLES.md, Glenn's profile-and-soak law): read and
+# write the whole wire corpus in a loop, with the process's own allocation
+# counters read at both ends. The read path allocates NOTHING — the caller owns
+# every buffer — so the number the soak prints has to be the same at hour zero
+# and hour one, and a leak of one byte per iteration is what it exists to find.
+#   make tables-c-soak SOAK_SECONDS=3600
+SOAK_SECONDS ?= 20
+build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_main.c
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off $(C_CONFORMANCE_INCLUDES) \
+		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
+		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
+		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
+		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
+		build/tables-generated-c/examples/PackTable.c build/tables-generated-c/examples/GuardedTable.c \
+		build/tables-generated-c/examples/RangesTable.c \
+		build/tables-generated-c/v1/V1Table.c build/tables-generated-c/v2/V2Table.c \
+		build/tables-generated-c/p1/P1Table.c build/tables-generated-c/p3/P3Table.c -o $@ -lm
+
+.PHONY: tables-c-soak
+tables-c-soak: build/schema_test_c_soak
+	./build/schema_test_c_soak $(SOAK_SECONDS)
+
+.PHONY: tables-c-fuzz
+tables-c-fuzz: build/schema_test_c_fuzz
+	SEED=$(SEED) N=$(N) ./build/schema_test_c_fuzz
+
+# THE C TABLES LEG, whole. Everything above, plus the conformance driver under
+# the sanitizers over every surface it answers.
+.PHONY: tables-c
+tables-c: build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz
+	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
+	$(MAKE) tables-c-soak SOAK_SECONDS=20

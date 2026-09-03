@@ -1,0 +1,4 @@
+#!/bin/sh
+# THE C LEG under ASan and UBSan (Makefile: build/conformance-c-asan).
+set -e
+exec build/conformance-c-asan "$@"
