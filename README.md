@@ -132,11 +132,11 @@ would have hand-written, not an interpreter walking a schema at runtime.
   refused, not clamped or trusted.
 - **Relocatable by construction** — generated types are trivially copyable
   and standard-layout, so raw-struct blobs and parallel scatter/gather are
-  safe by design; see [The wire](USAGE.md#the-wire).
+  safe by design; see [The wire](docs/USAGE.md#the-wire).
 - **The compiler is a library too** — load, check and generate from Go,
   and register generators of your own; the nine built-in backends come through
   the same interface yours does. See
-  [Embedding the compiler](USAGE.md#embedding-the-compiler).
+  [Embedding the compiler](docs/USAGE.md#embedding-the-compiler).
 - **Canonical source format** — every command formats in place.
 - **Generated code is yours**, under whatever licence you ship. See
   [License](#license).
@@ -150,29 +150,29 @@ schema check    <dir of .schema files>
 schema generate --lang c|cpp|cs|dart|elixir|go|java|js|rust --out <outdir> <dir>
 ```
 
-**[USAGE.md](USAGE.md)** is the guide — every language feature, with real
+**[USAGE.md](docs/USAGE.md)** is the guide — every language feature, with real
 examples and the code each one generates, and how to drive the compiler from
 Go instead of the command line.
 
 Building the tests needs the serialize runtimes checked out beside this
 repo (generated Dart, Java and Elixir are self-contained and need only their
 pinned toolchains), then
-`make test` — [CONTRIBUTING.md](CONTRIBUTING.md) has the clone
+`make test` — [CONTRIBUTING.md](docs/CONTRIBUTING.md) has the clone
 list and what the gates prove.
 
 ## Documentation
 
 | Document | What's in it |
 |---|---|
-| **[USAGE.md](USAGE.md)** | Every language feature, with the code it generates. Start here. |
-| **[USECASES.md](USECASES.md)** | The use cases schema is designed for — the form that serves each one, the contract it carries, and the proof it has today. |
-| **[PERFORMANCE.md](PERFORMANCE.md)** | Generated-code benchmarks, and how to read them honestly. |
-| **[SPEC.md](SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
-| **[COMPARISON.md](COMPARISON.md)** | The same packet in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
-| **[FAQ.md](FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |
-| **[VERSIONING.md](VERSIONING.md)** | What a version number promises — chiefly that a 1.x upgrade will not move your wire. |
-| **[CONTRIBUTING.md](CONTRIBUTING.md)** | How to build it, the gates a change has to pass, and what a golden change means. |
-| **[SECURITY.md](SECURITY.md)** | The threat model, and how to report a vulnerability privately. |
+| **[USAGE.md](docs/USAGE.md)** | Every language feature, with the code it generates. Start here. |
+| **[USECASES.md](docs/USECASES.md)** | The use cases schema is designed for — the form that serves each one, the contract it carries, and the proof it has today. |
+| **[PERFORMANCE.md](docs/PERFORMANCE.md)** | Generated-code benchmarks, and how to read them honestly. |
+| **[SPEC.md](docs/SPEC.md)** | The normative reference — grammar, wire law, every edge case. |
+| **[COMPARISON.md](docs/COMPARISON.md)** | The same packet in schema, Cap'n Proto, Protobuf and FlatBuffers — 28 vs 52 vs 56 vs 72 bytes, measured, with a script to re-run it. |
+| **[FAQ.md](docs/FAQ.md)** | Isn't this just FlatBuffers / Protobuf / Cap'n Proto? And other blunt questions. |
+| **[VERSIONING.md](docs/VERSIONING.md)** | What a version number promises — chiefly that a 1.x upgrade will not move your wire. |
+| **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** | How to build it, the gates a change has to pass, and what a golden change means. |
+| **[SECURITY.md](docs/SECURITY.md)** | The threat model, and how to report a vulnerability privately. |
 
 Where a guide and a spec cover the same ground: the spec keeps the spelling a
 consumer needs to write from the page alone, even when USAGE also shows it.

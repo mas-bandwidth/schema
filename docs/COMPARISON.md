@@ -5,7 +5,7 @@ This is that claim, measured, on one representative packet.
 
 **Every number here is produced by running the real encoder.** Nothing is
 computed by hand, and nothing is read out of a compiler constant. The schemas,
-the input values and the script are all in [`comparison/`](comparison/) — run
+the input values and the script are all in [`comparison/`](../comparison/) — run
 `./comparison/measure.sh` and you should get this table.
 
 **One packet is not a benchmark suite.** It is a worked example you can check
@@ -15,7 +15,7 @@ line by line, which is worth more than a table of numbers you cannot.
 
 A ship-spawn packet: type, quantized position, quantized rotation, quantized
 velocity, some flags, a team, health and thrust. It is the corpus's
-`ShipCreate` from [`examples/Types.schema`](examples/Types.schema), unchanged.
+`ShipCreate` from [`examples/Types.schema`](../examples/Types.schema), unchanged.
 
 ```
 type ShipCreate
@@ -35,7 +35,7 @@ type ShipCreate
 }
 ```
 
-The exact values encoded are in [`comparison/VALUES.md`](comparison/VALUES.md).
+The exact values encoded are in [`comparison/VALUES.md`](../comparison/VALUES.md).
 Two choices there deliberately work *against* schema: the `has_flags` branch is
 taken (the longest wire path), and the values are large and non-zero (varints
 and Cap'n Proto packing both shrink on small or zero values, so encoding zeroes
