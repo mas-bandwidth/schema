@@ -182,7 +182,7 @@ jobs:
       - name: fuzz seeds
         run: go test ./internal/fuzz/
 
-  # DOGFOOD BIG-ENDIAN (issue #303). SPEC-TABLES.md §3 says the wire is
+  # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
   # the byte order of the build it is cooked for, and that Open refuses any
   # other. Every host this repo has built on is little-endian, so both rules
@@ -343,7 +343,7 @@ jobs:
       - name: inline gate — ${{ matrix.leg }} leg
         run: bench/tools/inline-gate.sh leg ${{ matrix.leg }}
 
-      # GATE 2's SMOKE (SPEC-TABLES.md §12.1). The gate itself is a paired
+      # GATE 2's SMOKE (docs/SPEC-TABLES.md §12.1). The gate itself is a paired
       # measurement and its verdict belongs on a quiet box, so it is not on the
       # PR path and its 5% band is not enforced here. What runs is the
       # CORRECTNESS half at a small N — the generated block form and the

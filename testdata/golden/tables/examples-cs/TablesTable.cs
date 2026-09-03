@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — the TABLE wire (SPEC-TABLES.md): evolution-tolerant, neutral
+// package tabledemo — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
 // bytes, no serialize dependency. Tables version by field id, never by the
 // unit's protocol id.
 
@@ -12,7 +12,7 @@ namespace Tabledemo
 {
 
     // table RootConfig — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RootConfig
     {
         public byte[] VersionNote = new byte[16]; // string(16): max length, used length beside it
@@ -36,7 +36,7 @@ namespace Tabledemo
     }
 
     // table WeaponConfig — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class WeaponConfig
     {
         public float Damage = 21.0f;
@@ -48,7 +48,7 @@ namespace Tabledemo
     }
 
     // table LoadoutConfig — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class LoadoutConfig
     {
         public Grade Grade = Grade.Silver;
@@ -75,7 +75,7 @@ namespace Tabledemo
     }
 
     // table ProfileConfig — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class ProfileConfig
     {
         public byte[] Name = new byte[32]; // string(MaxProfileName): max length, used length beside it
@@ -105,7 +105,7 @@ namespace Tabledemo
     {
         // Grade on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(Grade value, out ushort id)
         {
             switch (value)
@@ -432,7 +432,7 @@ namespace Tabledemo
             if (value.Effect.Type != EffectType.None)
             {
                 w.Put16(0xe33a); w.Put8(15); // effect
-                // the ARM ID is the hash of the arm's NAME (SPEC-TABLES.md §5), so
+                // the ARM ID is the hash of the arm's NAME (docs/SPEC-TABLES.md §5), so
                 // arms may be added anywhere, removed and reordered
                 switch (value.Effect.Type)
                 {
@@ -557,7 +557,7 @@ namespace Tabledemo
                         if (!r.Has(bodyLen)) { r.Report.Malformed = true; return false; }
                         {
                             TableReader sub = new TableReader(r.Buffer.Slice(r.Offset, (int)bodyLen), r.Report);
-                            switch (armId) // the arm's NAME hash (SPEC-TABLES.md §5)
+                            switch (armId) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                             {
                                 case 0xeae6: // buff
                                     value.Effect.Type = EffectType.Buff;
@@ -572,7 +572,7 @@ namespace Tabledemo
                                     // the body is skipped by its length, never misdecoded. The
                                     // reset is explicit, not the prefill's: a repeated field id
                                     // must not leave an arm decoded by an earlier occurrence
-                                    // standing (SPEC-TABLES.md §4).
+                                    // standing (docs/SPEC-TABLES.md §4).
                                     value.Effect.Type = EffectType.None;
                                     r.Report.Unknown++;
                                     break;
@@ -1693,7 +1693,7 @@ namespace Tabledemo
             return DebuffLoadBody(ref r, value);
         }
 
-        // ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----
+        // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo RootConfigTableInfo;
         public static TableTypeInfo RootConfigTableType()

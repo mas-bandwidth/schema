@@ -13,7 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// THE HOSTILE BATTERY over `schema cook-check` (SPEC-TABLES.md §7), on the
+// THE HOSTILE BATTERY over `schema cook-check` (docs/SPEC-TABLES.md §7), on the
 // shape §19.5's forgery fuzzer is written in: valid cooks, mutated by seeded
 // byte flips and by DIRECTED edits at every boundary the format has, and the
 // bar is **REFUSE, OR ACCEPT AND BE WHOLE**.

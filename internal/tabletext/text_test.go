@@ -405,7 +405,7 @@ func lap(t *testing.T, m *tabletext.Model, st *ir.Struct, text []byte) []byte {
 }
 
 // numberCases is the number grammar and its semantics, row by row
-// (SPEC-TABLES.md §16.2). Every row was measured against the generated C++
+// (docs/SPEC-TABLES.md §16.2). Every row was measured against the generated C++
 // reader before it was written down: the tokenizer is RFC 8259's, an integer
 // field takes any token whose VALUE is integral however it was spelled, a
 // genuinely fractional value is the wrong shape for it, a magnitude a float
@@ -495,7 +495,7 @@ func TestNumberGrammarAndSemantics(t *testing.T) {
 			}
 			// whatever was placed, the instance must be WRITABLE: a read this
 			// walk calls clean can never produce a value the writer refuses
-			// (SPEC-TABLES.md §16.3)
+			// (docs/SPEC-TABLES.md §16.3)
 			if _, err := m.Write(inst); err != nil {
 				t.Fatalf("a value this read accepted cannot be written: %v", err)
 			}

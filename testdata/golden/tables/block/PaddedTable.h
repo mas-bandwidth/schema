@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package blockdemo — protocol id 0x7a706bf2ea47d94b (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
 #pragma once
@@ -32,13 +32,13 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
-// ---- reflection (tables only, SPEC-TABLES.md) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id/kind, storage offset, bounds, ranges, enum names and branch guards —
@@ -50,7 +50,7 @@ struct TableTypeInfo;
 // One arm of a union field: where its payload sits inside the union's storage
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
-// is spelled twice (SPEC-TABLES.md §8).
+// is spelled twice (docs/SPEC-TABLES.md §8).
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
@@ -92,14 +92,14 @@ struct TableFieldInfo
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
     const char * (*enum_name)( uint64_t value );
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
@@ -323,7 +323,7 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace blockdemo {
 
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on — the type wire's protocol id, every record's
 // layout as the compiler's own C ABI model computes it, and the facts that
 // decide what a load PUTS in those slots. It is the number a cook's header
@@ -346,14 +346,14 @@ inline constexpr uint64_t BuildVersion = 0x863a8eebc1090dc6ull;
 
 namespace blockdemo {
 
-// ---- the cooked form (SPEC-TABLES.md §7) ----
+// ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 //
 // A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 // order. Every word of the header is a u64 written in the byte order the cook
 // was produced in, and the header is 64 bytes:
 //
 //     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
-//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//     8  build_version       the unit's id (docs/SPEC-TABLES.md §20)
 //    16  byte_order          1 little, 2 big — the order that WROTE the file
 //    24  data_length         the region's bytes, rounded up to alignment
 //    32  attribution_length  the directory's bytes, or 0
@@ -400,7 +400,7 @@ inline constexpr uint64_t TableCookByteOrder = 1; // little
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
-// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+// describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
 inline constexpr uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
@@ -501,7 +501,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 namespace blockdemo {
 
 // table PaddedRow — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct PaddedRow {
     uint8_t tag = 0;
     double value = 0.0;
@@ -516,7 +516,7 @@ struct PaddedRow {
 };
 
 // table PaddedFrame — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct PaddedFrame {
     uint8_t marker = 0;
     uint64_t stamp = 0;
@@ -528,7 +528,7 @@ struct PaddedFrame {
 
 // Team on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef BLOCKDEMO_SCHEMA_TABLE_ENUM_TEAM
 #define BLOCKDEMO_SCHEMA_TABLE_ENUM_TEAM
 inline bool TableEnumId( Team value, uint16_t & id )
@@ -557,7 +557,7 @@ inline bool TableEnumValue( uint16_t id, Team & out )
 }
 #endif // BLOCKDEMO_SCHEMA_TABLE_ENUM_TEAM
 
-// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void PaddedRowReset( PaddedRow & value );
 inline void PaddedFrameReset( PaddedFrame & value );
@@ -688,13 +688,13 @@ inline bool PaddedRowSaveBody( TableWriter & w, const PaddedRow & value )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
-            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             w.put16( 0x9ae1 ); w.put8( 16 ); // teams (keyed by Team)
             int64_t len_at_teams = w.offset; w.put32( 0 );
             w.put8( 6 ); w.put32( pairs_teams );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
-            // slot is found by its key (SPEC-TABLES.md §3.2)
+            // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 4; i++ )
             {
                 if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
@@ -870,7 +870,7 @@ inline bool PaddedRowLoadBody( TableReader & r, PaddedRow & value )
                             // name can fold to, so a body carrying one is DAMAGED, not
                             // merely foreign. Framing damage stops this body, keeps what
                             // it decoded, and the parent reads on past the length
-                            // (SPEC-TABLES.md §3.2, §4).
+                            // (docs/SPEC-TABLES.md §3.2, §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -1126,7 +1126,7 @@ inline bool PaddedFrameLoad( PaddedFrame & value, const uint8_t * buffer, int64_
     return PaddedFrameLoadBody( r, value );
 }
 
-// ---- the cooked form: point at a cook (SPEC-TABLES.md §7) ----
+// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
 // PaddedRowOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
@@ -1189,31 +1189,31 @@ static_assert( std::is_standard_layout<PaddedRow>::value, "PaddedRow must stay s
 static_assert( std::is_trivially_copyable<PaddedFrame>::value, "PaddedFrame must stay relocatable" );
 static_assert( std::is_standard_layout<PaddedFrame>::value, "PaddedFrame must stay standard-layout for offsetof" );
 
-// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----
+// ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
 // The compiler derived every number below from the declaration and folded it
 // into the BUILD VERSION; these asserts are this compiler saying whether it
 // agrees. The model is not self-evidently right — on 32-bit System V
 // alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
 // rather than assumed.
-static_assert( sizeof( PaddedRow ) == 64, "PaddedRow's sizeof moved: the build version was taken over 64, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( PaddedRow ) == 8, "PaddedRow's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, tag ) == 0, "PaddedRow's field tag moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, value ) == 8, "PaddedRow's field value moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, flag ) == 16, "PaddedRow's field flag moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, id ) == 20, "PaddedRow's field id moved: the build version was taken over offset 20 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, label ) == 24, "PaddedRow's field label moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, slots ) == 44, "PaddedRow's field slots moved: the build version was taken over offset 44 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, teams ) == 52, "PaddedRow's field teams moved: the build version was taken over offset 52 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedRow, counter ) == 56, "PaddedRow's field counter moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( PaddedFrame ) == 4136, "PaddedFrame's sizeof moved: the build version was taken over 4136, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( PaddedFrame ) == 8, "PaddedFrame's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedFrame, marker ) == 0, "PaddedFrame's field marker moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedFrame, stamp ) == 8, "PaddedFrame's field stamp moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedFrame, rows ) == 16, "PaddedFrame's field rows moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PaddedFrame, blob ) == 4116, "PaddedFrame's field blob moved: the build version was taken over offset 4116 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( PaddedRow ) == 64, "PaddedRow's sizeof moved: the build version was taken over 64, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( PaddedRow ) == 8, "PaddedRow's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, tag ) == 0, "PaddedRow's field tag moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, value ) == 8, "PaddedRow's field value moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, flag ) == 16, "PaddedRow's field flag moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, id ) == 20, "PaddedRow's field id moved: the build version was taken over offset 20 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, label ) == 24, "PaddedRow's field label moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, slots ) == 44, "PaddedRow's field slots moved: the build version was taken over offset 44 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, teams ) == 52, "PaddedRow's field teams moved: the build version was taken over offset 52 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedRow, counter ) == 56, "PaddedRow's field counter moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( PaddedFrame ) == 4136, "PaddedFrame's sizeof moved: the build version was taken over 4136, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( PaddedFrame ) == 8, "PaddedFrame's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedFrame, marker ) == 0, "PaddedFrame's field marker moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedFrame, stamp ) == 8, "PaddedFrame's field stamp moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedFrame, rows ) == 16, "PaddedFrame's field rows moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PaddedFrame, blob ) == 4116, "PaddedFrame's field blob moved: the build version was taken over offset 4116 (docs/SPEC-TABLES.md §20.3)" );
 
-// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
+// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * PaddedRowTableType();
 inline const TableTypeInfo * PaddedFrameTableType();
@@ -1246,17 +1246,17 @@ inline const TableTypeInfo * PaddedFrameTableType()
     return &info;
 }
 
-// ---- the text form (SPEC-TABLES.md §16) ----
+// ---- the text form (docs/SPEC-TABLES.md §16) ----
 
 // PaddedRow in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PaddedTable.cpp; link it to use them.
 bool PaddedRowFromJson( PaddedRow & value, const char * text, int64_t bytes, TableReport * report );
 int64_t PaddedRowToJsonMeasure( const PaddedRow & value );
 int64_t PaddedRowToJson( const PaddedRow & value, char * buffer, int64_t capacity );
 
 // PaddedFrame in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PaddedTable.cpp; link it to use them.
 bool PaddedFrameFromJson( PaddedFrame & value, const char * text, int64_t bytes, TableReport * report );
 int64_t PaddedFrameToJsonMeasure( const PaddedFrame & value );

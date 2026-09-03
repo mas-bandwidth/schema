@@ -485,7 +485,7 @@ static int emit_block_forgeries()
           "an offset 64-aligned and just under 2^63 — the forgery fuzzer's find", -1 },
     };
 
-    printf( "# THE BLOCK FORGERY BATTERY as data (SPEC-TABLES.md §19.2), pinned from\n" );
+    printf( "# THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from\n" );
     printf( "# test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one\n" );
     printf( "# word of an otherwise valid block image, resolved to a byte offset.\n" );
     printf( "#\n" );

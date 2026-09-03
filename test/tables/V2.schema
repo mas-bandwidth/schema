@@ -3,7 +3,7 @@
 // was renamed to `title` (was = "name" keeps the wire id), Inner gained a
 // field, Grade gained Silver BETWEEN Bronze and Gold, and Effect gained a
 // hex arm BETWEEN boost and ward. Any reader x any data, both directions
-// (SPEC-TABLES.md).
+// (docs/SPEC-TABLES.md).
 package tblv2
 
 const MaxSlots = 3

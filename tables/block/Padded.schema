@@ -1,5 +1,5 @@
 // Padded.schema — the block form's PADDING and INLINE-STORAGE corpus
-// (SPEC-TABLES.md §19.3).
+// (docs/SPEC-TABLES.md §19.3).
 //
 // Render.schema declares its fields largest-alignment-first, so its natural C
 // ABI layout has ZERO interior padding — which is a property of that

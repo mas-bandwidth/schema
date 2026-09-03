@@ -1,4 +1,4 @@
-// Pack.schema — the packed corpus's root (SPEC-TABLES.md §17): a game's
+// Pack.schema — the packed corpus's root (docs/SPEC-TABLES.md §17): a game's
 // Config.bin as declared tables and nothing else. An enum-keyed COLLECTION of
 // records, an optional section inside a record, a global block nested by
 // value, a bounded array of records, and a keyed array of scalars. FIXED-SIZE

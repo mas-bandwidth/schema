@@ -1,4 +1,4 @@
-// The HOSTILE-VALUE gate (SPEC-TABLES.md §16.2, §16.3, §17.5, schema#257).
+// The HOSTILE-VALUE gate (docs/SPEC-TABLES.md §16.2, §16.3, §17.5, schema#257).
 //
 // The pack golden proves the two implementations agree on a HAPPY tree. This
 // one proves they agree on the trees where the rules actually bite: a number

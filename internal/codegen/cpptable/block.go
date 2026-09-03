@@ -1,4 +1,4 @@
-// The BLOCK FORM in C++ (SPEC-TABLES.md §19): the builder half, emitted ON
+// The BLOCK FORM in C++ (docs/SPEC-TABLES.md §19): the builder half, emitted ON
 // THE SIDE.
 //
 // NOTHING DECLARES IT. Every FIXED table has a block form — one projection of
@@ -46,7 +46,7 @@ func blockRuntime(pkg string) string {
 
 namespace ` + pkg + ` {
 
-// ---- the block form's runtime (SPEC-TABLES.md §19) ----
+// ---- the block form's runtime (docs/SPEC-TABLES.md §19) ----
 
 // What a table knows about ONE of its out-of-line arrays: where the rows
 // start, how many there are, and how far apart they sit. Sixteen bytes with no
@@ -88,7 +88,7 @@ inline TableBlockAllocator TableBlockDefaultAllocator()
     return allocator;
 }
 
-// THIS BUILD's byte order, as the prologue carries it (SPEC-TABLES.md §20.3).
+// THIS BUILD's byte order, as the prologue carries it (docs/SPEC-TABLES.md §20.3).
 // A block written by a build of the other order is REFUSED by BlockOpen: a
 // big-endian fix-up path is a named obligation, not something a consumer
 // improvises row by row.
@@ -152,7 +152,7 @@ struct TableBlockSpan
     T & operator[]( int32_t i ) const { return rows[i]; }
 };
 
-// ---- reflection over a block (SPEC-TABLES.md §8, §19.2) ----
+// ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 //
 // The descriptors are the mechanism, and they are what retires a hand-kept
 // mirror: a consumer holding them reads the triples out of an instance and
@@ -188,7 +188,7 @@ struct TableBlockFieldInfo
 struct TableBlockInfo
 {
     const char * name;
-    uint64_t build_version; // the unit's (SPEC-TABLES.md §20)
+    uint64_t build_version; // the unit's (docs/SPEC-TABLES.md §20)
     uint32_t size;          // the record's own sizeof: a projection's, or a row's
     uint32_t align;
     int32_t num_fields;
@@ -252,7 +252,7 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit, variable, targets map[
 				formed = append(formed, bl)
 				continue
 			}
-			g.pf("// table %s has NO block form: %s (SPEC-TABLES.md §19).\n", st.Name, blocks.SkippedReason(st.Name))
+			g.pf("// table %s has NO block form: %s (docs/SPEC-TABLES.md §19).\n", st.Name, blocks.SkippedReason(st.Name))
 			g.pf("// Its wire (§3) and its cook (§7) are unaffected — only this projection\n")
 			g.pf("// is absent, and it is absent by construction rather than by refusal.\n\n")
 		}
@@ -276,7 +276,7 @@ func blockBanner(u *ir.Unit, f *ir.File) string {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (SPEC-TABLES.md §19).\n", u.Package)
+	fmt.Fprintf(&h, "// package %s — the BLOCK FORM (docs/SPEC-TABLES.md §19).\n", u.Package)
 	return h.String()
 }
 
@@ -336,7 +336,7 @@ func blockSource(u *ir.Unit, f *ir.File, c *tableGen) []byte {
 // emitBlockProjectionField renders one projection field. Every field keeps its
 // by-value storage at its natural offset; a bounded array of structs — `T[N]`
 // and its count companion — is replaced AT THAT FIELD'S POSITION by its
-// sixteen-byte triple (SPEC-TABLES.md §2.7).
+// sixteen-byte triple (docs/SPEC-TABLES.md §2.7).
 func (g *tableGen) emitBlockProjectionField(f *ir.Field) {
 	if ir.BlockOutOfLine(f) {
 		g.noteRef(f.Type.Name)
@@ -354,10 +354,10 @@ func (g *tableGen) emitBlockProjectionField(f *ir.Field) {
 func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	name := bl.Table.Name
 
-	g.pf("// ---- the block form of table %s (SPEC-TABLES.md §19): begin ----\n\n", name)
+	g.pf("// ---- the block form of table %s (docs/SPEC-TABLES.md §19): begin ----\n\n", name)
 
 	g.pf("// The counts, gathered before Begin — nothing about counting is concurrent\n")
-	g.pf("// (SPEC-TABLES.md §19.1). Clamping a count to its maximum is the PRODUCER's job.\n")
+	g.pf("// (docs/SPEC-TABLES.md §19.1). Clamping a count to its maximum is the PRODUCER's job.\n")
 	g.pf("struct %sCounts\n{\n", name)
 	for _, a := range bl.Arrays {
 		g.pf("    int32_t %s = 0; // [0, %d]\n", a.Field.Name, a.Max)
@@ -368,7 +368,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("};\n\n")
 
 	g.pf("// The block's STORAGE, sized from the declared maxima: one extent, allocated\n")
-	g.pf("// once, never grown, never pooled (SPEC-TABLES.md §19.1). The sum is loose by\n")
+	g.pf("// once, never grown, never pooled (docs/SPEC-TABLES.md §19.1). The sum is loose by\n")
 	g.pf("// construction — arrays commonly draw from one shared pool, so their maxima\n")
 	g.pf("// can add to more than can ever be occupied at once.\n")
 	g.pf("// It is allocated ONCE, at build time, through the CALLER'S allocator, and\n")
@@ -396,7 +396,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 
 	g.pf("// The block: one extent, 64-byte aligned at its base, the PROJECTION at\n")
 	g.pf("// offset 0 and then each out-of-line array in declaration order\n")
-	g.pf("// (SPEC-TABLES.md §19.1). Sixty-four is a cache line, and the guarantee is PER\n")
+	g.pf("// (docs/SPEC-TABLES.md §19.1). Sixty-four is a cache line, and the guarantee is PER\n")
 	g.pf("// ARRAY: two workers filling different arrays never share one. Inside one\n")
 	g.pf("// array the pitch is the element's sizeof, so two workers meeting at a range\n")
 	g.pf("// boundary share the one line that straddles it — bounded at one line per\n")
@@ -411,7 +411,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("    // around it. It opens with the generated PROLOGUE of three uint64s.\n")
 	g.pf("    struct Projection\n    {\n")
 	g.pf("        uint64_t magic = 0;         // generated: identifies a schema block\n")
-	g.pf("        uint64_t build_version = 0; // generated: the unit's build version (SPEC-TABLES.md §20)\n")
+	g.pf("        uint64_t build_version = 0; // generated: the unit's build version (docs/SPEC-TABLES.md §20)\n")
 	g.pf("        uint64_t byte_order = 0;    // generated: 1 little, 2 big — the producer stamps its own\n")
 	for _, f := range bl.Table.Fields {
 		g.emitBlockProjectionField(f)
@@ -428,7 +428,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 		g.pf("    static constexpr int64_t %sMax = %d;\n", field, a.Max)
 		g.pf("    static constexpr int64_t %sProjectionOffset = %d;\n", field, a.TripleOffset)
 	}
-	g.pf("\n    // this table's block descriptors (SPEC-TABLES.md §8, §19.2): constant\n")
+	g.pf("\n    // this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant\n")
 	g.pf("    // data, defined in the .cpp beside this header.\n")
 	g.pf("    static const TableBlockInfo * Type();\n")
 	g.pf("};\n\n")
@@ -457,37 +457,37 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 }
 
 // emitBlockLayoutAsserts is this backend's half of the LAYOUT CONTRACT
-// (SPEC-TABLES.md §19.3): the compiler computes the layout and each backend
+// (docs/SPEC-TABLES.md §19.3): the compiler computes the layout and each backend
 // emits code asserting that ITS OWN compiler agrees. A disagreement is a build
 // error on the side that disagrees, naming the type, the field and the offset.
 func (g *tableGen) emitBlockLayoutAsserts(bl *ir.BlockLayout) {
 	name := bl.Table.Name
-	g.pf("// The LAYOUT CONTRACT (SPEC-TABLES.md §19.3). The compiler derived every\n")
+	g.pf("// The LAYOUT CONTRACT (docs/SPEC-TABLES.md §19.3). The compiler derived every\n")
 	g.pf("// number below from the declaration; these asserts are this compiler saying\n")
 	g.pf("// whether it agrees. Neither side's layout is inferred from the other's —\n")
 	g.pf("// both are checked against their own compiler's model, which is the only way\n")
 	g.pf("// a two-language contract can be held by a compiler that generates both.\n")
-	g.pf("static_assert( sizeof( bool ) == 1, \"a bool in a block row is ONE byte: the standard leaves sizeof(bool) implementation-defined, and this two-language layout contract does not (SPEC-TABLES.md §19.3)\" );\n")
-	g.pf("static_assert( sizeof( TableBlockTriple ) == 16, \"a triple is sixteen bytes with no interior padding (SPEC-TABLES.md §2.7)\" );\n")
-	g.pf("static_assert( offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, \"a triple's members sit at 0/8/12 (SPEC-TABLES.md §2.7)\" );\n")
+	g.pf("static_assert( sizeof( bool ) == 1, \"a bool in a block row is ONE byte: the standard leaves sizeof(bool) implementation-defined, and this two-language layout contract does not (docs/SPEC-TABLES.md §19.3)\" );\n")
+	g.pf("static_assert( sizeof( TableBlockTriple ) == 16, \"a triple is sixteen bytes with no interior padding (docs/SPEC-TABLES.md §2.7)\" );\n")
+	g.pf("static_assert( offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, \"a triple's members sit at 0/8/12 (docs/SPEC-TABLES.md §2.7)\" );\n")
 	g.pf("static_assert( std::is_standard_layout<%sBlock::Projection>::value, \"%s's block projection must stay standard-layout for offsetof\" );\n", name, name)
 	g.pf("static_assert( std::is_trivially_copyable<%sBlock::Projection>::value, \"%s's block projection must stay relocatable\" );\n", name, name)
-	g.pf("static_assert( sizeof( %sBlock::Projection ) == %d, \"%s's block projection sizeof moved: the C# side asserts %d for the same declaration (SPEC-TABLES.md §19.3)\" );\n",
+	g.pf("static_assert( sizeof( %sBlock::Projection ) == %d, \"%s's block projection sizeof moved: the C# side asserts %d for the same declaration (docs/SPEC-TABLES.md §19.3)\" );\n",
 		name, bl.Projection.Size, name, bl.Projection.Size)
-	g.pf("static_assert( alignof( %sBlock::Projection ) == %d, \"%s's block projection alignof moved (SPEC-TABLES.md §19.3)\" );\n",
+	g.pf("static_assert( alignof( %sBlock::Projection ) == %d, \"%s's block projection alignof moved (docs/SPEC-TABLES.md §19.3)\" );\n",
 		name, bl.Projection.Align, name)
-	g.pf("static_assert( offsetof( %sBlock::Projection, magic ) == 0, \"the block prologue's magic sits at offset 0 (SPEC-TABLES.md §19.1)\" );\n", name)
-	g.pf("static_assert( offsetof( %sBlock::Projection, build_version ) == 8, \"the block prologue's build_version sits at offset 8 (SPEC-TABLES.md §19.1, §20)\" );\n", name)
-	g.pf("static_assert( offsetof( %sBlock::Projection, byte_order ) == 16, \"the block prologue's byte_order sits at offset 16 (SPEC-TABLES.md §19.1)\" );\n", name)
+	g.pf("static_assert( offsetof( %sBlock::Projection, magic ) == 0, \"the block prologue's magic sits at offset 0 (docs/SPEC-TABLES.md §19.1)\" );\n", name)
+	g.pf("static_assert( offsetof( %sBlock::Projection, build_version ) == 8, \"the block prologue's build_version sits at offset 8 (docs/SPEC-TABLES.md §19.1, §20)\" );\n", name)
+	g.pf("static_assert( offsetof( %sBlock::Projection, byte_order ) == 16, \"the block prologue's byte_order sits at offset 16 (docs/SPEC-TABLES.md §19.1)\" );\n", name)
 	for _, fl := range bl.Projection.Fields {
-		g.pf("static_assert( offsetof( %sBlock::Projection, %s ) == %d, \"%s's projection field %s moved: the C# side asserts %d (SPEC-TABLES.md §19.3)\" );\n",
+		g.pf("static_assert( offsetof( %sBlock::Projection, %s ) == %d, \"%s's projection field %s moved: the C# side asserts %d (docs/SPEC-TABLES.md §19.3)\" );\n",
 			name, fl.Field.Name, fl.Offset, name, fl.Field.Name, fl.Offset)
 	}
 	seen := map[string]bool{}
 	for _, a := range bl.Arrays {
 		g.emitBlockRowAsserts(a.ElemName, seen)
 		field := ir.GoExportName(a.Field.Name)
-		g.pf("static_assert( %sBlock::%sStride == (int64_t) sizeof( %s ), \"%s's pitch is its element's sizeof, always (SPEC-TABLES.md §2.7)\" );\n",
+		g.pf("static_assert( %sBlock::%sStride == (int64_t) sizeof( %s ), \"%s's pitch is its element's sizeof, always (docs/SPEC-TABLES.md §2.7)\" );\n",
 			name, field, a.ElemName, a.Field.Name)
 	}
 	g.pf("\n")
@@ -505,11 +505,11 @@ func (g *tableGen) emitBlockRowAsserts(name string, seen map[string]bool) {
 		return
 	}
 	g.noteRef(name)
-	g.pf("static_assert( sizeof( %s ) == %d, \"block row %s's sizeof moved: the C# side asserts %d for the same declaration (SPEC-TABLES.md §19.3)\" );\n",
+	g.pf("static_assert( sizeof( %s ) == %d, \"block row %s's sizeof moved: the C# side asserts %d for the same declaration (docs/SPEC-TABLES.md §19.3)\" );\n",
 		name, ml.Size, name, ml.Size)
-	g.pf("static_assert( alignof( %s ) == %d, \"block row %s's alignof moved (SPEC-TABLES.md §19.3)\" );\n", name, ml.Align, name)
+	g.pf("static_assert( alignof( %s ) == %d, \"block row %s's alignof moved (docs/SPEC-TABLES.md §19.3)\" );\n", name, ml.Align, name)
 	for _, fl := range ml.Fields {
-		g.pf("static_assert( offsetof( %s, %s ) == %d, \"block row %s's field %s moved: the C# side asserts %d (SPEC-TABLES.md §19.3)\" );\n",
+		g.pf("static_assert( offsetof( %s, %s ) == %d, \"block row %s's field %s moved: the C# side asserts %d (docs/SPEC-TABLES.md §19.3)\" );\n",
 			name, fl.Field.Name, fl.Offset, name, fl.Field.Name, fl.Offset)
 	}
 	for _, fl := range ml.Fields {
@@ -522,7 +522,7 @@ func (g *tableGen) emitBlockRowAsserts(name string, seen map[string]bool) {
 }
 
 // emitBlockFillPath emits Begin, BlockBytes and the row accessors — THE FILL
-// PATH, and the whole of what the conformance refuser (SPEC-TABLES.md §19.1,
+// PATH, and the whole of what the conformance refuser (docs/SPEC-TABLES.md §19.1,
 // §19.5) claims. Between the markers below there is no allocation, no lock and
 // no atomic, and the Makefile's block-fill-refuser gate fails the build if one
 // appears. It stays INLINE in the header: a call per row accessor is exactly
@@ -531,7 +531,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	name := bl.Table.Name
 	g.pf("// ---- block fill path: begin ----\n")
 	g.pf("// THE MULTI-THREADED FILL IS AN OBLIGATION ON THIS BACKEND, not a permission\n")
-	g.pf("// to the caller (SPEC-TABLES.md §19.1). Nothing between these markers\n")
+	g.pf("// to the caller (docs/SPEC-TABLES.md §19.1). Nothing between these markers\n")
 	g.pf("// allocates, locks or takes an atomic; the Makefile's block-fill-refuser gate\n")
 	g.pf("// fails the build if one appears. The parallelism itself lives in the\n")
 	g.pf("// caller's loop — N workers, disjoint index ranges, no synchronisation of any\n")
@@ -577,7 +577,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("    return true;\n}\n\n")
 
 	g.pf("// The USED extent: the greatest offset_of + count * stride, rounded up to 64,\n")
-	g.pf("// never less than the projection's own size (SPEC-TABLES.md §19.1). Because\n")
+	g.pf("// never less than the projection's own size (docs/SPEC-TABLES.md §19.1). Because\n")
 	g.pf("// the layout follows the counts it is proportional to the frame rather than\n")
 	g.pf("// to the maxima. The tail — the bytes between the last row and the rounding —\n")
 	g.pf("// is UNSPECIFIED, because zeroing megabytes per frame is the cost this form\n")
@@ -601,7 +601,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 		g.pf("// %s: an accessor is ONE ADD — block base + offset_of — typed as the element.\n", a.Field.Name)
 		g.pf("// A worker holds it and indexes; disjoint index ranges into one array are\n")
 		g.pf("// safe concurrently, and two workers writing one row is the caller's problem\n")
-		g.pf("// (SPEC-TABLES.md §19.1). Iterating steps at the pitch the INSTANCE gives.\n")
+		g.pf("// (docs/SPEC-TABLES.md §19.1). Iterating steps at the pitch the INSTANCE gives.\n")
 		g.pf("inline TableBlockRows<%s> %s%s( const %sBlock & block )\n{\n", a.ElemName, name, field, name)
 		g.pf("    TableBlockRows<%s> rows;\n", a.ElemName)
 		g.pf("    rows.base = block.base + block.projection->%s.offset_of;\n", a.Field.Name)
@@ -621,7 +621,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 }
 
 // blockStartAlign is where one out-of-line array begins: aligned to
-// max( 64, alignof( element ) ) (SPEC-TABLES.md §19.1).
+// max( 64, alignof( element ) ) (docs/SPEC-TABLES.md §19.1).
 func blockStartAlign(a ir.BlockArray) int64 {
 	if a.ElemAlign() > int64(ir.BlockAlign) {
 		return a.ElemAlign()
@@ -697,7 +697,7 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 
 // emitBlockDescriptors emits one table's block reflection: the projection
 // offset of every field, the offsets of the three members inside each triple,
-// and the ELEMENT's own descriptor beside them (SPEC-TABLES.md §8, §19.2).
+// and the ELEMENT's own descriptor beside them (docs/SPEC-TABLES.md §8, §19.2).
 // A consumer holding these reads the facts out of an instance and points at
 // rows, with no hand-written struct per table.
 //

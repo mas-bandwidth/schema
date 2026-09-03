@@ -1,4 +1,4 @@
-// The C# TABLE-wire conformance test (SPEC-TABLES.md) — the twin of
+// The C# TABLE-wire conformance test (docs/SPEC-TABLES.md) — the twin of
 // test/tables/main.cpp's FIXED-class half. Three generated units in one
 // assembly: the tables corpus (tabledemo), and the two-generation evolution
 // pair (tblv1/tblv2) whose schemas disagree on purpose.
@@ -1188,7 +1188,7 @@ static class Program
     // SHIFT is not (see TableKeyed in the generated runtime). The generated
     // codecs walk .Slots by storage index instead, past the None guard.
 
-    // a `type` body's keyed array is a PLAIN ARRAY (SPEC-TABLES.md §2.4): no
+    // a `type` body's keyed array is a PLAIN ARRAY (docs/SPEC-TABLES.md §2.4): no
     // wrapper and no indexer, so the STORAGE INDEX is spelled here — the key
     // minus one, the same shift TableKeyed does for a table body.
     static int KeyedIndex(int key) { return key - 1; }

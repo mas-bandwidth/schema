@@ -1,4 +1,4 @@
-// The CROSS-ENDIAN BLOCK driver (SPEC-TABLES.md §19.1).
+// The CROSS-ENDIAN BLOCK driver (docs/SPEC-TABLES.md §19.1).
 //
 // A block is memory one language wrote and another points at, and it is
 // produced in the byte order of the build that wrote it. Every other block

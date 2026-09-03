@@ -1,5 +1,5 @@
 // The file, in a buffer of EXACTLY its bytes, with a GUARD PAGE on the far
-// side (SPEC-TABLES.md §7.5).
+// side (docs/SPEC-TABLES.md §7.5).
 //
 // `Open` runs on whatever bytes a disk hands back — corrupt, truncated, or from
 // a build that moved — and what the battery and the fuzzer hold is that

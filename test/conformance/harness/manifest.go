@@ -21,7 +21,7 @@ type Unit struct {
 }
 
 // Instance is one table instance in two forms that must agree: the wire bytes
-// at Wire (SPEC-TABLES.md §3) and the JSON text at JSON (§16).
+// at Wire (docs/SPEC-TABLES.md §3) and the JSON text at JSON (§16).
 type Instance struct {
 	Name string
 	Unit string
@@ -30,7 +30,7 @@ type Instance struct {
 	JSON string
 }
 
-// Counts is a read report (SPEC-TABLES.md §4), which is the whole expectation
+// Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole expectation
 // a report case carries.
 type Counts struct {
 	Unknown      int
@@ -78,7 +78,7 @@ type ReportCase struct {
 	Wire string
 }
 
-// Cook is a cooked file (SPEC-TABLES.md §7) and the canonical node dump its
+// Cook is a cooked file (docs/SPEC-TABLES.md §7) and the canonical node dump its
 // Open must produce.
 type Cook struct {
 	Root string
@@ -87,7 +87,7 @@ type Cook struct {
 	File string // filled in by the harness once test/cookgen has written it
 }
 
-// Block is a block image (SPEC-TABLES.md §19) an Open must accept.
+// Block is a block image (docs/SPEC-TABLES.md §19) an Open must accept.
 type Block struct {
 	Name string
 	Unit string

@@ -1,10 +1,10 @@
-// Package baseline is the TABLES BASELINE (SPEC-TABLES.md §18): an optional
+// Package baseline is the TABLES BASELINE (docs/SPEC-TABLES.md §18): an optional
 // committed projection of a unit's table closure, and the check that refuses
 // the edits the table wire cannot report.
 //
 // # WHY IT EXISTS
 //
-// The table wire is evolution-tolerant by construction (SPEC-TABLES.md §4):
+// The table wire is evolution-tolerant by construction (docs/SPEC-TABLES.md §4):
 // fields may be added, removed and reordered, variants inserted anywhere,
 // bounds grown, names changed under `was`. Every one of those edits is
 // invisible to a reader in the good sense — nothing is lost and nothing is
@@ -180,7 +180,7 @@ func Render(u *ir.Unit) *Unit {
 			t.Fields = append(t.Fields, renderField(f))
 			// an ENUM-KEYED array's key enum is a vocabulary on the wire, not
 			// just a spelling: its slots ride under their variants' NAME ids
-			// (SPEC-TABLES.md §3.2), so its variants are covered exactly as an
+			// (docs/SPEC-TABLES.md §3.2), so its variants are covered exactly as an
 			// enum-typed field's are. It reaches the closure through KeyEnum,
 			// never through the field's own type.
 			if f.KeyEnumRef != nil && !seenEnum[f.KeyEnumRef.Name] {
@@ -242,7 +242,7 @@ func renderField(f *ir.Field) Field {
 	}
 	// the referent rides under a key that says WHAT it names, because the two
 	// are judged differently: a table's fields ride by id inside their own
-	// body, and a vocabulary's do not ride at all (SPEC-TABLES.md §4 — an
+	// body, and a vocabulary's do not ride at all (docs/SPEC-TABLES.md §4 — an
 	// enum field and a plain uint16 field are both kind 7, so the runtime
 	// cannot report an edit between them). See DefaultTokenPolicy.
 	if f.Type.Kind == ir.TNamed {
@@ -257,7 +257,7 @@ func renderField(f *ir.Field) Field {
 			add("type", f.Type.Name)
 		}
 	}
-	// PRESENCE IS RECORDED AND JUDGED ON NOTHING (SPEC-TABLES.md §18.1): a
+	// PRESENCE IS RECORDED AND JUDGED ON NOTHING (docs/SPEC-TABLES.md §18.1): a
 	// field moving between T, ?T and *T moves no byte (§3.1), so the fact is
 	// here to be read in a diff and nowhere in the policy.
 	if f.Type.Optional {

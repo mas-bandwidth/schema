@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package tabledemo — protocol id 0x9924bf6d375ec24d (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
 #pragma once
@@ -31,13 +31,13 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
-// ---- reflection (tables only, SPEC-TABLES.md) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id/kind, storage offset, bounds, ranges, enum names and branch guards —
@@ -49,7 +49,7 @@ struct TableTypeInfo;
 // One arm of a union field: where its payload sits inside the union's storage
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
-// is spelled twice (SPEC-TABLES.md §8).
+// is spelled twice (docs/SPEC-TABLES.md §8).
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
@@ -91,14 +91,14 @@ struct TableFieldInfo
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
     const char * (*enum_name)( uint64_t value );
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
@@ -322,7 +322,7 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace tabledemo {
 
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on — the type wire's protocol id, every record's
 // layout as the compiler's own C ABI model computes it, and the facts that
 // decide what a load PUTS in those slots. It is the number a cook's header
@@ -345,14 +345,14 @@ inline constexpr uint64_t BuildVersion = 0x89c17e3f4a1f6255ull;
 
 namespace tabledemo {
 
-// ---- the cooked form (SPEC-TABLES.md §7) ----
+// ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 //
 // A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 // order. Every word of the header is a u64 written in the byte order the cook
 // was produced in, and the header is 64 bytes:
 //
 //     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
-//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//     8  build_version       the unit's id (docs/SPEC-TABLES.md §20)
 //    16  byte_order          1 little, 2 big — the order that WROTE the file
 //    24  data_length         the region's bytes, rounded up to alignment
 //    32  attribution_length  the directory's bytes, or 0
@@ -399,7 +399,7 @@ inline constexpr uint64_t TableCookByteOrder = 1; // little
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
-// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+// describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
 inline constexpr uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
@@ -500,7 +500,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 namespace tabledemo {
 
 // table GunnerSettings — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct GunnerSettings {
     float reaction = 0.2f;
     bool tracking = false;
@@ -509,7 +509,7 @@ struct GunnerSettings {
 };
 
 // table ShipEntry — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct ShipEntry {
     char display_name[32 + 1] = {}; // string(32): max length, used length beside it
     int32_t display_name_length = 0;
@@ -522,7 +522,7 @@ struct ShipEntry {
 };
 
 // table GlobalSettings — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct GlobalSettings {
     uint32_t tick_rate = 60;
     Difficulty difficulty = Difficulty::Normal;
@@ -532,7 +532,7 @@ struct GlobalSettings {
 };
 
 // table PackConfig — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct PackConfig {
     uint32_t version = 1;
     GlobalSettings global;
@@ -544,7 +544,7 @@ struct PackConfig {
 
 // Difficulty on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef TABLEDEMO_SCHEMA_TABLE_ENUM_DIFFICULTY
 #define TABLEDEMO_SCHEMA_TABLE_ENUM_DIFFICULTY
 inline bool TableEnumId( Difficulty value, uint16_t & id )
@@ -573,7 +573,7 @@ inline bool TableEnumValue( uint16_t id, Difficulty & out )
 
 // ShipType on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef TABLEDEMO_SCHEMA_TABLE_ENUM_SHIPTYPE
 #define TABLEDEMO_SCHEMA_TABLE_ENUM_SHIPTYPE
 inline bool TableEnumId( ShipType value, uint16_t & id )
@@ -600,7 +600,7 @@ inline bool TableEnumValue( uint16_t id, ShipType & out )
 }
 #endif // TABLEDEMO_SCHEMA_TABLE_ENUM_SHIPTYPE
 
-// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void GunnerSettingsReset( GunnerSettings & value );
 inline void ShipEntryReset( ShipEntry & value );
@@ -1240,13 +1240,13 @@ inline bool PackConfigSaveBody( TableWriter & w, const PackConfig & value )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
-            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             w.put16( 0x2d39 ); w.put8( 16 ); // ships (keyed by ShipType)
             int64_t len_at_ships = w.offset; w.put32( 0 );
             w.put8( 13 ); w.put32( pairs_ships );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
-            // slot is found by its key (SPEC-TABLES.md §3.2)
+            // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
                 int64_t elem_bytes = ShipEntryMeasure( value.ships.slots[i] );
@@ -1275,13 +1275,13 @@ inline bool PackConfigSaveBody( TableWriter & w, const PackConfig & value )
         {
             // KIND 16, not 14: a keyed body and a positional one are
             // incompatible, so a reader of the other kind must see a kind
-            // mismatch and skip, never misdecode (SPEC-TABLES.md §3.2)
+            // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             w.put16( 0xb2eb ); w.put8( 16 ); // thresholds (keyed by Difficulty)
             int64_t len_at_thresholds = w.offset; w.put32( 0 );
             w.put8( 4 ); w.put32( pairs_thresholds );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
-            // slot is found by its key (SPEC-TABLES.md §3.2)
+            // slot is found by its key (docs/SPEC-TABLES.md §3.2)
             for ( int32_t i = 0; i < 3; i++ )
             {
                 if ( value.thresholds.slots[i] == 0 ) { continue; } // a default slot elides
@@ -1396,7 +1396,7 @@ inline bool PackConfigLoadBody( TableReader & r, PackConfig & value )
                             // name can fold to, so a body carrying one is DAMAGED, not
                             // merely foreign. Framing damage stops this body, keeps what
                             // it decoded, and the parent reads on past the length
-                            // (SPEC-TABLES.md §3.2, §4).
+                            // (docs/SPEC-TABLES.md §3.2, §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -1448,7 +1448,7 @@ inline bool PackConfigLoadBody( TableReader & r, PackConfig & value )
                             // name can fold to, so a body carrying one is DAMAGED, not
                             // merely foreign. Framing damage stops this body, keeps what
                             // it decoded, and the parent reads on past the length
-                            // (SPEC-TABLES.md §3.2, §4).
+                            // (docs/SPEC-TABLES.md §3.2, §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -1532,7 +1532,7 @@ inline bool PackConfigLoad( PackConfig & value, const uint8_t * buffer, int64_t 
     return PackConfigLoadBody( r, value );
 }
 
-// ---- the cooked form: point at a cook (SPEC-TABLES.md §7) ----
+// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
 // GunnerSettingsOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
@@ -1649,40 +1649,40 @@ static_assert( std::is_standard_layout<GlobalSettings>::value, "GlobalSettings m
 static_assert( std::is_trivially_copyable<PackConfig>::value, "PackConfig must stay relocatable" );
 static_assert( std::is_standard_layout<PackConfig>::value, "PackConfig must stay standard-layout for offsetof" );
 
-// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----
+// ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
 // The compiler derived every number below from the declaration and folded it
 // into the BUILD VERSION; these asserts are this compiler saying whether it
 // agrees. The model is not self-evidently right — on 32-bit System V
 // alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
 // rather than assumed.
-static_assert( sizeof( GunnerSettings ) == 36, "GunnerSettings's sizeof moved: the build version was taken over 36, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( GunnerSettings ) == 4, "GunnerSettings's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GunnerSettings, reaction ) == 0, "GunnerSettings's field reaction moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GunnerSettings, tracking ) == 4, "GunnerSettings's field tracking moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GunnerSettings, callsign ) == 5, "GunnerSettings's field callsign moved: the build version was taken over offset 5 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( ShipEntry ) == 108, "ShipEntry's sizeof moved: the build version was taken over 108, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( ShipEntry ) == 4, "ShipEntry's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ShipEntry, display_name ) == 0, "ShipEntry's field display_name moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ShipEntry, health ) == 40, "ShipEntry's field health moved: the build version was taken over offset 40 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ShipEntry, mass ) == 44, "ShipEntry's field mass moved: the build version was taken over offset 44 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ShipEntry, hardpoints ) == 48, "ShipEntry's field hardpoints moved: the build version was taken over offset 48 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( ShipEntry, gunner ) == 68, "ShipEntry's field gunner moved: the build version was taken over offset 68 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( GlobalSettings ) == 72, "GlobalSettings's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( GlobalSettings ) == 4, "GlobalSettings's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GlobalSettings, tick_rate ) == 0, "GlobalSettings's field tick_rate moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GlobalSettings, difficulty ) == 4, "GlobalSettings's field difficulty moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GlobalSettings, build_note ) == 5, "GlobalSettings's field build_note moved: the build version was taken over offset 5 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( GlobalSettings, spawn_delays ) == 60, "GlobalSettings's field spawn_delays moved: the build version was taken over offset 60 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( PackConfig ) == 740, "PackConfig's sizeof moved: the build version was taken over 740, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( PackConfig ) == 4, "PackConfig's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PackConfig, version ) == 0, "PackConfig's field version moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PackConfig, global ) == 4, "PackConfig's field global moved: the build version was taken over offset 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PackConfig, ships ) == 76, "PackConfig's field ships moved: the build version was taken over offset 76 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PackConfig, thresholds ) == 400, "PackConfig's field thresholds moved: the build version was taken over offset 400 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( PackConfig, reserves ) == 412, "PackConfig's field reserves moved: the build version was taken over offset 412 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( GunnerSettings ) == 36, "GunnerSettings's sizeof moved: the build version was taken over 36, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( GunnerSettings ) == 4, "GunnerSettings's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerSettings, reaction ) == 0, "GunnerSettings's field reaction moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerSettings, tracking ) == 4, "GunnerSettings's field tracking moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GunnerSettings, callsign ) == 5, "GunnerSettings's field callsign moved: the build version was taken over offset 5 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( ShipEntry ) == 108, "ShipEntry's sizeof moved: the build version was taken over 108, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( ShipEntry ) == 4, "ShipEntry's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ShipEntry, display_name ) == 0, "ShipEntry's field display_name moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ShipEntry, health ) == 40, "ShipEntry's field health moved: the build version was taken over offset 40 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ShipEntry, mass ) == 44, "ShipEntry's field mass moved: the build version was taken over offset 44 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ShipEntry, hardpoints ) == 48, "ShipEntry's field hardpoints moved: the build version was taken over offset 48 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( ShipEntry, gunner ) == 68, "ShipEntry's field gunner moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( GlobalSettings ) == 72, "GlobalSettings's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( GlobalSettings ) == 4, "GlobalSettings's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GlobalSettings, tick_rate ) == 0, "GlobalSettings's field tick_rate moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GlobalSettings, difficulty ) == 4, "GlobalSettings's field difficulty moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GlobalSettings, build_note ) == 5, "GlobalSettings's field build_note moved: the build version was taken over offset 5 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( GlobalSettings, spawn_delays ) == 60, "GlobalSettings's field spawn_delays moved: the build version was taken over offset 60 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( PackConfig ) == 740, "PackConfig's sizeof moved: the build version was taken over 740, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( PackConfig ) == 4, "PackConfig's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PackConfig, version ) == 0, "PackConfig's field version moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PackConfig, global ) == 4, "PackConfig's field global moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PackConfig, ships ) == 76, "PackConfig's field ships moved: the build version was taken over offset 76 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PackConfig, thresholds ) == 400, "PackConfig's field thresholds moved: the build version was taken over offset 400 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( PackConfig, reserves ) == 412, "PackConfig's field reserves moved: the build version was taken over offset 412 (docs/SPEC-TABLES.md §20.3)" );
 
-// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
+// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * GunnerSettingsTableType();
 inline const TableTypeInfo * ShipEntryTableType();
@@ -1738,31 +1738,31 @@ inline const TableTypeInfo * PackConfigTableType()
     return &info;
 }
 
-// ---- the text form (SPEC-TABLES.md §16) ----
+// ---- the text form (docs/SPEC-TABLES.md §16) ----
 
 // GunnerSettings in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PackTable.cpp; link it to use them.
 bool GunnerSettingsFromJson( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report );
 int64_t GunnerSettingsToJsonMeasure( const GunnerSettings & value );
 int64_t GunnerSettingsToJson( const GunnerSettings & value, char * buffer, int64_t capacity );
 
 // ShipEntry in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PackTable.cpp; link it to use them.
 bool ShipEntryFromJson( ShipEntry & value, const char * text, int64_t bytes, TableReport * report );
 int64_t ShipEntryToJsonMeasure( const ShipEntry & value );
 int64_t ShipEntryToJson( const ShipEntry & value, char * buffer, int64_t capacity );
 
 // GlobalSettings in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PackTable.cpp; link it to use them.
 bool GlobalSettingsFromJson( GlobalSettings & value, const char * text, int64_t bytes, TableReport * report );
 int64_t GlobalSettingsToJsonMeasure( const GlobalSettings & value );
 int64_t GlobalSettingsToJson( const GlobalSettings & value, char * buffer, int64_t capacity );
 
 // PackConfig in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PackTable.cpp; link it to use them.
 bool PackConfigFromJson( PackConfig & value, const char * text, int64_t bytes, TableReport * report );
 int64_t PackConfigToJsonMeasure( const PackConfig & value );

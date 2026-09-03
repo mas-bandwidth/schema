@@ -1,4 +1,4 @@
-// The TABLE-wire conformance test (SPEC-TABLES.md). Three generated units in
+// The TABLE-wire conformance test (docs/SPEC-TABLES.md). Three generated units in
 // one binary: the tables corpus (tabledemo), and the two-generation evolution
 // pair (tblv1/tblv2) whose schemas disagree on purpose. Compiled WITHOUT the
 // serialize include path — the Table headers must stand alone.
@@ -84,7 +84,7 @@ static const tblv1::TableFieldInfo * v1_field( const tblv1::TableTypeInfo * type
     return NULL;
 }
 
-// a `type` body's keyed array is a PLAIN ARRAY (SPEC-TABLES.md §2.4): no wrapper
+// a `type` body's keyed array is a PLAIN ARRAY (docs/SPEC-TABLES.md §2.4): no wrapper
 // and no accessor, so the STORAGE INDEX is spelled here — the key minus one,
 // the same shift TableKeyed does for a table body.
 template <typename E>
@@ -252,7 +252,7 @@ static void test_exact_capacity()
     check_exact_capacity( loadout, tabledemo::LoadoutConfigMeasure, tabledemo::LoadoutConfigSave );
 
     // enum ARRAYS, both shapes: a counted one and a fixed one, each riding
-    // u16 variant hashes per element (SPEC-TABLES.md §3)
+    // u16 variant hashes per element (docs/SPEC-TABLES.md §3)
     tabledemo::LoadoutConfig enums;
     enums.grades_count = 3;
     enums.grades[0] = tabledemo::Grade::Bronze;
@@ -309,7 +309,7 @@ static void test_storage_invariants()
 }
 
 // ---- bounded elements: a count the body length cannot cover never reads
-// ---- the following fields' bytes (SPEC-TABLES.md: skipped, NEVER misdecoded)
+// ---- the following fields' bytes (docs/SPEC-TABLES.md: skipped, NEVER misdecoded)
 
 static void test_bounded_elements()
 {
@@ -398,7 +398,7 @@ static void test_guard()
     CHECK( out.loadout.grade == tabledemo::Grade::Silver ); // untaken side decodes to defaults
 }
 
-// ---- evolution, both directions (SPEC-TABLES.md: any reader x any data) ----
+// ---- evolution, both directions (docs/SPEC-TABLES.md: any reader x any data) ----
 
 static void test_evolution_old_reader_new_data()
 {
@@ -457,7 +457,7 @@ static void test_evolution_new_reader_old_data()
 }
 
 // ---- a variant inserted IN THE MIDDLE: identity is the NAME, not the ordinal
-// ---- (SPEC-TABLES.md §5). V2 inserts Silver between Bronze and Gold, so Gold
+// ---- (docs/SPEC-TABLES.md §5). V2 inserts Silver between Bronze and Gold, so Gold
 // ---- slides from ordinal 2 to 3 — and every stored Gold still reads as Gold.
 
 static void test_evolution_enum_insert_old_data()
@@ -601,7 +601,7 @@ static void test_evolution_union_insert_new_data()
 }
 
 // ---- hostile: a REPEATED field id whose second occurrence names an arm or a
-// ---- variant this build cannot name. "Reads as empty" (SPEC-TABLES.md §4) is
+// ---- variant this build cannot name. "Reads as empty" (docs/SPEC-TABLES.md §4) is
 // ---- a value the reader must WRITE, not one the prefill happens to leave —
 // ---- an earlier occurrence of the same id may have decoded a real arm.
 
@@ -647,7 +647,7 @@ static void test_repeated_id_unnameable_variant()
     CHECK( out.grade == tblv1::Grade::None );
 }
 
-// ---- an array's BOUND is not wire identity (SPEC-TABLES.md §4). V2 shrinks
+// ---- an array's BOUND is not wire identity (docs/SPEC-TABLES.md §4). V2 shrinks
 // ---- MaxSlots 6 -> 3, and tally is sized [Grade.Max + 1], which GROWS 3 -> 4
 // ---- when Grade gains a variant. The storage struct changes size; the table
 // ---- on the wire does not, because identity is the field name hash and kind.
@@ -758,7 +758,7 @@ static void test_unnameable_enum_element_read()
 
 // ---- FLAGS STAY POSITIONAL: a mask is a set of bits, and a bit has no cheap
 // ---- name-identified form. It rides as its raw uint64 storage, so variants
-// ---- are APPENDED AT THE END only (SPEC-TABLES.md §4, §5).
+// ---- are APPENDED AT THE END only (docs/SPEC-TABLES.md §4, §5).
 
 static void test_flags_are_positional()
 {
@@ -767,7 +767,7 @@ static void test_flags_are_positional()
     CHECK( perks->kind == 9 );            // kU64: the mask's raw storage
     CHECK( perks->variant_id == NULL );   // no per-variant wire id exists to carry
     // the bits DO have names, and the descriptor carries them: enum_max is the
-    // highest declared BIT INDEX and enum_name spells one bit (SPEC-TABLES.md
+    // highest declared BIT INDEX and enum_name spells one bit (docs/SPEC-TABLES.md
     // §8). The missing variant_id beside a present enum_name is what says
     // "positional vocabulary" — a bit has a name, never a wire id.
     CHECK( perks->enum_max == 2 );
@@ -795,7 +795,7 @@ static void test_flags_are_positional()
     CHECK( found );
 }
 
-// ---- extents past 65535: u32 lengths and u32 counts (SPEC-TABLES.md §3) ----
+// ---- extents past 65535: u32 lengths and u32 counts (docs/SPEC-TABLES.md §3) ----
 
 static void test_wide_extents()
 {
@@ -970,7 +970,7 @@ static void test_reflection()
     CHECK( strcmp( grade->enum_name( 9 ), "???" ) == 0 );
 
     // and the id each name rides under: the vocabulary and its wire identity
-    // are both reachable with no schema files (SPEC-TABLES.md §5, §8)
+    // are both reachable with no schema files (docs/SPEC-TABLES.md §5, §8)
     CHECK( grade->variant_id != NULL );
     CHECK( grade->variant_id( 0 ) == 0 ); // None is the reserved id
     CHECK( grade->variant_id( 1 ) == field_id( "Bronze" ) );
@@ -1021,7 +1021,7 @@ static void test_reflection()
     CHECK( effect->variant_id( 2 ) == field_id( "debuff" ) );
     // and the arms carry their PAYLOAD: where it sits in the union storage and
     // what it looks like, so a walker can enter a union with no schema files
-    // (SPEC-TABLES.md §8). Arm 0 is the empty arm and has none.
+    // (docs/SPEC-TABLES.md §8). Arm 0 is the empty arm and has none.
     CHECK( effect->arms != NULL );
     {
         const tabledemo::TableUnionInfo * arms = effect->arms();
@@ -1048,7 +1048,7 @@ static void test_reflection()
     }
 
     // reset: a generic walker can put any instance back at its declared
-    // defaults with no type to spell (SPEC-TABLES.md §8)
+    // defaults with no type to spell (docs/SPEC-TABLES.md §8)
     {
         tabledemo::WeaponConfig w;
         w.damage = 999.0f;
@@ -1058,7 +1058,7 @@ static void test_reflection()
         CHECK( w.homing == false );
     }
 
-    // the text form's key rides beside the name (SPEC-TABLES.md §16.3); with
+    // the text form's key rides beside the name (docs/SPEC-TABLES.md §16.3); with
     // no json attribute in the corpus the two are the same string's content
     CHECK( strcmp( damage->json, "damage" ) == 0 );
     const tabledemo::TableFieldInfo * nameF = demo_field( profileType, "name" );
@@ -1100,7 +1100,7 @@ static void test_cross_file()
 
 static void test_parallel_shape()
 {
-    // the go-wide pattern from USAGE.md, single-threaded here for
+    // the go-wide pattern from docs/USAGE.md, single-threaded here for
     // determinism: measure each profile, hand each a disjoint range, write
     // independently, and the concatenation decodes as if written serially
     tabledemo::ProfileConfig profiles[3];
@@ -1137,7 +1137,7 @@ static void test_parallel_shape()
 
 
 // ============================================================================
-// POINTER SEMANTICS (SPEC-TABLES.md §2, §6). Types remain value semantics;
+// POINTER SEMANTICS (docs/SPEC-TABLES.md §2, §6). Types remain value semantics;
 // tables allow pointer semantics — and everything below is a consequence.
 // ============================================================================
 
@@ -1344,7 +1344,7 @@ static void test_pointer_alias()
     CHECK( viaHead != NULL && viaAlias != NULL );
     CHECK( viaHead->value == 1234 && viaAlias->value == 1234 );
     // wire v1 is a TREE: identity is NOT preserved, and the packed form says so
-    // in the same voice — two references, two nodes (SPEC-TABLES.md §3)
+    // in the same voice — two references, two nodes (docs/SPEC-TABLES.md §3)
     CHECK( viaHead != viaAlias );
 
     static uint8_t wire[1024];
@@ -1655,7 +1655,7 @@ static void test_pointer_reflection()
     CHECK( head->id == field_id( "head" ) );
 
     // Relocatability holds with pointers in the struct, and THE SLOT IS EIGHT
-    // BYTES AT EIGHT (SPEC-TABLES.md §6.3, ruled 2026-09-03). In a region it
+    // BYTES AT EIGHT (docs/SPEC-TABLES.md §6.3, ruled 2026-09-03). In a region it
     // holds a SELF-RELATIVE byte delta, so its width is what bounds one
     // region's reach: at four bytes that was 2 GiB, which is a ceiling a mesh
     // or texture catalogue is exactly the thing to meet. It is SIGNED because
@@ -1876,7 +1876,7 @@ static void test_cross_file_pointer_unit()
     free( region );
 }
 
-// ---- optional fields: `?T` (SPEC-TABLES.md §2.3) ----
+// ---- optional fields: `?T` (docs/SPEC-TABLES.md §2.3) ----
 // ---- PRESENCE decides whether the field rides, never content. ----
 
 static void test_optional_round_trip()
@@ -1947,7 +1947,7 @@ static void test_optional_round_trip()
 }
 
 // ---- ?T, *T and a plain nesting are ONE framing: the three-way evolution
-// ---- (SPEC-TABLES.md §2.3, §3.1). P1 nests by value, P2 points, P3 marks
+// ---- (docs/SPEC-TABLES.md §2.3, §3.1). P1 nests by value, P2 points, P3 marks
 // ---- optional, and every pair reads both directions.
 
 static void test_optional_three_way_evolution()
@@ -2018,7 +2018,7 @@ static void test_optional_three_way_evolution()
     // ---- and where the three DIVERGE, which is at all-default. A by-value T
     // ---- has no presence bit, so it cannot tell "absent" from "present with
     // ---- nothing to say" and it ELIDES; ?T and *T both ride. Forced, and the
-    // ---- one asymmetry of the three-way promise (SPEC-TABLES.md §2.3).
+    // ---- one asymmetry of the three-way promise (docs/SPEC-TABLES.md §2.3).
     tblp1::Chain bare_value;
     set_string( bare_value.name, bare_value.name_length, "one" );
     int64_t w_bare_value = tblp1::ChainSave( bare_value, wire, sizeof( wire ) );
@@ -2069,7 +2069,7 @@ static void test_optional_three_way_evolution()
     free( region );
 }
 
-// ---- enum-keyed arrays: `[E]T` (SPEC-TABLES.md §2.4, §3.2) ----
+// ---- enum-keyed arrays: `[E]T` (docs/SPEC-TABLES.md §2.4, §3.2) ----
 
 static void test_keyed_round_trip()
 {
@@ -2087,7 +2087,7 @@ static void test_keyed_round_trip()
 
     // ScoreBoard is a `type`, so its keyed field keeps its PACKET storage — a
     // raw array indexed by the value, with no keyed accessor. The WIRE is
-    // keyed either way (SPEC-TABLES.md §2.4).
+    // keyed either way (docs/SPEC-TABLES.md §2.4).
     cfg.scores.per_team[keyed_index( tabledemo::Team::Red )] = 1200;
 
     uint8_t wire[8192];
@@ -2105,7 +2105,7 @@ static void test_keyed_round_trip()
     // a slot nobody set never rode, and reads as its declared default
     CHECK( back.teams[tabledemo::Team::Red].spawn_count == 4 );
     // there is no None slot to check: the storage holds one element per named
-    // variant and the key k lives at index k-1 (SPEC-TABLES.md §2.4)
+    // variant and the key k lives at index k-1 (docs/SPEC-TABLES.md §2.4)
     CHECK( sizeof( back.teams ) == 3 * sizeof( tabledemo::TeamConfig ) );
     CHECK( back.hulls[tabledemo::Hull::Gunship].health == 400.0f );
     CHECK( back.hulls[tabledemo::Hull::Interceptor].health == 100.0f );
@@ -2125,7 +2125,7 @@ static void test_keyed_round_trip()
     CHECK( tabledemo::KeyedConfigMeasure( empty ) == 2 );
 }
 
-// ---- iteration over the VALID slots (SPEC-TABLES.md §2.4) ----
+// ---- iteration over the VALID slots (docs/SPEC-TABLES.md §2.4) ----
 //
 // A consumer of a keyed array wants the WHOLE array, and the shape it wants is
 // (key, element) over the slots that can hold data. Iteration is that shape,
@@ -2251,7 +2251,7 @@ static void test_keyed_iteration()
     }
 }
 
-// ---- operator[] REFUSES None, and in every build (SPEC-TABLES.md §2.4) ----
+// ---- operator[] REFUSES None, and in every build (docs/SPEC-TABLES.md §2.4) ----
 //
 // The refusal is unconditional — NDEBUG does not remove it — so it is worth a
 // test that shows it firing rather than a comment claiming it does. A forked
@@ -2360,7 +2360,7 @@ static void test_keyed_evolution_new_data()
 // ---- between them is reported, never misdecoded. V1 spells `ledger` as
 // ---- [Grade.Max + 1]int32 and V2 spells the same field [Grade]int32: two
 // ---- incompatible bodies under one field id, and the kind byte is what keeps
-// ---- them apart (SPEC-TABLES.md §3.2).
+// ---- them apart (docs/SPEC-TABLES.md §3.2).
 
 static void test_keyed_versus_positional_is_a_kind_mismatch()
 {
@@ -2403,7 +2403,7 @@ static void test_keyed_versus_positional_is_a_kind_mismatch()
 }
 
 // ---- a stored key of 0 is DAMAGE, not an unknown name: None is the null key
-// ---- and it keys no slot (SPEC-TABLES.md §3.2).
+// ---- and it keys no slot (docs/SPEC-TABLES.md §3.2).
 
 static void test_keyed_none_key_is_malformed()
 {
@@ -2584,7 +2584,7 @@ static void test_keyed_variable_oracle()
 
         // CAPTURED BEFORE Lock(), exactly as name, depths[] and chains[] are:
         // Lock() compacts the arena into the region and releases the mutable
-        // life, so `root` dangles from that point on (SPEC-TABLES.md §6.2).
+        // life, so `root` dangles from that point on (docs/SPEC-TABLES.md §6.2).
         // Every value an assertion below compares against has to outlive it.
         const bool spare_present = ( oracle_rand( state ) & 1 ) != 0;
         root->spare_present = spare_present;
@@ -2678,7 +2678,7 @@ static void test_optional_and_keyed_reflection()
     CHECK( bank->key_type_name != NULL && strcmp( bank->key_type_name, "Slot" ) == 0 );
     // key_name and key_id are functions of the KEY, not of the storage index:
     // a walker steps [0, array_bound) and asks about index + 1, which is the
-    // key that index holds (SPEC-TABLES.md §2.4, §8)
+    // key that index holds (docs/SPEC-TABLES.md §2.4, §8)
     CHECK( bank->key_name != NULL && strcmp( bank->key_name( 2 ), "Beta" ) == 0 );
     CHECK( bank->key_id != NULL && bank->key_id( 2 ) == field_id( "Beta" ) );
     // None is a KEY the enum has and it names no slot: the reserved id says so
@@ -2703,7 +2703,7 @@ static void test_optional_and_keyed_reflection()
     CHECK( tally->key_type_name == NULL && tally->key_name == NULL && tally->key_id == NULL );
 }
 
-// ---- the SHARED GOLDEN WIRE (SPEC-TABLES.md §3, the cross-language gate) ----
+// ---- the SHARED GOLDEN WIRE (docs/SPEC-TABLES.md §3, the cross-language gate) ----
 //
 // C++ is the reference writer: these instances' encodings are pinned into
 // testdata/wire/tables/<name>.bin, and every other table backend byte-compares
@@ -2747,7 +2747,7 @@ static void pin_table_golden( const char * name, const uint8_t * data, int64_t b
     }
 }
 
-// ---- and the goldens READ BACK (SPEC-TABLES.md §3) --------------------------
+// ---- and the goldens READ BACK (docs/SPEC-TABLES.md §3) --------------------------
 //
 // pin_table_golden proves the WRITER: the bytes this build produces are the
 // bytes on disk. This proves the READER against those same files — every
@@ -3026,7 +3026,7 @@ static void test_golden_wire()
     }
 }
 
-// ---- the TEXT form (SPEC-TABLES.md §16) ------------------------------------
+// ---- the TEXT form (docs/SPEC-TABLES.md §16) ------------------------------------
 //
 // ONE walk over the reflection descriptors, so these tests are about the
 // WALK, not about any table: what holds for the corpus root holds for every
@@ -3255,7 +3255,7 @@ static void test_json_dialect()
     CHECK( trailing_junk.malformed );
 
     // an absent key keeps the field's DECLARED default, exactly as an absent
-    // field does on the wire (SPEC-TABLES.md §4)
+    // field does on the wire (docs/SPEC-TABLES.md §4)
     tabledemo::WeaponConfig weapon;
     const char * partial = "{ \"homing\": true }";
     CHECK( tabledemo::WeaponConfigFromJson( weapon, partial, (int64_t) strlen( partial ), &report ) );
@@ -3274,7 +3274,7 @@ static void test_json_dialect()
     CHECK( tabledemo::AttachmentFromJson( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
     CHECK( value.slot == 2 && duplicate.duplicate == 2 );
 
-    // the wire imposes no encoding on a string (SPEC-TABLES.md §3), so the
+    // the wire imposes no encoding on a string (docs/SPEC-TABLES.md §3), so the
     // text must not either: a stray lead byte rides as its own byte and does
     // NOT swallow the character after it — including the closing quote
     {
@@ -3291,7 +3291,7 @@ static void test_json_dialect()
         // byte it cannot spell is written as U+FFFD, one per bad byte. The
         // round trip is therefore NOT byte-identical for invalid UTF-8, and
         // that is the trade: a text a conforming parser can read, rather than
-        // one only this walk can (SPEC-TABLES.md §16.2).
+        // one only this walk can (docs/SPEC-TABLES.md §16.2).
         int64_t size = tabledemo::ProfileConfigToJsonMeasure( stray );
         std::vector<char> out( (size_t) size + 1 );
         CHECK( tabledemo::ProfileConfigToJson( stray, out.data(), size ) == size );
@@ -3380,7 +3380,7 @@ static void test_json_hostile_kinds()
     }
 
     // a name no variant names reads as None and counts as UNKNOWN — the same
-    // event an unknown variant id is on the wire (SPEC-TABLES.md §4)
+    // event an unknown variant id is on the wire (docs/SPEC-TABLES.md §4)
     {
         tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
@@ -3406,7 +3406,7 @@ static void test_json_hostile_kinds()
 static void test_json_hostile_overflow()
 {
     // every integer width, over its ceiling and under its floor: CLAMPED and
-    // counted, never wrapped (SPEC-TABLES.md §4)
+    // counted, never wrapped (docs/SPEC-TABLES.md §4)
     struct { const char * text; const char * field; int64_t expect; } rows[] = {
         { "{ \"tilt\": 999 }",                          "tilt+",  127 },
         { "{ \"tilt\": -999 }",                         "tilt-",  -128 },
@@ -3653,7 +3653,7 @@ static void test_json_hostile_framing()
 }
 
 // ---- the writer refuses what the text cannot name, exactly as measure and
-// ---- save refuse what the wire cannot name (SPEC-TABLES.md §5)
+// ---- save refuse what the wire cannot name (docs/SPEC-TABLES.md §5)
 
 static void test_json_writer_refusals()
 {
@@ -3683,7 +3683,7 @@ static void test_json_writer_refusals()
     }
 }
 
-// ---- guards: the wire's elision, carried into the text (SPEC-TABLES.md §16.2)
+// ---- guards: the wire's elision, carried into the text (docs/SPEC-TABLES.md §16.2)
 
 static void test_json_guards()
 {
@@ -3736,7 +3736,7 @@ static void test_json_key_attribute()
     CHECK( f != NULL && strcmp( f->json, "damage" ) == 0 );
 
     // jsonkeys::Ship renames two fields in the TEXT and moves no wire byte:
-    // the id is still the hash of the schema name (SPEC-TABLES.md §16.3)
+    // the id is still the hash of the schema name (docs/SPEC-TABLES.md §16.3)
     const jsonkeys::TableFieldInfo * ship_type = jsonkeys_field( jsonkeys::ShipTableType(), "ship_type" );
     CHECK( ship_type != NULL );
     CHECK( strcmp( ship_type->json, "type" ) == 0 );
@@ -4000,7 +4000,7 @@ static void test_json_pinned_text()
 }
 
 // ---- numbers: JSON has ONE number type, and no value the field cannot hold
-// ---- ever reaches storage (SPEC-TABLES.md §16.2)
+// ---- ever reaches storage (docs/SPEC-TABLES.md §16.2)
 
 static void test_json_number_grammar()
 {
@@ -4369,7 +4369,7 @@ static void test_json_nested_guards()
 
 // ---- the two constructs #265 added, in the text form --------------------
 //
-// `?T` (SPEC-TABLES.md §2.3): PRESENCE OF THE KEY IS THE PRESENCE.
+// `?T` (docs/SPEC-TABLES.md §2.3): PRESENCE OF THE KEY IS THE PRESENCE.
 // `[E]T` (§2.4): an OBJECT KEYED BY VARIANT NAME, because that is what the
 // storage is — one slot per NAMED variant, addressed by the variant, with
 // nothing stored for None.
@@ -4791,7 +4791,7 @@ static void test_golden_seams()
     // counts pinned here and in the C# leg: two Gamma slots V2 cannot name,
     // Omega and Sigma V1 cannot, and `a` and `ledger` changing kind each way
     // (ledger is positional in V1 and KEYED in V2 — different kinds, so a
-    // reported edit rather than a quiet one, SPEC-TABLES.md §3.2)
+    // reported edit rather than a quiet one, docs/SPEC-TABLES.md §3.2)
     {
         static tblv1::Cfg v1;
         build_golden_v1_seams( v1 );
@@ -4872,7 +4872,7 @@ static void test_golden_seams()
     }
 }
 
-// ---- a keyed object's keys ARE keys (SPEC-TABLES.md §16.2) ---------------
+// ---- a keyed object's keys ARE keys (docs/SPEC-TABLES.md §16.2) ---------------
 //
 // Last-wins inside a keyed object was always true — each placement
 // re-establishes the slot — so the VALUE was right and only the ledger was

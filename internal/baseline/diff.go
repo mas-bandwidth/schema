@@ -1,5 +1,5 @@
 // The DIFF: live projection against committed baseline, and the judgment on
-// every way they can differ (SPEC-TABLES.md §18.2).
+// every way they can differ (docs/SPEC-TABLES.md §18.2).
 //
 // The three verdicts, and the one question that assigns them: what does an
 // old file MEAN to a new reader?
@@ -93,10 +93,10 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// ---- a field's own facts ----
 	"kind":    RuleFixed,  // a changed kind is skipped by every old reader, and the value is silently gone
 	"elem":    RuleFixed,  // an array's element kind is that same fact, one level in
-	"default": RuleFixed,  // an elided field MEANS the reader's default (SPEC-TABLES.md §4)
+	"default": RuleFixed,  // an elided field MEANS the reader's default (docs/SPEC-TABLES.md §4)
 	"bound":   RuleShrink, // a count past the reader's bound keeps the prefix and counts clamped
 	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
-	"array":   RulePass,   // fixed and bounded frame identically on the wire (SPEC-TABLES.md §3)
+	"array":   RulePass,   // fixed and bounded frame identically on the wire (docs/SPEC-TABLES.md §3)
 	"was":     RulePass,   // `was` is the rename that PRESERVES identity — that is its whole job
 	// PRESENCE IS RECORDED AND JUDGED ON NOTHING: T, ?T and *T are one
 	// framing, so a field moving between them moves no byte (§3.1, §18.1)
@@ -105,7 +105,7 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// ---- a field's REFERENT, split by what it names ----
 	//
 	// Dropping the referent — an enum-typed field respelled as its raw uint16
-	// — is always a refusal: SPEC-TABLES.md §4 states outright that both ride
+	// — is always a refusal: docs/SPEC-TABLES.md §4 states outright that both ride
 	// as kind 7, so the runtime cannot report the edit, which is the
 	// definition of this file's job.
 	"enum":    RuleRefs,
@@ -494,7 +494,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 				continue
 			}
 			// A KEYED ARRAY'S BOUND IS ITS KEY ENUM'S SIZE, and its slots ride
-			// under variant name ids (SPEC-TABLES.md §3.2): an unknown key is
+			// under variant name ids (docs/SPEC-TABLES.md §3.2): an unknown key is
 			// skipped and counted `unknown`, so there is no bounded prefix and
 			// nothing is clamped. The enum walk already reports each variant
 			// that went, correctly and by name — this row would say the wrong
@@ -530,7 +530,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 // refsFindings judges a token that NAMES another declaration.
 //
 //   - Dropped entirely — refused: the field keeps its wire kind, so no reader
-//     can report it (SPEC-TABLES.md §4).
+//     can report it (docs/SPEC-TABLES.md §4).
 //   - Changed to the declaration the RENAME PAIRING matched the old one with —
 //     silent here. It is the same declaration under a new name, and its own
 //     walk judges what changed inside it. Judging it twice would make the same
@@ -540,7 +540,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 func (d *differ) refsFindings(where, key, was, now string, present bool) []Finding {
 	if !present {
 		return []Finding{{Refuse, where, fmt.Sprintf(
-			"%s %s removed — the field keeps its wire kind, so no reader can report the change (SPEC-TABLES.md §4)", tokenNoun(key), was)}}
+			"%s %s removed — the field keeps its wire kind, so no reader can report the change (docs/SPEC-TABLES.md §4)", tokenNoun(key), was)}}
 	}
 	if now == was || d.pairedRename(key, was) == now {
 		return nil
@@ -582,7 +582,7 @@ func (d *differ) pairedRename(key, was string) string {
 }
 
 // substitutable asks whether `now` can stand in for `was` for data already
-// written, and answers in that vocabulary's own terms (SPEC-TABLES.md §3):
+// written, and answers in that vocabulary's own terms (docs/SPEC-TABLES.md §3):
 //
 //   - a TABLE (a nested field, a union arm's payload) is read by field id, so
 //     it stands in when every id the old one carried is still carried AND THE
@@ -596,7 +596,7 @@ func (d *differ) pairedRename(key, was string) string {
 //   - a FLAGS mask is POSITIONAL and carries no names at all, so it stands in
 //     only when the old declaration's variants sit at the same bits.
 //   - an ENUM-KEYED array's KEY enum is judged as an enum: its slots ride
-//     under their variants' name ids (SPEC-TABLES.md §3.2).
+//     under their variants' name ids (docs/SPEC-TABLES.md §3.2).
 func (d *differ) substitutable(key, was, now string) []Finding {
 	switch key {
 	case "flags":
@@ -858,7 +858,7 @@ func flagsIdents(u *Unit) idents {
 		out.names = append(out.names, f.Name)
 		set := map[string]bool{}
 		for _, v := range f.Variants {
-			// a mask carries no ids at all (SPEC-TABLES.md §3), so a flags
+			// a mask carries no ids at all (docs/SPEC-TABLES.md §3), so a flags
 			// declaration's identity is the set of variant NAMES it declares
 			set[v] = true
 		}
@@ -869,7 +869,7 @@ func flagsIdents(u *Unit) idents {
 
 // diffFlags is the one vocabulary with no names on the wire: bit i is variant
 // i, so the ORDER is the fact and APPEND AT THE END is the only safe edit
-// (SPEC-TABLES.md §4).
+// (docs/SPEC-TABLES.md §4).
 func (d *differ) diffFlags() []Finding {
 	liveFlags := map[string]Flags{}
 	for _, f := range d.live.Flags {

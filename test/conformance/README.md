@@ -127,7 +127,7 @@ Named, with the reason, so a port knows what it is not being asked for:
   column of its own. It rides with the first port that has a cook reader.
 - **The block ROW dump.** A block's rows are read through the typed accessors in
   each leg, and a generic row dump needs projection offsets in the descriptors,
-  which no backend emits today (SPEC-TABLES.md §19.2 describes them). It is an
+  which no backend emits today (docs/SPEC-TABLES.md §19.2 describes them). It is an
   emitter change and this harness does not own the emitters.
 - **The JSON hostile battery.** 67 cases already live as data at
   `tables/pack/hostile-values/`, with a manifest carrying the expected report of

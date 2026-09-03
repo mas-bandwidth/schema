@@ -1,4 +1,4 @@
-// THE REFUSAL, HELD IN THE CONFIGURATION THAT WOULD DROP IT (SPEC-TABLES.md
+// THE REFUSAL, HELD IN THE CONFIGURATION THAT WOULD DROP IT (docs/SPEC-TABLES.md
 // §2.4). Indexing an enum-keyed array by None is a program error in EVERY
 // build: the storage shifts left and holds no slot for None, so a build that
 // let the index through would read one element BEFORE the array.
@@ -52,7 +52,7 @@ int main()
     {
         printf( "FAILED: under -DNDEBUG a None index did NOT end the program — "
                 "the refusal was compiled out, and a shipped build would read "
-                "one element before the array (SPEC-TABLES.md §2.4)\n" );
+                "one element before the array (docs/SPEC-TABLES.md §2.4)\n" );
         return 1;
     }
     printf( "keyed None refusal under -DNDEBUG: the index ended the program (signal %d)\n",

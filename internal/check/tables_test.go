@@ -1,4 +1,4 @@
-// Tests for the table frontend (SPEC-TABLES.md): the refusals that keep the
+// Tests for the table frontend (docs/SPEC-TABLES.md): the refusals that keep the
 // table wire sound, and the independence proof — tables move no protocol id.
 package check
 
@@ -88,7 +88,7 @@ func TestTableRefusals(t *testing.T) {
 		{name: "a declaration colliding with the mutable-life surface", want: "generated TABLE-wire functions",
 			src: "package t\ntable Tab { x int32 }\ntype TabBuilder { y int32 }\n"},
 
-		// ---- pointers (SPEC-TABLES.md §11) ----
+		// ---- pointers (docs/SPEC-TABLES.md §11) ----
 		{name: "a pointer to a type is refused by name", want: "may only target a `table`",
 			src: "package t\ntype P { x int32 }\ntable Tab { p *P }\n"},
 		{name: "a pointer to an enum is refused by name", want: "may only target a `table`",
@@ -132,7 +132,7 @@ func TestTableRefusals(t *testing.T) {
 		{name: "a table named after the arena member", want: "collides with a member of the generated",
 			src: "package t\ntable arena { x int32 }\n"},
 
-		// ---- optional fields, `?T` (SPEC-TABLES.md §2.3, §11) ----
+		// ---- optional fields, `?T` (docs/SPEC-TABLES.md §2.3, §11) ----
 		{name: "an optional in a type body is refused by name", want: "optionals are a TABLE construct",
 			src: "package t\ntype P { tier ?int32 }\n"},
 		{name: "an optional pointer is refused by name", want: "a pointer is ALREADY optional",
@@ -150,7 +150,7 @@ func TestTableRefusals(t *testing.T) {
 		{name: "a field colliding with an optional's presence companion", want: "the generated presence companion",
 			src: "package t\ntype Inner { x int32 }\ntable Tab {\n    settings ?Inner\n    settings_present bool\n}\n"},
 
-		// ---- enum-keyed arrays, `[E]T` (SPEC-TABLES.md §2.4, §11) ----
+		// ---- enum-keyed arrays, `[E]T` (docs/SPEC-TABLES.md §2.4, §11) ----
 		{name: "a keyed array bound naming flags is refused by name", want: "names a `flags` declaration",
 			src: "package t\nflags F { A, B }\ntable Tab { xs [F]int32 }\n"},
 		{name: "a bounded enum-keyed array is refused by name", want: "a bounded enum-keyed array is refused",
@@ -256,7 +256,7 @@ type Board
 		t.Fatalf("[E]T and [E.Max]T carry different protocol ids %#x != %#x", a.ProtocolId, b.ProtocolId)
 	}
 	// and the resolved bound is the slot count: one per named variant, and
-	// nothing for None (SPEC-TABLES.md §2.4)
+	// nothing for None (docs/SPEC-TABLES.md §2.4)
 	f := a.Structs["Board"].Fields[0]
 	if f.Array != ir.ArrayFixed || f.ArrayBound != 2 || f.KeyEnum != "Kind" {
 		t.Fatalf("keyed field resolved wrong: array=%v bound=%d key=%q", f.Array, f.ArrayBound, f.KeyEnum)
@@ -427,7 +427,7 @@ func TestTablesInvisibleToPacketIR(t *testing.T) {
 // the pointer-free by-value closure — a plain struct, exactly as every table
 // was before pointers existed. Variable-length is a pointer anywhere in that
 // closure, and the mode propagates UP through by-value nesting only
-// (SPEC-TABLES.md §2).
+// (docs/SPEC-TABLES.md §2).
 func TestTableModeDerivation(t *testing.T) {
 	u := buildUnit(t, `package t
 
@@ -494,7 +494,7 @@ table StaysFixed
 
 // TestPointerRecursionIsLegal: recursion through a POINTER edge is the whole
 // point of the freedom tables were given — the by-value cycle refusal must
-// exempt it (SPEC-TABLES.md §2).
+// exempt it (docs/SPEC-TABLES.md §2).
 func TestPointerRecursionIsLegal(t *testing.T) {
 	u := buildUnit(t, "package t\ntable Node\n{\n    v    int32\n    next *Node\n}\n")
 	f := u.Tables["Node"].Fields[1]
@@ -523,7 +523,7 @@ func TestCanonicalRootTableNameIsLegal(t *testing.T) {
 
 // TestRetiredOpenWalkIsFree: `<X>OpenWalk` named wire v1's validating walk, and
 // §7's Open is a header match with NO WALK IN IT — so the name went with the
-// design and the claim went with the name (SPEC-TABLES.md §7, §11). A claim
+// design and the claim went with the name (docs/SPEC-TABLES.md §7, §11). A claim
 // nothing needs takes a name away from every schema for free, and this is the
 // one direction the claim list cannot police itself in: an unclaimed name is
 // invisible unless something asks for it.
@@ -536,7 +536,7 @@ func TestRetiredOpenWalkIsFree(t *testing.T) {
 
 // TestTableWideExtents: the table wire carries u32 lengths and u32 counts, so
 // an extent past 65535 is ordinary — the ceiling is the language's own int32
-// storage cap, not a wire ceiling (SPEC-TABLES.md §2.2, §3).
+// storage cap, not a wire ceiling (docs/SPEC-TABLES.md §2.2, §3).
 func TestTableWideExtents(t *testing.T) {
 	cases := map[string]string{
 		"a string past 65535":       "package t\ntable Tab { s string(70000) }\n",
@@ -569,7 +569,7 @@ func TestTableVariantIds(t *testing.T) {
 	}
 }
 
-// TestTableFileDag is SPEC-TABLES.md §11's cross-file DAG rule, held in the
+// TestTableFileDag is docs/SPEC-TABLES.md §11's cross-file DAG rule, held in the
 // FRONT END so every target refuses the same units. C++ makes the consequence
 // concrete — the generated <A>Table.h and <B>Table.h would have to include
 // each other — but a unit legal under one target and illegal under another is

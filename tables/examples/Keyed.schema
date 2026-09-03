@@ -1,5 +1,5 @@
 // Keyed.schema — the expressiveness case for enum-keyed arrays and optional
-// fields (SPEC-TABLES.md §2.3, §2.4). A game's config bin is an enum-keyed
+// fields (docs/SPEC-TABLES.md §2.3, §2.4). A game's config bin is an enum-keyed
 // COLLECTION: one record per team, one per hull, one per weapon. This is that
 // shape as language — every slot addressed by the variant that owns it, and
 // every slot riding under that variant's NAME, so inserting a hull in the

@@ -100,7 +100,7 @@ Yes — [COMPARISON.md](COMPARISON.md). The same gameplay packet:
 
 Every number is produced by running the real encoder — `protoc`, `capnp`,
 `flatc` and schema's own writer — and the schemas, values and script are
-committed in [`comparison/`](comparison/) so you can re-run it rather than
+committed in [`comparison/`](../comparison/) so you can re-run it rather than
 trust it.
 
 It also says what those extra bytes buy, because they are not waste: Protobuf's
@@ -187,7 +187,7 @@ The plain reading: use it in a closed-source game freely; modify the compiler
 itself and run it as a service, and the AGPL applies to those modifications.
 
 **That carve-out is not a README paragraph — it is an ADDITIONAL PERMISSION at
-the top of [LICENSE](LICENSE) itself**, which is where it has legal force. Point
+the top of [LICENSE](../LICENSE) itself**, which is where it has legal force. Point
 your legal team at the file rather than at this answer. It is modelled on the
 long-standing practice for compiler-like tools whose output is not covered by
 the tool's own licence: the Bison parser exception and the GCC Runtime Library

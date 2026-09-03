@@ -1,4 +1,4 @@
-// Render.schema — the BLOCK FORM's dogfood corpus (SPEC-TABLES.md §19).
+// Render.schema — the BLOCK FORM's dogfood corpus (docs/SPEC-TABLES.md §19).
 //
 // This is the per-frame render data a simulation hands its host engine sixty
 // or more times a second: one root of nine bounded arrays over

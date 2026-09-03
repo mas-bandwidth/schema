@@ -8,7 +8,7 @@ table PartRow
 {
     armor ArmorConfig
     // a `type` holding two bounded arrays, nested by value in a ROW: both stay
-    // INLINE, at every depth (SPEC-TABLES.md §2.7, depth one bounded only)
+    // INLINE, at every depth (docs/SPEC-TABLES.md §2.7, depth one bounded only)
     gunner  GunnerSettings
     part_id uint32
     slot    uint8

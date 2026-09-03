@@ -1,5 +1,5 @@
 /*
-    THE COOKED FORM's C# READ SIDE, under test (SPEC-TABLES.md §7).
+    THE COOKED FORM's C# READ SIDE, under test (docs/SPEC-TABLES.md §7).
 
     `schema cook` writes the file and the generated <Root>Cook.Open points at
     it, and the two were written from the page independently: the tool in Go,
@@ -17,7 +17,7 @@
       fixedvalues <root> <cook> a FIXED root's values read back out of a cook
                                 the C++ side wrote the wire for and the tool
                                 cooked — a three-language crossing
-      usage  <root> <cook>      USAGE.md's C# cook example, compiled and run
+      usage  <root> <cook>      docs/USAGE.md's C# cook example, compiled and run
       forge  <root> <cook>      the directed battery: one edit per fact §7 says
                                 Open checks, each refused; and one edit per fact
                                 §7 says Open does NOT check, each opened
@@ -305,7 +305,7 @@ static unsafe class Program
                 if (region[a] != 0)
                 {
                     Fail.Now("the byte at region offset " + a + " covers no field and is 0x" +
-                             region[a].ToString("x2") + ", not zero (SPEC-TABLES.md §7.2)");
+                             region[a].ToString("x2") + ", not zero (docs/SPEC-TABLES.md §7.2)");
                 }
             }
         }
@@ -378,7 +378,7 @@ static unsafe class Program
 
         Console.WriteLine("cook value crossing: " + root.Name + " over " + path +
                           " — the C++ side wrote the wire, the tool cooked it, and this side reads every value " +
-                          "back, zero tail included (SPEC-TABLES.md §7.2, §7.5)");
+                          "back, zero tail included (docs/SPEC-TABLES.md §7.2, §7.5)");
         file.Destroy();
     }
 
@@ -468,7 +468,7 @@ static unsafe class Program
         {
             Fail.Now("USAGE's example did not open the cook, or found no chain in it");
         }
-        Console.WriteLine("cook usage example: USAGE.md's C# compiles and runs — " + nodes + " chain nodes off Scene.head");
+        Console.WriteLine("cook usage example: docs/USAGE.md's C# compiles and runs — " + nodes + " chain nodes off Scene.head");
         file.Destroy();
     }
 
@@ -819,7 +819,7 @@ static unsafe class Program
 
         Console.WriteLine("cook forgery fuzzer: " + root.Name + " over " + path + " — " + mutants + " mutants (" +
                           headerMutants + " header, " + dataMutants + " data), " + opened + " opened, " +
-                          "none read past the length the caller passed (SPEC-TABLES.md §7, §7.5)");
+                          "none read past the length the caller passed (docs/SPEC-TABLES.md §7, §7.5)");
     }
 
     // ---- mode: time — the O(1) bar ----
@@ -915,7 +915,7 @@ static unsafe class Program
                 Fail.Now("a cook of the OTHER byte order opened — the magic is what refuses it");
             }
             // AND A C# BIG-ENDIAN CONSUMER IS UNPROVEN, stated rather than
-            // implied (SPEC-TABLES.md §7.5): there is no big-endian .NET, so
+            // implied (docs/SPEC-TABLES.md §7.5): there is no big-endian .NET, so
             // this leg proves the REFUSAL and nothing about a native open of a
             // big-endian cook. The C++ leg proves that half on s390x.
             Console.WriteLine("cook byte-order leg: a cook of the other byte order is refused by the MAGIC, read " +
@@ -931,7 +931,7 @@ static unsafe class Program
         Fail.Describe("the layout contract");
         TableCookLayout.Verify();
         Console.WriteLine("cook layout contract: every cooked record's size and every field's offset agree with the " +
-                          "compiler's model in this runtime (SPEC-TABLES.md §19.3, §20.3)");
+                          "compiler's model in this runtime (docs/SPEC-TABLES.md §19.3, §20.3)");
     }
 
     static int Main(string[] args)

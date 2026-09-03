@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package graphdemo — protocol id 0x79242c6a555d3a60 (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
 #pragma once
@@ -34,13 +34,13 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
-// ---- reflection (tables only, SPEC-TABLES.md) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id/kind, storage offset, bounds, ranges, enum names and branch guards —
@@ -52,7 +52,7 @@ struct TableTypeInfo;
 // One arm of a union field: where its payload sits inside the union's storage
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
-// is spelled twice (SPEC-TABLES.md §8).
+// is spelled twice (docs/SPEC-TABLES.md §8).
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
@@ -95,14 +95,14 @@ struct TableFieldInfo
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
     const char * (*enum_name)( uint64_t value );
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
@@ -130,7 +130,7 @@ struct TableTypeInfo
     // thing the descriptors could not express without it. Placement-new
     // value-init, exactly what the wire's read path does, and no temporary.
     void (*reset)( void * storage );
-    // the DERIVED mode (SPEC-TABLES.md): false = fixed-size, a plain
+    // the DERIVED mode (docs/SPEC-TABLES.md): false = fixed-size, a plain
     // relocatable struct; true = variable-length, built through a Builder
     // and read through a region root. Nobody declares it; the compiler
     // works it out.
@@ -331,7 +331,7 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace graphdemo {
 
-// ---- variable-length tables: tuning constants (SPEC-TABLES.md) ----
+// ---- variable-length tables: tuning constants (docs/SPEC-TABLES.md) ----
 //
 // The segment size and the count multiply to exactly 2^32: the u32 reference
 // is the arena's hard ceiling, and these constants saturate it rather than
@@ -578,7 +578,7 @@ struct TableRegionSink
 
 namespace graphdemo {
 
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on — the type wire's protocol id, every record's
 // layout as the compiler's own C ABI model computes it, and the facts that
 // decide what a load PUTS in those slots. It is the number a cook's header
@@ -601,14 +601,14 @@ inline constexpr uint64_t BuildVersion = 0xe7c54936602ceecaull;
 
 namespace graphdemo {
 
-// ---- the cooked form (SPEC-TABLES.md §7) ----
+// ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 //
 // A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 // order. Every word of the header is a u64 written in the byte order the cook
 // was produced in, and the header is 64 bytes:
 //
 //     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
-//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//     8  build_version       the unit's id (docs/SPEC-TABLES.md §20)
 //    16  byte_order          1 little, 2 big — the order that WROTE the file
 //    24  data_length         the region's bytes, rounded up to alignment
 //    32  attribution_length  the directory's bytes, or 0
@@ -655,7 +655,7 @@ inline constexpr uint64_t TableCookByteOrder = 1; // little
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
-// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+// describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
 inline constexpr uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
@@ -756,14 +756,14 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 namespace graphdemo {
 
 // table Stamp — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct Stamp {
     char tag[8 + 1] = {}; // string(8): max length, used length beside it
     int32_t tag_length = 0;
     int32_t seq = 0;
 };
 
-// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void StampReset( Stamp & value );
 inline void ColourReset( Colour & value );
@@ -777,7 +777,7 @@ inline void StampReset( Stamp & value )
 
 inline void ColourReset( Colour & value ) { value = Colour(); }
 
-// ---- the arena's reset hook (SPEC-TABLES.md §6) ----
+// ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----
 //
 // TableWorker::Alloc is a template and cannot name a member's Reset, so
 // the arena reaches it through this overload set by argument-dependent
@@ -998,7 +998,7 @@ inline bool ColourLoad( Colour & value, const uint8_t * buffer, int64_t bytes, T
     return ColourLoadBody( r, value );
 }
 
-// ---- the cooked form: point at a cook (SPEC-TABLES.md §7) ----
+// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
 // StampOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
@@ -1040,24 +1040,24 @@ static_assert( std::is_standard_layout<Stamp>::value, "Stamp must stay standard-
 static_assert( std::is_trivially_copyable<Colour>::value, "Colour must stay relocatable" );
 static_assert( std::is_standard_layout<Colour>::value, "Colour must stay standard-layout for offsetof" );
 
-// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----
+// ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
 // The compiler derived every number below from the declaration and folded it
 // into the BUILD VERSION; these asserts are this compiler saying whether it
 // agrees. The model is not self-evidently right — on 32-bit System V
 // alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
 // rather than assumed.
-static_assert( sizeof( Stamp ) == 20, "Stamp's sizeof moved: the build version was taken over 20, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Stamp ) == 4, "Stamp's alignof moved: the build version was taken over 4 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Stamp, tag ) == 0, "Stamp's field tag moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Stamp, seq ) == 16, "Stamp's field seq moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Colour ) == 3, "Colour's sizeof moved: the build version was taken over 3, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( Colour ) == 1, "Colour's alignof moved: the build version was taken over 1 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Colour, r ) == 0, "Colour's field r moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Colour, g ) == 1, "Colour's field g moved: the build version was taken over offset 1 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Colour, b ) == 2, "Colour's field b moved: the build version was taken over offset 2 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Stamp ) == 20, "Stamp's sizeof moved: the build version was taken over 20, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Stamp ) == 4, "Stamp's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Stamp, tag ) == 0, "Stamp's field tag moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Stamp, seq ) == 16, "Stamp's field seq moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Colour ) == 3, "Colour's sizeof moved: the build version was taken over 3, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( Colour ) == 1, "Colour's alignof moved: the build version was taken over 1 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Colour, r ) == 0, "Colour's field r moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Colour, g ) == 1, "Colour's field g moved: the build version was taken over offset 1 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Colour, b ) == 2, "Colour's field b moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
 
-// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
+// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * StampTableType();
 inline const TableTypeInfo * ColourTableType();
@@ -1085,17 +1085,17 @@ inline const TableFieldInfo ColourTableFields[] = {
 inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }
 
-// ---- the text form (SPEC-TABLES.md §16) ----
+// ---- the text form (docs/SPEC-TABLES.md §16) ----
 
 // Stamp in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PartsTable.cpp; link it to use them.
 bool StampFromJson( Stamp & value, const char * text, int64_t bytes, TableReport * report );
 int64_t StampToJsonMeasure( const Stamp & value );
 int64_t StampToJson( const Stamp & value, char * buffer, int64_t capacity );
 
 // Colour in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // PartsTable.cpp; link it to use them.
 bool ColourFromJson( Colour & value, const char * text, int64_t bytes, TableReport * report );
 int64_t ColourToJsonMeasure( const Colour & value );

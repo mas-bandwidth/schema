@@ -52,7 +52,7 @@ type TypeDecl struct {
 }
 
 // TableDecl is a `table` declaration: a data type on the evolution-tolerant
-// TABLE wire (SPEC-TABLES.md) rather than the packet wire. The body grammar
+// TABLE wire (docs/SPEC-TABLES.md) rather than the packet wire. The body grammar
 // is the type body's; a table declaration takes no qualification.
 type TableDecl struct {
 	Name string
@@ -146,12 +146,12 @@ type ScalarType struct {
 	Arg    Expr // ScalarBits/ScalarString/ScalarBytes: the (N); ScalarFixed: I
 	Arg2   Expr // ScalarFixed: F
 	// Pointer marks the `*T` spelling (ScalarNamed only): a POINTER to a
-	// table rather than a by-value nesting (SPEC-TABLES.md). Types remain
+	// table rather than a by-value nesting (docs/SPEC-TABLES.md). Types remain
 	// value semantics; tables allow pointer semantics.
 	Pointer bool
 	// Optional marks the `?T` spelling: an OPTIONAL by-value field, present
 	// or absent, with a generated presence companion beside the value
-	// (SPEC-TABLES.md §2.3). Table bodies only; the checker refuses every
+	// (docs/SPEC-TABLES.md §2.3). Table bodies only; the checker refuses every
 	// other placement by name.
 	Optional bool
 	Name     string // ScalarNamed

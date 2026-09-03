@@ -103,7 +103,7 @@ paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
 # ---------------------------------------------------------------------------
 # A CALENDAR DATE IS NOT A CLOCK.
 #
-# The tables baseline (SPEC-TABLES.md §18.4) stamps each history entry with the
+# The tables baseline (docs/SPEC-TABLES.md §18.4) stamps each history entry with the
 # day it was written, so a person reading the intentional-break log years
 # later knows when the break happened. It measures no interval and times
 # nothing; the timing check is lexical and cannot tell a date from a clock.
@@ -112,7 +112,7 @@ paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
 timing internal/baseline/file.go 1 the history entry's calendar date — a day written into a text log, no interval measured (prose)
 
 # ---------------------------------------------------------------------------
-# GATE 2 — the spec's own MEASURED gate (SPEC-TABLES.md §12.1).
+# GATE 2 — the spec's own MEASURED gate (docs/SPEC-TABLES.md §12.1).
 #
 # The one-benchmark rule is about the SERIALIZE benchmark: nine hand-written
 # approximations of one measurement, drifting apart. These two files measure
@@ -131,7 +131,7 @@ timing internal/baseline/file.go 1 the history entry's calendar date — a day w
 timing test/tables/block_gate2_main.cpp 6 gate 2's C++ half (§12.1): the per-frame write, generated against the hand-written scatter
 timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame read, generated against the hand mirror
 
-# THE COOK's OPEN-COST GATE (SPEC-TABLES.md §7, §7.5) measures the ABSENCE of
+# THE COOK's OPEN-COST GATE (docs/SPEC-TABLES.md §7, §7.5) measures the ABSENCE of
 # work, which is why it needs a clock and why it is not a bench. `Open` is
 # O(1) in the file's size — a header match and nothing per node — and the gate
 # is that a 1 MB cook and a 100 MB cook open in the SAME time. It names no

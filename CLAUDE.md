@@ -1,6 +1,6 @@
 # schema — working conventions for sessions in this repo
 
-- **SPEC.md is the one source of truth, written as a clean reference.** It states the
+- **docs/SPEC.md is the one source of truth, written as a clean reference.** It states the
   most recent specification only — present tense, reference register, no history, no
   decision narration (Glenn's directive, 2026-08-18: SPEC must read for a human
   implementer, not like a CLAUDE.md). Decision provenance — who ruled what, when, in
@@ -24,7 +24,7 @@
   share. `cmd/schema` is a client of that API and must stay one — `internal/publicapi`
   rebuilds the CLI inside an external module, so the day it reaches past the public surface
   the build fails and names the package. Adding an export is a semver commitment
-  (VERSIONING.md); the rule the issue set is that an export justifies itself on schema's own
+  (docs/VERSIONING.md); the rule the issue set is that an export justifies itself on schema's own
   needs or it stays internal. The per-language emitters are implementations, not API.
 
 - **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
@@ -96,7 +96,7 @@ words (2026-08-25): *"schema is types and bitpacking and enums and constants."*
 
 ## SPEC maintenance ledger (from the 2026-08-18 human-readability rewrite)
 
-SPEC.md was rewritten 2026-08-18 into plain reference register on Glenn's directive —
+docs/SPEC.md was rewritten 2026-08-18 into plain reference register on Glenn's directive —
 most recent state only, no history, no decision narration. Nothing normative changed.
 The material that left the spec lives in three places: **git** (the last pre-rewrite
 revision carries every DECIDED date, verbatim ruling and repair note inline),
@@ -134,7 +134,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   server together on any breakage. so this is no concern."* The 2b rounding
   unification (half away from zero, superseding the pure-shift form) moved shipped
   narrowing bytes only on exact negative ties; the version note lives in
-  VERSIONING.md, and the discriminating tie vector is pinned in the conformance
+  docs/VERSIONING.md, and the discriminating tie vector is pinned in the conformance
   corpus.
 - **Union vs variant, the measured basis for the §4.8 C-flavored-default principle:**
   isolating pure header cost (one representation-agnostic TU, arm64 clang), union

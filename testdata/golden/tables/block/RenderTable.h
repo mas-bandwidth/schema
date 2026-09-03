@@ -3,7 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package blockdemo — protocol id 0x7a706bf2ea47d94b (packets only: tables version by field id, not by protocol id)
-// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize
+// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
 #pragma once
@@ -31,13 +31,13 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
-// ---- reflection (tables only, SPEC-TABLES.md) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id/kind, storage offset, bounds, ranges, enum names and branch guards —
@@ -49,7 +49,7 @@ struct TableTypeInfo;
 // One arm of a union field: where its payload sits inside the union's storage
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
-// is spelled twice (SPEC-TABLES.md §8).
+// is spelled twice (docs/SPEC-TABLES.md §8).
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
@@ -91,14 +91,14 @@ struct TableFieldInfo
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
     const char * (*enum_name)( uint64_t value );
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
@@ -322,7 +322,7 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 namespace blockdemo {
 
-// THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the bytes
+// THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on — the type wire's protocol id, every record's
 // layout as the compiler's own C ABI model computes it, and the facts that
 // decide what a load PUTS in those slots. It is the number a cook's header
@@ -345,14 +345,14 @@ inline constexpr uint64_t BuildVersion = 0x863a8eebc1090dc6ull;
 
 namespace blockdemo {
 
-// ---- the cooked form (SPEC-TABLES.md §7) ----
+// ---- the cooked form (docs/SPEC-TABLES.md §7) ----
 //
 // A cooked file is a HEADER, a DATA part and an ATTRIBUTION part, in that
 // order. Every word of the header is a u64 written in the byte order the cook
 // was produced in, and the header is 64 bytes:
 //
 //     0  magic               0x4b4f4f434d484353, read BYTEWISE before anything else
-//     8  build_version       the unit's id (SPEC-TABLES.md §20)
+//     8  build_version       the unit's id (docs/SPEC-TABLES.md §20)
 //    16  byte_order          1 little, 2 big — the order that WROTE the file
 //    24  data_length         the region's bytes, rounded up to alignment
 //    32  attribution_length  the directory's bytes, or 0
@@ -399,7 +399,7 @@ inline constexpr uint64_t TableCookByteOrder = 1; // little
 // The greatest region alignment a cooked file may name. The DATA part begins
 // at align_up( 64, alignment ), which is 64 for every unit this language can
 // declare — the largest alignment it has is sixteen — so a word past this cap
-// describes a file no build of this schema wrote (SPEC-TABLES.md §7.1).
+// describes a file no build of this schema wrote (docs/SPEC-TABLES.md §7.1).
 inline constexpr uint64_t TableCookMaxAlign = 64;
 
 // The header read, BYTEWISE. memcpy is the portable spelling of "these eight
@@ -500,7 +500,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 namespace blockdemo {
 
 // table RenderCamera — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderCamera {
     RenderVector3 position;
     RenderQuaternion rotation;
@@ -511,7 +511,7 @@ struct RenderCamera {
 };
 
 // table RenderShip — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderShip {
     RenderVector3 position;
     RenderQuaternion rotation;
@@ -527,7 +527,7 @@ struct RenderShip {
 };
 
 // table RenderTurret — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderTurret {
     RenderQuaternion rotation;
     uint64_t flags = 0;
@@ -541,7 +541,7 @@ struct RenderTurret {
 };
 
 // table RenderMissile — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderMissile {
     RenderVector3 position;
     RenderQuaternion rotation;
@@ -553,7 +553,7 @@ struct RenderMissile {
 };
 
 // table RenderDynamicProp — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderDynamicProp {
     RenderVector3 position;
     RenderQuaternion rotation;
@@ -565,7 +565,7 @@ struct RenderDynamicProp {
 };
 
 // table RenderStaticProp — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderStaticProp {
     RenderVector3 position;
     RenderQuaternion rotation;
@@ -577,7 +577,7 @@ struct RenderStaticProp {
 };
 
 // table RenderCosmeticProp — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderCosmeticProp {
     RenderVector3 position;
     RenderQuaternion rotation;
@@ -590,7 +590,7 @@ struct RenderCosmeticProp {
 };
 
 // table RenderLaser — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderLaser {
     RenderVector3 start;
     RenderVector3 finish;
@@ -601,7 +601,7 @@ struct RenderLaser {
 };
 
 // table RenderExplosion — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderExplosion {
     RenderVector3 position;
     RenderQuaternion rotation;
@@ -613,7 +613,7 @@ struct RenderExplosion {
 };
 
 // table RenderFrame — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (SPEC-TABLES.md)
+// member initializers (docs/SPEC-TABLES.md)
 struct RenderFrame {
     uint64_t version = 0;
     RenderCamera cameras[1]; // used count beside it; count in [0, 1]
@@ -638,7 +638,7 @@ struct RenderFrame {
 
 // ShipType on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef BLOCKDEMO_SCHEMA_TABLE_ENUM_SHIPTYPE
 #define BLOCKDEMO_SCHEMA_TABLE_ENUM_SHIPTYPE
 inline bool TableEnumId( ShipType value, uint16_t & id )
@@ -667,7 +667,7 @@ inline bool TableEnumValue( uint16_t id, ShipType & out )
 
 // Team on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef BLOCKDEMO_SCHEMA_TABLE_ENUM_TEAM
 #define BLOCKDEMO_SCHEMA_TABLE_ENUM_TEAM
 inline bool TableEnumId( Team value, uint16_t & id )
@@ -698,7 +698,7 @@ inline bool TableEnumValue( uint16_t id, Team & out )
 
 // MissileType on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef BLOCKDEMO_SCHEMA_TABLE_ENUM_MISSILETYPE
 #define BLOCKDEMO_SCHEMA_TABLE_ENUM_MISSILETYPE
 inline bool TableEnumId( MissileType value, uint16_t & id )
@@ -725,7 +725,7 @@ inline bool TableEnumValue( uint16_t id, MissileType & out )
 
 // PropType on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef BLOCKDEMO_SCHEMA_TABLE_ENUM_PROPTYPE
 #define BLOCKDEMO_SCHEMA_TABLE_ENUM_PROPTYPE
 inline bool TableEnumId( PropType value, uint16_t & id )
@@ -754,7 +754,7 @@ inline bool TableEnumValue( uint16_t id, PropType & out )
 
 // LaserType on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef BLOCKDEMO_SCHEMA_TABLE_ENUM_LASERTYPE
 #define BLOCKDEMO_SCHEMA_TABLE_ENUM_LASERTYPE
 inline bool TableEnumId( LaserType value, uint16_t & id )
@@ -781,7 +781,7 @@ inline bool TableEnumValue( uint16_t id, LaserType & out )
 
 // ExplosionType on the TABLE wire: a value rides as the u16 hash of its VARIANT
 // NAME, so a variant may be added anywhere, removed, or reordered and old
-// data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+// data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
 #ifndef BLOCKDEMO_SCHEMA_TABLE_ENUM_EXPLOSIONTYPE
 #define BLOCKDEMO_SCHEMA_TABLE_ENUM_EXPLOSIONTYPE
 inline bool TableEnumId( ExplosionType value, uint16_t & id )
@@ -806,7 +806,7 @@ inline bool TableEnumValue( uint16_t id, ExplosionType & out )
 }
 #endif // BLOCKDEMO_SCHEMA_TABLE_ENUM_EXPLOSIONTYPE
 
-// ---- prefill: the declared defaults, in place (SPEC-TABLES.md) ----
+// ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void RenderCameraReset( RenderCamera & value );
 inline void RenderShipReset( RenderShip & value );
@@ -4057,7 +4057,7 @@ inline bool RenderQuaternionLoad( RenderQuaternion & value, const uint8_t * buff
     return RenderQuaternionLoadBody( r, value );
 }
 
-// ---- the cooked form: point at a cook (SPEC-TABLES.md §7) ----
+// ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----
 
 // RenderCameraOpen: match the header and POINT. On a match the bytes ARE what this
 // build wrote, in this build's layout and this build's byte order, so there
@@ -4340,124 +4340,124 @@ static_assert( std::is_standard_layout<RenderVector3>::value, "RenderVector3 mus
 static_assert( std::is_trivially_copyable<RenderQuaternion>::value, "RenderQuaternion must stay relocatable" );
 static_assert( std::is_standard_layout<RenderQuaternion>::value, "RenderQuaternion must stay standard-layout for offsetof" );
 
-// ---- the cook's layout contract (SPEC-TABLES.md §20.3) ----
+// ---- the cook's layout contract (docs/SPEC-TABLES.md §20.3) ----
 //
 // The compiler derived every number below from the declaration and folded it
 // into the BUILD VERSION; these asserts are this compiler saying whether it
 // agrees. The model is not self-evidently right — on 32-bit System V
 // alignof(uint64_t) is 4, not 8 — which is precisely why it is asserted
 // rather than assumed.
-static_assert( sizeof( RenderCamera ) == 72, "RenderCamera's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderCamera ) == 8, "RenderCamera's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCamera, position ) == 0, "RenderCamera's field position moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCamera, rotation ) == 24, "RenderCamera's field rotation moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCamera, camera_id ) == 56, "RenderCamera's field camera_id moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCamera, camera_type ) == 60, "RenderCamera's field camera_type moved: the build version was taken over offset 60 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCamera, target_object_id ) == 64, "RenderCamera's field target_object_id moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCamera, fov ) == 68, "RenderCamera's field fov moved: the build version was taken over offset 68 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderShip ) == 88, "RenderShip's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderShip ) == 8, "RenderShip's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, position ) == 0, "RenderShip's field position moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, rotation ) == 24, "RenderShip's field rotation moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, flags ) == 56, "RenderShip's field flags moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, object_id ) == 64, "RenderShip's field object_id moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, target_object_id ) == 68, "RenderShip's field target_object_id moved: the build version was taken over offset 68 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, thrust ) == 72, "RenderShip's field thrust moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, object_sequence ) == 76, "RenderShip's field object_sequence moved: the build version was taken over offset 76 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, ship_type ) == 77, "RenderShip's field ship_type moved: the build version was taken over offset 77 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, team ) == 78, "RenderShip's field team moved: the build version was taken over offset 78 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, has_target_lock ) == 79, "RenderShip's field has_target_lock moved: the build version was taken over offset 79 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderShip, predicted_explode ) == 80, "RenderShip's field predicted_explode moved: the build version was taken over offset 80 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderTurret ) == 64, "RenderTurret's sizeof moved: the build version was taken over 64, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderTurret ) == 8, "RenderTurret's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, rotation ) == 0, "RenderTurret's field rotation moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, flags ) == 32, "RenderTurret's field flags moved: the build version was taken over offset 32 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, object_id ) == 40, "RenderTurret's field object_id moved: the build version was taken over offset 40 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, parent_object_id ) == 44, "RenderTurret's field parent_object_id moved: the build version was taken over offset 44 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, turret_index ) == 48, "RenderTurret's field turret_index moved: the build version was taken over offset 48 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, target_object_id ) == 52, "RenderTurret's field target_object_id moved: the build version was taken over offset 52 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, object_sequence ) == 56, "RenderTurret's field object_sequence moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, team ) == 57, "RenderTurret's field team moved: the build version was taken over offset 57 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderTurret, has_target_lock ) == 58, "RenderTurret's field has_target_lock moved: the build version was taken over offset 58 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderMissile ) == 72, "RenderMissile's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderMissile ) == 8, "RenderMissile's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderMissile, position ) == 0, "RenderMissile's field position moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderMissile, rotation ) == 24, "RenderMissile's field rotation moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderMissile, flags ) == 56, "RenderMissile's field flags moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderMissile, object_id ) == 64, "RenderMissile's field object_id moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderMissile, object_sequence ) == 68, "RenderMissile's field object_sequence moved: the build version was taken over offset 68 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderMissile, missile_type ) == 69, "RenderMissile's field missile_type moved: the build version was taken over offset 69 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderMissile, team ) == 70, "RenderMissile's field team moved: the build version was taken over offset 70 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderDynamicProp ) == 72, "RenderDynamicProp's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderDynamicProp ) == 8, "RenderDynamicProp's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderDynamicProp, position ) == 0, "RenderDynamicProp's field position moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderDynamicProp, rotation ) == 24, "RenderDynamicProp's field rotation moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderDynamicProp, flags ) == 56, "RenderDynamicProp's field flags moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderDynamicProp, object_id ) == 64, "RenderDynamicProp's field object_id moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderDynamicProp, object_sequence ) == 68, "RenderDynamicProp's field object_sequence moved: the build version was taken over offset 68 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderDynamicProp, prop_type ) == 69, "RenderDynamicProp's field prop_type moved: the build version was taken over offset 69 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderDynamicProp, team ) == 70, "RenderDynamicProp's field team moved: the build version was taken over offset 70 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderStaticProp ) == 80, "RenderStaticProp's sizeof moved: the build version was taken over 80, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderStaticProp ) == 8, "RenderStaticProp's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderStaticProp, position ) == 0, "RenderStaticProp's field position moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderStaticProp, rotation ) == 24, "RenderStaticProp's field rotation moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderStaticProp, scale ) == 56, "RenderStaticProp's field scale moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderStaticProp, flags ) == 64, "RenderStaticProp's field flags moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderStaticProp, static_prop_id ) == 72, "RenderStaticProp's field static_prop_id moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderStaticProp, prop_type ) == 76, "RenderStaticProp's field prop_type moved: the build version was taken over offset 76 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderStaticProp, team ) == 77, "RenderStaticProp's field team moved: the build version was taken over offset 77 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderCosmeticProp ) == 80, "RenderCosmeticProp's sizeof moved: the build version was taken over 80, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderCosmeticProp ) == 8, "RenderCosmeticProp's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCosmeticProp, position ) == 0, "RenderCosmeticProp's field position moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCosmeticProp, rotation ) == 24, "RenderCosmeticProp's field rotation moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCosmeticProp, scale ) == 56, "RenderCosmeticProp's field scale moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCosmeticProp, flags ) == 64, "RenderCosmeticProp's field flags moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCosmeticProp, cosmetic_prop_id ) == 72, "RenderCosmeticProp's field cosmetic_prop_id moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCosmeticProp, prop_sequence ) == 76, "RenderCosmeticProp's field prop_sequence moved: the build version was taken over offset 76 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCosmeticProp, prop_type ) == 77, "RenderCosmeticProp's field prop_type moved: the build version was taken over offset 77 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderCosmeticProp, team ) == 78, "RenderCosmeticProp's field team moved: the build version was taken over offset 78 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderLaser ) == 64, "RenderLaser's sizeof moved: the build version was taken over 64, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderLaser ) == 8, "RenderLaser's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderLaser, start ) == 0, "RenderLaser's field start moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderLaser, finish ) == 24, "RenderLaser's field finish moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderLaser, t ) == 48, "RenderLaser's field t moved: the build version was taken over offset 48 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderLaser, laser_id ) == 56, "RenderLaser's field laser_id moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderLaser, laser_type ) == 60, "RenderLaser's field laser_type moved: the build version was taken over offset 60 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderLaser, team ) == 61, "RenderLaser's field team moved: the build version was taken over offset 61 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderExplosion ) == 80, "RenderExplosion's sizeof moved: the build version was taken over 80, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderExplosion ) == 8, "RenderExplosion's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderExplosion, position ) == 0, "RenderExplosion's field position moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderExplosion, rotation ) == 24, "RenderExplosion's field rotation moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderExplosion, t ) == 56, "RenderExplosion's field t moved: the build version was taken over offset 56 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderExplosion, explosion_id ) == 64, "RenderExplosion's field explosion_id moved: the build version was taken over offset 64 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderExplosion, parent_object_id ) == 68, "RenderExplosion's field parent_object_id moved: the build version was taken over offset 68 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderExplosion, explosion_type ) == 72, "RenderExplosion's field explosion_type moved: the build version was taken over offset 72 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderExplosion, team ) == 73, "RenderExplosion's field team moved: the build version was taken over offset 73 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderFrame ) == 7879320, "RenderFrame's sizeof moved: the build version was taken over 7879320, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderFrame ) == 8, "RenderFrame's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, version ) == 0, "RenderFrame's field version moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, cameras ) == 8, "RenderFrame's field cameras moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, ships ) == 88, "RenderFrame's field ships moved: the build version was taken over offset 88 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, turrets ) == 360544, "RenderFrame's field turrets moved: the build version was taken over offset 360544 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, missiles ) == 426088, "RenderFrame's field missiles moved: the build version was taken over offset 426088 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, dynamic_props ) == 721008, "RenderFrame's field dynamic_props moved: the build version was taken over offset 721008 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, static_props ) == 1015928, "RenderFrame's field static_props moved: the build version was taken over offset 1015928 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, cosmetic_props ) == 2615936, "RenderFrame's field cosmetic_props moved: the build version was taken over offset 2615936 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, lasers ) == 3271304, "RenderFrame's field lasers moved: the build version was taken over offset 3271304 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderFrame, explosions ) == 5319312, "RenderFrame's field explosions moved: the build version was taken over offset 5319312 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderVector3 ) == 24, "RenderVector3's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderVector3 ) == 8, "RenderVector3's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderVector3, x ) == 0, "RenderVector3's field x moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderVector3, y ) == 8, "RenderVector3's field y moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderVector3, z ) == 16, "RenderVector3's field z moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( RenderQuaternion ) == 32, "RenderQuaternion's sizeof moved: the build version was taken over 32, so a cook of it would not be this build's file (SPEC-TABLES.md §20.3)" );
-static_assert( alignof( RenderQuaternion ) == 8, "RenderQuaternion's alignof moved: the build version was taken over 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderQuaternion, x ) == 0, "RenderQuaternion's field x moved: the build version was taken over offset 0 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderQuaternion, y ) == 8, "RenderQuaternion's field y moved: the build version was taken over offset 8 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderQuaternion, z ) == 16, "RenderQuaternion's field z moved: the build version was taken over offset 16 (SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( RenderQuaternion, w ) == 24, "RenderQuaternion's field w moved: the build version was taken over offset 24 (SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderCamera ) == 72, "RenderCamera's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderCamera ) == 8, "RenderCamera's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCamera, position ) == 0, "RenderCamera's field position moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCamera, rotation ) == 24, "RenderCamera's field rotation moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCamera, camera_id ) == 56, "RenderCamera's field camera_id moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCamera, camera_type ) == 60, "RenderCamera's field camera_type moved: the build version was taken over offset 60 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCamera, target_object_id ) == 64, "RenderCamera's field target_object_id moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCamera, fov ) == 68, "RenderCamera's field fov moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderShip ) == 88, "RenderShip's sizeof moved: the build version was taken over 88, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderShip ) == 8, "RenderShip's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, position ) == 0, "RenderShip's field position moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, rotation ) == 24, "RenderShip's field rotation moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, flags ) == 56, "RenderShip's field flags moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, object_id ) == 64, "RenderShip's field object_id moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, target_object_id ) == 68, "RenderShip's field target_object_id moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, thrust ) == 72, "RenderShip's field thrust moved: the build version was taken over offset 72 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, object_sequence ) == 76, "RenderShip's field object_sequence moved: the build version was taken over offset 76 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, ship_type ) == 77, "RenderShip's field ship_type moved: the build version was taken over offset 77 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, team ) == 78, "RenderShip's field team moved: the build version was taken over offset 78 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, has_target_lock ) == 79, "RenderShip's field has_target_lock moved: the build version was taken over offset 79 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderShip, predicted_explode ) == 80, "RenderShip's field predicted_explode moved: the build version was taken over offset 80 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderTurret ) == 64, "RenderTurret's sizeof moved: the build version was taken over 64, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderTurret ) == 8, "RenderTurret's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, rotation ) == 0, "RenderTurret's field rotation moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, flags ) == 32, "RenderTurret's field flags moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, object_id ) == 40, "RenderTurret's field object_id moved: the build version was taken over offset 40 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, parent_object_id ) == 44, "RenderTurret's field parent_object_id moved: the build version was taken over offset 44 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, turret_index ) == 48, "RenderTurret's field turret_index moved: the build version was taken over offset 48 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, target_object_id ) == 52, "RenderTurret's field target_object_id moved: the build version was taken over offset 52 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, object_sequence ) == 56, "RenderTurret's field object_sequence moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, team ) == 57, "RenderTurret's field team moved: the build version was taken over offset 57 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderTurret, has_target_lock ) == 58, "RenderTurret's field has_target_lock moved: the build version was taken over offset 58 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderMissile ) == 72, "RenderMissile's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderMissile ) == 8, "RenderMissile's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderMissile, position ) == 0, "RenderMissile's field position moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderMissile, rotation ) == 24, "RenderMissile's field rotation moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderMissile, flags ) == 56, "RenderMissile's field flags moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderMissile, object_id ) == 64, "RenderMissile's field object_id moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderMissile, object_sequence ) == 68, "RenderMissile's field object_sequence moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderMissile, missile_type ) == 69, "RenderMissile's field missile_type moved: the build version was taken over offset 69 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderMissile, team ) == 70, "RenderMissile's field team moved: the build version was taken over offset 70 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderDynamicProp ) == 72, "RenderDynamicProp's sizeof moved: the build version was taken over 72, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderDynamicProp ) == 8, "RenderDynamicProp's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderDynamicProp, position ) == 0, "RenderDynamicProp's field position moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderDynamicProp, rotation ) == 24, "RenderDynamicProp's field rotation moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderDynamicProp, flags ) == 56, "RenderDynamicProp's field flags moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderDynamicProp, object_id ) == 64, "RenderDynamicProp's field object_id moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderDynamicProp, object_sequence ) == 68, "RenderDynamicProp's field object_sequence moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderDynamicProp, prop_type ) == 69, "RenderDynamicProp's field prop_type moved: the build version was taken over offset 69 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderDynamicProp, team ) == 70, "RenderDynamicProp's field team moved: the build version was taken over offset 70 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderStaticProp ) == 80, "RenderStaticProp's sizeof moved: the build version was taken over 80, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderStaticProp ) == 8, "RenderStaticProp's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderStaticProp, position ) == 0, "RenderStaticProp's field position moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderStaticProp, rotation ) == 24, "RenderStaticProp's field rotation moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderStaticProp, scale ) == 56, "RenderStaticProp's field scale moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderStaticProp, flags ) == 64, "RenderStaticProp's field flags moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderStaticProp, static_prop_id ) == 72, "RenderStaticProp's field static_prop_id moved: the build version was taken over offset 72 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderStaticProp, prop_type ) == 76, "RenderStaticProp's field prop_type moved: the build version was taken over offset 76 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderStaticProp, team ) == 77, "RenderStaticProp's field team moved: the build version was taken over offset 77 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderCosmeticProp ) == 80, "RenderCosmeticProp's sizeof moved: the build version was taken over 80, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderCosmeticProp ) == 8, "RenderCosmeticProp's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCosmeticProp, position ) == 0, "RenderCosmeticProp's field position moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCosmeticProp, rotation ) == 24, "RenderCosmeticProp's field rotation moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCosmeticProp, scale ) == 56, "RenderCosmeticProp's field scale moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCosmeticProp, flags ) == 64, "RenderCosmeticProp's field flags moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCosmeticProp, cosmetic_prop_id ) == 72, "RenderCosmeticProp's field cosmetic_prop_id moved: the build version was taken over offset 72 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCosmeticProp, prop_sequence ) == 76, "RenderCosmeticProp's field prop_sequence moved: the build version was taken over offset 76 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCosmeticProp, prop_type ) == 77, "RenderCosmeticProp's field prop_type moved: the build version was taken over offset 77 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderCosmeticProp, team ) == 78, "RenderCosmeticProp's field team moved: the build version was taken over offset 78 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderLaser ) == 64, "RenderLaser's sizeof moved: the build version was taken over 64, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderLaser ) == 8, "RenderLaser's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderLaser, start ) == 0, "RenderLaser's field start moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderLaser, finish ) == 24, "RenderLaser's field finish moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderLaser, t ) == 48, "RenderLaser's field t moved: the build version was taken over offset 48 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderLaser, laser_id ) == 56, "RenderLaser's field laser_id moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderLaser, laser_type ) == 60, "RenderLaser's field laser_type moved: the build version was taken over offset 60 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderLaser, team ) == 61, "RenderLaser's field team moved: the build version was taken over offset 61 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderExplosion ) == 80, "RenderExplosion's sizeof moved: the build version was taken over 80, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderExplosion ) == 8, "RenderExplosion's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderExplosion, position ) == 0, "RenderExplosion's field position moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderExplosion, rotation ) == 24, "RenderExplosion's field rotation moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderExplosion, t ) == 56, "RenderExplosion's field t moved: the build version was taken over offset 56 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderExplosion, explosion_id ) == 64, "RenderExplosion's field explosion_id moved: the build version was taken over offset 64 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderExplosion, parent_object_id ) == 68, "RenderExplosion's field parent_object_id moved: the build version was taken over offset 68 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderExplosion, explosion_type ) == 72, "RenderExplosion's field explosion_type moved: the build version was taken over offset 72 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderExplosion, team ) == 73, "RenderExplosion's field team moved: the build version was taken over offset 73 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderFrame ) == 7879320, "RenderFrame's sizeof moved: the build version was taken over 7879320, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderFrame ) == 8, "RenderFrame's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, version ) == 0, "RenderFrame's field version moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, cameras ) == 8, "RenderFrame's field cameras moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, ships ) == 88, "RenderFrame's field ships moved: the build version was taken over offset 88 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, turrets ) == 360544, "RenderFrame's field turrets moved: the build version was taken over offset 360544 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, missiles ) == 426088, "RenderFrame's field missiles moved: the build version was taken over offset 426088 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, dynamic_props ) == 721008, "RenderFrame's field dynamic_props moved: the build version was taken over offset 721008 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, static_props ) == 1015928, "RenderFrame's field static_props moved: the build version was taken over offset 1015928 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, cosmetic_props ) == 2615936, "RenderFrame's field cosmetic_props moved: the build version was taken over offset 2615936 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, lasers ) == 3271304, "RenderFrame's field lasers moved: the build version was taken over offset 3271304 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderFrame, explosions ) == 5319312, "RenderFrame's field explosions moved: the build version was taken over offset 5319312 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderVector3 ) == 24, "RenderVector3's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderVector3 ) == 8, "RenderVector3's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderVector3, x ) == 0, "RenderVector3's field x moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderVector3, y ) == 8, "RenderVector3's field y moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderVector3, z ) == 16, "RenderVector3's field z moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( RenderQuaternion ) == 32, "RenderQuaternion's sizeof moved: the build version was taken over 32, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( alignof( RenderQuaternion ) == 8, "RenderQuaternion's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderQuaternion, x ) == 0, "RenderQuaternion's field x moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderQuaternion, y ) == 8, "RenderQuaternion's field y moved: the build version was taken over offset 8 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderQuaternion, z ) == 16, "RenderQuaternion's field z moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( RenderQuaternion, w ) == 24, "RenderQuaternion's field w moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
 
-// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----
+// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * RenderCameraTableType();
 inline const TableTypeInfo * RenderShipTableType();
@@ -4653,87 +4653,87 @@ inline const TableTypeInfo * RenderQuaternionTableType()
     return &info;
 }
 
-// ---- the text form (SPEC-TABLES.md §16) ----
+// ---- the text form (docs/SPEC-TABLES.md §16) ----
 
 // RenderCamera in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderCameraFromJson( RenderCamera & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderCameraToJsonMeasure( const RenderCamera & value );
 int64_t RenderCameraToJson( const RenderCamera & value, char * buffer, int64_t capacity );
 
 // RenderShip in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderShipFromJson( RenderShip & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderShipToJsonMeasure( const RenderShip & value );
 int64_t RenderShipToJson( const RenderShip & value, char * buffer, int64_t capacity );
 
 // RenderTurret in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderTurretFromJson( RenderTurret & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderTurretToJsonMeasure( const RenderTurret & value );
 int64_t RenderTurretToJson( const RenderTurret & value, char * buffer, int64_t capacity );
 
 // RenderMissile in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderMissileFromJson( RenderMissile & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderMissileToJsonMeasure( const RenderMissile & value );
 int64_t RenderMissileToJson( const RenderMissile & value, char * buffer, int64_t capacity );
 
 // RenderDynamicProp in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderDynamicPropFromJson( RenderDynamicProp & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderDynamicPropToJsonMeasure( const RenderDynamicProp & value );
 int64_t RenderDynamicPropToJson( const RenderDynamicProp & value, char * buffer, int64_t capacity );
 
 // RenderStaticProp in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderStaticPropFromJson( RenderStaticProp & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderStaticPropToJsonMeasure( const RenderStaticProp & value );
 int64_t RenderStaticPropToJson( const RenderStaticProp & value, char * buffer, int64_t capacity );
 
 // RenderCosmeticProp in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderCosmeticPropFromJson( RenderCosmeticProp & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderCosmeticPropToJsonMeasure( const RenderCosmeticProp & value );
 int64_t RenderCosmeticPropToJson( const RenderCosmeticProp & value, char * buffer, int64_t capacity );
 
 // RenderLaser in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderLaserFromJson( RenderLaser & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderLaserToJsonMeasure( const RenderLaser & value );
 int64_t RenderLaserToJson( const RenderLaser & value, char * buffer, int64_t capacity );
 
 // RenderExplosion in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderExplosionFromJson( RenderExplosion & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderExplosionToJsonMeasure( const RenderExplosion & value );
 int64_t RenderExplosionToJson( const RenderExplosion & value, char * buffer, int64_t capacity );
 
 // RenderFrame in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderFrameFromJson( RenderFrame & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderFrameToJsonMeasure( const RenderFrame & value );
 int64_t RenderFrameToJson( const RenderFrame & value, char * buffer, int64_t capacity );
 
 // RenderVector3 in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderVector3FromJson( RenderVector3 & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderVector3ToJsonMeasure( const RenderVector3 & value );
 int64_t RenderVector3ToJson( const RenderVector3 & value, char * buffer, int64_t capacity );
 
 // RenderQuaternion in and out of a JSON text — one instance, one text, the generic
-// walk over this type's descriptors (SPEC-TABLES.md §16). Defined in
+// walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in
 // RenderTable.cpp; link it to use them.
 bool RenderQuaternionFromJson( RenderQuaternion & value, const char * text, int64_t bytes, TableReport * report );
 int64_t RenderQuaternionToJsonMeasure( const RenderQuaternion & value );

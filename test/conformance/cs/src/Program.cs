@@ -3,7 +3,7 @@
 // The twin of test/conformance/cpp/main.cpp, and it is deliberately the same
 // shape: one process per surface, every expectation in the data, nothing
 // literal here. What it does NOT list is as load-bearing as what it does — this
-// backend has no text form (SPEC-TABLES.md §16's backend status), so it lists
+// backend has no text form (docs/SPEC-TABLES.md §16's backend status), so it lists
 // neither json-read nor json-write and the matrix prints them ABSENT. A missing
 // feature and a failing test are different facts and the matrix keeps them apart.
 //
@@ -342,7 +342,7 @@ static class Program
         string surface = args[1];
         if (surface == "list")
         {
-            // no text form in this backend (SPEC-TABLES.md §16.1's status), so
+            // no text form in this backend (docs/SPEC-TABLES.md §16.1's status), so
             // json-read and json-write are absent rather than failing
             Console.Out.Write("wire\nreport\nblock\nforgery\n");
             return 0;

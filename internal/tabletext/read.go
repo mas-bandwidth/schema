@@ -1,4 +1,4 @@
-// The text form's READ half (SPEC-TABLES.md §16.2): one JSON text into one
+// The text form's READ half (docs/SPEC-TABLES.md §16.2): one JSON text into one
 // instance, over the IR. Every rule here is §16's and mirrors the generated
 // C++ walk — unknown keys skipped and counted, duplicates last-wins and
 // counted, a wrong JSON type skipped rather than coerced, numbers clamped at
@@ -31,7 +31,7 @@ type reader struct {
 	m      *Model
 }
 
-// Read fills one instance from one JSON text (SPEC-TABLES.md §16.1). The
+// Read fills one instance from one JSON text (docs/SPEC-TABLES.md §16.1). The
 // instance holds what was placed before any stop; false means the text is not
 // JSON or a value could not be placed at all, and report.Malformed says so.
 func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
@@ -58,7 +58,7 @@ func (in *reader) space() {
 			continue
 		}
 		// comments are not JSON, and a walk that guessed at one would be
-		// reading a dialect nobody wrote down (SPEC-TABLES.md §16.2)
+		// reading a dialect nobody wrote down (docs/SPEC-TABLES.md §16.2)
 		if c == '/' {
 			in.bad = true
 		}
@@ -96,12 +96,12 @@ func (in *reader) valueShape() byte {
 
 // TakesNull reports whether a field reads `null` as a VALUE rather than as a
 // kind mismatch: the two kinds where absence is a value — a `?T`, which reads
-// `null` as ABSENT, and a pointer, which reads it as null (SPEC-TABLES.md
+// `null` as ABSENT, and a pointer, which reads it as null (docs/SPEC-TABLES.md
 // §16.2).
 func TakesNull(f *ir.Field) bool { return f.Type.Optional || f.Type.Pointer }
 
 // Shape is the JSON shape a field's declaration takes, the classifier the read
-// side matches a value against before placing it (SPEC-TABLES.md §16.2). A
+// side matches a value against before placing it (docs/SPEC-TABLES.md §16.2). A
 // `?T` takes T's shape — presence is the KEY's, never the value's — and an
 // enum-keyed array is an OBJECT keyed by variant name (§2.4).
 func Shape(f *ir.Field) byte {
@@ -256,7 +256,7 @@ func (in *reader) scanString(capacity int) (out []byte, clamped bool, ok bool) {
 				// a surrogate half that never found its partner has no UTF-8
 				// encoding: encoding it anyway would manufacture CESU-8 —
 				// invalid UTF-8 — out of input that was valid JSON, so it
-				// reads as the replacement character (SPEC-TABLES.md §16.3)
+				// reads as the replacement character (docs/SPEC-TABLES.md §16.3)
 				if code >= 0xd800 && code <= 0xdfff {
 					code = 0xfffd
 				}
@@ -493,7 +493,7 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 			switch shape := in.valueShape(); {
 			case shape == 'z' && TakesNull(fv.Def):
 				// `null` is the absence, not a value: a `?T` reads it as
-				// ABSENT and a pointer as null (SPEC-TABLES.md §16.2). It is
+				// ABSENT and a pointer as null (docs/SPEC-TABLES.md §16.2). It is
 				// the ONE key that puts a field back at its defaults, so a
 				// repeated key whose last occurrence is null cannot leave an
 				// earlier value standing.
@@ -511,7 +511,7 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 				} else if !in.readField(fv, depth) {
 					return false
 				}
-				// PRESENCE of the KEY is presence (SPEC-TABLES.md §16.2):
+				// PRESENCE of the KEY is presence (docs/SPEC-TABLES.md §16.2):
 				// reaching this line is the key being there, whatever the
 				// value turned out to be — a value the walk would not place
 				// still makes the field present, because it is the KEY that
@@ -562,7 +562,7 @@ func (in *reader) readField(fv *Field, depth int) bool {
 	}
 	// a SCALAR is not re-established: it is written only when a value is
 	// actually placed, so a repeated key whose repeat the walk refuses leaves
-	// the first occurrence's value standing (SPEC-TABLES.md §16.2 — a value
+	// the first occurrence's value standing (docs/SPEC-TABLES.md §16.2 — a value
 	// with the wrong shape is skipped, never coerced, and re-establishment is
 	// tied to placing)
 	return in.readScalar(&fv.Cell, f, depth)
@@ -646,7 +646,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 	in.pos++
 	// an ARRAY re-establishes before placing: a fixed array writes every slot,
 	// so a second, shorter occurrence overlaying a prefix would leave the
-	// first occurrence's tail standing (SPEC-TABLES.md §16.2, last-wins as a
+	// first occurrence's tail standing (docs/SPEC-TABLES.md §16.2, last-wins as a
 	// WHOLE value)
 	for i := range fv.Elems {
 		fv.Elems[i] = in.m.elementZero(f)
@@ -704,7 +704,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 }
 
 // readKeyed places an enum-keyed array: an OBJECT keyed by VARIANT NAME
-// (SPEC-TABLES.md §2.4, §16.2). An absent key keeps that slot's defaults; an
+// (docs/SPEC-TABLES.md §2.4, §16.2). An absent key keeps that slot's defaults; an
 // unknown key is skipped and counted, and `"None"` is such a key because None
 // keys no slot (§2.4).
 //
@@ -854,7 +854,7 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 // storage: storing the infinity the conversion produced would leave an
 // instance this walk called CLEAN that the writer then refuses forever, and
 // §16.1's invariant is that a text which reads clean writes back
-// (SPEC-TABLES.md §16.2, §16.3).
+// (docs/SPEC-TABLES.md §16.2, §16.3).
 func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool) bool {
 	// ONE correctly-rounded conversion, at the field's OWN width: a float32
 	// field converts with bitSize 32, which is what `strtof` is, and reading
@@ -901,7 +901,7 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 // NUMBER TYPE, so an integer field takes any token whose VALUE is integral,
 // however it was spelled — 2, 2.0 and 1e3 are all the integers this walk
 // places — and only a genuinely fractional value is the wrong shape for it
-// (SPEC-TABLES.md §16.2).
+// (docs/SPEC-TABLES.md §16.2).
 func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral bool, kind int) bool {
 	signed := kind >= ir.TableKindI8 && kind <= ir.TableKindI64
 	var value int64
@@ -1158,7 +1158,7 @@ func bigToFloat(v *big.Int) float64 {
 	return f
 }
 
-// ---- the packer's two entry points (SPEC-TABLES.md §17.1) ----
+// ---- the packer's two entry points (docs/SPEC-TABLES.md §17.1) ----
 
 // ReadValue places ONE FIELD's value from one text — a plain `<field>.json` at
 // any level is that field's value verbatim. Every rule is §16's: the shape is
@@ -1170,7 +1170,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	var ok bool
 	switch shape := in.valueShape(); {
 	case shape == 'z' && TakesNull(fv.Def):
-		// `null` is the absence, not a value (SPEC-TABLES.md §16.2)
+		// `null` is the absence, not a value (docs/SPEC-TABLES.md §16.2)
 		ok = in.literal("null")
 	case shape != Shape(fv.Def):
 		report.KindMismatch++

@@ -1,6 +1,6 @@
 package ir_test
 
-// The BLOCK FORM's layout model, pinned against SPEC-TABLES.md §19.1's worked
+// The BLOCK FORM's layout model, pinned against docs/SPEC-TABLES.md §19.1's worked
 // nine-array table and against the hand-written scatter this form replaces.
 //
 // The agreement is with the ARITHMETIC, not with one frame: the rule stated on
@@ -109,7 +109,7 @@ func TestBlockLayoutMatchesTheWorkedTable(t *testing.T) {
 
 // A raised MAXIMUM grows the storage. What it does to the number a block
 // carries is the BUILD VERSION's question now, not a per-table digest's
-// (SPEC-TABLES.md §20): a bound is a layout fact of the by-value struct, so it
+// (docs/SPEC-TABLES.md §20): a bound is a layout fact of the by-value struct, so it
 // moves the build version and BlockOpen refuses until both sides are
 // regenerated. What is pinned here is the STORAGE half, which is what the
 // allocate-max law rests on.
@@ -131,7 +131,7 @@ func TestRaisingAMaximumGrowsTheStorage(t *testing.T) {
 	}
 }
 
-// THE BUILD VERSION SEES LAYOUT (SPEC-TABLES.md §20.1 group 2): a moved
+// THE BUILD VERSION SEES LAYOUT (docs/SPEC-TABLES.md §20.1 group 2): a moved
 // offset, a changed size, a different pitch. Its negative control is the
 // sabotage in the Makefile's block-digest-negative-control target; this is the
 // positive half.
@@ -148,7 +148,7 @@ func TestBuildVersionMovesOnALayoutEdit(t *testing.T) {
 	}
 }
 
-// THE BUILD VERSION SEES MEANING (SPEC-TABLES.md §20.1 group 3): a fact that
+// THE BUILD VERSION SEES MEANING (docs/SPEC-TABLES.md §20.1 group 3): a fact that
 // changes what a load PUTS in a slot while moving no offset at all. Nothing in
 // the layout half could see this one.
 func TestBuildVersionMovesOnAMeaningEdit(t *testing.T) {
@@ -164,7 +164,7 @@ func TestBuildVersionMovesOnAMeaningEdit(t *testing.T) {
 	}
 }
 
-// AND IT DOES NOT SEE what no byte depends on (SPEC-TABLES.md §20.4): a `was`
+// AND IT DOES NOT SEE what no byte depends on (docs/SPEC-TABLES.md §20.4): a `was`
 // rename moves no wire id, so it moves no line of either projection.
 func TestBuildVersionSurvivesAWasRename(t *testing.T) {
 	u := loadRender(t)

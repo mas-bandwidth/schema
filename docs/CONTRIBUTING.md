@@ -134,5 +134,5 @@ should say which.
 ## Licence
 
 The compiler is AGPL-3.0, with an explicit exception for the code it generates
-(see [LICENSE](LICENSE)). Contributions are accepted under those terms. There
+(see [LICENSE](../LICENSE)). Contributions are accepted under those terms. There
 is no CLA.

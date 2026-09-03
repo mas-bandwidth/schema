@@ -1,5 +1,5 @@
 // The REGION: what `Lock` packs and what a cook writes verbatim
-// (SPEC-TABLES.md §6.2, §6.3, §7).
+// (docs/SPEC-TABLES.md §6.2, §6.3, §7).
 //
 // A region is the nodes of one pointer graph laid back to back with zero slack,
 // the root at its base, each at its own type's alignment, in the DEPTH-FIRST
@@ -23,7 +23,7 @@ import (
 )
 
 // RefBytes is a `*T` reference slot's width in a record: EIGHT bytes, at eight
-// (SPEC-TABLES.md §6.3). In the arena it is the node's arena offset; IN A
+// (docs/SPEC-TABLES.md §6.3). In the arena it is the node's arena offset; IN A
 // REGION IT IS THE SELF-RELATIVE BYTE DELTA FROM THE SLOT'S OWN ADDRESS, so a
 // deref is one add and needs no base pointer at all, and a whole region
 // relocates by plain memcpy with zero fix-up.
@@ -218,7 +218,7 @@ func (w *regionWriter) ref(at int64, f *ir.Field, target *tabletext.Instance) er
 	}
 	to, ok := w.nodeOffset(target)
 	if !ok {
-		return fmt.Errorf("field %s references a node the numbering does not carry — a cook refuses a partial region (SPEC-TABLES.md §7)", f.Name)
+		return fmt.Errorf("field %s references a node the numbering does not carry — a cook refuses a partial region (docs/SPEC-TABLES.md §7)", f.Name)
 	}
 	delta := to - at
 	// there is no reach to check: the slot is as wide as the offsets it holds

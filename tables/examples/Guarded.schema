@@ -1,7 +1,7 @@
 // Guarded.schema — nested and negated branches, the shape the flat
 // `if has_loadout` in Tables.schema does not reach. A guard's condition is
 // composed from the branch tree ("active && !has_target"), and both the wire
-// codecs and the text walk (SPEC-TABLES.md §16.2) have to evaluate the same
+// codecs and the text walk (docs/SPEC-TABLES.md §16.2) have to evaluate the same
 // composition and agree about which fields ride.
 package tabledemo
 

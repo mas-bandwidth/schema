@@ -1,4 +1,4 @@
-// Wide.schema — extents past the old 16-bit ceiling (SPEC-TABLES.md §3):
+// Wide.schema — extents past the old 16-bit ceiling (docs/SPEC-TABLES.md §3):
 // string and bytes byte lengths and array counts ride as u32, so a table may
 // carry an extent no uint16 could count. The ceiling is the language's own
 // int32 storage cap (SPEC §4.3), not a wire ceiling.

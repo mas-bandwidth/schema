@@ -52,7 +52,7 @@ func main() {
 	}
 	// Warnings are never quiet and never gated on --verbose: a warning nobody
 	// reads is a warning that does not exist. Today they come from the tables
-	// baseline's warn class (SPEC-TABLES.md §18.2).
+	// baseline's warn class (docs/SPEC-TABLES.md §18.2).
 	c.OnWarn = func(msg string) { fmt.Fprintln(os.Stderr, "warning: "+msg) }
 
 	switch os.Args[1] {
@@ -81,7 +81,7 @@ func main() {
 		unit := loadUnit(c, os.Args[2:])
 		fmt.Print(ir.WireProjection(unit))
 	case "build-version":
-		// THE BUILD VERSION (SPEC-TABLES.md §20.7): everything cooked or
+		// THE BUILD VERSION (docs/SPEC-TABLES.md §20.7): everything cooked or
 		// blocked is keyed by it, and the store's tuple is (asset hash, build
 		// version). --facts prints the COOK PROJECTION it hashes, in the
 		// tradition of `schema projection`: the facts are printable, readable
@@ -96,7 +96,7 @@ func main() {
 		}
 		fmt.Printf("0x%016x\n", ir.BuildVersion(unit))
 	case "tables-baseline":
-		// The TABLES BASELINE (SPEC-TABLES.md §18). Printing is the default:
+		// The TABLES BASELINE (docs/SPEC-TABLES.md §18). Printing is the default:
 		// the same canonical projection the committed file holds, so a
 		// pipeline can diff without writing anything. --update moves the file
 		// and records WHY in its history — and never without --reason,
@@ -192,7 +192,7 @@ func main() {
 			}
 		}
 	case "pack":
-		// SPEC-TABLES.md §17: the tree IS the table, the text in it is §16's,
+		// docs/SPEC-TABLES.md §17: the tree IS the table, the text in it is §16's,
 		// and the output is §3's — no envelope of schema's own.
 		fs := flag.NewFlagSet("pack", flag.ExitOnError)
 		root := fs.String("root", "", "the root `table` the tree mirrors")
@@ -253,7 +253,7 @@ func main() {
 			fmt.Printf("unpacked %s into %s\n", *in, dir)
 		}
 	case "cook":
-		// SPEC-TABLES.md §7: the wire in, the COOKED FORM out — the header, the
+		// docs/SPEC-TABLES.md §7: the wire in, the COOKED FORM out — the header, the
 		// region written verbatim with the root at its base, and the node
 		// directory beside it for the tool. TOOLING BUILDS; THE GAME POINTS.
 		fs := flag.NewFlagSet("cook", flag.ExitOnError)

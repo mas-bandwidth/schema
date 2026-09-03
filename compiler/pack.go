@@ -1,4 +1,4 @@
-// `schema pack` and `schema unpack` on the public driver (SPEC-TABLES.md §17).
+// `schema pack` and `schema unpack` on the public driver (docs/SPEC-TABLES.md §17).
 package compiler
 
 import (
@@ -7,7 +7,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TableReport is the read report both table forms share (SPEC-TABLES.md §4,
+// TableReport is the read report both table forms share (docs/SPEC-TABLES.md §4,
 // §16.2), aggregated across a whole tree by a pack (§17.3). Silence — every
 // counter zero and Malformed false — means the data matched the schema exactly:
 // nothing was skipped, nothing was renamed, nothing was cut down.
@@ -45,7 +45,7 @@ func publicReport(r tabletext.Report) TableReport {
 }
 
 // Pack assembles ONE instance of the named root table from the directory tree
-// under dir and returns the root's WIRE BYTES AND NOTHING ELSE (SPEC-TABLES.md
+// under dir and returns the root's WIRE BYTES AND NOTHING ELSE (docs/SPEC-TABLES.md
 // §17.2): no magic, no content hash, no protocol id, no length prefix around
 // the whole. A caller that wants an envelope writes its own few lines around
 // these bytes.
@@ -72,7 +72,7 @@ func (c *Compiler) Pack(u *ir.Unit, root, dir string) ([]byte, []string, TableRe
 	return bytes, skipped, publicReport(report), err
 }
 
-// Unpack is the inverse (SPEC-TABLES.md §17.3): it decodes a root table's wire
+// Unpack is the inverse (docs/SPEC-TABLES.md §17.3): it decodes a root table's wire
 // bytes and writes the tree back out through §16's text form, which is the
 // tool round trip §1 promises. `unpack` then `pack` is byte-stable — including
 // into a directory that already holds a tree, because Unpack PRUNES the

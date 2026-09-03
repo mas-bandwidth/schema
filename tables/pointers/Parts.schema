@@ -1,4 +1,4 @@
-// Parts.schema — a VALUE-ONLY file inside a POINTERED unit (SPEC-TABLES.md
+// Parts.schema — a VALUE-ONLY file inside a POINTERED unit (docs/SPEC-TABLES.md
 // §7). Nothing here declares a pointer, and that is the whole point of the
 // file: the cooked form's bounds walk for a member lives in the member's
 // DECLARING file, so a file with no variable table of its own must still emit

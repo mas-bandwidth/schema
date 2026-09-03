@@ -1,4 +1,4 @@
-// Package tablepack is `schema pack` and `schema unpack` (SPEC-TABLES.md
+// Package tablepack is `schema pack` and `schema unpack` (docs/SPEC-TABLES.md
 // §17): a directory tree that MIRRORS a root table becomes one table instance,
 // and the root's wire bytes come out — no magic, no content hash, no protocol
 // id, no length prefix around the whole.
@@ -22,7 +22,7 @@ import (
 
 // Refusals is the list of tree-shape refusals a pack collected — a directory
 // or file naming no field, two entries claiming one value, a variant name the
-// enum does not have (SPEC-TABLES.md §17.3). They are collected rather than
+// enum does not have (docs/SPEC-TABLES.md §17.3). They are collected rather than
 // thrown one at a time, so a pack of a hundred files reports once.
 type Refusals []string
 
@@ -46,7 +46,7 @@ func (p *packer) refusef(format string, args ...any) {
 }
 
 // Pack assembles ONE instance of the named root table from the tree under dir
-// and returns the root's wire bytes (SPEC-TABLES.md §17), the hidden non-JSON
+// and returns the root's wire bytes (docs/SPEC-TABLES.md §17), the hidden non-JSON
 // files the walk passed over, and the report — which aggregates everything §16
 // counts across the whole tree.
 func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Report, error) {
@@ -87,7 +87,7 @@ func (p *packer) rootTree(inst *tabletext.Instance, root, dir string) error {
 			continue
 		}
 		if len(entries) > 1 {
-			p.refusef("%s: %s is the whole root, and %s beside it claims it too — a root is one file or one tree of fields, never both (SPEC-TABLES.md §17.1)",
+			p.refusef("%s: %s is the whole root, and %s beside it claims it too — a root is one file or one tree of fields, never both (docs/SPEC-TABLES.md §17.1)",
 				dir, whole, plural(len(entries)-1, "other entry", "other entries"))
 			return nil
 		}
@@ -111,16 +111,16 @@ func (p *packer) tableDir(inst *tabletext.Instance, dir string, entries []os.Dir
 		path := filepath.Join(dir, e.Name())
 		key, ok := entryKey(e)
 		if !ok {
-			p.refusef("%s: names no field — a tree mirrors the table and holds `<field>.json` files and `<field>` directories only (SPEC-TABLES.md §17.1)", path)
+			p.refusef("%s: names no field — a tree mirrors the table and holds `<field>.json` files and `<field>` directories only (docs/SPEC-TABLES.md §17.1)", path)
 			continue
 		}
 		fv, known := inst.FieldByKey(key)
 		if !known {
-			p.refusef("%s: %q names no field of table %s (SPEC-TABLES.md §17.3)", path, key, inst.Def.Name)
+			p.refusef("%s: %q names no field of table %s (docs/SPEC-TABLES.md §17.3)", path, key, inst.Def.Name)
 			continue
 		}
 		if prev, dup := claimed[key]; dup {
-			p.refusef("%s and %s both claim field %q of table %s — one value, one place (SPEC-TABLES.md §17.3)", prev, path, key, inst.Def.Name)
+			p.refusef("%s and %s both claim field %q of table %s — one value, one place (docs/SPEC-TABLES.md §17.3)", prev, path, key, inst.Def.Name)
 			continue
 		}
 		claimed[key] = path
@@ -140,7 +140,7 @@ func (p *packer) tableDir(inst *tabletext.Instance, dir string, entries []os.Dir
 // fieldDir reads a `<field>/` directory, whose meaning is the field's own
 // shape: an enum-keyed array holds one `<Variant>.json` per slot, a plain
 // array holds files in NAME ORDER as its elements, and a nested table holds a
-// directory of its own fields (SPEC-TABLES.md §17.1).
+// directory of its own fields (docs/SPEC-TABLES.md §17.1).
 func (p *packer) fieldDir(fv *tabletext.Field, dir string) {
 	entries, err := p.list(dir)
 	if err != nil {
@@ -160,11 +160,11 @@ func (p *packer) fieldDir(fv *tabletext.Field, dir string) {
 		p.tableDir(fv.Cell.Tab, dir, entries)
 		if f.Type.Optional {
 			// a directory is the field being there, exactly as a key is
-			// (SPEC-TABLES.md §16.2)
+			// (docs/SPEC-TABLES.md §16.2)
 			fv.Present = true
 		}
 	default:
-		p.refusef("%s: field %q is a %s, and only a nested table, an array or an enum-keyed array has a directory form (SPEC-TABLES.md §17.1)",
+		p.refusef("%s: field %q is a %s, and only a nested table, an array or an enum-keyed array has a directory form (docs/SPEC-TABLES.md §17.1)",
 			dir, ir.TableFieldJsonKey(f), fieldShapeName(f))
 	}
 }
@@ -179,21 +179,21 @@ func (p *packer) keyedDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 		path := filepath.Join(dir, e.Name())
 		name, ok := entryKey(e)
 		if !ok || e.IsDir() {
-			p.refusef("%s: an enum-keyed array's directory holds one `<Variant>.json` per slot and nothing else (SPEC-TABLES.md §17.1)", path)
+			p.refusef("%s: an enum-keyed array's directory holds one `<Variant>.json` per slot and nothing else (docs/SPEC-TABLES.md §17.1)", path)
 			continue
 		}
 		value := tabletext.EnumValue(f.KeyEnumRef, name)
 		slot := tabletext.KeyedValueSlot(f, value)
 		if slot < 0 {
 			if value == 0 {
-				p.refusef("%s: None keys no record, so an enum-keyed array has no None slot and no `None.json` (SPEC-TABLES.md §3.2)", path)
+				p.refusef("%s: None keys no record, so an enum-keyed array has no None slot and no `None.json` (docs/SPEC-TABLES.md §3.2)", path)
 			} else {
-				p.refusef("%s: %q is not a variant of enum %s (SPEC-TABLES.md §17.3)", path, name, f.KeyEnum)
+				p.refusef("%s: %q is not a variant of enum %s (docs/SPEC-TABLES.md §17.3)", path, name, f.KeyEnum)
 			}
 			continue
 		}
 		if prev, dup := claimed[slot]; dup {
-			p.refusef("%s and %s both claim the %s slot of %q (SPEC-TABLES.md §17.3)", prev, path, name, ir.TableFieldJsonKey(f))
+			p.refusef("%s and %s both claim the %s slot of %q (docs/SPEC-TABLES.md §17.3)", prev, path, name, ir.TableFieldJsonKey(f))
 			continue
 		}
 		claimed[slot] = path
@@ -206,7 +206,7 @@ func (p *packer) keyedDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 		p.m.ReadElement(fv, slot, text, &r)
 		p.report.Add(r)
 		if r.Malformed {
-			p.refusef("%s: not one JSON value for the %s slot of %q (SPEC-TABLES.md §17.3)", path, name, ir.TableFieldJsonKey(f))
+			p.refusef("%s: not one JSON value for the %s slot of %q (docs/SPEC-TABLES.md §17.3)", path, name, ir.TableFieldJsonKey(f))
 		}
 	}
 }
@@ -218,7 +218,7 @@ func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 	for _, e := range entries {
 		path := filepath.Join(dir, e.Name())
 		if _, ok := entryKey(e); !ok || e.IsDir() {
-			p.refusef("%s: an array's directory holds `.json` element files and nothing else (SPEC-TABLES.md §17.1)", path)
+			p.refusef("%s: an array's directory holds `.json` element files and nothing else (docs/SPEC-TABLES.md §17.1)", path)
 			continue
 		}
 		if placed >= int(f.ArrayBound) {
@@ -236,7 +236,7 @@ func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 		p.m.ReadElement(fv, placed, text, &r)
 		p.report.Add(r)
 		if r.Malformed {
-			p.refusef("%s: not one JSON value for an element of %q (SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(f))
+			p.refusef("%s: not one JSON value for an element of %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(f))
 		}
 		placed++
 	}
@@ -250,7 +250,7 @@ func (p *packer) readTableText(inst *tabletext.Instance, path string, text []byt
 	p.m.Read(inst, text, &r)
 	p.report.Add(r)
 	if r.Malformed {
-		p.refusef("%s: not one JSON text for table %s (SPEC-TABLES.md §17.3)", path, inst.Def.Name)
+		p.refusef("%s: not one JSON text for table %s (docs/SPEC-TABLES.md §17.3)", path, inst.Def.Name)
 	}
 }
 
@@ -259,7 +259,7 @@ func (p *packer) readFieldText(fv *tabletext.Field, path string, text []byte) {
 	p.m.ReadValue(fv, text, &r)
 	p.report.Add(r)
 	if r.Malformed {
-		p.refusef("%s: not one JSON value for field %q (SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(fv.Def))
+		p.refusef("%s: not one JSON value for field %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(fv.Def))
 	}
 }
 

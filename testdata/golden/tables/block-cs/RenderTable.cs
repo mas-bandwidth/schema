@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package blockdemo — the TABLE wire (SPEC-TABLES.md): evolution-tolerant, neutral
+// package blockdemo — the TABLE wire (docs/SPEC-TABLES.md): evolution-tolerant, neutral
 // bytes, no serialize dependency. Tables version by field id, never by the
 // unit's protocol id.
 
@@ -12,7 +12,7 @@ namespace Blockdemo
 {
 
     // table RenderFrame — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderFrame
     {
         public ulong Version;
@@ -77,7 +77,7 @@ namespace Blockdemo
     }
 
     // table RenderCamera — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderCamera
     {
         public RenderVector3 Position = new RenderVector3();
@@ -89,7 +89,7 @@ namespace Blockdemo
     }
 
     // table RenderShip — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderShip
     {
         public RenderVector3 Position = new RenderVector3();
@@ -106,7 +106,7 @@ namespace Blockdemo
     }
 
     // table RenderTurret — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderTurret
     {
         public RenderQuaternion Rotation = new RenderQuaternion();
@@ -121,7 +121,7 @@ namespace Blockdemo
     }
 
     // table RenderMissile — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderMissile
     {
         public RenderVector3 Position = new RenderVector3();
@@ -134,7 +134,7 @@ namespace Blockdemo
     }
 
     // table RenderDynamicProp — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderDynamicProp
     {
         public RenderVector3 Position = new RenderVector3();
@@ -147,7 +147,7 @@ namespace Blockdemo
     }
 
     // table RenderStaticProp — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderStaticProp
     {
         public RenderVector3 Position = new RenderVector3();
@@ -160,7 +160,7 @@ namespace Blockdemo
     }
 
     // table RenderCosmeticProp — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderCosmeticProp
     {
         public RenderVector3 Position = new RenderVector3();
@@ -174,7 +174,7 @@ namespace Blockdemo
     }
 
     // table RenderLaser — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderLaser
     {
         public RenderVector3 Start = new RenderVector3();
@@ -186,7 +186,7 @@ namespace Blockdemo
     }
 
     // table RenderExplosion — TABLE-wire storage: public fields, every buffer allocated at
-    // construction, declared defaults in the field initializers (SPEC-TABLES.md)
+    // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
     public sealed class RenderExplosion
     {
         public RenderVector3 Position = new RenderVector3();
@@ -205,7 +205,7 @@ namespace Blockdemo
     {
         // Team on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(Team value, out ushort id)
         {
             switch (value)
@@ -234,7 +234,7 @@ namespace Blockdemo
 
         // ShipType on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(ShipType value, out ushort id)
         {
             switch (value)
@@ -261,7 +261,7 @@ namespace Blockdemo
 
         // MissileType on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(MissileType value, out ushort id)
         {
             switch (value)
@@ -286,7 +286,7 @@ namespace Blockdemo
 
         // PropType on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(PropType value, out ushort id)
         {
             switch (value)
@@ -313,7 +313,7 @@ namespace Blockdemo
 
         // LaserType on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(LaserType value, out ushort id)
         {
             switch (value)
@@ -338,7 +338,7 @@ namespace Blockdemo
 
         // ExplosionType on the TABLE wire: a value rides as the u16 hash of its VARIANT
         // NAME, so a variant may be added anywhere, removed, or reordered and old
-        // data still reads (SPEC-TABLES.md §5). None is the one reserved id, 0.
+        // data still reads (docs/SPEC-TABLES.md §5). None is the one reserved id, 0.
         public static bool TableEnumId(ExplosionType value, out ushort id)
         {
             switch (value)
@@ -3671,7 +3671,7 @@ namespace Blockdemo
             return RenderQuaternionLoadBody(ref r, value);
         }
 
-        // ---- reflection descriptors (tables only, SPEC-TABLES.md §8) ----
+        // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
 
         private static TableTypeInfo RenderFrameTableInfo;
         public static TableTypeInfo RenderFrameTableType()

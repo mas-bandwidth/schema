@@ -1,4 +1,4 @@
-# The HOSTILE-VALUE corpus (SPEC-TABLES.md §16.2, §16.3, §17.5): one tree per
+# The HOSTILE-VALUE corpus (docs/SPEC-TABLES.md §16.2, §16.3, §17.5): one tree per
 # rule the text form states, so a divergence between the compiler engine and a
 # backend shows up as a diff rather than as a happy path that still passes.
 #

@@ -1,4 +1,4 @@
-// The TABLE-WIRE KIND vocabulary (SPEC-TABLES.md §3): the closed set of kind
+// The TABLE-WIRE KIND vocabulary (docs/SPEC-TABLES.md §3): the closed set of kind
 // bytes the neutral table wire carries, and the mapping from a declaration's
 // type onto it.
 //
@@ -8,7 +8,7 @@
 // payload on. Two copies of this mapping would be two wires.
 package ir
 
-// The kind numbers are WIRE FORMAT — frozen (SPEC-TABLES.md §3).
+// The kind numbers are WIRE FORMAT — frozen (docs/SPEC-TABLES.md §3).
 const (
 	TableKindBool   = 1
 	TableKindI8     = 2
@@ -25,7 +25,7 @@ const (
 	TableKindTable  = 13
 	TableKindArray  = 14
 	TableKindUnion  = 15
-	// an ENUM-KEYED array body is its OWN kind (SPEC-TABLES.md §3.2): the
+	// an ENUM-KEYED array body is its OWN kind (docs/SPEC-TABLES.md §3.2): the
 	// positional array body and the keyed one are incompatible, so a reader
 	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
 	TableKindKeyed = 16
@@ -86,7 +86,7 @@ func TableScalarKind(f *Field) int {
 		switch f.Type.Ref.(type) {
 		case *Enum:
 			// an enum value rides as the u16 hash of its VARIANT NAME, whatever
-			// the declaration-side storage width (SPEC-TABLES.md §5): identity
+			// the declaration-side storage width (docs/SPEC-TABLES.md §5): identity
 			// is the name here, exactly as it is for a field
 			return TableKindU16
 		case *Flags:
@@ -117,7 +117,7 @@ func TableFieldKind(f *Field) int {
 
 // TableElemKind is the element kind an array field's body opens with, and 0
 // for a field that is not an array on the wire. `bytes(N)` is an array of u8
-// (SPEC-TABLES.md §3) even though it declares no array bound.
+// (docs/SPEC-TABLES.md §3) even though it declares no array bound.
 func TableElemKind(f *Field) int {
 	if f.Type.Kind == TBytes {
 		return TableKindU8

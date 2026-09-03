@@ -1,4 +1,4 @@
-// The PACK GOLDEN (SPEC-TABLES.md §17.4, schema#257). `schema pack` carries an
+// The PACK GOLDEN (docs/SPEC-TABLES.md §17.4, schema#257). `schema pack` carries an
 // IR-driven engine written in Go — the compiler cannot run the code it emits —
 // and this driver is what holds that engine to the generated C++ byte for
 // byte: the same instance, built here BY HAND, saved through the generated
@@ -96,7 +96,7 @@ static void build( PackConfig & config )
     scout.health = 80.0f;
     scout.mass = 0.5f;
     // an optional whose object carried nothing but a default: PRESENCE, not
-    // content, is what puts it on the wire (SPEC-TABLES.md §2.3)
+    // content, is what puts it on the wire (docs/SPEC-TABLES.md §2.3)
     scout.gunner_present = true;
     scout.gunner.tracking = false;
 

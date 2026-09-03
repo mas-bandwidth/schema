@@ -201,7 +201,7 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Ibuild/guard-generated test/guard/main.cpp -o $@
 
-# The tables corpus (SPEC-TABLES.md): the tabledemo unit plus the
+# The tables corpus (docs/SPEC-TABLES.md): the tabledemo unit plus the
 # two-generation evolution pair (tblv1/tblv2), generated at build time into
 # build/ — test-only, never part of the committed generated/ tree.
 #
@@ -230,7 +230,7 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POI
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
 
-# The ZERO-COST GATE (SPEC-TABLES.md): a table with no pointer in its by-value
+# The ZERO-COST GATE (docs/SPEC-TABLES.md): a table with no pointer in its by-value
 # closure must pay NOTHING for the pointer machinery — no builder, no arena, no
 # handles, no lifecycle surface, no extra descriptor columns. The pointer-free
 # corpus's generated headers must not contain one symbol of it. (The stronger
@@ -247,14 +247,14 @@ tables-zero-cost: build/tables-generated/.stamp
 	done
 	@echo "tables zero-cost gate: value-only tables carry no pointer machinery"
 
-# The GENERIC-WALK GATE (SPEC-TABLES.md §16): the text form is ONE walk over
+# The GENERIC-WALK GATE (docs/SPEC-TABLES.md §16): the text form is ONE walk over
 # the reflection descriptors, not a per-table codec — that is the property
 # which makes it schema's rather than a packer's. The walker's source must
 # therefore be the SAME BYTES in every generated .cpp of the corpus, whose
 # units disagree about packages, tables, kinds and pointer modes. The package
 # name lives in the guard and the namespace, outside the markers, so this is a
 # strict byte comparison with nothing normalised away. (It moved from the
-# headers to the .cpp files with the walker itself — SPEC-TABLES.md §16.1.)
+# headers to the .cpp files with the walker itself — docs/SPEC-TABLES.md §16.1.)
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
 	@rm -rf build/json-walk && mkdir -p build/json-walk
@@ -270,7 +270,7 @@ tables-json-walk: build/tables-generated/.stamp
 	done
 	@echo "tables generic-walk gate: one walker, byte-identical in $$(ls build/json-walk | wc -l | tr -d ' ') generated .cpp files"
 
-# The NEGATIVE CONTROL for the walk (SPEC-TABLES.md §16.5). A green round-trip
+# The NEGATIVE CONTROL for the walk (docs/SPEC-TABLES.md §16.5). A green round-trip
 # suite proves nothing until the suite is shown capable of going red: the
 # walker's field-offset arithmetic is sabotaged by one field width, and the
 # round trip must FAIL on the first table with two fields. Attachment is that
@@ -287,7 +287,7 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 		-Ibuild/json-sabotage test/tables/json_negative_main.cpp build/json-sabotage/TablesTable.cpp -o build/schema_test_json_negative
 	./build/schema_test_json_negative
 
-# The same corpus through the C# table backend (SPEC-TABLES.md, schema#262):
+# The same corpus through the C# table backend (docs/SPEC-TABLES.md, schema#262):
 # the tables corpus plus the evolution pair, generated at build time into
 # build/ — test-only, never part of the committed generated/ tree. The full
 # unit is generated (packet .cs + <Base>Table.cs), because a table's closure
@@ -324,7 +324,7 @@ tables-cs-standalone: build/tables-generated-cs/.stamp
 	done
 	@echo "tables C# standalone gate: generated Table sources name no runtime"
 
-# The C# VARIABLE-CLASS REFUSAL (SPEC-TABLES.md §2.2, §11), and it is a refusal
+# The C# VARIABLE-CLASS REFUSAL (docs/SPEC-TABLES.md §2.2, §11), and it is a refusal
 # of the WIRE SURFACE — which is the half the variable class is missing: the
 # arena, the builder, the region and the node-table codec. The two ACCELERATORS
 # need none of that, so a pointered unit's block (§19) and cook (§7) sources are
@@ -356,7 +356,7 @@ tables-cs-refuses-pointers: bin/schema
 	@echo "tables C# refusal gate: a pointered unit's WIRE half is refused by name, in every source it does emit, and its cooks still open"
 
 # ---------------------------------------------------------------------------
-# The BLOCK FORM (SPEC-TABLES.md §19). Nothing declares it: every fixed table
+# The BLOCK FORM (docs/SPEC-TABLES.md §19). Nothing declares it: every fixed table
 # has one, emitted on the side into <Base>Block.h/.cpp and <Base>Block.cs, and
 # a consumer compiles those only if it uses the form.
 # ---------------------------------------------------------------------------
@@ -421,7 +421,7 @@ tables-block-race-negative-control: build/schema_test_block_tsan
 		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on a data race"; tail -20 build/block-race.log; exit 1; }
 	@echo "block race negative control: overlapping workers turn the ThreadSanitizer leg red"
 
-# THE TWO-LANGUAGE GATE (SPEC-TABLES.md §19.5, §12.1): a C++ producer writes a
+# THE TWO-LANGUAGE GATE (docs/SPEC-TABLES.md §19.5, §12.1): a C++ producer writes a
 # block and pins its bytes; a C# consumer opens those very bytes and compares
 # every field of every row, twice — through the generated blittable struct and
 # through the block descriptors. Sizes and offsets are asserted by GENERATED
@@ -435,7 +435,7 @@ tables-block: build/schema_test_block build/schema_test_block_asan build/schema_
 	cd test/cs-block && dotnet run
 
 # ---------------------------------------------------------------------------
-# THE FORGERY FUZZER (SPEC-TABLES.md §19.2, §19.5). The hand-written battery in
+# THE FORGERY FUZZER (docs/SPEC-TABLES.md §19.2, §19.5). The hand-written battery in
 # block_main.cpp and Program.cs is eleven forgeries, one per fact BlockOpen
 # checks plus the one this fuzzer found. This is the standing gate beside it:
 # valid blocks from the generated builder, mutated, and one oracle over every
@@ -578,7 +578,7 @@ tables-block-fuzz-extent-negative-control: build/block-fuzz/.stamp build/tables-
 tables-block-fuzz-maximum-negative-control: build/block-fuzz/.stamp build/tables-generated-cs/.stamp
 	$(call block_fuzz_sabotage,maximum)
 
-# THE COOK'S NEGATIVE CONTROL (SPEC-TABLES.md §7.5). The hostile battery in
+# THE COOK'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §7.5). The hostile battery in
 # internal/tablecook is a Go test and rides `go test ./...`; what a battery
 # cannot prove about itself is that it would go RED, so this removes PASS ONE
 # — `cook-check`'s directory scan — and requires it to.
@@ -605,7 +605,7 @@ tables-cook-fuzz-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the battery went red, but not on the bar"; cat build/cook-fuzz-control/log; exit 1; }
 	@grep -m1 "FAILED" build/cook-fuzz-control/log
 
-# THE SCALE FIXTURES (SPEC-TABLES.md §7.5). `test/cookgen` writes a synthetic
+# THE SCALE FIXTURES (docs/SPEC-TABLES.md §7.5). `test/cookgen` writes a synthetic
 # region streaming, in O(1) memory, so the OPEN-COST gate the emitter owes —
 # open time flat across 1 MB, 100 MB and 1 GB — has inputs the C++ worker can
 # regenerate rather than a gigabyte in the tree.
@@ -634,7 +634,7 @@ tables-cook-scale-1gb: bin/schema
 	./build/cookgen --bytes 1073741824 --out build/cook/1gb.cook
 	./bin/schema cook-check --verbose build/cook/1gb.cook $(COOKGEN_UNIT)
 
-# ---- the COOK's C++ READ SIDE (SPEC-TABLES.md §7) --------------------------
+# ---- the COOK's C++ READ SIDE (docs/SPEC-TABLES.md §7) --------------------------
 #
 # `schema cook` writes the file and the generated <Root>Open points at it, and
 # the two were written from the page independently — the tool in Go, the C++
@@ -790,7 +790,7 @@ tables-cook-open-root-negative-control: build/cook-open/.stamp
 
 
 # ---------------------------------------------------------------------------
-# THE COOK's C# READ SIDE (SPEC-TABLES.md §7) --------------------------------
+# THE COOK's C# READ SIDE (docs/SPEC-TABLES.md §7) --------------------------------
 #
 # The third implementation of one page: `schema cook` writes the file in Go,
 # the C++ <Root>Open points at it, and the C# <Root>Cook.Open points at the very
@@ -915,7 +915,7 @@ tables-cook-open-cs-root-negative-control: build/cook-open/.stamp
 	$(call cook_open_cs_sabotage,root,if (dataLength < %d) { return false; },if (dataLength == ulong.MaxValue) { return false; } // NEGATIVE CONTROL)
 
 
-# THE COOK ROUND TRIP THROUGH THE CLI (SPEC-TABLES.md §7.5). The Go tests hold
+# THE COOK ROUND TRIP THROUGH THE CLI (docs/SPEC-TABLES.md §7.5). The Go tests hold
 # the engine; this holds the three COMMANDS and their flags, over a pinned pack
 # tree, in both byte orders and with the attribution written both ways.
 .PHONY: tables-cook-cli
@@ -936,7 +936,7 @@ tables-cook-cli: bin/schema
 		--out build/cook-cli/be.bin tables/examples
 	cmp build/cook-cli/orig.bin build/cook-cli/be.bin
 
-# THE BLOCK ZERO-COST GATE (SPEC-TABLES.md §2.2, §19), in its two halves.
+# THE BLOCK ZERO-COST GATE (docs/SPEC-TABLES.md §2.2, §19), in its two halves.
 #
 # The first asks "did any block symbol leak into a Table source?" — a grep.
 # The second is the property §19 actually states: **the Table sources are
@@ -961,7 +961,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
 # BuildVersion is NOT in that grep: it is not a block symbol — a build version
 # answers "which build?" and not "which form?", both accelerators carry it
-# (SPEC-TABLES.md §20.6), and every C++ Table header carries it because every
+# (docs/SPEC-TABLES.md §20.6), and every C++ Table header carries it because every
 # table cooks (§7). What holds the block form to zero cost is the line above —
 # no Table source carries one BLOCK symbol — and the byte comparison below.
 	@for f in build/tables-generated-cs/*/*Table.cs; do \
@@ -997,7 +997,7 @@ tables-block-zero-cost: build/tables-generated/.stamp build/tables-generated-cs/
 	if [ "$$n" -lt 38 ]; then echo "ZERO-COST GATE FAILED: compared $$n Table files, expected at least 38 — the glob, not the property, is what broke"; exit 1; fi; \
 	echo "block zero-cost gate: $$n Table sources byte-identical to their pins"
 
-# THE BUILD VERSION IS ONE NUMBER (SPEC-TABLES.md §20.7): the constant each
+# THE BUILD VERSION IS ONE NUMBER (docs/SPEC-TABLES.md §20.7): the constant each
 # backend emits, and the number `schema build-version` prints, are the same
 # number or the tuple a store is indexed by means two different things. The
 # projection it hashes is pinned beside it as a golden, so a change to how it
@@ -1011,7 +1011,7 @@ tables-block-build-version: bin/schema build/tables-generated/.stamp build/table
 			{ echo "BUILD VERSION GATE FAILED: the C# constant is not $$v"; exit 1; }; \
 		echo "block build-version gate: schema build-version, the C++ constant and the C# constant are all $$v"
 
-# THE FILL REFUSER (SPEC-TABLES.md §19.1, §19.5). The multi-threaded fill is an
+# THE FILL REFUSER (docs/SPEC-TABLES.md §19.1, §19.5). The multi-threaded fill is an
 # OBLIGATION on the implementation, not a permission to the caller: the
 # generated fill path — Begin, the array accessors and the row storage they
 # hand back — contains no allocation, no lock and no atomic, and the BUILD
@@ -1039,7 +1039,7 @@ tables-block-fill-refuser: build/tables-generated/.stamp
 		fi; \
 	done
 	@if grep -nE "$(BLOCK_FORBIDDEN)" build/block-fill/*; then \
-		echo "FILL REFUSER FAILED: the generated fill path allocates, locks or takes an atomic (SPEC-TABLES.md §19.1)"; exit 1; \
+		echo "FILL REFUSER FAILED: the generated fill path allocates, locks or takes an atomic (docs/SPEC-TABLES.md §19.1)"; exit 1; \
 	fi
 	@echo "block fill refuser: the generated fill path allocates nothing, locks nothing, takes no atomic"
 
@@ -1144,7 +1144,7 @@ tables-block-layout-model-negative-control: bin/schema
 		{ echo "NEGATIVE CONTROL FAILED: C# went red, but not on the layout check"; cat build/block-model-cs.log; exit 1; }
 	@echo "block layout-model negative control (C#): the same moved offset turns the once-run layout check red"
 
-# THE BLOCK HOME's NEGATIVE CONTROL (SPEC-TABLES.md §19.2's C# surface). The
+# THE BLOCK HOME's NEGATIVE CONTROL (docs/SPEC-TABLES.md §19.2's C# surface). The
 # dogfood found two defects with one root cause — a C# backend that emitted per
 # DECLARING FILE and skipped a file with no `table` in it: the unit's shared
 # runtime went to the PROTOCOL ID's home, which declares no table in any real
@@ -1177,7 +1177,7 @@ tables-block-home-negative-control: bin/schema
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on an undefined name"; tail -20 build/blockhome-sabotage.log; exit 1; }
 	@echo "block home negative control: emitting the runtime into the protocol id's home leaves the unit uncompilable"
 
-# DEFECT B's NEGATIVE CONTROL (SPEC-TABLES.md §2.7's DEPTH ONE, BOUNDED ONLY).
+# DEFECT B's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.7's DEPTH ONE, BOUNDED ONLY).
 # The dogfood found the C# blittable emitter projecting a bounded array INSIDE
 # a nested record out of line — a sixteen-byte triple where C++ put the whole
 # array, and every field after it somewhere else. Nothing said so until
@@ -1215,7 +1215,7 @@ tables-block-inline-array-negative-control: bin/schema
 		echo "NEGATIVE CONTROL FAILED: it went red, but not on either half of the gate"; tail -20 build/blockhome-depth.log; exit 1; \
 	fi
 
-# GATE 2 (SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
+# GATE 2 (docs/SPEC-TABLES.md §12.1): the MEASURED gate, two numbers, and it is not
 # part of `make test` on purpose — a correctness suite whose verdict depends on
 # the machine's mood is not a correctness suite, and the estate's bench rules
 # want one bench at a time per machine and a quiet window.
@@ -1246,7 +1246,7 @@ tables-block-gate2-smoke: build/schema_test_block_gate2 build/tables-generated-c
 	./build/schema_test_block_gate2 --smoke
 	cd test/cs-block && dotnet run -c Release -- --gate2-smoke
 # The NEGATIVE CONTROL for a KEYED object's duplicate counting
-# (SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
+# (docs/SPEC-TABLES.md §16.2). Last-wins inside a keyed object was already true, so
 # the missing count was invisible to every round-trip test — the value was
 # right and only the ledger was wrong. This sabotage removes the increment and
 # the fixture must go red; without it, nothing in the suite could see the
@@ -1262,7 +1262,7 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 		-Ibuild/json-dup-sabotage test/tables/json_keyed_dup_negative_main.cpp build/json-dup-sabotage/KeyedTable.cpp -o build/schema_test_json_keyed_dup_negative
 	./build/schema_test_json_keyed_dup_negative
 
-# The NEGATIVE CONTROL for a keyed array's ITERATION RANGE (SPEC-TABLES.md
+# The NEGATIVE CONTROL for a keyed array's ITERATION RANGE (docs/SPEC-TABLES.md
 # §2.4). The iteration's whole promise is that it walks EVERY stored slot and
 # yields the KEY it holds, 1..E.Max; an off-by-one at either end reads as an
 # ordinary walk, because every untouched slot holds the same declared defaults.
@@ -1297,7 +1297,7 @@ tables-keyed-iteration-negative-control: bin/schema
 		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on a CHECK"; cat build/tables-first-slot.log; exit 1; }
 	@echo "negative control: begin() past the first stored slot turns the TABLES SUITE red — $$(grep -c '^FAIL' build/tables-first-slot.log) failures"
 
-# THE None REFUSAL, HELD UNDER -DNDEBUG (SPEC-TABLES.md §2.4). The refusal is
+# THE None REFUSAL, HELD UNDER -DNDEBUG (docs/SPEC-TABLES.md §2.4). The refusal is
 # unconditional by ruling: indexing a keyed array by None is a program error in
 # EVERY configuration, because the shifted storage has no slot for None and a
 # build that let the index through would read one element BEFORE the array.
@@ -1338,7 +1338,7 @@ tables-keyed-none-refusal-negative-control: bin/schema test/tables/keyed_none_nd
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the refusal"; cat build/keyed-none-assert-only.log; exit 1; }
 	@echo "negative control: a debug-only guard turns the -DNDEBUG refusal gate red"
 
-# The NEGATIVE CONTROL for the SHIFT itself (SPEC-TABLES.md §2.4, owner ruling
+# The NEGATIVE CONTROL for the SHIFT itself (docs/SPEC-TABLES.md §2.4, owner ruling
 # 2026-09-03). The storage holds E.Max slots with the key k at index k-1 and
 # nothing for None. Putting the None slot BACK — E.Max + 1 slots, no shift —
 # is the exact edit the ruling reversed, and it must not be able to pass
@@ -1392,7 +1392,7 @@ TABLES_INCLUDES := $(call tables_includes,build/tables-generated)
 TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
 
 # The text form's runtime is a generated TRANSLATION UNIT now, not header
-# content (SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
+# content (docs/SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
 # compiles the generated <Base>Table.cpp, and one that never does compiles
 # nothing for it. Expanded in the recipe because these are build-time output.
 TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp)
@@ -1421,7 +1421,7 @@ build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cp
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 		-fno-omit-frame-pointer -g $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
-# ---- the BIG-ENDIAN leg (SPEC-TABLES.md §3 and §19.1) ----------------------
+# ---- the BIG-ENDIAN leg (docs/SPEC-TABLES.md §3 and §19.1) ----------------------
 #
 # The wire is little-endian and byte-oriented (§3), and a block is produced in
 # the byte order of the build that wrote it (§19.1). Both were rules on a page:
@@ -1447,7 +1447,7 @@ build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp
 	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 # The COOK's read side, for a BIG-ENDIAN target. A cook is produced in the byte
-# order of the build it is cooked for (SPEC-TABLES.md §7), so this is where that
+# order of the build it is cooked for (docs/SPEC-TABLES.md §7), so this is where that
 # stops being a sentence: the big-endian build opens the big-endian cook
 # NATIVELY — magic, header words, deltas and all, with no fix-up pass anywhere —
 # and refuses the little-endian one, and this host does the mirror image.
@@ -1486,7 +1486,7 @@ tables-big-endian: build/schema_test_tables_be build/schema_test_block_endian bu
 	@echo "big-endian leg: a cook opens NATIVELY in the order it was cooked for, whole graph and all, and a cook of the other order is refused by the magic"
 	$(MAKE) tables-cook-endian
 
-# THE COOK IS THE HOST'S BUSINESS IN NEITHER DIRECTION (SPEC-TABLES.md §7).
+# THE COOK IS THE HOST'S BUSINESS IN NEITHER DIRECTION (docs/SPEC-TABLES.md §7).
 # The byte order is settled AT COOK TIME for the TARGET build, so what a cook
 # holds must depend on `--byte-order` and on nothing else — least of all on the
 # order of the machine that ran the tool. Every host this repo builds on is
@@ -1559,7 +1559,7 @@ tables-big-endian-negative: tables-big-endian
 		{ echo "NEGATIVE CONTROL FAILED: the big-endian leg went red, but not on a wire golden"; cat build/host-order-be.log; exit 1; }
 	@echo "negative control: the same put16 turns the BIG-ENDIAN leg red, on the wire goldens"
 
-# The PACK GOLDEN (SPEC-TABLES.md §17.4, issue #257). `schema pack` carries an
+# The PACK GOLDEN (docs/SPEC-TABLES.md §17.4, issue #257). `schema pack` carries an
 # IR-driven engine in Go — the compiler cannot run the code it emits — so the
 # gate that makes the two ONE WIRE is a byte comparison: the bytes pack builds
 # from the directory tree at tables/pack/config must equal PackConfigSave of
@@ -1579,7 +1579,7 @@ build/tables-pack-root.bin: bin/schema $(PACK_TREE)
 # twin can never drift into covering different code (#278's rule).
 PACK_INCLUDES := -Ibuild/tables-generated/examples
 # these drivers CALL the text form, so they compile the generated translation
-# unit that holds it (SPEC-TABLES.md §16.1) — the same rule any consumer follows
+# unit that holds it (docs/SPEC-TABLES.md §16.1) — the same rule any consumer follows
 PACK_JSON_SOURCES = $$(ls build/tables-generated/examples/*Table.cpp)
 PACK_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off
 PACK_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
@@ -1613,7 +1613,7 @@ tables-pack: build/schema_test_pack build/schema_test_pack_asan build/tables-pac
 	./build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin \
 		build/pack-text/PackConfig.json build/pack-text/RootConfig.json
 
-# The HOSTILE-VALUE gate (SPEC-TABLES.md §16.2, §16.3, §17.5). One tree per rule
+# The HOSTILE-VALUE gate (docs/SPEC-TABLES.md §16.2, §16.3, §17.5). One tree per rule
 # the text form states — malformed number tokens, a value past a bits(N) width,
 # a lone surrogate, `null` on a `?T`, a "None" key, duplicate keys — packed by
 # the Go engine and then READ BY THE GENERATED BACKEND. The manifest says which

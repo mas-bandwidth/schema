@@ -1,4 +1,4 @@
-// The BLOCK FORM's layout model (SPEC-TABLES.md §2.7, §19).
+// The BLOCK FORM's layout model (docs/SPEC-TABLES.md §2.7, §19).
 //
 // The compiler computes the layout and both backends assert it: this file is
 // the one place the numbers come from, so C++'s static_asserts, C#'s generated
@@ -22,7 +22,7 @@ import "sort"
 // not be named after any of the three (§11).
 const BlockPrologueBytes = 24
 
-// Byte-order values a block's prologue carries (SPEC-TABLES.md §20.3's byte).
+// Byte-order values a block's prologue carries (docs/SPEC-TABLES.md §20.3's byte).
 // A block written by a build of the other order is REFUSED: the fix-up path is
 // a named obligation, not something a consumer improvises.
 const (
@@ -32,11 +32,11 @@ const (
 
 // BlockAlign is the alignment every block base and every out-of-line array
 // start takes: a cache line, so two workers filling different arrays never
-// share one (SPEC-TABLES.md §19.1).
+// share one (docs/SPEC-TABLES.md §19.1).
 const BlockAlign = 64
 
 // BlockMagic identifies a schema block and carries the byte-order check with
-// it (SPEC-TABLES.md §19.1). It is stored in the producer's NATIVE order; a
+// it (docs/SPEC-TABLES.md §19.1). It is stored in the producer's NATIVE order; a
 // consumer that reads back the byte-swapped value has found a foreign byte
 // order and refuses, and one that reads back anything else has not found a
 // block at all.
@@ -83,10 +83,10 @@ type BlockArray struct {
 	Field    *Field
 	Elem     *Struct
 	ElemName string
-	Stride   int64 // the pitch: the element's sizeof (SPEC-TABLES.md §2.7)
+	Stride   int64 // the pitch: the element's sizeof (docs/SPEC-TABLES.md §2.7)
 	Max      int64 // the declared [..N] maximum — sizes the storage, NOT a digest fact
 	// the triple's position in the projection: sixteen bytes with no interior
-	// padding, at the field's own position (SPEC-TABLES.md §2.7)
+	// padding, at the field's own position (docs/SPEC-TABLES.md §2.7)
 	TripleOffset   int64
 	OffsetOfOffset int64
 	CountOffset    int64
@@ -178,7 +178,7 @@ func (b *BlockUnit) SkippedReason(name string) string {
 // than of anything an author writes to ask for the form:
 //
 //   - a VARIABLE-LENGTH table has none: a pointer anywhere in its by-value
-//     closure means no fixed pitch anywhere in it (SPEC-TABLES.md §19).
+//     closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 //   - a table whose closure carries a UNION has none: §19.3 pins the C# side
 //     to Sequential with generated padding, and Sequential cannot overlay
 //     arms. Emitting the form on one side only would break the two-language
@@ -316,7 +316,7 @@ func Blocks(u *Unit) *BlockUnit {
 }
 
 // BlockOutOfLine reports whether a field of a block-form table is one of the
-// arrays that moves out of line: DEPTH ONE, BOUNDED ONLY (SPEC-TABLES.md
+// arrays that moves out of line: DEPTH ONE, BOUNDED ONLY (docs/SPEC-TABLES.md
 // §2.7) — the marked table's own `[..N]T` fields whose element is a struct.
 // A fixed `[N]T`, an enum-keyed `[E]T`, and every array at any depth inside an
 // element stay exactly where they are.
@@ -342,7 +342,7 @@ func BlockOutOfLine(f *Field) bool {
 // the cook's bytes come from too. A second walk here would be a second ABI.
 func RecordLayout(u *Unit, st *Struct) *MemberLayout { return layoutRecord(u, st) }
 
-// RegionAlignFloor is the floor on a COOK's region alignment (SPEC-TABLES.md
+// RegionAlignFloor is the floor on a COOK's region alignment (docs/SPEC-TABLES.md
 // §7): the alignment a region actually needs is the greatest alignment of any
 // record in it, which for a region of byte-only records would be 1, and the
 // floor holds it at eight so the attribution part that follows the data is
@@ -465,7 +465,7 @@ func layoutRecord(u *Unit, st *Struct) *MemberLayout {
 // layoutProjection walks a block-form table's PROJECTION: the generated
 // prologue, then the table's own fields at their natural offsets, with every
 // out-of-line array's storage replaced IN PLACE by its sixteen-byte
-// (offset_of u64, count u32, stride u32) triple (SPEC-TABLES.md §2.7).
+// (offset_of u64, count u32, stride u32) triple (docs/SPEC-TABLES.md §2.7).
 func layoutProjection(u *Unit, st *Struct) MemberLayout {
 	ml := MemberLayout{Name: st.Name}
 	// the prologue: three uint64s (magic, build_version, byte_order)
@@ -544,7 +544,7 @@ func fieldPieces(u *Unit, f *Field, projection bool) []storagePiece {
 	var pieces []storagePiece
 	switch {
 	case f.Type.Pointer:
-		// TableRef: EIGHT bytes at eight (SPEC-TABLES.md §6.3). The slot holds
+		// TableRef: EIGHT bytes at eight (docs/SPEC-TABLES.md §6.3). The slot holds
 		// an arena offset in one form and a self-relative region delta in the
 		// other, and the region delta is what sizes it: at eight bytes one
 		// region reaches everything, which is the scale §7 is built for.

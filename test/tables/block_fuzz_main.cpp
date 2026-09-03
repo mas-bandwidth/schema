@@ -1,5 +1,5 @@
 /*
-    The BLOCK FORM's FORGERY FUZZER, C++ side (SPEC-TABLES.md §19.2, §19.5).
+    The BLOCK FORM's FORGERY FUZZER, C++ side (docs/SPEC-TABLES.md §19.2, §19.5).
 
     The hand-written battery in block_main.cpp is ten forgeries, one per fact
     BlockOpen checks. This is the standing gate beside it: valid blocks from the
@@ -177,7 +177,7 @@ struct Region
 };
 
 // ---------------------------------------------------------------------------
-// the ORACLE, over the descriptors (SPEC-TABLES.md §8, §19.2)
+// the ORACLE, over the descriptors (docs/SPEC-TABLES.md §8, §19.2)
 // ---------------------------------------------------------------------------
 //
 // Templated on the unit's own TableBlockInfo, because the block primitives ride
@@ -200,10 +200,10 @@ static void check_descriptors( const Info * info, int depth )
         if ( f.out_of_line )
         {
             if ( f.size != 16 || f.offset_of_offset != f.offset || f.count_offset != f.offset + 8 || f.stride_offset != f.offset + 12 )
-                defect( "an out-of-line array's triple does not sit at 0/8/12 of its field (SPEC-TABLES.md §2.7)" );
+                defect( "an out-of-line array's triple does not sit at 0/8/12 of its field (docs/SPEC-TABLES.md §2.7)" );
             const Info * element = f.element();
             if ( element == NULL || element->size != f.stride )
-                defect( "an out-of-line array's pitch is not its element's sizeof (SPEC-TABLES.md §2.7)" );
+                defect( "an out-of-line array's pitch is not its element's sizeof (docs/SPEC-TABLES.md §2.7)" );
             check_descriptors( element, depth + 1 );
         }
         else if ( f.element != NULL )
@@ -246,7 +246,7 @@ static void walk_opened( const Info * info, const uint8_t * base, int64_t bytes,
         // indexes with must be this build's own, or the two sides are reading
         // different records at the same offsets
         if ( stride != f.stride )
-            defect( "an opened block carries a pitch that is not this build's own (SPEC-TABLES.md §19.3)" );
+            defect( "an opened block carries a pitch that is not this build's own (docs/SPEC-TABLES.md §19.3)" );
         if ( element == NULL || element->size != stride )
             defect( "an opened block's row descriptor disagrees with the pitch it opened at" );
 
@@ -262,7 +262,7 @@ static void walk_opened( const Info * info, const uint8_t * base, int64_t bytes,
         if ( element->align > start_alignment )
             start_alignment = element->align;
         if ( ( offset_of % start_alignment ) != 0 )
-            defect( "an opened block's array does not start aligned for its element (SPEC-TABLES.md §19.1)" );
+            defect( "an opened block's array does not start aligned for its element (docs/SPEC-TABLES.md §19.1)" );
 
         // the extent, computed without ever overflowing
         if ( stride != 0 && (uint64_t) count > ( UINT64_MAX - offset_of ) / stride )
@@ -360,7 +360,7 @@ static void build_slots( Unit & unit, const Info * info )
     }
 }
 
-// ---- RenderFrame: the largest projection (SPEC-TABLES.md §19.1's worked table) ----
+// ---- RenderFrame: the largest projection (docs/SPEC-TABLES.md §19.1's worked table) ----
 
 static blockdemo::TableBlockAllocator plain_allocator()
 {
@@ -414,7 +414,7 @@ static bool render_open_and_walk( void * base, int64_t bytes, const Unit & unit 
     if ( !RenderFrameBlockOpen( block, base, bytes ) )
     {
         if ( block.base != NULL || block.projection != NULL || block.bytes != 0 )
-            defect( "a refused block points at something rather than at nothing (SPEC-TABLES.md §19.2)" );
+            defect( "a refused block points at something rather than at nothing (docs/SPEC-TABLES.md §19.2)" );
         return false;
     }
     if ( block.base != (uint8_t *) base )
@@ -472,7 +472,7 @@ static bool padded_open_and_walk( void * base, int64_t bytes, const Unit & unit 
     if ( !PaddedFrameBlockOpen( block, base, bytes ) )
     {
         if ( block.base != NULL || block.projection != NULL || block.bytes != 0 )
-            defect( "a refused block points at something rather than at nothing (SPEC-TABLES.md §19.2)" );
+            defect( "a refused block points at something rather than at nothing (docs/SPEC-TABLES.md §19.2)" );
         return false;
     }
     if ( block.base != (uint8_t *) base )
@@ -521,7 +521,7 @@ static bool part_open_and_walk( void * base, int64_t bytes, const Unit & unit )
     if ( !PartFrameBlockOpen( block, base, bytes ) )
     {
         if ( block.base != NULL || block.projection != NULL || block.bytes != 0 )
-            defect( "a refused block points at something rather than at nothing (SPEC-TABLES.md §19.2)" );
+            defect( "a refused block points at something rather than at nothing (docs/SPEC-TABLES.md §19.2)" );
         return false;
     }
     if ( block.base != (uint8_t *) base )
@@ -1098,7 +1098,7 @@ int main( int argc, char ** argv )
     if ( failures != 0 )
         return 1;
 
-    printf( "block forgery fuzzer: %lld mutants over 3 units, %lld opened and walked whole, none escaped the extent (SPEC-TABLES.md §19.2, §19.5)\n",
+    printf( "block forgery fuzzer: %lld mutants over 3 units, %lld opened and walked whole, none escaped the extent (docs/SPEC-TABLES.md §19.2, §19.5)\n",
             (long long) mutants_run, (long long) mutants_opened );
     printf( "OK\n" );
     return 0;

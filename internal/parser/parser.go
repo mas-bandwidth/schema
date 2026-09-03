@@ -192,16 +192,16 @@ func (p *parser) parseDecl() {
 
 	case scanner.KwTable:
 		// `table` declares a data type on the evolution-tolerant TABLE wire
-		// (SPEC-TABLES.md): field identity by name hash, unknown fields
+		// (docs/SPEC-TABLES.md): field identity by name hash, unknown fields
 		// skipped, absent fields defaulted. The body grammar is the type
 		// body's; a table declaration takes no qualification. The BLOCK FORM
-		// (SPEC-TABLES.md §19) declares nothing at all: every fixed table has
+		// (docs/SPEC-TABLES.md §19) declares nothing at all: every fixed table has
 		// one, emitted on the side, so there is no marker to parse.
 		p.advance()
 		name := p.expect(scanner.Ident, "table name")
 		d := &ast.TableDecl{Name: name.Text, Pos: t.Pos}
 		if p.kind() == scanner.Pipe {
-			p.errf(p.tok().Pos, "a table declaration takes no qualification (SPEC-TABLES.md)")
+			p.errf(p.tok().Pos, "a table declaration takes no qualification (docs/SPEC-TABLES.md)")
 			p.skipToTerminator()
 		}
 		d.Body = p.parseBlock()
@@ -450,7 +450,7 @@ func (p *parser) parseItem() ast.Item {
 	case scanner.Ident:
 		p.advance()
 		f := &ast.Field{Name: t.Text, Pos: t.Pos}
-		// `settings ?GunnerSettings` — the OPTIONAL prefix (SPEC-TABLES.md
+		// `settings ?GunnerSettings` — the OPTIONAL prefix (docs/SPEC-TABLES.md
 		// §2.3). It binds to the whole field type, so it precedes an array
 		// bound too; what may carry it is the CHECKER's business (a table
 		// body, and not a pointer, an array, a string or bytes), so the
@@ -584,7 +584,7 @@ func (p *parser) parseScalar() ast.ScalarType {
 		p.advance()
 		return ast.ScalarType{Kind: ast.ScalarNamed, Name: t.Text, Pos: t.Pos}
 	case scanner.Star:
-		// `next *Node` — a POINTER to a table (SPEC-TABLES.md). The C-like
+		// `next *Node` — a POINTER to a table (docs/SPEC-TABLES.md). The C-like
 		// spelling is deliberate: it reads as what it is. What may sit on the
 		// right of the star is the CHECKER's business (a table, inside a table
 		// body); the grammar accepts any name so the diagnostic names the real

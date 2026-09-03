@@ -1,5 +1,5 @@
 // Package cpptable emits <Base>Table.h — the TABLE-wire C++ codecs
-// (SPEC-TABLES.md). One header per unit file, emitted only when the unit
+// (docs/SPEC-TABLES.md). One header per unit file, emitted only when the unit
 // declares tables: storage structs for the `table` declarations, then
 // measure/save/load codecs and reflection descriptors for the whole
 // TABLE CLOSURE (every table plus everything one references, transitively).
@@ -24,7 +24,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// table-wire kinds (SPEC-TABLES.md §3), named locally over the one
+// table-wire kinds (docs/SPEC-TABLES.md §3), named locally over the one
 // target-independent definition in ir — the vocabulary is wire law, and the
 // baseline projection reads the same mapping this emitter writes.
 const (
@@ -43,7 +43,7 @@ const (
 	tkTable  = ir.TableKindTable
 	tkArray  = ir.TableKindArray
 	tkUnion  = ir.TableKindUnion
-	// an ENUM-KEYED array body is its OWN kind (SPEC-TABLES.md §3.2): the
+	// an ENUM-KEYED array body is its OWN kind (docs/SPEC-TABLES.md §3.2): the
 	// positional array body and the keyed one are incompatible, so a reader
 	// meeting the other must see a KIND MISMATCH and skip, never misdecode.
 	tkKeyed = ir.TableKindKeyed
@@ -73,7 +73,7 @@ type tableGen struct {
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table
 	anyKeyed    bool // the unit declares at least one enum-keyed array
-	// blocks is the unit's BLOCK FORM surface (SPEC-TABLES.md §19), nil when
+	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
 	blocks         *ir.BlockUnit
@@ -147,7 +147,7 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 }
 
 // tableKeyedStorage is the storage type behind `ships [ShipType]ShipConfig`
-// (SPEC-TABLES.md §2.4). Emitted only into a unit that declares a keyed array,
+// (docs/SPEC-TABLES.md §2.4). Emitted only into a unit that declares a keyed array,
 // so a unit without one is byte-identical to what it was.
 //
 // Its layout IS `T slots[E::Max]` — one non-static data member, no virtuals,
@@ -275,11 +275,11 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool) string {
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
-	// always emitted, to the byte (SPEC-TABLES.md §2, the zero-cost gate)
+	// always emitted, to the byte (docs/SPEC-TABLES.md §2, the zero-cost gate)
 	pointerFieldMember, pointerTypeMember := "", ""
 	if anyVariable {
 		pointerFieldMember = "\n    bool is_pointer;        // a *T pointer field: storage is an 8-byte TableRef; the target is a table"
-		pointerTypeMember = "\n    // the DERIVED mode (SPEC-TABLES.md): false = fixed-size, a plain\n" +
+		pointerTypeMember = "\n    // the DERIVED mode (docs/SPEC-TABLES.md): false = fixed-size, a plain\n" +
 			"    // relocatable struct; true = variable-length, built through a Builder\n" +
 			"    // and read through a region root. Nobody declares it; the compiler\n" +
 			"    // works it out.\n    bool variable;"
@@ -297,13 +297,13 @@ struct TableReport
     int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
     // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
+    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
     bool malformed = false;    // framing damage; decode stopped, partial result kept
 };
 
-// ---- reflection (tables only, SPEC-TABLES.md) ----
+// ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
 // id/kind, storage offset, bounds, ranges, enum names and branch guards —
@@ -315,7 +315,7 @@ struct TableTypeInfo;
 // One arm of a union field: where its payload sits inside the union's storage
 // and what its payload looks like. The arm's NAME and its table-wire id come
 // from the field's enum_name/variant_id functions at the same tag, so nothing
-// is spelled twice (SPEC-TABLES.md §8).
+// is spelled twice (docs/SPEC-TABLES.md §8).
 struct TableUnionArmInfo
 {
     uint32_t offset;             // offsetof the arm's payload within the union storage
@@ -357,14 +357,14 @@ struct TableFieldInfo
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
     const char * (*enum_name)( uint64_t value );
-    // the TABLE-WIRE id of one variant (SPEC-TABLES.md §5): for an enum, the
+    // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
     uint16_t (*variant_id)( uint64_t value );
-    // an ENUM-KEYED array (SPEC-TABLES.md §2.4): the array has one slot per
+    // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
@@ -494,7 +494,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	anyKeyed := unitHasKeyedArray(u, closure)
 	blocks := ir.Blocks(u)
 
-	// The BLOCK FORM (SPEC-TABLES.md §19) is emitted ON THE SIDE, into
+	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
 	// <Base>Block.h and <Base>Block.cpp: nothing declares it, every fixed
 	// table has one, and a consumer includes and compiles it only if it uses
 	// the form. The Table header below carries not one symbol of it.
@@ -539,7 +539,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 			g.pf("\n")
 			g.emitCookLayoutAsserts(members)
-			g.pf("// ---- reflection descriptors (tables only, SPEC-TABLES.md) ----\n\n")
+			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----\n\n")
 			for _, st := range members {
 				g.pf("inline const TableTypeInfo * %sTableType();\n", st.Name)
 			}
@@ -559,12 +559,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.owner = st
 				g.emitTableDescriptor(st)
 			}
-			// the TEXT form's surface (SPEC-TABLES.md §16), DECLARED after the
+			// the TEXT form's surface (docs/SPEC-TABLES.md §16), DECLARED after the
 			// descriptors it names. The definitions and the one generic walk
 			// they call live in <Base>Table.cpp, so a translation unit that
 			// includes this header for the wire codecs or the descriptors pays
 			// nothing for a form it never calls.
-			g.pf("// ---- the text form (SPEC-TABLES.md §16) ----\n\n")
+			g.pf("// ---- the text form (docs/SPEC-TABLES.md §16) ----\n\n")
 			for _, st := range members {
 				g.emitJsonDeclarations(st)
 			}
@@ -575,12 +575,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		var h strings.Builder
 		fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n// your choice. See the LICENSE exception in the schema compiler; the compiler is\n// AGPL-3.0, its output is not.\n", f.Base)
 		fmt.Fprintf(&h, "// package %s — protocol id 0x%016x (packets only: tables version by field id, not by protocol id)\n", u.Package, u.ProtocolId)
-		h.WriteString("// The TABLE wire (evolution-tolerant, SPEC-TABLES.md): no serialize\n")
+		h.WriteString("// The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): no serialize\n")
 		h.WriteString("// dependency — includable from any TU.\n\n")
 		h.WriteString("#pragma once\n\n#include <cstdint>\n#include <cstring> // the prefill's scalar-array fills\n#include <cstddef> // offsetof, for the reflection descriptors\n#include <type_traits> // the enforced relocatability asserts\n")
 		if anyVariable {
 			// VARIABLE-LENGTH tables only: a unit of pointer-free tables pays
-			// for none of these headers (SPEC-TABLES.md §2, the zero-cost gate)
+			// for none of these headers (docs/SPEC-TABLES.md §2, the zero-cost gate)
 			h.WriteString("#include <new> // a node's lifetime starts in arena storage (placement new)\n")
 			h.WriteString("#include <cstdlib> // the arena's segments (the AUTHORING path may allocate)\n")
 			h.WriteString("#include <atomic> // one atomic per slab: the arena is lock-free by ownership\n")
@@ -588,7 +588,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if anyKeyed {
 			// ENUM-KEYED arrays only: indexing one by None is a program error in
 			// EVERY configuration, and the accessor is where a runtime key can
-			// first be caught (SPEC-TABLES.md §2.4). The refusal aborts, so it
+			// first be caught (docs/SPEC-TABLES.md §2.4). The refusal aborts, so it
 			// needs <cstdlib> whether or not NDEBUG keeps the assert.
 			h.WriteString("#include <cassert> // the keyed accessor's None refusal, in a debug build\n")
 			h.WriteString("#include <cstdlib> // and its abort, which NDEBUG does not remove\n")
@@ -617,7 +617,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u.Package))
 		}
-		// the COOKED FORM's read side (SPEC-TABLES.md §7) and the BUILD VERSION
+		// the COOKED FORM's read side (docs/SPEC-TABLES.md §7) and the BUILD VERSION
 		// it matches against, in EVERY unit that declares a table: every table
 		// cooks and any table may be a cook's root, so there is no unit with
 		// tables and no cook reader. It is not pointer machinery — no arena, no
@@ -633,7 +633,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		out[f.Base+"Table.h"] = []byte(h.String())
 
 		// The TEXT form's runtime, in its own translation unit (owner's
-		// ruling, SPEC-TABLES.md §13.5): the generic walk and this file's
+		// ruling, docs/SPEC-TABLES.md §13.5): the generic walk and this file's
 		// definitions, compiled ONCE by a project that uses them rather than
 		// re-parsed by every translation unit that includes the header.
 		//
@@ -652,7 +652,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if fixedMembers > 0 {
 			var c strings.Builder
 			fmt.Fprintf(&c, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n// your choice. See the LICENSE exception in the schema compiler; the compiler is\n// AGPL-3.0, its output is not.\n", f.Base)
-			fmt.Fprintf(&c, "// package %s — the TABLE wire's text form (SPEC-TABLES.md §16).\n", u.Package)
+			fmt.Fprintf(&c, "// package %s — the TABLE wire's text form (docs/SPEC-TABLES.md §16).\n", u.Package)
 			c.WriteString("// Compile this file to use <Name>FromJson / <Name>ToJson; a project that\n")
 			c.WriteString("// never reads or writes a text does not compile it and pays nothing.\n\n")
 			fmt.Fprintf(&c, "#include \"%sTable.h\"\n\n", f.Base)

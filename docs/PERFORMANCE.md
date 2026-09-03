@@ -2,13 +2,13 @@
 
 > **Convention note:** the standard's reporting convention is C = 100%, every other
 > language measured against it
-> ([BENCH-STANDARD §5](bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
+> ([BENCH-STANDARD §5](../bench/BENCH-STANDARD.md#5-reporting-format)). The tables below
 > are kept exactly as published, in their recorded convention (C++ = 100%).
 
 Generated-code performance as time relative to C++ (100%; higher is slower), medians across
 the corpus on an **Apple M3 Ultra**, the 2026-08-15 five-language pass **at `-O3`**
-([raw CSV](bench/results/2026-08-15-arm64-studio-postlane-O3-pass.csv),
-[inline verdicts](bench/results/2026-08-15-arm64-studio-postlane-O3-pass.inline)):
+([raw CSV](../bench/results/2026-08-15-arm64-studio-postlane-O3-pass.csv),
+[inline verdicts](../bench/results/2026-08-15-arm64-studio-postlane-O3-pass.inline)):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
@@ -21,16 +21,16 @@ the corpus on an **Apple M3 Ultra**, the 2026-08-15 five-language pass **at `-O3
 Interleaved, seven measured rounds, control legs bracketing the pass at a 0.9% delta, every
 leg built from a named upstream commit the harness verified against each toolchain's own
 resolution before the first measurement. The methodology is normative and lives in
-[bench/BENCH-STANDARD.md](bench/BENCH-STANDARD.md); it is stricter than the table, and it
+[bench/BENCH-STANDARD.md](../bench/BENCH-STANDARD.md); it is stricter than the table, and it
 refuses to print a ratio it cannot justify.
 
 ## Both levels, because the standard requires it
 
-[BENCH-STANDARD §3.3](bench/BENCH-STANDARD.md): if the ranking of any two languages differs
+[BENCH-STANDARD §3.3](../bench/BENCH-STANDARD.md): if the ranking of any two languages differs
 between optimization levels, both tables publish — a single ranking would publish a coin
 flip. The `-O2` companion pass
-([raw CSV](bench/results/2026-08-15-arm64-studio-postlane-O2-pass.csv),
-[inline verdicts](bench/results/2026-08-15-arm64-studio-postlane-O2-pass.inline)) fired
+([raw CSV](../bench/results/2026-08-15-arm64-studio-postlane-O2-pass.csv),
+[inline verdicts](../bench/results/2026-08-15-arm64-studio-postlane-O2-pass.inline)) fired
 exactly that rule: **on the bitpacker write bench, C leads C++ at `-O2` and C++ leads by
 2.6x at `-O3`.** The mechanism is known and named in the inline verdicts: at `-O3` clang
 fully unrolls the 16-width group and folds widths to immediates; at `-O2` it stays rolled
@@ -66,8 +66,8 @@ implementations. Two minds arriving at the same cost for the same guarantee.
 
 Relative numbers move with compiler and microarchitecture. Treat the table as a dated
 snapshot, not a verdict. Full tables, the pre-campaign baseline of the same day, and
-per-gap analysis: [bench/results/](bench/results/).
+per-gap analysis: [bench/results/](../bench/results/).
 
 ---
 
-Measurement code and the full tables live in [bench/](bench/).
+Measurement code and the full tables live in [bench/](../bench/).

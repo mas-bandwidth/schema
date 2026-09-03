@@ -1,4 +1,4 @@
-// Tests for the tables generation surface (SPEC-TABLES.md): the C++ and C#
+// Tests for the tables generation surface (docs/SPEC-TABLES.md): the C++ and C#
 // targets grow table sources, every other target refuses BY NAME, non-table
 // output is byte-identical with or without tables, and the generated codecs
 // allocate nothing.
@@ -80,7 +80,7 @@ table Keyed
 
 // TestTablelessTargetsRefuseTables: a unit declaring tables is refused by name
 // under every target that carries no table backend — loudly, never by silently
-// dropping the tables. cpp and cs carry one (SPEC-TABLES.md, backend status).
+// dropping the tables. cpp and cs carry one (docs/SPEC-TABLES.md, backend status).
 func TestTablelessTargetsRefuseTables(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, tableSrc)
@@ -119,7 +119,7 @@ func TestCsEmitsTableSources(t *testing.T) {
 }
 
 // TestCsRefusesPointeredTables: the C# variable-class refusal is a refusal of
-// the WIRE SURFACE and of nothing else (SPEC-TABLES.md §11). The wire codec is
+// the WIRE SURFACE and of nothing else (docs/SPEC-TABLES.md §11). The wire codec is
 // the half the variable class is missing — the arena, the builder, the region,
 // the node table — and the two ACCELERATORS need none of it: a block and a cook
 // are POINTED AT, not parsed, so both are emitted and the cook's <Root>Open
@@ -162,7 +162,7 @@ table Node
 		}
 	}
 	if cooks == 0 {
-		t.Error("--lang cs emitted no cook reader for a pointered unit — a root is any table (SPEC-TABLES.md §7)")
+		t.Error("--lang cs emitted no cook reader for a pointered unit — a root is any table (docs/SPEC-TABLES.md §7)")
 	}
 	// and the cook's own surface is there: <Root>Cook with Open and At on it
 	for name, data := range files {
@@ -235,7 +235,7 @@ func TestTablesMoveNoGeneratedPacketByte(t *testing.T) {
 	}
 	// A table declaration grows the two TABLE files and the two BLOCK files
 	// and nothing else: the header a consumer includes, the .cpp carrying the
-	// text form's walk (SPEC-TABLES.md §6.1, §13.5), and the block form's own
+	// text form's walk (docs/SPEC-TABLES.md §6.1, §13.5), and the block form's own
 	// pair, which nothing declares and which a consumer includes only if it
 	// uses the form (§19). The type wire stays header-only, so no packet file
 	// appears or moves.
@@ -270,7 +270,7 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 	}
 	// every `new` in the header is a PLACEMENT new — `new ( address ) T{}`,
 	// which allocates nothing: the read path's in-place prefill, and the
-	// descriptor's reset hook (SPEC-TABLES.md §8) which is the same prefill
+	// descriptor's reset hook (docs/SPEC-TABLES.md §8) which is the same prefill
 	// behind a function pointer. An allocating new has no parenthesis after it.
 	for line := range strings.SplitSeq(table, "\n") {
 		if found := strings.Contains(line, "new "); found && !strings.Contains(line, "new (") && !strings.Contains(line, "<new>") {
@@ -342,12 +342,12 @@ func tableHeader(t *testing.T, src string) string {
 // grain the property actually holds: a UNIT whose tables are all fixed-size
 // emits none of the POINTER machinery — no builder, no arena, no reference
 // type, no lifecycle surface, not one extra descriptor column, not one extra
-// include (SPEC-TABLES.md §2.2). Per TABLE the guarantee is narrower and
+// include (docs/SPEC-TABLES.md §2.2). Per TABLE the guarantee is narrower and
 // TestPointerSurfaceEmitted states it exactly.
 //
 // What the gate is NOT about: the reflection surface and the text form that
 // walks it ride in every table closure's header by design, fixed class
-// included (SPEC-TABLES.md §16.1), and <cstdlib> is one of the text form's
+// included (docs/SPEC-TABLES.md §16.1), and <cstdlib> is one of the text form's
 // three number-conversion includes rather than the arena's — which is why it
 // left this list when the walk landed.
 func TestZeroCostForValueOnlyTables(t *testing.T) {
@@ -476,7 +476,7 @@ func TestTableRuntimeNamesAreClaimed(t *testing.T) {
 	// Every Table*-prefixed identifier, whatever surrounds it. The word
 	// boundary is what keeps the name-first spellings out: RootConfigTableType
 	// has no boundary before its Table, and is claimed by suffix instead
-	// (SPEC-TABLES.md §11). Line comments are stripped first — prose is
+	// (docs/SPEC-TABLES.md §11). Line comments are stripped first — prose is
 	// not an identifier, and scanning it would make the gate a spelling
 	// police for the runtime's own documentation.
 	ident := regexp.MustCompile(`\bTable[A-Za-z0-9_]*\b`)
@@ -670,7 +670,7 @@ table ShipConfig
 
 	const want = "0xc211ce2f3414aa7c"
 	if got := ir.BuildVersion(u); fmt.Sprintf("0x%016x", got) != want {
-		t.Fatalf("the compiler's build version is 0x%016x, and SPEC-TABLES.md §20.2 states %s", got, want)
+		t.Fatalf("the compiler's build version is 0x%016x, and docs/SPEC-TABLES.md §20.2 states %s", got, want)
 	}
 
 	c := New()
@@ -691,13 +691,13 @@ table ShipConfig
 					continue
 				}
 				if !strings.Contains(strings.ToLower(line), "c211ce2f3414aa7c") {
-					t.Errorf("%s emits %q — SPEC-TABLES.md §20.2's number for this unit is %s", name, strings.TrimSpace(line), want)
+					t.Errorf("%s emits %q — docs/SPEC-TABLES.md §20.2's number for this unit is %s", name, strings.TrimSpace(line), want)
 				}
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("%s emits no BuildVersion constant at all (SPEC-TABLES.md §20.7)", target)
+			t.Errorf("%s emits no BuildVersion constant at all (docs/SPEC-TABLES.md §20.7)", target)
 		}
 	}
 }

@@ -318,11 +318,11 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 	case scanner.Question:
 		// the OPTIONAL prefix binds to the type it qualifies — `settings
 		// ?GunnerSettings`, never `settings ? GunnerSettings`
-		// (SPEC-TABLES.md §2.3)
+		// (docs/SPEC-TABLES.md §2.3)
 		return false
 	case scanner.Star:
 		// the POINTER star binds to the type it targets — `next *Node`, never
-		// `next * Node` (SPEC-TABLES.md). A star in TYPE POSITION (directly
+		// `next * Node` (docs/SPEC-TABLES.md). A star in TYPE POSITION (directly
 		// after the field name that opens the line) is the pointer spelling;
 		// every other star is multiplication and keeps its spaces.
 		return !isPointerStar(tokens, i-1)
@@ -601,7 +601,7 @@ func fpBlock(b *strings.Builder, blk *ast.Block) {
 func fpScalar(t ast.ScalarType) string {
 	if t.Optional {
 		// `?T` is a different field from `T`: presence rides beside the value
-		// (SPEC-TABLES.md §2.3), so the marker belongs in the fingerprint
+		// (docs/SPEC-TABLES.md §2.3), so the marker belongs in the fingerprint
 		inner := t
 		inner.Optional = false
 		return "?" + fpScalar(inner)
@@ -633,7 +633,7 @@ func fpScalar(t ast.ScalarType) string {
 	default:
 		if t.Pointer {
 			// `next *Node` — the pointer binds to the type, not the name, so
-			// the star sits against the target (SPEC-TABLES.md)
+			// the star sits against the target (docs/SPEC-TABLES.md)
 			return "*" + t.Name
 		}
 		return t.Name

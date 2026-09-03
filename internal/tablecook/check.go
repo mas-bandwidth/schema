@@ -1,5 +1,5 @@
 // `schema cook-check`: VALIDATING AN UNTRUSTED COOK IS A TOOL, NOT A RUNTIME
-// SURFACE (SPEC-TABLES.md §7). The runtime keeps one `Open` — match the header,
+// SURFACE (docs/SPEC-TABLES.md §7). The runtime keeps one `Open` — match the header,
 // point — and the case a person doubts the provenance of a file, or a tool is
 // diagnosing one, lives here, over the same reflection descriptors the runtime
 // already carries, checking the DATA against the ATTRIBUTION.

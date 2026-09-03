@@ -1,4 +1,4 @@
-// The per-table VARIABLE-LENGTH surface (SPEC-TABLES.md §2, §6, §9): the
+// The per-table VARIABLE-LENGTH surface (docs/SPEC-TABLES.md §2, §6, §9): the
 // allocation accessors, the pack walkers behind Lock, the wire sizing
 // pre-pass behind Load, and the Builder itself.
 //
@@ -18,7 +18,7 @@ import (
 
 func (g *tableGen) isVar(name string) bool { return g.variable[name] }
 
-// ---- what the depth cap counts (SPEC-TABLES.md §3.1) ----
+// ---- what the depth cap counts (docs/SPEC-TABLES.md §3.1) ----
 //
 // ONLY POINTER EDGES CHARGE DEPTH. By-value nesting — a table inside a table,
 // or a bounded array of them — charges nothing, because by-value composition is
@@ -108,7 +108,7 @@ func (g *tableGen) byValueVariableFields(st *ir.Struct) []*ir.Field {
 func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	g.emitArenaResetHook(members)
 	if vars := g.varMembers(members); len(vars) > 0 {
-		g.pf("// ---- pointer targets: allocation and resolution (SPEC-TABLES.md §2) ----\n")
+		g.pf("// ---- pointer targets: allocation and resolution (docs/SPEC-TABLES.md §2) ----\n")
 		g.pf("//\n")
 		g.pf("// A reference resolves differently in the two forms, and the CONTEXT says\n")
 		g.pf("// which: in the arena it is an offset; in a region it is a self-relative\n")
@@ -161,7 +161,7 @@ func (g *tableGen) emitArenaResetHook(members []*ir.Struct) {
 	if !g.anyVariable || len(members) == 0 {
 		return
 	}
-	g.pf("// ---- the arena's reset hook (SPEC-TABLES.md §6) ----\n")
+	g.pf("// ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----\n")
 	g.pf("//\n")
 	g.pf("// TableWorker::Alloc is a template and cannot name a member's Reset, so\n")
 	g.pf("// the arena reaches it through this overload set by argument-dependent\n")
@@ -230,7 +230,7 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 func (g *tableGen) emitPackMeasure(st *ir.Struct) {
 	g.pf("// %sPackMeasure: the packed region bytes of everything %s POINTS AT.\n", st.Name, st.Name)
 	g.pf("// Aliasing is not preserved: two pointers to one node pack as two nodes,\n")
-	g.pf("// exactly as they ride the wire as two bodies (SPEC-TABLES.md §3).\n")
+	g.pf("// exactly as they ride the wire as two bodies (docs/SPEC-TABLES.md §3).\n")
 	g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, const %s & value, int32_t depth )\n{\n", st.Name, st.Name)
 	g.pf("    if ( depth > kTableMaxDepth ) { return -1; } // a data cycle, or a chain past the cap\n")
 	g.pf("    int64_t bytes = 0;\n")
@@ -381,7 +381,7 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 			wireKind = tkArray
 		}
 		if f.KeyEnum != "" {
-			wireKind = tkKeyed // a keyed body is its own kind (SPEC-TABLES.md §3.2)
+			wireKind = tkKeyed // a keyed body is its own kind (docs/SPEC-TABLES.md §3.2)
 		}
 		g.pf("            case 0x%04x: // %s (%s nested by value)\n            {\n", ir.TableFieldId(f), f.Name, t)
 		g.pf("                if ( kind != %d ) { if ( !r.skip( kind ) ) { return bytes; } break; }\n", wireKind)
@@ -402,7 +402,7 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 			g.pf("                    for ( uint32_t i = 0; i < count && i < %d; i++ )\n                    {\n", f.ArrayBound)
 			if f.KeyEnum != "" {
 				// an ENUM-KEYED array puts the slot's variant id before the
-				// element's length (SPEC-TABLES.md §3.2). The pre-pass reads
+				// element's length (docs/SPEC-TABLES.md §3.2). The pre-pass reads
 				// framing only, so it skips the key without naming it — but it
 				// must skip it, or every element length after the first is read
 				// out of a key's bytes
@@ -431,7 +431,7 @@ func (g *tableGen) emitLoadMeasureBody(st *ir.Struct) {
 
 func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	n := st.Name
-	g.pf("// ---- %s: the variable-length life (SPEC-TABLES.md §2, §6, §9) ----\n", n)
+	g.pf("// ---- %s: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----\n", n)
 	g.pf("//\n")
 	g.pf("// MUTABLE: %sBuilder — allocate nodes, wire them together, then Lock.\n", n)
 	g.pf("// CONST:   one packed region, root at its base. Lock produces it and Load\n")
@@ -501,7 +501,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    return true;\n}\n\n")
 
 	// wire out
-	g.pf("// ---- %s on the wire: the generic, tolerant form (SPEC-TABLES.md §3) ----\n\n", n)
+	g.pf("// ---- %s on the wire: the generic, tolerant form (docs/SPEC-TABLES.md §3) ----\n\n", n)
 	g.pf("inline int64_t %sMeasure( const %s * root )\n{\n", n, n)
 	g.pf("    TableRegionCtx ctx;\n")
 	g.pf("    return root != NULL ? %sMeasureBody( ctx, *root, 1 ) : -1;\n}\n\n", n)

@@ -1,4 +1,4 @@
-// THE COOKED FORM in C# (SPEC-TABLES.md §7): the READ side, emitted ON THE
+// THE COOKED FORM in C# (docs/SPEC-TABLES.md §7): the READ side, emitted ON THE
 // SIDE into <Base>Cook.cs.
 //
 // A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format, not a wire. Tooling writes
@@ -35,7 +35,7 @@ import (
 )
 
 // cookMagic identifies a cooked file and carries the byte-order check with it
-// (SPEC-TABLES.md §7.1). It is "SCHMCOOK" read as ASCII in the byte order a
+// (docs/SPEC-TABLES.md §7.1). It is "SCHMCOOK" read as ASCII in the byte order a
 // little-endian store produces, the same shape the block's SCHMABLK takes, and
 // it is stored in the PRODUCER's order: a consumer reads back this constant, or
 // that constant byte-reversed, which is a cook of the other order.
@@ -269,7 +269,7 @@ func (g *cookGen) emit() {
 			g.emitCookHandle(st)
 			continue
 		}
-		g.hf("// table %s has NO C# cook Open: %s (SPEC-TABLES.md §7, §19.3).\n", st.Name, g.cook.skipped[st.Name])
+		g.hf("// table %s has NO C# cook Open: %s (docs/SPEC-TABLES.md §7, §19.3).\n", st.Name, g.cook.skipped[st.Name])
 		g.hf("// Its wire (§3) and its cook are unaffected — only this backend's reader is\n")
 		g.hf("// absent, and it is absent by construction rather than by refusal.\n\n")
 	}
@@ -281,7 +281,7 @@ func (g *cookGen) assemble() []byte {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s — the COOKED FORM (SPEC-TABLES.md §7): the READ half.\n", g.unit.Package)
+	fmt.Fprintf(&h, "// package %s — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half.\n", g.unit.Package)
 	h.WriteString("//\n")
 	h.WriteString("// A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format and not a wire. Tooling writes\n")
 	h.WriteString("// a region for one BUILD VERSION and that build points at it: Open matches the\n")
@@ -320,7 +320,7 @@ func (g *cookGen) assemble() []byte {
 		b.WriteString("// The BLITTABLE records a cooked region is laid out from: the C ABI layout\n")
 		b.WriteString("// §20.3 commits the compiler to, with GENERATED PADDING FIELDS wherever it has\n")
 		b.WriteString("// interior padding and a Size that pins the trailing padding — both are needed\n")
-		b.WriteString("// (SPEC-TABLES.md §19.3). A cooked record IS the blittable row, so these are\n")
+		b.WriteString("// (docs/SPEC-TABLES.md §19.3). A cooked record IS the blittable row, so these are\n")
 		b.WriteString("// the same <Name>Row structs the block form spells, from the same model; a\n")
 		b.WriteString("// record the block form already emits is emitted THERE and not again here.\n")
 		h.WriteString(indent4(b.String()))
@@ -340,7 +340,7 @@ func (g *cookGen) emitBlittable(name string) {
 	if ml == nil {
 		return
 	}
-	g.sf("// %s — a cooked record. `Row` is a CLAIMED suffix (SPEC-TABLES.md §11), so no\n", name)
+	g.sf("// %s — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no\n", name)
 	g.sf("// declaration in the unit can take it.\n")
 	g.sf("[StructLayout(LayoutKind.Sequential, Pack = 1, Size = %d)]\n", ml.Size)
 	g.sf("public unsafe struct %sRow\n{\n", name)
@@ -387,7 +387,7 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 	next := w.next
 	switch {
 	case f.Type.Pointer:
-		// A *T SLOT IS EIGHT BYTES AT EIGHT (SPEC-TABLES.md §6.3, §7.2),
+		// A *T SLOT IS EIGHT BYTES AT EIGHT (docs/SPEC-TABLES.md §6.3, §7.2),
 		// holding the SIGNED SELF-RELATIVE delta from the slot's own address,
 		// and NULL IS ZERO. It is not a managed reference and never becomes
 		// one: <T>Cook.At is the one add that resolves it.
@@ -447,7 +447,7 @@ func (g *cookGen) cookBlittableType(t ir.FieldType) string {
 
 func (g *cookGen) blittableType(t ir.FieldType) string { return csBlittableType(g.unit, t) }
 
-// ---- the layout check (SPEC-TABLES.md §19.3, §20.3) ----
+// ---- the layout check (docs/SPEC-TABLES.md §19.3, §20.3) ----
 
 // emitLayoutCheck is §20.3's C# half for the COOK closure: the compiler's
 // layout model committed to every cookable record, asserted against THIS
@@ -456,7 +456,7 @@ func (g *cookGen) blittableType(t ir.FieldType) string { return csBlittableType(
 // and the offset the compiler's model says — loud and early, but a first-use
 // failure and not a compile-time one.
 func (g *cookGen) emitLayoutCheck() {
-	g.rf("// THE LAYOUT CONTRACT for the cook closure (SPEC-TABLES.md §20.3), run ONCE:\n")
+	g.rf("// THE LAYOUT CONTRACT for the cook closure (docs/SPEC-TABLES.md §20.3), run ONCE:\n")
 	g.rf("// a cooked region is laid out by the compiler's C ABI model, so a runtime that\n")
 	g.rf("// lays one of these records out differently would read a cook at the wrong\n")
 	g.rf("// offsets and never know. C++ says this with static_assert at compile time;\n")
@@ -482,13 +482,13 @@ func (g *cookGen) emitLayoutCheck() {
 	g.rf("        if (got != want)\n        {\n")
 	g.rf("            throw new InvalidOperationException(\n")
 	g.rf("                \"schema cook layout: \" + what + \" is \" + got + \" bytes in this runtime and \" + want +\n")
-	g.rf("                \" in the layout model the cook's bytes come from — the two disagree about the bytes (SPEC-TABLES.md §20.3)\");\n")
+	g.rf("                \" in the layout model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)\");\n")
 	g.rf("        }\n    }\n\n")
 	g.rf("    internal static void Offset(string what, long got, long want)\n    {\n")
 	g.rf("        if (got != want)\n        {\n")
 	g.rf("            throw new InvalidOperationException(\n")
 	g.rf("                \"schema cook layout: \" + what + \" sits at \" + got + \" in this runtime and \" + want +\n")
-	g.rf("                \" in the layout model the cook's bytes come from — the two disagree about the bytes (SPEC-TABLES.md §20.3)\");\n")
+	g.rf("                \" in the layout model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)\");\n")
 	g.rf("        }\n    }\n")
 	g.rf("}\n\n")
 }
@@ -531,7 +531,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 	ml := g.cook.members[name]
 	align := g.cook.align
 	g.hf("// %s's cook: a pointer and a length, and then the root where it lies. Opening\n", name)
-	g.hf("// one is a HEADER MATCH and no copy; a reference is one add (SPEC-TABLES.md §7).\n")
+	g.hf("// one is a HEADER MATCH and no copy; a reference is one add (docs/SPEC-TABLES.md §7).\n")
 	g.hf("//\n")
 	g.hf("// `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free\n")
 	g.hf("// functions — %sOpen, %sAt — and C# spells them as MEMBERS of this type, which\n", name, name)
@@ -571,7 +571,7 @@ func (g *cookGen) emitCookHandle(st *ir.Struct) {
 func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	name := st.Name
 	g.hf("    // Open checks the header and POINTS, and this is the WHOLE check\n")
-	g.hf("    // (SPEC-TABLES.md §7): the magic read bytewise, the byte order it\n")
+	g.hf("    // (docs/SPEC-TABLES.md §7): the magic read bytewise, the byte order it\n")
 	g.hf("    // establishes, the build version, every RESERVED word zero, the region\n")
 	g.hf("    // ALIGNMENT the header names, the two part lengths against the length the\n")
 	g.hf("    // caller passed — a truncated file refuses — the ROOT's own storage inside\n")
@@ -865,12 +865,12 @@ func cookStorageKind(f *ir.Field) string {
 // cookRuntime is the unit's shared cook runtime, emitted once into the cook
 // home's <Base>Cook.cs. `buildVersion` rides here only when the unit has no
 // BLOCK form to carry it: `Schema` is one partial class across a unit's files,
-// so exactly one accelerator defines each constant (SPEC-TABLES.md §20.7).
+// so exactly one accelerator defines each constant (docs/SPEC-TABLES.md §20.7).
 func cookRuntime(buildVersion uint64, withBuildVersion bool) string {
 	var b strings.Builder
 	b.WriteString(`// What a cooked SLOT holds, which is not always what the WIRE carries: an
 // ENUM slot holds the ORDINAL at the enum's own derived storage width
-// (SPEC-TABLES.md §7.2), where the wire rides the variant-name hash. A walker
+// (docs/SPEC-TABLES.md §7.2), where the wire rides the variant-name hash. A walker
 // reads a slot with the width ElemSize gives and the signedness this names.
 public enum TableCookStorage
 {
@@ -928,7 +928,7 @@ public static partial class Schema
 {
 `)
 	if withBuildVersion {
-		b.WriteString(`    // THE BUILD VERSION (SPEC-TABLES.md §20): one digest over every fact the
+		b.WriteString(`    // THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the
     // bytes this build produces depend on. It both ADDRESSES a cooked artifact
     // — the store is keyed by (asset hash, build version) — and REFUSES one,
     // because it is what Open checks out of the header.
@@ -940,7 +940,7 @@ public static partial class Schema
 
 `)
 	}
-	b.WriteString(`    // The cook's MAGIC (SPEC-TABLES.md §7.1), read BYTEWISE before anything
+	b.WriteString(`    // The cook's MAGIC (docs/SPEC-TABLES.md §7.1), read BYTEWISE before anything
     // else: it is what establishes the byte order every other header word is
     // written in, and it is also what separates a COOK from a BLOCK — the two
     // accelerators carry the same build version and different magics, because a

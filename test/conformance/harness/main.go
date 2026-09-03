@@ -1,4 +1,4 @@
-// The tables conformance harness (SPEC-TABLES.md §3, §4, §7, §16, §19).
+// The tables conformance harness (docs/SPEC-TABLES.md §3, §4, §7, §16, §19).
 //
 // A port of the tables layer is "make the driver pass". The DATA lives under
 // testdata/conformance/tables and names no language; the CONTRACT lives in

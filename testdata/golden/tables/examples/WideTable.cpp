@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — the TABLE wire's text form (SPEC-TABLES.md §16).
+// package tabledemo — the TABLE wire's text form (docs/SPEC-TABLES.md §16).
 // Compile this file to use <Name>FromJson / <Name>ToJson; a project that
 // never reads or writes a text does not compile it and pays nothing.
 
@@ -25,7 +25,7 @@ namespace tabledemo {
 
 // ---- json walk: begin ----
 //
-// The TEXT form (SPEC-TABLES.md §16): one table, one text, one walk over the
+// The TEXT form (docs/SPEC-TABLES.md §16): one table, one text, one walk over the
 // reflection descriptors (§8). Reading fills ONE caller-owned instance and
 // allocates nothing beyond it; writing targets a caller buffer with the
 // wire's measure/write symmetry. Everything AROUND this — which file goes
@@ -153,7 +153,7 @@ inline void TableJsonSetCount( void * base, const TableFieldInfo * f, int32_t co
 // A vocabulary field is spelled by NAME: an enum is one name, a flags mask
 // is the array of the names of its set bits. The two are told apart by the
 // id column — an enum variant rides under a wire id, a flags BIT never does
-// (SPEC-TABLES.md §4), so a name function with no id function is flags.
+// (docs/SPEC-TABLES.md §4), so a name function with no id function is flags.
 //
 // bytes(N) is the one kind whose element kind does not decide its form: it
 // shares u8 with a plain array of u8, and rides as base64. The schema type
@@ -163,7 +163,7 @@ inline bool TableJsonIsBytes( const TableFieldInfo * f )
     return f->is_array && f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0;
 }
 
-// An ENUM-KEYED array (SPEC-TABLES.md §2.4): its JSON form is an OBJECT
+// An ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): its JSON form is an OBJECT
 // keyed by variant name, not a positional array, because that is what the
 // storage is — one slot per variant, addressed by the variant.
 inline bool TableJsonIsKeyed( const TableFieldInfo * f )
@@ -508,7 +508,7 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         uint64_t value = TableJsonGetRaw( storage, f->elem_size );
         // a value no variant names has no text spelling, exactly as it has no
         // wire identity: the writer REFUSES rather than writing None over it,
-        // the rule measure and save already apply (SPEC-TABLES.md §5)
+        // the rule measure and save already apply (docs/SPEC-TABLES.md §5)
         if ( (int64_t) value > f->enum_max ) { return false; }
         if ( value != 0 && f->variant_id( value ) == 0 ) { return false; }
         const char * name = f->enum_name( value );
