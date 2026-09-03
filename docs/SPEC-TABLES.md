@@ -190,6 +190,19 @@ iteration does not move — pinned per case, re-pinned deliberately, with a
 negative control that reds it — which is the same instrument the Rust leg's
 allocation audit uses and a different number.
 
+**THE SOAK BESIDE IT GATES ON A FLOOR, and the reason generalises past this
+port.** A managed runtime's memory readings are not levels: a process's heap
+size is CAPACITY a collection may leave grown, and a binary allocator's figure
+counts CARRIERS, so a corpus with one large instance in it reads bimodally
+forever without leaking a byte. A gate on the last sample, or on any sample,
+therefore reds for the runtime rather than for the code. A LEAK does one thing
+no carrier and no grown heap can imitate: it lifts the MINIMUM. So the gate
+compares the floor of the first third of the samples against the floor of the
+last third, and the two negative controls are different sabotages on purpose —
+an allocation that is freed every iteration reds the COUNT and lifts no floor,
+and one that is retained reds the FLOOR. Two instruments, two questions, and
+neither one answers the other's.
+
 **The RUST backend's own three divergences**, each forced by the language and
 each named where it is spelled rather than discovered in the source. The
 READ REPORT is the codecs' own parameter rather than a member of the reader: a
