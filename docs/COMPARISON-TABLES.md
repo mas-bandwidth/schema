@@ -165,7 +165,7 @@ Each with the section that defines it and the reason a game cares.
 | **The cook.** `Open` is a header match and a pointer: O(1), mmap-friendly, byte order settled offline, attribution separable. In every port, not only C++. | §7 | "Don't parse, just point" at a gigabyte catalog. |
 | **The block form.** A third projection of a fixed table: rows at a pitch the compiler computes and both languages' generated code asserts, filled wide by many threads by obligation. | §19, §12.1 | Render data C++ writes and C# reads at 60 Hz with no marshalling. This is the render-data case FlatBuffers was tried on first and replaced (§12.1). |
 | **Optional by value.** `?T` costs a bool and changes nothing else; `T` and `?T` share one framing. | §2.3 | An optional settings block is not a pointer. |
-| **64-bit clean.** Eight-byte region references, 64-bit cook part lengths, no aggregate wire ceiling. | §6.3, §7.1 | Catalogs past 2 GiB without a C++-only attribute. FlatBuffers' `vector64` is C++ only; Protobuf stops at 2 GiB. |
+| **64-bit clean.** Eight-byte region references, 64-bit cook part lengths, no aggregate wire ceiling. | §6.3, §7.1 | Catalogs past 2 GiB without a per-language attribute. FlatBuffers' `vector64` is not in every port; Protobuf stops at 2 GiB. |
 | **Reflection for free.** Descriptors in the generated header; a game build compiles none of the view. | §8 | An editor walks anything; the shipped build carries nothing. |
 | **One compiler, nine languages, byte-identical goldens and one hostile corpus in CI.** | SPEC §1, SECURITY.md | A divergence between languages is a bug CI sees, not a user. |
 | **C-like C++ output**, no STL, hooks for assert, fatal, allocate and release. | §13.9 | Reads like the engine's own code, compiles fast, takes your allocator. |
@@ -216,7 +216,7 @@ the source list at the end.
 | Enum-keyed arrays | `[E]T`: one slot per variant, no `None` slot, bad keys refused in every build, slots ride by name (§2.4, §3.2) | — | — |
 | Maps | after 3.0.0, tables only, makes the table variable (#380) | sorted vector of tables with `key` plus `LookupByKey` (FB-cpp) | `map<K,V>`, integral or string keys, order undefined (PB-proto3) |
 | Sorted lookup in a buffer | after 3.0.0, library-side (§15) | `key`, `CreateVectorOfSortedTables`, `LookupByKey` (FB-cpp) | — |
-| Strings | `string(N)`: bounded, no interior NUL, fixed storage plus used length (SPEC §4.7); on the wire length plus bytes, no terminator (§3) | zero-terminated, unbounded (FB-internals) | UTF-8 validated, unbounded to 2 GiB (PB-features) |
+| Strings | `string(N)`: bounded, no interior NUL, fixed storage plus used length (SPEC §4.7); on the wire length plus bytes, no terminator (§3) | zero-terminated, unbounded (FB-internals) | UTF-8 validated (PB-features), unbounded to 2 GiB (PB-limits) |
 | Bytes | `bytes(N)` inline; unbounded at used size is #259 (§2.5) | `[ubyte]` unbounded; `nested_flatbuffer` (FB-schema) | `bytes`, unbounded to 2 GiB (PB-encoding) |
 | Conditional groups | `if guard { }` elided when false (SPEC §4.4, §3) | — | — |
 | Units and includes | one `package` per unit, all files compiled together, order-free; cross-file table references form a DAG (SPEC §3.2, §11) | `include`, nested `namespace` (FB-schema) | `import`, `import public`, `package` (PB-editions) |
@@ -298,7 +298,7 @@ the source list at the end.
 
 | feature | schema tables | FlatBuffers | Protocol Buffers |
 |---|---|---|---|
-| Untrusted bytes on the tolerant wire | the read is the validator: every length bounds-checked against its body, counts against the body, ranges clamped, a bad level stops itself; `LoadMeasure` lets the caller refuse a region size before allocating (§4, §6.5). The independent-oracle fuzzer that proves it in every language is #391 | a separate `Verifier`, required before access, in C++, C and Swift (FB-support); `max_depth` 64, `max_tables` 1M (FB-cpp) | the parser validates structure; recursion limit 100; UTF-8 verify (PB-features) |
+| Untrusted bytes on the tolerant wire | the read is the validator: every length bounds-checked against its body, counts against the body, ranges clamped, a bad level stops itself; `LoadMeasure` lets the caller refuse a region size before allocating (§4, §6.5). The independent-oracle fuzzer that proves it in every language is #391 | a separate `Verifier`, required before access, in C++ and Swift with a basic one in C (FB-support); `max_depth` 64, `max_tables` 1M (FB-cpp) | the parser validates structure; recursion limit 100; UTF-8 verify (PB-features) |
 | Trusted fast path | cook and block are trusted by design; `Open` checks identity, not hostility; a signature over the file is the integrity answer (§7, §13.4) | skip the verifier for trusted buffers (FB-cpp) | — |
 | Value-range enforcement | clamp and count on the table wire; reject on the type wire (§4, SPEC §5) | — | — |
 | Depth and DoS bounds | by-value depth is fixed by the schema; a pointer graph is flat, so a chain is not a depth (§3.1) | verifier caps (FB-cpp) | recursion depth 100 (PB-limits) |
