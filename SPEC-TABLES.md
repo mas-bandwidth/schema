@@ -875,8 +875,7 @@ read as an index. The kind byte already rides, so the distinct number
 costs zero bytes and one row in the fixed-width skip rule, and it makes
 that edit an ordinary kind mismatch (§4). §3's rule that an unknown kind
 is not skippable is what makes spending a kind expensive AFTER readers
-exist; the set is closed before any of them ship, and §14 records the
-trade.
+exist; the set is closed before any of them ship.
 
 **What a pointer edge is, and what it is not.** Only a `*T` naming a
 declared TABLE takes a node index, and it is the only pointer spelling the
@@ -977,7 +976,7 @@ then carries WHOLE RECORDS, and the fields concatenate in order:
   node table is the large part and the part most likely to be damaged,
   and a reader that dies a gigabyte into it still holds the root's real
   values. It buys nothing for a reader that gives up EARLIER, which is
-  the ordinary case for a build that does not have kind `17` (§14): that
+  the ordinary case for a build that does not have kind `17`: that
   one stops at the first pointer field and never reaches these at all.
   Field order is not part of the contract (§3), so a reader finds them by
   id.
@@ -3326,7 +3325,7 @@ held by construction:
   N workers then own disjoint index ranges and write with no per-row
   synchronisation and no lock. A generated fill path that allocates, locks or
   takes an atomic does not conform, and §19.1 states that as a refuser rather
-  than as an aspiration. The builder's four models (§14) all exist because a
+  than as an aspiration. The builder's rejected models (§14) all exist because a
   general structure cannot know its bound; a block-form table declares one,
   which is why item 3 there — reserve the max and never resize — is exactly
   what the block form does.
@@ -4156,338 +4155,176 @@ produced.
 - **And the whole design's id count**: "yes on protocol id and build version"
   — two ids, and §20 states them as the two.
 
-## 14. Design notes: the models weighed
+## 14. Design notes: the shapes rejected
 
-Recorded because the rejected options are the useful part.
+One paragraph a rejected shape: what it was, and the reason it lost. The
+designs of record are stated where they belong and are not restated here.
 
-**The builder's storage.** Four models were weighed against the owner's
-criterion — lockless if possible, and minimize copying:
+**The builder's storage**, against the owner's criterion — lockless if
+possible, and minimize copying (§6.2):
 
-1. **One buffer under a lock, grown by `realloc` — REJECTED.** The hazard
-   is specific and worth naming: a `realloc` moves the buffer under a
-   worker that is mid-write. Offsets fix identity but they do not fix the
-   raw references already resolved from them, and the resulting
-   corruption is invisible until much later. This design does not admit
-   that bug class.
-2. **Sharded builders merged at Lock — considered.** Each worker owns a
-   private growable array; references are (worker, slot) handles;
-   `Lock` merges the shards and resolves every handle. Contention-free,
-   but it pays a full memcpy of every node at merge and a handle-to-offset
-   resolution pass on top of it.
-3. **Reserve-max with an atomic bump — considered.** One buffer sized to
-   a declared bound; allocation is one atomic add and nothing ever
-   resizes. It is the allocate-max law dissolving the lock, and it is the
-   right answer for a caller who genuinely knows the bound; it is kept as
-   the documented alternative rather than the default, because a general
+1. **One buffer under a lock, grown by `realloc` — REJECTED.** A `realloc`
+   moves the buffer under a worker that is mid-write. Offsets fix identity but
+   not the raw references already resolved from them, and the corruption is
+   invisible until much later.
+2. **Sharded builders merged at `Lock` — REJECTED.** Each worker owns a
+   private growable array and references are (worker, slot) handles.
+   Contention-free, but it pays a full memcpy of every node at merge and a
+   handle-to-offset resolution pass on top of it.
+3. **Reserve-max with an atomic bump — NOT THE DEFAULT.** One buffer sized to
+   a declared bound, allocation one atomic add, nothing ever resizes. It is
+   the right answer for a caller who genuinely knows the bound, and it is kept
+   as the documented alternative rather than the default because a general
    builder cannot require one.
-4. **A segmented slab arena — THE DESIGN OF RECORD.** One logical arena
-   made of equal-size segments; a worker takes a slab with a single
-   atomic and then allocates privately inside it. One synchronization per
-   thousands of nodes, nodes born at final offsets, no handles and no
-   resolution pass, growth by appending a segment, and nothing ever
-   moves.
 
-`Lock` remains a full copy, because it is the compaction: it produces the
-single contiguous exact-packed region that §6.2 and §7 both need, and it
-is the ONLY copy in the lifecycle besides `Save` (which is inherent — it
-writes a wire). A non-compacted arena is relocatable only per segment;
-that is the reason `Lock` compacts rather than merely freezing.
+**The node table's shape** (§3.1):
 
-**Reference encoding.** The arena's offset is segment-indexed, so a deref
-there is a small table load plus an add. The region's is self-relative,
-so a deref there is one add with no base pointer — and it makes the
-region relocatable by pure `memcpy`. Two encodings, converted where a
-copy already happens.
+4. **A visited-index guard on load — REJECTED.** It is what an untyped node
+   table forces: type the nodes by traversing, and bound the traversal with a
+   set. That is state proportional to the graph on the READING path, which
+   §6.5 forbids. The type id removes the walk instead of bounding it.
+5. **An index-monotonic reference rule — REJECTED.** Requiring every reference
+   to name a larger index would bound a traversal with no state at all, but it
+   holds only under a TOPOLOGICAL numbering and pre-order is not one:
+   `Scene { a *X, b *Y }` with `X.p` and `Y.p` naming one `P` numbers
+   `X = 2, P = 3, Y = 4`, and `Y`'s reference names 3 from 4. Topological
+   order also cannot be assigned in one descent — a node's position is known
+   only once its whole subtree is.
+6. **A hybrid: inline the singly-referenced pointee, table only the shared
+   ones — REJECTED.** It reintroduces the exact problem the flat table
+   removes: a 200-node chain is singly referenced at every link, so it would
+   still nest 200 deep.
+7. **A NEW KIND for the node table — REJECTED.** Skipping is defined only over
+   §3's closed set, so a reader that does not have the kind cannot skip past
+   it, and the node table must stay skippable by a reader that never heard of
+   it. **Kind `14`, an array of tables — also rejected**: an array element's
+   framing has room for a length and nothing else, so the type id would have
+   to ride inside each body as a reserved FIELD, and every node body would
+   carry a field no schema declared.
+8. **A `u64` LENGTH on the reserved field, to lift the aggregate ceiling —
+   REJECTED, because it breaks the very reader it exists for.** A skipper
+   reads kind `12` as `L (u32)` then `L` bytes; given a `u64` it takes the low
+   half, skips that far, and lands four bytes short of the payload's end,
+   where it reads two payload bytes as the next field id. The whole point of
+   riding under an existing kind is that an old reader frames the body and
+   counts `unknown`.
+9. **A reader-side acyclicity check — PRICED, NOT TAKEN.** Pre-order numbering
+   gives every node a contiguous index interval, so with a `max index in
+   subtree` on each record a cycle is an `O(1)` test per reference. It costs
+   bytes a node plus a pass to prove the intervals are genuinely nested, for a
+   property the writer already guarantees (§3.1). It is the shape the check
+   would take if untrusted-input hardening ever demands one.
+10. **Node-directory INDICES in place of self-relative deltas** — making the
+    region and the wire one encoding — **REJECTED on the hot path.** A deref
+    would become a directory load plus a base pointer where today it is one
+    add (§6.3).
 
-**The node table's shape** (§3.1). The whole design turns on one
-decision — a TYPE ID on every record — and the rest follows from it:
+**The cooked check** (§7.4):
 
-1. **A type id per record — KEPT.** It is what makes a load a SCAN rather
-   than a traversal: the reader learns a node's type from the record, not
-   from the pointer field that names it, so it never follows a reference
-   to know what it is looking at. It also keeps §6.5's promise literally
-   true — `LoadMeasure` reads framing and no field value, and a type id
-   is framing — and it lets a tool decode a node table with descriptors
-   alone (§8).
-2. **A visited-index guard on load — REJECTED.** It is what an untyped
-   node table would force: type the nodes by traversing, and bound the
-   traversal with a set. That is state proportional to the graph on the
-   READING path, which §6.5 forbids. A type id removes the walk instead
-   of bounding it.
-3. **An index-monotonic rule — REJECTED.** Requiring every reference to
-   name a larger index would bound a traversal with no state at all, but
-   it holds only under a TOPOLOGICAL numbering, and pre-order numbering
-   is not topological: `Scene { a *X, b *Y }` with `X.p` and `Y.p` naming
-   one `P` numbers `X = 2, P = 3, Y = 4`, and `Y`'s reference names 3
-   from 4. Topological order also cannot be assigned in one descent — a
-   node's position is known only once its whole subtree is — and it would
-   give the node table a different order from the one the region is
-   packed in, for no property either form needs.
-4. **A hybrid — inline the singly-referenced pointee, table only the
-   shared ones — REJECTED.** It would have kept a pointer field and a
-   by-value nesting under one framing for the common case. It also
-   reintroduces the exact problem the flat table removes: a 200-node
-   chain is singly referenced at every link, so it would still nest 200
-   deep.
-5. **A NEW KIND for the node table — REJECTED.** Skipping is defined only
-   over §3's closed set, so a reader that does not have a new kind cannot
-   skip past it. That objection has a scope worth stating exactly,
-   because the pointer index below spends a kind on the same page: it
-   bites for a kind added AFTER readers exist, and the node table's kind
-   would have to be skippable by a reader that has never heard of it,
-   which is the whole reason it rides under an existing one. **Kind `14`,
-   an array of tables — also rejected**: an array element's framing has
-   room for a length and nothing else, so the type id would have to ride
-   inside each body as a reserved FIELD, and every node body would carry
-   a field no schema declared. Kind `12` is §3's opaque byte payload,
-   which is exactly what the node table is to a reader that cannot name
-   it.
-6. **A DISTINCT KIND for the pointer index — TAKEN, kind `17`.** The
-   opposite case, and the difference is who has to skip it. A node index
-   is four bytes and so is a `uint32`; under a shared kind an edit
-   between them reports nothing in either direction, and the direction
-   that matters — an index read back as a number — is silent always,
-   not merely often. A kind costs zero bytes, since the kind byte
-   already rides, and one row in the fixed-width skip rule. The set is
-   closed before any reader ships, so nothing has to skip a kind it does
-   not have; a kind spent now is simply part of the set every reader will
-   ever have, and spending one later would not be available. That last
-   clause is the reason this is decided here rather than deferred as an
-   optimization: the window closes at ship. It puts §4.1's silent class
-   back at two, beside `[E]T`'s kind `16`, which closed the previous one
-   the same way.
+11. **A stateless traversal from the root — REJECTED.** Bounds and forwardness
+    are not enough: a forged region can be a legal-looking DAG, forward and in
+    range and aligned, and a walk with no memory re-visits shared subtrees
+    exponentially (26 nodes, 312 ms; ~60 nodes, never).
+12. **A traversal with a monotonic high-water mark — REJECTED, and it FAILS
+    rather than merely costing.** The mark advances over region BYTES, not
+    over entered NODES, so a forward reference may jump past a node the walk
+    never enters; that node is then below the mark with its slots unchecked,
+    and a later reference to it passes an "already visited" test that was
+    never true of it. A 48-byte forgery is enough. Any repair keeps the
+    traversal and adds state to make "below the mark" and "already entered"
+    the same statement.
 
-   **The cost that is not zero, stated**: §3's rule cuts both ways, so a
-   reader built before this kind existed meets kind `17` as framing
-   damage and stops that body rather than skipping the field and reading
-   on. That is the price of the number, it is why item 5 refuses one for
-   the node table — which must stay skippable by a reader that never
-   heard of it — and it is bounded by the same fact that makes the kind
-   affordable: no such reader ships. A pointered save was already not
-   readable by a build of the tree encoding, since the node table carries
-   what the bodies used to.
-7. **A `u64` LENGTH on the reserved field, to lift the aggregate ceiling
-   — REJECTED, because it breaks the very reader it exists for.** A
-   skipper reads kind `12` as `L (u32)` then `L` bytes; given a `u64` it
-   takes the low half, skips that far, and lands four bytes short of the
-   payload's end, where it reads two payload bytes as the next field id.
-   The whole point of riding under an existing kind is that an old reader
-   frames the body and counts `unknown`, and a wider length forfeits it.
-   **The repeating field was taken instead**: same `u32`, same skip rule,
-   one narrow exception to last-occurrence-wins for one reserved id, and
-   no ceiling at all. **Its chunks close at RECORD boundaries**, and that
-   is the load-bearing half. A straddling record has no contiguous view,
-   so a reader would need a segmented cursor for every multi-byte read
-   AND a copy to hand a body to the generated decoder — an allocation on
-   the reading path, which §6.5 forbids, propagating into code that has
-   nothing to do with chunking. Record alignment costs under one record
-   of slack per field, keeps the chunking deterministic, and makes the
-   naive reader the correct reader. The one thing it cannot frame is a
-   record larger than a field, which the `u32` record length already
-   refuses (§11).
-8. **A reader-side acyclicity check — PRICED, NOT TAKEN.** Pre-order
-   numbering gives every node a contiguous index interval `[i, extent]`,
-   so with a `max index in subtree` on each record, a reference to a
-   LOWER index is an ancestor edge — a cycle — exactly when the
-   referrer's index is inside the target's interval: an `O(1)` test per
-   reference. It costs bytes a node plus a pass to prove the intervals
-   are genuinely nested, for a property the writer already guarantees
-   (§3.1) and no schema-generated walk depends on. It is the shape the
-   check would take if untrusted-input hardening ever demands one.
+**The block form: the shapes it is not** (§19). The form adds no declaration
+(§2.7), which is a strong claim, so the alternatives that would have added one
+are priced here.
 
-**Region references stay OFFSETS, not indices.** The node directory
-(§6.3) could have replaced the self-relative delta in every slot, making
-the region and the wire one encoding. It was rejected on the hot path: a
-deref would become a directory load plus a base pointer where today it is
-one add. The directory is kept for what only it can do — resolving wire
-indices on load, and checking a file whose provenance is in doubt — and
-the runtime's read path never touches it, which is what makes it
-separable at cook time (§7).
+13. **A `section` CONSTRUCT** — a field spelling whose storage is an
+    `(offset, count, stride)` triple, in a table with no wire because a triple
+    has no wire kind — **REJECTED, and the argument for it is circular.** The
+    triple is an artifact of ONE PROJECTION of a declaration; a wire form has
+    no triple to ride, only a bounded array of fixed tables, which already
+    rides as kind `14` with element kind `13` and the live count. With the
+    wire objection gone the construct has nothing left to justify it.
+14. **A bounded array BY VALUE, with the layout left to compile-time constants
+    — REJECTED, and it is the near miss.** Two things defeat the plain form:
+    the struct is the size of its maxima (§2.2) and cannot be read by value
+    across a boundary, and the layout facts stay constants a consumer ASSUMES
+    rather than reads, so every drift garbles silently and nothing on the
+    boundary can say so.
+15. **A pointer and a region (§2.1, §6.3) — REJECTED.** That is the
+    variable-length class. The producer would pay a single-threaded compaction
+    per frame and the consumer would need the region surface, which C# does
+    not have and would not want at sixty hertz.
+16. **The cooked form (§7), per frame — REJECTED, and for the same reason
+    flatbuffers lost.** A cook is produced FROM A BUILDER by a single-threaded
+    `Lock`, which is precisely the serialization point §12.1's bar refuses.
+17. **The tolerant table wire, per frame — REJECTED with a number implied.**
+    It is a parse and a copy on every frame on both sides; the abandoned
+    flatbuffers build is that rejection already paid for once (§7).
+18. **SELF-RELATIVE offsets inside a block — REJECTED**, which is a stated
+    exception to §6.3. A blittable consumer reads the projection BY VALUE, a
+    struct copy out of the mapped bytes, which a self-relative delta does not
+    survive: the copy's address is not the original's. A block's consumer is
+    handed the base, so block-relative costs it nothing and keeps relocation
+    by `memcpy` intact.
+19. **Compile-time block offsets from the maxima — REJECTED.** They would let
+    workers run before the counts exist, which nothing in the case wants — the
+    counts come from the same gather that produces the work — and every block
+    would be near its maximum extent, which a boundary handoff that copies
+    pays for on every frame.
+20. **Deeper out-of-line rules, and per-field opt-ins — REJECTED** for the
+    reason a keyword is: they put the answer somewhere other than the one line
+    a reader is already looking at. The genuine cost is that a small array
+    beside the strided ones in one root cannot stay inline; the answer is to
+    wrap it in a nested type, whose arrays are at depth two and therefore
+    inline (§19).
+21. **A per-table MARKER selecting the form — REJECTED** once the question it
+    answered was named (owner, §13.6: "KISS"): the marker bought cost control,
+    not meaning, and cost is answered better by emitting the form on the side
+    (§19), where a consumer that does not include it pays nothing and no
+    declaration has to predict who will.
+22. **A per-FIELD trigger, "any field carrying `| stride`" — REJECTED on its
+    own evidence.** The case this form comes from has nine strided arrays and
+    **zero** declared strides — every pitch there is `sizeof` — and a trigger
+    the primary case never fires is not a trigger.
+23. **A `| stride` attribute at all — CUT, not deferred** (§13.6). The one
+    consumer that exists cannot read a strided array: it reads rows by casting
+    the byte range to a row type, which requires pitch `== sizeof`, and it
+    drops any array whose pitch differs. That consumer's fast path is the hard
+    requirement the form exists to serve, so headroom trades it away for a
+    property both generated sides already give. Nothing is held for it: no
+    follow-on, no refusal by name, no reserved word.
+24. **A tolerant second entry point, or a tolerant block id — REJECTED,
+    because a block is same-build.** Both sides are generated from one
+    declaration by one compiler run, so a consumer older than its producer is
+    half a shipped build rather than a case to absorb. The id could not have
+    been made tolerant in any case: a single number cannot be verified against
+    a PREFIX of the facts that produced it, and any fold that ignored the
+    difference would ignore a real break too.
 
-**Why the cooked check is a SCAN and not a walk.** Three models were
-weighed:
+**The view's shape** (§8), against the owner's picture of it — an editor that
+inspects everything in the schema built:
 
-1. **A stateless traversal from the root — REJECTED.** Bounds and
-   forwardness are not enough: a forged region can be a legal-looking
-   DAG, forward and in range and aligned, and a walk with no memory
-   re-visits shared subtrees exponentially (26 nodes, 312 ms; ~60 nodes,
-   never).
-2. **A traversal with a monotonic high-water mark — REJECTED, and it is
-   worth saying why it FAILS rather than merely costing.** The mark
-   advances over region BYTES, not over entered NODES, so a forward
-   reference may jump past a node the walk never enters. That node is
-   then below the mark with its slots unchecked, and a later reference to
-   it passes an "already visited" test that was never true of it. A
-   48-byte forgery is enough: the root names the third node, the third
-   names the second, and the second's slot — never checked — points far
-   outside the region. Any repair keeps the traversal and adds state to
-   make "below the mark" and "already entered" the same statement.
-3. **A linear scan over the node directory — THE DESIGN OF RECORD.** The
-   directory already names every node start and its type. Spending that
-   the way §3.1 spends the wire's type id — removing the walk instead of
-   bounding it — makes each node checked exactly once, follows no
-   reference at all, and needs no order invariant, so the pack order and
-   the check are independent. It also checks the nodes NOTHING points at,
-   which no traversal from the root can, and that is precisely where the
-   marked traversal's hole was. `O(R + P log N)`, no allocation, and less
-   machinery than the walk it replaces.
-
-**The block form: the shapes it is not, and why.** The form adds no
-declaration (§2.7), which is a strong claim, so the alternatives that would
-have added one are priced here.
-
-- **A `section` CONSTRUCT — a field spelling whose storage is an
-  `(offset, count, stride)` triple, in a table with no wire because a triple
-  has no wire kind — REJECTED, and the argument for it is circular.** The
-  triple is an artifact of ONE PROJECTION of a declaration. A wire form has
-  no triple to ride: it has a bounded array of fixed tables, which already
-  rides as kind `14` with element kind `13` and the live count. Nothing is
-  spent, §3 is untouched, and the table keeps `Measure`, `Save`, `Load` and
-  its cook. With the wire objection gone the construct has nothing left to
-  justify it — the storage is a bounded array, the layout is a second
-  projection of the same declaration, and "is the render data a table?" is
-  answered with one word.
-- **A bounded array BY VALUE, with the layout left to compile-time constants
-  — REJECTED, and it is the near miss.** The storage is already a strided
-  array at pitch `sizeof`, at a fixed offset, fillable by N workers with no
-  synchronisation, so the storage half needs nothing added. Two things defeat
-  the plain form. **The struct is the size of its maxima** (§2.2) and cannot
-  be read by value across a boundary. And **the layout facts stay constants a
-  consumer ASSUMES** rather than reads, so every drift garbles silently and
-  nothing on the boundary can say so. The PROJECTION answers both without a
-  construct: it replaces each out-of-line array's inline storage with sixteen
-  bytes at the same field position, so the instance is small and copyable and
-  the three facts a consumer needs become data. What the form adds over the
-  plain array is not storage — it is a second layout of one declaration.
-- **A pointer and a region (§2.1, §6.3) — REJECTED.** That is the
-  variable-length class: an arena, a `Lock` that compacts, a node directory,
-  self-relative derefs. The producer would pay a single-threaded compaction
-  per frame and the consumer would need the region surface, which C# does not
-  have and would not want at sixty hertz. The block form needs no arena
-  because the table declares its bounds.
-- **The cooked form (§7) — REJECTED, and for the same reason flatbuffers
-  lost.** A cook is produced FROM A BUILDER by a single-threaded `Lock`,
-  which is precisely the serialization point §12.1's bar refuses. The two are
-  not competitors and not the same accelerator: a cook accelerates a file
-  read once at load, and a block is rebuilt every frame.
-- **The tolerant table wire, per frame — REJECTED with a number implied.**
-  It is a parse and a copy on every frame on both sides; the abandoned
-  flatbuffers build is that rejection already paid for once (§7).
-
-**And four decisions inside the form.**
-
-- **Block-relative offsets, not self-relative — TAKEN, and it is a stated
-  exception to §6.3.** A region reference is self-relative because nothing
-  hands a walker a base pointer down inside a region. A block's consumer is
-  handed the base — it is the thing it mapped — and, decisively, a blittable
-  consumer reads the projection BY VALUE (a struct copy out of the mapped
-  bytes), which a self-relative delta does not survive: the copy's address is
-  not the original's. Block-relative keeps relocation by `memcpy` intact,
-  since every offset is relative to a base that moves with the block.
-- **Storage sized from the declared maxima; layout settled ONCE per block
-  from the counts — TAKEN.** The storage half is the allocate-max law (the
-  builder's item 3 above, which a general builder could not require and a
-  bounded table can): one extent, never grown, never pooled. The layout half
-  is a single pass over the table's out-of-line ARRAYS — a handful, not
-  thousands of rows — run before any worker starts, which is all the property
-  needs. **Compile-time offsets from the maxima are the alternative, and they
-  are REJECTED**: they would let workers run before the counts exist, which
-  nothing in the case wants — the counts come from the same gather that
-  produces the work — and every block would be near its maximum extent, which
-  a boundary handoff that copies pays for on every frame. The projection
-  carries the offsets either way, so a consumer reads them rather than
-  assuming them.
-- **DEPTH ONE, BOUNDED ONLY — TAKEN, and it is what carries the rule a
-  keyword would otherwise state.** With no keyword saying which arrays move
-  out of line, the rule must be derivable from the declaration, and this is
-  the rule that is: the table's own `[..N]` arrays of structs move, and
-  everything else stays. **Deeper rules and per-field opt-ins are REJECTED**
-  for the reason a keyword is — they put the answer somewhere other than the
-  one line a reader is already looking at. The genuine cost is that a small array
-  BESIDE the strided ones in one root cannot stay inline; the answer is to
-  wrap it in a nested type, whose arrays are at depth two and therefore
-  inline (§19).
-- **NOTHING SELECTS THE FORM — TAKEN** (owner, §13.6: "KISS"). A per-table
-  marker was the earlier answer, and it was REJECTED once the question it
-  answered was named: the marker bought cost control, not meaning, and cost
-  is answered better by emitting the form on the side (§19), where a consumer
-  that does not include it pays nothing and no declaration has to predict who
-  will. A per-FIELD trigger, "any field carrying `| stride`", is rejected on
-  its own evidence: the case this form comes from has nine strided arrays and
-  **zero** declared strides — every pitch there is `sizeof` — and a trigger
-  the primary case never fires is not a trigger. What is left is the mode
-  (§2.2): fixed tables have the form, variable-length ones do not, and the
-  answer is derived rather than declared, exactly as the mode itself is.
-- **No `| stride` attribute at all — TAKEN, on the same evidence plus the
-  consumer's, and taken as a CUT rather than a deferral** (§13.6). Beyond the
-  zero declared strides, the one consumer that exists cannot read a strided
-  array: it reads rows by casting the byte range to a row type, which
-  requires pitch `== sizeof`, and it drops any array whose pitch differs.
-  That consumer's fast path is the hard requirement the form exists to serve,
-  so headroom trades it away for a property both generated sides already
-  give. Nothing is held for it: no follow-on, no refusal by name, no reserved
-  word.
-- **ONE exact id and ONE entry point — TAKEN, because a block is
-  same-build.** A tolerant second entry point was weighed and dropped: both
-  sides of a block are generated from one declaration by one compiler run, so
-  a consumer older than its producer is half a shipped build rather than a
-  case to absorb, and a refusal is the honest answer to it. The id could not
-  have been made tolerant in any case — a single number cannot be verified
-  against a PREFIX of the facts that produced it: a consumer that knows fewer
-  fields cannot recompute the producer's number, and any fold that ignored
-  the difference would ignore a real break too. So the block's id is exact —
-  the build version (§19.3), like a cooked file's (§7) — and there is nothing
-  beside it. What a cook and a block both keep is one surface each and no
-  silent bypass anywhere.
-
-**The view's shape** (§8). Four models were weighed against the owner's
-picture of it — an editor that inspects everything in the schema built:
-
-1. **A SECOND descriptor vocabulary for types — REJECTED.** A `type` is not
-   a table, so a type-shaped `TypeFieldInfo` beside `TableFieldInfo` looked
-   tidy. It is two vocabularies, therefore two walkers, therefore every
-   printer, differ and property grid written twice — and the JSON walker
-   (§16) and the block form's reflective read (§19.2) are already written
-   against the first one. One surface, filled by the same rules, is what
-   makes a type walkable by code that was never told about views.
-2. **A MARKER on the declaration plus a generate flag to select what is
-   viewed — REJECTED, and this is the subtraction the design turns on.** It
-   was the shape this section was first written in: `| view` on a type, a
-   three-valued `--views`, a closure rule for what a marker reaches, a
-   refusal for each declaration kind the marker does not fit, a reserved
-   word taken out of the type-tag namespace to make the marker parse, and a
-   gate proving the flag moved nothing. All of it existed to answer one
-   question — what does this build pay for — that placement answers by
-   itself (§8.4): the file is on the side, a consumer that does not compile
-   it pays nothing, and a consumer that does wants everything anyway. Every
-   one of those constructs went with the question.
-3. **A view file per SCHEMA FILE — REJECTED.** It mirrors §6.1's
-   one-file-per-schema-file layout and leaves the registry homeless: the
-   registry is the set of everything the UNIT declares, so it would either
-   live in one arbitrarily chosen file's output or force each file's view to
-   reach into the others and back — the cross-file cycle §11 refuses. A
-   unit-level fact gets a unit-level file.
-4. **One unit-level file carrying everything, always — THE DESIGN OF
-   RECORD.** One `UnitView()` over constant data, every declaration's view
-   beside it, `<Name>TableType()` unchanged for anything a table already
-   reached, and a file an editor links and a game never compiles.
-
-**Completeness is what an editor needs, and a subset is what a marker
-sells.** A tool that inspects a build cannot be served by the declarations
-someone remembered to mark — the one it needs is the one nobody marked. So
-the registry is complete by construction, and the price of completeness is
-paid where it is cheap: in a translation unit a build either compiles or
-does not.
-
-**No decision here knowingly costs TIME.** The `u64` type id and the
-repeating node-table field cost BYTES and nothing else — the record scan
-is linear either way, and a wider id compares no slower than a narrow
-one. The directory scan replaced a traversal with a scan of the same
-asymptotic class and a smaller constant, and it moved off the runtime
-path entirely (§7): a matching build version points, and checks nothing.
-Where a cost is real it is stated with its number (§6.3) rather than
-deferred, and the optimization work that follows real profiles is not
-pre-empted here.
+25. **A SECOND descriptor vocabulary for types — REJECTED.** A `type` is not a
+    table, so a type-shaped `TypeFieldInfo` beside `TableFieldInfo` looked
+    tidy. It is two vocabularies, therefore two walkers, therefore every
+    printer, differ and property grid written twice — and the JSON walker
+    (§16) and the block form's reflective read (§19.2) are already written
+    against the first one.
+26. **A MARKER on the declaration plus a `--views` flag to select what is
+    viewed — REJECTED, and this is the subtraction the design turns on.** It
+    was the shape this section was first written in: `| view` on a type, a
+    three-valued flag, a closure rule for what a marker reaches, a refusal for
+    each declaration kind the marker does not fit, a reserved word taken out
+    of the type-tag namespace to make the marker parse, and a gate proving the
+    flag moved nothing. All of it existed to answer one question — what does
+    this build pay for — that placement answers by itself (§8.4). Every one of
+    those constructs went with the question.
+27. **A view file per SCHEMA FILE — REJECTED.** It mirrors §6.1's
+    one-file-per-schema-file layout and leaves the registry homeless: the
+    registry is the set of everything the UNIT declares, so it would either
+    live in one arbitrarily chosen file's output or force each file's view to
+    reach into the others and back — the cross-file cycle §11 refuses.
 
 ## 15. Named follow-ons
 
