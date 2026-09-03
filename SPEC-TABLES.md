@@ -1832,12 +1832,10 @@ that can be memory mapped, endian-fixed and loaded quickly by a build at
 the exact version it was cooked to. That is cooking.
 
 ```cpp
-int64_t data, attribution;
-SceneCookMeasure( builder, &data, &attribution );
-SceneCook( builder, buffer, data, attribution );   // write it
-
 const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 ```
+
+`schema cook` writes the file; the runtime only ever points at one.
 
 **Backend status: the TOOL and BOTH READ SIDES are built; no WRITE side is
 (schema#251).** `schema cook`, `schema cook-check` and `schema uncook` produce,
