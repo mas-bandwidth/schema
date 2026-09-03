@@ -588,8 +588,8 @@ that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
 A table lives on its own wire — evolution-tolerant TLV, carried by C++, by C#,
-by Go and by Rust (all three ports carry the fixed class, wire and text form
-both; the pointer surface ON THE WIRE is a follow-on in every one of them —
+by Go, by Rust and by Java (every port carries the fixed class, wire and text
+form both; the pointer surface ON THE WIRE is a follow-on in every one of them —
 their cook and block accelerators read a pointered unit today). Field
 identity is a hash of the field NAME, so any reader takes any data, both
 directions: unknown fields are skipped, absent fields take their declared
@@ -886,6 +886,144 @@ them through `block.Type()` and `cook.Type()`; every record hangs off the
 element column, so one walk reaches the whole graph from either root. The wire's
 `TableTypeInfo` is not those and does not substitute for them: it describes the
 STORAGE a codec fills, and the accelerators describe bytes another build wrote.
+
+**The Java surface is the same three functions once more**, name first and
+lowerCamel — Java's one naming rule, the same one the packet half follows with
+`writeVec3` — as `static` methods on the file's `<Base>Table` class, over
+`byte[]` the caller owns. Storage is a `final` class with public fields, lowerCamel, every buffer
+allocated at construction — the Java packet emitter's own spelling, because a
+table's closure decodes into that emitter's own classes:
+
+```java
+import example.ConfigTable;
+import example.TableReport;
+
+ConfigTable.ShipConfig ship = new ConfigTable.ShipConfig();
+ship.health = 250.0f;
+ship.settingsPresent = true;          // ?T: presence decides whether it rides
+
+long size = ConfigTable.shipConfigMeasure(ship);   // exact, writes nothing
+byte[] buffer = new byte[(int) size];              // or any storage you own
+ConfigTable.shipConfigSave(ship, buffer);          // returns size, or -1
+
+TableReport report = new TableReport();
+ConfigTable.ShipConfig loaded = new ConfigTable.ShipConfig();
+if (!ConfigTable.shipConfigLoad(loaded, buffer, report)) {
+    // framing damage: report.malformed is set, the good prefix is kept
+}
+if (report.unknown != 0 || report.kindMismatch != 0 || report.clamped != 0) {
+    // the data came from a different schema generation — loaded is still
+    // fully usable; log the counts so drift is visible
+}
+```
+
+**A hot loop hoists the reader and reuses it**, which is the shape to reach for
+when you are reading a stream of records rather than a config file once:
+
+```java
+TableReader reader = new TableReader();            // yours, not the codec's
+TableWriter writer = new TableWriter();            // and the writer likewise
+TableReport report = new TableReport();
+for (byte[] record : records) {
+    reader.reset(record, 0, record.length, report.clear());
+    ConfigTable.shipConfigLoadBody(reader, loaded); // allocates nothing at all
+
+    writer.reset(buffer, 0, buffer.length);
+    ConfigTable.shipConfigSaveBody(writer, loaded); // nor does this
+}
+```
+
+**The convenience forms allocate one object each, and the hoisted forms are how
+you get to zero.** `shipConfigLoad` builds a `TableReader` per call and
+`shipConfigSave` a `TableWriter`; `shipConfigLoadBody` and `shipConfigSaveBody`
+take yours. Neither allocates anything else.
+
+**Nothing on the hoisted path allocates, and in Java that is measured rather than
+asserted** — the same standard the Go leg holds itself to, with the JVM's own
+per-thread allocation counter in place of `testing.AllocsPerRun`. The wire's
+read and save, the block's row walk and the cook's read each read **zero bytes
+per record** across a measured window, a soak re-measures every path at every
+sample for an hour, and a negative control adds one `new byte[1]` per record and
+requires the gate to go red. A nested body is bounded by MOVING THE READER'S
+LIMIT rather than by allocating a sub-reader, which is what makes the number
+reachable at all. The text form allocates by nature and says what it allocates.
+
+Java's unit scope is the PACKAGE and a public type lives in a file of its own
+name, so the shared runtime is **one file per type** — `TableReport.java`,
+`TableReader.java`, `TableWriter.java`, `TableJson.java` and the rest — rather
+than one home file. Nothing about that varies with which schema file sorts
+first, and a unit that declares no table emits not one of them.
+
+`string(N)` and `bytes(N)` are a `byte[N]` beside an `int` used length, arrays a
+`T[N]` beside an `int` used count, `?T` a value beside a `<name>Present` bool,
+and a union its tag beside one pre-allocated arm per variant.
+
+**An enum-keyed array in Java is a plain typed array of `E.max` slots** — Java
+has no generic container that could hold a primitive slot without boxing, and an
+`[E]int32` is exactly that case. **On a `table` it comes with an accessor pair
+that takes the KEY**; on a plain `type` it is the bare array, because a `type`'s
+storage is the packet emitter's and this wire changes nothing about it (C++ does
+the same), so there a caller reaches through `TableKeyed.slot(key)` rather than
+an accessor:
+
+```java
+hull.turrets(Weapon.missile).ammo = 20;            // by the key, never the slot
+hull.scores(Grade.gold, 7);                        // the setter, for a value element
+
+for (int i = 0; i < TableKeyed.count(hull.turrets); i++) {
+    int key = TableKeyed.key(i);                   // the KEY, 1 .. E.max
+    hull.turrets(key).health *= 2.0f;
+}
+```
+
+No call site spells the shift: `TableKeyed` is the one place the `k - 1` lives —
+on a table through the accessor above, on a `type` through
+`board.perTeam[TableKeyed.slot(key)]` — and indexing by `None` throws from it, in
+every build, as the C++ abort does. The generated codecs walk the raw array by
+storage index and never pay for the guard.
+
+`<Name>TableType()` returns the reflection descriptor. **Its memory columns are
+ACCESSORS rather than offsets**, which is the one place a walker written from
+the C++ example has to know the difference: a Java field has no offset and a
+Java object has no meaningful sizeof, so the descriptor carries the reader and
+the writer the emitter wrote — `getRaw`, `setRaw`, `getChild`, `getBuffer` and
+the counted and presence companions beside them. Same role, one place, in the
+language's own currency, and the generic text-form walk reaches storage through
+those and through nothing else.
+
+**A block row and a cooked record have no Java type at all.** There is no struct
+to lay out, so `<Name>Row`'s generated accessors read each field at its offset
+out of the array you hold, and `<Table>Block.open` / `<Root>Cook.open` take
+`(byte[] data, int offset, long length)` and answer a handle or `null`. The
+base's ALIGNMENT is that offset's residue rather than an address's: the same
+arithmetic, so the same refusals.
+
+**The per-frame path is the pair, not the record.** `<field>Count()` and
+`<field>At(i)` read the triple out of the instance and answer ints, so a frame
+loop allocates nothing; `<field>()` carries the three numbers together in a
+`TableBlockRows` record and costs one per call, which is the convenience:
+
+```java
+for (int i = 0, n = frame.shipsCount(); i < n; i++) {
+    int row = frame.shipsAt(i);                    // the pitch is inside, not here
+    sum += RenderShipRow.objectId(frame.data(), row);
+}
+frame.ships().forEach(row -> { ... });             // the convenience, one record
+```
+
+**A reference resolves through `<Root>Cook.at(slot, size)`**, which answers the
+target's offset, or `-1` for a null AND for a delta whose WHOLE RECORD does not
+lie inside the region. The size is the pointee's `<Name>Row.size`. Bounding only
+the target's start would pass and then throw one call later, on the first field
+read past the end — an unchecked deref in Java is an exception escaping a reader
+rather than a pointer into trusted bytes, so the bound is over the record.
+
+**Both accelerators stop at 2 GiB**, because a `byte[]` does. §7 is built for
+catalogues past that, and C# answers it with a pointer form beside its span
+overload; Java at `--release 17` has no second spelling, since `MemorySegment`
+is not stable before 22. The `long length` on both `open`s is the seat that
+overload takes when the floor moves — it is a named follow-on, not an oversight,
+and until it lands a cook past 2 GiB has no Java reader.
 
 **Which makes a default part of the wire contract.** An absent field means
 "the reader's declared default", so changing a default changes what every

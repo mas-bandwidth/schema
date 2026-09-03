@@ -148,12 +148,13 @@ reach.
   reads in place. The allocation in this document is a BUILDING cost, and
   building is TOOLING's path — the game points at the cook (§7).
 
-**Backend status: C++, and C#, Go and Rust for the FIXED class.** C++ carries
-both classes; C#, Go and Rust carry the fixed class (§6.1) — optionals,
-enum-keyed arrays, the text form (§16) and all — and each refuses a unit whose
-closure declares a pointer, naming its variable class as a follow-on. Every other
-backend refuses a unit that declares tables at all, by name, with this document
-cited. The remaining per-language backends are named follow-ons (§15).
+**Backend status: C++, and C#, Go, Rust and Java for the FIXED class.** C++
+carries both classes; C#, Go, Rust and Java carry the fixed class (§6.1) —
+optionals, enum-keyed arrays, the text form (§16) and all — and each refuses a
+unit whose closure declares a pointer, naming its variable class as a follow-on.
+Every other backend refuses a unit that declares tables at all, by name, with
+this document cited. The remaining per-language backends are named follow-ons
+(§15).
 
 **The RUST backend's own three divergences**, each forced by the language and
 each named where it is spelled rather than discovered in the source. The
@@ -194,6 +195,70 @@ generic array extent. Its layout contract is a generated `init()` that REFUSES,
 naming the record, the field and both numbers, where C++ has `static_assert`,
 Rust has a const assert and C# a check at type initialization.
 
+**JAVA's six divergences**, each forced by the language and each named where it
+is spelled. **The method names are lowerCamelCase** — `patrolMeasure`,
+`patrolSave`, `patrolLoad`, `patrolReset` — which leaves §6.1's NAME-FIRST order
+exactly as it is and spells the case the way Java's one naming rule and this
+backend's own packet half (`writeVec3`, `readVec3`) already do. **The unit's namespace is the PACKAGE and a public type lives in
+a file of its own name**, so the shared runtime is ONE FILE PER TYPE —
+`TableReport.java`, `TableReader.java`, `TableJson.java` and the rest — rather
+than one home file: file-order independent by construction rather than by a
+rule, and a table-free unit emits not one of them. **There are no unsigned
+types**, so a decode local widens to the smallest signed type holding the wire
+kind's whole range (u8/u16 to `int`, u32 to `long`) and u64 compares through
+`Long.compareUnsigned`, while storage stays bit-transparent in the same-width
+signed type, the packet emitter's own convention. **There are no ref structs**,
+so a nested body is bounded by MOVING THE READER'S LIMIT rather than by slicing
+a sub-reader — which is what lets a hoisted reader allocate nothing at all.
+And **there are no structs and no pointers**: a block row and a cooked record
+have no Java type to lay out, so `<Name>Row`'s generated accessors read each
+field at its offset out of the caller's `byte[]`, and the base's ALIGNMENT is
+the OFFSET's residue rather than an address's — the same arithmetic, so the
+same refusals.
+
+**Which makes Java's half of the layout contract a DIFFERENT half, and it says
+so rather than pretending.** C++, C# and Rust each have a runtime layout that
+can disagree with the compiler's model, and each asserts against it —
+`static_assert`, a check at type initialization, a const assert over
+`offset_of!`. Java has no record layout at all, so there is no second model to
+check against and a check that claimed one would be theatre.
+`TableBlockLayout` and `TableCookLayout` assert the one disagreement the
+language CAN have: the ACCESSORS' offsets against the DESCRIPTORS', two
+derivations the generator makes separately, so a walker reading a row through
+the descriptors and a consumer reading it through the accessors cannot be
+reading two different records. What refuses a FOREIGN block or cook is `open`,
+which compares every number the instance carries against this build's.
+
+**AND THE SIXTH IS A CEILING RATHER THAN A SPELLING: the two accelerators read
+out of a `byte[]`, which stops at 2 GiB.** §7 states the scale it is built for in
+the owner's own words — *"100mbs or many gigabytes of data in Assets.bin"* — and
+the scale fixtures reach a gigabyte, so this is the one Java divergence that
+costs a stated requirement. C# meets the same `int` ceiling on its span overload
+and answers it with the pointer form beside it; Java at `--release 17` has no
+second spelling, because the foreign-memory API (`MemorySegment`) is not stable
+before 22. **The FFM overload is the named follow-on** (§15), and until it lands
+a catalogue past 2 GiB has no Java reader. Both `open`s take a `long` length
+that a `byte[]` can never fill: it is the seat that overload takes, and the
+generated source says so at the site rather than leaving a reader to meet the
+ceiling by hitting it.
+
+**One RULING rather than a spelling, in the cook**: a reference resolves through
+`<Root>Cook.at(slot, size)`, which BOUNDS THE WHOLE RECORD — `[target, target +
+size)` inside the region — and answers "no target" otherwise, the same answer it
+gives a null. C++, C# and Rust hand back a pointer and let the walk decide,
+because a cook is trusted input and an out-of-region deref there is undefined
+behaviour a sanitizer catches. Java has none to preserve: an unchecked deref is
+an exception escaping into a caller that asked a question, which is what the
+readers' fuzz oracle forbids.
+
+**Bounding the target's START is not enough, and the size parameter is why.** A
+start bound passes every check the reader makes and then throws one call later,
+in the caller's first field read past the region's end — §7.1 blesses a cook
+carrying data alone, so there are no attribution bytes to absorb the overrun.
+The size is the pointee's own `<Name>Row.size`, which every call site knows.
+`make tables-java-cook-extent` is that forgery as a gate and its negative
+control puts the start-only bound back and requires the gate to go red.
+
 **BIG-ENDIAN, per backend.** The C++ leg proves the wire, the block form and
 the cooked form crossing the byte order on a real big-endian target under an
 emulator. The Rust surface is CHECKED for that same target — the pinned
@@ -208,7 +273,16 @@ under the same pinned emulator, plus the two FOREIGN surfaces (§7, §19.1) —
 a cook and a block whose magic word is byte-reversed, which every leg on every
 host must refuse.
 
-**The BLOCK FORM (§2.7, §19) is live in C++, C#, Go and Rust**, and it took C++ and
+**JAVA's byte order is the READER's, not the host's**, and that is the whole of
+its answer here: every multi-byte read goes through `TableBytes`, which is
+explicitly little-endian, so `TableBlockInfo.byteOrder` and
+`TableCookInfo.byteOrder` are CONSTANTS rather than a query of the platform. A
+file of the other order is then refused twice — its magic reads back
+byte-swapped and its order word is not this reader's — which is what the two
+FOREIGN surfaces ask for, and `make tables-java-order` holds the same property
+over a whole big-endian cook the tool wrote.
+
+**The BLOCK FORM (§2.7, §19) is live in C++, C#, Go, Rust and Java**, and it took C++ and
 C# TOGETHER to land, because the form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
 `<Base>Block.h` (the projection, the generated layout asserts, the fill path
@@ -223,9 +297,13 @@ the representation IS the layout, the const asserts that hold it, the open
 path, rows as slices over the region, and the same descriptors; Go emits
 `<Base>Block.go`, the same shape again, with the blittable records carrying
 generated padding as C#'s do and the layout contract as the refusing `init()`
-above. **The unit's
+above; Java emits `<Table>Block.java` per block-form table and `<Name>Row.java`
+per record, whose generated ACCESSORS read each field at its offset because
+there is no struct to lay out, with the layout contract as the
+accessors-against-descriptors check above. **The unit's
 shared runtime is named by the PACKAGE in every port, so file order cannot
-reach it (§19.2).** The READ side is what the ported backends carry: a block is
+reach it (§19.2)** — and in Java the package IS the unit scope, so each runtime
+type is a file of its own name and no rule is needed at all. The READ side is what the ported backends carry: a block is
 laid out by a producer, and the producer's half is C++'s. The Table sources
 carry not one symbol of any of it, and the build fails if one appears.
 
@@ -1985,10 +2063,11 @@ const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 (schema#251).** `schema cook`, `schema cook-check` and `schema uncook` produce,
 validate and read back the form below, in both byte orders, over the same IR the
 emitters consume — and `wire → cook → wire` is byte-identical over the corpus,
-which is what proves the accelerator loses no fact. The C++ table backend emits
-`<Root>Open` and the C# table backend emits `<Root>Cook.Open` for EVERY TABLE
-(below) — a root is any table — so a game points at a cook the tooling produced
-from either language. What no generated runtime carries yet is `Cook` and
+which is what proves the accelerator loses no fact. Every port emits the entry
+point for EVERY TABLE (below) — a root is any table — in its own idiom: the C++
+backend `<Root>Open`, the C# backend `<Root>Cook.Open`, the Java backend
+`<Root>Cook.open`. A game points at a cook the tooling produced, whichever
+language it reads from. What no generated runtime carries yet is `Cook` and
 `CookMeasure`: a build that wants to WRITE a cook runs the tool, and those two
 spellings stay claimed ahead of their emitter (§11).
 
@@ -3571,21 +3650,23 @@ in build version (§20.5).
   enums are in scope on the same terms.
 - Tables under a backend that carries none (status, above) — refused with the
   follow-on named, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C# and Go backends** — both
-  ports carry the fixed class on the wire; their variable class there (the arena,
-  the builder, the region, the node-table codec) is a named follow-on, and a
-  pointered unit gets no `<Base>Table.cs` and no `<Base>Table.go` at all, with
-  the refusal NAMED in every source the unit does emit rather than left as a
-  missing symbol.
+- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Go and Java backends** —
+  the ports carry the fixed class on the wire; their variable class there (the
+  arena, the builder, the region, the node-table codec) is a named follow-on, and
+  a pointered unit gets no `<Base>Table.cs`, no `<Base>Table.go` and no
+  `<Base>Table.java` at all, with the refusal NAMED in every source the unit does
+  emit rather than left as a missing symbol.
 
   **The refusal is of the WIRE and of nothing else, and the distinction is the
   design rather than an exception to it.** The two ACCELERATORS are POINTED AT,
   not parsed: a block (§19) and a cook (§7) are blittable records plus a header
   match, and neither needs one line of the codec the variable class is missing.
-  So a pointered unit's `<Base>Block.cs` and `<Base>Cook.cs` ARE emitted, and so
-  are its `<Base>Block.go` and `<Base>Cook.go`; its `<Root>Cook.Open` and its
-  `<Root>Open` open its cooked assets in full, and what a consumer cannot do in
-  either language is `Measure`, `Save` and `Load` over the tolerant wire.
+  So a pointered unit's block and cook sources ARE emitted in every port —
+  `<Base>Block.cs` and `<Base>Cook.cs`, `<Base>Block.go` and `<Base>Cook.go`,
+  Java's `<Table>Block.java`, `<Table>Cook.java` and `<Name>Row.java`; its
+  `<Root>Cook.Open`, its `<Root>Open` and its `<Root>Cook.open` open its cooked
+  assets in full, and what a consumer cannot do in any of those languages is
+  `Measure`, `Save` and `Load` over the tolerant wire.
   **This is what lets §7's "a root is any table, and every table gets one" hold
   in C# and Go too**, which a whole-unit refusal made impossible to say.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
@@ -3785,13 +3866,28 @@ in build version (§20.5).
     `TableCookInfo`, `TableCookFieldInfo` and `TableCookStorage`, with
     `TableCookHeaderBytes` and `TableCookRead64` riding as members of `Schema`
     and so claiming nothing at file scope), `BuildVersion` (§20, which both
-    accelerators carry) and the rest of that list. **The TEXT form's walk
-    claims nothing in C#**: it is `TableJson`, one nested class of `Schema`,
-    and every function, sink and scanner it spells is a member of that —
-    reached through its owner, so a schema is free to declare any of those
-    names. §8.2 has a table-free unit's
+    accelerators carry) and the rest of that list. §8.2 has a table-free unit's
     view file DEFINING those primitives, so a unit that declares no table
     can no longer be allowed to declare their names.
+
+    **JAVA WIDENS TWO MORE AND ADDS ONE, on exactly the rule Go's widening
+    states: a port's spelling decides the claim, and the claim is the UNION.**
+    `TableJson` is one nested class of `Schema` in C#, where every function,
+    sink and scanner it spells is a member reached through its owner and claims
+    nothing — and it is a PACKAGE-LEVEL class in Java, whose unit scope is the
+    package. So the name is claimed. `TableBlockLayout` widens for the same
+    reason. And `TableBytes` is Java's own: C++ reads a record through its type,
+    C# through a pointer cast and Rust through a transmute, and Java has none of
+    those, so every multi-byte read of a block or a cook goes through one
+    package-level class of explicit little-endian readers — which is also what
+    settles the byte order of both accelerators without asking the host.
+
+    **A schema FILE named for one of those runtime types is refused too, under
+    the Java backend.** A file base is what names the packet emitter's class,
+    and a public Java type lives in a file of its own name, so a unit with a
+    table and a `TableReport.schema` in it would have two `TableReport.java` to
+    write. It is a file-name collision rather than a declaration collision, so
+    the refusal names the FILE, exactly as the view file's does below.
 
     **GO WIDENS TWO OF THESE AND ADDS EIGHT, and both moves are the port's
     spelling rather than a new construct.** `TableCookHeaderBytes` is a member
@@ -4596,6 +4692,12 @@ inspects everything in the schema built:
   that matters, the shape that keeps both is a SIGNED TABLE OF PER-CHUNK
   HASHES — the signature covers the table, and a page verifies as it faults in.
   Not built.
+- **A FOREIGN-MEMORY overload for the Java accelerators.** `<Table>Block.open`
+  and `<Root>Cook.open` read a `byte[]`, which stops at 2 GiB, so the Java reader
+  cannot reach the scale §7 is built for. `MemorySegment` is the spelling that
+  does, and it is not stable before JDK 22 where this backend compiles at
+  `--release 17`; both `open`s already take a `long` length, which is the seat
+  that overload takes when the floor moves.
 - **Per-language backends beyond C++ and C#** (the refusal in §11 names this).
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12), and the FIXED class is what that
@@ -4885,13 +4987,22 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class, in C++, C# and Rust.** No
+**Backend status for this section: the FIXED class, in C++, C#, Rust and Java.** No
 backend implements the variable class's text form yet — a pointered unit
 gets no `FromJson`, refused by name with this section cited, never emitted
 with the function missing — and the second walker it needs, emitted only in
-units that declare a pointer, is tracked as schema#275. In C# and Rust that
-refusal is already made one level up: a pointered unit gets no table source at
-all (§11), so it has no text form for the same reason it has no wire codec.
+units that declare a pointer, is tracked as schema#275. In C#, Rust and Java
+that refusal is already made one level up: a pointered unit gets no table source
+at all (§11), so it has no text form for the same reason it has no wire codec.
+
+**The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
+says how it gets there rather than reaching for its runtime's default. C++
+calls `snprintf`; C# builds a custom format string and converts under the
+invariant culture; Java rounds the double's EXACT decimal expansion through
+`BigDecimal` at HALF_EVEN, because `java.util.Formatter` rounds HALF_UP and the
+two answers differ on a tie. A tie is discarded by the shortest-round-trip loop
+at every precision but the last — and at the last there is no loop left to save
+it, which is why the mode is named rather than left to the default.
 
 **Rust's walk allocates nothing, and that is a gate rather than a claim**:
 numbers format through a stack sink the size of the C++ walker's own
@@ -6198,16 +6309,18 @@ loudly, naming the type and the field; §20.3 states the asserts in full.
 
 **Backend status: the id, its projection and both READ sides are LIVE.**
 `schema build-version` prints the id and `schema build-version --facts` prints
-the projection of §20.2, both pinned as goldens over the corpus. The C++ and
-C# BLOCK backends emit the constant and stamp it into every block's prologue
-(§19.1), and `BlockOpen` compares it; `schema cook` stamps it into the cooked
-header, `schema cook-check` reads it back, and the C++ `<Root>Open` and the C#
-`<Root>Cook.Open` each compare it (§7). What remains owed, largest first:
+the projection of §20.2, both pinned as goldens over the corpus. The BLOCK
+backends emit the constant and stamp it into every block's prologue (§19.1), and
+`BlockOpen` compares it; `schema cook` stamps it into the cooked header, `schema
+cook-check` reads it back, and every port's cook entry point compares it (§7) —
+the C++ `<Root>Open`, the C# `<Root>Cook.Open`, the Java `<Root>Cook.open`. What remains owed, largest first:
 
 1. **The constant rides in the TABLE-bearing sources only.** §20.7 asks for
-   one beside `ProtocolId` in every backend; today the two block backends emit
+   one beside `ProtocolId` in every backend; today the block backends emit
    it into `<Base>Block.h` / `<Package>Block.cs`, the C++ table backend emits it
-   into every `<Base>Table.h` — where the cook's reader is — the C# cook emits
+   into every `<Base>Table.h` — where the cook's reader is — the Java backend
+   gives it a package-level file of its own, `BuildVersion.java`, emitted for
+   any unit with a table and for no other, the C# cook emits
    it into `<Package>Cook.cs` when the unit has no block form to carry it already,
    and the seven backends that carry no table emit none. The C# Table sources
    carry none, which is the zero-cost gate (§2.2) rather than an omission: the

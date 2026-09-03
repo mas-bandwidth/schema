@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/javatable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
@@ -21,10 +22,10 @@ import (
 )
 
 // refuseTables is the named refusal every target without a table backend
-// gives a unit that declares tables (docs/SPEC-TABLES.md): C++, C#, Go and Rust
-// carry table backends today, and each remaining per-language one is a named
-// follow-on — refused loudly here rather than silently emitting a unit with
-// the tables missing.
+// gives a unit that declares tables (docs/SPEC-TABLES.md): C++, C#, Go, Rust and
+// Java carry table backends today, and each remaining per-language one is a
+// named follow-on — refused loudly here rather than silently emitting a unit
+// with the tables missing.
 func refuseTables(u *ir.Unit, target string) error {
 	if len(u.Tables) == 0 {
 		return nil
@@ -34,7 +35,7 @@ func refuseTables(u *ir.Unit, target string) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return fmt.Errorf("unit declares tables (%s) — tables are C++, C#, Go and Rust only today, and the %s table backend is a named follow-on; generate with --lang cpp, --lang cs, --lang go or --lang rust, or move the tables to their own unit (docs/SPEC-TABLES.md)",
+	return fmt.Errorf("unit declares tables (%s) — tables are C++, C#, Go, Rust and Java only today, and the %s table backend is a named follow-on; generate with --lang cpp, --lang cs, --lang go, --lang rust or --lang java, or move the tables to their own unit (docs/SPEC-TABLES.md)",
 		englishList(names), target)
 }
 
@@ -179,10 +180,25 @@ type javaTarget struct{}
 func (javaTarget) Names() []string { return []string{"java"} }
 
 func (javaTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := refuseTables(u, "java"); err != nil {
+	files, err := java.Generate(u)
+	if err != nil {
 		return nil, err
 	}
-	return java.Generate(u)
+	// units that declare tables ALSO get <Base>Table.java per file plus the
+	// unit's shared runtime, one PUBLIC TYPE PER FILE — the TABLE-wire codecs,
+	// FIXED class (docs/SPEC-TABLES.md); a table-free unit's output is
+	// byte-identical to what the packet emitter alone produces
+	tables, err := javatable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file, a table runtime type and a declaration's generated name all land in the Java package's one-public-class-per-file namespace; rename one of them (docs/SPEC-TABLES.md §11)", name)
+		}
+		files[name] = data
+	}
+	return files, nil
 }
 
 // jsTarget emits JavaScript ES modules.

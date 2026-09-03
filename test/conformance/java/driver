@@ -1,0 +1,20 @@
+#!/bin/sh
+# THE JAVA LEG's driver (test/conformance/README.md).
+#
+# One command, every surface: the wire units, the block unit and the pointered
+# unit are packages of ONE classpath, so a single JVM start-up answers all ten —
+# the cook's node dump and the cook forgery battery included, which the C# leg
+# hands to a second project because its cook side is a second assembly.
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so a driver never resolves one itself.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+set -e
+
+# the pinned JDK, per the Makefile's JAVA variable; CI installs the same major
+# and overrides with JAVA=java
+JAVA=${JAVA:-dist/jdk-21.0.12.1/Contents/Home/bin/java}
+
+exec "$JAVA" -cp build/conformance-java Driver "$@"
