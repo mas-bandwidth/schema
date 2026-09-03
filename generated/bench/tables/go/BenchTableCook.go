@@ -26,6 +26,7 @@
 package benchtable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"unsafe"
 )
@@ -289,26 +290,33 @@ func TableEntityOpen(cook *TableEntityCook, base unsafe.Pointer, length int64) b
 	// order every other header word is written in. A cook of the other order
 	// reads back this constant byte-reversed and refuses HERE, rather than
 	// reaching a fix-up pass this design does not have.
-	if *(*uint64)(base) != TableCookMagic {
+	//
+	// The header is read through encoding/binary's NATIVE order — the memcpy
+	// the C++ side reads it with — and not through a typed load, because the
+	// BASE's own alignment is not checked until further down: a typed load
+	// before that check is an unaligned load on a target that does not allow
+	// one, and the caller's buffer is the thing under test.
+	header := unsafe.Slice((*byte)(base), 64)
+	if binary.NativeEndian.Uint64(header) != TableCookMagic {
 		return false
 	}
 	// and the ORDER WORD does the other job: it RECORDS which order wrote the
 	// file, so a refusal names the order rather than inferring it.
-	if *(*uint64)(unsafe.Add(base, 16)) != TableCookByteOrder {
+	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
 		return false
 	}
 	// THE BUILD VERSION: under the match-and-point rule a matching id means Open
 	// checks nothing further, so it is the sole guard between this runtime and a
 	// foreign region (§20).
-	if *(*uint64)(unsafe.Add(base, 8)) != BuildVersion {
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return false
 	}
 	// THE RESERVED WORDS: a non-zero one means a writer used a form this build
 	// does not understand, and Open refuses rather than ignoring it.
-	if *(*uint64)(unsafe.Add(base, 48)) != 0 {
+	if binary.NativeEndian.Uint64(header[48:]) != 0 {
 		return false
 	}
-	if *(*uint64)(unsafe.Add(base, 56)) != 0 {
+	if binary.NativeEndian.Uint64(header[56:]) != 0 {
 		return false
 	}
 
@@ -317,7 +325,7 @@ func TableEntityOpen(cook *TableEntityCook, base unsafe.Pointer, length int64) b
 	// and the base is measured against it — so a word that is not an alignment
 	// rounds nothing and aligns nothing. A zero there is a division by zero
 	// inside the check, which is the defect the check prevents.
-	alignment := *(*uint64)(unsafe.Add(base, 40))
+	alignment := binary.NativeEndian.Uint64(header[40:])
 	if alignment < 8 || alignment > 64 {
 		return false
 	}
@@ -338,8 +346,8 @@ func TableEntityOpen(cook *TableEntityCook, base unsafe.Pointer, length int64) b
 	// refuses: a truncated file and a file with trailing bytes are the same
 	// refusal. Each term is bounded before it is added, so nothing here can wrap
 	// past the top of the type and land back inside the buffer.
-	dataLength := *(*uint64)(unsafe.Add(base, 24))
-	attribution := *(*uint64)(unsafe.Add(base, 32))
+	dataLength := binary.NativeEndian.Uint64(header[24:])
+	attribution := binary.NativeEndian.Uint64(header[32:])
 	if dataLength > bytes || attribution > bytes-dataLength {
 		return false
 	}
@@ -451,26 +459,33 @@ func TableStatOpen(cook *TableStatCook, base unsafe.Pointer, length int64) bool 
 	// order every other header word is written in. A cook of the other order
 	// reads back this constant byte-reversed and refuses HERE, rather than
 	// reaching a fix-up pass this design does not have.
-	if *(*uint64)(base) != TableCookMagic {
+	//
+	// The header is read through encoding/binary's NATIVE order — the memcpy
+	// the C++ side reads it with — and not through a typed load, because the
+	// BASE's own alignment is not checked until further down: a typed load
+	// before that check is an unaligned load on a target that does not allow
+	// one, and the caller's buffer is the thing under test.
+	header := unsafe.Slice((*byte)(base), 64)
+	if binary.NativeEndian.Uint64(header) != TableCookMagic {
 		return false
 	}
 	// and the ORDER WORD does the other job: it RECORDS which order wrote the
 	// file, so a refusal names the order rather than inferring it.
-	if *(*uint64)(unsafe.Add(base, 16)) != TableCookByteOrder {
+	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
 		return false
 	}
 	// THE BUILD VERSION: under the match-and-point rule a matching id means Open
 	// checks nothing further, so it is the sole guard between this runtime and a
 	// foreign region (§20).
-	if *(*uint64)(unsafe.Add(base, 8)) != BuildVersion {
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return false
 	}
 	// THE RESERVED WORDS: a non-zero one means a writer used a form this build
 	// does not understand, and Open refuses rather than ignoring it.
-	if *(*uint64)(unsafe.Add(base, 48)) != 0 {
+	if binary.NativeEndian.Uint64(header[48:]) != 0 {
 		return false
 	}
-	if *(*uint64)(unsafe.Add(base, 56)) != 0 {
+	if binary.NativeEndian.Uint64(header[56:]) != 0 {
 		return false
 	}
 
@@ -479,7 +494,7 @@ func TableStatOpen(cook *TableStatCook, base unsafe.Pointer, length int64) bool 
 	// and the base is measured against it — so a word that is not an alignment
 	// rounds nothing and aligns nothing. A zero there is a division by zero
 	// inside the check, which is the defect the check prevents.
-	alignment := *(*uint64)(unsafe.Add(base, 40))
+	alignment := binary.NativeEndian.Uint64(header[40:])
 	if alignment < 8 || alignment > 64 {
 		return false
 	}
@@ -500,8 +515,8 @@ func TableStatOpen(cook *TableStatCook, base unsafe.Pointer, length int64) bool 
 	// refuses: a truncated file and a file with trailing bytes are the same
 	// refusal. Each term is bounded before it is added, so nothing here can wrap
 	// past the top of the type and land back inside the buffer.
-	dataLength := *(*uint64)(unsafe.Add(base, 24))
-	attribution := *(*uint64)(unsafe.Add(base, 32))
+	dataLength := binary.NativeEndian.Uint64(header[24:])
+	attribution := binary.NativeEndian.Uint64(header[32:])
 	if dataLength > bytes || attribution > bytes-dataLength {
 		return false
 	}
